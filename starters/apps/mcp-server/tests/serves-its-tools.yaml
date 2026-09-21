@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: McpServerStarterTest
+  version: 1.0.0
+  description: >-
+    Runs the starter and calls it the way an assistant would: list the tools, add
+    a note, then find it again by searching. The round trip is the point — the
+    handlers know nothing about MCP, so a tool that stops reaching its handler is
+    only visible from this side.
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+  McpClient: ../../../../modules/mcp-client
+  Assert: ../../../../modules/assert
+targets:
+  - !ref test
+---
+kind: McpClient.HttpClient
+metadata: { name: assistant }
+url: http://127.0.0.1:8067/mcp
+clientInfo: { name: starter-test, version: 1.0.0 }
+---
+kind: McpClient.ToolsList
+metadata: { name: listTools }
+client: !ref assistant
+---
+kind: McpClient.ToolsCall
+metadata: { name: callTool }
+client: !ref assistant
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    ports:
+      http: 8067
+targets:
+  - !ref app
+steps:
+  # The starter keeps its notes in a database file that outlives the test, so
+  # the note this run writes is titled uniquely — otherwise the search would also
+  # match every previous run's.
+  - name: subject
+    value:
+      title: !cel "'note-' + uuidv4()"
+
+  - name: tools
+    inputs: {}
+    invoke: !ref listTools
+  - name: verifyToolsListed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "sort(steps.tools.result.tools.map(tool, tool.name))"
+      expected: [add_note, search_notes]
+
+  - name: add
+    inputs:
+      name: add_note
+      arguments:
+        title: !cel "steps.subject.result.title"
+        body: a note written by the starter's test
+    invoke: !ref callTool
+  - name: search
+    inputs:
+      name: search_notes
+      arguments:
+        query: !cel "steps.subject.result.title"
+    invoke: !ref callTool
+  - name: verifyRoundTrip
+    invoke: { kind: Assert.Contains }
+    inputs:
+      actual: !cel "steps.search.result.content[0].text"
+      value: !cel "steps.subject.result.title"

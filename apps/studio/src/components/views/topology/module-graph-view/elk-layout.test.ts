@@ -168,13 +168,13 @@ describe("the drawn path", () => {
 /**
  * A column is how many hops a box is from the way in.
  *
- * The shape is the agent template's, reduced to its drawn edges: two boot
+ * The shape is the agent starter's, reduced to its drawn edges: two boot
  * targets, a sequence calling a console handler and an agent, the agent holding
  * a tool set, and providers reached only through collapsed chips.
  */
 describe("what a column means", () => {
   const W = (id: string, capability: string) => node(id, { capability });
-  const agentTemplate = () => ({
+  const agentStarter = () => ({
     nodes: [
       node("root", { root: true, ownership: "root", kind: "Telo.Application" }),
       W("initSchema", "Telo.Runnable"),
@@ -209,20 +209,20 @@ describe("what a column means", () => {
   };
 
   it("puts two boot targets in the SAME column, one above the other", async () => {
-    const { nodes, drawn } = agentTemplate();
+    const { nodes, drawn } = agentStarter();
     const x = await columns(nodes, drawn);
     expect(x.get("initSchema")).toBe(x.get("chatLoop"));
     expect(x.get("initSchema")).toBeGreaterThan(x.get("root")!);
   });
 
   it("puts everything one hop from a sequence in one column", async () => {
-    const { nodes, drawn } = agentTemplate();
+    const { nodes, drawn } = agentStarter();
     const x = await columns(nodes, drawn);
     expect(x.get("readLine")).toBe(x.get("assistant"));
   });
 
   it("counts hops, so a longer chain reads further right", async () => {
-    const { nodes, drawn } = agentTemplate();
+    const { nodes, drawn } = agentStarter();
     const x = await columns(nodes, drawn);
     expect(x.get("weatherTools")).toBeGreaterThan(x.get("assistant")!);
     expect(x.get("getWeather")).toBeGreaterThan(x.get("weatherTools")!);
@@ -232,7 +232,7 @@ describe("what a column means", () => {
     // `gpt4oMini` declares `capability: Telo.Provider` and is genuinely called,
     // so it keeps its box — and its column is its hop distance, where the
     // retired infrastructure band used to pin it past the end of the flow.
-    const { nodes, drawn } = agentTemplate();
+    const { nodes, drawn } = agentStarter();
     const x = await columns(nodes, drawn);
     expect(x.get("gpt4oMini")).toBe(x.get("weatherTools"));
     expect(x.get("gpt4oMini")).toBeLessThan(x.get("getWeather")!);

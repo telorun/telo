@@ -402,7 +402,7 @@ everything only that branch reaches.
   put away the whole branch rather than its first step, and it is a fixpoint
   because hiding a node can be the last thing holding its own callees on screen.
 - **A node nothing references stays** — an unwired declaration, a provider held
-  only through a picked slot, the module root. Hiding those would let a
+  only through a picked slot. Hiding those would let a
   collapse in one place silently remove a resource nobody linked to it.
 - **A collapsed branch keeps its header line**, because that is what reopens it,
   and because a slot with no socket is a slot nothing can be wired into.
@@ -470,11 +470,17 @@ held slot states the name it holds. It is filed under **Resources** whatever its
 capability, so one instance does not change group according to whether something
 happens to call it.
 
-**An empty module still draws its root.** "No instance boxes" is not the same
-claim as "this module's content is kinds": an empty application has no boxes
-either, and conflating them handed the whole tab to a drawer with nothing to
-list. The root box carries the boot list and the control that adds the first
-target, which is where a new module is started from.
+**The module root is never a box.** What it declares is listed in the module
+bar beside the canvas — imports, bindings, ports, and for an Application its
+`logging:` block and its boot sequence, `targets:`, as an ordered Boot section
+(every entry in all three spellings, reordered, removed and added there). Each
+resource a bare or gated entry starts carries a marker on its own box — its
+1-based position, drawn conditional for a gated entry with the `when:` on
+hover — and a resource whose kind the `targets` slot accepts offers "Start at
+boot" / "Don't start at boot" from its context menu. No edge leaves the root.
+"No instance boxes" is still not the same claim as "this module's content is
+kinds": an empty application gets an empty canvas, not a drawer with nothing to
+list.
 
 ### Editing on the canvas
 

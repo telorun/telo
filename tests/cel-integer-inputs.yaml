@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: CelIntegerInputs
+  version: 1.0.0
+  description: |
+    A value declared `integer` is a CEL int wherever CEL reads it, whichever way
+    it arrived: a plain YAML number passed as a sequence's input, and a JSON
+    number in a request body the route's schema declares. Both used to reach CEL
+    as doubles, so `inputs.n * 2 + 1` failed at dispatch with
+    `no such overload: dyn<double> * int`.
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyIntegerInputs
+---
+kind: Run.Sequence
+metadata: { name: twicePlusOne }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [n]
+    properties:
+      n: { type: integer }
+steps:
+  - name: computed
+    value: !cel "inputs.n * 2 + 1"
+outputs:
+  value: !cel "steps.computed.result"
+---
+kind: Run.Sequence
+metadata: { name: verifyIntegerInputs }
+with:
+  - kind: Http.Server
+    metadata: { name: IntegerServer }
+    port: 8851
+    mounts:
+      - path: /
+        mount:
+          kind: Http.Api
+          routes:
+            - request:
+                path: /price
+                method: POST
+                schema:
+                  body:
+                    type: object
+                    required: [price]
+                    properties:
+                      price: { type: integer }
+              inputs:
+                n: !cel "request.body.price + 1"
+              handler: !ref twicePlusOne
+              returns:
+                - status: 200
+                  content:
+                    application/json:
+                      body: !cel "result"
+targets:
+  - !ref IntegerServer
+steps:
+  - name: direct
+    invoke: !ref twicePlusOne
+    inputs:
+      n: 4
+  - name: assertDirect
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.direct.result.value"
+      expected: 9
+  - name: overHttp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/price
+      method: POST
+      body: { price: 10 }
+  - name: assertOverHttp
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.overHttp.result.body"
+      expected: { value: 23 }

@@ -2,6 +2,7 @@ import { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
+import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
 
 /** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
  *  value carries. Mirrors the `protocol` enum in the Application schema, and
@@ -131,12 +132,26 @@ export function buildTypedCelEnvironment(
     }
 
     if (extraContextSchema?.properties) {
-      for (const [name, propSchema] of Object.entries(
-        extraContextSchema.properties as Record<string, any>,
-      )) {
-        if (!env.hasVariable(name)) {
-          env.registerVariable(name, jsonSchemaToCelType(propSchema as Record<string, any>));
+      const properties = extraContextSchema.properties as Record<string, any>;
+      const bound: string[] = [];
+      for (const [name, propSchema] of Object.entries(properties)) {
+        if (name === "steps" || env.hasVariable(name)) continue;
+        const celType = jsonSchemaToCelType(propSchema as Record<string, any>);
+        env.registerVariable(name, celType);
+        bound.push(`${name}:${celType}`);
+      }
+      // Last, so a pure step's expression is typed against every other name.
+      // Inference probes clones of `env`, and cel-js freezes an environment once
+      // it is cloned, so the typed `steps` goes onto a clone of its own.
+      const steps = properties.steps as Record<string, any> | undefined;
+      if (steps && !env.hasVariable("steps")) {
+        const inferred = inferredStepsCelSchema(steps, env, bound.sort().join(","));
+        if (inferred) {
+          const typed = env.clone();
+          registerTypedSteps(typed, inferred);
+          return typed;
         }
+        env.registerVariable("steps", jsonSchemaToCelType(steps));
       }
     }
 

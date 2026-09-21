@@ -39,6 +39,7 @@ export {
   NO_CEL_EVAL_SITES,
 } from "./eval-paths.js";
 export type { CelEvalSites } from "./eval-paths.js";
+export { isSelfForward, SELF_PATH } from "./template-self-forward.js";
 export {
   injectedDeclarations,
   isInjectedDeclaration,

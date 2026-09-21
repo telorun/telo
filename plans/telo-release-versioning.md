@@ -151,7 +151,7 @@ self-location.
 So a workspace declares itself with a `telo-workspace.yaml` at its root, found by walking up from
 the cwd. **Its location is the anchor**, and it carries one thing: `modules`, the subtrees that may
 hold them. That is not derivable — 50 manifests outside `modules/` and `apps/` carry a
-`metadata.version` (38 under `examples/`, 12 under `templates/`), so a whole-tree scan makes every
+`metadata.version` (38 under `examples/`, 12 under `starters/`), so a whole-tree scan makes every
 example a released module, while the current globs are this repo's layout hardcoded into a CLI
 feature meant to serve any module repo.
 

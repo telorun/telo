@@ -391,7 +391,8 @@ export function bindContract(instance: ResourceInstance, binding: ContractBindin
         // types the declaration as `int`, so there the declaration and the value
         // genuinely disagree. The asymmetry is the point: a controller still sees
         // whatever the call site produced and must accept both, which is what
-        // `bigint-schema-view.ts` documents.
+        // `bigint-schema-view.ts` documents. Where the resource evaluates CEL over
+        // these inputs, its context reads them normalized (`withTypedInputs`).
         effective = copyForDefaults(inputs, input.defaultPaths());
         try {
           input.validate(effective);

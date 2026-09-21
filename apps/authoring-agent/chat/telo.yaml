@@ -1678,6 +1678,14 @@ system: |
 
   ## Building a library: composition vs. inheritance
 
+  THREE WORDS, THREE THINGS. A STARTER is a working manifest the editor copies
+  ONCE into the user's workspace (the `starters/` gallery); after the copy it is
+  the user's own code. A BLUEPRINT is an importable library whose exported kind
+  is a templated definition describing a whole application; an app imports it
+  and declares one resource of that kind. "TEMPLATE" means only a definition's
+  BODY — the `resources:` plus dispatch verb described below — never a starter
+  or a blueprint.
+
   Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
 
   - TEMPLATED COMPOSITION — your kind assembles SEVERAL existing kinds. Declare
@@ -1706,6 +1714,25 @@ system: |
     CEL-named entry is one nothing can name. It is refused
     (`TEMPLATE_ENTRY_NAME_DYNAMIC`). Reference slots INSIDE an entry follow the
     same rule: `!ref` a sibling entry or a resource of your own module.
+
+    A reference your kind's INSTANCE holds reaches an entry only through a bare
+    `!cel "self.<path>"` — one slot (`connection: !cel "self.connection"`) or a
+    whole value holding several (`routes: !cel "self.routes"`, each route's
+    `handler` a reference the instance declared). Never build such a value with
+    CEL (`self.items.map(i, {'handler': i.handler})`): CEL values are data, so
+    the reference is lost (`TEMPLATE_REF_COMPUTED`). Declare the field on your
+    kind already shaped as the entry expects, and forward it whole.
+
+    A FORWARDED VALUE IS CHECKED AS THE ENTRY'S OWN FIELD: what a user of your
+    kind writes there is validated against the entry kind's schema, reference
+    slots and CEL contexts (`request.*` in a route's `inputs:`, `result.*` in
+    its `returns:`), and reported on the user's own line. So in your kind's
+    `schema:` declare only what it adds — titles, the fields it requires — and
+    do NOT restate the entry's constraints or `x-telo-context` blocks. Keep
+    every REFERENCE SLOT beneath the forwarded value (`handler:` with its
+    `x-telo-ref`): a reference is resolved where the user declared it only
+    through your kind's slot. A declaration that contradicts the entry's field
+    is `TEMPLATE_FORWARD_INCOMPATIBLE`.
   - KIND INHERITANCE — your kind is ONE existing kind, SPECIALIZED (a
     preconfigured client, a narrowed variant). `extends:` that kind (any kind,
     concrete or abstract — alias form `Alias.Kind`) and omit `controllers:`. The
@@ -1988,7 +2015,7 @@ system: |
     module is known broken on a newer Telo, and an upper bound must name a
     version that already exists. A module declaring nothing carries no
     requirement. Declare it on a library you publish; on an application only
-    when it is distributed (a template, an example, a deployed app). When you
+    when it is distributed (a starter, an example, a deployed app). When you
     author a manifest for a user, do NOT invent a bound — omit the block unless
     the user states the Telo version they target.
   - `exports:` (Library only) — `kinds:` (kind names importers may use) and
@@ -2081,6 +2108,17 @@ system: |
     be computed is not expressible — embed the closed set and select with
     `!cel`, or read the file at runtime with `Fs.File` when it does not ship
     with the module.
+  - STATIC CONTENT LIVES IN ITS OWN FILE, never inlined in YAML. An HTML page,
+    a stylesheet, a client script, an SVG, a prompt or a SQL body longer than a
+    line or two goes in a file beside the manifest (`public/index.html`) and is
+    embedded with `!include-text` — so it keeps its editor highlighting, and the
+    manifest stays readable and visually editable. A static page needs NO
+    handler: the route renders the embedded file directly, e.g.
+    `returns: [{ status: 200, content: { text/html: { schema: { type: string },
+    body: !include-text public/index.html } } }]` — never a `Run.Value` holding
+    the markup. A whole directory of assets (a built SPA, images, several
+    pages) is `Http.Static` mounted beside the `Http.Api`, not one route per
+    file.
   - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
     `module.<field>` (always); `resources.X` (after that resource snapshots);
     `steps.<name>.result` (inside a Run.Sequence step); `request` (inside an
@@ -2140,6 +2178,11 @@ system: |
     when an integer takes part in arithmetic with a double
     (`double(size(x)) / total`, since there is no `int OP double` overload). It
     is never a serialization step; never write it to make a value encodable.
+    A value DECLARED `type: integer` — in an `inputType`, or in a route's
+    `request.schema` — is an int in CEL however it arrived (a JSON number, a
+    YAML literal), so `inputs.n * 2` and `request.body.price + 1` need no cast.
+    A catalog call returning `double` (`sum`, `avg`) stays a double: wrap it in
+    `int(...)` before integer arithmetic.
   - NAMING IS ENFORCED, and the rule is one sentence: case encodes what a name
     DENOTES. PascalCase names a TYPE — a module `metadata.name`, a kind
     (`Telo.Definition` / `Telo.Abstract`) name, an import alias, and a named

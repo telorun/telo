@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: BlueprintsTestSuite
+  version: 1.0.0
+  description: |
+    Runs every blueprint's own tests, each in its own kernel. A blueprint imports
+    the modules it builds on as published versions, so it runs apart from the
+    module suite.
+
+        telo ./blueprints/test-suite.yaml
+imports:
+  Test: ../modules/test
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata: { name: runAll }
+include:
+  - "*/tests/*.yaml"
+exclude:
+  - "**/__fixtures__/**"

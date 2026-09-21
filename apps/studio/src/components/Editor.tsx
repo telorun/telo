@@ -30,7 +30,7 @@ import {
   rebuildManifestFromDocuments,
   reconcileImports,
   removeResourceViaAst,
-  resolveTemplatesBaseUrl,
+  resolveStartersBaseUrl,
   renameResourceFieldKey,
   moveResourceFieldItem,
   relocateResourceFieldItem,
@@ -2030,7 +2030,7 @@ export function Editor() {
         {!state.workspace ? (
           <AppLifecyclePanel
             onOpen={handleOpen}
-            onStartFromTemplate={() => setCreateModuleKind("Application")}
+            onStartFromStarter={() => setCreateModuleKind("Application")}
             openMode={openMode}
             recentRootDir={persistedHint?.rootDir}
           />
@@ -2167,7 +2167,7 @@ export function Editor() {
         open={createModuleKind !== null}
         onOpenChange={(open) => !open && setCreateModuleKind(null)}
         kind={createModuleKind ?? "Application"}
-        templatesBaseUrl={resolveTemplatesBaseUrl(settings)}
+        startersBaseUrl={resolveStartersBaseUrl(settings)}
         onCreate={createNewModule}
       />
       <TermsGateDialog

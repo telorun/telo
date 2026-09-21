@@ -11,13 +11,13 @@ import {
 import { normalizePath, pathDirname, pathJoin } from "./paths";
 import { buildResourceDocIndex, withDocs } from "./ast-ops";
 import { slugifyModuleName } from "./remote";
-import { fetchTemplateFiles, templateManifestUrl } from "./templates";
-import type { TemplateDescriptor, TemplateFile } from "./templates";
+import { fetchStarterFiles, starterManifestUrl } from "./starters";
+import type { StarterDescriptor, StarterFile } from "./starters";
 
-/** What a new module is seeded from: an empty skeleton, or a starter template. */
+/** What a new module is seeded from: an empty skeleton, or a starter. */
 export type NewModuleSelection =
   | { type: "blank" }
-  | { type: "template"; template: TemplateDescriptor };
+  | { type: "starter"; starter: StarterDescriptor };
 
 /** Thrown by `materializeModule` when the target directory already holds files
  *  and the caller has not opted into overwriting them. Carries the workspace-
@@ -36,8 +36,8 @@ export interface MaterializeModuleOptions {
   kind: ModuleKind;
   name: string;
   selection: NewModuleSelection;
-  /** Resolved templates base URL (used only for template selections). */
-  templatesBaseUrl: string;
+  /** Resolved starters base URL (used only for starter selections). */
+  startersBaseUrl: string;
   manifestSources: ManifestSource[];
   overwrite?: boolean;
 }
@@ -48,8 +48,8 @@ export interface MaterializedModule {
 }
 
 /** Writes a new module to disk under `apps/<slug>` / `libs/<slug>` in `root`,
- *  seeded from a blank skeleton or a starter template. The full file set is
- *  built BEFORE any existing directory is deleted, so a template fetch failure
+ *  seeded from a blank skeleton or a starter. The full file set is
+ *  built BEFORE any existing directory is deleted, so a starter fetch failure
  *  (offline / CORS / 404 / self-containment escape) can never destroy the
  *  target — the operation is atomic enough. Throws `ModuleExistsError` when the
  *  target directory has content and `overwrite` is unset. Does not touch the
@@ -84,18 +84,18 @@ export async function materializeModule(
   return { moduleDir, rootPath };
 }
 
-/** Builds the file set to write — the blank skeleton, or a template's full
+/** Builds the file set to write — the blank skeleton, or a starter's full
  *  fetched cascade with its `metadata.name` rewritten to `name`. */
 async function buildModuleFiles(
   name: string,
   options: MaterializeModuleOptions,
-): Promise<TemplateFile[]> {
+): Promise<StarterFile[]> {
   if (options.selection.type === "blank") {
     const doc = buildInitialModuleDocument(options.kind, name);
     return [{ relPath: DEFAULT_MANIFEST_FILENAME, text: serializeModuleDocument([doc]), isRoot: true }];
   }
-  return fetchTemplateFiles(
-    templateManifestUrl(options.templatesBaseUrl, options.selection.template),
+  return fetchStarterFiles(
+    starterManifestUrl(options.startersBaseUrl, options.selection.starter),
     name,
     options.manifestSources,
   );

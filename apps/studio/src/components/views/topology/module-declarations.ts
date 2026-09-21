@@ -7,9 +7,8 @@ import type { ParsedManifest, ParsedResource } from "../../../model";
  *
  * None of it is graph data: `imports`, `variables`, `secrets`, `ports` and
  * `exports` reference nothing and are referenced by nothing, so no edge carries
- * them and no node can hold them. `targets` is the single fact about a module
- * root that a canvas can draw, which is why the root reads as a half-node with
- * one slot and why adding an import had no affordance anywhere near the canvas.
+ * them and no node can hold them. The boot sequence is the exception, and it is
+ * read in `boot-targets.ts`.
  *
  * This module is the data half: what the bar lists, and the edits it applies to
  * the root's fields. Rendering and navigation live in `ModuleBar`.

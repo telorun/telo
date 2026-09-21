@@ -11,6 +11,7 @@ import {
   createCancellationSource,
   deriveContext,
   getRefIdentity,
+  plainSchemaOf,
   resolveRefInstance,
   type CancellationSource,
   type ControllerPolicy,
@@ -33,7 +34,14 @@ import {
   type EffectChain,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
-import { decodePlainLiterals, registerTeloKeywords } from "@telorun/analyzer";
+import { declarationOfInstance } from "./instance-declaration.js";
+import {
+  decodePlainLiterals,
+  declaredScalarPaths,
+  normalizeDeclaredScalars,
+  registerTeloKeywords,
+  type DeclaredScalarPath,
+} from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
 import * as path from "path";
@@ -61,7 +69,7 @@ import { formatAjvErrors } from "./manifest-schemas.js";
 import { stampRuleCallNames } from "./type-rule-condition.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { KernelRuntimeSeam } from "./runtime-seam.js";
-import { SchemaValidationError, SchemaValidator } from "./schema-validator.js";
+import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 
 const Ajv = AjvModule.default ?? AjvModule;
 
@@ -219,6 +227,17 @@ export class ResourceContextImpl implements ResourceContext {
     const schemaForRef = (ref: string) =>
       (this.validator.getSchema(ref) as Record<string, any> | undefined) ??
       this.kernel.getAnalysisRegistry().schemaForId(ref);
+    let reading = this.plainReadings.get(schema);
+    if (!reading) {
+      reading = {
+        decodes: plainSchemaOf(schema) !== schema,
+        scalars: declaredScalarPaths(schema, schemaForRef),
+      };
+      this.plainReadings.set(schema, reading);
+    }
+    // Nothing to decode: the text already IS the value, and the transport has
+    // validated it against this schema, so only the declared scalars move.
+    if (!reading.decodes) return normalizeDeclaredScalars(value, reading.scalars);
     const decoded = decodePlainLiterals(value, schema, schemaForRef);
     try {
       this.validator.compile(schema, { persist: false }).validate(decoded);
@@ -232,8 +251,13 @@ export class ResourceContextImpl implements ResourceContext {
           : undefined;
       throw new InvokeError(ERR_INPUT_INVALID, error.message, issues, { cause: error });
     }
-    return decoded;
+    return normalizeDeclaredScalars(decoded, reading.scalars);
   }
+
+  private readonly plainReadings = new WeakMap<
+    object,
+    { decodes: boolean; scalars: readonly DeclaredScalarPath[] }
+  >();
 
   registerSchema(name: string, schema: object): void {
     this.validator.addSchema(name, schema);
@@ -703,10 +727,18 @@ export class ResourceContextImpl implements ResourceContext {
       return { kind, name: refName };
     }
 
+    // A slot already holding a live instance — a reference a template forwarded
+    // with `!cel "self.<path>"`, injected in the scope that wrote it. It names
+    // its declaration; dispatch still goes through the instance itself.
+    const declared = declarationOfInstance(resource);
+    if (declared) {
+      return { kind: declared.kind, name: declared.metadata?.name ?? "" };
+    }
+
     if (!resource.kind) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
-        `[${this.metadata.name}] Resource must have 'kind' property. Got: ${JSON.stringify(resource)}`,
+        `[${this.metadata.name}] Resource must have 'kind' property. Got: ${describeValue(resource)}`,
       );
     }
 
@@ -924,15 +956,55 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   expandValue(value: any, context: Record<string, any>) {
-    return this.owningContext.expandWith(value, context);
+    return this.owningContext.expandWith(value, this.withTypedInputs(context));
   }
 
   bindScope(
     bindings: Record<string, unknown> | undefined,
     scope: Record<string, unknown>,
   ): Record<string, unknown> {
-    return this.owningContext.bindScope(bindings, scope);
+    return this.owningContext.bindScope(bindings, this.withTypedInputs(scope));
   }
+
+  /** Kernel-internal: the declared scalar paths of this resource's bound input
+   *  contract, recorded when the contract is bound. */
+  setInputScalarPaths(paths: () => readonly DeclaredScalarPath[]): void {
+    this.inputScalarPaths = paths;
+  }
+
+  /**
+   * The resource's own `inputs`, as CEL reads them: every leaf its input
+   * contract declares `integer` (or another scalar form) in that form.
+   *
+   * A controller receives its arguments as the call site produced them — a
+   * declared integer that arrived as a JSON number stays a number, since the
+   * reader there is host-language code. Only where the resource evaluates CEL
+   * over those arguments is the declaration made true, because CEL types it as
+   * `int` and a double at an `int` slot fails at the first arithmetic on it.
+   */
+  private withTypedInputs<T extends Record<string, any>>(context: T): T {
+    const inputs = context?.inputs;
+    if (!inputs || typeof inputs !== "object") return context;
+    const paths = this.inputScalarPaths?.();
+    if (!paths || paths.length === 0) return context;
+    // Not memoized by identity: a controller may mutate its inputs between two
+    // evaluations. The walk is bounded by the declared paths, and copies only
+    // along a leaf that actually changes.
+    const typed = normalizeDeclaredScalars(inputs, paths);
+    if (typed === inputs) return context;
+    // Descriptors, not a spread: a scope context carries a `resources` getter
+    // layered at read time, which a spread would freeze.
+    const copy = Object.defineProperties({}, Object.getOwnPropertyDescriptors(context)) as T;
+    Object.defineProperty(copy, "inputs", {
+      value: typed,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+    return copy;
+  }
+
+  private inputScalarPaths?: () => readonly DeclaredScalarPath[];
 
   async emitEvent(event: string, payload?: any) {
     await this.kernel.emitRuntimeEvent(event, payload);

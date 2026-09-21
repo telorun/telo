@@ -306,6 +306,15 @@ export interface ResourceContext extends ControllerContext {
    * read is refused with `ERR_INPUT_INVALID`, naming the slot and the form, its
    * `data.issues` listing each refusal as `{ path, message }` with a dotted path
    * inside the value. The value is decoded in place and returned.
+   *
+   * Every slot the schema declares `integer` (or another CEL scalar form) comes
+   * back in that form — a JSON `12` at an `integer` slot is an int64 — so CEL
+   * reading the value types it as its declaration says. Normalized along a copy;
+   * the value passed in is not rewritten there.
+   *
+   * For a caller that has already validated the value against this schema, as
+   * a transport has: a schema with no plain-encoded slot is only normalized, not
+   * validated a second time.
    */
   readPlainEncoded(value: unknown, schema: Record<string, any>): unknown;
   /** Compile an author-written JSON Schema from a resource field into a

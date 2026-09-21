@@ -165,9 +165,7 @@ import {
 } from "./validate-cel-context.js";
 import {
   celEvalModeAt,
-  celEvalSites,
-  implicitEvalSites,
-  mergeCelEvalSites,
+  kindCelEvalSites,
   NO_CEL_EVAL_SITES,
   type CelEvalSites,
 } from "./eval-paths.js";
@@ -201,6 +199,8 @@ import { isInjectedDeclaration } from "./resource-input.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
 import { validateExports } from "./validate-exports.js";
 import { validateTemplateBody } from "./validate-template-body.js";
+import { buildTemplateForwardViews } from "./template-forward.js";
+import { validateTemplateForwards } from "./validate-template-forward.js";
 import { validateUnusedDeclarations } from "./validate-unused-declarations.js";
 import { validateModuleCallNames } from "./validate-module-call-names.js";
 import { validateCallableDeclarations } from "./validate-callable-kinds.js";
@@ -1396,6 +1396,15 @@ export class StaticAnalyzer {
     // kernel controllers) see a uniform shape. Runs after normalize so both
     // original and inline-extracted manifests have their sentinels resolved.
     resolveRefSentinels(allManifests, aliases, aliasesByModule, [], defs);
+
+    // What a template body forwards with a bare `self.<path>` is, at boot, a
+    // field of a resource of the entry's kind. Each such consumer gets a view of
+    // that resource, analyzed beside everything else; `mapDiagnostics` below
+    // reports what it finds at the consumer's own path.
+    const forwardViews = options?.skipValidation
+      ? undefined
+      : buildTemplateForwardViews(allManifests, defs, aliases, { aliasesByModule, rootModules });
+    if (forwardViews) allManifests.push(...forwardViews.analyzed);
 
     // ONE typed reference graph per analysis. Both graph consumers in this
     // pass (the dynamic-selector check and run-reachability) read the same
@@ -2689,21 +2698,12 @@ export class StaticAnalyzer {
             // the own schema here reported `CEL_IN_NON_EVAL_FIELD` for an
             // expression the runtime evaluates correctly, which is the two halves
             // disagreeing about what the manifest means.
-            const ownSchema = effectiveAuthorSchema(
-              e.definition as unknown as ResourceDefinition,
-              resolveDef,
-            ) as Record<string, any>;
-            const capabilityDef = capability ? defs.resolve(capability) : undefined;
             // A `Telo.Provider`'s fields are implicitly compile-eval — the
             // capability abstract carries the root annotation — so its reads are
             // covered here without the provider restating anything. A base-form
             // child's own fields are too (`implicitEvalSites`): `base:` reads
             // them once at create().
-            celSites = mergeCelEvalSites(
-              celEvalSites(ownSchema),
-              celEvalSites(capabilityDef?.schema as Record<string, any> | undefined),
-              implicitEvalSites(e.definition as { base?: unknown }),
-            );
+            celSites = kindCelEvalSites(e.definition as unknown as ResourceDefinition, resolveDef);
           } else {
             celSites = NO_CEL_EVAL_SITES;
           }
@@ -2713,6 +2713,10 @@ export class StaticAnalyzer {
           const resource = { kind: m.kind, name: m.metadata?.name as string };
           const filePath = (m.metadata as { source?: string } | undefined)?.source;
           const { expr, path, engineName, matchedScope } = e;
+
+          // A forwarded expression is checked once, where it is evaluated: at the
+          // entry's view unless this kind evaluates it at compile time.
+          if (forwardViews?.defersCel(m, path)) return;
 
           // A `!cel` (or `${{ }}`) in a field with no `x-telo-eval` / `x-telo-context`
           // is never evaluated — the runtime reads it as a literal (e.g. a
@@ -3151,6 +3155,11 @@ export class StaticAnalyzer {
     diagnostics.push(
       ...validateTemplateBody(allManifests, defs, aliases, aliasesByModule, rootModules),
     );
+    // ...and the schema a templated kind declares for a value it forwards, which
+    // must be assignable to the entry field that receives it.
+    diagnostics.push(
+      ...validateTemplateForwards(allManifests, defs, aliases, aliasesByModule, rootModules),
+    );
 
     // A library's export list, resolved against what it declares — otherwise a
     // listed name that exists nowhere fails in the consumer's file.
@@ -3202,11 +3211,15 @@ export class StaticAnalyzer {
     );
 
     // Reroute diagnostics on synthetic (inline-extracted) resources back to
-    // the chain root so position-index lookups land on the parent doc.
-    return rewriteSyntheticOrigins(
+    // the chain root so position-index lookups land on the parent doc — then
+    // move a forward view's to its consumer, which may itself be an extraction.
+    const rooted = rewriteSyntheticOrigins(
       suppressUnreadableModuleDiagnostics(diagnostics, unreadableFiles),
       allManifests,
     );
+    return forwardViews
+      ? forwardViews.mapDiagnostics(rooted, (moved) => rewriteSyntheticOrigins(moved, allManifests))
+      : rooted;
   }
 
   analyzeErrors(

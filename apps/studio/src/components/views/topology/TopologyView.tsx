@@ -152,10 +152,8 @@ export function TopologyView({
   return (
     <div className="flex h-full min-w-0 flex-1 overflow-hidden">
       {/* Module chrome, not canvas content: what a module DECLARES is true
-          whichever resource is selected, and none of it is graph data —
-          `imports`, `variables`, `secrets`, `ports` and `exports` reference
-          nothing and are referenced by nothing, so no edge carries them and no
-          box can hold them. */}
+          whichever resource is selected. The module root is not a box, so its
+          boot sequence and `logging:` are reached here too. */}
       <ModuleBar
         viewData={viewData}
         root={moduleRootResource(viewData.manifest)}
@@ -173,6 +171,11 @@ export function TopologyView({
         onUpdateResource={onUpdateResource}
         onCreateResourceOfKind={onCreateResourceOfKind}
         onSelect={onSelect}
+        moduleGraph={moduleGraph}
+        registry={registry}
+        onMoveField={onMoveField}
+        onRemoveField={onRemoveField}
+        onSelectResource={onSelectResource}
       />
       {/* `min-w-0` so an oversized canvas clips rather than pushing the row
           wider; the floor that keeps the content from being squeezed to nothing

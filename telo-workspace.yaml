@@ -16,3 +16,7 @@ release:
   modules:
     - modules/*
     - apps/*
+    # A blueprint is a whole-application kind, published apart from the module
+    # namespace: `oci://ghcr.io/telorun/blueprints/<name>`.
+    - path: blueprints/*
+      registry: oci://ghcr.io/telorun/blueprints

@@ -276,9 +276,14 @@ the runtime's wide integer, a `number` to its JSON number, and a value type
 carrying the CEL type `uint` to its unsigned integer. Only an EXACT conversion is
 performed — a fractional number at an integer slot, or a magnitude the target
 representation cannot hold, MUST arrive unchanged so the value is rejected rather
-than quietly repaired. Normalization is on RESULTS only: on the way out the next
-reader is the expression language, which already types the declaration; on the
-way in it is a controller in the host language.
+than quietly repaired. On the way out the next reader is the expression language,
+which already types the declaration. On the way in the controller MUST receive its
+arguments as the call site produced them — it is host-language code — but wherever
+the resource evaluates an expression over them, `inputs` MUST be read normalized
+along the resolved `inputType`'s declared scalar paths, without rewriting the value
+the controller holds. A transport reading a value from outside the runtime against
+a declared schema (a request body, query, params or headers) MUST normalize it the
+same way before an expression reads it.
 
 A value type whose representation is an INSTANCE holds that instance in both
 directions. Text is read into one only where the value arrives from outside the

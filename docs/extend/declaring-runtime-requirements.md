@@ -163,7 +163,7 @@ verification forces it, so the standing value is whatever release the module was
 verified against — read it as *"the oldest runtime we support and test"*, not *"the
 oldest that would technically work"*.
 
-**Applications may declare, and should when distributed** — a template, an example, a
+**Applications may declare, and should when distributed** — a starter, an example, a
 deployed app. An application has no importer, so its block buys a version-attributed
 message for its own operators plus the CI check, rather than a contract anyone resolves
 against. It is not derivable from its imports: an app's *own* syntax is visible nowhere

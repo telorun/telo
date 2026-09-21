@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: TemplateForwardedReference
+  version: 1.0.0
+  description: |
+    A template body forwarding a list of routes — each holding a handler
+    reference — to the `Http.Api` it composes, with `!cel "self.routes"`. The
+    router receives each handler as the live instance the consumer declared, and
+    must serve every route with it. It used to fail at create: the router asked
+    the kernel for the handler's `{kind, name}` and the kernel knew only the
+    reference spellings, not an instance.
+imports:
+  Lib: ./__fixtures__/template-forwarded-reference
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyForwardedRoutes
+---
+kind: Run.Sequence
+metadata:
+  name: verifyForwardedRoutes
+with:
+  - kind: Http.Server
+    metadata:
+      name: ForwardedServer
+    port: 8847
+    mounts:
+      - path: /
+        mount:
+          kind: Lib.Routes
+          routes:
+            - request: { path: /place-order, method: POST }
+              handler:
+                kind: Run.Value
+                value:
+                  placed: true
+              returns:
+                - status: 200
+                  content:
+                    application/json:
+                      body: !cel "result"
+            - request: { path: /cancel-order, method: POST }
+              handler:
+                kind: Run.Value
+                value:
+                  cancelled: true
+              returns:
+                - status: 200
+                  content:
+                    application/json:
+                      body: !cel "result"
+targets:
+  - !ref ForwardedServer
+steps:
+  - name: place
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8847/place-order
+      method: POST
+  - name: assertPlaced
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.place.result.body"
+      expected: { placed: true }
+  - name: cancel
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8847/cancel-order
+      method: POST
+  - name: assertCancelled
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.cancel.result.body"
+      expected: { cancelled: true }

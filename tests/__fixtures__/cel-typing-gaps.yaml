@@ -1,0 +1,57 @@
+# Three expressions that passed `telo check` and failed at dispatch or read
+# nothing: an argument the input contract does not declare, a result key the
+# handler's `outputs:` does not produce, and arithmetic across two pure steps
+# whose computed types have no overload.
+kind: Telo.Application
+metadata:
+  name: CelTypingGaps
+  version: 1.0.0
+imports:
+  Http: ../../modules/http-server
+  Run: ../../modules/run
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+port: 18970
+mounts:
+  - path: /
+    mount:
+      kind: Http.Api
+      routes:
+        - request:
+            path: /quote
+            method: POST
+          inputs:
+            name: !cel "request.body.name"
+          handler: !ref quote
+          returns:
+            - status: 200
+              content:
+                application/json:
+                  body: !cel "result.totl"
+---
+kind: Run.Sequence
+metadata: { name: quote }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties:
+      name: { type: string }
+steps:
+  - name: greeting
+    value: !cel "'Hello, ' + inputs.nmae"
+  - name: subtotal
+    value: !cel "sum([12, 5])"
+  - name: shipping
+    value: !cel "steps.subtotal.result >= 50.0 ? 0 : 7"
+  - name: total
+    value: !cel "steps.subtotal.result + steps.shipping.result"
+outputs:
+  greeting: !cel "steps.greeting.result"
+  total: !cel "steps.total.result"
+  # Asking whether a step ran stays legal on the typed `steps`.
+  subtotalRan: !cel "'subtotal' in steps"

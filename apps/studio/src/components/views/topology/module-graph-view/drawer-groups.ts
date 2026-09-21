@@ -62,14 +62,13 @@ export function drawerGroups({ graph, offCanvas, sole }: DrawerGroupsInput): Dra
  * perfectly drawable — and the state every new module starts in.
  *
  * So it takes a kind of the module's OWN. A module with neither instances nor
- * kinds is empty, and an empty module still draws its root, which is where its
- * boot list and the control that adds the first target live.
+ * kinds is empty, and keeps its (empty) canvas. The module root never counts:
+ * it is not a box, and what it declares is in the module bar.
  *
  * **An imported instance is not a box and still counts as content**, which is
  * the one place the two questions come apart. A module wiring libraries together
  * declares almost nothing of its own, so reading "no boxes" as "kinds are all
- * there is" would take away the root — and the root is where the boot list is,
- * which for that module IS the application.
+ * there is" would hand the tab to the drawer for what is an application.
  */
 export function kindPlaneIsSoleContent(
   graph: ModuleGraph,

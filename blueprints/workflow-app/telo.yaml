@@ -1,0 +1,108 @@
+# A BLUEPRINT: one kind that is a whole application shape. An app built on it
+# declares a single `WorkflowApp.App` and lists its workflows; the HTTP server,
+# the router and one endpoint per workflow come from the template body below.
+#
+# `routes: !cel "self.workflows"` forwards the list untouched — the one CEL form
+# that carries each workflow's handler reference across the template boundary —
+# so every workflow item is written already shaped as an `Http.Api` route.
+kind: Telo.Library
+metadata:
+  name: WorkflowApp
+  version: 0.1.0
+  description: >-
+    A complete workflow application from one declaration: list the workflows,
+    each with its path, its steps and its response, and get an HTTP server
+    exposing every workflow as its own endpoint with a generated OpenAPI
+    document.
+  categories: [Transport]
+# Forwarding each workflow's handler reference through `self.workflows` fails at
+# boot on an older kernel, which cannot name an already-injected instance.
+requires:
+  telo: ">=0.96.0"
+imports:
+  # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
+  # relative path would name a module nobody pushes.
+  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
+exports:
+  kinds: [App]
+---
+kind: Telo.Definition
+metadata:
+  name: App
+  description: >-
+    Serves a list of workflows over HTTP, one endpoint each. A workflow names its
+    request path and method, maps the request onto its handler's inputs, runs
+    its steps, and renders the result as the response.
+capability: Telo.Service
+schema:
+  type: object
+  required: [port, workflows]
+  properties:
+    port:
+      title: Port
+      description: TCP port the server listens on.
+      type: integer
+      x-telo-eval: compile
+    title:
+      title: Title
+      description: Title of the generated OpenAPI document.
+      type: string
+      default: Workflows
+    # Each workflow IS an `Http.Api` route: `routes: !cel "self.workflows"` hands
+    # the list over verbatim, and `telo check` validates every workflow as the
+    # router's own route — its shape, its request matcher, its `returns:` entries
+    # and the CEL in `inputs:` / `returns:`, typed as the router types them. So
+    # this schema declares only what the blueprint adds: the titles, that every
+    # workflow has a handler, and the handler as a REFERENCE SLOT. The slot has to
+    # stay: the handler is injected where this App is declared and forwarded as
+    # the live instance, and undeclared here it reaches the router as something
+    # it cannot invoke.
+    workflows:
+      title: Workflows
+      description: >-
+        The workflows this application serves, one endpoint each. A workflow is
+        an HTTP route of the router this blueprint composes, and accepts every
+        field a route does.
+      type: array
+      items:
+        title: Workflow
+        type: object
+        required: [handler]
+        properties:
+          request:
+            title: Endpoint
+            description: >-
+              Path and method the workflow is served at, plus an optional
+              `schema:` block ({ params, query, body, headers }) validating the
+              request and typing `request.*` in `inputs`.
+          inputs:
+            title: Inputs
+            description: CEL mapping from the request onto the workflow's inputs.
+          handler:
+            title: Workflow
+            description: The steps the workflow runs — a Run.Sequence, a durable workflow, or any invocable.
+            x-telo-topology-role: handler
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.inbound
+              inputs: /inputs
+          returns:
+            title: Response
+            description: >-
+              How the workflow's result is rendered — typically one 200 entry
+              whose body is the result.
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes: !cel "self.workflows"
+  - kind: Http.Server
+    metadata: { name: server }
+    port: !cel "self.port"
+    openapi:
+      info:
+        title: !cel "self.title"
+        version: 1.0.0
+    mounts:
+      - path: /
+        mount: !ref api
+run: !ref server

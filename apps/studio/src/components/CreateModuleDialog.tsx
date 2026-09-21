@@ -2,11 +2,11 @@ import { checkName } from "@telorun/analyzer";
 import { useEffect, useState } from "react";
 import { AlertCircle, Boxes, Check, FileText, Loader2, RotateCw } from "lucide-react";
 import {
-  fetchTemplateCatalog,
+  fetchStarterCatalog,
   ModuleExistsError,
   type NewModuleSelection,
-  type TemplateCategory,
-  type TemplateDescriptor,
+  type StarterCategory,
+  type StarterDescriptor,
 } from "../loader";
 import type { ModuleKind } from "../model";
 import { Button } from "./ui/button";
@@ -23,8 +23,8 @@ interface CreateModuleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   kind: ModuleKind;
-  /** Resolved templates base URL the catalog is fetched from. */
-  templatesBaseUrl: string;
+  /** Resolved starters base URL the catalog is fetched from. */
+  startersBaseUrl: string;
   /** Creates the module; throws `ModuleExistsError` on an un-forced collision. */
   onCreate: (
     kind: ModuleKind,
@@ -36,7 +36,7 @@ interface CreateModuleDialogProps {
 
 const BLANK_ID = "__blank__";
 
-function categoryFor(kind: ModuleKind): TemplateCategory {
+function categoryFor(kind: ModuleKind): StarterCategory {
   return kind === "Application" ? "app" : "library";
 }
 
@@ -44,12 +44,12 @@ export function CreateModuleDialog({
   open,
   onOpenChange,
   kind,
-  templatesBaseUrl,
+  startersBaseUrl,
   onCreate,
 }: CreateModuleDialogProps) {
   const [name, setName] = useState("");
   const [selectedId, setSelectedId] = useState<string>(BLANK_ID);
-  const [templates, setTemplates] = useState<TemplateDescriptor[] | null>(null);
+  const [starters, setStarters] = useState<StarterDescriptor[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -70,14 +70,14 @@ export function CreateModuleDialog({
     let cancelled = false;
     setLoadingCatalog(true);
     setCatalogError(null);
-    fetchTemplateCatalog(templatesBaseUrl)
+    fetchStarterCatalog(startersBaseUrl)
       .then((catalog) => {
         if (cancelled) return;
-        setTemplates(catalog.templates.filter((t) => t.category === category));
+        setStarters(catalog.starters.filter((s) => s.category === category));
       })
       .catch((err) => {
         if (cancelled) return;
-        setTemplates([]);
+        setStarters([]);
         setCatalogError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
@@ -86,7 +86,7 @@ export function CreateModuleDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, templatesBaseUrl, category, reloadKey]);
+  }, [open, startersBaseUrl, category, reloadKey]);
 
   function reset() {
     setName("");
@@ -104,9 +104,9 @@ export function CreateModuleDialog({
 
   function selectionFor(id: string): NewModuleSelection {
     if (id === BLANK_ID) return { type: "blank" };
-    const template = templates?.find((t) => t.id === id);
-    if (!template) return { type: "blank" };
-    return { type: "template", template };
+    const starter = starters?.find((s) => s.id === id);
+    if (!starter) return { type: "blank" };
+    return { type: "starter", starter };
   }
 
   async function submit(force: boolean) {
@@ -149,7 +149,7 @@ export function CreateModuleDialog({
       title: `Blank ${kindLabel}`,
       description: "An empty module — just kind and metadata.",
     },
-    ...(templates ?? []).map((t) => ({ id: t.id, title: t.title, description: t.description })),
+    ...(starters ?? []).map((s) => ({ id: s.id, title: s.title, description: s.description })),
   ];
 
   return (
@@ -191,7 +191,7 @@ export function CreateModuleDialog({
             </span>
             {loadingCatalog && (
               <div className="flex items-center gap-2 px-1 py-2 text-xs text-zinc-500">
-                <Loader2 className="size-3.5 animate-spin" /> Loading templates…
+                <Loader2 className="size-3.5 animate-spin" /> Loading starters…
               </div>
             )}
             <div className="grid max-h-72 grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
@@ -233,7 +233,7 @@ export function CreateModuleDialog({
               <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400">
                 <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                 <div className="flex-1">
-                  <p>Couldn't load templates. You can still start blank.</p>
+                  <p>Couldn't load starters. You can still start blank.</p>
                   <button
                     className="mt-1 inline-flex items-center gap-1 font-medium underline"
                     onClick={() => setReloadKey((k) => k + 1)}

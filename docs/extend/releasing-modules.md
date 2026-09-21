@@ -28,7 +28,7 @@ release:
 ```
 
 `release.modules` names the subtrees that may hold modules. That is not
-derivable — a whole-tree scan would read every example, template and cached
+derivable — a whole-tree scan would read every example, starter and cached
 `.telo/manifests/**` copy as a released module. It sits inside `release:` because
 that is what it is: a release inventory, not an inventory of manifests.
 

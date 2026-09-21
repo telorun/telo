@@ -111,11 +111,11 @@ jobs:
           pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
           examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
 
-      # A template is copied VERBATIM by users, so it is the last thing that
+      # A starter is copied VERBATIM by users, so it is the last thing that
       # should be checked by nothing — and it was: the only invocation lived in
       # package.json's `ci` script, which no workflow runs.
-      - name: Check template manifests
-        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
+      - name: Check starter and blueprint manifests
+        run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
       # Packaging is picky in ways a build is not — `@types/vscode` outranking
       # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
@@ -174,14 +174,17 @@ jobs:
       # that silently stopped serving.
       #
       # Separate from the module suite, and from each other, because an example
-      # and a template both import PUBLISHED modules: a red run here can mean the
+      # and a starter both import PUBLISHED modules: a red run here can mean the
       # release sequence is behind rather than that the code is wrong, and that
       # signal must not make a red module suite ambiguous.
       - name: Run the example test suites (bun)
         run: pnpm run telo ./examples/test-suite.yaml
 
-      - name: Run the template test suites (bun)
-        run: pnpm run telo ./templates/test-suite.yaml
+      - name: Run the starter test suites (bun)
+        run: pnpm run telo ./starters/test-suite.yaml
+
+      - name: Run the blueprint test suites (bun)
+        run: pnpm run telo ./blueprints/test-suite.yaml
 
   integration:
     name: "Linux: integration tests (Postgres)"
@@ -596,9 +599,9 @@ jobs:
           pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
           examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
 
-      - name: Check template manifests
+      - name: Check starter and blueprint manifests
         shell: bash
-        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
+        run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
       # The manifest suite on the Node entry point. This is the step that
       # exercises the `pkg:npm` controller installer, which has to reach
@@ -689,8 +692,8 @@ jobs:
           pnpm run check examples/*/telo.yaml examples/*/*/telo.yaml
           examples/schema-evolution/v1.yaml examples/templated-api/library.yaml
 
-      - name: Check template manifests
-        run: pnpm run check templates/apps/*/telo.yaml templates/libs/*/telo.yaml
+      - name: Check starter and blueprint manifests
+        run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
       - name: Run telo manifest tests (Node)
         run: pnpm run test:node
@@ -698,8 +701,11 @@ jobs:
       - name: Run the example test suites (Node)
         run: pnpm run telo:node ./examples/test-suite.yaml
 
-      - name: Run the template test suites (Node)
-        run: pnpm run telo:node ./templates/test-suite.yaml
+      - name: Run the starter test suites (Node)
+        run: pnpm run telo:node ./starters/test-suite.yaml
+
+      - name: Run the blueprint test suites (Node)
+        run: pnpm run telo:node ./blueprints/test-suite.yaml
 
   rust:
     name: "Linux: Rust tests"
