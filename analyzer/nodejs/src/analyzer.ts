@@ -2953,7 +2953,7 @@ export class StaticAnalyzer {
                 severity: DiagnosticSeverity.Error,
                 code: "CEL_SYNTAX_ERROR",
                 source: SOURCE,
-                message: `CEL syntax error at ${path}: ${f.message}`,
+                message: `CEL syntax error: ${f.message}`,
                 data,
               });
             } else if (f.code === undefined) {
@@ -2964,18 +2964,20 @@ export class StaticAnalyzer {
                 severity: DiagnosticSeverity.Error,
                 code: "ENGINE_DIAGNOSTIC",
                 source: SOURCE,
-                message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
+                message: `${m.kind}/${resource.name}: !${engineName}: ${f.message}`,
                 data,
               });
             } else {
               // Named by ENGINE, not hardcoded to CEL: the seam exists so a
               // second engine can produce coded findings, and labelling them
-              // `CEL` would misattribute the first one that does.
+              // `CEL` would misattribute the first one that does. The position is
+              // `data.path`, which every host anchors on — quoted in the text it
+              // would name a generated path wherever the value was extracted.
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: f.code,
                 source: SOURCE,
-                message: `${m.kind}/${resource.name}: !${engineName} at '${path}': ${f.message}`,
+                message: `${m.kind}/${resource.name}: !${engineName}: ${f.message}`,
                 data,
               });
             }

@@ -1,0 +1,237 @@
+# A BLUEPRINT: an AI assistant served over HTTP. An app built on it declares one
+# `AgentApp.App` — the model, what the assistant is told, and the tools it may
+# use. The chat endpoints, the conversation store and the tool-use loop come
+# from the template body below.
+kind: Telo.Library
+metadata:
+  name: AgentApp
+  version: 0.1.0
+  description: >-
+    A complete AI assistant from one declaration: pick a model, write the
+    system prompt and list the tools the assistant may call, and get an HTTP
+    chat API that keeps each conversation's history, runs the tool-use loop and
+    answers with the assistant's reply.
+  categories: [AI, Transport]
+# Forwarding the model and each tool reference through `self.<field>`, and
+# starting two entries through `targets:`, both need a kernel that knows them.
+requires:
+  telo: ">=0.97.0"
+imports:
+  # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
+  # relative path would name a module nobody pushes.
+  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  SQLite: oci://ghcr.io/telorun/sqlite@0.5.1#sha256-EwMIFmqcg8lg56OCcySKg5NgZ4iNP7hX-no8pEfjV6c
+exports:
+  kinds: [App]
+---
+kind: Telo.Definition
+metadata:
+  name: App
+  description: >-
+    Serves an AI assistant over HTTP. Each message is added to its
+    conversation, the assistant answers from the whole history — calling the
+    listed tools as it needs them — and the reply is stored and returned.
+    Conversations are identified by the caller and survive restarts.
+capability: Telo.Service
+schema:
+  type: object
+  required: [port, model, system]
+  properties:
+    port:
+      title: Port
+      description: TCP port the server listens on.
+      type: integer
+      x-telo-eval: compile
+    title:
+      title: Title
+      description: Title of the generated OpenAPI document.
+      type: string
+      default: Assistant
+    model:
+      title: Model
+      description: The language model that answers — any Ai.Model implementation.
+      x-telo-ref:
+        kind: Ai.Model
+        use: call
+    system:
+      title: System prompt
+      description: What the assistant is told before every conversation.
+      type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+    # Each tool IS an `Ai.Tools` entry: `tools: !cel "self.tools"` hands the list
+    # over verbatim, so every tool field is accepted and checked as the tool
+    # list checks it. What stays declared here is the reference slot, which is
+    # what carries each tool resource across.
+    tools:
+      title: Tools
+      description: >-
+        What the assistant may call: each entry names a resource, the tool name
+        and description the model sees, and the JSON Schema of its arguments.
+      type: array
+      default: []
+      items:
+        title: Tool
+        type: object
+        required: [tool, parameters]
+        properties:
+          tool:
+            title: Resource
+            description: The invocable the tool runs.
+            x-telo-ref:
+              kind: Telo.Executable
+              use: call
+          parameters:
+            title: Parameters
+            description: JSON Schema of the arguments the model must produce.
+            type: object
+            additionalProperties: true
+    maxSteps:
+      title: Max steps
+      description: How many model turns one message may take, tool calls included.
+      type: integer
+      minimum: 1
+      default: 8
+      x-telo-eval: compile
+    history:
+      title: History file
+      description: SQLite file the conversations are kept in.
+      type: string
+      default: .telo/conversations.sqlite
+      x-telo-eval: compile
+resources:
+  - kind: SQLite.Connection
+    metadata: { name: db }
+    file: !cel "self.history"
+
+  - kind: SQLite.Schema
+    metadata: { name: schema }
+    connection: !ref db
+    migrations:
+      0001_create_messages:
+        statement: |
+          CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          )
+      0002_index_conversation:
+        statement: CREATE INDEX IF NOT EXISTS messages_conversation ON messages (conversation, id)
+
+  - kind: Ai.Tools
+    metadata: { name: tools }
+    tools: !cel "self.tools"
+
+  - kind: Ai.Agent
+    metadata: { name: agent }
+    model: !cel "self.model"
+    system: !cel "self.system"
+    maxSteps: !cel "self.maxSteps"
+    toolProviders:
+      - provider: !ref tools
+
+  - kind: Sql.Query
+    metadata: { name: readHistory }
+    connection: !ref db
+
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - request:
+          path: /conversations/{id}/messages
+          method: POST
+          schema:
+            params: &conversationParams
+              type: object
+              required: [id]
+              properties:
+                id: { type: string, minLength: 1 }
+            body:
+              type: object
+              additionalProperties: false
+              required: [message]
+              properties:
+                message: { type: string, minLength: 1 }
+        summary: Send a message and get the assistant's reply.
+        inputs:
+          conversation: !cel "request.params.id"
+          message: !cel "request.body.message"
+        # One turn: store the message, answer from the whole conversation, store
+        # the answer.
+        handler:
+          kind: Run.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              required: [conversation, message]
+              properties:
+                conversation: { type: string }
+                message: { type: string }
+          steps:
+            - name: storeMessage
+              invoke:
+                kind: Sql.Command
+                connection: !ref db
+              inputs:
+                sql: INSERT INTO messages (conversation, role, content) VALUES (?, 'user', ?)
+                bindings: [!cel "inputs.conversation", !cel "inputs.message"]
+            - name: history
+              invoke: !ref readHistory
+              inputs:
+                sql: SELECT role, content FROM messages WHERE conversation = ? ORDER BY id ASC
+                bindings: [!cel "inputs.conversation"]
+            - name: answer
+              invoke: !ref agent
+              inputs:
+                messages: !cel "steps.history.result.rows"
+            - name: storeReply
+              invoke:
+                kind: Sql.Command
+                connection: !ref db
+              inputs:
+                sql: INSERT INTO messages (conversation, role, content) VALUES (?, 'assistant', ?)
+                bindings: [!cel "inputs.conversation", !cel "steps.answer.result.text"]
+          outputs:
+            reply: !cel "steps.answer.result.text"
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: { reply: !cel "result.reply" }
+
+      - request:
+          path: /conversations/{id}/messages
+          method: GET
+          schema:
+            params: *conversationParams
+        summary: The conversation so far, oldest first.
+        inputs:
+          sql: SELECT role, content FROM messages WHERE conversation = ? ORDER BY id ASC
+          bindings: [!cel "request.params.id"]
+        handler: !ref readHistory
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: { messages: !cel "result.rows" }
+
+  - kind: Http.Server
+    metadata: { name: server }
+    port: !cel "self.port"
+    openapi:
+      info:
+        title: !cel "self.title"
+        version: 1.0.0
+    mounts:
+      - path: /
+        mount: !ref api
+# The table must exist before the first request, so the schema runs first.
+targets:
+  - !ref schema
+  - !ref server

@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: TemplateSelfDefaultsTest
+  version: 1.0.0
+  description: >-
+    A templated kind's schema `default:` reaches `self` when the instance leaves
+    the field out, and an expression calling a function whose result differs per
+    call (`uuidv4()`) is evaluated per call rather than once for the instance.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Telo.Definition
+metadata:
+  name: Greeter
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    greeting:
+      type: string
+      default: Hello
+      x-telo-eval: compile
+resources:
+  - kind: Run.Sequence
+    metadata: { name: greet }
+    steps:
+      - name: id
+        value: !cel "uuidv4()"
+    outputs:
+      text: !cel "self.greeting + '!'"
+      id: !cel "steps.id.result"
+invoke: !ref greet
+---
+kind: Self.Greeter
+metadata: { name: greeter }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: one
+    invoke: !ref greeter
+  - name: two
+    invoke: !ref greeter
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text: !cel "steps.one.result.text"
+        distinctIds: !cel "steps.one.result.id != steps.two.result.id"
+      expected:
+        text: Hello!
+        distinctIds: true

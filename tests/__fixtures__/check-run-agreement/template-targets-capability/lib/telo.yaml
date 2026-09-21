@@ -1,0 +1,24 @@
+# `targets:` on a kind that is invoked rather than run: nothing would start them.
+kind: Telo.Library
+metadata:
+  name: TemplateTargetsCapabilityLib
+exports:
+  kinds: [Answers]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Answers
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: answer }
+    steps:
+      - name: noop
+        value: 1
+invoke: !ref answer
+targets:
+  - !ref answer

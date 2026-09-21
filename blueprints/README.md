@@ -19,3 +19,5 @@ replacing the one resource with the resources its template body declares.
 | Blueprint | What an app declares | What it gets |
 |---|---|---|
 | [`workflow-app`](./workflow-app) | A list of workflows: path, request mapping, steps, response | An HTTP server serving each workflow as its own endpoint, with an OpenAPI document |
+| [`agent-app`](./agent-app) | A model, the system prompt, the tools the assistant may call | A chat API that keeps each conversation's history and runs the tool-use loop |
+| [`approval-app`](./approval-app) | What a request carries, the rule that approves it automatically, what happens once it is approved or rejected | Endpoints to submit, approve, reject and track requests; a durable wait that survives restarts and runs out after a deadline |

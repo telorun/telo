@@ -56,6 +56,7 @@ export function precompileDoc(
         // reason `refs` is: re-deriving them needs the declaring module's name
         // set, which a consumer holding one expression does not have.
         ...(compiled.calls ? { calls: compiled.calls } : {}),
+        ...(compiled.volatile ? { volatile: true } : {}),
         call: compiled.call.bind(compiled),
       };
     }

@@ -28,6 +28,10 @@ export interface CompiledValue {
    *  method call on a variable named `Billing`. Absent for an engine that
    *  surfaces no AST; empty for an expression that calls nothing qualified. */
   readonly calls?: readonly string[];
+  /** True when the expression calls a catalog function whose result differs
+   *  per evaluation (`uuidv4()`, `nowMillis()`), so it must never be evaluated
+   *  once and reused — even where it reads nothing but constants. */
+  readonly volatile?: true;
   call(ctx: Record<string, unknown>): unknown;
 }
 

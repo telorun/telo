@@ -1,5 +1,5 @@
 import type { GraphKind, GraphNode } from "@telorun/analyzer";
-import { Braces, ChevronRight, Database, Layers, PackageOpen, Shapes } from "lucide-react";
+import { Braces, ChevronRight, Database, Layers, LogIn, PackageOpen, Shapes } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
 import { DiagnosticBadge } from "../../../diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "../../../diagnostics/DiagnosticsContext";
@@ -35,6 +35,8 @@ export interface ModuleDrawerProps {
   /** Kind id whose instances are highlighted. */
   selectedKind: string | null;
   onSelectKind: (kindId: string | null) => void;
+  /** Opens a templated kind's body as its own canvas. */
+  onOpenTemplate?: (kindId: string) => void;
   selectedResource: { kind: string; name: string } | null;
   onSelectResource: (kind: string, name: string) => void;
 }
@@ -47,6 +49,7 @@ export function ModuleDrawer({
   sole,
   selectedKind,
   onSelectKind,
+  onOpenTemplate,
   selectedResource,
   onSelectResource,
 }: ModuleDrawerProps) {
@@ -109,6 +112,9 @@ export function ModuleDrawer({
                 kind={kind}
                 selected={selectedKind === kind.id}
                 onSelect={onSelectKind}
+                {...(kind.template && onOpenTemplate
+                  ? { onOpen: () => onOpenTemplate(kind.id) }
+                  : {})}
               />
             ))}
           </Group>
@@ -202,68 +208,86 @@ function InstanceRow({
   );
 }
 
-/** One kind: what it is, what it specializes, and how many instances exist. */
+/** One kind: what it is, what it specializes, and how many instances exist — and,
+ *  for a template, the way into its body. */
 function KindRow({
   kind,
   selected,
   onSelect,
+  onOpen,
 }: {
   kind: GraphKind;
   selected: boolean;
   onSelect: (id: string | null) => void;
+  onOpen?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      className={`flex w-full flex-col items-start gap-0.5 rounded px-1.5 py-1 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 ${
+    <div
+      className={`flex w-full items-stretch rounded hover:bg-zinc-50 dark:hover:bg-zinc-800 ${
         selected ? "bg-indigo-50 dark:bg-indigo-950/40" : ""
       }`}
-      onClick={() => onSelect(selected ? null : kind.id)}
     >
-      <div className="flex w-full items-center gap-1">
-        <span className="min-w-0 truncate text-xs font-medium text-zinc-800 dark:text-zinc-100">
-          {kind.name}
-        </span>
-        {kind.abstract && (
-          <span
-            className="shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-            title="Abstract — no default implementation, must be extended"
-          >
-            abstract
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-1.5 py-1 text-left"
+        onClick={() => onSelect(selected ? null : kind.id)}
+      >
+        <div className="flex w-full items-center gap-1">
+          <span className="min-w-0 truncate text-xs font-medium text-zinc-800 dark:text-zinc-100">
+            {kind.name}
           </span>
-        )}
-        {kind.template && (
-          <span
-            className="shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-            title="Declares a body of its own rather than naming a controller"
-          >
-            template
-          </span>
-        )}
-        {kind.exported === false && (
-          <span
-            className="shrink-0 rounded bg-amber-50 px-1 text-[9px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-500"
-            title="Not listed in exports.kinds — an importer cannot construct one"
-          >
-            private
-          </span>
-        )}
-        {kind.instances.length > 0 && (
-          <span className="ml-auto shrink-0 text-[10px] text-zinc-400" title="instances declared">
-            ×{kind.instances.length}
-          </span>
-        )}
-      </div>
-      <div className="flex w-full items-center gap-1 text-[10px] text-zinc-400">
-        <span className="truncate">{kind.capability ?? "—"}</span>
-        {(kind.extendsId ?? kind.extendsName) && (
-          <span className="ml-auto flex min-w-0 items-center gap-0.5" title="specializes">
-            <Layers className="size-2.5 shrink-0" />
-            <span className="truncate">{shortKind(kind.extendsId ?? kind.extendsName!)}</span>
-          </span>
-        )}
-      </div>
-    </button>
+          {kind.abstract && (
+            <span
+              className="shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+              title="Abstract — no default implementation, must be extended"
+            >
+              abstract
+            </span>
+          )}
+          {kind.template && (
+            <span
+              className="shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+              title="Declares a body of its own rather than naming a controller"
+            >
+              template
+            </span>
+          )}
+          {kind.exported === false && (
+            <span
+              className="shrink-0 rounded bg-amber-50 px-1 text-[9px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-500"
+              title="Not listed in exports.kinds — an importer cannot construct one"
+            >
+              private
+            </span>
+          )}
+          {kind.instances.length > 0 && (
+            <span className="ml-auto shrink-0 text-[10px] text-zinc-400" title="instances declared">
+              ×{kind.instances.length}
+            </span>
+          )}
+        </div>
+        <div className="flex w-full items-center gap-1 text-[10px] text-zinc-400">
+          <span className="truncate">{kind.capability ?? "—"}</span>
+          {(kind.extendsId ?? kind.extendsName) && (
+            <span className="ml-auto flex min-w-0 items-center gap-0.5" title="specializes">
+              <Layers className="size-2.5 shrink-0" />
+              <span className="truncate">{shortKind(kind.extendsId ?? kind.extendsName!)}</span>
+            </span>
+          )}
+        </div>
+      </button>
+      {onOpen && (
+        <button
+          type="button"
+          className="flex shrink-0 items-center px-1 text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-300"
+          onClick={onOpen}
+          title="Open the template body"
+          aria-label={`Open the body of ${kind.name}`}
+        >
+          <LogIn className="size-3" />
+        </button>
+      )}
+    </div>
   );
 }
 

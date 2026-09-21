@@ -98,6 +98,12 @@ export interface TopologyViewProps {
   ) => void;
   onCreateResource?: () => void;
   onBackgroundClick: () => void;
+  /** False where the root's boot sequence cannot be written from this canvas —
+   *  a template body whose kind starts nothing. Defaults to true. */
+  bootWritable?: boolean;
+  /** Opens a templated kind's body as a canvas of its own, by kind id. Absent
+   *  where the host offers no drill-in. */
+  onOpenTemplate?: (kindId: string) => void;
   /** Suppresses a view's own header where the host already renders one (the
    *  detail-panel peek). */
   hideHeader?: boolean;

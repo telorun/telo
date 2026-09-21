@@ -122,6 +122,7 @@ import { TopBar } from "./TopBar";
 import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
 import type { RefWrite } from "./views/topology/application-canvas-model";
+import { templateGraphOf } from "./views/topology/module-graph-view/template-graph";
 import { leafConcreteIndex, writeConcretePath } from "../lib/concrete-path";
 import type { Range, ZoneExportCache } from "@telorun/analyzer";
 
@@ -1314,6 +1315,19 @@ export function Editor() {
     [fileByModuleName, state.diagnostics],
   );
 
+  /** A templated kind's body in the active module's closure, drawn as a module
+   *  graph — built from that closure's own analysis and registry, so the body
+   *  resolves every kind exactly as the module around it does. */
+  const templateGraphByKind = useCallback(
+    (kindId: string) => {
+      const file = state.activeModulePath;
+      const analysis = file ? state.diagnostics.analysisByFile.get(file)?.() : undefined;
+      const registry = file ? state.diagnostics.registryByFile.get(file) : undefined;
+      return analysis && registry ? templateGraphOf(analysis, registry, kindId) : null;
+    },
+    [state.activeModulePath, state.diagnostics],
+  );
+
   /** Whether that module's files are editable here — false for one resolved
    *  from a registry / OCI source, whose bytes are not the workspace's. */
   const isEditableModuleName = useCallback(
@@ -2072,6 +2086,7 @@ export function Editor() {
                           ? state.diagnostics.moduleGraphByFile.get(state.activeModulePath)?.()
                           : undefined) ?? null,
                       moduleGraphFor: moduleGraphByName,
+                      templateGraphFor: templateGraphByKind,
                       isEditableModule: isEditableModuleName,
                       selectedResource: state.selectedResource,
                       selection,

@@ -1,0 +1,24 @@
+# A template declaring both `run:` and `targets:`, and a target naming no entry.
+kind: Telo.Library
+metadata:
+  name: TemplateTargetsLib
+exports:
+  kinds: [Starts]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Starts
+capability: Telo.Service
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: first }
+    steps:
+      - name: noop
+        value: 1
+run: !ref first
+targets:
+  - !ref frist

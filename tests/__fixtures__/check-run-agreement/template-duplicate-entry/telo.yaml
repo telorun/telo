@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: TemplateDuplicateEntryApp
+imports:
+  Lib: ./lib
+targets:
+  - !ref job
+---
+kind: Lib.Job
+metadata:
+  name: job

@@ -2,13 +2,13 @@ import type { GraphNode, GraphRow, ModuleGraph } from "@telorun/analyzer";
 import { isTaggedSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../../lib/utils";
 import type { RefResolver } from "../../resource-schema-form/ref-candidates";
-import { accepts } from "./module-graph-view/wire";
+import { accepts, isReferenceable } from "./module-graph-view/wire";
 
 /**
  * An Application's boot sequence, `targets:`, as the editor reads and writes it.
  *
  * The module root is not drawn, so the boot list is shown twice over instead:
- * on each resource it starts (a marker with its position) and as the ordered
+ * on each resource it starts or invokes (a marker with its position) and as the ordered
  * Boot section of the module bar. Both read the same entries here, and the
  * resource an entry names is the one the module graph resolved it to — never a
  * second name lookup that could disagree with the checker about which box a
@@ -104,21 +104,23 @@ export function bootRows(entries: readonly BootEntry[], graph: ModuleGraph): Map
   return out;
 }
 
-/** One start of a resource at boot. */
+/** One place a resource appears in the boot sequence. */
 export interface BootMarker {
   /** The entry's index in `targets:`. */
   index: number;
   /** 1-based position in the boot order. */
   position: number;
+  /** `started` for a bare or gated reference, which runs the resource;
+   *  `invoked` for an inline invoke step, which calls it once with inputs. */
+  variant: "started" | "invoked";
+  /** An invoke step's own `name:`. */
+  name?: string;
   /** The entry's guard, when it is conditional. */
   when?: string;
 }
 
-/**
- * The markers each resource carries, by node id: one per entry that STARTS it —
- * a bare or gated reference. An inline invoke step dispatches its target rather
- * than starting it, so it marks nothing.
- */
+/** The markers each resource carries, by node id: one per entry that starts or
+ *  invokes it, in boot order. */
 export function bootMarkers(
   entries: readonly BootEntry[],
   graph: ModuleGraph,
@@ -126,7 +128,6 @@ export function bootMarkers(
   const rows = bootRows(entries, graph);
   const out = new Map<string, BootMarker[]>();
   for (const entry of entries) {
-    if (entry.form === "step") continue;
     const nodeId = rows.get(entry.index)?.targetNode;
     if (!nodeId) continue;
     out.set(nodeId, [
@@ -134,6 +135,8 @@ export function bootMarkers(
       {
         index: entry.index,
         position: entry.index + 1,
+        variant: entry.form === "step" ? "invoked" : "started",
+        ...(entry.form === "step" && entry.name !== undefined ? { name: entry.name } : {}),
         ...(entry.when !== undefined ? { when: entry.when } : {}),
       },
     ]);
@@ -156,7 +159,9 @@ export function bootConstraint(graph: ModuleGraph): string[] | undefined {
 }
 
 /** May this resource be started at boot? A declaration owned by another box has
- *  no name to reference it by, and the root is not a resource. */
+ *  no name to reference it by, and the root is not a resource. On a template
+ *  body only its own entries are offered: a module resource drawn there is
+ *  read-only on that canvas, and a forwarded field is no declaration. */
 export function canStartAtBoot(
   node: GraphNode,
   graph: ModuleGraph,
@@ -164,8 +169,25 @@ export function canStartAtBoot(
 ): boolean {
   const refs = bootConstraint(graph);
   if (!refs || refs.length === 0) return false;
-  if (node.root || node.ownership === "inline" || node.ownership === "scoped") return false;
+  if (!isReferenceable(node) || node.ownership === "enclosing") return false;
   return accepts({ refs }, node, resolver);
+}
+
+/**
+ * What the boot toggle on a resource does. A resource the sequence already
+ * starts or invokes is taken OUT of it — every entry naming it, an invoke step
+ * included — even where a bare `!ref` could not start it, since appending one
+ * beside an invoke step would run it twice. Otherwise it is started, where the
+ * `targets` slot accepts it.
+ */
+export function bootToggleAction(
+  node: GraphNode,
+  graph: ModuleGraph,
+  resolver: RefResolver,
+  markers: readonly BootMarker[] | undefined,
+): "start" | "stop" | undefined {
+  if (markers && markers.length > 0) return "stop";
+  return canStartAtBoot(node, graph, resolver) ? "start" : undefined;
 }
 
 /** `targets:` with a bare `!ref` to `reference` appended — the key is created

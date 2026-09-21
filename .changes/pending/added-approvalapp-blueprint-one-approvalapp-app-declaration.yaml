@@ -1,0 +1,6 @@
+modules:
+  blueprints/approval-app: Added
+body: "ApprovalApp blueprint: one `ApprovalApp.App` declaration gives HTTP endpoints to
+  submit, approve, reject and track requests, a rule that approves small ones
+  automatically, and a durable wait that survives restarts and rejects a request left
+  undecided past its deadline."

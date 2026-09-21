@@ -9,6 +9,7 @@ import type {
 } from "../../model";
 import type { RefWrite } from "./topology/application-canvas-model";
 import type { TopologyHostState } from "./topology/topology-view";
+import type { TemplateGraph } from "./topology/module-graph-view/template-graph";
 
 /** Common props interface passed to every view. Views use what they need. */
 export interface ViewProps {
@@ -34,6 +35,10 @@ export interface ViewProps {
    *  for a module the workspace has not analyzed (an unresolved import, or a
    *  dependency of a dependency). */
   moduleGraphFor: (moduleName: string) => ModuleGraph | null;
+  /** A templated kind's body drawn as a module graph, by canonical kind id —
+   *  what the canvas opens when a reader drills into a template. Null when no
+   *  templated definition in the active closure declares that kind. */
+  templateGraphFor: (kindId: string) => TemplateGraph | null;
   /** Whether a module's own files can be edited here: false for one opened from
    *  a registry / OCI source, where a write has nowhere to land. A boundary is
    *  an EDIT boundary, and the canvas has to say so at the gesture. */

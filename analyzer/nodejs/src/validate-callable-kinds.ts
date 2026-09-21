@@ -98,7 +98,7 @@ const CEL_MACRO_METHOD_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /** The template-body keys that make a kind a template. */
-const TEMPLATE_BODY_KEYS = ["resources", "invoke", "run", "provide", "mount"] as const;
+const TEMPLATE_BODY_KEYS = ["resources", "invoke", "run", "targets", "provide", "mount"] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);

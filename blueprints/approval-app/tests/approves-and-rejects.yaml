@@ -1,0 +1,190 @@
+kind: Telo.Application
+metadata:
+  name: ApprovalAppBlueprintTest
+  version: 1.0.0
+  description: >-
+    Runs the example app built on the ApprovalApp blueprint through each path a
+    request can take: approved by the rule, approved by a reviewer, rejected by
+    a reviewer — and the answers for a request that is not waiting and one that
+    does not exist.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+# Polls a request until it reaches `status`. The run is started detached, so a
+# submission answers before the request has settled anywhere.
+kind: Run.Sequence
+metadata: { name: waitFor }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id, status]
+    properties:
+      id: { type: string }
+      status: { type: string }
+steps:
+  - name: read
+    invoke: !ref readRequest
+    inputs: { id: !cel "inputs.id" }
+  - name: poll
+    while: !cel "steps.read.result.body.status != inputs.status"
+    do:
+      - name: pause
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: "100ms", value: {} }
+      - name: read
+        invoke: !ref readRequest
+        inputs: { id: !cel "inputs.id" }
+outputs:
+  body: !cel "steps.read.result.body"
+---
+kind: Run.Sequence
+metadata: { name: readRequest }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8851/requests/' + inputs.id"
+      method: GET
+outputs:
+  body: !cel "steps.get.result.body"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../example/telo.yaml
+    ports:
+      http: 8851
+    variables:
+      journal: !cel "'.telo/approval-app-test-' + string(nowMillis())"
+      # Short enough to watch one lapse, long enough for the reviewed paths.
+      reviewDeadline: 3s
+targets:
+  - !ref app
+steps:
+  # Under the limit: approved by the rule, with no reviewer.
+  - name: small
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests
+      method: POST
+      body: { employee: ada, amountCents: 5000, reason: taxi }
+  - name: smallDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.small.result.body.id", status: completed }
+  - name: verifySmall
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.smallDone.result.body.decision"
+      expected: { approved: true, decidedBy: policy, note: "" }
+
+  # Over the limit: waits for a reviewer, then is approved.
+  - name: large
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests
+      method: POST
+      body: { employee: ada, amountCents: 250000, reason: conference }
+  - name: largePending
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.large.result.body.id", status: pending }
+  - name: approve
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8851/requests/' + steps.large.result.body.id + '/approve'"
+      method: POST
+      body: { decidedBy: grace, note: ok }
+  - name: largeDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.large.result.body.id", status: completed }
+  - name: verifyApproved
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        approve: !cel "steps.approve.result.status"
+        decision: !cel "steps.largeDone.result.body.decision"
+      expected:
+        approve: 202
+        decision: { approved: true, decidedBy: grace, note: ok }
+
+  # Deciding again: nothing is waiting any more.
+  - name: approveAgain
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8851/requests/' + steps.large.result.body.id + '/reject'"
+      method: POST
+      body: { decidedBy: grace }
+
+  # Over the limit, rejected.
+  - name: rejected
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests
+      method: POST
+      body: { employee: bob, amountCents: 90000, reason: chair }
+  - name: rejectedPending
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.rejected.result.body.id", status: pending }
+  - name: reject
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:8851/requests/' + steps.rejected.result.body.id + '/reject'"
+      method: POST
+      body: { decidedBy: grace, note: over budget }
+  - name: rejectedDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.rejected.result.body.id", status: completed }
+
+  # Nobody decides: the deadline rejects it.
+  - name: ignored
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests
+      method: POST
+      body: { employee: eve, amountCents: 40000, reason: monitor }
+  - name: ignoredDone
+    invoke: !ref waitFor
+    inputs: { id: !cel "steps.ignored.result.body.id", status: completed }
+
+  - name: badSubmit
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests
+      method: POST
+      body: { employee: ada }
+  - name: unknown
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8851/requests/nope
+      method: GET
+
+  - name: verifyRest
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        approveAgain: !cel "steps.approveAgain.result.status"
+        rejected: !cel "steps.rejectedDone.result.body.decision"
+        expired: !cel "steps.ignoredDone.result.body.decision"
+        badSubmit: !cel "steps.badSubmit.result.status"
+        unknown: !cel "steps.unknown.result.status"
+      expected:
+        approveAgain: 409
+        rejected: { approved: false, decidedBy: grace, note: over budget }
+        expired: { approved: false, decidedBy: deadline, note: No decision before the deadline. }
+        badSubmit: 400
+        unknown: 404

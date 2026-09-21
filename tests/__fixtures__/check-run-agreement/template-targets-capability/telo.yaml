@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: TemplateTargetsCapabilityApp
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref answers
+---
+kind: Lib.Answers
+metadata:
+  name: answers

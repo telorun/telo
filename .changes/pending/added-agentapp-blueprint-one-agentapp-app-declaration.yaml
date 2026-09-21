@@ -1,0 +1,5 @@
+modules:
+  blueprints/agent-app: Added
+body: "AgentApp blueprint: one `AgentApp.App` declaration — a model, a system prompt and
+  the tools it may call — gives an HTTP chat API that keeps each conversation's history
+  in SQLite and runs the tool-use loop."

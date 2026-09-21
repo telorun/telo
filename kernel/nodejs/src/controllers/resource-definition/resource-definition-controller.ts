@@ -13,6 +13,8 @@ import {
   effectiveStatusSchema,
   hasOwnControllerOrTemplate,
   inheritedCapability,
+  nearestName,
+  templateTargetProblems,
   type DefResolver,
 } from "@telorun/analyzer";
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
@@ -147,7 +149,7 @@ class ResourceDefinition implements ResourceInstance {
         `Telo.Definition '${this.resource.metadata.name}': 'base:' maps this kind's config onto ` +
           `the inherited controller of '${this.resource.extends ?? "<no extends>"}', so the ` +
           `definition may not also declare 'resources:', 'controllers:' or a dispatch slot ` +
-          `('invoke:' / 'run:' / 'provide:' / 'mount:'). A kind that stands up its own children ` +
+          `('invoke:' / 'run:' / 'targets:' / 'provide:' / 'mount:'). A kind that stands up its own children ` +
           `is a template: drop 'base:' and dispatch to a child with '!ref'.`,
       );
     }
@@ -196,6 +198,20 @@ class ResourceDefinition implements ResourceInstance {
       if (this.resource.capability === "Telo.Provider" && this.resource.provide == null) {
         throw new Error(
           `Telo.Definition '${this.resource.metadata.name}': 'capability: Telo.Provider' requires either 'controllers:' (TS-backed) or 'provide:' (template-backed).`,
+        );
+      }
+      // `telo check`'s twin (`validate-template-body`), through the same reader,
+      // so a malformed `targets:` in a dependency — which the entry-scoped check
+      // never reports — fails at registration rather than at the first run.
+      const [targetProblem] = templateTargetProblems(
+        this.resource as unknown as Record<string, unknown>,
+        inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef),
+        nearestName,
+      );
+      if (targetProblem) {
+        throw new RuntimeError(
+          `ERR_${targetProblem.code}`,
+          `Telo.Definition '${this.resource.metadata.name}': ${targetProblem.message}`,
         );
       }
       // ctx.moduleContext here is the context that DEFINED this kind (the

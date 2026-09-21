@@ -1,0 +1,20 @@
+# A template body entry missing a field its kind requires.
+kind: Telo.Library
+metadata:
+  name: TemplateEntrySchemaLib
+exports:
+  kinds: [Job]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Job
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+targets:
+  - !ref body

@@ -18,6 +18,7 @@ import {
   bootEntryLabel,
   bootEntryPointer,
   bootMarkers,
+  bootToggleAction,
   canStartAtBoot,
   withBootTarget,
   withoutBootEntries,
@@ -92,7 +93,7 @@ describe("the boot sequence's entries", () => {
 });
 
 describe("the boot marker on a resource", () => {
-  it("carries its position, marks a gated entry conditional, and never marks a step's target", () => {
+  it("carries its position, marks a gated entry conditional, and marks a step's target as invoked", () => {
     const graph = graphOf(
       applicationRoot([
         targetRow(0, "server", "server"),
@@ -105,13 +106,16 @@ describe("the boot marker on a resource", () => {
       bootEntries([
         ref("server"),
         { ref: ref("migrate"), when: cel("variables.migrate") },
-        { invoke: ref("seeder") },
+        { name: "seed", invoke: ref("seeder"), when: cel("variables.seed") },
       ]),
       graph,
     );
     expect(Object.fromEntries(markers)).toEqual({
-      server: [{ index: 0, position: 1 }],
-      migrate: [{ index: 1, position: 2, when: "variables.migrate" }],
+      server: [{ index: 0, position: 1, variant: "started" }],
+      migrate: [{ index: 1, position: 2, variant: "started", when: "variables.migrate" }],
+      seeder: [
+        { index: 2, position: 3, variant: "invoked", name: "seed", when: "variables.seed" },
+      ],
     });
   });
 });
@@ -148,6 +152,15 @@ describe("which resources may be started at boot", () => {
       [job],
     );
     expect(canStartAtBoot(job, library, resolver)).toBe(false);
+  });
+
+  it("toggles a resource the sequence only invokes OFF rather than starting it again", () => {
+    const handler = node("handler", { kind: "x.Handler" });
+    const job = node("job", { kind: "x.Job" });
+    const graph = graphOf(applicationRoot([targetRow(0, "handler", "handler")]), [handler, job]);
+    const markers = bootMarkers(bootEntries([{ invoke: ref("handler") }]), graph);
+    expect(bootToggleAction(handler, graph, resolver, markers.get("handler"))).toBe("stop");
+    expect(bootToggleAction(job, graph, resolver, markers.get("job"))).toBe("start");
   });
 });
 

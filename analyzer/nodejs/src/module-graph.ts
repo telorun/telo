@@ -49,6 +49,7 @@ import {
   buildCelEnvironment,
   extractAccessChains,
   isRefSentinel,
+  isTaggedSentinel,
   walkCelExpressions,
 } from "@telorun/templating";
 import {
@@ -69,11 +70,26 @@ import { canonicalJson } from "./canonical-json.js";
 import { isForwardedShape } from "./forwarded-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
+import { selfForwardPath } from "./template-forward.js";
 
 /** How a node's declaration reached the module, which is what decides where a
  *  view may draw it — an inline child exists nowhere but its parent's YAML, so
- *  it is never a peer of the resource holding it. */
-export type NodeOwnership = "root" | "named" | "inline" | "scoped" | "imported" | "injected";
+ *  it is never a peer of the resource holding it.
+ *
+ *  Two exist only on a template body's graph (see {@link templateModule}):
+ *  `enclosing` is a resource of the defining module a body entry references —
+ *  reached from the body, declared outside it — and `forwarded` stands for what
+ *  the instance supplies at one top-level field, reached by a `self.<field>`
+ *  forward. Neither is an entry of the body. */
+export type NodeOwnership =
+  | "root"
+  | "named"
+  | "inline"
+  | "scoped"
+  | "imported"
+  | "injected"
+  | "enclosing"
+  | "forwarded";
 
 /**
  * What happens at a site, reduced to what a view draws.
@@ -537,6 +553,11 @@ export interface BuildModuleGraphOptions {
   /** Module name of the entry module, so an instance declared elsewhere is
    *  marked external rather than being told apart by a heuristic. */
   entryModule?: string;
+  /** The kind whose instance a `self.<field>` forward reads — set for a
+   *  template body, where a reference slot holding exactly `self.<path>` names
+   *  what the instance supplies. Each forwarded top-level field becomes a
+   *  `forwarded` node of this kind, named by the field. */
+  forwardsOf?: string;
 }
 
 /**
@@ -583,6 +604,16 @@ const isForwardedExport = (manifest: ResourceManifest): boolean =>
 
 const isInjected = (manifest: ResourceManifest): boolean =>
   (manifest.metadata as Record<string, unknown> | undefined)?.["xTeloInjected"] === true;
+
+/** Stamped by {@link templateModule} on a module resource a body references. */
+const ENCLOSING_STAMP = "xTeloEnclosing";
+
+const isEnclosing = (manifest: ResourceManifest): boolean =>
+  (manifest.metadata as Record<string, unknown> | undefined)?.[ENCLOSING_STAMP] === true;
+
+/** A forwarded field's node id — led by a separator no kind or module name
+ *  starts with, so it cannot collide with a resource's. */
+const forwardedNodeId = (field: string): string => `\0self\0${field}`;
 
 /**
  * A short, stable key over a value's shape.
@@ -892,11 +923,16 @@ export function buildModuleGraph(
   // Inline children: the extraction stamps the parent and the path it was
   // written at, so ownership is read off the declaration rather than guessed
   // from a name pattern. The stamp names the parent by `(kind, name)`, so it is
-  // translated through the same table a call-graph id is.
+  // translated through the same table a call-graph id is — and, where the
+  // extraction carries its parent's module stamp, qualified by it, since a
+  // stamped parent's id is module-scoped.
   const inlineByOwner = new Map<string, Map<string, string[]>>();
   for (const node of nodes) {
     if (node.ownership !== "inline" || !node.owner) continue;
-    node.owner = projectedId.get(node.owner) ?? node.owner;
+    const qualified = node.module ? `${node.module}\0${node.owner}` : undefined;
+    node.owner =
+      projectedId.get(node.owner) ??
+      (qualified && byId.has(qualified) ? qualified : node.owner);
     const sites = inlineByOwner.get(node.owner) ?? new Map<string, string[]>();
     const site = node.ownerSite ?? "";
     sites.set(site, [...(sites.get(site) ?? []), node.id]);
@@ -1005,6 +1041,7 @@ export function buildModuleGraph(
       deps,
       rowIdByPath,
       inlineEdgeSeeds,
+      options.forwardsOf !== undefined && node.ownership !== "enclosing",
     );
   }
 
@@ -1074,6 +1111,26 @@ export function buildModuleGraph(
   const resolveName = (name: string, fromModule: string | undefined): string | undefined =>
     resolveScopedName(nodesByName.get(name), (node) => node.module, fromModule)?.id;
 
+  // What the instance supplies at a forwarded field, minted on first use and
+  // AFTER the name index: it is no declaration, so no bare name or CEL read may
+  // resolve to it.
+  const forwardTarget = (self: readonly string[]): string => {
+    const field = self[0]!;
+    const id = forwardedNodeId(field);
+    if (!byId.has(id)) {
+      add({
+        id,
+        kind: options.forwardsOf!,
+        name: field,
+        ownership: "forwarded",
+        ports: [],
+        rows: [],
+        rowArrays: [],
+      });
+    }
+    return id;
+  };
+
   // References written INSIDE a declaration. Resolved here rather than where
   // they were found, because a declaration may name a resource declared later
   // in the file — and against the same name index every other edge uses, so a
@@ -1082,7 +1139,9 @@ export function buildModuleGraph(
   for (const [from, list] of inlineEdgeSeeds) {
     const fromModule = byId.get(from)?.module;
     for (const seed of list) {
-      const to = resolveName(seed.toName, fromModule) ?? byQualifiedName.get(seed.toName);
+      const to = seed.forward
+        ? forwardTarget(seed.forward)
+        : (resolveName(seed.toName, fromModule) ?? byQualifiedName.get(seed.toName));
       const edge: GraphEdge = {
         id: `${from}\0${seed.path}`,
         from,
@@ -1095,6 +1154,35 @@ export function buildModuleGraph(
       };
       if (to) edge.to = to;
       edges.push(edge);
+    }
+  }
+
+  if (options.forwardsOf !== undefined) {
+    for (const node of [...nodes]) {
+      // An enclosing resource's `self` is its own configuration, not the
+      // instance's.
+      if (node.ownership === "enclosing") continue;
+      const manifest = node.root ? options.root : manifestById.get(node.id);
+      if (!manifest) continue;
+      const schema = deps.definition(node.kind, node.module)?.schema as
+        | Record<string, any>
+        | undefined;
+      for (const site of forwardSitesOf(manifest, schema, callGraph, callGraphIdOf(node.id), deps)) {
+        const edge: GraphEdge = {
+          id: `${node.id}\0self\0${site.path}`,
+          from: node.id,
+          to: forwardTarget(site.self),
+          toName: `self.${site.self.join(".")}`,
+          class: edgeClassOf(site.uses),
+          use: site.uses,
+          slot: site.slot,
+          path: site.path,
+        };
+        const row = rowIdByPath.get(`${node.id}\0${site.path}`) ?? rowAt(rowsByOwner, node.id, site.path);
+        if (row) edge.row = row;
+        if (root && node.id === root.id) edge.boot = true;
+        edges.push(edge);
+      }
     }
   }
 
@@ -1199,6 +1287,13 @@ export function buildModuleGraph(
     }
   }
 
+  // An enclosing resource is drawn for the references reaching it. Its own were
+  // written in the module's scope, not the body's — resolved here, one could
+  // land on a same-named entry — so none leaves it.
+  const kept = edges.filter((edge) => byId.get(edge.from)?.ownership !== "enclosing");
+  edges.length = 0;
+  edges.push(...kept);
+
   // Back-fill what a row learns from the edge it declares: where its target
   // resolved, and where this call's arguments are written. Both are the edge's
   // to know — a row is read off the manifest, while `inputs` is a POINTER the
@@ -1278,7 +1373,9 @@ function projectResource(
   if (!definition) node.unknownKind = true;
   if (module) node.module = module;
 
-  if (origin) {
+  if (isEnclosing(manifest)) {
+    node.ownership = "enclosing";
+  } else if (origin) {
     node.ownership = "inline";
     node.owner = resourceId(origin.parentKind, origin.parentName);
     node.ownerSite = origin.pathFromParent;
@@ -1393,6 +1490,7 @@ function inlineRows(
   deps: ModuleGraphDeps,
   rowIdByPath: Map<string, string>,
   out: { rows: GraphRow[]; edges: InlineEdgeSeed[] },
+  forwarding: boolean,
 ): void {
   const kind = site.value.kind as string;
   const declared = deps.definition(kind, node.module);
@@ -1417,22 +1515,9 @@ function inlineRows(
   const asManifest = { ...site.value, metadata: { name: id } } as unknown as ResourceManifest;
   const declaredSchema = declared?.schema as Record<string, any> | undefined;
   for (const field of deps.refFields(asManifest)) {
-    for (const entry of resolveFieldEntries(asManifest, field.path)) {
-      const path = `${site.path}.${entry.path}`;
-      if (isInlineDeclaration(entry.value)) {
-        inlineRows(
-          node,
-          { path, value: entry.value as Record<string, unknown> },
-          { rowId: id, array: host.array, depth: row.depth, slot: `${host.slot}.${field.path}` },
-          deps,
-          rowIdByPath,
-          out,
-        );
-        continue;
-      }
-      const target = refName(entry.value);
-      if (target === undefined) continue;
-      const refId = `${id}/${lastPathSegment(entry.path)}`;
+    const reference = (entryPath: string, target: string, forward?: string[]): void => {
+      const path = `${site.path}.${entryPath}`;
+      const refId = `${id}/${lastPathSegment(entryPath)}`;
       out.rows.push({
         id: refId,
         kind: "reference",
@@ -1456,7 +1541,28 @@ function inlineRows(
         // `use` is a property of the slot, and the slot belongs to the kind
         // written here rather than to the resource hosting it.
         uses: readUses(schemaAt(declaredSchema, field.path)),
+        ...(forward ? { forward } : {}),
       });
+    };
+    for (const entry of resolveFieldEntries(asManifest, field.path)) {
+      if (isInlineDeclaration(entry.value)) {
+        inlineRows(
+          node,
+          { path: `${site.path}.${entry.path}`, value: entry.value as Record<string, unknown> },
+          { rowId: id, array: host.array, depth: row.depth, slot: `${host.slot}.${field.path}` },
+          deps,
+          rowIdByPath,
+          out,
+          forwarding,
+        );
+        continue;
+      }
+      const target = refName(entry.value);
+      if (target !== undefined) reference(entry.path, target);
+    }
+    if (!forwarding) continue;
+    for (const forward of forwardSites(site.value, field.path)) {
+      reference(forward.path, `self.${forward.self.join(".")}`, forward.self);
     }
   }
 }
@@ -1482,6 +1588,7 @@ function weaveInlineRows(
   deps: ModuleGraphDeps,
   rowIdByPath: Map<string, string>,
   seeds: Map<string, InlineEdgeSeed[]>,
+  forwarding: boolean,
 ): GraphRow[] {
   /**
    * Sites keyed by their concrete path, because the two walks OVERLAP: a step's
@@ -1543,6 +1650,7 @@ function weaveInlineRows(
         deps,
         rowIdByPath,
         collected,
+        forwarding,
       );
       out.push(...collected.rows);
       if (collected.edges.length > 0) {
@@ -1560,6 +1668,84 @@ interface InlineEdgeSeed {
   slot: string;
   path: string;
   uses: RefUse[];
+  /** The `self` path a forward at this site reads, instead of a name. */
+  forward?: string[];
+}
+
+/**
+ * Every `self.<path>` forward along a reference field path: at the slot, or at
+ * any container above it (`routes: !cel "self.workflows"` forwards every route's
+ * `handler`). A forward is a leaf — nothing below one is written.
+ */
+function forwardSites(value: unknown, fieldPath: string): { path: string; self: string[] }[] {
+  const out: { path: string; self: string[] }[] = [];
+  const visit = (current: unknown, parts: readonly string[], path: string): void => {
+    if (path !== "") {
+      const self = selfForwardPath(current);
+      if (self) {
+        out.push({ path, self });
+        return;
+      }
+    }
+    if (parts.length === 0 || !current || typeof current !== "object") return;
+    if (isTaggedSentinel(current) || (current as { __compiled?: unknown }).__compiled) return;
+    const [part, ...rest] = parts as [string, ...string[]];
+    const join = (key: string) => (path ? `${path}.${key}` : key);
+    if (part === "{}") {
+      for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
+        visit(child, rest, join(key));
+      }
+      return;
+    }
+    const isArray = part.endsWith("[]");
+    const key = isArray ? part.slice(0, -2) : part;
+    const child = (current as Record<string, unknown>)[key];
+    if (isArray && Array.isArray(child)) {
+      child.forEach((item, i) => visit(item, rest, `${join(key)}[${i}]`));
+      return;
+    }
+    visit(child, rest, join(key));
+  };
+  visit(value, fieldPath.split("."), "");
+  return out;
+}
+
+/**
+ * The forwards a resource's own sites hold: its reference fields, and each
+ * step's dispatch slots — which the field map does not reach, being declared on
+ * the step item schema. One site per concrete path, since a boot target is both
+ * a field-map entry and a step.
+ */
+function forwardSitesOf(
+  manifest: ResourceManifest,
+  schema: Record<string, any> | undefined,
+  callGraph: CallGraph,
+  callGraphId: string,
+  deps: ModuleGraphDeps,
+): { path: string; self: string[]; slot: string; uses: RefUse[] }[] {
+  const byPath = new Map<string, { path: string; self: string[]; slot: string; uses: RefUse[] }>();
+  for (const field of deps.refFields(manifest)) {
+    for (const site of forwardSites(manifest, field.path)) {
+      if (byPath.has(site.path)) continue;
+      byPath.set(site.path, { ...site, slot: field.path, uses: readUses(schemaAt(schema, field.path)) });
+    }
+  }
+  for (const step of callGraph.steps(callGraphId)) {
+    for (const slot of step.refSlots ?? []) {
+      const self = selfForwardPath(step.step[slot.key]);
+      if (!self || byPath.has(slot.path)) continue;
+      // Every step slot of one body shares its field-map path, however deeply
+      // the step nests — the call graph's own spelling of it.
+      const fieldPath = `${step.array.split(/[.[]/)[0]}[].${slot.key}`;
+      byPath.set(slot.path, {
+        path: slot.path,
+        self,
+        slot: fieldPath,
+        uses: readUses(schemaAt(schema, fieldPath)),
+      });
+    }
+  }
+  return [...byPath.values()];
 }
 
 /** `steps[0].invoke.connection` → `connection`; `routes[1]` → `routes`. */
@@ -2003,7 +2189,7 @@ function rowsByOwnerOf(
 
 /** Kinds a definition body declares — the marks of a template rather than a
  *  controller-backed kind. */
-const TEMPLATE_FIELDS = ["resources", "invoke", "run", "provide"] as const;
+const TEMPLATE_FIELDS = ["resources", "invoke", "run", "targets", "provide", "mount"] as const;
 
 /**
  * The kind plane: every `Telo.Definition` / `Telo.Abstract` in scope, with its
@@ -2031,7 +2217,9 @@ function buildKindPlane(
   // an empty instance list.
   const instancesByKind = new Map<string, string[]>();
   for (const node of nodes) {
-    if (node.root) continue;
+    // A forwarded field names the kind whose instance supplies it; it is no
+    // instance of that kind.
+    if (node.root || node.ownership === "forwarded") continue;
     const key = node.canonicalKind ?? node.kind;
     instancesByKind.set(key, [...(instancesByKind.get(key) ?? []), node.id]);
   }
@@ -2069,6 +2257,146 @@ function buildKindPlane(
     out.push(kind);
   }
   return out;
+}
+
+/**
+ * A templated definition's body, laid out as a module of its own — what an
+ * editor draws when a reader opens the kind's interior.
+ *
+ * The body IS a module in miniature: named declarations that reference each
+ * other, plus a boot sequence. So rather than a second projection, it is handed
+ * to the one that already draws modules. Each `resources:` entry becomes a
+ * top-level declaration of the DEFINING module — that stamp is what resolves
+ * its kind in the scope it was written in, and what keeps a sibling `!ref`
+ * resolving to the sibling rather than to a same-named resource elsewhere. The
+ * definition becomes the boot root: its `targets:`, or its one `run:` target,
+ * is the boot sequence an Application root carries, so the boot markers, the
+ * boot edges and the boot constraint all come from the machinery that draws an
+ * Application's.
+ *
+ * `moduleDoc` is the defining module's own doc: its `imports:` are what name a
+ * module call's receiver in the body's CEL, exactly as they do at top level.
+ *
+ * `moduleResources` are the defining module's own declarations. One a body
+ * `!ref` names — and no entry shadows — is carried along as an `enclosing`
+ * node, so the reference reaches a box rather than nothing; it is the module's,
+ * not the body's, and is drawn as such.
+ *
+ * A reference slot holding exactly `self.<path>` forwards what the instance
+ * supplies; `options.forwardsOf` is what makes each such field a node.
+ *
+ * An entry named by CEL (the deprecated form) has no name a reference could
+ * reach and none a box could be addressed by, so it is left out.
+ */
+export interface TemplateModule {
+  /** The boot root: the definition as an Application-shaped root whose
+   *  `targets` is the body's boot sequence. */
+  root: ResourceManifest;
+  /** Each literally named `resources:` entry, as a declaration of the defining
+   *  module, then each module resource the body references. */
+  resources: ResourceManifest[];
+  /** What the body's graph is built with. */
+  options: BuildModuleGraphOptions;
+}
+
+export function templateModule(
+  definition: ResourceManifest,
+  moduleDoc?: ResourceManifest,
+  moduleResources: readonly ResourceManifest[] = [],
+): TemplateModule {
+  const record = definition as unknown as Record<string, unknown>;
+  const metadata = (definition.metadata ?? {}) as Record<string, unknown>;
+  const module = typeof metadata.module === "string" ? metadata.module : undefined;
+  const source = typeof metadata.source === "string" ? metadata.source : undefined;
+  const stamp = {
+    ...(module ? { module } : {}),
+    ...(source ? { source } : {}),
+  };
+
+  const resources: ResourceManifest[] = [];
+  for (const entry of Array.isArray(record.resources) ? record.resources : []) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const written = entry as Record<string, unknown>;
+    const entryMetadata = (written.metadata ?? {}) as Record<string, unknown>;
+    if (typeof written.kind !== "string" || typeof entryMetadata.name !== "string") continue;
+    resources.push({
+      ...written,
+      metadata: { ...entryMetadata, ...stamp },
+    } as unknown as ResourceManifest);
+  }
+
+  const targets = Array.isArray(record.targets)
+    ? record.targets
+    : record.run !== undefined && record.run !== null
+      ? [record.run]
+      : [];
+  const moduleName = moduleDoc?.metadata?.name ?? module ?? metadata.name;
+  const imports = (moduleDoc as Record<string, unknown> | undefined)?.imports;
+  // No module stamp, as the loader leaves an entry module's own doc: the root's
+  // id and its call-graph id are then one id, which is what makes its boot
+  // references edges at all.
+  const root = {
+    kind: "Telo.Application",
+    metadata: { name: moduleName, ...(source ? { source } : {}) },
+    ...(imports !== undefined ? { imports } : {}),
+    targets,
+  } as unknown as ResourceManifest;
+
+  const entryNames = new Set(resources.map((r) => r.metadata!.name as string));
+  const referenced = new Set<string>();
+  collectReferencedNames([record.resources, targets], referenced);
+  for (const declared of moduleResources) {
+    const name = declared.metadata?.name;
+    if (typeof name !== "string" || typeof declared.kind !== "string") continue;
+    if (DECLARATION_KINDS.has(declared.kind)) continue;
+    if (moduleOf(declared) !== module || entryNames.has(name) || !referenced.has(name)) continue;
+    resources.push({
+      ...declared,
+      metadata: { ...declared.metadata, [ENCLOSING_STAMP]: true },
+    } as unknown as ResourceManifest);
+  }
+
+  const kindName = typeof metadata.name === "string" ? metadata.name : "";
+  return {
+    root,
+    resources,
+    options: {
+      root,
+      ...(module ? { entryModule: module } : {}),
+      forwardsOf: module ? `${module}.${kindName}` : kindName,
+    },
+  };
+}
+
+/** Every bare name a `!ref` in `value` writes, in either form it arrives in —
+ *  an alias-qualified one names another module's resource, never this one's. */
+function collectReferencedNames(value: unknown, out: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectReferencedNames(item, out);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  if (isRefSentinel(value)) {
+    if (!value.source.includes(".")) out.add(value.source);
+    return;
+  }
+  if (isTaggedSentinel(value) || (value as { __compiled?: unknown }).__compiled) return;
+  const record = value as Record<string, unknown>;
+  if (isResolvedRef(record)) {
+    if (record.alias === undefined) out.add(record.name as string);
+    return;
+  }
+  for (const child of Object.values(record)) collectReferencedNames(child, out);
+}
+
+/** The `{kind, name, alias?}` a `!ref` is rewritten into. */
+function isResolvedRef(value: Record<string, unknown>): boolean {
+  const keys = Object.keys(value);
+  return (
+    typeof value.kind === "string" &&
+    typeof value.name === "string" &&
+    keys.every((key) => key === "kind" || key === "name" || key === "alias")
+  );
 }
 
 /**

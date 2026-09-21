@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import {
   isModuleRootKind,
@@ -7,7 +8,9 @@ import {
 import { DetailPanel } from "../../DetailPanel";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
 import type { ViewProps } from "../types";
+import { Button } from "../../ui/button";
 import { ModuleGraphView } from "./module-graph-view/ModuleGraphView";
+import { TemplateCanvas } from "./module-graph-view/TemplateCanvas";
 import { ModuleBar } from "./ModuleBar";
 import { PreviewNotice } from "./PreviewNotice";
 import type { TopologyViewProps } from "./topology-view";
@@ -32,6 +35,7 @@ export function TopologyView({
   registry,
   moduleGraph,
   moduleGraphFor,
+  templateGraphFor,
   isEditableModule,
   selectedResource,
   selection,
@@ -104,6 +108,32 @@ export function TopologyView({
     [onViewState],
   );
 
+  // The templated kind whose body the canvas is showing instead of the module,
+  // by kind id — see `TemplateCanvas`.
+  const openKind =
+    (topology.viewState[TEMPLATE_VIEW_ID] as { kind?: string | null } | undefined)?.kind ?? null;
+  const openTemplate = useCallback(
+    (kindId: string) => onViewState(TEMPLATE_VIEW_ID, { kind: kindId }),
+    [onViewState],
+  );
+  const closeTemplate = useCallback(
+    () => onViewState(TEMPLATE_VIEW_ID, { kind: null }),
+    [onViewState],
+  );
+  const templateStateKey = `${TEMPLATE_VIEW_ID}:${openKind ?? ""}`;
+  const onTemplateStateChange = useCallback(
+    (next: unknown) => onViewState(templateStateKey, next),
+    [onViewState, templateStateKey],
+  );
+  const template = openKind ? templateGraphFor(openKind) : null;
+  // Written in the module that declares it, and only when that is this one: an
+  // imported kind's body is drawn but its document is not the workspace's here.
+  const templateEditable =
+    !readOnly &&
+    !!template &&
+    moduleGraph?.kinds.find((kind) => kind.id === template.kindId)?.own === true &&
+    (!template.module || isEditableModule(template.module));
+
   const hostViewportFor = topology.viewportFor;
   const hostViewportChange = topology.onViewportChange;
   const viewportFor = useCallback(
@@ -146,6 +176,7 @@ export function TopologyView({
           onRemoveField,
           onExtractInline,
           onBackgroundClick: onClearSelection,
+          onOpenTemplate: openTemplate,
         }
       : null;
 
@@ -183,7 +214,29 @@ export function TopologyView({
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <PreviewNotice />
         <div className="relative flex min-h-0 flex-1">
-          {canvasProps ? (
+          {canvasProps && openKind ? (
+            template ? (
+              <TemplateCanvas
+                canvas={canvasProps}
+                template={template}
+                editable={templateEditable}
+                moduleName={moduleGraph?.root?.name ?? viewData.manifest.metadata.name}
+                state={topology.viewState[templateStateKey]}
+                onStateChange={onTemplateStateChange}
+                onBack={closeTemplate}
+              />
+            ) : (
+              <div className="flex h-full flex-1 flex-col items-center justify-center gap-2 bg-zinc-50 dark:bg-zinc-900">
+                <span className="text-sm text-zinc-400 dark:text-zinc-600">
+                  This module no longer declares a templated kind '{openKind}'
+                </span>
+                <Button variant="outline" size="sm" onClick={closeTemplate}>
+                  <ArrowLeft />
+                  Back to the module
+                </Button>
+              </div>
+            )
+          ) : canvasProps ? (
             <ModuleGraphView {...canvasProps} />
           ) : (
             <div
@@ -220,3 +273,7 @@ export function TopologyView({
 
 /** The one canvas's id, for the per-view state bag and viewport the host keeps. */
 const GRAPH_VIEW_ID = "graph";
+
+/** Which template body is open, and — suffixed with its kind id — that body's
+ *  own view state. */
+const TEMPLATE_VIEW_ID = "template";

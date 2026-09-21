@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: EchoModel
+  version: 1.0.0
+  description: >-
+    A language model for tests: answers with the last message it was sent and
+    how long the conversation is, so a test can see the whole history reach it
+    without a provider or a key. A user message mentioning an order is answered
+    with a call to the first tool offered instead.
+imports:
+  Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+exports:
+  kinds: [Model]
+---
+kind: Telo.Definition
+metadata:
+  name: Model
+capability: Telo.Invocable
+extends: Ai.Model
+schema:
+  type: object
+  additionalProperties: false
+resources:
+  - kind: Run.Sequence
+    metadata: { name: reply }
+    steps:
+      - name: last
+        value: !cel "inputs.messages[size(inputs.messages) - 1]"
+      - name: callTool
+        value: !cel >-
+          has(inputs.tools) && size(inputs.tools) > 0 && steps.last.result.role == 'user' &&
+          string(steps.last.result.content).contains('order')
+      - name: text
+        value: !cel >-
+          steps.callTool.result ? '' :
+          'You said: ' + string(steps.last.result.content) +
+          ' (' + string(size(inputs.messages)) + ' messages)'
+    outputs:
+      content:
+        - type: text
+          text: !cel "steps.text.result"
+      text: !cel "steps.text.result"
+      toolCalls: !cel >-
+        steps.callTool.result
+          ? [{'id': 'call-1', 'name': inputs.tools[0].name, 'arguments': {}}]
+          : []
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      finishReason: !cel "steps.callTool.result ? 'tool-calls' : 'stop'"
+invoke: !ref reply
+inputs:
+  messages: !cel "inputs.messages"
+  tools: !cel "has(inputs.tools) ? inputs.tools : []"

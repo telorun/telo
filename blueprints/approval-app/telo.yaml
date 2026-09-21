@@ -1,0 +1,338 @@
+# A BLUEPRINT: a request that waits for a human decision. An app built on it
+# declares one `ApprovalApp.App` — what a request carries, which requests skip
+# review, and what happens once one is approved or rejected. The endpoints, the
+# durable wait and its recovery come from the template body below.
+kind: Telo.Library
+metadata:
+  name: ApprovalApp
+  version: 0.1.0
+  description: >-
+    A complete approval application from one declaration: describe the request,
+    the rule that approves small ones automatically and what to do once a
+    request is approved or rejected, and get HTTP endpoints to submit, approve,
+    reject and track requests. Waiting for a decision survives restarts and
+    runs out after a deadline.
+  categories: [Coordination, Transport]
+# Forwarding each handler reference through `self.<field>`, and starting two
+# entries through `targets:`, both need a kernel that knows them.
+requires:
+  telo: ">=0.97.0"
+imports:
+  # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
+  # relative path would name a module nobody pushes.
+  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Durable: oci://ghcr.io/telorun/durable@0.2.1#sha256-oEyVVSPyC0XaGd2x8FzLr-x1qG4efKrT1fY_qjdhqEw
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.4.1#sha256-dVL3E0nVgdq_t37WQi0qGox7tsr0OB8GLlW-QIeF0vM
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.4.1#sha256-50DThgDLKFwB4kD27a1Z2NNDef40OlSbYGw7KRKDHkE
+exports:
+  kinds: [App]
+---
+kind: Telo.Definition
+metadata:
+  name: App
+  description: >-
+    Serves an approval process over HTTP. A submitted request is approved
+    automatically when the rule allows it and otherwise waits for a reviewer;
+    the approve or reject handler runs once the decision is in. A request left
+    undecided past the deadline is rejected.
+capability: Telo.Service
+schema:
+  type: object
+  required: [port, request, onApproved, onRejected]
+  properties:
+    port:
+      title: Port
+      description: TCP port the server listens on.
+      type: integer
+      x-telo-eval: compile
+    title:
+      title: Title
+      description: Title of the generated OpenAPI document.
+      type: string
+      default: Approvals
+    request:
+      title: Request
+      description: >-
+        JSON Schema of what a submission carries. It validates the submit
+        endpoint's body and is handed to both handlers as `inputs.request`.
+      type: object
+      x-telo-eval: compile
+    autoApprove:
+      title: Auto-approve
+      description: >-
+        CEL over the submission (`request.body`) that approves it without
+        review when true — a spending limit, a trusted requester.
+      default: false
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              body: { type: object, additionalProperties: true }
+    timeout:
+      title: Deadline
+      description: >-
+        How long a request waits for a reviewer before it is rejected, as a
+        duration. Counted from submission and kept across restarts.
+      type: string
+      default: 168h
+      x-telo-eval: compile
+    journal:
+      title: Journal directory
+      description: Directory where requests and their progress are recorded.
+      type: string
+      default: .telo/approvals
+      x-telo-eval: compile
+    onApproved:
+      title: On approved
+      description: >-
+        Runs once a request is approved. Receives `id`, `request`, `decidedBy`
+        and `note`.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+    onRejected:
+      title: On rejected
+      description: >-
+        Runs once a request is rejected or its deadline passes. Receives `id`,
+        `request`, `decidedBy` and `note`.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+resources:
+  - kind: Journal.Journal
+    metadata: { name: journal }
+    directory: !cel "self.journal"
+
+  # The reviewer's answer. Approving and rejecting deliver to this one wait; the
+  # payload says which.
+  - kind: Durable.Await
+    metadata: { name: decision }
+    token: !cel "'approval:' + inputs.id"
+    timeout: !cel "self.timeout"
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [approved, decidedBy, note]
+        additionalProperties: false
+        properties:
+          approved: { type: boolean }
+          decidedBy: { type: string }
+          note: { type: string }
+
+  # THE DURABLE BODY. The branch and the answer are recorded, so a restart while
+  # a request waits continues at the wait instead of starting over.
+  - kind: DurableLocal.Workflow
+    metadata: { name: process }
+    journal: !ref journal
+    runId: !cel "inputs.id"
+    inputs:
+      id: !cel "inputs.id"
+      request: !cel "inputs.request"
+      autoApproved: !cel "inputs.autoApproved"
+    steps:
+      - name: review
+        if: !cel "inputs.autoApproved"
+        then:
+          - name: automatic
+            value: { approved: true, decidedBy: policy, note: "" }
+        else:
+          - name: reviewed
+            try:
+              - name: answer
+                invoke: !ref decision
+                inputs:
+                  id: !cel "inputs.id"
+            catch:
+              - name: expired
+                value: { approved: false, decidedBy: deadline, note: No decision before the deadline. }
+      - name: decision
+        value: !cel >-
+          has(steps.automatic) ? steps.automatic.result
+          : has(steps.answer) ? steps.answer.result
+          : steps.expired.result
+      - name: act
+        if: !cel "steps.decision.result.approved"
+        then:
+          - name: approved
+            invoke: !cel "self.onApproved"
+            inputs:
+              id: !cel "inputs.id"
+              request: !cel "inputs.request"
+              decidedBy: !cel "steps.decision.result.decidedBy"
+              note: !cel "steps.decision.result.note"
+        else:
+          - name: rejected
+            invoke: !cel "self.onRejected"
+            inputs:
+              id: !cel "inputs.id"
+              request: !cel "inputs.request"
+              decidedBy: !cel "steps.decision.result.decidedBy"
+              note: !cel "steps.decision.result.note"
+
+  # Continues requests whose process stopped, and picks each one up again once
+  # its decision is delivered.
+  - kind: DurableLocal.Resumer
+    metadata: { name: resumer }
+    workflow: !ref process
+    interval: 1s
+
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - request:
+          path: /requests
+          method: POST
+          schema:
+            body: !cel "self.request"
+        summary: Submit a request for approval.
+        inputs:
+          request: !cel "request.body"
+          autoApproved: !cel "self.autoApprove"
+        # Starts the run and answers at once: the body is dispatched detached, so
+        # the caller gets the id back before any step has run.
+        handler:
+          kind: Run.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              required: [request, autoApproved]
+              properties:
+                request: { type: object, additionalProperties: true }
+                autoApproved: { type: boolean }
+          steps:
+            - name: id
+              value: !cel "uuidv4()"
+            - name: start
+              invoke: !ref process
+              inputs:
+                id: !cel "steps.id.result"
+                request: !cel "inputs.request"
+                autoApproved: !cel "inputs.autoApproved"
+          outputs:
+            id: !cel "steps.id.result"
+            status: !cel "steps.start.result.status"
+        returns:
+          - status: 202
+            content:
+              application/json:
+                body: !cel "result"
+
+      - request:
+          path: /requests/{id}
+          method: GET
+          schema:
+            params:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+        summary: Where a request stands, and its decision once there is one.
+        inputs:
+          run: !cel "request.params.id"
+        handler:
+          kind: DurableLocal.Result
+          journal: !ref journal
+        returns:
+          - status: 404
+            when: !cel "result.status == 'unknown'"
+            content:
+              application/json:
+                body: { error: No such request. }
+          - status: 200
+            content:
+              application/json:
+                body:
+                  id: !cel "result.run"
+                  status: !cel "result.status == 'parked' ? 'pending' : result.status"
+                  decision: !cel >-
+                    result.status == 'completed'
+                      ? result.result.steps.decision.result
+                      : null
+
+      - request:
+          path: /requests/{id}/approve
+          method: POST
+          schema:
+            params:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+            body: &decisionBody
+              type: object
+              additionalProperties: false
+              required: [decidedBy]
+              properties:
+                decidedBy: { type: string, minLength: 1 }
+                note: { type: string }
+        summary: Approve a pending request.
+        inputs:
+          id: !cel "request.params.id"
+          decidedBy: !cel "request.body.decidedBy"
+          note: !cel "has(request.body.note) ? request.body.note : ''"
+        # Approving and rejecting deliver to the same wait; the payload says which.
+        handler:
+          kind: DurableLocal.Deliver
+          journal: !ref journal
+          await: !ref decision
+          token: !cel "'approval:' + inputs.id"
+          payload:
+            approved: true
+            decidedBy: !cel "inputs.decidedBy"
+            note: !cel "inputs.note"
+        returns: &decisionReturns
+          # A request nobody is waiting on — unknown, or already decided.
+          - status: 409
+            when: !cel "!result.delivered"
+            content:
+              application/json:
+                body: { error: The request is not waiting for a decision. }
+          - status: 202
+            content:
+              application/json:
+                body: { delivered: true }
+
+      - request:
+          path: /requests/{id}/reject
+          method: POST
+          schema:
+            params:
+              type: object
+              required: [id]
+              properties:
+                id: { type: string }
+            body: *decisionBody
+        summary: Reject a pending request.
+        inputs:
+          id: !cel "request.params.id"
+          decidedBy: !cel "request.body.decidedBy"
+          note: !cel "has(request.body.note) ? request.body.note : ''"
+        handler:
+          kind: DurableLocal.Deliver
+          journal: !ref journal
+          await: !ref decision
+          token: !cel "'approval:' + inputs.id"
+          payload:
+            approved: false
+            decidedBy: !cel "inputs.decidedBy"
+            note: !cel "inputs.note"
+        returns: *decisionReturns
+
+  - kind: Http.Server
+    metadata: { name: server }
+    port: !cel "self.port"
+    openapi:
+      info:
+        title: !cel "self.title"
+        version: 1.0.0
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref resumer
+  - !ref server

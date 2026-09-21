@@ -2,6 +2,7 @@ import type {
   CompiledValue,
   ControllerInstance,
   EvaluationContext,
+  InvokeContext,
   ResourceContext,
   ResourceInstance,
 } from "@telorun/sdk";
@@ -14,6 +15,7 @@ import {
   NO_CEL_EVAL_SITES,
   pathMatchesScope,
   SELF_PATH,
+  templateTargetsOf,
   type CelEvalSites,
 } from "@telorun/analyzer";
 import { isCompiledValue, RuntimeError, type ResourceDefinition } from "@telorun/sdk";
@@ -65,7 +67,55 @@ function isDeferredPath(sites: CelEvalSites, path: string): boolean {
  * silently deferring a node the child cannot evaluate.
  */
 function referencesBeyondSelf(value: CompiledValue): boolean {
-  return (value.refs ?? []).some((r) => r !== "self");
+  // A volatile call (`uuidv4()`) reads nothing, yet expanding it at init() would
+  // freeze one value into every later evaluation. A module call may be just as
+  // volatile — its determinism is the callee's, unknown at compile — and the
+  // child reaches the same dispatch table, so it is left to the child too.
+  return (
+    value.volatile === true ||
+    (value.calls?.length ?? 0) > 0 ||
+    (value.refs ?? []).some((r) => r !== "self")
+  );
+}
+
+/** True when `schema` declares a `default:` anywhere {@link withSchemaDefaults}
+ *  would fill one. */
+function declaresDefaults(schema: unknown): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  const s = schema as Record<string, any>;
+  if (s.items && declaresDefaults(s.items)) return true;
+  return Object.values((s.properties ?? {}) as Record<string, any>).some(
+    (prop) => !!prop && typeof prop === "object" && ("default" in prop || declaresDefaults(prop)),
+  );
+}
+
+/**
+ * `value` with every `default:` its schema declares filled in where the value
+ * leaves the property out — at every depth AJV's `useDefaults` reaches: nested
+ * objects the value holds and array items. Copies what it changes, and never
+ * descends into a compiled expression or a live instance.
+ */
+function withSchemaDefaults(value: unknown, schema: unknown): unknown {
+  if (!schema || typeof schema !== "object") return value;
+  const s = schema as Record<string, any>;
+  if (Array.isArray(value)) {
+    return s.items && typeof s.items === "object" && !Array.isArray(s.items)
+      ? value.map((item) => withSchemaDefaults(item, s.items))
+      : value;
+  }
+  if (!value || typeof value !== "object" || isCompiledValue(value) || !s.properties) return value;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const [key, prop] of Object.entries(s.properties as Record<string, any>)) {
+    if (!prop || typeof prop !== "object") continue;
+    if (out[key] === undefined) {
+      if ("default" in prop) out[key] = structuredClone(prop.default);
+      continue;
+    }
+    out[key] = withSchemaDefaults(out[key], prop);
+  }
+  return out;
 }
 
 /** Reports the resources: entries available to dispatch against, by EXPANDED
@@ -117,17 +167,31 @@ export function createTemplateController(definition: {
   invoke?: unknown;
   inputs?: Record<string, any>;
   run?: unknown;
+  targets?: unknown[];
   mount?: unknown;
   provide?: unknown;
   result?: Record<string, any>;
 }, definingContext: EvaluationContext): ControllerInstance {
+  // Checked at registration (`templateTargetProblems`), so every item is a
+  // `!ref` naming an entry by the time an instance exists.
+  const startTargets = templateTargetsOf(definition as Record<string, unknown>).map((t) => t.name);
+  // A resource is validated as a copy, so the schema's `default:` values never
+  // reach the instance; a controller written in code fills its own, and a
+  // template has none, so `self` fills them here. `definition.schema` is the
+  // inheritance-resolved one, stamped at registration.
+  const fillsDefaults = declaresDefaults(definition.schema);
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
       // init(), so capturing self here would freeze the pre-injection refs. Every
       // expansion reads the current resource state instead.
-      const getSelf = () => ({ ...resource, name: resource.metadata.name });
+      const getSelf = (): Record<string, unknown> => {
+        const self = { ...resource, name: resource.metadata.name };
+        return fillsDefaults
+          ? (withSchemaDefaults(self, definition.schema) as Record<string, unknown>)
+          : self;
+      };
 
       // A dispatch field names which `resources:` entry receives the call. The
       // spelling to write is `!ref <entry>`, the same one every other reference
@@ -405,6 +469,21 @@ export function createTemplateController(definition: {
               throw capabilityError(entry, runTarget, "run", "Telo.Runnable");
             }
             return entry.instance.run();
+          },
+        }),
+
+        // Each target is started through the child context's run path, not by
+        // calling its `run()` here: that path traces it, marks it started, and
+        // keeps what its `run()` returns — a listening socket, a kernel hold — on
+        // the ENTRY's own effect frame, which the child context's teardown
+        // unwinds. So every target stays up for as long as the instance does,
+        // exactly as an Application's `targets:` do.
+        ...(startTargets.length > 0 && {
+          run: async (invokeCtx?: InvokeContext) => {
+            for (const name of startTargets) {
+              dispatchEntry(name, "targets");
+              await childContext.run(name, invokeCtx);
+            }
           },
         }),
 

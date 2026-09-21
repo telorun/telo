@@ -1,5 +1,9 @@
 import { nearestName } from "./nearest-name.js";
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
+import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import { forEachStep, stepBodiesOf } from "./step-bodies.js";
+import { templateTargetProblems } from "./template-targets.js";
 import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -131,11 +135,28 @@ export function validateTemplateBody(
       });
 
     const entries = Array.isArray(bodies) ? bodies : [];
+    // Entries extraction produced from an inline declaration: the slot it came
+    // from now names it as `{ kind, name }`, which the author never wrote.
+    const extracted = new Set(
+      entries
+        .filter((entry) => (entry as { metadata?: { xTeloOrigin?: unknown } })?.metadata?.xTeloOrigin)
+        .map((entry) => (entry as { metadata: { name: string } }).metadata.name),
+    );
     const siblings: string[] = [];
     let anyDynamic = false;
     entries.forEach((entry, i) => {
       const entryName = (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
       if (typeof entryName === "string" && !entryName.includes("${{")) {
+        // The kernel registers every entry into one child context by name, and
+        // refuses the second with ERR_DUPLICATE_RESOURCE.
+        if (siblings.includes(entryName)) {
+          report(
+            "DUPLICATE_RESOURCE_NAME",
+            `resources[${i}].metadata.name`,
+            `two 'resources:' entries are named '${entryName}'. Every entry of a template body ` +
+              `is created in one scope, by name — rename one of them.`,
+          );
+        }
         siblings.push(entryName);
         return;
       }
@@ -163,6 +184,8 @@ export function validateTemplateBody(
       ...siblings,
       ...(instancesByModule.get(meta?.module) ?? []),
     ]);
+    // What a message lists and suggests: the names the author wrote.
+    const written = siblings.filter((name) => !extracted.has(name));
 
     // --- dispatch slots ---
     for (const slot of DISPATCH_SLOTS) {
@@ -174,7 +197,7 @@ export function validateTemplateBody(
           slot,
           `'${slot}:' written as ${describeDispatchValue(value)} is deprecated — ` +
             `write '!ref <entry>', the spelling every other reference uses. ` +
-            `Available: ${siblings.join(", ") || "(none)"}.`,
+            `Available: ${written.join(", ") || "(none)"}.`,
         );
         continue;
       }
@@ -184,20 +207,89 @@ export function validateTemplateBody(
       // A dynamic sibling has already been reported, and might be the one
       // meant — a second diagnostic about the same line would be noise.
       if (anyDynamic) continue;
-      const suggestion = nearestName(target, siblings);
+      const suggestion = nearestName(target, written);
       report(
         "TEMPLATE_DISPATCH_UNKNOWN",
         slot,
         `'${slot}: !ref ${source}' names no entry in 'resources:'. ` +
-          `Available: ${siblings.join(", ") || "(none)"}.` +
+          `Available: ${written.join(", ") || "(none)"}.` +
           (suggestion ? ` Did you mean '${suggestion}'?` : ""),
         suggestion ? { replacement: suggestion } : undefined,
+      );
+    }
+
+    // --- targets: the entries a run starts ---
+    const resolveDef: DefResolver = (k) =>
+      registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
+    const capability = inheritedCapability(m as ResourceDefinition, resolveDef);
+    for (const problem of templateTargetProblems(m as Record<string, unknown>, capability, nearestName)) {
+      report(
+        problem.code,
+        problem.path,
+        problem.message,
+        problem.suggestion ? { replacement: problem.suggestion } : undefined,
       );
     }
 
     // --- reference slots inside each entry ---
     for (const body of templateBodies(m, registry, aliases, scopes)) {
       const kind = body.manifest.kind;
+      const entryName = body.manifest.metadata?.name;
+      // An extracted entry's name is generated; the diagnostic's anchor already
+      // points at the declaration the author wrote.
+      const label =
+        typeof entryName === "string" && extracted.has(entryName)
+          ? `the inline ${kind}`
+          : `the ${kind} entry '${entryName ?? body.prefix}'`;
+      // A step's dispatch target is resolved at dispatch, outside the field map,
+      // so its `!ref` is checked here: a typo would otherwise first fail on the
+      // call that reaches it.
+      if (body.definition) {
+        const kindSchema = registry.effectiveSchemaOf(body.definition) as Record<string, any> | undefined;
+        for (const steps of kindSchema ? stepBodiesOf(body.manifest as Record<string, unknown>, kindSchema) : []) {
+          forEachStep(steps, kindSchema!, (step, stepPath) => {
+            const value = step[steps.invokeField];
+            if (!isRefSentinel(value)) return;
+            const target = refSentinelTarget(value);
+            if (!target || (target.alias && target.alias !== "Self")) return;
+            if (reachable.has(target.name) || anyDynamic) return;
+            const suggestion = nearestName(
+              target.name,
+              [...reachable].filter((name) => !extracted.has(name)),
+            );
+            report(
+              "TEMPLATE_REF_UNKNOWN",
+              `${body.prefix}.${stepPath}.${steps.invokeField}`,
+              `'${stepPath}.${steps.invokeField}: !ref ${value.source}' on ${label} names ` +
+                `no sibling 'resources:' entry and no resource of this module. ` +
+                `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
+                (suggestion ? ` Did you mean '${suggestion}'?` : ""),
+              suggestion ? { replacement: suggestion } : undefined,
+            );
+          });
+        }
+      }
+
+      // Each entry is a resource of its kind, validated as the kernel validates it
+      // when the template creates it.
+      if (body.definition) {
+        const schema = entrySchemaFor(body.definition, registry);
+        if (Object.keys(schema).length > 0) {
+          const issues = registry.validateResourceConfig(
+            substituteDecodedCelFields(body.manifest, schema, undefined, {
+              external: (ref) => registry.schemaForId(ref),
+            }),
+            schema,
+          );
+          for (const issue of issues) {
+            report(
+              "SCHEMA_VIOLATION",
+              issue.path ? `${body.prefix}.${issue.path}` : body.prefix,
+              `${label}: ${issue.message}`,
+            );
+          }
+        }
+      }
       const fieldMap = registry.expandedFieldMapForResource(
         { ...body.manifest, metadata: { ...(body.manifest.metadata ?? {}), module: meta?.module } },
         aliases,
@@ -213,7 +305,7 @@ export function validateTemplateBody(
           report(
             "TEMPLATE_REF_COMPUTED",
             `${body.prefix}.${site.path}`,
-            `'${site.path}: !cel "${site.source}"' on the ${kind} entry computes a value that ` +
+            `'${site.path}: !cel "${site.source}"' on ${label} computes a value that ` +
               `holds the reference slot '${fieldPath}'. CEL values are data, so the reference ` +
               `cannot survive the expression. Forward it verbatim with a bare 'self.<path>' ` +
               `(the whole value, shaped as the slot expects), or write the slot itself as '!ref'.`,
@@ -229,13 +321,16 @@ export function validateTemplateBody(
             const { alias, name: refName } = target;
             if (alias && alias !== "Self") continue;
             if (reachable.has(refName)) continue;
-            const suggestion = nearestName(refName, [...reachable]);
+            const suggestion = nearestName(
+              refName,
+              [...reachable].filter((name) => !extracted.has(name)),
+            );
             report(
               "TEMPLATE_REF_UNKNOWN",
               path,
-              `'${site.path}: !ref ${value.source}' on the ${kind} entry names no sibling ` +
+              `'${site.path}: !ref ${value.source}' on ${label} names no sibling ` +
                 `'resources:' entry and no resource of this module. ` +
-                `Siblings: ${siblings.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
+                `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
                 (suggestion ? ` Did you mean '${suggestion}'?` : ""),
               suggestion ? { replacement: suggestion } : undefined,
             );
@@ -257,6 +352,7 @@ export function validateTemplateBody(
           }
           if (value && typeof value === "object" && !Array.isArray(value)) {
             const obj = value as Record<string, unknown>;
+            if (typeof obj.name === "string" && extracted.has(obj.name)) continue;
             if (typeof obj.kind === "string" && obj.name !== undefined) {
               report(
                 "INVALID_REFERENCE_FORM",
@@ -272,6 +368,26 @@ export function validateTemplateBody(
   }
 
   return out;
+}
+
+/** An entry kind's author-facing schema with `kind` / `metadata` admitted.
+ *  Keyed on the registry's memoized schema object, so each kind yields one
+ *  object and the registry's compiled validator is reused. */
+const entrySchemas = new WeakMap<object, Record<string, any>>();
+function entrySchemaFor(
+  definition: ResourceDefinition,
+  registry: DefinitionRegistry,
+): Record<string, any> {
+  const author = (registry.effectiveSchemaOf(definition) ?? {}) as Record<string, any>;
+  if (author.additionalProperties !== false) return author;
+  const cached = entrySchemas.get(author);
+  if (cached) return cached;
+  const schema = {
+    ...author,
+    properties: { kind: { type: "string" }, metadata: { type: "object" }, ...author.properties },
+  };
+  entrySchemas.set(author, schema);
+  return schema;
 }
 
 /**

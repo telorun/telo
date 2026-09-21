@@ -10,6 +10,7 @@ import {
   Braces,
   CornerDownRight,
   Lock,
+  Play,
   Plus,
   Power,
   PowerOff,
@@ -22,6 +23,7 @@ import {
   FilePlus2,
   Filter,
   CopyMinus,
+  Import,
 } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
 import { CREATE_REF_OPTION_PREFIX } from "../../../resource-schema-form/ref-candidates";
@@ -129,8 +131,12 @@ export interface GraphBoxData extends Record<string, unknown> {
    *  or shape. One ring, because it says one thing — this is what you asked
    *  about — and the drawer says which question was asked. */
   ofSelectedKind?: boolean;
-  /** Its module's files cannot be edited from here (a published import). */
+  /** Its module's files cannot be edited from here (a published import), or it
+   *  is drawn on a template body without belonging to it. */
   readOnly?: boolean;
+  /** What the box is called when its name is not its label — a forwarded
+   *  field, titled by the kind's schema. */
+  label?: string;
   /** Is this branch — or this ROW's subtree — open? A row is addressed by its
    *  own stable id, which cannot collide with a field name. */
   isOpen: (property: string) => boolean;
@@ -138,7 +144,8 @@ export interface GraphBoxData extends Record<string, unknown> {
    *  reaches. Takes a row id just as readily: a body nests, so a `while` is put
    *  away with its contents. */
   onToggleProperty: (property: string) => void;
-  onOpen: () => void;
+  /** Absent for a box with nothing to open — a forwarded field. */
+  onOpen?: () => void;
   onSelectRow?: (row: GraphRow) => void;
   /** Move a row within its own array. Absent when the module is not editable
    *  here — a published import has nowhere for the write to land. */
@@ -211,6 +218,8 @@ function ownershipNote(node: GraphNode): string | null {
       return node.module ? `from ${node.module}` : "imported";
     case "injected":
       return "supplied";
+    case "enclosing":
+      return "module";
     default:
       return null;
   }
@@ -261,6 +270,29 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
     );
   }
 
+  // Not a declaration: what each instance of the kind supplies at one field. It
+  // has a name and the forward reaching it, and nothing to open or configure.
+  if (node.ownership === "forwarded") {
+    const label = data.label ?? node.name;
+    return (
+      <div
+        className="flex h-full w-full items-center gap-1 overflow-hidden rounded border border-dashed border-sky-300 bg-sky-50/70 px-1.5 text-left dark:border-sky-800 dark:bg-sky-950/30"
+        title={`${label} — supplied by each ${node.kind} instance, read as self.${node.name}`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!size-1.5 !border-sky-300 !bg-white dark:!bg-zinc-900"
+        />
+        <Import className="size-2.5 shrink-0 text-sky-500" />
+        <span className="truncate text-[11px] text-zinc-600 dark:text-zinc-300">{label}</span>
+        <span className="ml-auto shrink-0 truncate text-[9px] text-sky-600 dark:text-sky-400">
+          instance
+        </span>
+      </div>
+    );
+  }
+
   // The body's tree, walked ONCE per box: the same list the geometry sized this
   // box from, so the rows cannot run past its border.
   const drawn = drawnRows(node, (_id, property) => data.isOpen(property));
@@ -302,7 +334,11 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
         {data.readOnly && (
           <Lock
             className="size-3 shrink-0 text-zinc-400"
-            aria-label="published import — its files are not editable here"
+            aria-label={
+              node.ownership === "enclosing"
+                ? "declared by the module, not this body — edit it on the module canvas"
+                : "published import — its files are not editable here"
+            }
           />
         )}
         {data.unwired && (
@@ -369,7 +405,13 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
   );
 
   if (!data.onToggleBoot) return box;
-  const started = (data.boot?.length ?? 0) > 0;
+  const markers = data.boot ?? [];
+  const label =
+    markers.length === 0
+      ? "Start at boot"
+      : markers.every((marker) => marker.variant === "started")
+        ? "Don't start at boot"
+        : "Remove from boot";
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{box}</ContextMenuTrigger>
@@ -377,8 +419,8 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
           would open the resource under the menu. */}
       <ContextMenuContent data-no-open className="w-48" onClick={(e) => e.stopPropagation()}>
         <ContextMenuItem className="text-xs" onSelect={data.onToggleBoot}>
-          {started ? <PowerOff /> : <Power />}
-          {started ? "Don't start at boot" : "Start at boot"}
+          {markers.length > 0 ? <PowerOff /> : <Power />}
+          {label}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -387,15 +429,37 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
 
 /**
  * Where this resource sits in the boot order — one position per `targets:`
- * entry starting it. A gated entry is marked conditional, its `when:` on hover.
+ * entry naming it. A reference STARTS it and an inline invoke step INVOKES it,
+ * so the two are drawn apart; a gated entry is marked conditional, its `when:`
+ * on hover.
  */
 function BootBadge({ markers }: { markers: BootMarker[] }) {
+  const started = markers.filter((marker) => marker.variant === "started");
+  const invoked = markers.filter((marker) => marker.variant === "invoked");
+  return (
+    <>
+      {started.length > 0 && <BootChip markers={started} icon={Power} verb="Started" />}
+      {invoked.length > 0 && <BootChip markers={invoked} icon={Play} verb="Invoked" />}
+    </>
+  );
+}
+
+function BootChip({
+  markers,
+  icon: Icon,
+  verb,
+}: {
+  markers: BootMarker[];
+  icon: typeof Power;
+  verb: string;
+}) {
   const conditional = markers.some((marker) => marker.when !== undefined);
   const title = markers
-    .map((marker) =>
-      marker.when !== undefined
-        ? `Started at boot, #${marker.position}, when ${marker.when}`
-        : `Started at boot, #${marker.position}`,
+    .map(
+      (marker) =>
+        `${verb} at boot, #${marker.position}` +
+        (marker.name !== undefined ? ` (${marker.name})` : "") +
+        (marker.when !== undefined ? `, when ${marker.when}` : ""),
     )
     .join("\n");
   return (
@@ -408,7 +472,7 @@ function BootBadge({ markers }: { markers: BootMarker[] }) {
       title={title}
       aria-label={title}
     >
-      <Power className="size-2.5 shrink-0" />
+      <Icon className="size-2.5 shrink-0" />
       {markers.map((marker) => marker.position).join(",")}
       {conditional && <Filter className="size-2.5 shrink-0" />}
     </span>

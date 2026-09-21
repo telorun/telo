@@ -1,0 +1,89 @@
+kind: Telo.Application
+metadata:
+  name: ShopAssistant
+  version: 1.0.0
+  description: |
+    A shop's support assistant built on the AgentApp blueprint: it answers
+    customers from the conversation so far and looks orders up itself. There is
+    no server, route, database or tool loop to write — only the model, what the
+    assistant is told, and the one tool it may use.
+
+    Set your OpenAI key in a sibling `.env.local`:
+        OPENAI_API_KEY=sk-...
+
+    Run, then:
+        curl -s -XPOST localhost:8854/conversations/c1/messages -H 'content-type: application/json' \
+          -d '{"message":"Where is my order A-1001?"}'
+        curl -s localhost:8854/conversations/c1/messages
+imports:
+  AgentApp: ..
+  # Published, like the modules the blueprint itself imports: importing the
+  # local copies of these beside the blueprint's published `ai` is refused with
+  # DUPLICATE_IMPORT_ALIAS.
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  Http: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
+targets:
+  - !ref assistant
+ports:
+  http:
+    env: PORT
+    protocol: tcp
+    default: 8854
+variables:
+  history:
+    env: CONVERSATIONS_FILE
+    type: string
+    default: .telo/shop-conversations.sqlite
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+---
+kind: AgentApp.App
+metadata:
+  name: assistant
+port: !cel "ports.http"
+title: Shop assistant
+history: !cel "variables.history"
+model:
+  kind: OpenAI.ChatModel
+  model: gpt-4o-mini
+  request:
+    kind: Http.Request
+    client:
+      kind: Http.Client
+      baseUrl: https://api.openai.com/v1
+      credential:
+        kind: Http.BearerToken
+        token: !cel "secrets.openaiApiKey"
+system: |
+  You are the support assistant of a small online shop. Be brief and friendly.
+  Look an order up with `order_status` before saying anything about it, and
+  never guess a delivery date the lookup did not give you.
+tools:
+  - tool: !ref orderStatus
+    name: order_status
+    description: Where an order is and when it is expected, by its order number.
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [orderId]
+      properties:
+        orderId: { type: string, description: "The order number, e.g. A-1001." }
+---
+# Stands in for the shop's order system: replace it with a query against yours.
+kind: Run.Value
+metadata:
+  name: orderStatus
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [orderId]
+    properties:
+      orderId: { type: string }
+value: !cel >-
+  inputs.orderId == 'A-1001'
+    ? {'status': 'shipped', 'expected': '2026-09-24'}
+    : {'status': 'unknown'}

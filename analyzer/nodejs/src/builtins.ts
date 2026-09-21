@@ -750,6 +750,16 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
           "Run target",
           "The `resources:` entry whose `run()` this kind dispatches to, as `!ref <entry>`.",
         ),
+        // The template twin of an Application's boot sequence. Its shape is
+        // `templateTargetProblems`' to check (shared with the kernel), so the
+        // schema states none — a second check would report the same line twice.
+        targets: {
+          title: "Targets",
+          description:
+            "The `resources:` entries this kind starts, in order, when an instance runs — each as " +
+            "`!ref <entry>`, each a Telo.Service or Telo.Runnable. Replaces `run:` when the kind " +
+            "has more than one thing to start, such as a server and the poller beside it.",
+        },
         // The named child stays persistent so the produced mount's routes can
         // `!ref` its siblings.
         mount: dispatchSlot(

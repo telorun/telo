@@ -1,0 +1,107 @@
+kind: Telo.Application
+metadata:
+  name: TemplateInlineHandlersTest
+  version: 1.0.0
+  description: >-
+    A template body's route handlers declared inline — a plain invocable and a
+    sequence whose steps read each other — are created with the rest of the
+    body and answer requests.
+imports:
+  Run: ../modules/run
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Telo.Definition
+metadata:
+  name: Greeter
+capability: Telo.Service
+schema:
+  type: object
+  required: [port]
+  properties:
+    port: { type: integer, x-telo-eval: compile }
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - request: { path: /ping, method: GET }
+        handler:
+          kind: Run.Value
+          value: { pong: true }
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: !cel "result"
+      - request:
+          path: /greet
+          method: POST
+          schema:
+            body:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+        inputs:
+          name: !cel "request.body.name"
+        handler:
+          kind: Run.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+          steps:
+            - name: greeting
+              value: !cel "'Hello, ' + inputs.name"
+            - name: shout
+              value: !cel "steps.greeting.result + '!'"
+          outputs:
+            text: !cel "steps.shout.result"
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: !cel "result"
+  - kind: Http.Server
+    metadata: { name: server }
+    port: !cel "self.port"
+    mounts:
+      - path: /
+        mount: !ref api
+run: !ref server
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Self.Greeter
+    metadata: { name: greeter }
+    port: 8856
+targets:
+  - !ref greeter
+steps:
+  - name: ping
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8856/ping
+      method: GET
+  - name: greet
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:8856/greet
+      method: POST
+      body: { name: Ada }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        ping: !cel "steps.ping.result.body"
+        greet: !cel "steps.greet.result.body"
+      expected:
+        ping: { pong: true }
+        greet: { text: "Hello, Ada!" }
