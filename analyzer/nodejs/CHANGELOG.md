@@ -1,5 +1,32 @@
 # @telorun/analyzer
 
+## 0.79.0
+
+### Minor Changes
+
+- 2cbf883: Open a templated kind's body as a canvas of its own
+
+  A templated kind in the module drawer now opens its body as a module graph: each `resources:` entry is a box with its own rows, ports and edges, references between entries are edges, and the definition's `targets:` (or its single `run:` target) mark the entries it starts. Edits on that canvas write back into the definition — an entry's rows, slots and wires into its `resources:` entry, a resource created for a slot as a new sibling entry, and "Start at boot" into `targets:` (a lone `run:` becomes `targets:` once a second entry is added). The analyzer exports `templateModule`, which lays a definition's body out as a module for `buildModuleGraph`. A module resource the body references is drawn read-only (ownership `enclosing`), and a slot forwarding `self.<path>` is an edge to a node standing for what the instance supplies (ownership `forwarded`). A write to a name the body declares twice is refused with an error rather than sent to the first entry.
+
+  A boot target written as an inline invoke step now marks the resource it invokes ("invoked at boot", with its position, step name and `when:`), and the boot toggle on such a resource removes that entry instead of appending a duplicate `!ref`.
+
+- 2cbf883: Check a template body's entries the way the kernel creates them
+
+  An inline declaration inside a template body entry — a route's `handler: { kind: Run.Sequence, … }` — is now extracted into an entry of its own, so it is created with the rest of the body instead of failing at request time as not invocable, and its CEL is typed by its own kind. `telo check` also validates each entry against its kind's schema (`SCHEMA_VIOLATION`), resolves a step's `invoke: !ref` inside an entry (`TEMPLATE_REF_UNKNOWN`) and refuses two entries under one name (`DUPLICATE_RESOURCE_NAME`) — each already a boot-time failure. A diagnostic inside an extracted declaration is anchored at the position the author wrote and never names the generated entry.
+
+  A CEL diagnostic's message no longer quotes its own position: `Kind/name: !cel at 'path': …` is now `Kind/name: !cel: …`, and `CEL syntax error at path: …` is `CEL syntax error: …`. The position is where every host already anchors the diagnostic (`data.path`, file:line:col in `telo check`).
+
+- 2cbf883: Templated kinds can start several entries with `targets:`
+
+  A templated `Telo.Service` / `Telo.Runnable` definition may list `targets:` — `!ref`s to its `resources:` entries, started in order when an instance runs — instead of a single `run:`, so a kind can start a server beside the poller that feeds it. `telo check` reports `TEMPLATE_TARGETS_INVALID`, `TEMPLATE_TARGET_UNKNOWN`, `TEMPLATE_TARGETS_CAPABILITY` and `TEMPLATE_TARGETS_WITH_RUN`; the kernel refuses the same definitions at registration as `ERR_<code>`.
+
+  Two template fixes ship with it: `self` now reads the schema's `default:` values, at every depth, wherever the instance leaves a field out; and an expression calling a non-deterministic function (`uuidv4()`, `nowMillis()`) or any module function (`Self.fn()`) is no longer evaluated once for the whole instance — the compiled value carries a new `volatile` flag for the former.
+
+### Patch Changes
+
+- Updated dependencies [2cbf883]
+  - @telorun/templating@0.21.1
+
 ## 0.78.0
 
 ### Minor Changes
