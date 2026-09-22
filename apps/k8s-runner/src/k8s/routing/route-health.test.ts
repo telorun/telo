@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { RouteState } from "@telorun/runner-core";
 
@@ -159,29 +159,41 @@ describe("watchRouteHealth", () => {
     expect(seenErrors).toHaveLength(1);
   });
 
+  // On fake timers, because clearing the retained error takes a SECOND poll: on a
+  // real clock the whole deadline can elapse inside the first iteration on a
+  // loaded machine, and the watch then reports the read failure it was asserted
+  // not to blame. Virtual time only moves when the poll delay fires.
   it("does not blame a transient read failure once a verdict was obtained", async () => {
-    let calls = 0;
-    const flaky: SessionRouter = {
-      layer: "gateway",
-      publish: async () => routes,
-      verdictFor: async () => {
-        calls += 1;
-        if (calls === 1) throw new Error("apiserver hiccup");
-        return { kind: "pending" };
-      },
-      unclaimedReason: () => "nobody claimed it",
-    };
-    const { seen, onState } = collect();
-    await watchRouteHealth({
-      router: flaky,
-      sessionId: "abc",
-      routes: [routes[0]],
-      onState,
-      signal: new AbortController().signal,
-      timeoutMs: 8,
-      intervalMs: 1,
-    });
-    expect(seen.at(-1)?.reason).toBe("nobody claimed it");
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const flaky: SessionRouter = {
+        layer: "gateway",
+        publish: async () => routes,
+        verdictFor: async () => {
+          calls += 1;
+          if (calls === 1) throw new Error("apiserver hiccup");
+          return { kind: "pending" };
+        },
+        unclaimedReason: () => "nobody claimed it",
+      };
+      const { seen, onState } = collect();
+      const watching = watchRouteHealth({
+        router: flaky,
+        sessionId: "abc",
+        routes: [routes[0]],
+        onState,
+        signal: new AbortController().signal,
+        timeoutMs: 8,
+        intervalMs: 1,
+      });
+      await vi.advanceTimersByTimeAsync(20);
+      await watching;
+      expect(calls).toBeGreaterThan(1);
+      expect(seen.at(-1)?.reason).toBe("nobody claimed it");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops on abort without reporting a verdict it never reached", async () => {

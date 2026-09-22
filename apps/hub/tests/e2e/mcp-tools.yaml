@@ -5,9 +5,11 @@ metadata:
   description: |
     End-to-end tests for the hub's MCP endpoint at /mcp, run against a live
     hub at http://localhost:8040 that has tracked the seeded refs. Locks in
-    the two-tool discovery loop: `search_resources` returns kind hits carrying
-    the exact module location ref, and `get_module_manifest(ref)` returns the
-    tracker-cached telo.yaml for that ref.
+    the discovery loop: `search_resources` returns kind hits carrying the exact
+    module location ref, `get_module_manifest(ref)` returns the tracker-cached
+    telo.yaml for that ref, and `get_module` / `list_module_versions` /
+    `find_implementations` / `list_categories` / `suggest_module_refs` mirror
+    the hub's keyed-read HTTP routes as tools.
 imports:
   McpClient: oci://ghcr.io/telorun/mcp-client@0.15.1#sha256-qOWJKsRw1H8vQiR8L0m3hnAsJf0otEPYMZ6yYzU_CbA
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
@@ -16,6 +18,11 @@ imports:
 targets:
   - !ref searchResources_ReturnsKindHits
   - !ref searchResources_CarriesCategoryVocabulary
+  - !ref getModule_ReturnsTrackedModuleFacts
+  - !ref listModuleVersions_ReturnsPinnedVersions
+  - !ref findImplementations_ListsKvStoreBackends
+  - !ref listCategories_CarriesSchedulingSlug
+  - !ref suggestModuleRefs_ResolvesPartialToken
   - !ref getModuleManifest_ReturnsCachedYaml
 ---
 kind: McpClient.HttpClient
@@ -119,5 +126,136 @@ steps:
         dropped: false
         knowsCompute: true
         foundRunLoop: true
+    invoke:
+      kind: Assert.Equals
+---
+# get_module mirrors GET /module: keyed facts about the seeded timer module,
+# not ranked hits — the kind list carries its Delay kind either way.
+kind: Run.Sequence
+metadata: { name: getModule_ReturnsTrackedModuleFacts }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_module
+      arguments:
+        ref: oci://ghcr.io/telorun/timer
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        moduleRef: !cel "steps.parse.result.docs[0].module.ref"
+        foundDelayKind: !cel "steps.parse.result.docs[0].kinds.exists(k, k.kind == 'Delay')"
+      expected:
+        moduleRef: oci://ghcr.io/telorun/timer
+        foundDelayKind: true
+    invoke:
+      kind: Assert.Equals
+---
+# list_module_versions mirrors GET /module/versions: the pin an agent needs to
+# write a reproducible `imports:` entry.
+kind: Run.Sequence
+metadata: { name: listModuleVersions_ReturnsPinnedVersions }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: list_module_versions
+      arguments:
+        ref: oci://ghcr.io/telorun/timer
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        ref: !cel "steps.parse.result.docs[0].ref"
+        hasVersions: !cel "steps.parse.result.docs[0].versions.size() > 0"
+        firstHasVersionField: !cel "'version' in steps.parse.result.docs[0].versions[0]"
+      expected:
+        ref: oci://ghcr.io/telorun/timer
+        hasVersions: true
+        firstHasVersionField: true
+    invoke:
+      kind: Assert.Equals
+---
+# find_implementations mirrors GET /implementations: the seeded redis and
+# memory backends both extend kv-store's Store abstract from their own module.
+kind: Run.Sequence
+metadata: { name: findImplementations_ListsKvStoreBackends }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: find_implementations
+      arguments:
+        ref: oci://ghcr.io/telorun/kv-store
+        kind: Store
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        foundRedis: !cel >-
+          steps.parse.result.docs[0].implementations.exists(i,
+            i.ref == 'oci://ghcr.io/telorun/kv-store-redis')
+        foundMemory: !cel >-
+          steps.parse.result.docs[0].implementations.exists(i,
+            i.ref == 'oci://ghcr.io/telorun/kv-store-memory')
+      expected:
+        foundRedis: true
+        foundMemory: true
+    invoke:
+      kind: Assert.Equals
+---
+# list_categories mirrors GET /categories: browsable without a search query.
+kind: Run.Sequence
+metadata: { name: listCategories_CarriesSchedulingSlug }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: list_categories
+      arguments: {}
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        knowsScheduling: !cel "steps.parse.result.docs[0].categories.exists(c, c.category == 'scheduling')"
+      expected:
+        knowsScheduling: true
+    invoke:
+      kind: Assert.Equals
+---
+# suggest_module_refs mirrors GET /refs: lexical typeahead, not semantic search.
+kind: Run.Sequence
+metadata: { name: suggestModuleRefs_ResolvesPartialToken }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: suggest_module_refs
+      arguments:
+        query: consol
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        foundConsole: !cel >-
+          steps.parse.result.docs[0].refs.exists(r, r.ref == 'oci://ghcr.io/telorun/console')
+      expected:
+        foundConsole: true
     invoke:
       kind: Assert.Equals

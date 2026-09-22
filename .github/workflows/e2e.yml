@@ -176,6 +176,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -190,7 +192,46 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Gated on the two examples' own dependency graphs, same reasoning and
+      # same shape as the authoring agent's gate below: a job that never
+      # starts never reports, and a required check that never reports blocks
+      # the merge it was meant to guard. This job always runs and always
+      # reports; what it skips is the expensive part.
+      #
+      # `telo changed` walks the same relative-`imports:` edges `telo release`
+      # propagates a version bump along, so a change to a local sibling either
+      # example imports is caught the same way release would attribute it —
+      # without building anything. Neither example currently imports one
+      # relatively (both pin published `oci://` modules), so today this is
+      # equivalent to globbing each example's own directory, but it stops
+      # being a silent gap the day one of them starts to.
+      - name: Decide whether a live example changed
+        id: changed
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          git fetch --no-tags origin "${{ github.base_ref }}" || true
+          # FAIL OPEN, and read the ANSWER rather than the exit code: `changed`
+          # exits 1 for "unchanged", which is also what a crash, a bad flag or a
+          # missing toolchain exits. Treating that as "nothing changed" turns a
+          # broken gate into a silently disabled test — the one outcome worse
+          # than paying for a run. Only an explicit `false` skips.
+          verdict=$(pnpm run --silent telo changed \
+               ./examples/agent-console ./examples/chat-console \
+               examples/test-suite-live.yaml .github/workflows/e2e.yml \
+               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed')
+          if [ "$verdict" = "false" ]; then
+            echo "run=false" >> $GITHUB_OUTPUT
+            echo "No agent-console/chat-console changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "run=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Run the live example suite
+        if: steps.changed.outputs.run == 'true'
         run: pnpm run telo ./examples/test-suite-live.yaml
 
   # The authoring agent drives a real model against the live hub and authors a
@@ -211,6 +252,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       # The suite drives a real model through whole agent turns, so it costs
       # tens of minutes and real tokens on every run. Gated on the agent's own
       # files rather than skipped by a workflow-level `paths:` filter: a job
@@ -224,6 +292,11 @@ jobs:
       # the cost this gate exists to remove. Nothing else covers that coupling
       # now the workflow no longer runs on main, so a change there that is
       # expected to reach the agent wants a manual `workflow_dispatch`.
+      #
+      # `telo changed` walks the same relative-`imports:` edges `telo release`
+      # propagates a version bump along, so a change to a local sibling the
+      # agent imports (`./chat`, today) is caught the same way release would
+      # attribute it — without building anything.
       - name: Decide whether the agent changed
         id: changed
         shell: bash
@@ -238,53 +311,20 @@ jobs:
           # depth-limited ref has no merge base with HEAD, and the three-dot
           # diff below needs one.
           git fetch --no-tags origin "${{ github.base_ref }}" || true
-          # FAIL OPEN. A gate that cannot work out what changed must run the
-          # suite, not skip it: skipping turns a broken gate into a silently
-          # disabled test, which is the one outcome worse than paying for a run.
-          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD") || {
-            echo "run=true" >> $GITHUB_OUTPUT
-            echo "Could not diff against the base — running the suite anyway." >> $GITHUB_STEP_SUMMARY
-            exit 0
-          }
-          if printf '%s\n' "$changed" \
-             | grep -qE '^(apps/authoring-agent/|\.github/workflows/e2e\.yml$)'; then
-            echo "run=true" >> $GITHUB_OUTPUT
-          else
+          # FAIL OPEN, and read the ANSWER rather than the exit code: `changed`
+          # exits 1 for "unchanged", which is also what a crash, a bad flag or a
+          # missing toolchain exits. Treating that as "nothing changed" turns a
+          # broken gate into a silently disabled test — the one outcome worse
+          # than paying for a run. Only an explicit `false` skips.
+          verdict=$(pnpm run --silent telo changed \
+               ./apps/authoring-agent .github/workflows/e2e.yml \
+               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed')
+          if [ "$verdict" = "false" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No authoring-agent changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "run=true" >> $GITHUB_OUTPUT
           fi
-
-      - name: Setup Node.js
-        if: steps.changed.outputs.run == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Install pnpm
-        if: steps.changed.outputs.run == 'true'
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10.28.2
-
-      - name: Get pnpm store directory
-        if: steps.changed.outputs.run == 'true'
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        if: steps.changed.outputs.run == 'true'
-        uses: actions/cache@v3
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        if: steps.changed.outputs.run == 'true'
-        run: pnpm install --frozen-lockfile
 
       - name: Run authoring agent e2e suite
         if: steps.changed.outputs.run == 'true'

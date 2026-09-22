@@ -912,6 +912,146 @@ entries:
         error:
           code: -32603
           message: !cel "error.message"
+
+  # get_module — keyed facts, not schema text: everything /module answers, in
+  # one call, so a license/deprecation/runtime check needs no YAML parsing.
+  - name: get_module
+    description: |
+      Look up everything the hub knows about one tracked module by its
+      location ref: description, license, repository, publisher, deprecation,
+      runtime reach, every EXPORTED kind (with capability, description,
+      `extends` and runtime reach), every exported instance, and the full
+      version list. `version` defaults to the latest tracked version. Use this
+      for facts; use `get_module_manifest` when you need the exact schema to
+      author against.
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Module location ref exactly as returned by search_resources." }
+        version:
+          type: string
+          default: ""
+          description: "Tracked version to describe, or empty for the latest (default)."
+      required: [ref]
+      additionalProperties: false
+    handler: !ref Catalog.moduleDetail
+    inputs:
+      ref: !cel "request.arguments.ref"
+      version: !cel "request.arguments.?version.orValue('')"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            result.found
+              ? json({'module': result.module, 'kinds': result.kinds,
+                      'exportedResources': result.exportedResources, 'versions': result.versions})
+              : json({'error': 'Module not tracked', 'ref': request.arguments.ref})
+      isError: !cel "!result.found"
+
+  # list_module_versions — the import-pin lookup: an agent composing an
+  # `imports:` entry has no other way to learn a version's integrity hash.
+  - name: list_module_versions
+    description: |
+      List every version of a tracked module the hub has ingested, newest
+      first, each with its `integrity` pin (the `sha256-<base64url>` hash to
+      write after `@` in an `imports:` entry) when one is known. Use this to
+      pin a specific version instead of importing an unpinned `latest`.
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Module location ref exactly as returned by search_resources." }
+      required: [ref]
+      additionalProperties: false
+    handler: !ref Catalog.moduleVersionList
+    inputs:
+      ref: !cel "request.arguments.ref"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            result.found
+              ? json({'ref': request.arguments.ref, 'versions': result.versions})
+              : json({'error': 'Module not tracked', 'ref': request.arguments.ref})
+      isError: !cel "!result.found"
+
+  # find_implementations — the derived grouping axis: every kind that extends
+  # a contract, across module boundaries, without the contract's own module
+  # knowing any of them exist.
+  - name: find_implementations
+    description: |
+      List every exported kind that extends a given contract (e.g. every
+      backend of an abstract like `Sql.Connection`), across module boundaries.
+      `ref` + `kind` name the contract exactly as a hit's `extends` field does
+      (an empty `ref` means a `Telo.*` built-in abstract). Use this after
+      finding an abstract kind, to discover which concrete module implements it.
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Location ref of the module owning the extended kind (empty for a Telo.* built-in)." }
+        kind: { type: string, description: "Extended kind's suffix, e.g. Store." }
+      required: [ref, kind]
+      additionalProperties: false
+    handler: !ref Catalog.implementations
+    inputs:
+      ref: !cel "request.arguments.ref"
+      kind: !cel "request.arguments.kind"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'extends': {'ref': request.arguments.ref, 'kind': request.arguments.kind},
+                  'implementations': result.implementations})
+
+  # list_categories — the declared grouping facet, browsable directly instead
+  # of learned only as a side effect of one search_resources call.
+  - name: list_categories
+    description: |
+      List every domain category modules or kinds declare themselves under —
+      an open, author-declared vocabulary (`AI`, `Storage`, `Coordination`, …)
+      — each with how many modules and kinds sit in it. Pass a slug or label to
+      check it exists (as `search_resources`'s `category` argument would
+      resolve it) before searching, or omit it to browse the whole facet.
+    argumentsSchema:
+      type: object
+      properties:
+        category:
+          type: string
+          default: ""
+          description: "Optional slug or label to check against the vocabulary; omit to list every category."
+      additionalProperties: false
+    handler: !ref Search.categoryVocabulary
+    inputs:
+      category: !cel "request.arguments.?category.orValue('')"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'categories': result.categories.map(c, {'category': c.category, 'label': c.label,
+                                                          'modules': c.modules, 'kinds': c.kinds,
+                                                          'selected': c.selected})})
+
+  # suggest_module_refs — fuzzy ref typeahead, not semantic search: resolves a
+  # half-remembered or misspelled ref to the exact one registered with the hub.
+  - name: suggest_module_refs
+    description: |
+      Fuzzy-match a partial or misspelled module ref (e.g. "postgres") against
+      every ref registered with the hub, and return the exact ref plus its
+      latest version, description, repository and license. This is lexical
+      typeahead over refs, not semantic search over capability — use
+      `search_resources` to find a module by what it does.
+    argumentsSchema:
+      type: object
+      properties:
+        query: { type: string, description: "Partial or approximate module ref to resolve." }
+      required: [query]
+      additionalProperties: false
+    handler: !ref Catalog.refSuggestions
+    inputs:
+      q: !cel "request.arguments.query"
+    result:
+      content:
+        - type: text
+          text: !cel "json({'query': request.arguments.query, 'refs': result.refs})"
 ---
 kind: Mcp.HttpEndpoint
 metadata:
@@ -947,11 +1087,25 @@ instructions: !literal |
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.
+  - `get_module(ref, version?)` — keyed facts about one module (license,
+    repository, deprecation, runtime reach, every exported kind/instance,
+    every tracked version) without parsing manifest YAML.
+  - `list_module_versions(ref)` — every tracked version, newest first, with the
+    `integrity` pin to write after `@` in an `imports:` entry. Use this to pin
+    a version instead of importing an unpinned `latest`.
+  - `find_implementations(ref, kind)` — every exported kind extending a given
+    contract (e.g. backends of `Sql.Connection`), across module boundaries.
+  - `list_categories(category?)` — browse the domain facet directly, or check
+    a slug/label exists before passing it to `search_resources`.
+  - `suggest_module_refs(query)` — fuzzy ref typeahead for a half-remembered or
+    misspelled ref; not semantic search over capability.
 
   ## Composing an application
-  1. `search_resources` for each capability you need.
+  1. `search_resources` for each capability you need; `find_implementations`
+     once you have an abstract kind and need a concrete backend.
   2. `get_module_manifest` on each hit's `module.ref`; read the
      `Telo.Definition` schemas — never guess fields from a kind name.
+     `list_module_versions` first if you want a pinned, non-latest version.
   3. Write one `Telo.Application`. Declare dependencies in the `imports` map
      (PascalCase alias → the hit's `ref@version`, e.g.
      `S3: oci://ghcr.io/acme/telo-s3@1.2.0`). A hit's kind suffix is written as
