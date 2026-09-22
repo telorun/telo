@@ -32,12 +32,33 @@ export function decodePlainLiterals(
   external?: ExternalSchemaResolver,
   rootSchema: Record<string, any> = schema,
 ): unknown {
+  return mapTextLeaves(value, schema, decodePlainText, external, rootSchema);
+}
+
+/** What a text leaf becomes, given the schema node it sits at. */
+export type TextLeafMapper = (schema: Record<string, any>, text: string) => unknown;
+
+/**
+ * The walk {@link decodePlainLiterals} runs, with the leaf rule supplied: every
+ * string under `value` is replaced, IN PLACE, by what `leaf` returns for it and
+ * the schema node it sits at. The same union branch, the same stops at reference
+ * slots, compiled expressions and instances — so a caller asking another
+ * question of the text leaves (is this host path absolute?) visits exactly the
+ * leaves decoding does.
+ */
+export function mapTextLeaves(
+  value: unknown,
+  schema: Record<string, any>,
+  leaf: TextLeafMapper,
+  external?: ExternalSchemaResolver,
+  rootSchema: Record<string, any> = schema,
+): unknown {
   const walk = (node: unknown, raw: Record<string, any>, base: Record<string, any>): unknown => {
     const entered = resolveRefIn(raw, base, external);
     const selected = selectUnionBranch(entered.schema, node, entered.root, external);
     const { schema: here, root } = resolveRefIn(selected, entered.root, external);
 
-    if (typeof node === "string") return decodePlainText(here, node);
+    if (typeof node === "string") return leaf(here, node);
     if (!node || typeof node !== "object") return node;
     if (here["x-telo-ref"] !== undefined) return node;
     if (isCompiledValue(node) || isTaggedSentinel(node)) return node;

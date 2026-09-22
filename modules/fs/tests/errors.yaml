@@ -15,23 +15,23 @@ targets:
 ---
 kind: Fs.DirectoryCreation
 metadata: { name: makeDir }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !module-path ./__fixtures__
 ---
 kind: Fs.FileWrite
 metadata: { name: write }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !module-path ./__fixtures__
 ---
 kind: Fs.File
 metadata: { name: read }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !module-path ./__fixtures__
 ---
 kind: Fs.FileEdit
 metadata: { name: edit }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !module-path ./__fixtures__
 ---
 kind: Fs.FileRemoval
 metadata: { name: remove }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !module-path ./__fixtures__
 ---
 kind: Run.Sequence
 metadata: { name: test }

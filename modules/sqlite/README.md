@@ -10,10 +10,16 @@ Every `sql` operation (`Sql.Query`, `Sql.Command`, `Sql.Selection`, `Sql.Transac
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.13.0
   SQLite: oci://ghcr.io/telorun/sqlite@0.1.0
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: data.db          # resolved against the working directory
 ---
 kind: SQLite.Connection
 metadata: { name: Db }
-file: ./data.db
+file: !cel "variables.dbFile"
 ---
 kind: Sql.Command
 metadata: { name: AddUser }
@@ -26,7 +32,7 @@ inputs:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `file` | string | no | Database file path (e.g. `./data.db`); the parent directory is auto-created. Omit, or use `:memory:`, for an in-memory database. |
+| `file` | `:memory:` or `Telo.HostPath` | no | Absolute database file path, usually read from a variable declared `x-telo-type: Telo.HostPath` (which resolves a relative value against the working directory); the parent directory is auto-created. A relative literal is refused (`HOST_PATH_RELATIVE`). Omit, or use `:memory:`, for an in-memory database. |
 
 The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inline `${{ }}` parameters stay dialect-neutral. Migrations run with transactional DDL (a transactional-SQLite adapter wraps the batch), matching PostgreSQL.
 

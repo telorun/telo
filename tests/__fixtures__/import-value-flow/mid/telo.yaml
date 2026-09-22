@@ -9,6 +9,9 @@ imports:
       dbFile: "${{ variables.dbFile }}"
 variables:
   dbFile:
-    type: string
+    anyOf:
+      - const: ":memory:"
+      - type: string
+        x-telo-type: Telo.HostPath
 exports:
   resources: [ Data.db, Data.migrate ]

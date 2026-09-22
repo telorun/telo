@@ -1,0 +1,17 @@
+# A path built from a relative literal prefix is relative whatever follows it,
+# so its text alone decides: `telo check` refuses it, as the kernel would.
+kind: Telo.Application
+metadata:
+  name: HostPathLiteralPrefix
+  version: 1.0.0
+imports:
+  Http: ../../../modules/http-server
+variables:
+  site:
+    env: HOST_PATH_LITERAL_PREFIX_SITE
+    type: string
+    default: public
+---
+kind: Http.Static
+metadata: { name: site }
+root: !cel "'data/' + variables.site"

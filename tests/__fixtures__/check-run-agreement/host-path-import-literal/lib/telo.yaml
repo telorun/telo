@@ -1,0 +1,21 @@
+# Serves whatever directory its importer names. A library resolves nothing it is
+# given, so the value must arrive absolute.
+kind: Telo.Library
+metadata:
+  name: HostPathImportLiteralLib
+  version: 1.0.0
+  description: >-
+    Fixture library serving a directory named by its importer through a
+    host-path variable.
+imports:
+  Http: ../../../../../modules/http-server
+variables:
+  siteDir:
+    type: string
+    x-telo-type: Telo.HostPath
+exports:
+  resources: [site]
+---
+kind: Http.Static
+metadata: { name: site }
+root: !cel "variables.siteDir"

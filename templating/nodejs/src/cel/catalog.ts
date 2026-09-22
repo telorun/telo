@@ -15,6 +15,8 @@ export interface CelHandlers {
   base64Encode: (s: string) => string;
   base64Decode: (s: string) => string;
   json: (value: unknown) => string;
+  /** Join a relative path onto a base with the HOST's path rules. */
+  joinPath: (base: string, relative: string) => string;
 }
 
 /** RE2 regex engine for the CEL `regex*` functions — `re2js`, a pure-JS port of
@@ -897,6 +899,21 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     deterministic: true,
     hostBacked: false,
     build: () => (s: string) => JSON.parse(s),
+  },
+  // Paths. The one way to extend a host path: `variables.dataDir.joinPath('reports')`
+  // keeps it a `Telo.HostPath` (the analyzer types that overload), where `+`
+  // would make it a plain string. Host-backed because what a separator IS
+  // belongs to the machine running it.
+  {
+    name: "joinPath",
+    signature: "string.joinPath(string): string",
+    register: ["string.joinPath(string): string"],
+    category: "string",
+    summary:
+      "Join a relative path onto a path with the host's separator (`\\` on Windows). On a host path it yields a host path; an absolute argument is refused.",
+    deterministic: true,
+    hostBacked: true,
+    build: (h) => (base: string, relative: string) => h.joinPath(base, relative),
   },
   // Encoding
   {

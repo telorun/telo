@@ -8,9 +8,14 @@ metadata:
     fetch a single link's stats. Read-only over the shared SQLite database
     (durable business data — distinct from operational telemetry). Exports
     `Routes` for the app to mount under /admin.
+requires:
+  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 variables:
   dbFile:
     type: string
+    x-telo-type: Telo.HostPath
     description: Path to the shared SQLite database file.
 imports:
   Http: ../../../modules/http-server

@@ -41,6 +41,7 @@ variables:
   journalDir:
     env: DURABLE_VALUE_TYPES_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-value-types-test
 targets:
   - !ref test

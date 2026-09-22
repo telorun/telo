@@ -13,18 +13,26 @@ imports:
   Assert: ../../assert
 targets:
   - !ref test
+# The directory the test writes its scratch tree into — one anchor, from which
+# every `cwd` below is derived.
+variables:
+  fixturesDir:
+    env: FS_TREE_SYNC_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/fs/tests/__fixtures__
 ---
 kind: Fs.TreeSync
 metadata: { name: sync }
-cwd: ./modules/fs/tests/__fixtures__/scratch-tree
+cwd: !cel "variables.fixturesDir.joinPath('scratch-tree')"
 ---
 kind: Fs.TreeSnapshot
 metadata: { name: snap }
-cwd: ./modules/fs/tests/__fixtures__/scratch-tree
+cwd: !cel "variables.fixturesDir.joinPath('scratch-tree')"
 ---
 kind: Fs.FileRemoval
 metadata: { name: remove }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Run.Sequence
 metadata: { name: test }

@@ -1,0 +1,5 @@
+modules:
+  blueprints/approval-app: Added
+body: "Breaking: App `journal` is a required Telo.HostPath with no default: pass it from the
+  application's own variable declared x-telo-type: Telo.HostPath (for example default
+  `.telo/approvals`), which resolves it against the working directory."

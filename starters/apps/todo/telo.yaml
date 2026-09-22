@@ -18,20 +18,22 @@ imports:
 targets:
   - !ref migrate
   - !ref server
-files:
-  - public/app.js
-  - public/index.html
-  - public/style.css
 ports:
   http:
     env: PORT
     protocol: tcp
     default: 8077
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: todo.db
 ---
 kind: SQLite.Connection
 metadata:
   name: db
-file: ./todo.db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata:
@@ -81,4 +83,4 @@ mounts:
 kind: Http.Static
 metadata:
   name: ui
-root: ./public
+root: !module-path ./public

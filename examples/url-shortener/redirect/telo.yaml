@@ -8,9 +8,14 @@ metadata:
     Owns the read-through cache (Cache.View over the SQL lookup), the rate-limit
     guard, and the fire-and-forget click recorder (Run.Detach). Exports `Routes`
     for the app to mount.
+requires:
+  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 variables:
   dbFile:
     type: string
+    x-telo-type: Telo.HostPath
     description: Path to the shared SQLite database file.
 imports:
   Http: ../../../modules/http-server

@@ -1,18 +1,18 @@
 import type { LoadedModule, ManifestSource } from "@telorun/analyzer";
 import {
-  Kernel,
-  LocalFileSource,
   DebugWireSink,
+  Kernel,
+  lastBuildInputs,
+  LocalFileSource,
   LocalManifestCacheSource,
   resolveCacheRoot,
   resolveEntryDir,
   writeManifestCache,
-  lastBuildInputs,
   type RuntimeDiagnostic,
 } from "@telorun/kernel";
 import { SEVERITY, type RuntimeEvent } from "@telorun/sdk";
-import { PackageURL } from "packageurl-js";
 import * as fs from "fs";
+import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import type { Argv } from "yargs";
@@ -22,8 +22,9 @@ import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
 import { resolveEnvFiles } from "../env-files.js";
 import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
-import { outErrLine, output } from "../output.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
+import { outErrLine, output } from "../output.js";
+import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
 import { teeStdio } from "../stdio-tee.js";
 import { resolveUiBundle } from "../ui-fetch.js";
 
@@ -267,6 +268,8 @@ export type RunArgv = {
   watch: boolean;
   /** `--no-cache-write`: read the baked cache but never persist derived entries. */
   cacheWrite: boolean;
+  /** Write one JSON startup timing report; an empty value uses the entry directory. */
+  startupProfile?: string;
   /** Where the env-file walk starts. The manifest's own directory for an
    *  ordinary run — which is at or near where the command was typed — and the
    *  WORKING DIRECTORY for a packaged application, whose manifest sits at a
@@ -485,6 +488,38 @@ async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null)
   return kernel;
 }
 
+/** Drive the startup profile off the kernel's own lifecycle events, so the phases
+ *  follow `kernel.start()` rather than a copy of it. */
+function profileKernelStart(
+  kernel: Kernel,
+  profiler: StartupProfiler,
+  destination: string,
+  setPhase: (phase: string) => void,
+): void {
+  kernel.on("Kernel.ResourceInitializationStarting", () => {
+    profiler.end("kernelPreparation");
+    setPhase("resourceInitialization");
+    profiler.start("resourceInitialization");
+  });
+  kernel.on("Kernel.Initialized", () => profiler.end("resourceInitialization"));
+  kernel.on("Kernel.Starting", () => {
+    setPhase("targets");
+    profiler.start("targets");
+  });
+  kernel.on("Kernel.Started", async () => {
+    profiler.end("targets");
+    await writeStartupProfile(destination, profiler.report("started"));
+  });
+  kernel.on("Kernel.ResourceCreateCompleted", (event) => {
+    profiler.recordResourceCreate(event.payload);
+  });
+  kernel.on("Kernel.ResourceInitializationCompleted", (event) => {
+    profiler.recordResourceInitialization(event.payload);
+  });
+  setPhase("kernelPreparation");
+  profiler.start("kernelPreparation");
+}
+
 /**
  * Write-through to `<entry-dir>/.telo/manifests/` after a successful load. Same
  * persistence path as `telo install` — reuses `writeManifestCache` so cache
@@ -579,6 +614,12 @@ function reportError(argv: RunArgv, error: unknown, log: Logger, kernel?: Kernel
 }
 
 export async function run(argv: RunArgv): Promise<void> {
+  if (argv.watch && argv.startupProfile !== undefined) {
+    throw new Error("--startup-profile cannot be used with --watch; a watch session has multiple startup generations.");
+  }
+
+  const startupProfile = argv.startupProfile;
+  const profiler = startupProfile === undefined ? undefined : new StartupProfiler();
   const log = createLogger(argv.verbose);
   if (argv.watch) {
     await runWatch(argv, log);
@@ -596,8 +637,11 @@ export async function run(argv: RunArgv): Promise<void> {
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
   let loaded = false;
+  let phase = "kernelCreate";
   try {
+    profiler?.start("kernelCreate");
     const kernel = await buildKernel(argv, log, cacheRoot);
+    profiler?.end("kernelCreate");
     bootedKernel = kernel;
     debug?.attach(kernel);
     const shutdown = () => {
@@ -609,14 +653,23 @@ export async function run(argv: RunArgv): Promise<void> {
     process.once("SIGINT", shutdown);
     process.once("SIGTERM", shutdown);
 
+    phase = "envFiles";
+    profiler?.start("envFiles");
     applyEnvFiles(argv.envAnchor ?? argv.path, argv.debug);
+    profiler?.end("envFiles");
+    phase = "load";
+    profiler?.start("load");
     await kernel.load(argv.path, {
       cacheDir: cacheRoot,
       writeCache: argv.cacheWrite,
       ...(argv.analysisKey !== undefined ? { analysisKey: argv.analysisKey } : {}),
     });
+    profiler?.end("load");
     loaded = true;
+    phase = "manifestCachePersist";
+    profiler?.start("manifestCachePersist");
     await persistManifestCache(argv, kernel, log, cacheRoot);
+    profiler?.end("manifestCachePersist");
     debug?.markReady(kernel);
 
     // `--inspect` launches an inspector to look at the running app, so hold it
@@ -633,6 +686,11 @@ export async function run(argv: RunArgv): Promise<void> {
       log.info("[inspect] holding the application open — press Ctrl+C to exit");
     }
 
+    if (profiler && startupProfile !== undefined) {
+      profileKernelStart(kernel, profiler, startupProfile, (nextPhase) => {
+        phase = nextPhase;
+      });
+    }
     try {
       await kernel.start();
     } finally {
@@ -646,6 +704,15 @@ export async function run(argv: RunArgv): Promise<void> {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
+    if (profiler && startupProfile !== undefined) {
+      try {
+        await writeStartupProfile(startupProfile, profiler.report("failed", phase));
+      } catch (profileError) {
+        outErrLine(
+          `startup profile write failed: ${profileError instanceof Error ? profileError.message : String(profileError)}`,
+        );
+      }
+    }
     // Emitted BEFORE the sinks are torn down, or the one frame naming the cause
     // never reaches a consumer.
     emitRunFailed(debug, loaded ? "start" : "load", error);
@@ -810,6 +877,11 @@ export function runCommand(yargs: Argv): Argv {
           describe:
             "Start the live inspection endpoint. Optional [host:]port (default 127.0.0.1:9230).",
         })
+        .option("startup-profile", {
+          type: "string",
+          requiresArg: true,
+          describe: "Write a JSON startup timing report to <file>, without enabling debug tracing.",
+        })
         .option("open", {
           type: "boolean",
           default: true,
@@ -829,7 +901,7 @@ export function runCommand(yargs: Argv): Argv {
       // `--inspect` ([host:]port) and the global `-o` / `--output` are valued.
       // The valued-flag branch below skips the `=` form and the space form
       // alike, so neither leaks into kernel argv.
-      const knownValuedFlags = new Set(["--inspect", "--output", "-o"]);
+      const knownValuedFlags = new Set(["--inspect", "--output", "-o", "--startup-profile"]);
       const rawArgs = process.argv;
       const pathIdx = rawArgs.indexOf(argv.path as string);
       const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];

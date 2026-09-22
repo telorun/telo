@@ -1,0 +1,19 @@
+# A relative literal at a `Telo.HostPath` slot. It names nothing fixed — the
+# module's own directory and the working directory are both plausible readings —
+# so it is refused rather than guessed at: `telo check` reports it here, with a
+# repair to `!module-path`, and the kernel refuses the same value at creation.
+kind: Telo.Library
+metadata:
+  name: HostPathRelative
+  version: 1.0.0
+  description: >-
+    Fixture library serving a static directory named by a relative path, which
+    both telo check and the kernel refuse.
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  resources: [site]
+---
+kind: Http.Static
+metadata: { name: site }
+root: ./public

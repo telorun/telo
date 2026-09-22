@@ -41,6 +41,7 @@ variables:
   journalDir:
     env: DURABLE_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-replay-test
 targets:
   - !ref test

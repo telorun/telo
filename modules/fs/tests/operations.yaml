@@ -13,26 +13,34 @@ imports:
   Assert: ../../assert
 targets:
   - !ref test
+# The directory the test creates its scratch tree in — one anchor, from which
+# every `cwd` below is derived.
+variables:
+  fixturesDir:
+    env: FS_OPERATIONS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/fs/tests/__fixtures__
 ---
 kind: Fs.DirectoryCreation
 metadata: { name: makeDir }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Fs.FileWrite
 metadata: { name: write }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Fs.File
 metadata: { name: read }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Fs.FileEdit
 metadata: { name: edit }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Fs.DirectoryListing
 metadata: { name: list }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 # Rooted at this test's own scratch dir, not the shared __fixtures__: the
 # default-`cwd` check below lists it twice and compares the two results, and a
@@ -40,11 +48,11 @@ cwd: ./modules/fs/tests/__fixtures__
 # test's failure to report.
 kind: Fs.DirectoryListing
 metadata: { name: listScratch }
-cwd: ./modules/fs/tests/__fixtures__/scratch-ops
+cwd: !cel "variables.fixturesDir.joinPath('scratch-ops')"
 ---
 kind: Fs.FileRemoval
 metadata: { name: remove }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Run.Sequence
 metadata: { name: test }

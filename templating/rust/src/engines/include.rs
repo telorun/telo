@@ -37,26 +37,40 @@ impl IncludePathError {
 /// definition, so `..` below depth zero is an escape regardless of where the
 /// module sits on disk, and confinement never needs a filesystem to decide.
 pub fn normalize_include_path(source: &str) -> Result<String, IncludePathError> {
+    normalize_root_relative(source, "An include path", "exactly one file")
+}
+
+/// Normalize a `!module-path` source — a file or a directory that ships inside
+/// the module — by the same pure-string rules as an include path.
+pub fn normalize_module_path(source: &str) -> Result<String, IncludePathError> {
+    normalize_root_relative(source, "A module path", "one file or directory")
+}
+
+fn normalize_root_relative(
+    source: &str,
+    noun: &str,
+    names: &str,
+) -> Result<String, IncludePathError> {
     let raw = source.trim();
     if raw.is_empty() {
         return Err(IncludePathError::new(
-            "the path is empty — name a file relative to the module root.",
+            "the path is empty — name a location relative to the module root.",
         ));
     }
     if has_uri_scheme(raw) {
         return Err(IncludePathError::new(format!(
-            "'{raw}' names a location outside the module. An include path is a file that ships \
+            "'{raw}' names a location outside the module. {noun} names what ships \
              inside the module artifact, written relative to the module root."
         )));
     }
     if raw.contains(['*', '?', '[', ']', '{', '}']) {
         return Err(IncludePathError::new(format!(
-            "'{raw}' looks like a pattern. An include path names exactly one file."
+            "'{raw}' looks like a pattern. {noun} names {names}."
         )));
     }
     if raw.starts_with('/') || raw.starts_with('\\') {
         return Err(IncludePathError::new(format!(
-            "'{raw}' is an absolute path. An include path is written relative to the module root, \
+            "'{raw}' is an absolute path. {noun} is written relative to the module root, \
              so the same manifest resolves identically from a checkout and from a published artifact."
         )));
     }
@@ -70,8 +84,8 @@ pub fn normalize_include_path(source: &str) -> Result<String, IncludePathError> 
                 // artifact could never carry.
                 if out.pop().is_none() {
                     return Err(IncludePathError::new(format!(
-                        "'{raw}' points above the module root. An include path may only name a \
-                         file inside the module."
+                        "'{raw}' points above the module root. {noun} may only name what is \
+                         inside the module."
                     )));
                 }
             }
@@ -80,7 +94,7 @@ pub fn normalize_include_path(source: &str) -> Result<String, IncludePathError> 
     }
     if out.is_empty() {
         return Err(IncludePathError::new(format!(
-            "'{raw}' resolves to the module root, not to a file."
+            "'{raw}' resolves to the module root itself, which is not {names} of it."
         )));
     }
     Ok(out.join("/"))

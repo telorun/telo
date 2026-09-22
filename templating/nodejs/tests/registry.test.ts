@@ -50,6 +50,7 @@ describe("builtinEngines + createDefaultRegistry", () => {
       "include-bytes",
       "include-text",
       "literal",
+      "module-path",
       "ref",
       "sql",
     ]);

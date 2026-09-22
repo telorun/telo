@@ -20,7 +20,9 @@ requires:
   # consumer's `type: integer` and tells its author to write `!ref integer`.
   # 0.90.0: the `native:` and `sources:` blocks, which an older analyzer rejects
   # as unknown keys on the module doc. Verified by execution against 0.89.0.
-  telo: ">=0.90.0"
+  # 0.98.0: `Connection.file` is a `Telo.HostPath`, which an older analyzer
+  # rejects as X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 imports:
   Sql: ../sql
 exports:
@@ -121,16 +123,20 @@ controllers:
 schema:
   type: object
   examples:
-    - file: ./data.db
+    - file: /var/lib/app/data.db
     - file: ":memory:"
   properties:
     file:
       title: File
-      type: string
       description: >-
-        Path to the SQLite database file (e.g. `./data.db`). The parent
-        directory is created if missing. Omit, or use `:memory:`, for an
-        in-memory database.
+        Absolute path to the SQLite database file, usually read from a variable
+        declared `x-telo-type: Telo.HostPath` (which resolves a relative value
+        against the working directory). The parent directory is created if
+        missing. Omit, or use `:memory:`, for an in-memory database.
+      anyOf:
+        - const: ":memory:"
+        - type: string
+          x-telo-type: Telo.HostPath
 ---
 # SQLite.Table — SQLite's own vocabulary, which is honestly smaller than
 # PostgreSQL's because the engine is: five storage classes, no arrays, no

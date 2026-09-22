@@ -76,8 +76,8 @@ export function renderFixReplacement(
   tag?: DiagnosticFixTag,
 ): string | undefined {
   if (/[\n\r]/.test(originalSource) || /[\n\r]/.test(replacement)) return undefined;
-  if (tag === "ref") {
-    return `!ref ${isPlainSafe(replacement) ? replacement : doubleQuoted(replacement)}`;
+  if (tag === "ref" || tag === "module-path") {
+    return `!${tag} ${isPlainSafe(replacement) ? replacement : doubleQuoted(replacement)}`;
   }
   if (tag === "cel") return `!cel ${doubleQuoted(replacement)}`;
   const style = quoteStyleOf(originalSource);

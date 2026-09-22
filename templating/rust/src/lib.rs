@@ -10,9 +10,10 @@ pub mod sentinel;
 pub mod yaml_tags;
 
 pub use engines::include::{
-    is_include_engine, normalize_include_path, IncludePathError, INCLUDE_BYTES_ENGINE,
-    INCLUDE_TEXT_ENGINE,
+    is_include_engine, normalize_include_path, normalize_module_path, IncludePathError,
+    INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE,
 };
+pub use engines::module_path::MODULE_PATH_ENGINE;
 pub use sentinel::{
     is_tagged_sentinel, make_tagged_sentinel, ref_sentinel_source, tagged_sentinel_parts,
     REF_ENGINE,

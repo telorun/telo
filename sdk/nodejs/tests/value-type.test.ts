@@ -4,6 +4,8 @@ import { PLAIN_ENCODINGS } from "../src/plain-encoding.js";
 import { UnsignedInt } from "../src/cel-value-identity.js";
 import {
   CEL_SCALAR_FORMS,
+  hostAnchorOf,
+  isAbsoluteHostPath,
   markExactRendering,
   parseValueTypeEntry,
   VALUE_TYPES,
@@ -65,6 +67,38 @@ describe("value-type vocabulary", () => {
         description: "x",
       }),
     ).toThrow(/takes no 'base' or 'celType'/);
+  });
+
+  it("reads a host path: a brand over string anchored at the working directory", () => {
+    const entry = VALUE_TYPES.get("Telo.HostPath")!;
+    expect(entry).toMatchObject({ base: "string", fromHost: "working-directory" });
+    expect(entry.celType).toBeUndefined();
+    expect(hostAnchorOf({ "x-telo-type": "Telo.HostPath" })).toBe("working-directory");
+    expect(hostAnchorOf({ "x-telo-type": "Telo.TcpPort" })).toBeUndefined();
+  });
+
+  it("refuses an anchor on anything but a string, and one no runtime knows", () => {
+    const hostPath = (fields: Record<string, unknown>) => () =>
+      parseValueTypeEntry("anchor.json", {
+        name: "Telo.Anchored",
+        representation: "json",
+        base: "string",
+        description: "x",
+        ...fields,
+      });
+    expect(hostPath({ base: "integer", fromHost: "working-directory" })).toThrow(/needs a 'string' base/);
+    expect(hostPath({ fromHost: "home-directory" })).toThrow(/is not an anchor this runtime knows/);
+  });
+});
+
+describe("isAbsoluteHostPath", () => {
+  it("judges POSIX, drive-letter and UNC paths absolute on every host", () => {
+    for (const path of ["/srv/www", "C:\\data", "c:/data", "\\\\server\\share"]) {
+      expect(isAbsoluteHostPath(path)).toBe(true);
+    }
+    for (const path of ["./public", "public", "../up", "C:relative", ""]) {
+      expect(isAbsoluteHostPath(path)).toBe(false);
+    }
   });
 });
 

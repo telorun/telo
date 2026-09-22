@@ -13,9 +13,10 @@ metadata:
     answers with the assistant's reply.
   categories: [AI, Transport]
 # Forwarding the model and each tool reference through `self.<field>`, and
-# starting two entries through `targets:`, both need a kernel that knows them.
+# starting two entries through `targets:`, both need a kernel that knows them;
+# `history` being a `Telo.HostPath` needs 0.98.0.
 requires:
-  telo: ">=0.97.0"
+  telo: ">=0.98.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
@@ -38,7 +39,7 @@ metadata:
 capability: Telo.Service
 schema:
   type: object
-  required: [port, model, system]
+  required: [port, model, system, history]
   properties:
     port:
       title: Port
@@ -98,9 +99,12 @@ schema:
       x-telo-eval: compile
     history:
       title: History file
-      description: SQLite file the conversations are kept in.
+      description: >-
+        SQLite file the conversations are kept in, as an absolute path — pass it
+        from a variable declared `x-telo-type: Telo.HostPath`, which resolves a
+        relative value against the working directory.
       type: string
-      default: .telo/conversations.sqlite
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
 resources:
   - kind: SQLite.Connection

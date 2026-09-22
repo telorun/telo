@@ -12,7 +12,9 @@ metadata:
     durable — the development path and the production path differ in scale rather than
     in guarantee.
 requires:
-  telo: ">=0.79.0"
+  # 0.98.0: `Journal.directory` is a `Telo.HostPath`, which an older analyzer
+  # rejects as X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 imports:
   DurableLocal: ../durable-local
 exports:
@@ -51,7 +53,9 @@ schema:
     directory:
       title: Directory
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
       description: >-
-        Where run files are written. Created if absent. Everything under it belongs to
-        this journal — a run id becomes a file name there.
+        Absolute directory run files are written to, usually read from a variable
+        declared `x-telo-type: Telo.HostPath`. Created if absent. Everything under it
+        belongs to this journal — a run id becomes a file name there.

@@ -156,12 +156,12 @@ export type CheckDiagnosticSeverity = "error" | "warning" | "info" | "hint";
  *  parsed manifest, where a line number is not an address. A repair without its
  *  anchor is one nothing can apply.
  *
- *  `tag`, when present, makes the repair a tagged scalar — `!ref <replacement>`
- *  or `!cel "<replacement>"` — written over a value that is wrong because it is
- *  untagged. */
+ *  `tag`, when present, makes the repair a tagged scalar — `!ref <replacement>`,
+ *  `!cel "<replacement>"` or `!module-path <replacement>` — written over a value
+ *  that is wrong because it is untagged. */
 export interface CheckDiagnosticFix {
   replacement: string;
-  tag?: "ref" | "cel";
+  tag?: "ref" | "cel" | "module-path";
 }
 
 /** One analyzer finding, flattened to data. Positions are zero-based, matching

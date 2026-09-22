@@ -85,13 +85,14 @@ import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtPath } from "./dependency-injection.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
+import { refuseRelativeHostPaths } from "./host-paths.js";
+import { withListenerQuery } from "./resource-timing.js";
 import {
   computeAnalysisSignature,
   readAnalysisStamp,
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
 import {
-  cachePathForCanonical,
   legacyManifestsDirFallback,
   resolveCacheRoot,
   resolveEntryDir,
@@ -530,7 +531,10 @@ export class Kernel implements IKernel {
       {},
       [],
       this._createInstance.bind(this),
-      (event, payload, metadata) => this.eventBus.emit(event, payload, metadata),
+      withListenerQuery(
+        (event, payload, metadata) => this.eventBus.emit(event, payload, metadata),
+        (event) => this.eventBus.hasHandlers(event),
+      ),
     );
     this.rootContext.tracer = this.tracer;
     // Initialize built-in Runtime definitions first
@@ -1281,6 +1285,7 @@ export class Kernel implements IKernel {
       this.rootContext.setInitOrder(order);
     }
 
+    await this.eventBus.emit("Kernel.ResourceInitializationStarting", {});
     await this.rootContext.initializeResources();
 
     // Every declared sink has now attached, so the bootstrap buffer has done its
@@ -1987,6 +1992,15 @@ export class Kernel implements IKernel {
           runtime,
         ) as ResourceManifest)
       : resource;
+    // Validation saw an expression's placeholder; its result is known only now.
+    if (compile.length) {
+      refuseRelativeHostPaths(
+        processedResource as Record<string, unknown>,
+        configSchema as Record<string, any>,
+        resourceLabel,
+        schemaForRef,
+      );
+    }
 
     const parsedArgs = this.parseArgsForController(controller);
     const moduleCtx = this.findModuleContext(evalContext);

@@ -33,10 +33,16 @@ ports:
     env: PORT
     protocol: tcp
     default: 8066
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: tickets.db
 ---
 kind: SQLite.Connection
 metadata: { name: db }
-file: ./tickets.db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata: { name: tickets }

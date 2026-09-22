@@ -1,0 +1,30 @@
+# A kind whose host-path field defaults to a relative path. A default is text
+# the kind's author wrote, and nothing on the consumer's side says what it is
+# relative to — so it is refused at the kind, and by the kernel's validation of
+# any resource that leaves the field out.
+kind: Telo.Library
+metadata:
+  name: HostPathKindDefault
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a static-site kind whose root defaults to a
+    relative path, which both telo check and the kernel refuse.
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Site]
+---
+kind: Telo.Definition
+metadata:
+  name: Site
+extends: Http.Static
+schema:
+  type: object
+  properties:
+    root:
+      type: string
+      x-telo-type: Telo.HostPath
+      x-telo-eval: compile
+      default: ./public
+base:
+  root: !cel "self.root"

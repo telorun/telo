@@ -14,9 +14,10 @@ metadata:
     runs out after a deadline.
   categories: [Coordination, Transport]
 # Forwarding each handler reference through `self.<field>`, and starting two
-# entries through `targets:`, both need a kernel that knows them.
+# entries through `targets:`, both need a kernel that knows them;
+# `journal` being a `Telo.HostPath` needs 0.98.0.
 requires:
-  telo: ">=0.97.0"
+  telo: ">=0.98.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
@@ -39,7 +40,7 @@ metadata:
 capability: Telo.Service
 schema:
   type: object
-  required: [port, request, onApproved, onRejected]
+  required: [port, request, onApproved, onRejected, journal]
   properties:
     port:
       title: Port
@@ -81,9 +82,12 @@ schema:
       x-telo-eval: compile
     journal:
       title: Journal directory
-      description: Directory where requests and their progress are recorded.
+      description: >-
+        Directory where requests and their progress are recorded, as an absolute
+        path — pass it from a variable declared `x-telo-type: Telo.HostPath`,
+        which resolves a relative value against the working directory.
       type: string
-      default: .telo/approvals
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
     onApproved:
       title: On approved

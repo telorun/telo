@@ -13,6 +13,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
+    x-telo-type: Telo.HostPath
 targets:
   - !ref schema
 ---

@@ -185,6 +185,9 @@ export interface AnalyzeResult {
  *  costs no consumer a signature change. */
 export interface EngineFileClaim {
   readonly path: string;
+  /** The path may name a directory, which then claims every file beneath it.
+   *  Whether it does is a question for whoever holds the directory. */
+  readonly directory?: boolean;
 }
 
 /** Per-property templating engine. Matches a YAML tag (`!<name>`); the kernel

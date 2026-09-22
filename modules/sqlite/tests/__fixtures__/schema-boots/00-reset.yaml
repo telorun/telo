@@ -11,7 +11,7 @@ imports:
   Fs: ../../../../fs
   Run: ../../../../run
 variables:
-  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/schema-boots.db }
 targets:
   - !ref reset
 ---

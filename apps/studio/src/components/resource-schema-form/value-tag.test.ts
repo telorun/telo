@@ -16,8 +16,9 @@ describe("offeredValueTags", () => {
   });
 
   it("offers an embed where its produced type satisfies the slot", () => {
-    expect(ids({ type: "string" }, null)).toEqual(["include-text"]);
+    expect(ids({ type: "string" }, null)).toEqual(["include-text", "module-path"]);
     expect(ids({ "x-telo-type": "Telo.Bytes" }, null)).toEqual(["include-bytes"]);
+    expect(ids({ type: "string", "x-telo-type": "Telo.HostPath" }, null)).toContain("module-path");
   });
 
   it("keeps a byte embed off a string slot and text off a byte slot", () => {
@@ -27,10 +28,10 @@ describe("offeredValueTags", () => {
     expect(ids({ "x-telo-type": "Telo.Bytes" }, null)).not.toContain("include-text");
   });
 
-  it("offers both embeds at a slot that declares no type", () => {
+  it("offers every module-file tag at a slot that declares no type", () => {
     // An undeclared slot constrains nothing, so nothing about the value can
     // contradict it.
-    expect(ids({}, null).sort()).toEqual(["include-bytes", "include-text"]);
+    expect(ids({}, null).sort()).toEqual(["include-bytes", "include-text", "module-path"]);
   });
 
   it("never offers `ref` or `sql`", () => {

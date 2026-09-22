@@ -3,10 +3,20 @@
 Stores durable runs as append-only files in a directory — one file per run.
 
 ```yaml
+variables:
+  journalDir:
+    env: JOURNAL_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable     # resolved against the working directory
+---
 kind: Journal.Journal
 metadata: { name: runs }
-directory: ./.telo/durable
+directory: !cel "variables.journalDir"
 ```
+
+`directory` is a `Telo.HostPath`: an absolute path, so a relative literal is
+refused (`HOST_PATH_RELATIVE`) — read it from a host-path variable, as above.
 
 Point a [`DurableLocal.Workflow`](../durable-local/README.md) at it and its runs survive the process.
 

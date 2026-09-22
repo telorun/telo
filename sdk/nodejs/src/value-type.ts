@@ -71,6 +71,10 @@ export interface ValueTypeEntry {
   /** Non-live `instance` only — the symbolic name of the one canonical plain JSON
    *  form, which each runtime maps to its own codec ({@link PLAIN_ENCODINGS}). */
   readonly encoding?: string;
+  /** `json` over `string` only — the anchor ({@link HOST_ANCHORS}) a value
+   *  supplied by the host is resolved against. Its presence makes the type a
+   *  HOST PATH: every value of it must be absolute ({@link isAbsoluteHostPath}). */
+  readonly fromHost?: string;
   /** An instance whose consumption has effects, so it is exempt from validation
    *  rather than asserted. Exemption is from VALIDATION, never from TYPING. */
   readonly live: boolean;
@@ -133,6 +137,25 @@ const CEL_TYPE_FOR_BASE: Readonly<Record<string, string>> = {
 const CEL_TYPES_BEYOND_BASE: Readonly<Record<string, readonly string[]>> = {
   integer: ["uint"],
 };
+
+/**
+ * The closed vocabulary of `fromHost` anchors: what a host-supplied relative
+ * path is resolved against. Symbolic, like `encoding` — each runtime maps the
+ * name to its own implementation, and one it cannot map is a hard error there.
+ */
+export const HOST_ANCHORS: readonly string[] = ["working-directory"];
+
+/**
+ * True when `text` is an absolute path on SOME host: POSIX `/…`, a drive letter
+ * (`C:\…`, `C:/…`) or a UNC share (`\\server\…`).
+ *
+ * Host-neutral on purpose, because the static check and the runtime assertion
+ * run the same rule: a manifest written on Linux is checked in a browser and
+ * run on Windows. `./x`, `x` and `../x` are relative everywhere.
+ */
+export function isAbsoluteHostPath(text: string): boolean {
+  return /^(?:\/|\\\\|[A-Za-z]:[\\/])/.test(text);
+}
 
 /** The runtime form a declared scalar output is normalized to. */
 export type ScalarForm = "int64" | "uint64" | "double";
@@ -238,6 +261,7 @@ const ENTRY_KEYS = [
   "celType",
   "binding",
   "encoding",
+  "fromHost",
   "live",
   "parameters",
   "description",
@@ -351,6 +375,18 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
         );
       }
     }
+    if (data.fromHost !== undefined) {
+      const anchor = requireString(file, data, "fromHost");
+      if (base !== "string") {
+        throw new ValueTypeEntryError(file, "'fromHost' needs a 'string' base — it anchors a path");
+      }
+      if (!HOST_ANCHORS.includes(anchor)) {
+        throw new ValueTypeEntryError(
+          file,
+          `fromHost '${anchor}' is not an anchor this runtime knows (${HOST_ANCHORS.join(", ")})`,
+        );
+      }
+    }
     if (data.live === true) {
       throw new ValueTypeEntryError(file, "a 'json' representation cannot be 'live' — it is data");
     }
@@ -360,6 +396,9 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
         file,
         "an 'instance' representation takes no 'base' or 'celType' — its binding carries both",
       );
+    }
+    if (data.fromHost !== undefined) {
+      throw new ValueTypeEntryError(file, "an 'instance' representation takes no 'fromHost'");
     }
     requireString(file, data, "binding");
     // A live value is never serialized, so it has no plain form; every other
@@ -383,7 +422,11 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
     name,
     representation,
     ...(representation === "json"
-      ? { base: data.base as string, ...(data.celType === undefined ? {} : { celType: data.celType as string }) }
+      ? {
+          base: data.base as string,
+          ...(data.celType === undefined ? {} : { celType: data.celType as string }),
+          ...(data.fromHost === undefined ? {} : { fromHost: data.fromHost as string }),
+        }
       : {
           binding: data.binding as string,
           ...(data.encoding === undefined ? {} : { encoding: data.encoding as string }),
@@ -550,6 +593,12 @@ export function celTypeOfValueType(entry: ValueTypeEntry): string {
   if (entry.representation === "json") return entry.celType ?? entry.name;
   const binding = VALUE_TYPE_BINDINGS[entry.binding!];
   return binding!.celType;
+}
+
+/** The `fromHost` anchor of the value type a schema node declares — present
+ *  exactly when the slot holds a host path — or undefined. */
+export function hostAnchorOf(schema: unknown): string | undefined {
+  return valueTypeOf(schema)?.fromHost;
 }
 
 /** The plain encoding of the value type a schema node declares, or undefined

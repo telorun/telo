@@ -80,7 +80,13 @@ export type ModuleFileClaim =
        *  exactly what this module exists to hold. */
       readonly localPath?: string;
     })
-  | (ClaimBase & { readonly role: "assets" });
+  | (ClaimBase & {
+      readonly role: "assets";
+      /** The path may name a directory, claiming every file beneath it — which
+       *  it is, and whether anything is there, is asked of the directory by the
+       *  Node-side consumer that has one. */
+      readonly directory?: boolean;
+    });
 
 /** `pkg:telo/local/<format>?path=…` — the bundled-controller delivery mode.
  *  Anything else (`pkg:npm`, `pkg:cargo`) fetches from its own ecosystem and
@@ -165,7 +171,12 @@ function taggedClaims(json: unknown, registry: TemplatingEngineRegistry): Module
   walkCelExpressions(json, "", (source, path, engineName) => {
     const engine = registry.get(engineName);
     for (const claim of engine?.fileClaims?.(source) ?? []) {
-      claims.push({ role: "assets", path: claim.path, origin: `!${engineName} at '${path}'` });
+      claims.push({
+        role: "assets",
+        path: claim.path,
+        origin: `!${engineName} at '${path}'`,
+        ...(claim.directory ? { directory: true } : {}),
+      });
     }
   });
   return claims;

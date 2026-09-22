@@ -1,5 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { canonicalTypeSchemaId, OBSERVED_STATE_KEY } from "@telorun/sdk";
+import { canonicalTypeSchemaId, OBSERVED_STATE_KEY, VALUE_TYPES } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import {
   defaultRegistry,
@@ -114,7 +114,7 @@ import {
   type ReferrerRuleDiagnostic,
   type ReferrerRuleIssue,
 } from "./validate-referrer-rules.js";
-import { analyzerPeerBinder, analyzerPeersTarget } from "./peer-binding.js";
+import { analyzerPeerBinder, analyzerPeersTarget, navigatePath } from "./peer-binding.js";
 import {
   describeProjectionFailure,
   manifestListScope,
@@ -140,6 +140,7 @@ import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
 import {
   celTypeSatisfiesJsonSchema,
   checkSchemaCompatibility,
+  unionBranches,
   inlineNamedShapes,
   navigateSchemaToExprPath,
   substituteCelFields,
@@ -186,6 +187,9 @@ import { validateModuleArtifact } from "./validate-module-artifact.js";
 import { validateNativeEntries } from "./validate-native-entries.js";
 import { validateSourceEntries } from "./validate-source-entries.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
+import { validateHostPathDefaults } from "./validate-host-path-defaults.js";
+import { holdsHostPath, leadingRelativeLiteral } from "./host-path-slot.js";
+import { validateImportHostPaths } from "./validate-import-host-paths.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
@@ -1618,6 +1622,11 @@ export class StaticAnalyzer {
       // A file embed resolves at resource creation, so one written on a doc that
       // is never instantiated is read by nothing and would ship silently.
       diagnostics.push(...validateIncludePlacement(allManifests));
+      // A relative host path is read only where the host supplies it, so one a
+      // kind or a library writes as its own default names nothing fixed.
+      diagnostics.push(
+        ...validateHostPathDefaults(allManifests as unknown as ResourceManifest[], rootModules),
+      );
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
     // ...and over the manifests the DEFINITION REGISTRY holds, which are not
@@ -1802,6 +1811,15 @@ export class StaticAnalyzer {
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
     const kernelGlobals = buildKernelGlobalsIndex(allManifests, observedState, moduleFunctions);
+    // What an import hands a library's host-path input, read against the
+    // importer's own declarations — the library resolves nothing it is given.
+    diagnostics.push(
+      ...validateImportHostPaths(
+        allManifests as unknown as ResourceManifest[],
+        rootModules,
+        kernelGlobals,
+      ),
+    );
 
     // Fallback context for CEL in a slot with no `x-telo-context` annotation:
     // everything stays open except the typed `.status` nodes, so unknown-field
@@ -1835,6 +1853,8 @@ export class StaticAnalyzer {
       filePath?: string;
     })[] = [];
     const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
+    // The expression's source, for what its text alone decides.
+    const celSourceByPath = new Map<ResourceManifest, Map<string, string>>();
     // The schema an expression RESOLVES TO, beside the CEL type it carries. Both
     // are needed and neither replaces the other: the CEL type answers "does this
     // fit the slot at all", the schema answers "do their type arguments agree",
@@ -2187,6 +2207,26 @@ export class StaticAnalyzer {
             inherited.length > 0 && parentKind
               ? ` — ${inherited.map((f) => `'${f}'`).join(", ")} ${inherited.length > 1 ? "come" : "comes"} from '${parentKind}', which this kind extends without a 'base:' mapping, so the parent's required fields stay on this kind's author surface. Add 'base:' to set them internally; that also narrows the surface to this kind's own schema.`
               : "";
+          // A relative literal at a host-path slot is its own finding, with the
+          // repair that is right when the path names a file of the module.
+          if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
+            const written = navigatePath(m, issue.path);
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "HOST_PATH_RELATIVE",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: ${issue.message}`,
+              data: {
+                resource,
+                filePath,
+                path: issue.path,
+                ...(typeof written === "string"
+                  ? { fix: { replacement: written, tag: "module-path" as const } }
+                  : {}),
+              },
+            });
+            continue;
+          }
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "SCHEMA_VIOLATION",
@@ -2857,6 +2897,9 @@ export class StaticAnalyzer {
             let byPath = celTypeByPath.get(m);
             if (!byPath) celTypeByPath.set(m, (byPath = new Map()));
             byPath.set(path, result.type);
+            let sources = celSourceByPath.get(m);
+            if (!sources) celSourceByPath.set(m, (sources = new Map()));
+            sources.set(path, expr);
           }
 
           // The producer half of the type-argument check. A CEL type is a bare
@@ -2873,9 +2916,14 @@ export class StaticAnalyzer {
           // records nothing and no argument check fires: silence where the
           // analyzer knows least is the conservative direction, and the same one
           // `x-telo-step-context`'s pure-`value` typing takes.
-          const chain = effectiveContext ? plainChainOf(`\${{${expr}}}`) : undefined;
+          // A site with no context of its own still reads the kernel globals —
+          // `variables.dataDir` in a plain config field — whose declared schemas
+          // the host-path check needs as much as a step result's.
+          const chainContext =
+            effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
+          const chain = plainChainOf(`\${{${expr}}}`);
           if (chain) {
-            const produced = navigateSchemaToExprPath(effectiveContext!, chain);
+            const produced = navigateSchemaToExprPath(chainContext, chain);
             if (produced) {
               let byPath = celSourceSchemaByPath.get(m);
               if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
@@ -3001,6 +3049,25 @@ export class StaticAnalyzer {
       );
       const target = result ?? slot.schema;
       const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
+      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, target) && holdsHostPath(target)) {
+        const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";
+        const leading = leadingRelativeLiteral(expression, target);
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: leading !== undefined ? "HOST_PATH_RELATIVE" : "HOST_PATH_UNTYPED_SOURCE",
+          source: SOURCE,
+          message:
+            `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
+            (leading !== undefined
+              ? `this expression builds a path starting with '${leading}', which is relative.`
+              : `this expression produces a plain '${type}'.`) +
+            ` A host path comes from a variable declared x-telo-type: Telo.HostPath (which ` +
+            `resolves a relative value against the working directory), from !module-path, or ` +
+            `from .joinPath('sub/dir') on either.`,
+          data,
+        });
+        continue;
+      }
       if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, target)) {
         const expected = target["x-telo-type"] ?? target.type ?? "unknown";
         diagnostics.push(
@@ -3025,8 +3092,54 @@ export class StaticAnalyzer {
       // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
       // omitted argument is *any* in both directions, so an unmigrated producer
       // or consumer is never reported, and only a definite conflict is.
+      // A string that STARTS with relative text is relative whatever follows it
+      // — `'data/' + variables.name` — which the expression's text alone decides.
+      const leading = holdsHostPath(target)
+        ? leadingRelativeLiteral(celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "", target)
+        : undefined;
+      if (leading !== undefined) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "HOST_PATH_RELATIVE",
+          source: SOURCE,
+          message:
+            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' builds a path ` +
+            `starting with '${leading}', so it is relative, and a Telo.HostPath must be absolute. ` +
+            `Start it from a variable declared x-telo-type: Telo.HostPath, which resolves a ` +
+            `relative value against the working directory.`,
+          data,
+        });
+        continue;
+      }
       const produced = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
       if (!produced) continue;
+      // A host path forwarded from a source DECLARED as something else — a
+      // plain `type: string` field or variable — carries whatever relative text
+      // it was given, and is refused at creation for every consumer. The source
+      // is what must say what it holds. An undeclared source (an open result)
+      // says nothing either way and is left to the runtime.
+      if (
+        holdsHostPath(target) &&
+        !holdsHostPath(produced) &&
+        (produced.type !== undefined ||
+          produced["x-telo-type"] !== undefined ||
+          unionBranches(produced) !== undefined)
+      ) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "HOST_PATH_UNTYPED_SOURCE",
+          source: SOURCE,
+          message:
+            `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
+            `the value it reads is declared '${produced["x-telo-type"] ?? produced.type ?? "a union with no host-path branch"}', so a ` +
+            `relative path reaches it unresolved and is refused when the resource is created. ` +
+            `Declare the source 'x-telo-type: Telo.HostPath' — a variable resolves a relative ` +
+            `value against the working directory; any other source must already hold an ` +
+            `absolute one.`,
+          data,
+        });
+        continue;
+      }
       const { compatible, issues } = checkSchemaCompatibility(
         produced,
         target,

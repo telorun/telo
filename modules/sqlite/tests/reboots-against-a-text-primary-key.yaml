@@ -20,6 +20,15 @@ targets:
   - !ref firstBoot
   - !ref secondBoot
   - !ref test
+# Resolved against the working directory here, so both children receive the same
+# absolute path — a value a caller supplies is not the host's, and is never
+# resolved again.
+variables:
+  dbFile:
+    env: SQLITE_TEXT_PRIMARY_KEY_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/sqlite-text-primary-key.db
 ---
 # Both boots name the same file — the second one reconciles the declaration
 # against the database the first one created, which is the case under test. The
@@ -31,13 +40,13 @@ kind: App.Instance
 metadata: { name: firstBoot }
 source: ./__fixtures__/text-primary-key/telo.yaml
 variables:
-  dbFile: ./.telo/sqlite-text-primary-key.db
+  dbFile: !cel "variables.dbFile"
 ---
 kind: App.Instance
 metadata: { name: secondBoot }
 source: ./__fixtures__/text-primary-key/telo.yaml
 variables:
-  dbFile: ./.telo/sqlite-text-primary-key.db
+  dbFile: !cel "variables.dbFile"
 ---
 kind: Run.Loop
 metadata: { name: awaitBoots }

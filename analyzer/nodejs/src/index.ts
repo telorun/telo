@@ -244,6 +244,7 @@ export { readDeprecation } from "./deprecation.js";
 export type { Deprecation } from "./deprecation.js";
 export {
   ANNOTATION_KEYWORDS,
+  hostPathRelativeMessage,
   registerTeloKeywords,
   valueTypeKeyword,
   VALUE_TYPE_KEYWORD_VERSION,
@@ -457,7 +458,12 @@ export type { ParsedModuleVersion } from "./module-version-order.js";
 export { reconcileModuleVersions } from "./reconcile-module-versions.js";
 export type { VersionReconciliation } from "./reconcile-module-versions.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
-export { decodePlainLiterals } from "./plain-literal-decoding.js";
+export {
+  decodePlainLiterals,
+  mapTextLeaves,
+  type TextLeafMapper,
+} from "./plain-literal-decoding.js";
+export { holdsHostPath, hostAnchorFor } from "./host-path-slot.js";
 export type { DerivedSlot, DerivedSlotContext } from "./derived-slots.js";
 export {
     buildDocumentPositions,

@@ -71,6 +71,11 @@ const AUTHORABLE: Record<string, Omit<ValueTagOption, "id">> = {
     editor: "path",
     hint: "Contents of a file shipped with this module, as raw bytes.",
   },
+  "module-path": {
+    label: "!module-path",
+    editor: "path",
+    hint: "Location of a file or directory shipped with this module.",
+  },
 };
 
 /**

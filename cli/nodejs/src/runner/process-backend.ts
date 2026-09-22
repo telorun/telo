@@ -404,6 +404,7 @@ function spawnApp(args: SpawnAppArgs): ChildProcess {
     env: { ...process.env, ...args.env },
     stdio: ["pipe", "pipe", "pipe"],
     detached: process.platform !== "win32",
+    windowsHide: true,
   });
 
   child.stdout?.on("data", (chunk: Buffer) => args.onOutput(args.app.name, chunk, "stdout"));
@@ -437,7 +438,10 @@ function signalTree(child: ChildProcess, signal: NodeJS.Signals): void {
   try {
     if (process.platform === "win32") {
       // No process groups: taskkill walks the tree by pid.
-      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
       return;
     }
     // Negative pid = the process GROUP `detached` gave it.

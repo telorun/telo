@@ -50,6 +50,7 @@ variables:
   journalDir:
     env: DURABLE_COMPOSER_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-composer-test
 targets:
   - !ref test

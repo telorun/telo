@@ -83,7 +83,7 @@ code: |
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
-- [Serving static files & frontends](docs/static-files.md) — `Http.Static`, manifest-relative roots, SPA fallback, asset caching.
+- [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
 - [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
 
 ## Implementation Contract

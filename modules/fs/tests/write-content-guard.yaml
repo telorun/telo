@@ -14,14 +14,22 @@ imports:
   Assert: ../../assert
 targets:
   - !ref testContentGuard
+# The directory the test writes its scratch files into — one anchor, from which
+# every `cwd` below is derived.
+variables:
+  fixturesDir:
+    env: FS_WRITE_GUARD_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/fs/tests/__fixtures__
 ---
 kind: Fs.FileWrite
 metadata: { name: write }
-cwd: ./modules/fs/tests/__fixtures__/scratch-guard
+cwd: !cel "variables.fixturesDir.joinPath('scratch-guard')"
 ---
 kind: Fs.FileRemoval
 metadata: { name: remove }
-cwd: ./modules/fs/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Run.Sequence
 metadata: { name: testContentGuard }

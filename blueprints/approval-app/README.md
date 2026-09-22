@@ -39,7 +39,7 @@ onRejected:
 | `request` | JSON Schema of a submission. It validates `POST /requests` and reaches both handlers as `inputs.request`. |
 | `autoApprove` | CEL over the submission (`request.body`); a request it holds for is approved without review, `decidedBy: policy`. Default: every request is reviewed. |
 | `timeout` | How long a request waits for a reviewer before it is rejected, `decidedBy: deadline` (default `168h`). Counted from submission and kept across restarts. |
-| `journal` | Directory the requests and their progress are recorded in (default `.telo/approvals`). |
+| `journal` | Directory the requests and their progress are recorded in — required, an absolute path. Pass it from your application's own variable declared `x-telo-type: Telo.HostPath` (default e.g. `.telo/approvals`), which resolves it against the working directory. |
 | `onApproved` / `onRejected` | What runs once the decision is in — any invocable, declared inline or as `!ref`. Each receives `id`, `request`, `decidedBy` and `note`. |
 
 ## Endpoints

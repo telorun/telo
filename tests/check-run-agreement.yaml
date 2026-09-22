@@ -78,6 +78,17 @@ targets:
   - !ref moduleCallCycleAtRuntime
   - !ref moduleCallUnboundRule
   - !ref moduleCallUnboundRuleAtRuntime
+  - !ref hostPathRelative
+  - !ref hostPathRelativeAtRuntime
+  - !ref hostPathLiteralPrefix
+  - !ref hostPathComputedAtRuntime
+  - !ref modulePathMissingAtRuntime
+  - !ref hostPathUntypedSource
+  - !ref hostPathUntypedSourceAtRuntime
+  - !ref hostPathKindDefault
+  - !ref hostPathKindDefaultAtRuntime
+  - !ref hostPathImportLiteral
+  - !ref hostPathImportLiteralAtRuntime
   - !ref moduleCallUnboundLogging
   - !ref callableInstances
   - !ref callableInstanceSignatureAtRuntime
@@ -1127,3 +1138,116 @@ metadata:
 source: ./__fixtures__/check-run-agreement/cel-under-additional-properties.yaml
 expect:
   runs: true
+---
+# A relative literal at a `Telo.HostPath` slot is refused, with the repair that
+# makes it a module file…
+kind: Assert.Manifest
+metadata:
+  name: hostPathRelative
+source: ./__fixtures__/check-run-agreement/host-path-relative/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_RELATIVE
+      message: "/root must be an absolute Telo.HostPath"
+      fix: "./public"
+---
+# …and refused by the kernel at creation, from a consumer whose entry-scoped
+# check is silent about the library's internals.
+kind: Assert.Manifest
+metadata:
+  name: hostPathRelativeAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-relative/telo.yaml
+expect:
+  runFails: "must be an absolute Telo.HostPath"
+---
+# A path an expression builds from a relative literal prefix is relative
+# whatever follows, so it is refused statically as well as at creation…
+kind: Assert.Manifest
+metadata:
+  name: hostPathLiteralPrefix
+source: ./__fixtures__/check-run-agreement/host-path-literal-prefix.yaml
+expect:
+  errors:
+    - code: HOST_PATH_RELATIVE
+      message: "builds a path starting with 'data/'"
+  runFails: "Manifest validation failed"
+---
+# …while one read from a source declaring no type is known only once it is
+# evaluated, so the kernel refuses the result after compile-eval expansion.
+kind: Assert.Manifest
+metadata:
+  name: hostPathComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-computed.yaml
+expect:
+  runFails: "ERR_HOST_PATH_RELATIVE"
+---
+# A `!module-path` naming nothing: the loader asks the source and reports it,
+# and the kernel refuses it when the resource holding it is created.
+kind: Assert.Manifest
+metadata:
+  name: modulePathMissingAtRuntime
+source: ./__fixtures__/check-run-agreement/module-path-missing.yaml
+expect:
+  errors:
+    - code: MODULE_PATH_NOT_FOUND
+      message: "names 'no-such-directory', and there is nothing there"
+  runFails: "ERR_MODULE_PATH_NOT_FOUND"
+---
+# A host path read from a source declared a plain string carries relative text
+# through unresolved: reported at the slot that reads it…
+kind: Assert.Manifest
+metadata:
+  name: hostPathUntypedSource
+source: ./__fixtures__/check-run-agreement/host-path-untyped-source/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_UNTYPED_SOURCE
+      message: "'root' is a Telo.HostPath, but this expression produces a plain 'string'"
+---
+# …and refused by the kernel once the expression has produced it.
+kind: Assert.Manifest
+metadata:
+  name: hostPathUntypedSourceAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-untyped-source/telo.yaml
+expect:
+  runFails: "ERR_HOST_PATH_RELATIVE"
+---
+# A kind's relative default at a host-path field is resolved against nothing:
+# reported at the kind…
+kind: Assert.Manifest
+metadata:
+  name: hostPathKindDefault
+source: ./__fixtures__/check-run-agreement/host-path-kind-default/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_RELATIVE
+      message: "default './public' at 'schema.properties.root.default'"
+---
+# …and refused by the kernel for a resource that leaves the field out.
+kind: Assert.Manifest
+metadata:
+  name: hostPathKindDefaultAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-kind-default/telo.yaml
+expect:
+  runFails: "must be an absolute Telo.HostPath"
+---
+# A relative literal an import passes to a library's host-path input: the
+# library resolves nothing it is given, so it is reported at the import…
+kind: Assert.Manifest
+metadata:
+  name: hostPathImportLiteral
+source: ./__fixtures__/check-run-agreement/host-path-import-literal/mid/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_RELATIVE
+      message: "'./public' is passed to 'variables.siteDir'"
+      fix: "./public"
+---
+# …and refused by the kernel inside the library, from a consumer whose
+# entry-scoped check does not reach the import.
+kind: Assert.Manifest
+metadata:
+  name: hostPathImportLiteralAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-import-literal/telo.yaml
+expect:
+  runFails: "ERR_HOST_PATH_RELATIVE"

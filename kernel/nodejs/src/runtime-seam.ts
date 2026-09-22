@@ -300,6 +300,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     let parseDiagnostics: AnalysisDiagnostic[] = [];
     let versionDiagnostics: AnalysisDiagnostic[] = [];
     let migrationDiagnostics: AnalysisDiagnostic[] = [];
+    let modulePathDiagnostics: AnalysisDiagnostic[] = [];
     let moduleDocuments: ModuleDocuments[] = [];
     // Carried out of the try for the same reason the diagnostics are: analysis
     // runs over the MIGRATED tree while every path a caller resolves points at
@@ -319,6 +320,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       parseDiagnostics = graph.parseDiagnostics;
       versionDiagnostics = graph.versionDiagnostics;
       migrationDiagnostics = graph.migrationDiagnostics;
+      modulePathDiagnostics = graph.modulePathDiagnostics;
       manifests = flattenForAnalyzer(graph);
       // The zone stage derives each imported library's export contracts from
       // its own full documents, which the flattened list drops.
@@ -362,9 +364,12 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     });
     const diagnostics = remapMigratedPaths(loadedGraph, analysis);
     return {
-      diagnostics: [...migrationDiagnostics, ...versionDiagnostics, ...diagnostics].map(
-        toCheckDiagnostic,
-      ),
+      diagnostics: [
+        ...migrationDiagnostics,
+        ...versionDiagnostics,
+        ...modulePathDiagnostics,
+        ...diagnostics,
+      ].map(toCheckDiagnostic),
     };
   }
 }

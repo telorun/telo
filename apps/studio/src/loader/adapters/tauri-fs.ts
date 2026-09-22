@@ -73,4 +73,9 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
       applyDefaultIgnore: false,
     });
   }
+
+  async exists(base: string, relative: string): Promise<boolean> {
+    const { exists } = await import("@tauri-apps/plugin-fs");
+    return exists(pathResolve(base, relative));
+  }
 }

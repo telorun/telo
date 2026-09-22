@@ -38,7 +38,7 @@ tools:
 | `system` | What the assistant is told before every conversation. |
 | `tools` | What the assistant may call. Each entry is an `Ai.Tools` entry: `tool` (any invocable), `name`, `description`, `parameters` (JSON Schema of the arguments), and optional `inputs` / `result` mappings. Default: none. |
 | `maxSteps` | How many model turns one message may take, tool calls included (default `8`). A message that needs more fails with `ERR_AGENT_MAX_STEPS`. |
-| `history` | SQLite file the conversations are kept in (default `.telo/conversations.sqlite`). |
+| `history` | SQLite file the conversations are kept in — required, an absolute path. Pass it from your application's own variable declared `x-telo-type: Telo.HostPath` (default e.g. `.telo/conversations.sqlite`), which resolves it against the working directory. |
 
 ## Endpoints
 

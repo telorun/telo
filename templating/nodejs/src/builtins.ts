@@ -1,6 +1,7 @@
 import { celEngine } from "./engines/cel.js";
 import { includeBytesEngine, includeTextEngine } from "./engines/include.js";
 import { literalEngine } from "./engines/literal.js";
+import { modulePathEngine } from "./engines/module-path.js";
 import { refEngine } from "./engines/ref.js";
 import { sqlEngine } from "./engines/sql.js";
 import { TemplatingEngineRegistry } from "./registry.js";
@@ -17,6 +18,7 @@ export const builtinEngines: readonly TemplatingEngine[] = [
   includeBytesEngine,
   includeTextEngine,
   literalEngine,
+  modulePathEngine,
   refEngine,
   sqlEngine,
 ];

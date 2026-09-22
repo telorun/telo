@@ -1,0 +1,8 @@
+# Consumes the middle library. Its entry-scoped check does not reach that
+# library's imports, so the kernel's own refusal is what remains here.
+kind: Telo.Application
+metadata:
+  name: HostPathImportLiteralApp
+  version: 1.0.0
+imports:
+  Mid: ./mid

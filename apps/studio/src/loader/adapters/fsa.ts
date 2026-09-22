@@ -136,4 +136,19 @@ export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
       applyDefaultIgnore: false,
     });
   }
+
+  async exists(base: string, relative: string): Promise<boolean> {
+    const parts = this.toRelParts(pathResolve(base, relative));
+    if (parts.length === 0) return true;
+    try {
+      const parent = await this.resolveDir(parts.slice(0, -1));
+      for await (const name of parent.keys()) {
+        if (name === parts[parts.length - 1]) return true;
+      }
+      return false;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "NotFoundError") return false;
+      throw error;
+    }
+  }
 }

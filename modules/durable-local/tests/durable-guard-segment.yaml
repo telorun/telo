@@ -20,6 +20,7 @@ variables:
   journalDir:
     env: DURABLE_GUARD_SEGMENT_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-guard-segment-test
 targets:
   - !ref test

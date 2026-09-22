@@ -11,6 +11,7 @@ import type {
 import { desugarLoadedFile } from "./inline-imports.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
+import { collectModulePathDiagnostics } from "./module-path-existence.js";
 import { isModuleKind } from "./module-kinds.js";
 import { parseLoadedFile } from "./parse-loaded-file.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
@@ -496,6 +497,10 @@ export class Loader {
       overrides,
       migrationDiagnostics: collectMigrationDiagnostics(entry),
       versionDiagnostics: diagnostics,
+      modulePathDiagnostics: await collectModulePathDiagnostics(
+        entry,
+        this.sources.find((s) => s.supports(rootSource)),
+      ),
       parseDiagnostics: collectParseDiagnostics(modules),
       errors,
     };

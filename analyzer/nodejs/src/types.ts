@@ -62,9 +62,10 @@ export type PositionIndex = Map<string, Range>;
  *  `suggestedKind` field beside a CEL-specific one would leave every host
  *  wiring a separate action path for what is the same gesture.
  *
- *  `tag` makes the repair a TAGGED scalar — `!ref <replacement>` or
- *  `!cel "<replacement>"` — for a value that is wrong because it is untagged (a
- *  bare shape name, a bare reference, an untagged condition). A tagged repair
+ *  `tag` makes the repair a TAGGED scalar — `!ref <replacement>`,
+ *  `!cel "<replacement>"` or `!module-path <replacement>` — for a value that is
+ *  wrong because it is untagged (a bare shape name, a bare reference, an
+ *  untagged condition, a relative path at a host-path slot). A tagged repair
  *  is only ever stamped over an UNTAGGED value: a node's tag sits outside the
  *  span a repair replaces, so writing one over a tagged node would tag it
  *  twice. */
@@ -74,9 +75,9 @@ export interface DiagnosticFix {
 }
 
 /** The YAML tags a repair may write. */
-export type DiagnosticFixTag = "ref" | "cel";
+export type DiagnosticFixTag = "ref" | "cel" | "module-path";
 
-const FIX_TAGS: ReadonlySet<string> = new Set<DiagnosticFixTag>(["ref", "cel"]);
+const FIX_TAGS: ReadonlySet<string> = new Set<DiagnosticFixTag>(["ref", "cel", "module-path"]);
 
 /** The `data` stamp diagnostics carry. Loose by design — passes bolt their own
  *  keys on — but the fields every consumer reads are declared. */
@@ -129,6 +130,13 @@ export interface ManifestSource {
    *  Returns the source in the same format as read().source, or null if none found.
    *  Optional — only filesystem-capable sources implement this. */
   resolveOwnerOf?(fileUrl: string): Promise<string | null>;
+
+  /** Whether a file or directory exists at `relative`, resolved against the
+   *  directory of the file `base` names. Resolved by the source itself rather
+   *  than through `resolveRelative`, which may map an extension-less path to its
+   *  `telo.yaml`. Optional — only filesystem-capable sources implement this;
+   *  without it a `!module-path` naming nothing is refused by the runtime alone. */
+  exists?(base: string, relative: string): Promise<boolean>;
 }
 
 export interface LoadOptions {

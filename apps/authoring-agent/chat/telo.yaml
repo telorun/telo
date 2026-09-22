@@ -1430,6 +1430,8 @@ system: |
       duration string for a duration (`1h30m` read, `5400s` written).
     - `Telo.Uint64` — an unsigned 64-bit integer (CEL `uint`), declared over
       `type: integer`.
+    - `Telo.HostPath` — an absolute path on the machine running the app (a
+      plain `string` in CEL), declared over `type: string`. See "Paths" below.
 
   A type ARGUMENT is an ordinary schema node, so it nests with no new grammar: a
   built-in name, an inline shape, another parameterized type, or a `!ref` to a
@@ -2128,7 +2130,35 @@ system: |
     body: !include-text public/index.html } } }]` — never a `Run.Value` holding
     the markup. A whole directory of assets (a built SPA, images, several
     pages) is `Http.Static` mounted beside the `Http.Api`, not one route per
-    file.
+    file, with `root: !module-path ./public`.
+  - Paths: a slot typed `Telo.HostPath` (`Http.Static.root`) holds an ABSOLUTE
+    path on the host, and a relative literal there is an error — it names
+    nothing fixed. Two ways to write one, chosen by where the files come from:
+      - a file or directory that SHIPS WITH THE MODULE is
+        `!module-path ./public` — the embed rules above (literal, module-root
+        relative, inside a resource), but it yields the location, not the
+        contents, and may name a directory; publish and packaging carry it
+        with no `files:` entry;
+      - a location ON THE HOST — data the app writes, an upload directory, a
+        database file — comes from a variable declared
+        `x-telo-type: Telo.HostPath`, whose env value or `default:` may be
+        relative and resolves against the working directory
+        (`root: !cel "variables.reportsDir"`). Use the same variable for the
+        code that writes the files and the mount that serves them, so the two
+        can never point at different directories.
+    In CEL a host path is its own type, `Telo.HostPath`, not a string: extend
+    one with `.joinPath('sub/dir')` (the host's separator, `\` on Windows, and
+    it stays a host path), read it as text with `string(path)`, and never build
+    one with `+` — a plain string is refused where a host path is required.
+    Host-path slots include `Http.Static.root`, every Fs kind's `cwd`,
+    `SQLite.Connection.file` (`:memory:` or a host path) and a durable
+    journal's `directory`. The variable feeding one MUST itself be declared
+    `x-telo-type: Telo.HostPath` — a plain `type: string` one is an error
+    (`HOST_PATH_UNTYPED_SOURCE`) — and only an APPLICATION variable resolves a
+    relative value: a library or a blueprint takes the path from its importer,
+    so a blueprint's path field (`AgentApp.App.history`,
+    `ApprovalApp.App.journal`) is required and the app passes its own
+    host-path variable into it.
   - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
     `module.<field>` (always); `resources.X` (after that resource snapshots);
     `steps.<name>.result` (inside a Run.Sequence step); `request` (inside an

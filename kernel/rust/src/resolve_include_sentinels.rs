@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use telo_templating::{
-    is_tagged_sentinel, normalize_include_path, tagged_sentinel_parts, INCLUDE_BYTES_ENGINE,
-    INCLUDE_TEXT_ENGINE,
+    is_tagged_sentinel, normalize_include_path, normalize_module_path, tagged_sentinel_parts,
+    INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE, MODULE_PATH_ENGINE,
 };
 
 use crate::bundle::module_artifact::ModuleFiles;
@@ -118,6 +118,10 @@ fn visit(item: &mut Value, root: &mut ModuleRoot, cache: &mut IncludeCache) -> R
             *item = Value::String(read_embed(engine, source, root, cache)?);
             return Ok(());
         }
+        if engine == MODULE_PATH_ENGINE {
+            *item = Value::String(resolve_module_path(source, root)?);
+            return Ok(());
+        }
         // Another engine's marker is opaque.
         return Ok(());
     }
@@ -133,6 +137,40 @@ fn is_nested_declaration(value: &Value) -> bool {
     value
         .as_object()
         .is_some_and(|entries| entries.get("kind").and_then(Value::as_str).is_some())
+}
+
+/// A `!module-path` names a location, so resolving it reads nothing: it becomes
+/// the absolute path of the file or directory once the module's files are on
+/// disk, which is what a `Telo.HostPath` slot holds.
+fn resolve_module_path(source: &str, root: &mut ModuleRoot) -> Result<String, KernelError> {
+    let relative = normalize_module_path(source).map_err(|err| {
+        KernelError::new(
+            "ERR_MODULE_PATH_INVALID",
+            format!("Invalid `!{MODULE_PATH_ENGINE}` path: {}", err.message),
+        )
+    })?;
+    let path = root.dir(&relative)?.join(&relative);
+    let absolute = std::path::absolute(&path).map_err(|err| {
+        KernelError::new(
+            "ERR_MODULE_PATH_UNREADABLE",
+            format!("Cannot resolve '{relative}': '{}' has no absolute form ({err}).", path.display()),
+        )
+    })?;
+    match std::fs::metadata(&absolute) {
+        Ok(_) => Ok(absolute.display().to_string()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Err(KernelError::new(
+            "ERR_MODULE_PATH_NOT_FOUND",
+            format!(
+                "Cannot resolve '{relative}': nothing at '{}'. The path is relative to the module \
+                 root — the directory holding telo.yaml — not to the file the tag was written in.",
+                absolute.display()
+            ),
+        )),
+        Err(err) => Err(KernelError::new(
+            "ERR_MODULE_PATH_UNREADABLE",
+            format!("Cannot resolve '{relative}': '{}' could not be read ({err}).", absolute.display()),
+        )),
+    }
 }
 
 fn read_embed(
@@ -280,6 +318,25 @@ mod tests {
             .expect_err("an unlocatable module's files are refused");
         assert_eq!(err.code, "ERR_MODULE_FILES_UNAVAILABLE");
         assert!(err.message.contains("republish the module"), "{err}");
+    }
+
+    #[test]
+    fn resolves_a_module_path_to_an_absolute_location() {
+        let (dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "root": sentinel(MODULE_PATH_ENGINE, "./theme.txt") });
+        resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new()).unwrap();
+        let resolved = PathBuf::from(doc["root"].as_str().expect("a path"));
+        assert!(resolved.is_absolute());
+        assert_eq!(resolved, std::path::absolute(dir.path().join("theme.txt")).unwrap());
+    }
+
+    #[test]
+    fn reports_a_missing_module_path() {
+        let (_dir, manifest) = fixture();
+        let mut doc = json!({ "kind": "X", "root": sentinel(MODULE_PATH_ENGINE, "public") });
+        let err = resolve_include_sentinels(&mut doc, &manifest, &ModuleFiles::OnDisk, &mut IncludeCache::new())
+            .expect_err("nothing there is refused");
+        assert_eq!(err.code, "ERR_MODULE_PATH_NOT_FOUND");
     }
 
     #[test]

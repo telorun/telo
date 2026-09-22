@@ -16,6 +16,14 @@ imports:
   Assert: ../../assert
 targets:
   - !ref testGenerateThenSave
+# The directory the test writes its scratch image into — one anchor, from which
+# every `cwd` below is derived.
+variables:
+  fixturesDir:
+    env: AI_IMAGE_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/ai/tests/__fixtures__
 ---
 kind: AiEcho.EchoImageModel
 metadata: { name: echo }
@@ -27,19 +35,19 @@ model: !ref echo
 ---
 kind: Fs.FileWrite
 metadata: { name: saveImage }
-cwd: ./modules/ai/tests/__fixtures__/scratch-image
+cwd: !cel "variables.fixturesDir.joinPath('scratch-image')"
 ---
 kind: Fs.TreeSync
 metadata: { name: saveTree }
-cwd: ./modules/ai/tests/__fixtures__/scratch-image
+cwd: !cel "variables.fixturesDir.joinPath('scratch-image')"
 ---
 kind: Fs.File
 metadata: { name: readBack }
-cwd: ./modules/ai/tests/__fixtures__/scratch-image
+cwd: !cel "variables.fixturesDir.joinPath('scratch-image')"
 ---
 kind: Fs.FileRemoval
 metadata: { name: remove }
-cwd: ./modules/ai/tests/__fixtures__
+cwd: !cel "variables.fixturesDir"
 ---
 kind: Run.Sequence
 metadata: { name: testGenerateThenSave }
