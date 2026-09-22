@@ -5,7 +5,7 @@
 kind: Telo.Library
 metadata:
   name: AgentApp
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     A complete AI assistant from one declaration: pick a model, write the
     system prompt and list the tools the assistant may call, and get an HTTP

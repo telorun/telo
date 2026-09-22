@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.33.0 - 2026-09-22
+### Added
+* Every declared request location is read through its schema before CEL sees it, so a request field declared `type: integer` arrives in `request.*` as an int rather than a double.
+* Breaking: Http.Static root is a Telo.HostPath: an absolute directory. Write a directory that ships with the module as `root: !module-path ./public` — publish and packaging carry it with no files: entry — and one on the host from a variable declared x-telo-type: Telo.HostPath. A relative literal is refused (HOST_PATH_RELATIVE); it used to be resolved against the declaring manifest, which pointed a packaged application at its unpack cache. Requires telo >=0.98.0.
+
 ## 0.32.0 - 2026-09-19
 ### Added
 * A request body that declares additionalProperties false now refuses a property it does not declare. BREAKING for an API whose clients send extra fields: those requests previously succeeded with the undeclared value silently discarded, and now answer 400. A misspelled field name was the common case and was indistinguishable from success until someone read the row back. A schema that leaves the object open accepts extra properties and passes them to the handler as before.

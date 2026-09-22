@@ -3,15 +3,30 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.11.7
+    version: 0.11.8
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-ilQS0ci6asu6KstDB-gWJLYdrNBhGHaBjD73nfNq7ZI
+      image: sha256-ntyA7NUrKpL7PTrXC6ME3inmqdRtO8EpuYXf-iF7F7o
   apps/hub:
-    version: 0.9.1
+    version: 0.10.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-ocwEKmTlmZJz3hsvN5lFt5waQ7AOgBeZAjOKTN8whqk
+      image: sha256-MvYmgBTyQ_GnWd8_CvifxrPMp5sQ8CrZTrLnwb52gbQ
+  blueprints/agent-app:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun/blueprints
+    layers:
+      manifest: sha256-DT8fkCuiaxbc4t3-NpISSkTT4uBs-9MWr8m1xSSTwfE
+  blueprints/approval-app:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun/blueprints
+    layers:
+      manifest: sha256-X5xL5_yQdpuzikqwCO6grGaOAyKnwAMiZQB46csQ8HM
+  blueprints/workflow-app:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun/blueprints
+    layers:
+      manifest: sha256-B-TLPmoKioGxMC0YLdETfh8dCoWRcbrSsQ322lQw1eU
   modules/ai:
     version: 0.20.1
     registry: oci://ghcr.io/telorun
@@ -96,10 +111,10 @@ modules:
       controller/js: sha256-H5ImamXHPGvf5kv99wFTDgQUezUgDthcQG90yBTDJtQ
       manifest: sha256-CW6MJtVWkiATzR1ijijNA62vK1pNJShunce1vtnQlqE
   modules/crud:
-    version: 0.18.0
+    version: 0.19.0
     registry: oci://ghcr.io/telorun
     layers:
-      manifest: sha256-z1vlKIBG49qXlN7QOxkXXcOMpUo1Y_W35Nfx08sqruo
+      manifest: sha256-yd_tEzjSAdDcZwXmZXbvEJa9thYOB9u2a09XaxleDtU
   modules/durable:
     version: 0.2.1
     registry: oci://ghcr.io/telorun
@@ -107,11 +122,11 @@ modules:
       controller/js: sha256-i3Aoyk8PE3BOipLpEzHvhK7iDp-5BN6F44yYYIVsY8o
       manifest: sha256-UpOCnznsLANA4gBQYdyEMSSG8uIKZHqK98mirmejcpY
   modules/durable-journal-file:
-    version: 0.4.1
+    version: 0.5.0
     registry: oci://ghcr.io/telorun
     layers:
       controller/js: sha256-qlLxMv7oHspy0ZYLfoiCegnb9P1sXZ69nFHGK9cU_MY
-      manifest: sha256-pxb7Rs0quLBdC2egkL-1Wccqn8tBghccPXx2m45GIDE
+      manifest: sha256-LNAoY0IfSI2Yp6w0UWHucEip_xtGvqj3A3PPInbATZY
   modules/durable-journal-postgres:
     version: 0.5.1
     registry: oci://ghcr.io/telorun
@@ -143,11 +158,11 @@ modules:
       library/js: sha256-WAEm-QXIOsUMsP4RJcRsnvGtt_4LEGmUakh60YFgFdY
       manifest: sha256-6ce9AHHOWGtLolNYb7op_LQbe0HVliBROoFQtVQ_6sw
   modules/fs:
-    version: 0.10.1
+    version: 0.11.0
     registry: oci://ghcr.io/telorun
     layers:
       controller/js: sha256-0ajIfgJxAxRtDJESyYderahanTZd8AN6ujaAHAuneVA
-      manifest: sha256-LHd63jzVj_ztG0wmcvtN2VZvwQVaYva2XAbAtyXMJzo
+      manifest: sha256-cKx3RIIunkM3236DMAYm64HEvl0sqWeeBqrxdHUMrIA
   modules/gzip:
     version: 0.8.4
     registry: oci://ghcr.io/telorun
@@ -166,13 +181,13 @@ modules:
     layers:
       manifest: sha256-64D6DH4jUsyLH_Y48YHxYVANwqRf_1dgPQGWO83srTA
   modules/http-server:
-    version: 0.32.0
+    version: 0.33.0
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-LECze_d4UowiHyAsJ_3lUeplxtIJhICnX7JXJgOJiDU
       common: sha256-F0GRGqhKxcRAzIV6LQ1xxu-u0NYzWsblj9wZJPAy40w
-      controller/js: sha256-I_ab8MGJg0gUZu3QGvq-0xMDhtgfPnURxO6mCnfGJ_c
-      manifest: sha256-d5msoW5hvHE3uISIMpCuLDyNIB2HdbSD0uWYJTPY_yk
+      controller/js: sha256-jC71jmIbATtL906SEcwJ4D0xdj-8x6hvbOJzlAsFSs8
+      manifest: sha256-TRi5P_OUwrGZUUcAElcGSypSXTW98Vu-eubn6zK3vQw
   modules/idempotency:
     version: 0.10.0
     registry: oci://ghcr.io/telorun
@@ -344,12 +359,12 @@ modules:
     layers:
       manifest: sha256-iDUIHXJKk4xTLF8uWlwCTrz3s74bm4G2tmsyDvYDjoA
   modules/sqlite:
-    version: 0.5.1
+    version: 0.6.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-HAKl9YVVIYDN-8_06Dr9z8xlwdsVbEfN0bcHCmbsdbs
       controller/js: sha256-y6uYdn8fvYHf9CloZ-6YBDeBBlO3dhU-kQUkhb83wg8
-      manifest: sha256-XTM3v7xWpeapHyZVmLAtGftLtQ0E7M4AW2PLunzmMWk
+      manifest: sha256-h8pKiMXPgacm4YxC3hag1QnPFP-bj6jY_gab7iN5ChQ
       native/node+darwin+amd64+node-137: sha256-NGWTirV36YaZ40pvPooKW1jq8WCxYd3f2WI0UuvEIbs
       native/node+darwin+amd64+node-141: sha256-Ej09LuO8nhOZF-8hGYiMiJp9-IJJJEiHI0-N1HAEx7A
       native/node+darwin+arm64+node-137: sha256-BQv5qfdxzwh-OfZypybR2YsFWoAyXuf4128FSLFOZkY

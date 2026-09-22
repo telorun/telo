@@ -1,4 +1,0 @@
-modules:
-  blueprints/workflow-app: Added
-body: "WorkflowApp blueprint: one `WorkflowApp.App` declaration serves a list of
-  workflows over HTTP, each at its own endpoint, with a generated OpenAPI document."

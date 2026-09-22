@@ -1,7 +1,0 @@
-modules:
-  modules/fs: Added
-body: "Breaking: every kind's `cwd` is a Telo.HostPath: an absolute directory. Write a directory
-  that ships with the module as `!module-path ./dir`, and one on the host from a
-  variable declared x-telo-type: Telo.HostPath. A relative literal is refused
-  (HOST_PATH_RELATIVE); omitting `cwd` still means the working directory. Requires telo
-  >=0.98.0."
