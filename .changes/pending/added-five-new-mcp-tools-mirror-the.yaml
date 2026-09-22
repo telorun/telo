@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: "Five new MCP tools mirror the hub's keyed-read HTTP routes: get_module,
+  list_module_versions, find_implementations, list_categories, and suggest_module_refs."

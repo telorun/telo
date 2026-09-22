@@ -109,8 +109,14 @@ being linearized into a chain.
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
-| MCP (`search_resources`, `get_module_manifest`) | `POST /mcp` |
+| MCP (`search_resources`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
 | liveness | `GET /health` |
+
+**Every keyed HTTP read has an MCP twin.** `get_module` mirrors `GET /module`,
+`list_module_versions` mirrors `GET /module/versions`, `find_implementations`
+mirrors `GET /implementations`, `list_categories` mirrors `GET /categories`,
+and `suggest_module_refs` mirrors `GET /refs` — same handler, same shape,
+reached as a tool instead of a query string.
 
 **Exported instances are hits of their own.** `/search/resources` and
 `search_resources` return, beside the kind `hits`, an `instances` list: exported

@@ -62,10 +62,10 @@ import { parseAllDocuments } from "yaml";
 import { findModuleDoc, importSourceRefs } from "../commands/manifest-imports.js";
 import { assertLayerEntries, pinnedLayerBlob, type BuiltLayer } from "./built-layers.js";
 import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from "./manifest-text.js";
+import { expandDirectoryClaims } from "./module-path-claims.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, selectFiles } from "./select-files.js";
 import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
-import { expandDirectoryClaims } from "./module-path-claims.js";
 
 export interface ModulePayload {
   /** The `telo.yaml` that ships, byte for byte: canonicalized, pinned, includes
@@ -553,8 +553,10 @@ function siblingLibrariesOf(
   return out;
 }
 
-/** A relative `imports:` source resolved to the sibling's `telo.yaml`. */
-function resolveSiblingManifest(manifestDir: string, source: string): string {
+/** A relative `imports:` source resolved to the sibling's `telo.yaml`. Exported
+ *  for `telo changed`, which walks the same relative-import edges to find what
+ *  a manifest depends on without building anything they resolve to. */
+export function resolveSiblingManifest(manifestDir: string, source: string): string {
   const resolved = path.resolve(manifestDir, source);
   try {
     if (fs.statSync(resolved).isDirectory()) {

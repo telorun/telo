@@ -6,9 +6,8 @@ import "./color-bridge.js";
 
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { cliVersion } from "./distribution-versions.js";
-import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";
 import { celCommand } from "./commands/cel.js";
+import { changedCommand } from "./commands/changed.js";
 import { checkCommand } from "./commands/check.js";
 import { installCommand } from "./commands/install.js";
 import { migrateCommand } from "./commands/migrate.js";
@@ -20,12 +19,15 @@ import { runCommand } from "./commands/run.js";
 import { runnerCommand } from "./commands/runner.js";
 import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
+import { cliVersion } from "./distribution-versions.js";
+import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";
 
 let cli = yargs(hideBin(process.argv))
   .scriptName("telo")
   .usage("$0 <command> [options]");
 
 cli = celCommand(cli) as typeof cli;
+cli = changedCommand(cli) as typeof cli;
 cli = checkCommand(cli) as typeof cli;
 cli = installCommand(cli) as typeof cli;
 cli = migrateCommand(cli) as typeof cli;
