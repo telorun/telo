@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-09-22
+### Added
+* Breaking: Connection `file` is `:memory:` or a Telo.HostPath: an absolute database path, usually read from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. A relative literal is refused (HOST_PATH_RELATIVE) instead of being opened wherever the process happened to start. Requires telo >=0.98.0.
+
 ## 0.5.1 - 2026-09-19
 ### Fixed
 * An application whose table has a text primary key can boot against its own database again. SQLite backs such a key with an implicit index, which introspection read back as a column-level unique flag the declaration never carried; the second boot diffed unique true to false, called it an in-place constraint change and refused. The application worked once and failed every time after.

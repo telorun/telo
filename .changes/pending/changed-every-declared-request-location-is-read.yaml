@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "Every declared request location is read through its schema before CEL sees it, so
-  a request field declared `type: integer` arrives in `request.*` as an int rather than
-  a double."

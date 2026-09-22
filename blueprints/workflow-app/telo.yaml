@@ -8,7 +8,7 @@
 kind: Telo.Library
 metadata:
   name: WorkflowApp
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     A complete workflow application from one declaration: list the workflows,
     each with its path, its steps and its response, and get an HTTP server

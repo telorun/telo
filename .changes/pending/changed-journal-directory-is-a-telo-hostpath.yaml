@@ -1,5 +1,0 @@
-modules:
-  modules/durable-journal-file: Added
-body: "Breaking: Journal `directory` is a Telo.HostPath: an absolute directory, usually read from
-  a variable declared x-telo-type: Telo.HostPath. A relative literal is refused
-  (HOST_PATH_RELATIVE). Requires telo >=0.98.0."

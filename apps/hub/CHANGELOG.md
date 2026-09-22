@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-09-22
+### Added
+* Five new MCP tools mirror the hub's keyed-read HTTP routes: get_module, list_module_versions, find_implementations, list_categories, and suggest_module_refs.
+
 ## 0.9.1 - 2026-09-19
 ### Fixed
 * The hub declares the telo release it is actually readable by: 0.87.0 refuses nine of its routes, reading a CEL condition or a computed Retry-After against the scalar the shape declares, and 0.88 and 0.89 still refuse a module it imports. The authoring agent's primer gains the pattern for running and conversing with an application.

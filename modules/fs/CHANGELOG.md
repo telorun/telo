@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-09-22
+### Added
+* Breaking: every kind's `cwd` is a Telo.HostPath: an absolute directory. Write a directory that ships with the module as `!module-path ./dir`, and one on the host from a variable declared x-telo-type: Telo.HostPath. A relative literal is refused (HOST_PATH_RELATIVE); omitting `cwd` still means the working directory. Requires telo >=0.98.0.
+
 ## 0.10.1 - 2026-09-17
 ### Fixed
 * Writing content that is neither text nor bytes no longer claims bytes cannot be written inline in a manifest: the refusal names the ways raw bytes arrive - a producing resource or a file embedded with !include-bytes - and encoding: base64 for binary spelled out as text.
