@@ -34,6 +34,12 @@ import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
 import {
+  RESOURCE_CREATE_COMPLETED,
+  RESOURCE_INITIALIZATION_COMPLETED,
+  resourceTiming,
+  startTiming,
+} from "./resource-timing.js";
+import {
   REDACTED,
   redactSensitive,
   sensitivePathsOfInstance,
@@ -1142,11 +1148,14 @@ export class EvaluationContext implements IEvaluationContext {
       for (const resource of [...this.pendingResources]) {
         const name = resource.metadata.name;
         if (this.createdInstances.has(name)) continue;
+        const createStartedAt = startTiming(this.emit, RESOURCE_CREATE_COMPLETED);
+        let createOutcome: "created" | "skipped" | "failed" = "skipped";
         try {
           // const expanded = this.expand(resource) as ResourceManifest;
           // FIXME: Cannot expand it for all resources, needs to be selective
           const created = await this._createInstance(this, resource);
           if (created) {
+            createOutcome = "created";
             this.createdInstances.set(name, {
               resource: created.resource,
               instance: created.instance,
@@ -1199,14 +1208,23 @@ export class EvaluationContext implements IEvaluationContext {
             await this.emit(`${createdRes.kind}.${createdRes.metadata.name}.Created`, payload);
           }
         } catch (error) {
+          createOutcome = "failed";
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
           errors.set(name, formatErrorForDiagnostic(error));
+        }
+        if (createStartedAt !== undefined) {
+          await this.emit(
+            RESOURCE_CREATE_COMPLETED,
+            resourceTiming(resource, this.resourceId(resource.kind, name), createStartedAt, createOutcome),
+          );
         }
       }
 
       // Init sub-phase
       for (const [name, { resource, instance, ctx, source }] of [...this.createdInstances]) {
         if (this.resourceInstances.has(name) || this.withheldResources.has(name)) continue;
+        const initStartedAt = startTiming(this.emit, RESOURCE_INITIALIZATION_COMPLETED);
+        let initOutcome: "initialized" | "deferred" | "failed" = "failed";
         try {
           if (this.preInitHook) {
             this.preInitHook(
@@ -1296,6 +1314,7 @@ export class EvaluationContext implements IEvaluationContext {
           this.createdInstances.delete(name);
           errors.delete(name);
           progress = true;
+          initOutcome = "initialized";
           await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
             resource: {
               kind: resource.kind,
@@ -1305,8 +1324,15 @@ export class EvaluationContext implements IEvaluationContext {
             ...(this.owner ? { owner: this.owner } : {}),
           });
         } catch (error) {
+          if (isDeferral(error)) initOutcome = "deferred";
           if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
           errors.set(name, formatErrorForDiagnostic(error));
+        }
+        if (initStartedAt !== undefined) {
+          await this.emit(
+            RESOURCE_INITIALIZATION_COMPLETED,
+            resourceTiming(resource, this.resourceId(resource.kind, name), initStartedAt, initOutcome),
+          );
         }
       }
 

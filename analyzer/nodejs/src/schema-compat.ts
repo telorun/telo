@@ -8,6 +8,7 @@ import {
 import {
   celBaseOfValueType,
   celTypeOfValueType,
+  hostAnchorOf,
   isCompiledValue,
   readValueTypeSlot,
   VALUE_TYPE_BINDINGS,
@@ -56,7 +57,7 @@ export interface CompatibilityResult {
  *  `anyOf` and `oneOf` are one question here — which branches could accept this
  *  value — and their difference (exactly-one vs at-least-one) is a validation
  *  rule, not a compatibility one. */
-function unionBranches(schema: Record<string, any>): Record<string, any>[] | undefined {
+export function unionBranches(schema: Record<string, any>): Record<string, any>[] | undefined {
   const branches = schema.anyOf ?? schema.oneOf;
   if (!Array.isArray(branches) || branches.length === 0) return undefined;
   return branches.filter((b) => b && typeof b === "object") as Record<string, any>[];
@@ -415,6 +416,11 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
     const fieldBrand = brandOfSchema(schema);
     if (fieldBrand) return fieldBrand === celType;
     celType = sourceBase;
+  } else if (valueTypeOf(schema)?.fromHost !== undefined) {
+    // The one brand that is not gradual: a host path is made by anchoring
+    // (a host-path variable, `!module-path`, `.join` on one), so a plain string
+    // is not one however it was built.
+    return false;
   }
   // An `instance` slot holds exactly its binding's value, so at a non-live one an
   // expression of any other concrete CEL type is a mismatch — the assertion would
@@ -547,6 +553,9 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // declares none, because nothing validates it at dispatch.
   const placeholder = valueTypePlaceholder(schema) ?? liveValuePlaceholder(schema);
   if (placeholder !== undefined) return placeholder;
+  // A host path must be absolute, so its stand-in is one; whether the expression
+  // really yields an absolute path is only known once it is evaluated.
+  if (hostAnchorOf(schema) !== undefined) return "/";
   // A `json` value type written without a `type:` stands in as its base, so the
   // keyword's range check sees a number rather than nothing.
   const jsonEntry = valueTypeOf(schema);
@@ -561,6 +570,7 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // member chosen is irrelevant — only its acceptability to AJV matters, since
   // the real value is checked at runtime once the expression resolves.
   if (Array.isArray(schema.enum) && schema.enum.length > 0) return schema.enum[0];
+  if ("const" in schema) return schema.const;
   // A UNION with no `type` of its own. Without this, a whole-field CEL leaf at
   // such a slot gets `null`, which every branch then rejects — so a field
   // declared `anyOf: [array, boolean]` could not be written as an expression at
@@ -764,6 +774,11 @@ export function selectUnionBranch(
     .filter((b) => {
       const types = Array.isArray(b.type) ? b.type : b.type ? [b.type] : [];
       if (types.length > 0 && !types.includes(kind)) return false;
+      // A constant branch is the reading of exactly one scalar — `":memory:"`
+      // beside a path — so any other scalar is the other branch's.
+      if ("const" in b && (data === null || typeof data !== "object") && b.const !== data) {
+        return false;
+      }
       if (kind === "object" && Array.isArray(b.required)) {
         const keys = Object.keys(data as Record<string, unknown>);
         if (!(b.required as string[]).every((r) => keys.includes(r))) return false;

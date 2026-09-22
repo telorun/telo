@@ -57,14 +57,33 @@ set.
 ## `cwd`
 
 Each resource carries an optional `cwd` — the base directory invoke `path`s
-resolve against. A relative `cwd` (and the default) resolves against the process
-working directory; an absolute invoke `path` is used as-is. Where the invoke
-`path` is optional (`DirectoryListing`, `TreeSnapshot`), omitting it and passing
-an empty string both mean `cwd` itself — an empty string is a spelling of the
-default, not an error. It is **not** a
+resolve against; omitted, the working directory. An absolute invoke `path` is
+used as-is. Where the invoke `path` is optional (`DirectoryListing`,
+`TreeSnapshot`), omitting it and passing an empty string both mean `cwd` itself —
+an empty string is a spelling of the default, not an error. It is **not** a
 security boundary: nothing confines paths to `cwd`. Real isolation comes from
-where the kernel runs (the runner sandbox), not this field. `cwd` is a
-compile-time field, so it can be a `!cel` value (e.g. `!cel "variables.workspace"`).
+where the kernel runs (the runner sandbox), not this field.
+
+`cwd` is a `Telo.HostPath`, so it is absolute. A directory that ships with the
+module is `cwd: !module-path ./fixtures`; a directory on the host comes from a
+variable declared `x-telo-type: Telo.HostPath`, whose value — relative or not —
+resolves against the working directory:
+
+```yaml
+variables:
+  workspace:
+    env: WORKSPACE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: workspace
+---
+kind: Fs.File
+metadata: { name: ReadFile }
+cwd: !cel "variables.workspace"
+```
+
+A relative literal (`cwd: ./workspace`) is refused (`HOST_PATH_RELATIVE`), as is
+one read from a variable declared a plain string (`HOST_PATH_UNTYPED_SOURCE`).
 
 ## Text vs. binary
 
@@ -116,13 +135,16 @@ File **contents are never logged** — only where they went and how many bytes.
 imports:
   Fs: oci://ghcr.io/telorun/fs@0.1.0
 
+variables:
+  workspace: { env: WORKSPACE_DIR, type: string, x-telo-type: Telo.HostPath, default: workspace }
+---
 kind: Fs.File
 metadata: { name: ReadFile }
-cwd: ./workspace
+cwd: !cel "variables.workspace"
 ---
 kind: Fs.FileEdit
 metadata: { name: EditFile }
-cwd: ./workspace
+cwd: !cel "variables.workspace"
 # invoked from a Run.Sequence (or wrapped as an Ai.Tools tool):
 #   - name: Read
 #     invoke: !ref ReadFile

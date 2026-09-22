@@ -7,6 +7,18 @@ metadata:
     one library, resolved by another, and listed by a third, all over one server.
     The redirect is asserted as a 302 with its `Location` — a computed response
     header, which is the shape that used to be refused at boot.
+requires:
+  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
+# A value supplied to a child application is not anchored; this variable
+# resolves the relative default against the working directory.
+variables:
+  dbFile:
+    env: URL_SHORTENER_TEST_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/url-shortener-test.db
 imports:
   App: ../../../modules/app
   Run: ../../../modules/run
@@ -24,7 +36,7 @@ with:
     ports:
       http: 8085
     variables:
-      dbFile: ./.telo/url-shortener-test.db
+      dbFile: !cel "variables.dbFile"
 targets:
   - !ref app
 steps:

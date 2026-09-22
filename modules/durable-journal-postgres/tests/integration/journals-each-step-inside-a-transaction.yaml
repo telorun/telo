@@ -52,6 +52,7 @@ variables:
   journalDir:
     env: DURABLE_PG_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-postgres-test
 targets:
   - !ref test

@@ -6,8 +6,13 @@ imports:
   Sql: ../../../../modules/sql
   SQLite: ../../../../modules/sqlite
 variables:
+  # What the connection's `file` holds: in-memory, or a host path the importer
+  # resolved.
   dbFile:
-    type: string
+    anyOf:
+      - const: ":memory:"
+      - type: string
+        x-telo-type: Telo.HostPath
 exports:
   resources: [ db, migrate ]
 ---

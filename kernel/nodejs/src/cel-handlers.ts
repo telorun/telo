@@ -1,4 +1,6 @@
 import { createHash, createHmac } from "node:crypto";
+import path from "node:path";
+import { isAbsoluteHostPath } from "@telorun/sdk";
 
 /** Node implementations of the host-injected CEL functions (`crypto` / `Buffer`).
  *  The kernel wires these into the analyzer + loader; the CLI reuses them for
@@ -18,4 +20,25 @@ export const nodeCelHandlers = {
   // signature is `json(dyn): string`, so coerce that to "null" rather than break
   // the contract. (CEL `null` already serializes to "null".)
   json: (value: unknown) => JSON.stringify(value) ?? "null",
+  joinPath: joinPathWith(path),
 };
+
+/**
+ * `joinPath` under a platform's path rules — the host's at runtime (`\` on
+ * Windows, `/` elsewhere), so a relative path written with `/` joins into
+ * whatever the machine running it uses. An absolute argument is refused on
+ * either platform's reading: joining one names nothing under the base.
+ */
+export function joinPathWith(
+  rules: Pick<typeof path, "isAbsolute" | "join">,
+): (base: string, relative: string) => string {
+  return (base, relative) => {
+    if (rules.isAbsolute(relative) || isAbsoluteHostPath(relative)) {
+      throw new Error(
+        `joinPath('${relative}'): the argument is an absolute path, so joining it names nothing ` +
+          `under '${base}'. Pass a path relative to it.`,
+      );
+    }
+    return rules.join(base, relative);
+  };
+}

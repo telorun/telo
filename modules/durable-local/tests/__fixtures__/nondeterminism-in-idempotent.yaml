@@ -11,13 +11,19 @@ imports:
   Local: ../../
   Journal: ../../../durable-journal-file
   Run: ../../../run
+variables:
+  journalDir:
+    env: DURABLE_PROBE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-probe
 targets:
   - name: start
     invoke: !ref importer
 ---
 kind: Journal.Journal
 metadata: { name: journal }
-directory: .telo/probe
+directory: !cel "variables.journalDir"
 ---
 kind: Run.Value
 metadata: { name: upsert }

@@ -1,3 +1,4 @@
+mod background_command;
 mod cli_runner;
 mod local_runner;
 

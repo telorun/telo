@@ -39,10 +39,16 @@ secrets:
     env: WEBHOOK_TOKEN
     type: string
     default: local-dev-token
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: events.db
 ---
 kind: SQLite.Connection
 metadata: { name: db }
-file: ./events.db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata: { name: events }

@@ -10,7 +10,8 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::Command;
+
+use crate::background_command::background_command;
 
 const CONTAINER_NAME: &str = "telo-local-runner";
 const VOLUME_NAME: &str = "telo-local-runner-bundles";
@@ -285,7 +286,7 @@ async fn probe() -> AvailabilityReport {
 }
 
 async fn docker_daemon_reachable() -> io::Result<bool> {
-    let mut cmd = Command::new("docker");
+    let mut cmd = background_command("docker");
     cmd.arg("version").arg("--format").arg("{{.Server.Version}}");
     let out = tokio::time::timeout(Duration::from_secs(2), cmd.output())
         .await
@@ -376,7 +377,7 @@ fn stderr_tail(out: &std::process::Output) -> String {
 }
 
 async fn docker(args: &[&str]) -> io::Result<std::process::Output> {
-    Command::new("docker").args(args).output().await
+    background_command("docker").args(args).output().await
 }
 
 /// Run a docker command expecting success, treating a missing target ("No such

@@ -21,7 +21,8 @@ and module assets — already warmed. Nothing is fetched at run time.
 
 - **Your application's files**, computed from the manifest graph rather than
   copied from the project directory: partials, local imports, embedded
-  (`!include-text` / `!include-bytes`) files and module assets.
+  (`!include-text` / `!include-bytes`) files, every file under a
+  `!module-path` directory, and module assets.
 - **Every module you import**, materialized for the platform you named.
 - **A local module's built code.** A module reached by a relative `source:` —
   including the application's own `Telo.Definition`s — is built at package time
@@ -107,6 +108,15 @@ user.
 `secrets:` and `ports:` bind the same env vars they always did. `.env` and
 `.env.local` are read **from the working directory you run the binary in**, with
 the same walk `telo run` uses.
+
+**Files the application writes live in the working directory, not in the
+payload.** The payload unpacks to a cache directory (below) that belongs to the
+binary, so anything the manifest locates relative to *itself* lands there. Name
+runtime data — an output directory, a database file — with a variable typed
+`x-telo-type: Telo.HostPath`: its value, relative or not, resolves against the
+working directory, the same directory `.env` is read from and, when the binary is
+started by double-click, the one it sits in. Files that ship with the app — a
+frontend — are written with `!module-path`, and resolve inside the payload.
 
 **Signals and exit codes are unchanged.** SIGTERM and SIGINT unwind the app the
 way they do under `telo run`, so a packaged service drains and exits cleanly

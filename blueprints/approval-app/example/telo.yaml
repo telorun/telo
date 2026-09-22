@@ -31,6 +31,7 @@ variables:
   journal:
     env: EXPENSES_JOURNAL
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/expenses
   reviewDeadline:
     env: REVIEW_DEADLINE

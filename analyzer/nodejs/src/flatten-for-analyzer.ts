@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { LoadedGraph, LoadedModule } from "./loaded-types.js";
 import type { LoadedFile } from "./loaded-types.js";
 import { isModuleKind } from "./module-kinds.js";
+import { hostPathInputs as hostPathInputsOf } from "./host-path-slot.js";
 import {
   injectedDeclarations,
   readLibraryLifecycle,
@@ -566,6 +567,9 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   const sharedModules = new Set<string>();
   /** Every resource name each library declares, exported or not. */
   const declaredResources = new Map<string, readonly string[]>();
+  /** Each library's `variables.<name>` / `secrets.<name>` holding a host path,
+   *  with the non-path constants each also accepts. */
+  const hostPathInputs = new Map<string, Record<string, string[]>>();
   for (const [source, mod] of graph.modules) {
     if (source === graph.rootSource) continue; // root is an Application — no exports
     const libDoc = mod.owner.manifests.find((m) => m && isModuleKind(m.kind)) as
@@ -578,6 +582,8 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
     kindModules.push({ module: moduleName, exportsKinds: libDoc.exports?.kinds });
     const inputs = readResourceInputs(libDoc);
     if (inputs.length > 0) requiredResources.set(moduleName, inputs);
+    const hostPaths = hostPathInputsOf(libDoc as unknown as Record<string, unknown>);
+    if (Object.keys(hostPaths).length > 0) hostPathInputs.set(moduleName, hostPaths);
     if (readLibraryLifecycle(libDoc) === "shared") sharedModules.add(moduleName);
     declaredResources.set(
       moduleName,
@@ -617,6 +623,10 @@ function forwardReExports(graph: LoadedGraph, result: ResourceManifest[]): void 
   stampRequiredResources(imports, requiredResources, aliasToModule);
   stampSharedLifecycle(imports, sharedModules);
   stampDeclaredResources(imports, declaredResources);
+  for (const { manifest, targetModule } of imports) {
+    const inputs = hostPathInputs.get(targetModule);
+    if (inputs) (manifest.metadata as Record<string, unknown>).hostPathInputs = inputs;
+  }
 }
 
 /** Stamp `metadata.declaredResources` — every resource name the target library

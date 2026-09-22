@@ -22,6 +22,7 @@ variables:
   journalDir:
     env: DURABLE_SCHEDULED_VALUES_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-scheduled-values-test
 targets:
   - !ref test

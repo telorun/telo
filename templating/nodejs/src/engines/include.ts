@@ -30,32 +30,73 @@ export interface NormalizedIncludePath {
  * the module happens to sit on disk.
  */
 export function normalizeIncludePath(source: string): NormalizedIncludePath {
+  return normalizeRootRelativePath(source, INCLUDE_PATH_GRAMMAR);
+}
+
+/** Normalize a `!module-path` source — a file or a directory that ships inside
+ *  the module — by the same pure-string rules as an include path. */
+export function normalizeModulePath(source: string): NormalizedIncludePath {
+  return normalizeRootRelativePath(source, MODULE_PATH_GRAMMAR);
+}
+
+/** What differs between the tags that name a module-root-relative location:
+ *  their diagnostic codes and how a message names what the path must be. */
+interface RootRelativeGrammar {
+  readonly invalid: string;
+  readonly escapes: string;
+  /** "An include path" / "A module path". */
+  readonly noun: string;
+  /** What one such path names, for the refusal of a pattern. */
+  readonly names: string;
+  /** Where a location outside the module is written instead. */
+  readonly elsewhere: string;
+}
+
+const INCLUDE_PATH_GRAMMAR: RootRelativeGrammar = {
+  invalid: "INCLUDE_PATH_INVALID",
+  escapes: "INCLUDE_PATH_ESCAPES_MODULE",
+  noun: "An include path",
+  names: "exactly one file",
+  elsewhere: "To read a file at runtime from somewhere else, use Fs.File.",
+};
+
+const MODULE_PATH_GRAMMAR: RootRelativeGrammar = {
+  invalid: "MODULE_PATH_INVALID",
+  escapes: "MODULE_PATH_ESCAPES_MODULE",
+  noun: "A module path",
+  names: "one file or directory",
+  elsewhere: "A location on the host is a Telo.HostPath value, read from a variable.",
+};
+
+function normalizeRootRelativePath(
+  source: string,
+  grammar: RootRelativeGrammar,
+): NormalizedIncludePath {
   const raw = source.trim();
   if (raw === "") {
     return {
       diagnostic: {
-        code: "INCLUDE_PATH_INVALID",
-        message: "the path is empty — name a file relative to the module root.",
+        code: grammar.invalid,
+        message: "the path is empty — name a location relative to the module root.",
       },
     };
   }
   if (URI_SCHEME.test(raw)) {
     return {
       diagnostic: {
-        code: "INCLUDE_PATH_INVALID",
+        code: grammar.invalid,
         message:
-          `'${raw}' names a location outside the module. An include path is a file that ships ` +
-          `inside the module artifact, written relative to the module root. To read a file at ` +
-          `runtime from somewhere else, use Fs.File.`,
+          `'${raw}' names a location outside the module. ${grammar.noun} names what ships ` +
+          `inside the module artifact, written relative to the module root. ${grammar.elsewhere}`,
       },
     };
   }
   if (GLOB_CHARS.test(raw)) {
     return {
       diagnostic: {
-        code: "INCLUDE_PATH_INVALID",
+        code: grammar.invalid,
         message:
-          `'${raw}' looks like a pattern. An include path names exactly one file, because ` +
+          `'${raw}' looks like a pattern. ${grammar.noun} names ${grammar.names}, because ` +
           `publish places each claimed file into a layer by name.`,
       },
     };
@@ -63,9 +104,9 @@ export function normalizeIncludePath(source: string): NormalizedIncludePath {
   if (raw.startsWith("/") || raw.startsWith("\\")) {
     return {
       diagnostic: {
-        code: "INCLUDE_PATH_ESCAPES_MODULE",
+        code: grammar.escapes,
         message:
-          `'${raw}' is an absolute path. An include path is written relative to the module ` +
+          `'${raw}' is an absolute path. ${grammar.noun} is written relative to the module ` +
           `root, so the same manifest resolves identically from a checkout and from a ` +
           `published artifact.`,
       },
@@ -85,9 +126,9 @@ export function normalizeIncludePath(source: string): NormalizedIncludePath {
     if (out.length === 0) {
       return {
         diagnostic: {
-          code: "INCLUDE_PATH_ESCAPES_MODULE",
+          code: grammar.escapes,
           message:
-            `'${raw}' points above the module root. An include path may only name a file ` +
+            `'${raw}' points above the module root. ${grammar.noun} may only name what is ` +
             `inside the module, since that is the only thing its artifact can carry.`,
         },
       };
@@ -97,8 +138,10 @@ export function normalizeIncludePath(source: string): NormalizedIncludePath {
   if (out.length === 0) {
     return {
       diagnostic: {
-        code: "INCLUDE_PATH_INVALID",
-        message: `'${raw}' resolves to the module root, not to a file.`,
+        code: grammar.invalid,
+        message:
+          `'${raw}' resolves to the module root itself, which is not ${grammar.names} of it — ` +
+          `name what inside it you mean.`,
       },
     };
   }

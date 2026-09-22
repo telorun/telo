@@ -1,5 +1,5 @@
 import { Environment } from "@marcbachmann/cel-js";
-import type { ResourceManifest } from "@telorun/sdk";
+import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
@@ -44,9 +44,7 @@ export function buildTypedCelEnvironment(
     // (shared with the kernel runtime) is untouched — a branded value flows as
     // a plain integer at runtime, so only static checking needs these. cel-js
     // auto-generates a field-less wrapper class; no runtime constructor needed.
-    for (const brand of Object.keys(VALUE_BRAND_BASE)) {
-      (env as any).registerType(brand, { fields: {} });
-    }
+    registerValueBrands(env);
 
     // `variables` / `secrets`: the DECLARING module's blocks, which is the
     // contract the resource's CEL is evaluated against at runtime. Read the
@@ -171,9 +169,7 @@ export function buildParameterCelEnvironment(
   contextSchema: Record<string, any> | null,
 ): Environment {
   const env = baseEnv.clone();
-  for (const brand of Object.keys(VALUE_BRAND_BASE)) {
-    (env as any).registerType(brand, { fields: {} });
-  }
+  registerValueBrands(env);
   for (const [name, propSchema] of Object.entries(
     (contextSchema?.properties ?? {}) as Record<string, any>,
   )) {
@@ -195,6 +191,29 @@ export function buildParameterCelEnvironment(
  */
 export function isKindDocument(manifest: ResourceManifest): boolean {
   return manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
+}
+
+/**
+ * Register every nominal value brand on an analysis environment, with what a
+ * brand may do: convert to its base with the base's own conversion
+ * (`int(ports.http)`, `string(variables.dataDir)`), and — for a host path — be
+ * extended with `.joinPath(relative)` and stay one.
+ *
+ * Static only: at runtime a branded value IS its base (an int, a string), so the
+ * catalog's own overloads — `string.joinPath` among them — are what evaluate. The
+ * implementations below exist because registration requires one; a brand's
+ * values never reach them.
+ */
+function registerValueBrands(env: Environment): void {
+  for (const [brand, base] of Object.entries(VALUE_BRAND_BASE)) {
+    (env as any).registerType(brand, { fields: {} });
+    (env as any).registerFunction(`${base}(${brand}): ${base}`, (value: unknown) => value);
+    if (VALUE_TYPES.get(brand)?.fromHost !== undefined) {
+      (env as any).registerFunction(`${brand}.joinPath(string): ${brand}`, () => {
+        throw new Error("joinPath() is evaluated by the runtime, not the analyzer.");
+      });
+    }
+  }
 }
 
 /** Register a `variables`/`secrets` namespace typed from a module doc's schema map
@@ -230,9 +249,7 @@ export function buildImportInputCelEnvironment(
   moduleManifest: ResourceManifest | undefined,
 ): Environment {
   const env = baseEnv.clone();
-  for (const brand of Object.keys(VALUE_BRAND_BASE)) {
-    (env as any).registerType(brand, { fields: {} });
-  }
+  registerValueBrands(env);
   const mod = moduleManifest as Record<string, unknown> | undefined;
   // Typing variables/secrets from the importer's schema can fail on a malformed
   // schema; degrade those to permissive `map` if so — but never lose the

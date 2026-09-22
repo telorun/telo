@@ -29,10 +29,16 @@ ports:
     env: PORT
     protocol: tcp
     default: 8067
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: notes.db
 ---
 kind: SQLite.Connection
 metadata: { name: db }
-file: ./notes.db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata: { name: notes }

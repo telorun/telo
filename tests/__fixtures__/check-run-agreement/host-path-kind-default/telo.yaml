@@ -1,0 +1,12 @@
+# Consumes the library beside it, leaving `root` to the kind's default. Its
+# entry-scoped check does not reach the library's kind, so the kernel's own
+# refusal is what remains here.
+kind: Telo.Application
+metadata:
+  name: HostPathKindDefaultApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+---
+kind: Lib.Site
+metadata: { name: site }

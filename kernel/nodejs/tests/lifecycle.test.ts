@@ -18,6 +18,7 @@ function makeKernel(): { kernel: Kernel; memory: MemorySource } {
 function recordEvents(kernel: Kernel): string[] {
   const events: string[] = [];
   for (const name of [
+    "Kernel.ResourceInitializationStarting",
     "Kernel.Initialized",
     "Kernel.Starting",
     "Kernel.Started",
@@ -31,6 +32,32 @@ function recordEvents(kernel: Kernel): string[] {
 
 describe("Kernel lifecycle split", () => {
   describe("boot()", () => {
+    it("emits timings for each resource create and initialization attempt", async () => {
+      const { kernel } = makeKernel();
+      await kernel.load("memory://app");
+      const createAttempts: any[] = [];
+      const initAttempts: any[] = [];
+      kernel.on("Kernel.ResourceCreateCompleted", (event) => createAttempts.push(event.payload));
+      kernel.on("Kernel.ResourceInitializationCompleted", (event) => initAttempts.push(event.payload));
+
+      await kernel.boot();
+
+      expect(createAttempts).toEqual([
+        expect.objectContaining({
+          resource: expect.objectContaining({ kind: "Telo.Application", name: "LifecycleTestApp" }),
+          durationMs: expect.any(Number),
+          outcome: "created",
+        }),
+      ]);
+      expect(initAttempts).toEqual([
+        expect.objectContaining({
+          resource: expect.objectContaining({ kind: "Telo.Application", name: "LifecycleTestApp" }),
+          durationMs: expect.any(Number),
+          outcome: "initialized",
+        }),
+      ]);
+    });
+
     it("initializes resources without running targets", async () => {
       const { kernel } = makeKernel();
       await kernel.load("memory://app");
@@ -38,7 +65,7 @@ describe("Kernel lifecycle split", () => {
 
       await kernel.boot();
 
-      expect(events).toEqual(["Initialized"]);
+      expect(events).toEqual(["ResourceInitializationStarting", "Initialized"]);
     });
 
     it("makes the kernel ready for invoke() before runTargets()", async () => {
@@ -221,14 +248,21 @@ describe("Kernel lifecycle split", () => {
   });
 
   describe("start() contract preservation", () => {
-    it("produces the same event order as before the split", async () => {
+    it("produces resource initialization and lifecycle events in order", async () => {
       const { kernel } = makeKernel();
       await kernel.load("memory://app");
       const events = recordEvents(kernel);
 
       await kernel.start();
 
-      expect(events).toEqual(["Initialized", "Starting", "Started", "Stopping", "Stopped"]);
+      expect(events).toEqual([
+        "ResourceInitializationStarting",
+        "Initialized",
+        "Starting",
+        "Started",
+        "Stopping",
+        "Stopped",
+      ]);
     });
 
     it("tolerates teardown() after a load() that itself threw", async () => {

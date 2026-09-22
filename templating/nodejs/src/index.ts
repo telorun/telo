@@ -50,9 +50,11 @@ export {
   includeBytesEngine,
   includeTextEngine,
   normalizeIncludePath,
+  normalizeModulePath,
   type NormalizedIncludePath,
 } from "./engines/include.js";
 export { literalEngine } from "./engines/literal.js";
+export { modulePathEngine } from "./engines/module-path.js";
 export { refEngine } from "./engines/ref.js";
 export { sqlEngine, isParameterizedSql, type ParameterizedSql } from "./engines/sql.js";
 
@@ -81,9 +83,12 @@ export {
   INCLUDE_ENGINE_NAMES,
   INCLUDE_TEXT_ENGINE,
   isIncludeSentinel,
+  isModulePathSentinel,
   isRefSentinel,
   isTaggedSentinel,
   makeTaggedSentinel,
+  MODULE_FILE_ENGINE_NAMES,
+  MODULE_PATH_ENGINE,
   plainChainOf,
   type TaggedSentinel,
 } from "./sentinel.js";

@@ -8,9 +8,14 @@ metadata:
     consumer (the app's migrations, the redirect library, the admin library)
     references the one `connection` instance, so they all read and write the
     same database.
+requires:
+  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 variables:
   dbFile:
     type: string
+    x-telo-type: Telo.HostPath
     description: Path to the SQLite database file.
 imports:
   SQLite: ../../../modules/sqlite

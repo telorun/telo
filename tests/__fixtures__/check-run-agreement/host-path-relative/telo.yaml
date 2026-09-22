@@ -1,0 +1,8 @@
+# Consumes the library beside it. Its entry-scoped check does not reach the
+# library's internals, so the kernel's own refusal is what remains here.
+kind: Telo.Application
+metadata:
+  name: HostPathRelativeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

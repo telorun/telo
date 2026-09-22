@@ -19,49 +19,72 @@ mounts:
 ---
 kind: Http.Static
 metadata: { name: Ui }
-root: ./public
+root: !module-path ./public
 ```
 
 A request to `/index.html` serves `./public/index.html`; `/api/...` is routed to
 the API. Mount order does not matter — each mount owns its path prefix.
 
-## Where `root` resolves
+## What `root` names
 
-A relative `root` resolves against the **module that declares the resource** —
-its own directory, never the process working directory. This is what lets the
-frontend ship co-located with the application: point `root` at the directory your
-build emits (`./public`, `./dist`, `./web/build`) and the assets travel with the
-app, resolving identically whether the module is a local directory or a published
-artifact. An absolute path is used as-is.
+`root` is a `Telo.HostPath`: an absolute directory on the machine running the
+application. There are two ways to write one, and which you use says where the
+files come from.
 
-## Shipping the assets
-
-For `root: ./public` to work after `telo publish`, declare those files in a
-top-level `files:` list so they ship in the published artifact — otherwise only
-`telo.yaml` is published and `root` resolves to an empty directory:
+**Files that ship with the module** — a frontend, a built SPA — are written with
+`!module-path`, relative to the module root (the directory holding `telo.yaml`):
 
 ```yaml
-kind: Telo.Application
-metadata: { name: todo-app, version: 1.0.0 }
-files:
-  - public/**
-assets:
-  - public/**
-# … Http.Static with root: ./public
+root: !module-path ./public
 ```
 
-The optional `assets:` list marks those files as the artifact's **asset layer**,
-which is fetched on first access rather than up front — so a consumer that
-imports the module for its API alone never downloads the frontend. It is purely an
-optimization: without it the files still ship and still resolve, they are just
-fetched alongside the module's controllers. See the CLI `telo publish` docs for
-the full pattern semantics.
+It resolves to wherever the module's files are on disk: the directory in a
+checkout, the unpacked assets of a published artifact, the unpacked payload of a
+packaged executable. `telo publish` and `telo package` carry the whole directory
+with no `files:` entry, and refuse one that is missing or empty
+(`MODULE_PATH_NOT_FOUND` / `MODULE_PATH_EMPTY`), which `telo check` reports too.
+
+**Files on the host** — reports the application writes, an upload directory —
+come from a variable typed `Telo.HostPath`. A relative value there is resolved
+against the working directory, so the directory an application writes to and
+the one it serves are the same:
+
+```yaml
+variables:
+  reportsDir:
+    env: REPORTS_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: reports
+---
+kind: Http.Static
+metadata: { name: Files }
+root: !cel "variables.reportsDir"
+```
+
+A subdirectory of one is `root: !cel "variables.reportsDir.joinPath('daily')"` —
+in CEL a host path is its own type, so it is extended with `.joinPath`, which
+uses the host's separator, never with `+`, which would make it a plain string.
+
+A plain relative literal (`root: ./public`) is refused: it names nothing fixed,
+since the module's directory and the working directory are both plausible
+readings. `telo check` reports it as `HOST_PATH_RELATIVE` and offers the
+`!module-path` repair; a relative path an expression computes is refused when
+the resource is created (`ERR_HOST_PATH_RELATIVE`).
+
+## Lazy asset download
+
+The optional `assets:` list marks files as the artifact's **asset layer**, which
+is fetched on first access rather than up front — so a consumer that imports the
+module for its API alone never downloads the frontend. A directory named with
+`!module-path` is claimed into that layer already; `assets:` is needed only for
+files nothing names.
 
 ## Fields
 
 | Field | Type | Default | Purpose |
 | --- | --- | --- | --- |
-| `root` | string (required) | — | Directory of files to serve, resolved relative to the manifest. |
+| `root` | `Telo.HostPath` (required) | — | Directory of files to serve — `!module-path` for one that ships with the module. |
 | `index` | string | `index.html` | File served for a directory root request. |
 | `spaFallback` | boolean | `false` | Serve `index` for any path that does not match a file. |
 | `maxAge` | integer (seconds) | — | `Cache-Control: max-age`; omit for no caching directive. |
@@ -79,7 +102,7 @@ return `index.html` so a deep-link refresh resolves on the client. Enable
 ```yaml
 kind: Http.Static
 metadata: { name: Ui }
-root: ./dist
+root: !module-path ./dist
 spaFallback: true
 maxAge: 3600
 immutable: true
@@ -103,12 +126,12 @@ mounts:
 ---
 kind: Http.Static
 metadata: { name: Assets }
-root: ./dist/assets
+root: !module-path ./dist/assets
 maxAge: 31536000
 immutable: true
 ---
 kind: Http.Static
 metadata: { name: Shell }
-root: ./dist
+root: !module-path ./dist
 spaFallback: true
 ```

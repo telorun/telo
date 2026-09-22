@@ -11,6 +11,10 @@ metadata:
     syncing. Text is UTF-8 by default with base64 for binary, whole files are
     buffered in memory, and every operation resolves paths against an optional
     working directory. Not a sandbox.
+requires:
+  # 0.98.0: every kind's `cwd` is a `Telo.HostPath`, which an older analyzer
+  # rejects as X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 exports:
   kinds:
     - File
@@ -75,13 +79,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # Write a file, replacing it whole. `createParents` makes missing parent
 # directories. For surgical edits to an existing file use Fs.FileEdit.
@@ -153,13 +159,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # Edit a file in place by exact string replacement. Fails (rather than silently
 # no-op) when `oldString` is absent, or matches more than once without
@@ -220,13 +228,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # List a directory. Each entry is `{ name, path, type, size }`; `path` is
 # relative to `cwd` so it can be fed back as an input. `recursive` walks
@@ -303,13 +313,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # Create a directory. `createParents` makes missing ancestors and is idempotent
 # (no error if it already exists); without it, an existing path or missing
@@ -361,13 +373,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # A recursive content-hash walk of a directory: every regular file as
 # `{ path, hash }` (sha256 hex of its bytes), `path` relative to `cwd`. Unlike
@@ -433,13 +447,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # Apply an EXPLICIT change set to a tree: write each listed file (creating
 # parents) and remove each deleted path. It does NOT implicitly delete files
@@ -518,13 +534,15 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace
 ---
 # Remove a file, or a directory tree with `recursive`. A missing path is an
 # error.
@@ -573,10 +591,12 @@ schema:
     cwd:
       title: Working directory
       description: >-
-        Base directory invoke paths resolve against. A relative value — and the
-        default — resolves against the process working directory. Not a security
-        boundary.
+        Absolute base directory invoke paths resolve against; omitted, the
+        working directory. A directory shipped with the module is
+        `!module-path ./dir`, one on the host comes from a variable declared
+        `x-telo-type: Telo.HostPath`. Not a security boundary.
       type: string
+      x-telo-type: Telo.HostPath
       x-telo-eval: compile
   examples:
-    - cwd: ./workspace
+    - cwd: /srv/workspace

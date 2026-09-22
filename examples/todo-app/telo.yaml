@@ -16,22 +16,22 @@ imports:
 targets:
   - !ref migrate
   - !ref server
-# Ship the frontend into the published module artifact so `Http.Static root:
-# ./public` resolves after `telo publish` / install, not just locally.
-files:
-  - public/app.js
-  - public/index.html
-  - public/style.css
 ports:
   http:
     env: PORT
     protocol: tcp
     default: 8077
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: todo.db
 ---
 kind: SQLite.Connection
 metadata:
   name: db
-file: ./todo.db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata:
@@ -86,4 +86,5 @@ mounts:
 kind: Http.Static
 metadata:
   name: ui
-root: ./public
+# Ships with the module, so publishing and packaging carry it.
+root: !module-path ./public

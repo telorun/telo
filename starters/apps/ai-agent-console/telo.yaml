@@ -25,10 +25,16 @@ secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
     type: string
+variables:
+  historyFile:
+    env: HISTORY_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: tmp/agent-history.sqlite
 ---
 kind: SQLite.Connection
 metadata: { name: chatDb }
-file: ./tmp/agent-history.sqlite
+file: !cel "variables.historyFile"
 ---
 kind: SQLite.Schema
 metadata: { name: initSchema }

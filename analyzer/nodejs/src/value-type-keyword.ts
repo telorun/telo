@@ -26,6 +26,7 @@ import type { KeywordDefinition } from "ajv";
 import {
   CEL_SCALAR_FORMS,
   celScalarTypeOf,
+  isAbsoluteHostPath,
   PLAIN_ENCODINGS,
   VALUE_TYPE_BINDINGS,
   X_TELO_TYPE,
@@ -87,7 +88,7 @@ export const ANNOTATION_KEYWORDS = [
 /** Folded into the kernel's validator cache key. Bump it with any change to the
  *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
  *  the change is otherwise served from disk unchanged. */
-export const VALUE_TYPE_KEYWORD_VERSION = 3;
+export const VALUE_TYPE_KEYWORD_VERSION = 4;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {
@@ -135,6 +136,16 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
       })?.entry;
       if (!entry) return;
       if (entry.representation === "json") {
+        // A host path is absolute wherever it is held: the one place a relative
+        // one is read — a host-supplied variable — resolves it before this runs.
+        if (entry.fromHost !== undefined) {
+          const absolute = cxt.gen.scopeValue("func", {
+            ref: isAbsoluteHostPath,
+            code: codegen`require("@telorun/sdk").isAbsoluteHostPath`,
+          });
+          cxt.pass(codegen`typeof ${cxt.data} != "string" || ${absolute}(${cxt.data})`);
+          return;
+        }
         // A CEL type whose range JSON Schema cannot state (a uint) carries its
         // own check, reached through the value scope like a constructor.
         const celType = celScalarTypeOf(entry);
@@ -172,6 +183,7 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
           );
         }
         if (!entry) return "must be a declared value type";
+        if (entry.fromHost !== undefined) return hostPathRelativeMessage(entry);
         const celType = celScalarTypeOf(entry);
         const range = celType === undefined ? undefined : CEL_SCALAR_FORMS[celType]?.range;
         if (range) return `must be a ${entry.name}, ${range.describe}`;
@@ -183,8 +195,24 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
           producingTags(entry)
         );
       },
+      // The failed type's name travels with the error, so a consumer keys on
+      // WHAT failed (a relative host path) rather than on the sentence.
+      params: (cxt: any) =>
+        codegen`{valueType: ${readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema })?.name ?? ""}}`,
     },
   } as KeywordDefinition;
+}
+
+/** Why a relative path is refused at a host-path slot, and the two ways to
+ *  write one that is not. Shared by the static diagnostic and the runtime
+ *  refusal of a relative CEL result. */
+export function hostPathRelativeMessage(entry: ValueTypeEntry): string {
+  return (
+    `must be an absolute ${entry.name} — a relative path names nothing fixed here. Write a ` +
+    `file that ships with the module as !module-path <path>, or read a location on the host ` +
+    `from a variable declared x-telo-type: ${entry.name}, which resolves a relative value ` +
+    `against the working directory`
+  );
 }
 
 /** The tags whose produced type is this value type, as a closing hint — an

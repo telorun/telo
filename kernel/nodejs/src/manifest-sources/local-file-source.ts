@@ -84,6 +84,16 @@ export class LocalFileSource implements ManifestSource {
     return null;
   }
 
+  async exists(base: string, relative: string): Promise<boolean> {
+    try {
+      await fs.stat(path.resolve(path.dirname(path.resolve(toFilePath(base))), relative));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
   private async collectYamlSources(dirPath: string): Promise<string[]> {
     const sources: string[] = [];
     const entries = await fs.readdir(dirPath, { withFileTypes: true });

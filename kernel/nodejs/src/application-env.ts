@@ -1,6 +1,5 @@
 import {
   type DefResolver,
-  decodePlainLiterals,
   effectiveAuthorSchema,
   residualEntrySchema,
   withLiveValuesSkipped,
@@ -13,6 +12,7 @@ import type {
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
+import { decodeHostValue } from "./host-paths.js";
 import { SchemaValidator } from "./schema-validator.js";
 import { resolveTypeFieldSchema } from "./type-field-schema.js";
 
@@ -481,14 +481,15 @@ function reportUndeclaredInputs(
 
 /** An env value arrives from outside Telo, so every instance-typed slot in it is
  *  read from its plain encoding — the whole value (`x-telo-type: Telo.Timestamp`)
- *  or a field of a JSON-decoded one. Text the encoding refuses is left for
- *  validation to report. */
+ *  or a field of a JSON-decoded one — and every host path in it is resolved
+ *  against its anchor. Text the encoding refuses is left for validation to
+ *  report. */
 function decodeFromOutside(
   value: unknown,
   residual: Record<string, unknown>,
   validator: SchemaValidator,
 ): unknown {
-  return decodePlainLiterals(
+  return decodeHostValue(
     value,
     residual as Record<string, any>,
     (ref) => validator.getSchema(ref) as Record<string, any> | undefined,

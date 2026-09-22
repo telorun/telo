@@ -318,6 +318,18 @@ already be the instance), and neither is text an embedding tag produced: a
 runtime MUST decode before it resolves embeds, so a file's contents are never
 read as an encoding.
 
+A HOST PATH (`Telo.HostPath`, a `json` value type declaring `fromHost`) is
+absolute wherever it is held, and the `x-telo-type` assertion refuses a relative
+one — judged host-neutrally, so a POSIX path, a drive-letter path and a UNC path
+are absolute on every host. The one site a relative host path is READ is the
+Application `variables:` / `secrets:` site above: a conforming runtime MUST
+resolve every host path in that value against the entry's `fromHost` anchor
+(`working-directory`: the process working directory) before validating it. A
+compile-eval expression at a host-path slot is only a placeholder when the
+configuration is validated, so its RESULT MUST be refused at creation when it is
+relative (`ERR_HOST_PATH_RELATIVE`). `!module-path` resolves to an absolute path
+at creation, beside the embeds.
+
 ### 4.7 Writing for a reader outside the runtime
 
 A value written where the reader is not a Telo runtime — a transport body and its

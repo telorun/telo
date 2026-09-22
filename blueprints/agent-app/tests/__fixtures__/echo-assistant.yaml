@@ -20,6 +20,7 @@ variables:
   history:
     env: CONVERSATIONS_FILE
     type: string
+    x-telo-type: Telo.HostPath
 ---
 kind: AgentApp.App
 metadata:

@@ -47,6 +47,12 @@ variables:
     type: string
     default: A-1
     description: Change it to watch a fresh order run from the top.
+  journalDir:
+    env: JOURNAL_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/orders
+    description: Where runs are recorded, resolved against the working directory.
 targets:
   - !ref fulfil
 ---
@@ -56,7 +62,7 @@ targets:
 # read.
 kind: Journal.Journal
 metadata: { name: orders }
-directory: ./.telo/orders
+directory: !cel "variables.journalDir"
 ---
 kind: Console.WriteLine
 metadata: { name: say }

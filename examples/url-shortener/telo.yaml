@@ -13,6 +13,10 @@ metadata:
       admin/     GET /admin/links, GET /admin/links/{code}
 
     Zero external infra: a shared SQLite file + in-process CacheMemory.Store.
+requires:
+  # 0.98.0: `dbFile` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
 imports:
   Http: ../../modules/http-server
   Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
@@ -33,6 +37,7 @@ variables:
   dbFile:
     env: DB_FILE
     type: string
+    x-telo-type: Telo.HostPath
     default: ./tmp/url-shortener.db
 ports:
   http:

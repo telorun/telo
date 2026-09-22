@@ -18,7 +18,9 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::State;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
+
+use crate::background_command::background_command;
 
 /// Where session workspaces are staged, under the OS temp directory. Named so a
 /// leftover from a crashed editor is identifiable rather than anonymous; the
@@ -268,7 +270,7 @@ async fn start(executable: Option<String>) -> Result<Started, String> {
         .ok_or_else(|| "Could not allocate a free loopback port.".to_string())?;
     let state_dir = std::env::temp_dir().join(STATE_DIR_NAME);
 
-    let mut command = Command::new(&program);
+    let mut command = background_command(&program);
     command
         .args(&prefix)
         .arg("runner")
@@ -346,7 +348,7 @@ async fn stop_child(child: Option<Child>) {
     // down with the runner rather than leaving them behind.
     #[cfg(windows)]
     if let Some(pid) = child.id() {
-        let _ = Command::new("taskkill")
+        let _ = background_command("taskkill")
             .args(["/pid", &pid.to_string(), "/T", "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())

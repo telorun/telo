@@ -1,0 +1,8 @@
+{
+  "$comment": "A nominal brand over `string`: CEL types a host path as `Telo.HostPath`, so `+` does not quietly turn one into a plain string and a plain string is not accepted where one is required. It is extended with `.joinPath(relative)` and read as text with `string(path)`. `fromHost` names the anchor a host-supplied value (an env var, or the `default:` standing in for one) is resolved against; every other value of this type must already be absolute.",
+  "name": "Telo.HostPath",
+  "representation": "json",
+  "base": "string",
+  "fromHost": "working-directory",
+  "description": "An absolute path on the machine running the application — a data directory, a database file, an output location. A variable of this type set from the environment may be relative and is resolved against the working directory; anywhere else a relative path is refused. Extend one with `.joinPath('sub/dir')`, which uses the host's separator. A file that ships with the module is written with `!module-path` instead."
+}

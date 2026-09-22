@@ -10,9 +10,13 @@ metadata:
   name: ImportValueFlow
   version: 1.0.0
 variables:
+  # In-memory, or a database file resolved against the working directory.
   db:
     env: IMPORT_VALUE_FLOW_DB
     type: string
+    anyOf:
+      - const: ":memory:"
+      - x-telo-type: Telo.HostPath
     default: ":memory:"
 imports:
   Mid:

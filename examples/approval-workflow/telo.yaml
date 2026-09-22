@@ -62,13 +62,19 @@ variables:
     type: integer
     default: 10000
     description: Expenses under this amount are paid without a human in the loop.
+  journalDir:
+    env: JOURNAL_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/expenses
+    description: Where runs are recorded, resolved against the working directory.
 ---
 # Where runs are recorded: one append-only file per run, flushed as each record
 # is written. It is newline-delimited JSON and meant to be read — open it while a
 # run is parked and the wait is the last line.
 kind: Journal.Journal
 metadata: { name: expenses }
-directory: ./.telo/expenses
+directory: !cel "variables.journalDir"
 ---
 kind: Console.WriteLine
 metadata: { name: say }

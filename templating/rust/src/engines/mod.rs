@@ -6,3 +6,4 @@
 //! the part of its engine that both halves must agree on, and nothing more.
 
 pub mod include;
+pub mod module_path;

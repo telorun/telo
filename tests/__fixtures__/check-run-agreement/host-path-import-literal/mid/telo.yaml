@@ -1,0 +1,17 @@
+# Hands the library a relative literal. `telo check` reports it here, at the
+# import that wrote it; the library would otherwise refuse it at creation, in a
+# file this module's author did not write.
+kind: Telo.Library
+metadata:
+  name: HostPathImportLiteralMid
+  version: 1.0.0
+  description: >-
+    Fixture library passing a relative path to a library's host-path variable,
+    which both telo check and the kernel refuse.
+imports:
+  Lib:
+    source: ../lib
+    variables:
+      siteDir: ./public
+exports:
+  resources: [Lib.site]

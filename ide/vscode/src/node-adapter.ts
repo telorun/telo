@@ -52,6 +52,16 @@ export class NodeAdapter implements ManifestSource {
     return matched.sort();
   }
 
+  async exists(base: string, relative: string): Promise<boolean> {
+    try {
+      await fs.stat(path.resolve(path.dirname(path.resolve(this.cwd, toFilePath(base))), relative));
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
   async resolveOwnerOf(fileUrl: string): Promise<string | null> {
     const resolved = path.resolve(this.cwd, toFilePath(fileUrl));
     let dir = path.dirname(resolved);

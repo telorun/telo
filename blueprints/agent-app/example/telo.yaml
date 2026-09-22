@@ -34,6 +34,7 @@ variables:
   history:
     env: CONVERSATIONS_FILE
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/shop-conversations.sqlite
 secrets:
   openaiApiKey:

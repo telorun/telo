@@ -13,6 +13,14 @@ imports:
   Timer: ../../../modules/timer
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
+# Resolved against the working directory, so the journal path built from it is
+# absolute — which is what the child's host-path variable accepts from a caller.
+variables:
+  scratchDir:
+    env: APPROVAL_APP_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
 targets:
   - !ref test
 ---
@@ -71,7 +79,7 @@ with:
     ports:
       http: 8851
     variables:
-      journal: !cel "'.telo/approval-app-test-' + string(nowMillis())"
+      journal: !cel "variables.scratchDir.joinPath('approval-app-test-' + string(nowMillis()))"
       # Short enough to watch one lapse, long enough for the reviewed paths.
       reviewDeadline: 3s
 targets:

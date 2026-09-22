@@ -1,0 +1,23 @@
+# A host path forwarded from a variable declared a plain string. A library's
+# variable is never resolved against the working directory, so its relative
+# default reaches the slot as written and is refused at creation; `telo check`
+# reports the source instead, at the slot that reads it.
+kind: Telo.Library
+metadata:
+  name: HostPathUntypedSource
+  version: 1.0.0
+  description: >-
+    Fixture library forwarding a plain string variable into a host-path slot,
+    which telo check reports at the slot and the kernel refuses at creation.
+imports:
+  Http: ../../../../../modules/http-server
+variables:
+  siteDir:
+    type: string
+    default: public
+exports:
+  resources: [site]
+---
+kind: Http.Static
+metadata: { name: site }
+root: !cel "variables.siteDir"

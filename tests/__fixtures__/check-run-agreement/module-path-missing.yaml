@@ -1,0 +1,13 @@
+# A `!module-path` naming nothing in the module. Well-formed, so the analyzer
+# accepts it; whether anything is there takes a directory, so the kernel
+# refuses it at creation (and `telo check`'s Node-side probe reports it).
+kind: Telo.Application
+metadata:
+  name: ModulePathMissing
+  version: 1.0.0
+imports:
+  Http: ../../../modules/http-server
+---
+kind: Http.Static
+metadata: { name: site }
+root: !module-path ./no-such-directory

@@ -23,6 +23,7 @@ const STUB_HANDLERS: CelHandlers = {
   base64Encode: stub("base64Encode"),
   base64Decode: stub("base64Decode"),
   json: stub("json"),
+  joinPath: stub("joinPath"),
 };
 
 /** Build a CEL `Environment` with Telo's stdlib. Every function comes from the

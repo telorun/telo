@@ -1,0 +1,18 @@
+# A relative path read from a source that declares no type (a field of an
+# untyped object) is not decidable statically, so the kernel refuses the result
+# once the expression has produced it.
+kind: Telo.Application
+metadata:
+  name: HostPathComputed
+  version: 1.0.0
+imports:
+  Http: ../../../modules/http-server
+variables:
+  site:
+    env: HOST_PATH_COMPUTED_SITE
+    type: object
+    default: { dir: public }
+---
+kind: Http.Static
+metadata: { name: site }
+root: !cel "variables.site.dir"

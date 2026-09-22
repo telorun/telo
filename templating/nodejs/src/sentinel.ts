@@ -44,6 +44,10 @@ export const CEL_ENGINE = "cel";
 export const INCLUDE_TEXT_ENGINE = "include-text";
 export const INCLUDE_BYTES_ENGINE = "include-bytes";
 
+/** Engine name of the tag naming a file or directory that ships with the
+ *  module, by its location rather than its contents. */
+export const MODULE_PATH_ENGINE = "module-path";
+
 /**
  * The dotted chain a value names, or undefined.
  *
@@ -94,3 +98,20 @@ export function isIncludeSentinel(
     isTaggedSentinel(v) && (v.engine === INCLUDE_TEXT_ENGINE || v.engine === INCLUDE_BYTES_ENGINE)
   );
 }
+
+/** True when `v` is an unresolved `!module-path` sentinel. Resolved at resource
+ *  creation beside the embeds, for the same reason: naming a module file must
+ *  not pull the payload at manifest load. */
+export function isModulePathSentinel(
+  v: unknown,
+): v is TaggedSentinel & { engine: typeof MODULE_PATH_ENGINE } {
+  return isTaggedSentinel(v) && v.engine === MODULE_PATH_ENGINE;
+}
+
+/** Every tag that names a module file, for a check that holds for all of them
+ *  (a tag on a document nothing instantiates is read by nothing). */
+export const MODULE_FILE_ENGINE_NAMES: ReadonlySet<string> = new Set([
+  INCLUDE_TEXT_ENGINE,
+  INCLUDE_BYTES_ENGINE,
+  MODULE_PATH_ENGINE,
+]);

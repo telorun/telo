@@ -37,6 +37,7 @@ variables:
   journalDir:
     env: DURABLE_PARK_TEST_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: .telo/durable-park-test
 targets:
   - !ref test

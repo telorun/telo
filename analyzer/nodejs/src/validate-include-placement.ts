@@ -1,5 +1,9 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { INCLUDE_ENGINE_NAMES, walkCelExpressions } from "@telorun/templating";
+import {
+  INCLUDE_ENGINE_NAMES,
+  MODULE_FILE_ENGINE_NAMES,
+  walkCelExpressions,
+} from "@telorun/templating";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -20,10 +24,10 @@ const NEVER_INSTANTIATED: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * An `!include-text` / `!include-bytes` in a doc that is never instantiated is
- * never read.
+ * An `!include-text` / `!include-bytes` / `!module-path` in a doc that is never
+ * instantiated is never read.
  *
- * The two tags resolve when the resource owning them is created — deferred so
+ * The tags resolve when the resource owning them is created — deferred so
  * that loading a manifest does not pull payload layers, which is the property
  * the artifact spec protects by giving `telo.yaml` a layer of its own. The cost
  * of that choice is this dead spot: a doc with no `create()` has no moment at
@@ -48,16 +52,20 @@ export function validateIncludePlacement(manifests: ResourceManifest[]): Analysi
     const name = (manifest.metadata as { name?: string } | undefined)?.name;
     const filePath = (manifest.metadata as { source?: string } | undefined)?.source;
     walkCelExpressions(manifest, "", (source, path, engineName) => {
-      if (!INCLUDE_ENGINE_NAMES.has(engineName)) return;
+      if (!MODULE_FILE_ENGINE_NAMES.has(engineName)) return;
+      const embed = INCLUDE_ENGINE_NAMES.has(engineName);
       out.push({
         severity: DiagnosticSeverity.Error,
-        code: "INCLUDE_OUTSIDE_RESOURCE",
+        code: embed ? "INCLUDE_OUTSIDE_RESOURCE" : "MODULE_PATH_OUTSIDE_RESOURCE",
         source: SOURCE,
         message:
           `${manifest.kind}${name ? `/${name}` : ""}: \`!${engineName} ${source}\` at '${path}' is ` +
-          `never read — a ${manifest.kind} doc is not instantiated, and a file embed is resolved ` +
-          `when the resource holding it is created. Move it onto the resource that needs the ` +
-          `file, or read the file at runtime with Fs.File.`,
+          `never read — a ${manifest.kind} doc is not instantiated, and ` +
+          (embed
+            ? `a file embed is resolved when the resource holding it is created. Move it onto ` +
+              `the resource that needs the file, or read the file at runtime with Fs.File.`
+            : `a module path is resolved when the resource holding it is created. Move it onto ` +
+              `the resource that needs the location.`),
         data: {
           resource: { kind: manifest.kind, name: name ?? "" },
           filePath,

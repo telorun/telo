@@ -29,6 +29,7 @@ An entry declares **how the value is represented** and nothing about any runtime
 | `celType`        | `json` only, optional: the CEL type a value carries when JSON Schema cannot name it. |
 | `binding`        | `instance` only: a stable symbolic key each runtime maps to its own identity.  |
 | `encoding`       | Non-live `instance` only, required: the symbolic name of the one plain JSON form. |
+| `fromHost`       | `json` over `string` only: the anchor a host-supplied relative path resolves against. Makes the type a host path. |
 | `live`           | An instance whose consumption has effects, so it is exempt from validation.    |
 | `parameters`     | Named type parameters. Each is optional and defaults to *any*.                 |
 | `description`    | What `telo cel types` and the generated docs section print.                    |
@@ -43,12 +44,35 @@ declares it.
 A `json` entry without `celType` is a **nominal brand**: its CEL type is its own
 name, degrading to `base`'s CEL type where a slot declares no brand
 (`Telo.TcpPort`). With `celType` it is no brand — its values carry that CEL type
-itself. `uint` over `integer` is the only such pair (`Telo.Uint64`): its JSON form
-is an ordinary integer, and a declared output normalizes to a CEL `uint` the way
-an `integer` output normalizes to an int64. A plain number is exact only up to
-2^53 − 1, so a wider one is refused at a `Telo.Uint64` slot (the literal
-`18446744073709551615` already reads as 2^64); write it as a CEL uint,
-`!cel "18446744073709551615u"`.
+itself. `uint` over `integer` is the only type carried BEYOND a base
+(`Telo.Uint64`): its JSON form is an ordinary integer, and a declared output
+normalizes to a CEL `uint` the way an `integer` output normalizes to an int64. A
+plain number is exact only up to 2^53 − 1, so a wider one is refused at a
+`Telo.Uint64` slot (the literal `18446744073709551615` already reads as 2^64);
+write it as a CEL uint, `!cel "18446744073709551615u"`.
+
+In CEL a brand converts to its base with the base's own conversion —
+`int(ports.http)`, `string(variables.dataDir)` — and flows into a slot that
+declares no brand, but a plain value does not flow INTO a brand that declares
+`fromHost` (below): a plain string is not a host path.
+
+## Host paths
+
+`fromHost` names where a relative path SUPPLIED BY THE HOST is anchored — the
+closed set is `working-directory` (`HOST_ANCHORS`), each runtime mapping the name
+to its own implementation, and one it cannot map is a startup error. Its presence
+makes the type a host path, and a host path is absolute wherever it is held: the
+`x-telo-type` keyword refuses a relative one, statically as `HOST_PATH_RELATIVE`
+and at creation (a computed one) as `ERR_HOST_PATH_RELATIVE`. The one place a
+relative value is read is an Application `variables:` / `secrets:` entry's env
+value, or the `default:` standing in for it, which the kernel resolves against the
+anchor at load. Absoluteness is judged host-neutrally (`isAbsoluteHostPath`:
+POSIX, drive letter, UNC), so the static check and the runtime assertion agree
+whichever machine runs them. A file that ships with the module is not a host path
+at all until `!module-path` resolves it to one. A host path is extended with
+`.joinPath('sub/dir')`, which keeps it a host path and joins with the separator of
+the machine running it; `+` would make it a plain string, which is refused where
+a host path is required.
 
 ## Plain encodings
 

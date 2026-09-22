@@ -45,7 +45,7 @@ outputType:
 ---
 kind: Http.Static
 metadata: { name: site }
-root: ./__fixtures__/static-site
+root: !module-path ./__fixtures__/static-site
 spaFallback: true
 maxAge: 3600
 ---

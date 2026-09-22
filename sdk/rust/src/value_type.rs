@@ -71,6 +71,9 @@ pub struct ValueType {
     /// Non-live `instance` only — the symbolic name of the one canonical plain
     /// JSON form.
     pub encoding: Option<String>,
+    /// `json` over `string` only — the anchor ([`HOST_ANCHORS`]) a host-supplied
+    /// value is resolved against. Its presence makes the type a host path.
+    pub from_host: Option<String>,
     /// An instance whose consumption has effects, so it is exempt from
     /// validation rather than asserted. Exemption is from VALIDATION, never from
     /// TYPING.
@@ -106,6 +109,10 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
     })
 }
 
+/// The closed vocabulary of `fromHost` anchors, mirroring the Node reader's
+/// `HOST_ANCHORS`: an anchor one runtime cannot map is a hard error there.
+pub const HOST_ANCHORS: &[&str] = &["working-directory"];
+
 /// The CEL types a `json` base carries beyond its own, which only `celType` states.
 fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
     match base {
@@ -120,6 +127,7 @@ fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
 const ENTRY_FILES: &[(&str, &str)] = &[
     ("telo-bytes.json", include_str!("../../value-types/telo-bytes.json")),
     ("telo-duration.json", include_str!("../../value-types/telo-duration.json")),
+    ("telo-host-path.json", include_str!("../../value-types/telo-host-path.json")),
     ("telo-stream.json", include_str!("../../value-types/telo-stream.json")),
     ("telo-tcp-port.json", include_str!("../../value-types/telo-tcp-port.json")),
     ("telo-timestamp.json", include_str!("../../value-types/telo-timestamp.json")),
@@ -138,6 +146,7 @@ const ENTRY_KEYS: &[&str] = &[
     "celType",
     "binding",
     "encoding",
+    "fromHost",
     "live",
     "parameters",
     "description",
@@ -170,6 +179,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     let base = string("base");
     let cel_type = string("celType");
     let encoding = string("encoding");
+    let from_host = string("fromHost");
     let live = obj.get("live").and_then(Value::as_bool).unwrap_or(false);
     // The same representation rules the Node reader enforces, so an entry never
     // loads on one runtime and fails on the other.
@@ -186,11 +196,25 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                     "Invalid value-type entry '{file}': 'celType' '{cel}' is not a CEL type its base carries beyond its own"
                 );
             }
+            if let Some(anchor) = from_host.as_deref() {
+                assert!(
+                    base.as_deref() == Some("string"),
+                    "Invalid value-type entry '{file}': 'fromHost' needs a 'string' base"
+                );
+                assert!(
+                    HOST_ANCHORS.contains(&anchor),
+                    "Invalid value-type entry '{file}': fromHost '{anchor}' is not an anchor this runtime knows ({HOST_ANCHORS:?})"
+                );
+            }
         }
         Representation::Instance => {
             assert!(
                 base.is_none() && cel_type.is_none(),
                 "Invalid value-type entry '{file}': an 'instance' representation takes no 'base' or 'celType'"
+            );
+            assert!(
+                from_host.is_none(),
+                "Invalid value-type entry '{file}': an 'instance' representation takes no 'fromHost'"
             );
             if live {
                 assert!(
@@ -276,6 +300,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         cel_type,
         binding,
         encoding,
+        from_host,
         live,
         parameters,
         description: string("description").unwrap_or_default(),
@@ -351,6 +376,7 @@ mod tests {
         for name in [
             "Telo.Bytes",
             "Telo.Duration",
+            "Telo.HostPath",
             "Telo.Stream",
             "Telo.TcpPort",
             "Telo.Timestamp",
@@ -362,6 +388,8 @@ mod tests {
         assert_eq!(types["Telo.Timestamp"].encoding.as_deref(), Some("rfc3339"));
         assert_eq!(types["Telo.Uint64"].cel_type.as_deref(), Some("uint"));
         assert!(types["Telo.Stream"].encoding.is_none());
+        assert_eq!(types["Telo.HostPath"].from_host.as_deref(), Some("working-directory"));
+        assert!(types["Telo.HostPath"].cel_type.is_none());
     }
 
     #[test]

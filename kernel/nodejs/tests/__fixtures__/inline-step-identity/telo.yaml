@@ -15,6 +15,7 @@ variables:
   journalDir:
     env: INLINE_STEP_IDENTITY_JOURNAL
     type: string
+    x-telo-type: Telo.HostPath
 ---
 kind: Run.Sequence
 metadata: { name: seq }

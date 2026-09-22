@@ -11,6 +11,7 @@ use serde_json::{Map, Value as Json};
 use serde_yaml::Value as Yaml;
 
 use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
+use crate::engines::module_path::MODULE_PATH_ENGINE;
 use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 
 /// Engines this kernel recognises. `!cel` is deliberately absent: the Rust
@@ -22,8 +23,13 @@ use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 /// file as an unresolved marker. `kernel/rust` resolves them at resource
 /// creation; `!include-bytes` fails there with an explicit message, since this
 /// kernel's manifest tree is `serde_json::Value` and has no bytes variant to
-/// carry the result.
-const KNOWN_ENGINES: &[&str] = &[REF_ENGINE, INCLUDE_TEXT_ENGINE, INCLUDE_BYTES_ENGINE];
+/// carry the result. `!module-path` resolves there too, to an absolute path.
+const KNOWN_ENGINES: &[&str] = &[
+    REF_ENGINE,
+    INCLUDE_TEXT_ENGINE,
+    INCLUDE_BYTES_ENGINE,
+    MODULE_PATH_ENGINE,
+];
 
 #[derive(Debug)]
 pub struct TagError {

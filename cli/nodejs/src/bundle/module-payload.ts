@@ -65,6 +65,7 @@ import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from ".
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, selectFiles } from "./select-files.js";
 import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
+import { expandDirectoryClaims } from "./module-path-claims.js";
 
 export interface ModulePayload {
   /** The `telo.yaml` that ships, byte for byte: canonicalized, pinned, includes
@@ -381,7 +382,7 @@ export class ModulePayloadBuilder {
       await this.transformManifest(manifestPath);
     const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
 
-    const claims = collectModuleFileClaims(manifest);
+    const claims = expandDirectoryClaims(manifestDir, collectModuleFileClaims(manifest));
     const native = readNativeFiles(manifest, manifestDir);
     const assetPatterns = readAssetPatterns(manifest);
     const staged = stagedEntriesOf(sources);

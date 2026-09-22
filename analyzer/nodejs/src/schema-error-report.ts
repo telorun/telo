@@ -51,6 +51,8 @@ export interface SchemaIssue {
   keyword?: string;
   /** For `required`, the property that is missing. */
   missingProperty?: string;
+  /** For `x-telo-type`, the value type the value failed. */
+  valueType?: string;
 }
 
 const UNION_KEYWORDS = new Set(["anyOf", "oneOf"]);
@@ -455,12 +457,13 @@ export function ajvErrorToPath(err: AjvErrorLike): string {
 /** Reduced, path-anchored issues — what a diagnostic list is built from. */
 export function schemaIssues(errors: AjvErrorLike[] | null | undefined): SchemaIssue[] {
   return reduceSchemaErrors(errors).map((err) => {
-    const missing = (err.params ?? {}).missingProperty;
+    const { missingProperty: missing, valueType } = err.params ?? {};
     return {
       message: formatSingleError(err),
       path: ajvErrorToPath(err),
       ...(err.keyword ? { keyword: err.keyword } : {}),
       ...(typeof missing === "string" ? { missingProperty: missing } : {}),
+      ...(typeof valueType === "string" && valueType !== "" ? { valueType } : {}),
     };
   });
 }

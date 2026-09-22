@@ -21,7 +21,7 @@ imports:
   Run: ../../../../run
   Assert: ../../../../assert
 variables:
-  dbFile: { env: SCHEMA_BOOTS_DB, type: string, default: ./.telo/schema-boots.db }
+  dbFile: { env: SCHEMA_BOOTS_DB, type: string, x-telo-type: Telo.HostPath, default: ./.telo/schema-boots.db }
 targets:
   - !ref otherSchema
   - !ref test

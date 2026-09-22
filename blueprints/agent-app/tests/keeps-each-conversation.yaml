@@ -11,6 +11,14 @@ imports:
   Run: ../../../modules/run
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
+# Resolved against the working directory, so the history path built from it is
+# absolute — which is what the child's host-path variable accepts from a caller.
+variables:
+  scratchDir:
+    env: AGENT_APP_TEST_SCRATCH_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo
 targets:
   - !ref test
 ---
@@ -23,7 +31,7 @@ with:
     ports:
       http: 8855
     variables:
-      history: !cel "'.telo/agent-app-test-' + string(nowMillis()) + '.sqlite'"
+      history: !cel "variables.scratchDir.joinPath('agent-app-test-' + string(nowMillis()) + '.sqlite')"
 targets:
   - !ref app
 steps:

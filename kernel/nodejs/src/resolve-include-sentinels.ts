@@ -4,8 +4,10 @@ import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import {
   INCLUDE_BYTES_ENGINE,
   isIncludeSentinel,
+  isModulePathSentinel,
   isTaggedSentinel,
   normalizeIncludePath,
+  normalizeModulePath,
   type TaggedSentinel,
 } from "@telorun/templating";
 import { resolveModuleFileUri, type ModuleFileLookup } from "./module-file-resolution.js";
@@ -107,9 +109,52 @@ async function resolveSentinel(
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
+/** A `!module-path` names a location, so resolving it reads nothing: it becomes
+ *  the absolute path of the file or directory once the module's files are on
+ *  disk, which is what a `Telo.HostPath` slot holds. */
+async function resolveModulePath(
+  sentinel: TaggedSentinel,
+  moduleSource: string,
+  lookup: ModuleFileLookup,
+): Promise<string> {
+  const { path: relative, diagnostic } = normalizeModulePath(sentinel.source);
+  if (!relative) {
+    throw new RuntimeError(
+      "ERR_MODULE_PATH_INVALID",
+      `Invalid \`!${sentinel.engine}\` path: ${diagnostic?.message ?? "not a module-relative path."}`,
+    );
+  }
+  const uri = await resolveModuleFileUri(relative, moduleSource, lookup);
+  if (!uri.startsWith("file:")) {
+    throw new RuntimeError(
+      "ERR_MODULE_PATH_NOT_FOUND",
+      `Cannot resolve '${relative}': it resolved to '${uri}', which is not a location on this ` +
+        `machine. A module path must ship inside the module's own artifact.`,
+    );
+  }
+  const absolute = fileURLToPath(uri);
+  try {
+    await stat(absolute);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new RuntimeError(
+        "ERR_MODULE_PATH_UNREADABLE",
+        `Cannot resolve '${relative}': '${absolute}' could not be read (${(error as Error).message}).`,
+      );
+    }
+    throw new RuntimeError(
+      "ERR_MODULE_PATH_NOT_FOUND",
+      `Cannot resolve '${relative}': nothing at '${absolute}'. The path is relative to the ` +
+        `module root — the directory holding telo.yaml — not to the file the tag was written in.`,
+    );
+  }
+  return absolute;
+}
+
 /**
  * Replace every `!include-text` / `!include-bytes` sentinel in a resource's
- * config with the file's contents, in place.
+ * config with the file's contents, and every `!module-path` with the absolute
+ * location, in place.
  *
  * Called at resource creation — the kernel's single instance-production site —
  * and NOT during manifest load. The artifact spec gives `telo.yaml` a layer of
@@ -154,6 +199,10 @@ export async function resolveIncludeSentinels(
   const take = (item: unknown, assign: (resolved: string | Uint8Array) => void): void => {
     if (isIncludeSentinel(item)) {
       pending.push(resolveSentinel(item, moduleSource, lookup, cache).then(assign));
+      return;
+    }
+    if (isModulePathSentinel(item)) {
+      pending.push(resolveModulePath(item, moduleSource, lookup).then(assign));
       return;
     }
     // Another engine's sentinel is opaque; a nested declaration is resolved when
