@@ -129,6 +129,11 @@ targets:
   - !ref templateRefComputedAtRuntime
   - !ref templateForwardInvalid
   - !ref templateForwardInvalidAtRuntime
+  - !ref throwsCeiling
+  - !ref throwsCeilingAtRuntime
+  - !ref throwsShape
+  - !ref throwsShapeAtRuntime
+  - !ref languageCodeDuplicate
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1262,3 +1267,64 @@ metadata:
 source: ./__fixtures__/check-run-agreement/host-path-import-literal/telo.yaml
 expect:
   runFails: "ERR_HOST_PATH_RELATIVE"
+---
+# A descendant throwing a code its ancestor's `throws:` ceiling does not admit.
+# Reported for a dependency's definition too, since the kernel refuses it and
+# the manifest importing it cannot start: its load-time analysis refuses first,
+# and the registration guard (kernel/nodejs/tests/throws-ceiling.test.ts) covers
+# a load that analysis did not reach.
+kind: Assert.Manifest
+metadata:
+  name: throwsCeiling
+source: ./__fixtures__/check-run-agreement/throws-ceiling/lib/telo.yaml
+expect:
+  errors:
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "throws 'ERR_BACKEND_DOWN', which 'ThrowsCeilingLib.Lookup' does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: throwsCeilingAtRuntime
+source: ./__fixtures__/check-run-agreement/throws-ceiling/telo.yaml
+expect:
+  errors:
+    - code: THROWS_NOT_SUBSTITUTABLE
+      message: "throws 'ERR_BACKEND_DOWN', which 'ThrowsCeilingLib.Lookup' does not declare"
+  runFails: "Manifest validation failed"
+---
+# A malformed `throws:` on an abstract: a key an abstract cannot carry (even set
+# to false), and a code that is not an upper-case identifier and has no
+# description. Both halves read one schema for the block.
+kind: Assert.Manifest
+metadata:
+  name: throwsShape
+source: ./__fixtures__/check-run-agreement/throws-shape/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Abstract/NotLiteral: /throws must NOT have additional properties ('inherit' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Abstract/BadCode: /throws/codes/lowercase_code is missing required property 'description'"
+---
+kind: Assert.Manifest
+metadata:
+  name: throwsShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/throws-shape/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Telo.Abstract/NotLiteral: /throws must NOT have additional properties ('inherit' is not allowed)"
+  runFails: "Manifest validation failed"
+---
+# Two different language models sharing a code. `telo check` reads the models the
+# recognizer references (a resource rule's `resolve:`), and the recognizer
+# refuses the same pair when it starts.
+kind: Assert.Manifest
+metadata:
+  name: languageCodeDuplicate
+source: ./__fixtures__/check-run-agreement/language-code-duplicate/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'languages[1]': lists two language models under the same code"
+  runFails: "Manifest validation failed"

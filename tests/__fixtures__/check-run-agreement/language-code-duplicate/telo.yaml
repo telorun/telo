@@ -1,0 +1,17 @@
+# Two different language models under one code: the engine loads and reports a
+# model by its code, so both halves refuse the pair.
+kind: Telo.Application
+metadata:
+  name: LanguageCodeDuplicate
+  version: 1.0.0
+imports:
+  Tesseract: ../../../../modules/tesseract
+---
+kind: Tesseract.Language
+metadata: { name: invoices }
+code: eng
+data: !module-path ./invoices.traineddata
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng, !ref invoices]

@@ -1,0 +1,94 @@
+kind: Telo.Application
+metadata:
+  name: TesseractStaticRefusalsTest
+  version: 1.0.0
+  description: |
+    `telo check` refuses every recognizer mistake the controller would otherwise
+    refuse only at boot: orientation detection with no orientation model, a model
+    in the other kind's slot, a model listed twice, two models sharing a code, a
+    language coded `osd`, and a
+    recognition time limit outside 1ms to 24h.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref orientationNeedsModel
+  - !ref languageSlotTakesLanguages
+  - !ref orientationSlotTakesOrientationModel
+  - !ref languageListedOnce
+  - !ref osdIsNotALanguage
+  - !ref recognitionTimeAboveZero
+  - !ref recognitionTimeWholeMilliseconds
+  - !ref recognitionTimeBounded
+  - !ref languageCodesDistinct
+---
+kind: Assert.Manifest
+metadata: { name: orientationNeedsModel }
+source: ./__fixtures__/osd-without-model.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "detects page orientation (`autoOsd` / `sparseTextOsd`) but sets no `orientationModel`"
+---
+kind: Assert.Manifest
+metadata: { name: languageSlotTakesLanguages }
+source: ./__fixtures__/wrong-language-kind.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "reference at 'languages[0]' → 'TesseractModel.OrientationModel'"
+---
+kind: Assert.Manifest
+metadata: { name: orientationSlotTakesOrientationModel }
+source: ./__fixtures__/wrong-orientation-kind.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "reference at 'orientationModel' → 'TesseractModel.Language'"
+---
+kind: Assert.Manifest
+metadata: { name: languageListedOnce }
+source: ./__fixtures__/duplicate-language.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/languages must NOT have duplicate items"
+---
+kind: Assert.Manifest
+metadata: { name: osdIsNotALanguage }
+source: ./__fixtures__/osd-coded-language.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/code must match pattern"
+---
+kind: Assert.Manifest
+metadata: { name: recognitionTimeAboveZero }
+source: ./__fixtures__/zero-recognition-time.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `maxRecognitionTime` outside 1ms to 24h"
+---
+kind: Assert.Manifest
+metadata: { name: recognitionTimeWholeMilliseconds }
+source: ./__fixtures__/sub-millisecond-recognition-time.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `maxRecognitionTime` outside 1ms to 24h"
+---
+kind: Assert.Manifest
+metadata: { name: recognitionTimeBounded }
+source: ./__fixtures__/long-recognition-time.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `maxRecognitionTime` outside 1ms to 24h"
+---
+kind: Assert.Manifest
+metadata: { name: languageCodesDistinct }
+source: ./__fixtures__/duplicate-code.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'languages[1]': lists two language models under the same code"

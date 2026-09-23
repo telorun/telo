@@ -9,8 +9,16 @@ import type { ExportedResource, KindInfo } from "@/api";
  *  what one of its kinds does costs a navigation. Everything shown here already
  *  travels in the search response, so the popover is instant and adds no
  *  request — which is the only reason it is worth having over a link. */
-export function KindPopover({ kind, className }: { kind: KindInfo; className?: string }) {
+export function KindPopover({
+  kind,
+  className,
+}: {
+  kind: KindInfo & { entry?: "kind" | "instance"; name?: string };
+  className?: string;
+}) {
   const replacement = kind.deprecated?.replacedBy;
+  const instance = kind.entry === "instance";
+  const label = kind.name ?? kind.kind;
   return (
     <Popover>
       <PopoverTrigger
@@ -20,15 +28,19 @@ export function KindPopover({ kind, className }: { kind: KindInfo; className?: s
           className ??
           "rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
         }
-        aria-label={`Details for ${kind.kind}`}
+        aria-label={`Details for ${label}`}
       >
-        {kind.kind}
+        {label}
       </PopoverTrigger>
       <PopoverContent align="start" className="max-w-[min(20rem,calc(100vw-2rem))]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-mono text-sm font-medium">{kind.kind}</span>
+          <span className="font-mono text-sm font-medium">{label}</span>
           <span className="text-xs text-muted-foreground">
-            {kind.abstract ? "abstract" : shortCapability(kind.capability)}
+            {instance
+              ? `ready-made ${kind.kind}`
+              : kind.abstract
+                ? "abstract"
+                : shortCapability(kind.capability)}
           </span>
         </div>
 

@@ -25,6 +25,10 @@ import {
   type ProvenCoverage,
   type ScopedManifest,
 } from "./catch-scope.js";
+import type { ValidateFunction } from "ajv";
+import { schemaIssues } from "./schema-error-report.js";
+import { createAjv } from "./schema-compat.js";
+import { ABSTRACT_THROWS_SCHEMA, THROWS_CAPABLE_CAPABILITIES } from "./throws-declaration.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
@@ -531,31 +535,58 @@ function checkCelChainAgainstDataSchema(
  *  an identical boot failure and no earlier warning. The action is a consumer's
  *  to take (pin another version, report upstream) even though the edit is not.
  *  Matches the neighbouring `INHERIT_WITHOUT_STEP_CONTEXT`, which is fatal the
- *  same way. */
-const THROWS_CAPABLE_CAPABILITIES = new Set(["Telo.Invocable", "Telo.Runnable"]);
+ *  same way. The capability list is shared with the kernel's schemas
+ *  (`throws-declaration.ts`), as is the block's shape, which the built-in
+ *  definition schemas check. */
+const THROWS_CAPABLE = new Set(THROWS_CAPABLE_CAPABILITIES);
+
+// An abstract is not walked per resource, so its block's shape is checked here,
+// against the schema the kernel's `Telo.Abstract` schema uses.
+let abstractThrowsValidator: ValidateFunction | undefined;
+/** The renderer anchors at the validated value; re-anchor its path at `/throws`. */
+const atThrows = (message: string): string =>
+  message.startsWith("/ ") ? `/throws ${message.slice(2)}` : message.startsWith("/") ? `/throws${message}` : `/throws ${message}`;
+const validateAbstractThrows = (value: unknown) => {
+  const validate = (abstractThrowsValidator ??= createAjv().compile(ABSTRACT_THROWS_SCHEMA));
+  return validate(value) ? [] : schemaIssues(validate.errors);
+};
 
 function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   for (const m of manifests) {
-    if (m.kind !== "Telo.Definition") continue;
+    if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
     const throws = (m as Record<string, any>).throws;
     if (!throws) continue;
     const name = (m.metadata?.name as string | undefined) ?? "<unnamed>";
     const filePath = (m.metadata as { source?: string } | undefined)?.source;
 
-    // Only a DECLARED capability is judged. One inherited through `extends` is
-    // resolved elsewhere, and an unknown one is third-party extensibility the
-    // kernel's schema deliberately leaves open.
+    if (m.kind === "Telo.Abstract") {
+      const issues = validateAbstractThrows(throws);
+      for (const issue of issues) {
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "SCHEMA_VIOLATION",
+          source: SOURCE,
+          message: `Telo.Abstract/${name}: ${atThrows(issue.message)}`,
+          data: { resource: { kind: m.kind, name }, filePath, path: issue.path ? `throws.${issue.path}` : "throws" },
+        });
+      }
+      if (issues.length > 0) continue;
+    }
+
+    // Only a DECLARED capability is judged; one inherited through `extends` is
+    // resolved elsewhere. An unknown capability is refused like any other that is
+    // not on the list, by both halves.
     const capability = (m as Record<string, any>).capability as string | undefined;
-    if (typeof capability === "string" && !THROWS_CAPABLE_CAPABILITIES.has(capability)) {
+    if (typeof capability === "string" && !THROWS_CAPABLE.has(capability)) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "THROWS_ON_NON_DISPATCH_CAPABILITY",
         source: SOURCE,
         message:
-          `Telo.Definition '${name}' declares throws: but its capability is '${capability}'. ` +
+          `${m.kind} '${name}' declares throws: but its capability is '${capability}'. ` +
           `A throw union describes what a CALLER can catch, so it is only meaningful on ` +
-          `${[...THROWS_CAPABLE_CAPABILITIES].join(" or ")}; on '${capability}' a thrown error is a ` +
+          `${THROWS_CAPABLE_CAPABILITIES.join(" or ")}; on '${capability}' a thrown error is a ` +
           `boot-time failure with no caller to render it. The kernel refuses this definition at ` +
           `create(), so a manifest carrying it cannot start.`,
         data: { resource: { kind: m.kind, name }, filePath, path: "throws" },

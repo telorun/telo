@@ -1,0 +1,66 @@
+kind: Telo.Application
+metadata:
+  name: TesseractRoundTripTest
+  version: 1.0.0
+  description: |
+    A sentence rendered to a PDF, rasterized to a PNG page, and read back. The text
+    and the word list are compared exactly; the geometry through a projection —
+    every box inside the image, and words ordered left to right within a line —
+    since exact pixels may differ between the engine's WebAssembly builds.
+imports:
+  Tesseract: ../
+  PdfMake: ../../pdfmake
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref roundTrip
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+---
+kind: Run.Sequence
+metadata: { name: roundTrip }
+steps:
+  - name: render
+    invoke:
+      kind: PdfMake.Document
+      content:
+        - text: The quick brown fox jumps over the lazy dog
+          fontSize: 20
+  - name: rasterize
+    invoke: { kind: Pdf.Rasterizer, scale: 2 }
+    inputs:
+      data: !cel "steps.render.result.bytes"
+  - name: read
+    invoke: !ref recognizer
+    inputs:
+      image: !cel "steps.rasterize.result.image"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text: !cel "steps.read.result.text"
+        words: !cel "steps.read.result.words.map(w, w.text)"
+        size: !cel "[steps.read.result.width, steps.read.result.height]"
+        lineCount: !cel "size(steps.read.result.lines)"
+        confident: !cel "steps.read.result.confidence > 0.8"
+        boxesInsideImage: !cel >-
+          steps.read.result.words.all(w,
+            w.box.x + w.box.width <= steps.read.result.width
+            && w.box.y + w.box.height <= steps.read.result.height
+            && w.polygon[0].x == w.box.x && w.polygon[2].y == w.box.y + w.box.height)
+        leftToRight: !cel >-
+          range(size(steps.read.result.words) - 1).all(i,
+            steps.read.result.words[i].line != steps.read.result.words[i + 1].line
+            || steps.read.result.words[i].box.x + steps.read.result.words[i].box.width
+               <= steps.read.result.words[i + 1].box.x)
+      expected:
+        text: The quick brown fox jumps over the lazy dog
+        words: [The, quick, brown, fox, jumps, over, the, lazy, dog]
+        size: [1191, 1684]
+        lineCount: 1
+        confident: true
+        boxesInsideImage: true
+        leftToRight: true

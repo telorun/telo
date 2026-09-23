@@ -128,6 +128,26 @@ export function stageableFiles(
   return out;
 }
 
+/**
+ * The module files a `sources:` entry stages — one an `assets:` pattern selects,
+ * or a notice — classified as the kernel's module-file resolution classifies
+ * them: a `native:` path is the native layer's, whatever pattern also selects it.
+ * These are what a `!module-path` may name without a copy on disk.
+ */
+export function stagedModuleFiles(native: readonly NativeEntry[], assets: StagedAssets): string[] {
+  const stageable = stageableFiles(native, [], assets);
+  return assets.sources.flatMap((source) =>
+    source.entries
+      .filter((e) => stageable.get(e.path)?.layer === "assets" || source.notices.includes(e.path))
+      .map((e) => e.path),
+  );
+}
+
+/** The paths at `location` or beneath it — a `!module-path` names a file or a directory. */
+export function pathsAtOrBeneath(paths: readonly string[], location: string): string[] {
+  return paths.filter((p) => p === location || p.startsWith(`${location}/`));
+}
+
 /** A `sources:` entry, with the source declaring it. */
 export interface LocatedSourceEntry {
   readonly source: ModuleSource;

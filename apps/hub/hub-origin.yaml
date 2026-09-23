@@ -57,7 +57,8 @@ metadata:
 ---
 # How a ref pins to one version, in one place. A direct `https://` ref addresses
 # a single file at a fixed location and takes NO `@version` suffix — appending
-# one produces a 404. An OCI ref pins with `@<version>`.
+# one produces a 404 — and neither does a local path, which is one directory on
+# disk. Only an OCI ref pins, with `@<version>`.
 kind: Run.Value
 metadata:
   name: pinnedRef
@@ -70,7 +71,7 @@ inputType:
       ref: { type: string }
       version: { type: string }
     required: [ref, version]
-value: !cel "inputs.ref.startsWith('https://') ? inputs.ref : inputs.ref + '@' + inputs.version"
+value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version : inputs.ref"
 ---
 # The versions a ref actually resolves to, newest-first, with the `latest` tag
 # dropped — it is an alias, not a version, and ingesting it would store the same

@@ -1,0 +1,100 @@
+kind: Telo.Application
+metadata:
+  name: HubLocalRefsTest
+  version: 1.0.0
+  description: |
+    A module seeded from the hub's own disk (`./modules/…`) is recorded under the
+    `local` transport and attributed to publisher `local`, and a relative import
+    in it resolves against the importing module's own ref — so the language pack
+    `./modules/tesseract-lang/pol` importing `../../tesseract-model` names the
+    ref the model module was seeded under. A remote source, a `Self` ref and a
+    relative source from a remote importer are returned as written.
+
+    NEEDS A LIVE POSTGRES — the docker-compose `db` service, reached through
+    DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME. Run by the hub's own
+    suite (`pnpm run test:e2e:hub`).
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db
+---
+kind: Run.Sequence
+metadata:
+  name: test
+steps:
+  - name: record
+    invoke: !ref query
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport)
+        VALUES (9201, './modules/tesseract-lang/pol', 'local')
+        ON CONFLICT (ref) DO UPDATE SET transport = EXCLUDED.transport
+        RETURNING transport, module_publisher(ref, transport) AS publisher
+  - name: resolve
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT resolve_import_ref('./modules/tesseract-lang/pol', '../../tesseract-model') AS sibling,
+               resolve_import_ref('./modules/tesseract', './docs/../nested') AS child,
+               resolve_import_ref('./modules/tesseract-lang/pol', './modules/tesseract-lang/pol') AS self,
+               resolve_import_ref('./modules/tesseract-lang/pol', 'oci://ghcr.io/telorun/tesseract-model') AS remote,
+               resolve_import_ref('oci://ghcr.io/acme/pack', '../model') AS remoteImporter,
+               resolve_import_ref('./modules/tesseract-lang/pol', '') AS builtIn
+  - name: assert
+    inputs:
+      actual:
+        record: !cel "steps.record.result.rows.map(r, [r.transport, r.publisher])"
+        resolved: !cel "steps.resolve.result.rows[0]"
+      expected:
+        record:
+          - [local, local]
+        resolved:
+          sibling: ./modules/tesseract-model
+          child: ./modules/tesseract/nested
+          self: ./modules/tesseract-lang/pol
+          remote: oci://ghcr.io/telorun/tesseract-model
+          remoteimporter: ../model
+          builtin: ""
+    invoke:
+      kind: Assert.Equals

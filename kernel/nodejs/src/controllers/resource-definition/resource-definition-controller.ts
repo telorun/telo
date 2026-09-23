@@ -23,6 +23,7 @@ import type { SiblingLibraryMap } from "../../controller-loaders/sibling-librari
 import { ControllerLoader } from "../../controller-loader.js";
 import { formatAjvErrors, validateResourceDefinition } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
+import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
 import {
@@ -111,6 +112,7 @@ class ResourceDefinition implements ResourceInstance {
       this.resource as ResourceDefinitionManifest,
       ctx as unknown as DefinitionScopeHost,
     );
+    refuseThrowsOutsideCeiling(this.resource as ResourceDefinitionManifest, resolveDef);
 
     // Stamp the inheritance-resolved author schema, mirroring the capability
     // stamping below: without `base:`, an `extends` child is authored against

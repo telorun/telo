@@ -8,7 +8,7 @@ metadata:
     the discovery loop: `search_resources` returns kind hits carrying the exact
     module location ref, `get_module_manifest(ref)` returns the tracker-cached
     telo.yaml for that ref, and `get_module` / `list_module_versions` /
-    `find_implementations` / `list_categories` / `suggest_module_refs` mirror
+    `find_implementations` / `find_instances` / `list_categories` / `suggest_module_refs` mirror
     the hub's keyed-read HTTP routes as tools.
 imports:
   McpClient: oci://ghcr.io/telorun/mcp-client@0.15.1#sha256-qOWJKsRw1H8vQiR8L0m3hnAsJf0otEPYMZ6yYzU_CbA
@@ -21,6 +21,7 @@ targets:
   - !ref getModule_ReturnsTrackedModuleFacts
   - !ref listModuleVersions_ReturnsPinnedVersions
   - !ref findImplementations_ListsKvStoreBackends
+  - !ref findInstances_ListsSeededLanguagePacks
   - !ref listCategories_CarriesSchedulingSlug
   - !ref suggestModuleRefs_ResolvesPartialToken
   - !ref getModuleManifest_ReturnsCachedYaml
@@ -211,6 +212,34 @@ steps:
       expected:
         foundRedis: true
         foundMemory: true
+    invoke:
+      kind: Assert.Equals
+---
+# find_instances mirrors GET /instances: the seeded language packs each export
+# one model of tesseract-model's `Language` kind and define no kind of their own.
+# They are seeded from the checkout, so the kind's owner is the local ref their
+# relative import resolves to.
+kind: Run.Sequence
+metadata: { name: findInstances_ListsSeededLanguagePacks }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: find_instances
+      arguments:
+        ref: ./modules/tesseract-model
+        kind: Language
+  - name: parse
+    invoke: !ref parsePayload
+    inputs:
+      text: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        ['pol', 'deu', 'fra'].map(code,
+          steps.parse.result.docs[0].instances.exists(i,
+            i.name == code && i.module.ref == './modules/tesseract-lang/' + code))
+      expected: [true, true, true]
     invoke:
       kind: Assert.Equals
 ---

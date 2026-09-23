@@ -1,0 +1,35 @@
+# The consumer library with a misspelled field path: `box.left` for `box.x`.
+# The contract types the result, so `telo check` refuses it.
+kind: Telo.Library
+metadata:
+  name: MisspelledConsumer
+  version: 1.0.0
+imports:
+  Ocr: ../..
+  Run: ../../../run
+resources:
+  recognizer: { kind: Ocr.Recognizer }
+exports:
+  resources:
+    - wordsInRegion
+---
+kind: Run.Sequence
+metadata: { name: wordsInRegion }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [image]
+    properties:
+      image: { x-telo-type: Telo.Bytes }
+steps:
+  - name: read
+    invoke: !ref recognizer
+    inputs:
+      image: !cel "inputs.image"
+      region: { x: 0, y: 0, width: 200, height: 40 }
+outputs:
+  words: !cel "steps.read.result.words.map(w, w.text)"
+  firstLineBlock: !cel "steps.read.result.lines[0].block"
+  firstWordLeft: !cel "steps.read.result.words[0].box.left"
+  firstWordCorner: !cel "steps.read.result.words[0].polygon[0].y"

@@ -1,0 +1,77 @@
+kind: Telo.Application
+metadata:
+  name: TesseractFormatsTest
+  version: 1.0.0
+  description: |
+    Every accepted format reads to the same text: JPEG and WebP pages from the
+    rasterizer, and a 24-bit BMP and a greyscale PNM of the same sentence.
+imports:
+  Tesseract: ../
+  PdfMake: ../../pdfmake
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref readsEveryFormat
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+---
+kind: Pdf.Rasterizer
+metadata: { name: rasterizer }
+scale: 2
+quality: 90
+---
+kind: Run.Sequence
+metadata: { name: readsEveryFormat }
+steps:
+  - name: render
+    invoke:
+      kind: PdfMake.Document
+      content:
+        - text: The quick brown fox jumps over the lazy dog
+          fontSize: 20
+  - name: jpeg
+    invoke: !ref rasterizer
+    inputs:
+      data: !cel "steps.render.result.bytes"
+      format: jpeg
+  - name: webp
+    invoke: !ref rasterizer
+    inputs:
+      data: !cel "steps.render.result.bytes"
+      format: webp
+  - name: readJpeg
+    invoke: !ref recognizer
+    inputs:
+      image: !cel "steps.jpeg.result.image"
+  - name: readWebp
+    invoke: !ref recognizer
+    inputs:
+      image: !cel "steps.webp.result.image"
+  - name: readBmp
+    invoke: !ref recognizer
+    inputs:
+      image: !include-bytes ./__fixtures__/hello.bmp
+  - name: readPnm
+    invoke: !ref recognizer
+    inputs:
+      image: !include-bytes ./__fixtures__/hello.pnm
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        jpeg: !cel "steps.readJpeg.result.text"
+        webp: !cel "steps.readWebp.result.text"
+        bmp: !cel "steps.readBmp.result.text"
+        pnm: !cel "steps.readPnm.result.text"
+        sizes: !cel >-
+          [[steps.readBmp.result.width, steps.readBmp.result.height],
+           [steps.readPnm.result.width, steps.readPnm.result.height]]
+      expected:
+        jpeg: The quick brown fox jumps over the lazy dog
+        webp: The quick brown fox jumps over the lazy dog
+        bmp: The quick brown fox jumps over the lazy dog
+        pnm: The quick brown fox jumps over the lazy dog
+        sizes: [[560, 48], [560, 48]]

@@ -393,6 +393,34 @@ raised by the runtime for every kind alike, not declared by any kind.
 - A retry policy MUST NOT re-attempt one: each is a verdict on the shape of the
   call, or on a synchronous call that fails the same way again.
 
+### 5.3 A declared union as a ceiling
+
+A kind's `throws:` is the third part of its contract. A `Telo.Abstract` MAY
+declare one, as a literal `codes` list only (`inherit` and `passthrough` need a
+body, which an abstract does not have, so neither key is admitted), and only
+where its capability is dispatchable.
+
+- The nearest ancestor along `extends` that declares a literal `codes` list,
+  abstract or concrete, is the **ceiling**. A definition whose literal codes
+  include one the ceiling does not MUST be refused at registration
+  (`ERR_THROWS_NOT_SUBSTITUTABLE`), and a checker MUST report it
+  (`THROWS_NOT_SUBSTITUTABLE`).
+- A descendant's own list replaces and never merges, as §2.2 requires of every
+  contract part. The per-dispatch undeclared-code check against the
+  implementation's own list makes the ceiling hold transitively.
+- An ancestor whose block is `inherit` or `passthrough` bounds nothing of its
+  own and is looked past, so a literal list above it still bounds everything
+  below it. A definition whose own block is one of them is not judged at
+  registration.
+- The shape of a `throws:` block, and which declared capabilities may carry one
+  (`Telo.Invocable` and `Telo.Runnable`; any other declared capability, a
+  third party's included, may not), MUST be the same rule for a checker and a
+  runtime.
+- A checker resolving what a dispatch MAY throw through a target known only by
+  its kind (a library's resource input) MUST read the nearest declared list along
+  that kind's chain, and MUST treat a chain declaring none as unbounded, never
+  as empty.
+
 ## 6. Conformance
 
 A conforming runtime:
@@ -410,9 +438,11 @@ A conforming runtime:
    counting (§5);
 10. raises rather than silently skipping when a declared contract resolves to no
     schema (§5.1);
-11. binds module calls per module scope at creation, refusing and deferring as
+11. refuses a definition whose literal throw codes exceed its ancestor's
+    ceiling (§5.3);
+12. binds module calls per module scope at creation, refusing and deferring as
     §7.1 states, and evaluates them as §7.2 and §7.3 state;
-12. binds every function's `call` and hands a native function's controller the
+13. binds every function's `call` and hands a native function's controller the
     function context, as §7.4 states.
 
 ## 7. Module functions

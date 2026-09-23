@@ -32,6 +32,7 @@ import {
   conditionRefusals,
   untaggedConditionFix,
 } from "./rule-condition.js";
+import { bindingFailureReason, type PeerBinder, type PeerBindingFailure } from "./peer-binding.js";
 import type { DiagnosticFix } from "./types.js";
 import {
   RESOURCE_RULES_ANNOTATION,
@@ -68,6 +69,7 @@ export type ResourceRuleFinding =
       message: string;
     }
   | { kind: "skipped"; rule: ResourceRule; path: string; dynamic: DynamicLeaf }
+  | { kind: "unbound"; rule: ResourceRule; failure: PeerBindingFailure }
   | { kind: "failed"; rule: ResourceRule; path: string; reason: string }
   | { kind: "over-budget"; rule: ResourceRule; path: string; elapsedMs: number };
 
@@ -218,6 +220,24 @@ export function validateResourceRuleDeclarations(
       }
     }
 
+    if (entry.resolve !== undefined) {
+      if (!Array.isArray(entry.resolve)) {
+        issue(`${at}.resolve`, "'resolve' must be a list of JSON Pointers to this kind's reference slots.");
+      } else {
+        entry.resolve.forEach((pointer: unknown, i: number) => {
+          if (typeof pointer !== "string" || !pointerSegments(pointer)) {
+            issue(`${at}.resolve[${i}]`, "Each 'resolve' entry must be a JSON Pointer starting with '/'.");
+          } else if (schemaAtPointer(schema, pointer) === undefined) {
+            issue(
+              `${at}.resolve[${i}]`,
+              `'resolve' names '${pointer}', which this kind's schema does not declare. It must ` +
+                "name a reference slot of this kind, or a collection of them.",
+            );
+          }
+        });
+      }
+    }
+
     if (condition !== undefined && condition.length > 0 && !isTaggedCondition(entry.condition)) {
       issue(`${at}.condition`, UNTAGGED_CONDITION, untaggedConditionFix(condition));
     }
@@ -276,14 +296,25 @@ export function evaluateResourceRules(
   /** The functions the condition may call, evaluated by the analyzer
    *  (`function-body-evaluator.ts`). */
   functions?: ModuleCallDispatch,
+  /** Resolves a rule's `resolve:` slots; the run's shared binder. Without one a
+   *  rule declaring `resolve:` reports as unbound rather than reading references
+   *  as if they were the declarations. */
+  binder?: PeerBinder,
+  /** The resource's kind, as the binder's field-map lookup spells it. */
+  kind: string = manifest.kind,
 ): ResourceRuleFinding[] {
   const rules = readResourceRules(definitionSchema);
   if (rules.length === 0) return [];
 
-  const self = manifest as unknown as Record<string, unknown>;
   const findings: ResourceRuleFinding[] = [];
 
   for (const rule of rules) {
+    const bound = resolvedView(manifest, rule, binder, kind);
+    if (!bound.ok) {
+      findings.push({ kind: "unbound", rule, failure: bound.failure });
+      continue;
+    }
+    const self = bound.self;
     const subjects =
       rule.in === undefined ? [{ path: "", value: self }] : resolveRuleSubjects(self, rule.in);
     // `undefined` means the pointer resolved to a scalar — a declaration defect
@@ -343,6 +374,36 @@ export function evaluateResourceRules(
   return findings;
 }
 
+/** `self` as a rule reads it: the manifest, with each `resolve:` slot replaced by
+ *  the declarations it references. A copy along the replaced paths only. */
+function resolvedView(
+  manifest: ResourceManifest,
+  rule: ResourceRule,
+  binder: PeerBinder | undefined,
+  kind: string,
+): { ok: true; self: Record<string, unknown> } | { ok: false; failure: PeerBindingFailure } {
+  let self = manifest as unknown as Record<string, unknown>;
+  for (const pointer of rule.resolve ?? []) {
+    if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
+    const resolved = binder.resolveReferences(manifest, kind, pointer);
+    if (!resolved.ok) return resolved;
+    self = replaceAt(self, pointerSegments(pointer)!, resolved.value) as Record<string, unknown>;
+  }
+  return { ok: true, self };
+}
+
+function replaceAt(value: unknown, segments: readonly string[], replacement: unknown): unknown {
+  if (segments.length === 0) return replacement;
+  const [head, ...rest] = segments;
+  if (Array.isArray(value)) {
+    const copy = [...value];
+    copy[Number(head)] = replaceAt(copy[Number(head)], rest, replacement);
+    return copy;
+  }
+  const record = isObject(value) ? value : {};
+  return { ...record, [head!]: replaceAt(record[head!], rest, replacement) };
+}
+
 /** Whether a rule found anything to iterate on this resource — the input to the
  *  never-exercised report, which is the second way coverage varies invisibly. */
 export function ruleExercised(manifest: ResourceManifest, rule: ResourceRule): boolean {
@@ -390,7 +451,7 @@ export function reportResourceRules(
   const out: ResourceRuleDiagnostic[] = [];
 
   for (const finding of findings) {
-    const at = finding.path === "" ? undefined : finding.path;
+    const at = "path" in finding && finding.path !== "" ? finding.path : undefined;
     if (finding.kind === "violation") {
       out.push({
         // One analyzer-owned envelope: surfaces branch on `code`, so a published
@@ -402,6 +463,20 @@ export function reportResourceRules(
         message: `${manifest.kind}/${name}${at ? ` at '${at}'` : ""}: ${finding.message}`,
         manifest,
         path: at,
+        rule: finding.rule.code,
+      });
+      continue;
+    }
+    if (finding.kind === "unbound") {
+      out.push({
+        code: "RESOURCE_RULE_SKIPPED",
+        severity: "information",
+        message:
+          `${manifest.kind}/${name}: rule '${finding.rule.code}' did not run — ` +
+          `${bindingFailureReason(finding.failure)} Reported rather than dropped: a check whose ` +
+          "coverage varies invisibly reads as passing.",
+        manifest,
+        path: finding.failure.at,
         rule: finding.rule.code,
       });
       continue;

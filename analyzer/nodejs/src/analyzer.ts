@@ -2257,6 +2257,7 @@ export class StaticAnalyzer {
           // module calls reach that module's functions.
           moduleCallNamesOf(moduleCallNames, definition as unknown as ResourceManifest),
           bodyEvaluators.dispatchFor(definition as unknown as ResourceManifest),
+          referrerRuleContext.peerBinder,
         ),
         !ruleDeclarer || rootModules.has(ruleDeclarer),
       )) {

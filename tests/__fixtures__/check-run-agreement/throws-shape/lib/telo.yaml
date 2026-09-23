@@ -1,0 +1,26 @@
+# Two malformed `throws:` blocks on abstracts, each of which the kernel's schema
+# refuses: a key an abstract cannot carry, even set to false, and a code that is
+# not an upper-case identifier and has no description.
+kind: Telo.Library
+metadata:
+  name: ThrowsShapeLib
+exports:
+  kinds: [NotLiteral, BadCode]
+---
+kind: Telo.Abstract
+metadata:
+  name: NotLiteral
+capability: Telo.Invocable
+throws:
+  inherit: false
+  codes:
+    ERR_NOT_FOUND:
+      description: Nothing matched the key.
+---
+kind: Telo.Abstract
+metadata:
+  name: BadCode
+capability: Telo.Invocable
+throws:
+  codes:
+    lowercase_code: {}

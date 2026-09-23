@@ -4,7 +4,13 @@ import addFormats from "ajv-formats";
 // further through the `JsonSchema7` fragment, which can name the offending
 // keyword and its line; keeping this permissive is what stops a sloppy keyword
 // in an already-published manifest from becoming a boot failure.
-import { OBSERVED_STATE_SCHEMA, registerTeloKeywords } from "@telorun/analyzer";
+import {
+  ABSTRACT_THROWS_SCHEMA,
+  OBSERVED_STATE_SCHEMA,
+  registerTeloKeywords,
+  THROWS_CAPABLE_CAPABILITIES,
+  THROWS_SCHEMA,
+} from "@telorun/analyzer";
 const Ajv = AjvModule.default ?? AjvModule;
 
 // Re-export the shared manifest fragments so consumers reaching them through the
@@ -41,34 +47,6 @@ const metadataSchema = {
   additionalProperties: true,
 };
 
-const throwsSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    codes: {
-      type: "object",
-      propertyNames: { pattern: "^[A-Z][A-Z0-9_]*$" },
-      additionalProperties: {
-        type: "object",
-        required: ["description"],
-        additionalProperties: false,
-        properties: {
-          description: { type: "string" },
-          data: { type: "object", additionalProperties: true },
-        },
-      },
-    },
-    // "my throw union includes every code thrown by every invocable I call
-    //  (minus codes caught in an enclosing try/catch)". Analyzer enforces
-    //  that this is only legal on definitions whose schema declares at least
-    //  one `x-telo-step-context` array.
-    inherit: { type: "boolean" },
-    // "my throw union is whatever `inputs.code` resolves to statically." Used
-    // by passthrough-style adapters. Analyzer resolves per call site.
-    passthrough: { type: "boolean" },
-  },
-};
-
 /** Alias-form pattern for `extends` values: "<Alias>.<AbstractName>".
  *  Resolved against the declaring file's `Telo.Import` aliases — identical to how
  *  kind prefixes work (e.g. `kind: Http.Api` resolves `Http` via the importer's
@@ -90,7 +68,7 @@ const baseDefinition = {
     schema: { type: "object", additionalProperties: true },
     status: OBSERVED_STATE_SCHEMA,
     controllers: { type: "array", items: { type: "string" } },
-    throws: throwsSchema,
+    throws: THROWS_SCHEMA,
     // A callable's signature and its native determinism claim. Deliberately
     // UNCONSTRAINED here, the `REQUIRES_SCHEMA` posture: every rule that matters
     // — optional parameters trailing, a shape named with `!ref` rather than as a
@@ -148,37 +126,41 @@ const KNOWN_CAPABILITIES = [
  *  REPLACES the capability constant, which turns every forbidding branch into
  *  "any definition with a capability and no throws" and makes the whole `oneOf`
  *  match several branches at once. */
-const capabilityBranch = (capability: string, mayThrow: boolean) => ({
+const capabilityBranch = (capability: string) => ({
   required: ["capability"],
   properties: {
     capability: { const: capability },
-    ...(mayThrow ? {} : { throws: false }),
+    ...(THROWS_CAPABLE_CAPABILITIES.includes(capability) ? {} : { throws: false }),
   },
 });
 
 export const ResourceDefinitionSchema = {
   ...baseDefinition,
   oneOf: [
-    capabilityBranch("Telo.Service", false),
-    capabilityBranch("Telo.Runnable", true),
-    capabilityBranch("Telo.Invocable", true),
-    capabilityBranch("Telo.Provider", false),
-    capabilityBranch("Telo.Type", false),
-    capabilityBranch("Telo.Mount", false),
+    capabilityBranch("Telo.Service"),
+    capabilityBranch("Telo.Runnable"),
+    capabilityBranch("Telo.Invocable"),
+    capabilityBranch("Telo.Provider"),
+    capabilityBranch("Telo.Type"),
+    capabilityBranch("Telo.Mount"),
     // A sink is written to directly, never dispatched, so a thrown error is a
     // boot-time failure rather than a structured runtime error for a caller.
-    capabilityBranch("Telo.Sink", false),
+    capabilityBranch("Telo.Sink"),
     // A callable is evaluated inside a CEL expression, with no caller frame to
     // return a structured error to: a throw fails the evaluation itself
     // (ERR_FUNCTION_FAILED), so a declared throw union would describe a
     // dispatch that never happens.
-    capabilityBranch("Telo.Callable", false),
-    // Unknown/absent capability: open schema for third-party extensibility
+    capabilityBranch("Telo.Callable"),
+    // Unknown/absent capability: open schema for third-party extensibility. An
+    // absent one is inherited through `extends` and judged there; a declared
+    // unknown one may not throw, the rule `telo check` applies.
     {
       not: {
         required: ["capability"],
         properties: { capability: { enum: KNOWN_CAPABILITIES } },
       },
+      if: { required: ["capability"] },
+      then: { properties: { throws: false } },
       unevaluatedProperties: true,
     },
   ],
@@ -186,8 +168,10 @@ export const ResourceDefinitionSchema = {
 
 /** Schema for `kind: Telo.Abstract`. Library-declared abstracts are type blueprints —
  *  they may carry an optional `capability` (lifecycle inherited by implementations)
- *  and an optional `schema` (shared base for implementations). `controllers` and `throws`
- *  are forbidden (no runtime implementation; throws lives on concrete definitions).
+ *  and an optional `schema` (shared base for implementations). `controllers` is
+ *  forbidden (no runtime implementation). `throws` is the third part of the
+ *  contract: a literal `codes` list that is the CEILING every implementation's
+ *  codes must fall within — no `inherit` / `passthrough`, since there is no body.
  *  Other fields are permitted for forward compatibility with typed-abstracts work
  *  (inputType, outputType, …) — Telo.Abstract is an extension point by design. */
 export const ResourceAbstractSchema = {
@@ -200,10 +184,15 @@ export const ResourceAbstractSchema = {
     schema: { type: "object", additionalProperties: true },
     // A contract may mandate what its implementations report.
     status: OBSERVED_STATE_SCHEMA,
+    throws: ABSTRACT_THROWS_SCHEMA,
   },
-  not: {
-    anyOf: [{ required: ["controllers"] }, { required: ["throws"] }],
+  not: { required: ["controllers"] },
+  // Rule 8: a declared capability outside the allowlist may not throw.
+  if: {
+    required: ["throws", "capability"],
+    properties: { capability: { not: { enum: THROWS_CAPABLE_CAPABILITIES } } },
   },
+  then: { properties: { throws: false } },
   additionalProperties: true,
 };
 

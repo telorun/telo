@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: TesseractOrientationTest
+  version: 1.0.0
+  description: |
+    A page turned 90 degrees clockwise is detected as such, in Latin script, and
+    still reads correctly. The fixture is committed because neither the PDF
+    renderer nor the rasterizer can rotate a page.
+imports:
+  Tesseract: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref detectsTheRotation
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+orientationModel: !ref Tesseract.osd
+pageSegmentation: autoOsd
+---
+kind: Run.Sequence
+metadata: { name: detectsTheRotation }
+steps:
+  - name: read
+    invoke: !ref recognizer
+    inputs:
+      image: !include-bytes ./__fixtures__/rotated.png
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        degrees: !cel "steps.read.result.orientation.degrees"
+        script: !cel "steps.read.result.orientation.script"
+        text: !cel "steps.read.result.text"
+        # The text's top-left corner sits at the image's top-right on a page
+        # turned clockwise, so that is where each polygon starts.
+        polygonsStartTopRight: !cel >-
+          steps.read.result.words.all(w,
+            w.polygon[0].x == w.box.x + w.box.width && w.polygon[0].y == w.box.y)
+      expected:
+        degrees: 90
+        script: Latin
+        text: |-
+          The quick brown fox jumps over
+          the lazy dog near the river bank
+          while seven wizards quietly read
+          old books about distant stars.
+        polygonsStartTopRight: true

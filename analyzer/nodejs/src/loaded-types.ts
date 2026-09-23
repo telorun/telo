@@ -115,8 +115,9 @@ export interface LoadedGraph {
   versionDiagnostics: AnalysisDiagnostic[];
   /** `MODULE_PATH_NOT_FOUND` for every `!module-path` in the ENTRY's own module
    *  (owner + partials) that names nothing — asked of the source at load, since
-   *  existence needs a filesystem and analysis runs without one. Empty when the
-   *  entry's source cannot answer (`ManifestSource.exists`). */
+   *  existence needs a filesystem and analysis runs without one. A path at or
+   *  above a module file the module's `sources:` stages counts as present. Empty
+   *  when the entry's source cannot answer (`ManifestSource.exists`). */
   modulePathDiagnostics: AnalysisDiagnostic[];
   /** YAML parse failures aggregated from every file's `parseErrors`. A file
    *  that fails to parse yields a mangled `toJSON()` projection, so these are

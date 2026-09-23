@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: Probe
+  version: 1.0.0
+imports:
+  Tesseract: ../..
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng, !ref Tesseract.eng]

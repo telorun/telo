@@ -1,0 +1,229 @@
+kind: Telo.Library
+metadata:
+  name: Ocr
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [AI, Data]
+  description: |
+    Optical character recognition (OCR) over any engine: read the printed text in an
+    image and get it back with a confidence score, plus every block, line and word
+    with its pixel bounding box and outline polygon. Coordinates are measured on the
+    whole image, so recognized words can be drawn back onto the page. One image per
+    call, optionally limited to a rectangle.
+requires:
+  # 0.99.0: `throws:` on a Telo.Abstract, the ceiling its implementations' codes
+  # must fall within. 0.98.0's `telo check` accepts the key, but its kernel
+  # refuses the abstract at boot.
+  telo: ">=0.99.0"
+exports:
+  kinds:
+    - Recognizer
+---
+# The engine-neutral contract. Anything that should accept any OCR engine types
+# its slot against this abstract; an engine module extends it and is chosen where
+# the application declares the recognizer.
+#
+# One image per call. Several pages compose from other kinds (a rasterizer plus an
+# iteration); key-value, table and form extraction are a different contract and
+# never become fields here.
+#
+# The lists are flat and linked by index rather than nested, so CEL filters words
+# directly and an overlay takes their boxes as they are. The element shapes are
+# written inline rather than as named `Telo.JsonSchema` shapes because a named
+# shape nested in a contract is not typed in a consumer's CEL, and a misspelled
+# `words[0].box.x` must be a `telo check` error.
+#
+# A polygon is always present beside the box: an engine that detects rotated text
+# reports its outline, and an axis-aligned box alone loses it. An engine that only
+# knows boxes reports the box's four corners.
+kind: Telo.Abstract
+metadata:
+  name: Recognizer
+  description: >-
+    Reads the printed text in one image, optionally only inside a pixel rectangle.
+    Returns the text, the mean word confidence from 0 to 1, the image size, and flat
+    lists of blocks, lines and words linked by index, each with a box and polygon in
+    whole-image coordinates. Bad input, an unreadable or oversized image, a busy
+    engine and an engine failure are distinct errors.
+capability: Telo.Invocable
+# The failure vocabulary every implementation reports. There is deliberately no
+# timeout code: a caller bounds a call with the step's `timeout:`, and every
+# implementation stops work when the invocation is cancelled.
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call was malformed: a region reaching outside the image, or a parameter
+        the recognizer cannot accept.
+    ERR_UNSUPPORTED_IMAGE:
+      description: >-
+        The bytes are not a readable image in a format this recognizer supports.
+    ERR_IMAGE_TOO_LARGE:
+      description: >-
+        The image exceeds the recognizer's size limits, in bytes or in pixels.
+    ERR_OCR_OVERLOADED:
+      description: >-
+        The recognizer has no capacity for the call right now. Retrying later may
+        succeed.
+    ERR_OCR_ENGINE_FAILED:
+      description: >-
+        The engine failed while recognizing. The same call may succeed if retried.
+    ERR_OCR_LIMIT_EXCEEDED:
+      description: >-
+        The engine stopped the call at one of its own limits, such as how long a
+        single recognition may run. Retrying the same input is unlikely to help.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [image]
+    additionalProperties: false
+    properties:
+      image:
+        description: The encoded image to read.
+        x-telo-type: Telo.Bytes
+      region:
+        description: >-
+          Only this rectangle is read, in pixels from the image's top-left corner.
+          Reported coordinates stay on the whole image.
+        type: object
+        required: [x, y, width, height]
+        additionalProperties: false
+        properties:
+          x: { type: integer, minimum: 0 }
+          y: { type: integer, minimum: 0 }
+          width: { type: integer, minimum: 1 }
+          height: { type: integer, minimum: 1 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text, confidence, width, height, blocks, lines, words]
+    additionalProperties: false
+    properties:
+      text:
+        description: >-
+          The full recognized text: lines separated by a newline, blocks by a blank
+          line.
+        type: string
+      confidence:
+        description: The mean confidence over the recognized words, from 0 to 1.
+        type: number
+        minimum: 0
+        maximum: 1
+      width:
+        description: The input image's width in pixels.
+        type: integer
+        minimum: 1
+      height:
+        description: The input image's height in pixels.
+        type: integer
+        minimum: 1
+      blocks:
+        description: Every text block, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                Corner points in pixels on the whole image, clockwise from the
+                top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+      lines:
+        description: Every text line, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon, block]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                Corner points in pixels on the whole image, clockwise from the
+                top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+            block:
+              description: Index into `blocks` of the block this line belongs to.
+              type: integer
+              minimum: 0
+      words:
+        description: Every word, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon, line]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                Corner points in pixels on the whole image, clockwise from the
+                top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+            line:
+              description: Index into `lines` of the line this word belongs to.
+              type: integer
+              minimum: 0

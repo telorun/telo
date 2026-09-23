@@ -73,6 +73,8 @@
     "@telorun/stream-build",
     "@telorun/svg-chart-build",
     "@telorun/tar-build",
+    "@telorun/tesseract-build",
+    "@telorun/tesseract-model-build",
     "@telorun/test-build",
     "@telorun/timer-build",
     "@telorun/type",

@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: TesseractRefusalsTest
+  version: 1.0.0
+  description: |
+    Each way a call is refused reports its own code. Each `try:` ends with a
+    `throw:` that only runs when the call wrongly succeeded, so its code reaching
+    the assertion is a failure too.
+imports:
+  Tesseract: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref refusesBadCalls
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+---
+kind: Tesseract.Recognizer
+metadata: { name: tinyLimit }
+languages: [!ref Tesseract.eng]
+maxPixels: 1000
+---
+kind: Tesseract.Recognizer
+metadata: { name: impatient }
+languages: [!ref Tesseract.eng]
+maxRecognitionTime: 1ms
+---
+kind: Run.Sequence
+metadata: { name: refusesBadCalls }
+steps:
+  - name: notAnImage
+    try:
+      - name: read
+        invoke: !ref recognizer
+        inputs:
+          image: !cel "bytes('not an image')"
+      - name: unexpected
+        throw: { code: ERR_CALL_SUCCEEDED, message: the call was expected to fail }
+    catch:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_UNSUPPORTED_IMAGE
+
+  - name: tooManyPixels
+    try:
+      - name: read
+        invoke: !ref tinyLimit
+        inputs:
+          image: !include-bytes ./__fixtures__/hello.pnm
+      - name: unexpected
+        throw: { code: ERR_CALL_SUCCEEDED, message: the call was expected to fail }
+    catch:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_IMAGE_TOO_LARGE
+
+  - name: regionOutsideImage
+    try:
+      - name: read
+        invoke: !ref recognizer
+        inputs:
+          image: !include-bytes ./__fixtures__/hello.pnm
+          region: { x: 500, y: 0, width: 100, height: 48 }
+      - name: unexpected
+        throw: { code: ERR_CALL_SUCCEEDED, message: the call was expected to fail }
+    catch:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INVALID_INPUT
+
+  # The caller's deadline stops the running recognition; its engine is replaced,
+  # so the next call on the same recognizer still reads the page.
+  - name: callerDeadline
+    try:
+      - name: read
+        invoke: !ref recognizer
+        inputs:
+          image: !include-bytes ./__fixtures__/hello.pnm
+        timeout: 1
+      - name: unexpected
+        throw: { code: ERR_CALL_SUCCEEDED, message: the call was expected to fail }
+    catch:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_STEP_TIMEOUT
+  - name: readAfterDeadline
+    invoke: !ref recognizer
+    inputs:
+      image: !include-bytes ./__fixtures__/hello.pnm
+  - name: checkReadAfterDeadline
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readAfterDeadline.result.text"
+      expected: The quick brown fox jumps over the lazy dog
+
+  - name: recognitionTimeLimit
+    try:
+      - name: read
+        invoke: !ref impatient
+        inputs:
+          image: !include-bytes ./__fixtures__/hello.pnm
+      - name: unexpected
+        throw: { code: ERR_CALL_SUCCEEDED, message: the call was expected to fail }
+    catch:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_OCR_LIMIT_EXCEEDED

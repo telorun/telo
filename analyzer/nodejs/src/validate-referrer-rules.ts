@@ -31,7 +31,7 @@ import {
   readReferrerRules,
   type ReferrerRule,
 } from "./referrer-rule.js";
-import type { PeerBinder, PeerBindingFailure, PeersTarget } from "./peer-binding.js";
+import { bindingFailureReason, type PeerBinder, type PeerBindingFailure, type PeersTarget } from "./peer-binding.js";
 import {
   celSourceOf,
   findDynamicLeaf,
@@ -448,29 +448,6 @@ export interface ReferrerRuleDiagnostic {
   rule: string;
 }
 
-/** Why a peer binding could not be produced, as the sentence a reader acts on. */
-function peerBindingReason(failure: PeerBindingFailure): string {
-  switch (failure.reason) {
-    case "no-collection":
-      return `'${failure.at}' holds no collection to bind 'peers' from.`;
-    case "unresolved":
-      return (
-        `a reference at '${failure.at}' names a declaration this analysis does not hold, ` +
-        "so a peer would bind to nothing."
-      );
-    case "dynamic":
-      return (
-        `a value at '${failure.at}' holds ${failure.what ?? "a value"}, which is not known ` +
-        "until the resource is created, so the comparison would run against a placeholder."
-      );
-    case "unknown-shape":
-      return (
-        `which paths under '${failure.at}' hold references is not known here, so nothing ` +
-        "could be resolved into a declaration."
-      );
-  }
-}
-
 const nameOf = (manifest: ResourceManifest): string =>
   (manifest.metadata?.name as string | undefined) ?? "<unnamed>";
 
@@ -530,7 +507,7 @@ export function reportReferrerRules(
         message:
           `${finding.referrer.kind}/${nameOf(finding.referrer.manifest)}: rule ` +
           `'${finding.rule.code}' from ${declaringKind} did not run at ` +
-          `'${finding.referrer.path}' — ${peerBindingReason(finding.failure)}` +
+          `'${finding.referrer.path}' — ${bindingFailureReason(finding.failure)}` +
           " Reported rather than dropped: a check whose coverage varies invisibly reads as passing.",
         manifest: finding.referrer.manifest,
         path: finding.referrer.path,

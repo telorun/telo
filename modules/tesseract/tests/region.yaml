@@ -1,0 +1,38 @@
+kind: Telo.Application
+metadata:
+  name: TesseractRegionTest
+  version: 1.0.0
+  description: |
+    A region reads only the words inside it, and their boxes are measured on the
+    whole image: the rectangle starts at x=192, so every box does too.
+imports:
+  Tesseract: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref readsInsideTheRegion
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+---
+kind: Run.Sequence
+metadata: { name: readsInsideTheRegion }
+steps:
+  - name: read
+    invoke: !ref recognizer
+    inputs:
+      image: !include-bytes ./__fixtures__/hello.bmp
+      region: { x: 192, y: 0, width: 112, height: 48 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        words: !cel "steps.read.result.words.map(w, w.text)"
+        insideRegion: !cel >-
+          steps.read.result.words.all(w, w.box.x >= 192 && w.box.x + w.box.width <= 304)
+        size: !cel "[steps.read.result.width, steps.read.result.height]"
+      expected:
+        words: [fox, jumps]
+        insideRegion: true
+        size: [560, 48]

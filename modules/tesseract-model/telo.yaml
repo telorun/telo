@@ -1,0 +1,90 @@
+kind: Telo.Library
+metadata:
+  name: TesseractModel
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [AI]
+  description: |
+    Trained models for Tesseract OCR: declare a language recognition model or the
+    page orientation and script detection model by pointing at its `.traineddata`
+    file, gzip-compressed or raw. A recognizer takes models by reference, so bundled,
+    downloaded, custom and fine-tuned models are wired the same way.
+requires:
+  # 0.98.0: `data` is a `Telo.HostPath`, which an older analyzer rejects as
+  # X_TELO_TYPE_UNKNOWN.
+  telo: ">=0.98.0"
+exports:
+  kinds:
+    - Model
+    - Language
+    - OrientationModel
+---
+# The model kinds alone, in a leaf that almost never changes. Language modules
+# import this rather than the engine: an in-repo import edge bumps its dependent
+# on every release, so importing the engine would republish every language module
+# with each engine release, and give each one an engine scope of its own.
+#
+# A recognizer reads a model only through its published reading (`data`, and
+# `code` for a language), never through its class, so a model declared against
+# one version of this module works with a recognizer that imported another.
+kind: Telo.Abstract
+metadata:
+  name: Model
+  description: >-
+    A trained model file for the text-recognition engine, located by the absolute
+    path of its `.traineddata` file, gzip-compressed or raw. A recognizer that
+    references it reads and loads the file; declaring one reads nothing.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [data]
+  additionalProperties: false
+  properties:
+    data:
+      title: Data
+      description: >-
+        The `.traineddata` file, gzip-compressed or raw; the recognizer tells them
+        apart by the gzip header. Write `!module-path` for a file that ships with
+        the module, or use a host-path variable.
+      x-telo-type: Telo.HostPath
+---
+kind: Telo.Definition
+metadata:
+  name: Language
+  description: >-
+    A text-recognition model for one language or script, named by its engine code
+    (`eng`, `deu`, `chi_sim`) and located by its `.traineddata` file. The recognizer
+    passes the code to the engine and never reads the file name, so pointing `data`
+    at your own file uses a custom or fine-tuned model.
+extends: Self.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController
+schema:
+  type: object
+  required: [code]
+  additionalProperties: false
+  properties:
+    code:
+      title: Code
+      description: >-
+        The model's name as the engine knows it, such as `eng` or `chi_sim`: the model
+        is loaded under it and reported under it in hOCR's `lang`. A custom or
+        fine-tuned model takes a name of its own, such as `eng_invoice`. `osd` is the
+        orientation model's and is not a language.
+      type: string
+      pattern: "^(?!osd$)[a-z][a-z0-9_]*$"
+---
+# A kind of its own rather than a Language with a reserved code, so a recognition
+# slot and an orientation slot each accept only their own kind and `telo check`
+# refuses a mixed-up model at the reference.
+kind: Telo.Definition
+metadata:
+  name: OrientationModel
+  description: >-
+    The page orientation and script detection model, located by its `.traineddata`
+    file. A recognizer uses it to detect how a page is rotated and which script it
+    is written in before reading the text. It carries no language code.
+extends: Self.Model
+controllers:
+  - pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController

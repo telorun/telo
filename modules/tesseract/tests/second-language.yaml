@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: TesseractSecondLanguageTest
+  version: 1.0.0
+  description: |
+    German text with umlauts and a sharp s, read through a language module's
+    exported model: the model the application imports, not the bundled English one.
+imports:
+  Tesseract: ../
+  Deu: ../../tesseract-lang/deu
+  PdfMake: ../../pdfmake
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref readGerman
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Deu.deu]
+---
+kind: Run.Sequence
+metadata: { name: readGerman }
+steps:
+  - name: render
+    invoke:
+      kind: PdfMake.Document
+      content:
+        - text: Größere Übungen für schöne Straßen
+          fontSize: 20
+  - name: rasterize
+    invoke: { kind: Pdf.Rasterizer, scale: 2 }
+    inputs:
+      data: !cel "steps.render.result.bytes"
+  - name: read
+    invoke: !ref recognizer
+    inputs:
+      image: !cel "steps.rasterize.result.image"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.text"
+      expected: Größere Übungen für schöne Straßen

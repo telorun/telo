@@ -18,6 +18,7 @@ import { refSentinelsIn } from "./contract-shapes.js";
 import { buildReferenceFieldMap, isRefEntry } from "./reference-field-map.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
+import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -43,6 +44,9 @@ const SOURCE = "telo-analyzer";
  *    contracts resolve to the nearest declaration in BOTH halves, so a child that
  *    declares its own is compared against its abstract by neither the analyzer
  *    nor dispatch.
+ *  - THROWS_NOT_SUBSTITUTABLE: a definition declares a throw code its nearest
+ *    `throws:`-declaring ancestor does not — the same replacement, for the third
+ *    part of the contract (`throws-ceiling.ts`).
  *
  * Deliberately NOT diagnosed: an input that is neither `required:` nor
  * defaulted. It is indistinguishable from a genuinely optional one — `Ai.Text`
@@ -79,6 +83,26 @@ export function validateInvocationContract(
     const ownModule = (m.metadata as { module?: string } | undefined)?.module;
     return !ownModule || !importedModules.has(ownModule);
   };
+
+  // A dependency's too, unlike the checks below: the kernel refuses such a
+  // definition at registration, so staying silent only moves the failure to boot.
+  for (const m of manifests) {
+    if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
+    const def = m as unknown as ResourceDefinition;
+    const violation = codesOutsideCeiling(def, resolveDef);
+    if (!violation) continue;
+    diagnostics.push({
+      severity: DiagnosticSeverity.Error,
+      code: "THROWS_NOT_SUBSTITUTABLE",
+      source: SOURCE,
+      message: throwsNotSubstitutableMessage(def, violation),
+      data: {
+        resource: { kind: m.kind, name: m.metadata?.name as string },
+        filePath: (m.metadata as { source?: string } | undefined)?.source,
+        path: `throws.codes.${violation.outside[0]}`,
+      },
+    });
+  }
 
   for (const m of manifests) {
     if (!isOwn(m)) continue;

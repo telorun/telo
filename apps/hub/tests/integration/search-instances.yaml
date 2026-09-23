@@ -3,10 +3,11 @@ metadata:
   name: HubSearchInstancesTest
   version: 1.0.0
   description: |
-    `searchResources` finds an EXPORTED INSTANCE by its description — a function a
-    library exports as a ready-made resource, whose kind is unexported (the
-    singleton pattern) or a built-in the hub keeps no kind row for, so no kind hit
-    could ever stand for it. The kind hits keep their shape and are unaffected.
+    `searchResources` ranks an EXPORTED INSTANCE exactly as it ranks a kind — a
+    function a library exports as a ready-made resource, whose kind is unexported
+    (the singleton pattern) or a built-in the hub keeps no kind row for, is a hit
+    of its own (`entry: instance`), found by its description and listed by a
+    browse like any kind.
 
     NEEDS A LIVE POSTGRES WITH PGVECTOR (the search library's vector arm runs for
     every query) — the docker-compose `db` service, reached through DB_HOST,
@@ -197,22 +198,30 @@ steps:
     inputs:
       actual:
         byDescription: !cel >-
-          steps.byDescription.result.instances.map(i,
+          steps.byDescription.result.hits.filter(h, h.entry == 'instance').map(i,
             [i.name, i.kind, i.description, i.module.ref, i.module.version, i.module.name])
-        unexportedKindIsNoHit: !cel "steps.byDescription.result.hits.size()"
-        builtInKind: !cel "steps.builtInKind.result.instances.map(i, [i.name, i.kind])"
-        browseInstances: !cel "steps.browse.result.instances.size()"
+        unexportedKindIsNoHit: !cel >-
+          steps.byDescription.result.hits.filter(h, h.entry == 'kind').size()
+        builtInKind: !cel >-
+          steps.builtInKind.result.hits.filter(h, h.entry == 'instance').map(i, [i.name, i.kind])
+        browseInstances: !cel >-
+          steps.browse.result.hits
+            .filter(h, h.entry == 'instance' && h.module.ref.startsWith('oci://example.test/'))
+            .filter(h, !h.module.ref.startsWith('oci://example.test/ocr-'))
+            .map(i, i.name)
         importedKindCategory:
-          kindHits: !cel "steps.importedKindCategory.result.hits.map(h, h.kind)"
+          kindHits: !cel >-
+            steps.importedKindCategory.result.hits.filter(h, h.entry == 'kind').map(h, h.kind)
           filterKept: !cel "!steps.importedKindCategory.result.categoryFilterDropped"
-          instances: !cel "steps.importedKindCategory.result.instances.map(i, i.name)"
+          instances: !cel >-
+            steps.importedKindCategory.result.hits.filter(h, h.entry == 'instance').map(i, i.name)
       expected:
         byDescription:
           - [hmacSha256, Hmac, Signs a webhook payload with HMAC-SHA256., "oci://example.test/crypto", 1.0.0, Crypto]
         unexportedKindIsNoHit: 0
         builtInKind:
           - [isStale, Function]
-        browseInstances: 0
+        browseInstances: [hmacSha256, isStale, parcelRoutes]
         importedKindCategory:
           kindHits: [Api]
           filterKept: true

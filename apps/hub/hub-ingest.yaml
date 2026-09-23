@@ -74,7 +74,7 @@ variables:
   # read one at a time.
   ingestRev:
     type: integer
-    default: 2
+    default: 5
 exports:
   resources:
     - ingestVersion
@@ -149,13 +149,22 @@ steps:
               message: !cel >-
                 'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: '
                   + steps.manifest.result.error
+      # The CLI gives a local module no cache location, since no editor reads
+      # one from the public cache; the hub still keeps its manifest so
+      # `get_module_manifest` answers for it, under a key of its own that no
+      # published ref can produce.
+      - name: cacheKey
+        value: !cel >-
+          inputs.ref.startsWith('./')
+            ? 'local/' + inputs.ref.substring(2) + '/' + inputs.version + '/telo.yaml'
+            : string(steps.manifest.result.payload.cacheKey)
       # Outside the transaction on purpose: the key is deterministic, so a
       # replayed put is a no-op, while a put journaled INSIDE a transaction that
       # then rolls back would have its record discarded and be repeated anyway.
       - name: cache
         invoke: !ref bucketPut
         inputs:
-          key: !cel "steps.manifest.result.payload.cacheKey"
+          key: !cel "steps.cacheKey.result"
           body: !cel "steps.manifest.result.payload.manifest"
           contentType: text/yaml
       - name: rows
@@ -166,6 +175,7 @@ steps:
           version: !cel "inputs.version"
           digest: !cel "inputs.digest"
           latestVersion: !cel "inputs.latestVersion"
+          cacheKey: !cel "steps.cacheKey.result"
           payload: !cel "steps.manifest.result.payload"
           docs: !cel "steps.manifest.result.docs"
       # Embed only the module's latest version, superseding any prior vectors so
@@ -239,6 +249,7 @@ inputs:
   version: !cel "inputs.version"
   digest: !cel "inputs.digest"
   latestVersion: !cel "inputs.latestVersion"
+  cacheKey: !cel "inputs.cacheKey"
   payload: !cel "inputs.payload"
   docs: !cel "inputs.docs"
 ---
@@ -256,6 +267,9 @@ inputType:
       version: { type: string }
       digest: { type: string }
       latestVersion: { type: string }
+      # Where the manifest was cached — the CLI's key, or the hub's own for a
+      # local module.
+      cacheKey: { type: string }
       # `telo module manifest --json` verbatim: cache key, integrity, runtime.
       payload: { type: object, additionalProperties: true }
       # The parsed manifest documents.
@@ -348,6 +362,12 @@ steps:
   # which is as much a public function as an instance of a callable kind the
   # module defines. Every other built-in document (a module, an import, a kind, a
   # named `Telo.JsonSchema` shape) is not something an importer calls or holds.
+  #
+  # `kindRef` is the module owning the instance's kind, resolved like
+  # `extends_ref`: `Self` and the module's own name are this module, an alias is
+  # its import source without version or pin, and a `Telo.*` built-in resolves to
+  # nothing. With `kind` it names the kind across module boundaries, which is
+  # what lets a kind list the modules exporting instances of it.
   - name: resourceRows
     value: !cel >-
       ('exports' in inputs.docs[0] && 'resources' in inputs.docs[0].exports
@@ -371,6 +391,28 @@ steps:
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1] &&
             (d.kind.split('.')[0] == 'Self' || d.kind.split('.')[0] == inputs.docs[0].metadata.name))
             .size() > 0,
+          'kindRef': inputs.docs.filter(d,
+            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
+            .map(d, d.kind.split('.')[0])
+            .map(p, p == 'Self' || p == inputs.docs[0].metadata.name ? inputs.ref
+              : ('imports' in inputs.docs[0] && p in inputs.docs[0].imports
+                ? (type(inputs.docs[0].imports[p]) == type('')
+                    ? inputs.docs[0].imports[p]
+                    : inputs.docs[0].imports[p].source).split('#')[0].split('@')[0]
+                : ''))
+            .size() > 0
+            ? inputs.docs.filter(d,
+                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+                d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
+                .map(d, d.kind.split('.')[0])
+                .map(p, p == 'Self' || p == inputs.docs[0].metadata.name ? inputs.ref
+                  : ('imports' in inputs.docs[0] && p in inputs.docs[0].imports
+                    ? (type(inputs.docs[0].imports[p]) == type('')
+                        ? inputs.docs[0].imports[p]
+                        : inputs.docs[0].imports[p].source).split('#')[0].split('@')[0]
+                    : ''))[0]
+            : '',
           'description': inputs.docs.filter(d,
             (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
@@ -379,6 +421,24 @@ steps:
                 (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])[0]
                 .metadata.?description.orValue('')
+            : ''
+        })
+  # Kinds re-exported from an import (`exports.kinds` entries of the form
+  # `<Alias>.<Kind>`), with the alias resolved to the owning module's ref the
+  # same way an instance's kind is. `Self.<Kind>` is the module's own kind and
+  # already a `kindRows` entry.
+  - name: reexportRows
+    value: !cel >-
+      ('exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
+        ? inputs.docs[0].exports.kinds : [])
+        .filter(k, string(k).contains('.') && string(k).split('.')[0] != 'Self')
+        .map(k, {
+          'declared': string(k),
+          'name': string(k).split('.')[1],
+          'kindRef': 'imports' in inputs.docs[0] && string(k).split('.')[0] in inputs.docs[0].imports
+            ? (type(inputs.docs[0].imports[string(k).split('.')[0]]) == type('')
+                ? inputs.docs[0].imports[string(k).split('.')[0]]
+                : inputs.docs[0].imports[string(k).split('.')[0]].source).split('#')[0].split('@')[0]
             : ''
         })
   - name: upsertVersion
@@ -428,7 +488,7 @@ steps:
         - !cel "inputs.docs[0].metadata.?description.orValue('')"
         - !cel "inputs.docs[0].metadata.?repository.orValue('')"
         - !cel "inputs.docs[0].metadata.?license.orValue('')"
-        - !cel "inputs.payload.cacheKey"
+        - !cel "inputs.cacheKey"
         - !cel "inputs.docs[0].metadata.?categories.orValue([])"
         # `telo module manifest --json` emits null where nothing could hash the
         # ref (with the reason on its stderr); COALESCE above stores that as ''
@@ -472,10 +532,11 @@ steps:
                ARRAY(SELECT category_slug(l)
                      FROM jsonb_array_elements_text(r.categories) AS l),
                ARRAY(SELECT l FROM jsonb_array_elements_text(r.categories) AS l),
-               r.extends_kind, r.extends_ref,
+               r.extends_kind, resolve_import_ref($4, r.extends_ref),
                ARRAY(SELECT x FROM jsonb_array_elements_text(r.runtimes) AS x),
                ARRAY(SELECT x FROM jsonb_array_elements_text(r.languages) AS x),
-               r.portable, r.deprecated_reason, r.replaced_by_kind, r.replaced_by_ref
+               r.portable, r.deprecated_reason, r.replaced_by_kind,
+               resolve_import_ref($4, r.replaced_by_ref)
         FROM jsonb_to_recordset($3::jsonb) AS r(
           name text, capability text, abstract boolean, exported boolean,
           description text, categories jsonb, extends_kind text, extends_ref text,
@@ -500,6 +561,29 @@ steps:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"
         - !cel "json(steps.kindRows.result)"
+        - !cel "inputs.ref"
+  - name: clearReexports
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM module_reexported_kinds WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertReexports
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_reexported_kinds (module_id, version, declared, name, kind_ref)
+        SELECT $1, $2, r.declared, r.name, resolve_import_ref($4, r."kindRef")
+        FROM jsonb_to_recordset($3::jsonb) AS r(declared text, name text, "kindRef" text)
+        ON CONFLICT (module_id, version, declared) DO UPDATE SET
+          name = EXCLUDED.name,
+          kind_ref = EXCLUDED.kind_ref
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel "json(steps.reexportRows.result)"
+        - !cel "inputs.ref"
   - name: clearResources
     invoke: !ref exec
     inputs:
@@ -511,19 +595,24 @@ steps:
     invoke: !ref exec
     inputs:
       sql: >-
-        INSERT INTO module_resources (module_id, version, name, declared, kind, kind_is_own, description)
-        SELECT $1, $2, r.name, r.declared, r.kind, r."kindIsOwn", r.description
+        INSERT INTO module_resources
+          (module_id, version, name, declared, kind, kind_is_own, kind_ref, description)
+        SELECT $1, $2, r.name, r.declared, r.kind, r."kindIsOwn",
+               resolve_import_ref($4, r."kindRef"), r.description
         FROM jsonb_to_recordset($3::jsonb) AS r(
-          name text, declared text, kind text, "kindIsOwn" boolean, description text)
+          name text, declared text, kind text, "kindIsOwn" boolean, "kindRef" text,
+          description text)
         ON CONFLICT (module_id, version, name) DO UPDATE SET
           declared = EXCLUDED.declared,
           kind = EXCLUDED.kind,
           kind_is_own = EXCLUDED.kind_is_own,
+          kind_ref = EXCLUDED.kind_ref,
           description = EXCLUDED.description
       bindings:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"
         - !cel "json(steps.resourceRows.result)"
+        - !cel "inputs.ref"
   # `latest_version` moves WITH the rows it points at. Every search join is
   # `m.latest_version = rk.version`, so advancing it before this version's rows
   # exist would empty the module out of search for as long as the ingest takes —
@@ -566,19 +655,20 @@ inputType:
       version: { type: string }
       docs: { type: array }
 steps:
-  # Read back the just-inserted rows for their ids — the vector id is the
-  # resource_kinds row id, the join key the RRF search fuses on.
+  # Read back the just-inserted entries — every exported kind and instance, as
+  # search ranks them — for their ids: the vector id is the `search_entries`
+  # id, the join key the RRF search fuses on.
   - name: kindRows
     invoke: !ref query
     inputs:
       sql: >-
-        SELECT id, name, capability, description
-        FROM resource_kinds WHERE module_id = $1 AND version = $2 ORDER BY id
+        SELECT id, entry, name, kind, capability, description
+        FROM search_entries WHERE module_id = $1 AND version = $2 ORDER BY id
       bindings:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"
   # Drop every existing vector for this module first: a re-ingest reassigns
-  # resource_kinds ids, so superseding by (module, version) is insufficient —
+  # entry ids, so superseding by (module, version) is insufficient —
   # purge all, then re-upsert the latest.
   - name: purge
     invoke: !ref vectorRemove
@@ -588,15 +678,16 @@ steps:
   - name: embed
     if: !cel "steps.kindRows.result.rows.size() > 0"
     then:
-      # Composed passage: kind name + capability + curated description, framed
-      # by the owning module's name + description. The curated line is the
-      # primary signal; schema-derived enrichment is a follow-up.
+      # Composed passage: the entry's name + capability (an instance also names
+      # the kind it is one of) + curated description, framed by the owning
+      # module's name + description. The curated line is the primary signal.
       - name: passages
         invoke: !ref embedPassage
         inputs:
           input: !cel >-
             steps.kindRows.result.rows.map(r,
-              r.name + ' (' + r.capability + '). ' + r.description +
+              r.name + (r.entry == 'instance' ? ', a ready-made ' + r.kind : '')
+                + (r.capability != '' ? ' (' + r.capability + ')' : '') + '. ' + r.description +
               ' — from module ' + inputs.docs[0].metadata.name + ': ' +
               inputs.docs[0].metadata.?description.orValue(''))
       - name: upsert

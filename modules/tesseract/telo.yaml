@@ -1,0 +1,434 @@
+kind: Telo.Library
+metadata:
+  name: Tesseract
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [AI, Data]
+  description: |
+    Offline optical character recognition (OCR): read printed text from PNG, JPEG, WebP,
+    BMP and PNM images with the Tesseract engine, with nothing installed on the host.
+    Returns the text with confidence scores and word, line and block boxes, detects
+    page rotation, and runs recognitions in parallel with queue, size and time limits.
+    English is bundled; other languages are importable models.
+requires:
+  # 0.100.0: `Ocr.Recognizer`'s `throws:` ceiling, and `!module-path` naming a
+  # `sources:`-staged model counting as present, which 0.99.0's `telo check`
+  # reports as MODULE_PATH_NOT_FOUND in a checkout that has not staged it.
+  telo: ">=0.100.0"
+imports:
+  Ocr: ../ocr
+  TesseractModel: ../tesseract-model
+exports:
+  kinds:
+    - Recognizer
+    - TesseractModel.Language
+    - TesseractModel.OrientationModel
+  resources:
+    - eng
+    - osd
+# tesseract.js-core ships the Tesseract C++ engine compiled to WebAssembly: a
+# CommonJS loader beside its `.wasm`, which the controller hands the staged paths
+# to. The full builds rather than the smaller `-lstm` ones: orientation and
+# script detection runs on the legacy engine those omit. Recognition itself is
+# LSTM-only either way.
+assets:
+  - ./engine/
+  - ./tessdata/
+sources:
+  core:
+    version: 7.0.0
+    url: https://registry.npmjs.org/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/tesseract.js-core.LICENSE]
+    entries:
+      ./engine/tesseract-core-relaxedsimd.js:
+        { upstream: tesseract.js-core, member: package/tesseract-core-relaxedsimd.js, sha256: 716be037611f21b568347421f582f1e1a6456b6d5c3a7c2406c8a2a6c0136427, executable: false }
+      ./engine/tesseract-core-relaxedsimd.wasm:
+        { upstream: tesseract.js-core, member: package/tesseract-core-relaxedsimd.wasm, sha256: 45f8c9b516df326b6ae6b493ed3a6289df5cbd10490e7b6ff8bf5b12ea42d1da, executable: true }
+      ./engine/tesseract-core-simd.js:
+        { upstream: tesseract.js-core, member: package/tesseract-core-simd.js, sha256: da428fd7989ba749855ea16718a83b23e7ce04016fe31866ad2735813efc7133, executable: false }
+      ./engine/tesseract-core-simd.wasm:
+        { upstream: tesseract.js-core, member: package/tesseract-core-simd.wasm, sha256: 7d237a13edfeb0fa2f104744fccde0a00e0c076c3e23b7a8fc7af75ec9af2c3e, executable: true }
+      ./engine/tesseract-core.js:
+        { upstream: tesseract.js-core, member: package/tesseract-core.js, sha256: a824c1b99a19e122d87e4467fe16aabb56c495d6cc9a08bc58cb8a7342636b43, executable: false }
+      ./engine/tesseract-core.wasm:
+        { upstream: tesseract.js-core, member: package/tesseract-core.wasm, sha256: c7f5ace62ac0ad065e71e9c6725f1d7cdf82e7eda8fba532cbb9563964da7098, executable: true }
+      ./notices/tesseract.js-core.LICENSE:
+        { upstream: tesseract.js-core, member: package/LICENSE, sha256: c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08, executable: false }
+  # The `4.0.0_best_int` models. The packages carry no notice of their own; the
+  # checked-in one is the Apache-2.0 notice of tesseract-ocr/tessdata.
+  tessdata:
+    version: 1.0.0
+    url: https://registry.npmjs.org/@tesseract.js-data/{upstream}/-/{upstream}-{version}.tgz
+    archive: tar.gz
+    notices: [./notices/tessdata.LICENSE]
+    entries:
+      ./tessdata/eng.traineddata.gz:
+        { upstream: eng, member: package/4.0.0_best_int/eng.traineddata.gz, sha256: 45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91, executable: false }
+      ./tessdata/osd.traineddata.gz:
+        { upstream: osd, member: package/4.0.0_best_int/osd.traineddata.gz, sha256: be028ddaac8b03402b92cbf526075c068ec39a9f1dbbcd7536dddb9b22209934, executable: false }
+---
+# Declared through the leaf's kind, so an application references the bundled
+# models exactly as it references an imported language module's.
+kind: TesseractModel.Language
+metadata:
+  name: eng
+  description: English, Latin script
+code: eng
+data: !module-path ./tessdata/eng.traineddata.gz
+---
+kind: TesseractModel.OrientationModel
+metadata:
+  name: osd
+data: !module-path ./tessdata/osd.traineddata.gz
+---
+# Each concurrent recognition runs on its own engine in a worker thread, because a
+# WebAssembly recognition is synchronous: terminating its worker is the only way
+# to stop one, which is how cancellation and `maxRecognitionTime` work.
+#
+# The contract restates the abstract's element shapes inline and adds only
+# optional fields, so it still stands in for `Ocr.Recognizer`.
+kind: Telo.Definition
+metadata:
+  name: Recognizer
+  description: >-
+    Reads the printed text in one image with Tesseract OCR, using the configured
+    language models in priority order, optionally only inside a pixel rectangle.
+    Returns the text, confidences and boxes, the detected page rotation when an
+    orientation model is set, and hOCR or TSV on request.
+extends: Ocr.Recognizer
+controllers:
+  - pkg:telo/local/js?path=./nodejs/tesseract.mjs&local_path=./nodejs/src/index.ts#RecognizerController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The region reaches outside the image, or a call asks for orientation
+        detection on a recognizer that has no orientation model.
+    ERR_UNSUPPORTED_IMAGE:
+      description: >-
+        The bytes are not PNG, JPEG, WebP, BMP or PNM, their header is truncated, or
+        the engine's decoder could not read them. The message carries the decoder's
+        own report.
+    ERR_IMAGE_TOO_LARGE:
+      description: >-
+        The image is larger than `maxImageBytes`, or its width times height, read
+        from its header before decoding, exceeds `maxPixels`.
+    ERR_OCR_OVERLOADED:
+      description: >-
+        Every engine is busy and `queueLimit` calls are already waiting.
+    ERR_OCR_ENGINE_FAILED:
+      description: >-
+        The engine's worker crashed or aborted during the call, and has already been
+        replaced; or no engine is left because replacements could not start, which
+        the message names.
+    ERR_OCR_LIMIT_EXCEEDED:
+      description: >-
+        One recognition ran longer than `maxRecognitionTime` once it started, and its
+        worker was replaced. Time spent waiting in the queue does not count.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [image]
+    additionalProperties: false
+    properties:
+      image:
+        description: The encoded image to read — PNG, JPEG, WebP, BMP or PNM.
+        x-telo-type: Telo.Bytes
+      region:
+        description: >-
+          Only this rectangle is read, in pixels from the image's top-left corner.
+          Reported coordinates stay on the whole image.
+        type: object
+        required: [x, y, width, height]
+        additionalProperties: false
+        properties:
+          x: { type: integer, minimum: 0 }
+          y: { type: integer, minimum: 0 }
+          width: { type: integer, minimum: 1 }
+          height: { type: integer, minimum: 1 }
+      pageSegmentation:
+        description: Overrides the recognizer's configured page segmentation for this call.
+        type: string
+        enum: [autoOsd, autoOnly, auto, singleColumn, singleBlockVertical, singleBlock, singleLine, singleWord, circleWord, singleChar, sparseText, sparseTextOsd, rawLine]
+      characterWhitelist:
+        description: Only these characters may be recognized.
+        type: string
+      characterBlacklist:
+        description: These characters are never recognized.
+        type: string
+      preserveInterwordSpaces:
+        description: Keep runs of spaces between words in `text` instead of collapsing them to one.
+        type: boolean
+      dpi:
+        description: The image's resolution, for an image whose header carries none.
+        type: integer
+        minimum: 1
+        maximum: 2400
+      include:
+        description: Extra renderings of the result to return beside it.
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          enum: [hocr, tsv]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text, confidence, width, height, blocks, lines, words]
+    additionalProperties: false
+    properties:
+      text:
+        description: >-
+          The full recognized text: lines separated by a newline, blocks by a blank
+          line.
+        type: string
+      confidence:
+        description: The mean confidence over the recognized words, from 0 to 1.
+        type: number
+        minimum: 0
+        maximum: 1
+      width:
+        description: The input image's width in pixels.
+        type: integer
+        minimum: 1
+      height:
+        description: The input image's height in pixels.
+        type: integer
+        minimum: 1
+      blocks:
+        description: Every text block, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                The box's four corners in pixels on the whole image, clockwise from
+                the top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+      lines:
+        description: Every text line, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon, block]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                The box's four corners in pixels on the whole image, clockwise from
+                the top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+            block:
+              description: Index into `blocks` of the block this line belongs to.
+              type: integer
+              minimum: 0
+      words:
+        description: Every word, in reading order.
+        type: array
+        items:
+          type: object
+          required: [text, confidence, box, polygon, line]
+          additionalProperties: false
+          properties:
+            text: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            box:
+              description: Axis-aligned bounds in pixels on the whole image.
+              type: object
+              required: [x, y, width, height]
+              additionalProperties: false
+              properties:
+                x: { type: integer, minimum: 0 }
+                y: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+            polygon:
+              description: >-
+                The box's four corners in pixels on the whole image, clockwise from
+                the top-left corner of the text.
+              type: array
+              minItems: 3
+              items:
+                type: object
+                required: [x, y]
+                additionalProperties: false
+                properties:
+                  x: { type: integer, minimum: 0 }
+                  y: { type: integer, minimum: 0 }
+            line:
+              description: Index into `lines` of the line this word belongs to.
+              type: integer
+              minimum: 0
+      orientation:
+        description: >-
+          How the page is rotated, present when orientation detection ran in
+          `autoOsd` or `sparseTextOsd` and the page had enough text to decide.
+        type: object
+        required: [degrees, script, confidence]
+        additionalProperties: false
+        properties:
+          degrees:
+            description: >-
+              How far the text is turned clockwise from upright. Rotate the image
+              the same amount counter-clockwise to straighten it.
+            type: integer
+            enum: [0, 90, 180, 270]
+          script:
+            description: The detected writing script, such as `Latin`, `Cyrillic` or `Han`.
+            type: string
+          confidence:
+            description: >-
+              The engine's orientation confidence score. It is not a probability;
+              values above 2 are generally reliable.
+            type: number
+            minimum: 0
+      hocr:
+        description: The result as hOCR (HTML), when `include` asked for it.
+        type: string
+      tsv:
+        description: The result as Tesseract's tab-separated table, when `include` asked for it.
+        type: string
+schema:
+  type: object
+  required: [languages]
+  additionalProperties: false
+  examples:
+    - languages: ["!ref Tesseract.eng"]
+      concurrency: 2
+  properties:
+    languages:
+      title: Languages
+      description: >-
+        The language models to recognize with, in priority order — `Tesseract.eng`, a
+        language module's exported model, or your own `Tesseract.Language`. Each
+        model once.
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        x-telo-ref:
+          kind: TesseractModel.Language
+          use: dependency
+    orientationModel:
+      title: Orientation model
+      description: >-
+        The orientation and script detection model (`Tesseract.osd`). Required by the
+        `autoOsd` and `sparseTextOsd` page segmentations.
+      x-telo-ref:
+        kind: TesseractModel.OrientationModel
+        use: dependency
+    pageSegmentation:
+      title: Page segmentation
+      description: >-
+        How the page is split into text before it is read: the whole page (`auto`),
+        with orientation detection first (`autoOsd`), one block, one line, one word,
+        or scattered text (`sparseText`).
+      type: string
+      enum: [autoOsd, autoOnly, auto, singleColumn, singleBlockVertical, singleBlock, singleLine, singleWord, circleWord, singleChar, sparseText, sparseTextOsd, rawLine]
+      default: auto
+    concurrency:
+      title: Concurrency
+      description: >-
+        How many recognitions run in parallel, each on its own engine instance
+        holding its own copy of every model.
+      type: integer
+      minimum: 1
+      maximum: 32
+      default: 1
+    queueLimit:
+      title: Queue limit
+      description: >-
+        How many calls may wait for a free engine. One more is refused with
+        ERR_OCR_OVERLOADED.
+      type: integer
+      minimum: 0
+      default: 100
+    maxRecognitionTime:
+      title: Max recognition time
+      description: >-
+        How long one recognition may hold an engine once it starts, from 1ms to 24h;
+        120s when omitted. A safety limit for the pool, not a caller deadline —
+        bound a call with the step's `timeout:`.
+      # No `default:` — the kernel fills defaults without decoding them into an
+      # instance type, so a written `120s` default fails validation.
+      x-telo-type: Telo.Duration
+    maxImageBytes:
+      title: Max image bytes
+      description: The largest encoded image accepted, in bytes.
+      type: integer
+      minimum: 1
+      default: 26214400
+    maxPixels:
+      title: Max pixels
+      description: The largest width times height accepted, read from the image header.
+      type: integer
+      minimum: 1
+      default: 40000000
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.pageSegmentation) || !(self.pageSegmentation in ['autoOsd', 'sparseTextOsd']) || has(self.orientationModel)"
+      code: TESSERACT_ORIENTATION_MODEL_MISSING
+      message: >-
+        detects page orientation (`autoOsd` / `sparseTextOsd`) but sets no
+        `orientationModel`; add `orientationModel: !ref Tesseract.osd`.
+    # Each model is loaded, and reported in hOCR's `lang`, under its code, so two
+    # different models sharing one would be one language to the engine.
+    - resolve: [/languages]
+      in: /languages
+      condition: !cel "size(self.languages.filter(o, o.code == this.code)) == 1"
+      code: LANGUAGE_CODE_DUPLICATE
+      message: >-
+        lists two language models under the same code. The engine loads and reports a
+        model by its code, so give a custom or fine-tuned model a code of its own, such
+        as `eng_invoice`.
+    - condition: !cel "!has(self.maxRecognitionTime) || (duration(self.maxRecognitionTime) >= duration('1ms') && duration(self.maxRecognitionTime) <= duration('24h'))"
+      code: TESSERACT_RECOGNITION_TIME_OUT_OF_RANGE
+      message: >-
+        sets `maxRecognitionTime` outside 1ms to 24h; a recognition needs time to
+        run, and a limit that long protects nothing.
