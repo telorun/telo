@@ -27,9 +27,11 @@ import { AliasResolver, scopeResolverForModule, type ModuleScopes } from "./alia
  *    kind to whatever the app happens to import under that alias — a wrong
  *    answer, which is worse than none.
  *
- * Both rest on one invariant neither states inline: **a root module is never a
- * key in `aliasesByModule`** — a root's imports are registered into the global
- * table instead (see the `rootModules` guards in `analyze()`) — so for a
+ * Both rest on one invariant neither states inline: **a root module's key in
+ * `aliasesByModule`, if it has one, holds the very table the pass uses as its
+ * top-level scope** — a root's imports are registered into that table (see the
+ * `rootModules` guards in `analyze()`), which is the global one for an entry and
+ * the module's own for a pass run through `AnalysisRegistry.forModule` — so for a
  * consumer-owned manifest the two rules coincide and neither fallback is a
  * degradation.
  *

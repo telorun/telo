@@ -58,6 +58,20 @@ describe("walkCelExpressions", () => {
     expect(collect({ field: compiled })).toEqual([]);
   });
 
+  it("does not descend into a live instance, whose graph is cyclic", () => {
+    class Client {
+      self: Client = this;
+      label = "${{ never.read }}";
+    }
+    const value = { client: new Client(), x: "${{ a }}" };
+    expect(collect(value)).toEqual([["a", "x", "cel"]]);
+  });
+
+  it("descends into a null-prototype object", () => {
+    const bag = Object.assign(Object.create(null), { x: "${{ a }}" });
+    expect(collect({ bag })).toEqual([["a", "bag.x", "cel"]]);
+  });
+
   it("returns no callbacks for plain primitives without ${{ }}", () => {
     expect(collect({ port: 8080, host: "localhost", flag: true })).toEqual([]);
   });

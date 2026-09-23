@@ -435,6 +435,8 @@ export { isModuleKind, MODULE_KINDS } from "./module-kinds.js";
 export type { ModuleKind } from "./module-kinds.js";
 export { parseLoadedFile } from "./parse-loaded-file.js";
 export type { ParseOptions } from "./parse-loaded-file.js";
+export { YAML_PARSE_CACHE_FORMAT } from "./yaml-parse-cache.js";
+export type { CachedYamlParse, YamlParseCache } from "./yaml-parse-cache.js";
 export {
   CORE_MIGRATIONS,
   migrateFileText,

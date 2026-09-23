@@ -13,7 +13,13 @@ import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { collectModulePathDiagnostics } from "./module-path-existence.js";
 import { isModuleKind } from "./module-kinds.js";
-import { parseLoadedFile } from "./parse-loaded-file.js";
+import {
+  parseLoadedFile,
+  parseYamlText,
+  restoredYaml,
+  type ParsedYaml,
+} from "./parse-loaded-file.js";
+import type { YamlParseCache } from "./yaml-parse-cache.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
 import {
   type AnalysisDiagnostic,
@@ -162,6 +168,12 @@ export class Loader {
    *  get distinct entries, so neither sees the wrong manifest tree. */
   private readonly fileCache = new Map<string, LoadedFile>();
 
+  /** One YAML parse per canonical source, shared by every variant of it. The
+   *  load phase reads a module raw and an import reads it again compiled; the
+   *  variants differ only in what runs AFTER the parse, and the parse is most
+   *  of the cost. Checked against the text so a changed file parses again. */
+  private readonly parsedYaml = new Map<string, { text: string; parsed: ParsedYaml }>();
+
   /** requestUrl → canonical `source`. Lets `loadFile` skip the source read
    *  when a URL it has already canonicalised is requested again — kernel
    *  load → boot and the import-controller each ask the loader for the same
@@ -171,6 +183,7 @@ export class Loader {
   private readonly urlToSource = new Map<string, string>();
 
   protected sources: ManifestSource[];
+  private parseCache: YamlParseCache | undefined;
   private readonly celEnv: Environment;
   private readonly migrations?: readonly MigrationEntry[];
 
@@ -182,6 +195,12 @@ export class Loader {
     this.sources = [...sources];
     this.celEnv = buildCelEnvironment(options.celHandlers);
     this.migrations = options.migrations;
+  }
+
+  /** Restore YAML parses from `cache` instead of parsing, and record the ones
+   *  it lacks. Applies to every file read after the call. */
+  setParseCache(cache: YamlParseCache | undefined): void {
+    this.parseCache = cache;
   }
 
   register(source: ManifestSource): this {
@@ -232,6 +251,7 @@ export class Loader {
     for (const [key, file] of this.fileCache) {
       if (file.source === source) this.fileCache.delete(key);
     }
+    this.parsedYaml.delete(source);
   }
 
   // --- New API: returns LoadedFile / LoadedModule / LoadedGraph ----------
@@ -308,14 +328,38 @@ export class Loader {
     options?: LoadOptions,
     moduleNames?: ReadonlySet<string>,
   ): LoadedFile {
-    const loaded = parseLoadedFile(source, requestedUrl, text, {
-      compile: options?.compile,
-      celEnv: this.celEnv,
-      migrate: options?.migrate,
-      migrations: this.migrations,
-      moduleNames,
-    });
+    let yaml = this.parsedYaml.get(source);
+    if (yaml?.text !== text) {
+      yaml = { text, parsed: this.parseYaml(source, text) };
+      this.parsedYaml.set(source, yaml);
+    }
+    const loaded = parseLoadedFile(
+      source,
+      requestedUrl,
+      text,
+      {
+        compile: options?.compile,
+        celEnv: this.celEnv,
+        migrate: options?.migrate,
+        migrations: this.migrations,
+        moduleNames,
+      },
+      yaml.parsed,
+    );
     return options?.desugarImports ? desugarLoadedFile(loaded) : loaded;
+  }
+
+  private parseYaml(source: string, text: string): ParsedYaml {
+    const cached = this.parseCache?.read(source, text);
+    if (cached) return restoredYaml(text, cached);
+    const parsed = parseYamlText(text);
+    if (parsed.parseErrors.length === 0) {
+      this.parseCache?.write(source, text, {
+        manifests: parsed.manifests,
+        positions: parsed.positions,
+      });
+    }
+    return parsed;
   }
 
   /** Raw text of any already-cached variant for `source`, so a cache miss on

@@ -14,6 +14,7 @@ import {
   type DefResolver,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
+import { declaringContextOf } from "./declaring-context.js";
 
 /** Typed internal seam implemented by the concrete `ResourceContextImpl`: runs
  *  the kernel's create phase for the parent-kind manifest and returns the native
@@ -156,7 +157,6 @@ function bindDispatchMapping(
  */
 export function createInheritedController(
   definition: ResourceDefinition,
-  definingContext: EvaluationContext,
   resolveDef: DefResolver,
 ): ControllerInstance {
   const authorSchema = effectiveAuthorSchema(definition, resolveDef);
@@ -178,6 +178,7 @@ export function createInheritedController(
 
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance | null> => {
+      const definingContext = declaringContextOf(resource, ctx);
       const self: Record<string, unknown> = { ...resource, name: resource.metadata.name };
       for (const path of refFieldPaths) {
         const raw = (resource as Record<string, unknown>)[path];

@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: Reader
+imports:
+  Source: ../right
+  Run: ../../../../../modules/run
+exports:
+  resources: [read]
+---
+kind: Run.Sequence
+metadata:
+  name: read
+steps:
+  - name: get
+    invoke: !ref Source.value
+outputs:
+  source: !cel "steps.get.result"

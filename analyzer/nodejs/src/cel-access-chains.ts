@@ -49,8 +49,17 @@ export function accessChains(source: string, moduleNames?: ReadonlySet<string>):
 }
 
 /** The qualified module calls an expression makes, or none when it does not
- *  parse. */
+ *  parse. A source that spells none of the names makes none of the calls, so it
+ *  is not parsed. */
 export function moduleCallsInSource(source: string, moduleNames: ReadonlySet<string>): string[] {
+  let spellsOne = false;
+  for (const name of moduleNames) {
+    if (source.includes(name)) {
+      spellsOne = true;
+      break;
+    }
+  }
+  if (!spellsOne) return [];
   const ast = parsedAst(source);
   return ast ? resolveModuleCalls(ast, moduleNames) : [];
 }
@@ -132,9 +141,30 @@ export function moduleCallSites(
 export function celResourceReads(manifest: ResourceManifest): string[] {
   const names = new Set<string>();
   walkCelExpressions(manifest as Record<string, unknown>, "", (source: string) => {
-    for (const chain of accessChains(source)) {
-      if (chain[0] === "resources" && chain.length >= 2 && chain[1]) names.add(chain[1]);
-    }
+    for (const name of resourceReadsOf(source)) names.add(name);
   });
   return [...names];
+}
+
+/** Keyed on the text alone, which is all the answer depends on: a library's
+ *  expressions are read once per import site, and parsing is the whole cost.
+ *  Least-recently-used and bounded, because a long-lived host (an editor, a
+ *  watch session) sees new expression text on every edit. */
+const RESOURCE_READS_CAPACITY = 4096;
+const resourceReadsBySource = new Map<string, readonly string[]>();
+
+function resourceReadsOf(source: string): readonly string[] {
+  let reads = resourceReadsBySource.get(source);
+  if (reads) {
+    resourceReadsBySource.delete(source);
+  } else {
+    reads = accessChains(source)
+      .filter((chain) => chain[0] === "resources" && chain.length >= 2 && chain[1])
+      .map((chain) => chain[1]);
+    if (resourceReadsBySource.size >= RESOURCE_READS_CAPACITY) {
+      resourceReadsBySource.delete(resourceReadsBySource.keys().next().value!);
+    }
+  }
+  resourceReadsBySource.set(source, reads);
+  return reads;
 }

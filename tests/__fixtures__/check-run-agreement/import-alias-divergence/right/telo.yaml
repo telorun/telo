@@ -1,0 +1,12 @@
+kind: Telo.Library
+metadata:
+  name: RightSource
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [value]
+---
+kind: Run.Value
+metadata:
+  name: value
+value: right

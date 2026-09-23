@@ -62,6 +62,7 @@ import { hostEnv, lockControllerEnv } from "./host-env.js";
 import { KernelTracer } from "./tracing.js";
 import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-logging.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
+import type { LibraryAnalysisHost } from "./internal-context.js";
 import { formatSpanCounter } from "./logging/span-id.js";
 import {
   graphFileSources,
@@ -92,12 +93,13 @@ import {
   readAnalysisStamp,
   writeAnalysisStamp,
 } from "./manifest-sources/analysis-stamp.js";
+import { createParsedYamlCache } from "./manifest-sources/parsed-yaml-cache.js";
 import {
   legacyManifestsDirFallback,
   resolveCacheRoot,
   resolveEntryDir,
 } from "./manifest-sources/local-manifest-cache-source.js";
-import { readOwnerManifest, type OwnerManifest } from "./bundle/module-manifest.js";
+import { ownerManifestOf, type OwnerManifest } from "./bundle/module-manifest.js";
 import {
   resolveModuleFileUri,
   resolveNativeFileUri,
@@ -195,6 +197,11 @@ export class Kernel implements IKernel {
   private readonly includeCache: IncludeCache = new Map();
   private rootContext!: ModuleContext;
   private staticManifests: ResourceManifest[] = [];
+  /** The load-time flattened set — the entry plus every library's forwarded
+   *  declarations and exports. Kept apart from {@link staticManifests}, which
+   *  becomes the entry-only normalized set, because an import normalizes its
+   *  library against these as cross-module targets. */
+  private loadTimeManifests: ResourceManifest[] = [];
   private _entryUrl?: string;
   /** Root Application `ports:` resolved in `load()` — integer + declared protocol
    *  per name. Surfaced via {@link getResolvedPorts} so a host can advertise where
@@ -370,6 +377,18 @@ export class Kernel implements IKernel {
     return this.registry;
   }
 
+  /** What an import normalizes, orders and — for a library the load did not
+   *  reach — analyzes its library with: this kernel's analyzer, its one
+   *  analysis registry, and the load-time flattened set as cross-module targets. */
+  libraryAnalysisHost(): LibraryAnalysisHost {
+    return {
+      analyzer: this.analyzer,
+      registry: this.registry,
+      loadTimeManifests: this.loadTimeManifests,
+      entryModule: this._appName,
+    };
+  }
+
   /** The full LoadedGraph captured during `load()`. Used by the CLI to
    *  feed `writeManifestCache` so a successful `telo run` populates
    *  `<entry-dir>/.telo/manifests/` for subsequent runs — the same on-disk
@@ -500,6 +519,15 @@ export class Kernel implements IKernel {
       analysisKey?: string;
     },
   ): Promise<void> {
+    // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
+    // READ-only: compiled validators, parsed YAML and the analysis stamp are
+    // still loaded from disk, but never written back — so an ephemeral,
+    // read-only session rootfs validates in-memory without touching the baked
+    // cache.
+    const writeCache = options?.writeCache !== false;
+    // Resolving the entry parses it, so a cache root the caller names is
+    // attached before that.
+    if (options?.cacheDir !== undefined) this.attachParseCache(options.cacheDir, writeCache);
     const sourceUrl = await this.loader.resolveEntryPoint(url);
     this._entryUrl = sourceUrl;
     // Resolve the `.telo` cache root ONCE and thread it to every consumer
@@ -508,14 +536,10 @@ export class Kernel implements IKernel {
     // so the env is read exactly once per invocation; otherwise resolve here.
     const cacheRoot =
       options?.cacheDir !== undefined ? options.cacheDir : resolveCacheRoot(sourceUrl);
+    if (options?.cacheDir === undefined) this.attachParseCache(cacheRoot, writeCache);
     this._cacheRoot = cacheRoot;
     const manifestsDir = cacheRoot ? `${cacheRoot}/manifests` : undefined;
     const analysisDir = cacheRoot ? `${cacheRoot}/analysis` : undefined;
-    // `writeCache: false` (`telo run --no-cache-write`) keeps the cache
-    // READ-only: compiled validators and the analysis stamp are still loaded
-    // from disk, but never written back — so an ephemeral, read-only session
-    // rootfs validates in-memory without touching the baked cache.
-    const writeCache = options?.writeCache !== false;
     // Point the shared schema validator at the cache so compiled AJV validators
     // are loaded (and, when writable, persisted) under `<cache-root>/validators/`.
     // Beside `manifests/` rather than inside it: a compiled validator is not a
@@ -571,6 +595,16 @@ export class Kernel implements IKernel {
     this.installManifests(produced.manifests);
   }
 
+  /** Parsed YAML is restored from `<cache-root>/yaml-parses/`; a memory- or
+   *  HTTP-rooted entry has no cache root and parses every time. */
+  private attachParseCache(cacheRoot: string | null, write: boolean): void {
+    this.loader.setParseCache(
+      cacheRoot
+        ? createParsedYamlCache(`${cacheRoot}/yaml-parses`, { write, log: this.logging.kernelLogger() })
+        : undefined,
+    );
+  }
+
   /**
    * Re-read the entry and bring the running kernel into line with it, rebuilding
    * only what changed.
@@ -606,6 +640,7 @@ export class Kernel implements IKernel {
       throwInvalidState("reconcile", "a reconciliation is already in progress");
     }
     const previousManifests = this.staticManifests;
+    const previousLoadTimeManifests = this.loadTimeManifests;
     const previousSignatures = this._declarationSignatures;
     this._reconciling = true;
     try {
@@ -614,6 +649,7 @@ export class Kernel implements IKernel {
         previousGraph,
         produceOptions,
         previousManifests,
+        previousLoadTimeManifests,
         previousSignatures,
       );
     } finally {
@@ -626,6 +662,7 @@ export class Kernel implements IKernel {
     previousGraph: LoadedGraph,
     produceOptions: NonNullable<Kernel["_produceOptions"]>,
     previousManifests: ResourceManifest[],
+    previousLoadTimeManifests: ResourceManifest[],
     previousSignatures: Map<string, string>,
   ): Promise<ReconcileOutcome> {
 
@@ -647,6 +684,7 @@ export class Kernel implements IKernel {
     const restoreProduced = (): void => {
       this._loadedGraph = previousGraph;
       this.staticManifests = previousManifests;
+      this.loadTimeManifests = previousLoadTimeManifests;
       this._declarationSignatures = previousSignatures;
     };
     const halted = (reason: string): ReconcileOutcome => {
@@ -891,6 +929,7 @@ export class Kernel implements IKernel {
     }
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
+    this.loadTimeManifests = staticManifests;
 
     // Register legacy module identities so an already-published module version
     // whose `x-telo-ref` slots still name their target as
@@ -1375,6 +1414,7 @@ export class Kernel implements IKernel {
     // hygiene step.
     this._loadedGraph = undefined;
     this.staticManifests = [];
+    this.loadTimeManifests = [];
     await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
   }
 
@@ -1503,7 +1543,7 @@ export class Kernel implements IKernel {
     for (const [, module] of graph.modules) {
       const file = module.owner;
       if (owners.has(file.source)) continue;
-      const owner = readOwnerManifest(file.text);
+      const owner = ownerManifestOf(file.manifests.find((m) => m && isModuleKind(m.kind)));
       owners.set(file.source, owner);
       const moduleDir = moduleDirectoryFor(
         file.requestedUrl,

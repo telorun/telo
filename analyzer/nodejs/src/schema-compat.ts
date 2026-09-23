@@ -41,7 +41,9 @@ export function createAjv(): InstanceType<typeof Ajv> {
   // rejected statically and at dispatch by the identical rule. This instance is
   // static analysis alone, so it also asserts a `live` type: no literal can be one.
   registerTeloKeywords(instance, { assertLive: true });
-  instance.addSchema(ManifestRootSchema);
+  // This package's own constant, meta-validated once by its test rather than on
+  // every instance.
+  instance.addSchema(ManifestRootSchema, undefined, undefined, false);
   return instance;
 }
 

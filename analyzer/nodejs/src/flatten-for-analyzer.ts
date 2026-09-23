@@ -145,7 +145,9 @@ function forwardedInternalCalls(
       .filter((m) => !isModuleKind(m.kind) && m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract")
       .map((m) => m.metadata?.name as string),
   );
-  const names = moduleCallNamesOfFile(moduleManifests);
+  // Only calls through the library's own names are followed, so only those are
+  // resolved as calls.
+  const names = new Set([...moduleCallNamesOfFile(moduleManifests)].filter((n) => ownNames.has(n)));
   const out: ResourceManifest[] = [];
   const queue = [...forwarded];
   while (queue.length > 0) {

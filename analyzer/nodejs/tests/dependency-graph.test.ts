@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { buildDependencyGraph, formatCycle } from "../src/dependency-graph.js";
+import { AliasResolver } from "../src/alias-resolver.js";
 import { DefinitionRegistry } from "../src/definition-registry.js";
 
 const ref = (name: string) => makeTaggedSentinel("ref", name);
@@ -232,5 +233,57 @@ describe("buildDependencyGraph — module calls", () => {
     const { order, cycle } = buildDependencyGraph(resources, registryOf(echoDef));
     expect(order).toBeUndefined();
     expect(cycle!.map((n) => n.name)).toEqual(["loop", "loop"]);
+  });
+});
+
+describe("buildDependencyGraph — creation order", () => {
+  /** The entry's alias table, as analysis registers it for `App`. */
+  const appAliases = () => {
+    const aliases = new AliasResolver();
+    aliases.registerUngatedAlias("Self", "App");
+    aliases.registerUngatedAlias("App", "App");
+    aliases.registerImport("Lib", "Library");
+    return aliases;
+  };
+  const names = (resources: unknown[]) =>
+    buildDependencyGraph(resources as ResourceManifest[], registryOf(), appAliases()).order!.map(
+      (n) => n.name,
+    );
+
+  it("creates an import and a local definition before what is spelled through them", () => {
+    // Written in the worst order: every user before the declaration it needs.
+    const app = { module: "App" };
+    const order = names([
+      { kind: "Telo.Application", metadata: { name: "App" } },
+      { kind: "Lib.Echo", metadata: { name: "echo", ...app } },
+      { kind: "Self.Page", metadata: { name: "home", ...app } },
+      { kind: "App.Page", metadata: { name: "about", ...app } },
+      { kind: "Telo.Definition", metadata: { name: "Page", ...app }, extends: "Lib.Base" },
+      { kind: "Telo.Import", metadata: { name: "Lib", ...app }, source: "./lib" },
+    ]);
+    expect(order.indexOf("Lib")).toBeLessThan(order.indexOf("echo"));
+    expect(order.indexOf("Lib")).toBeLessThan(order.indexOf("Page"));
+    expect(order.indexOf("Page")).toBeLessThan(order.indexOf("home"));
+    expect(order.indexOf("Page")).toBeLessThan(order.indexOf("about"));
+  });
+
+  it("lets a dependency win over a kind's declaration instead of reporting a cycle", () => {
+    // The import is handed an instance of a kind it exports itself: the instance
+    // must exist before the import, and it is spelled through the import's alias.
+    const { order, cycle } = buildDependencyGraph(
+      [
+        {
+          kind: "Telo.Import",
+          metadata: { name: "Lib" },
+          source: "./lib",
+          resources: { connection: { kind: "Lib.Connection", name: "db" } },
+        },
+        { kind: "Lib.Connection", metadata: { name: "db" } },
+      ] as unknown as ResourceManifest[],
+      registryOf(),
+      appAliases(),
+    );
+    expect(cycle).toBeUndefined();
+    expect(order!.map((n) => n.name)).toEqual(["db", "Lib"]);
   });
 });

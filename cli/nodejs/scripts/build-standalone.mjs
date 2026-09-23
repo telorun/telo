@@ -133,9 +133,11 @@ function bakedVersions() {
     "@telorun/cli": read("cli/nodejs/package.json"),
     "@telorun/kernel": read("kernel/nodejs/package.json"),
     "@telorun/analyzer": read("analyzer/nodejs/package.json"),
+    "@telorun/templating": read("templating/nodejs/package.json"),
     "@telorun/debug-ui": read("packages/debug-ui/package.json"),
     ajv: dep("ajv"),
     "ajv-formats": dep("ajv-formats"),
+    yaml: dep("yaml"),
     // The executable this build embeds. The binary keys its unpacked copy on
     // this, so an upgrade unpacks its own rather than driving the previous
     // version's — esbuild refuses a host/binary version mismatch, which would

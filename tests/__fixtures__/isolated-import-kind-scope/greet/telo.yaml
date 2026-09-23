@@ -1,0 +1,36 @@
+# One library, two kinds whose behaviour reads the library's own variable: a
+# template body and an inherited `base:` mapping. Imported twice with different
+# values, each instance must see the value of the import its kind came through.
+kind: Telo.Library
+metadata:
+  name: Greeting
+imports:
+  Run: ../../../../modules/run
+variables:
+  greeting: { type: string }
+exports:
+  kinds: [Greet, Hello]
+---
+kind: Telo.Definition
+metadata:
+  name: Greet
+capability: Telo.Invocable
+schema:
+  type: object
+  properties: {}
+resources:
+  - kind: Run.Value
+    metadata:
+      name: real
+    value: !cel "variables.greeting"
+invoke: !ref real
+---
+kind: Telo.Definition
+metadata:
+  name: Hello
+extends: Run.Value
+schema:
+  type: object
+  properties: {}
+base:
+  value: !cel "variables.greeting"

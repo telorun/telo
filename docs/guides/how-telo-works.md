@@ -82,10 +82,11 @@ telo ./manifest.yaml
    environment. A missing required variable fails here — before any code runs.
 2. **Analyze.** The same static checks `telo check` performs run against the
    loaded graph: unknown kinds, broken references, CEL type errors.
-3. **Init.** A multi-pass loop constructs each resource. A resource whose
-   dependency is not ready yet is deferred and retried on the next pass, so you
-   never declare an ordering — it is derived from the references. `init()`
-   builds the instance and performs **no observable side effects**.
+3. **Init.** Each resource is constructed in dependency order — derived from
+   its references and from the imports and definitions its kind comes from, so
+   you never declare an ordering. A dependency only visible at runtime defers
+   the resource to a later pass. `init()` builds the instance and performs
+   **no observable side effects**.
 4. **Run targets.** Everything in `targets:` is dispatched.
 5. **Wait.** The process stays alive while any **hold** is outstanding.
 

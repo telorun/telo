@@ -590,7 +590,13 @@ jobs:
     # is published after the image it points at exists, never beside it. There is
     # deliberately no dev/sha chart — an OCI chart tag is its semver version, and
     # nothing consumes a chart for an unreleased runner.
+    #
+    # `always()` is load-bearing: without a status function GitHub prepends an
+    # implicit `success()`, which is false when ANY job up the `needs` chain was
+    # skipped — and `kernel-dev` is always skipped on the release path. The
+    # explicit `k8s-runner` result test below is the real gate.
     if: |
+      always() &&
       inputs.release &&
       needs.k8s-runner.result == 'success' &&
       needs.k8s-runner.outputs.released-version != ''

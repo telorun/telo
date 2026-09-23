@@ -20,6 +20,8 @@ import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 
+const TELO_BUILTIN_MODULE = "Telo";
+
 /** One reference field declared by a resource's definition, derived purely from
  *  the schema field map (independent of whether the manifest fills it). Editor
  *  hosts render these as ports / adapters on a node. */
@@ -38,15 +40,74 @@ export interface RefFieldInfo {
   capabilities: string[];
 }
 
+/** @internal What a {@link AnalysisRegistry.forModule} view shares with the
+ *  registry it was taken from. */
+export interface AnalysisRegistryScope {
+  defs: DefinitionRegistry;
+  aliases: AliasResolver;
+  aliasesByModule: Map<string, AliasResolver>;
+  views: Map<string, AnalysisRegistry>;
+}
+
 /**
  * Accumulates type and alias knowledge for a running kernel or analysis session.
  * Wraps AliasResolver and DefinitionRegistry into a single domain-level interface
  * so callers never touch the raw registries directly.
  */
 export class AnalysisRegistry {
-  private readonly defs = new DefinitionRegistry();
-  private readonly aliases = new AliasResolver();
-  private readonly aliasesByModule = new Map<string, AliasResolver>();
+  private readonly defs: DefinitionRegistry;
+  private readonly aliases: AliasResolver;
+  private readonly aliasesByModule: Map<string, AliasResolver>;
+  private readonly views: Map<string, AnalysisRegistry>;
+
+  constructor(scope?: AnalysisRegistryScope) {
+    this.defs = scope?.defs ?? new DefinitionRegistry();
+    this.aliases = scope?.aliases ?? new AliasResolver();
+    this.aliasesByModule = scope?.aliasesByModule ?? new Map();
+    this.views = scope?.views ?? new Map();
+  }
+
+  /**
+   * This registry as seen from inside `module`: the same definitions and every
+   * module's alias table, with `module`'s own table as the top-level scope —
+   * which is what a pass treats as the entry's. Normalizing, ordering or
+   * analyzing a library through its view resolves its `kind:`, `extends:` and
+   * `!ref Alias.name` against the library's own imports, never the entry's, and
+   * whatever the pass registers lands in the one shared index.
+   *
+   * A module that has no table yet gets one seeded with the names every module
+   * resolves without an import — `Telo`, `Self` and its own name.
+   *
+   * Tables are keyed by module name, so the entry's own name is refused: its
+   * scope is the top-level table, and a table under its name would be read for
+   * every one of its resources in place of that. A library sharing the entry's
+   * name needs a registry of its own.
+   */
+  forModule(module: string): AnalysisRegistry {
+    const cached = this.views.get(module);
+    if (cached) return cached;
+    if (this.aliases.moduleForAlias("Self") === module) {
+      throw new Error(
+        `Module '${module}' is the entry module of this registry; its scope is the registry itself.`,
+      );
+    }
+    let table = this.aliasesByModule.get(module);
+    if (!table) {
+      table = new AliasResolver();
+      table.registerUngatedAlias(TELO_BUILTIN_MODULE, TELO_BUILTIN_MODULE);
+      this.aliasesByModule.set(module, table);
+    }
+    if (!table.hasAlias("Self")) table.registerUngatedAlias("Self", module);
+    if (!table.hasAlias(module)) table.registerUngatedAlias(module, module);
+    const view = new AnalysisRegistry({
+      defs: this.defs,
+      aliases: table,
+      aliasesByModule: this.aliasesByModule,
+      views: this.views,
+    });
+    this.views.set(module, view);
+    return view;
+  }
 
   registerDefinition(def: ResourceDefinition): void {
     this.defs.register(def);

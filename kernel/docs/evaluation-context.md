@@ -176,34 +176,11 @@ EvaluationContext(context, createInstance, secretValues)
 
 ### 5.4 Multi-Pass Initialization
 
-When `initializeResources()` is called on any context, it performs a multi-pass loop:
+When `initializeResources()` is called on any context, it walks the pending resources **in creation order** and initializes each one as soon as it is created, so everything a resource depends on is live before its own `create()` runs.
 
-```typescript
-public async initializeResources(): Promise<void> {
-  const maxPasses = 10;
-  let pass = 0;
-  while (pass < maxPasses && this.pendingResources.length > 0) {
-    pass++;
-    const toProcess = [...this.pendingResources];
-    this.pendingResources.length = 0;
+The creation order comes from the analyzer's dependency graph (`prepare()` → `setInitOrder`): every reference edge, plus the declarations a resource's kind is spelled through — the `Telo.Import` that registers `Http` comes before `kind: Http.Api`, the `Telo.Definition` that declares `Page` before `kind: Self.Page`, and a definition's `extends:` target before the definition. Those declaration edges only order: when one conflicts with a reference edge (an import handed an instance of a kind it exports itself), the reference wins and no cycle is reported.
 
-    for (const resource of toProcess) {
-      const instance = await this._createInstance(resource);
-      if (!instance) {
-        // Dependency not yet ready — queue for next pass
-        this.pendingResources.push(resource);
-      } else {
-        // Resource created and stored by _createInstance
-        this.resourceInstances.set(resourceKey(resource), { resource, instance });
-      }
-    }
-  }
-}
-```
-
-**Why multiple passes?**
-
-Resources may depend on other resources being created first (e.g., an `imports:` entry brings in a library that registers new kinds other resources need). Rather than requiring explicit topological sorting, the loop retries failed resources until all are resolved or the max passes are exhausted.
+**Why keep multiple passes?** A dependency the graph cannot see — a by-name `ctx.resolveRef`, a resource registered while another initializes — still defers (`ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING`) and is retried on the next pass, up to ten. On a manifest whose dependencies are all declared, every resource is created once and initialized once; a retry means an edge the order did not have.
 
 ### 5.5 Child Context Initialization
 

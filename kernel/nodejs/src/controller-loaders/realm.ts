@@ -146,7 +146,19 @@ const NO_HOST =
  *  sorted so the file is stable between runs and only rewritten when the SDK's
  *  surface actually changes. Names are emitted as string export specifiers, so
  *  one that is not a JavaScript identifier cannot break the file. */
+const shimSources = new WeakMap<Record<string, unknown>, string>();
 function esmShimSource(specifier: string, module: Record<string, unknown>): string {
+  // Once per published module rather than once per bundle directory: every
+  // module's bundle directory gets the same shim.
+  let source = shimSources.get(module);
+  if (source === undefined) {
+    source = buildEsmShimSource(specifier, module);
+    shimSources.set(module, source);
+  }
+  return source;
+}
+
+function buildEsmShimSource(specifier: string, module: Record<string, unknown>): string {
   const names = Object.keys(module)
     .filter((name) => name !== "default")
     .sort();

@@ -86,11 +86,12 @@ export function desugarLoadedFile(file: LoadedFile): LoadedFile {
   const synthetic = inlineImportManifests(file.manifests[moduleIndex]!, file.positions[moduleIndex]);
   if (synthetic.length === 0) return file;
 
-  return {
-    ...file,
-    manifests: [...file.manifests, ...synthetic.map((s) => s.manifest)],
-    positions: [...file.positions, ...synthetic.map((s) => s.position)],
-  };
+  // Copied by descriptor: a file restored from a parse cache reads its YAML
+  // documents through getters, and a spread would parse them.
+  const out = Object.defineProperties({}, Object.getOwnPropertyDescriptors(file)) as LoadedFile;
+  out.manifests = [...file.manifests, ...synthetic.map((s) => s.manifest)];
+  out.positions = [...file.positions, ...synthetic.map((s) => s.position)];
+  return out;
 }
 
 /** Build a `DocumentPosition` for a synthetic import by re-rooting the module

@@ -22,11 +22,15 @@ export const APP_PREFIX = "app";
 export const CACHE_PREFIX = "cache";
 
 /**
- * Neither of these can contribute to the analysis key, and for different
- * reasons: the stamp IS what the key names, so it cannot name itself, and a
- * compiled validator is a pure function of a schema the key already covers.
+ * None of these can contribute to the analysis key: the stamp IS what the key
+ * names, so it cannot name itself, while a compiled validator and a parsed
+ * manifest are pure functions of a schema or a text the key already covers.
  */
-const KEY_EXCLUDED = [`${CACHE_PREFIX}/analysis/`, `${CACHE_PREFIX}/validators/`];
+const KEY_EXCLUDED = [
+  `${CACHE_PREFIX}/analysis/`,
+  `${CACHE_PREFIX}/validators/`,
+  `${CACHE_PREFIX}/yaml-parses/`,
+];
 
 /** A platform as the payload records it — concrete, because the index is read
  *  by whoever holds the binary. `PlatformLike` is the same axes as the warm

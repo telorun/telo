@@ -53,6 +53,7 @@ import { resolveModuleFileUri, type NativeFileModule } from "./module-file-resol
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
 import type { ScopeConfig } from "./logging/scope-config.js";
+import type { LibraryAnalysisHost } from "./internal-context.js";
 
 /** The kernel's `ModuleContext` as far as logging is concerned. Declared
  *  structurally rather than imported to avoid a module cycle. */
@@ -643,6 +644,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   isImportValidatedAtLoad(url: string): boolean {
     return this.kernel.isImportValidatedAtLoad(url);
+  }
+
+  libraryAnalysisHost(): LibraryAnalysisHost {
+    return this.kernel.libraryAnalysisHost();
   }
 
   resolveImportUrl(fromSource: string, importSource: string): string {

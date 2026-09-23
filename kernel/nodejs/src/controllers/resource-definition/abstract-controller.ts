@@ -9,6 +9,10 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { formatAjvErrors, validateResourceAbstract } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
+import {
+  forgetRegisteredDefinition,
+  recordRegisteredDefinition,
+} from "./registered-definitions.js";
 
 type ResourceAbstractResource = RuntimeResource & {
   kind: "Telo.Abstract";
@@ -37,7 +41,18 @@ class ResourceAbstract implements ResourceInstance {
 
   constructor(readonly resource: ResourceAbstractResource) {}
 
-  async init(ctx: ResourceContext) {
+  init(ctx: ResourceContext) {
+    return ctx.effect(`${this.resource.kind} ${this.resource.metadata.name}`, async () => {
+      await this.registerKind(ctx);
+      return {
+        result: undefined,
+        inverse: () =>
+          forgetRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy()),
+      };
+    });
+  }
+
+  private async registerKind(ctx: ResourceContext) {
     const definingCtx = ctx.moduleContext;
     const resolveDef: DefResolver = (kind) => {
       let canonical = kind;
@@ -67,6 +82,7 @@ class ResourceAbstract implements ResourceInstance {
     );
 
     ctx.registerDefinition(this.resource);
+    recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
   }
 }
 

@@ -25,6 +25,10 @@ import { formatAjvErrors, validateResourceDefinition } from "../../manifest-sche
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
+import {
+  forgetRegisteredDefinition,
+  recordRegisteredDefinition,
+} from "./registered-definitions.js";
 
 type ResourceDefinitionResource = RuntimeResource & {
   kind: "Telo.Definition";
@@ -54,7 +58,18 @@ class ResourceDefinition implements ResourceInstance {
 
   constructor(readonly resource: ResourceDefinitionResource) {}
 
-  async init(ctx: ResourceContext) {
+  init(ctx: ResourceContext) {
+    return ctx.effect(`${this.resource.kind} ${this.resource.metadata.name}`, async () => {
+      await this.registerKind(ctx);
+      return {
+        result: undefined,
+        inverse: () =>
+          forgetRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy()),
+      };
+    });
+  }
+
+  private async registerKind(ctx: ResourceContext) {
     const definingCtx = ctx.moduleContext;
     // Resolve an `extends`/kind target (alias or canonical form) to its
     // definition against the DEFINING library's scope — where the `extends`
@@ -178,7 +193,6 @@ class ResourceDefinition implements ResourceInstance {
         }
         const controllerInstance = createInheritedController(
           this.resource as ResourceDefinitionManifest,
-          definingCtx,
           resolveDef,
         );
         ctx.registerDefinition(this.resource);
@@ -187,6 +201,7 @@ class ResourceDefinition implements ResourceInstance {
           this.resource.metadata.name,
           controllerInstance,
         );
+        recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
         return;
       }
       // Otherwise the chain reaches no controller-bearing concrete ancestor
@@ -214,18 +229,19 @@ class ResourceDefinition implements ResourceInstance {
           `Telo.Definition '${this.resource.metadata.name}': ${targetProblem.message}`,
         );
       }
-      // ctx.moduleContext here is the context that DEFINED this kind (the
-      // library the Telo.Definition lives in). The template controller spawns
-      // its child scope from this context so the template's internal kind
-      // aliases / `!ref`s resolve against the defining library's imports — not
-      // the consumer module that instantiates the kind.
-      const controllerInstance = createTemplateController(this.resource as any, ctx.moduleContext);
+      // Each instance's child scope is spawned from the context that declares
+      // its kind as the instance spelled it, so the template's internal kind
+      // aliases / `!ref`s resolve against the defining library's imports — and
+      // against the IMPORT that instance came through, not whichever import
+      // registered the kind.
+      const controllerInstance = createTemplateController(this.resource as any);
       ctx.registerDefinition(this.resource);
       await ctx.registerController(
         this.resource.metadata.module,
         this.resource.metadata.name,
         controllerInstance,
       );
+      recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
       return;
     }
     const host = kernelContext(ctx);
@@ -296,6 +312,7 @@ class ResourceDefinition implements ResourceInstance {
         });
       },
     );
+    recordRegisteredDefinition(ctx.moduleContext, this.resource, policy);
   }
 }
 

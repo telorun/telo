@@ -118,9 +118,11 @@ entry, torn down on exit, and fresh per run.
 
 ### Init loop
 
-The multi-pass pass over every resource: one whose dependency is not ready is
-deferred and retried next pass. This is why you never declare an ordering — it
-is derived from the references.
+The pass over every resource, in dependency order derived from the references
+and from the imports and definitions each kind comes from: each resource is
+created and initialized in turn. One whose dependency is only visible at
+runtime is deferred and retried next pass. This is why you never declare an
+ordering.
 
 ### Analyzer
 

@@ -185,7 +185,7 @@ function resolveReferences(
    *  declared `doc`. A forwarded kind document carries no forwarding stamp — only
    *  its module says it is a dependency's — so the declaring module is what
    *  decides, and the ordinary rule applies only to a document of the entry's own
-   *  module (a root module is never a key in `aliasesByModule`). */
+   *  module (a root module's `aliasesByModule` key, if any, is the top-level table). */
   const shapeResolverFor = (doc: ResourceManifest): ((source: string) => ResolvedRef | undefined) => {
     const module = moduleOf(doc);
     const ownedByEntry =
