@@ -248,8 +248,12 @@ export async function resolveIncludeSentinels(
   // not be hidden by another failing first.
   const settled = await Promise.allSettled(pending);
   const failures = settled.flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
-  resolved.add(resource);
-  if (failures.length === 0) return;
+  // Remembered only when every embed resolved: a retried creation must meet the
+  // same failure again, not skip to schema validation with the tag unresolved.
+  if (failures.length === 0) {
+    resolved.add(resource);
+    return;
+  }
   // The FIRST failure is rethrown, carrying its own code and its own cause.
   // Wrapping several into one generic error made the reported code depend on how
   // many files happened to fail — two missing files became ERR_INCLUDE_UNREADABLE

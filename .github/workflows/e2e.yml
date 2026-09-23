@@ -219,10 +219,12 @@ jobs:
           # missing toolchain exits. Treating that as "nothing changed" turns a
           # broken gate into a silently disabled test — the one outcome worse
           # than paying for a run. Only an explicit `false` skips.
+          # `|| true` because this shell is `bash -eo pipefail`: "unchanged" IS
+          # a non-zero exit, and it would kill the step before the test below.
           verdict=$(pnpm run --silent telo changed \
                ./examples/agent-console ./examples/chat-console \
                examples/test-suite-live.yaml .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed')
+               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed') || true
           if [ "$verdict" = "false" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No agent-console/chat-console changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
@@ -316,9 +318,11 @@ jobs:
           # missing toolchain exits. Treating that as "nothing changed" turns a
           # broken gate into a silently disabled test — the one outcome worse
           # than paying for a run. Only an explicit `false` skips.
+          # `|| true` because this shell is `bash -eo pipefail`: "unchanged" IS
+          # a non-zero exit, and it would kill the step before the test below.
           verdict=$(pnpm run --silent telo changed \
                ./apps/authoring-agent .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed')
+               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed') || true
           if [ "$verdict" = "false" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No authoring-agent changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY

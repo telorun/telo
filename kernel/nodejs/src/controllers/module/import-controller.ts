@@ -1,6 +1,4 @@
 import {
-  AnalysisRegistry,
-  DiagnosticSeverity,
   authoredModuleMetadata,
   foldIntegrity,
   isInjectedDeclaration,
@@ -8,7 +6,6 @@ import {
   readLibraryLifecycle,
   readResourceInputs,
   readSuppliedResources,
-  StaticAnalyzer,
 } from "@telorun/analyzer";
 import type { ParsedExportEntry } from "@telorun/analyzer";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
@@ -18,6 +15,8 @@ import type { BuiltinControllerContext } from "../../internal-context.js";
 import { buildScopeConfig, type LoggingManifestBlock } from "../../logging/kernel-logging.js";
 import { ModuleContext } from "../../module-context.js";
 import { isDefaultPolicy, normalizeRuntime } from "../../runtime-registry.js";
+import { resolveLibraryScope } from "./library-scope.js";
+import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
 import {
   assertNoSharedOverride,
   assertSharedInputsAgree,
@@ -77,68 +76,20 @@ export async function create(
     return borrowSharedLibrary(alreadyShared, alias, resource, borrowed, ctx);
   }
 
-  // The analysis-flattened graph (follows Telo.Import chains, includes forwarded
-  // sub-import exports) serves two purposes here: validating the imported subtree,
-  // and populating a CHILD-SCOPED analysis registry whose top-level alias scope is
-  // the imported library's own. That child scope is required to normalize the
-  // library's `!ref` sentinels (resolve them to `{kind, name}`) before its
-  // resources are registered below — the same step the root load performs via
-  // `analyzer.normalize`. Without it a `!ref` inside the library reaches its
-  // controller as a raw sentinel and Phase-5 injection (which only recognizes
-  // `{kind, name}`) silently skips it.
-  const analysisManifests = await ctx.loadManifests(resolvedUrl);
-  const analyzer = new StaticAnalyzer();
-  const childRegistry = new AnalysisRegistry();
-
-  // Fast path: when the kernel's load-time `analyzeErrors` already covered this
-  // import's subtree (the common case — every Telo.Import declared in the entry
-  // graph is walked by `loadGraph` and validated by `kernel.load`), skip the
-  // per-resource diagnostic passes. Registration of identities / aliases /
-  // definitions still runs (it precedes the skipValidation early-return), so the
-  // child registry is populated for normalization either way. The full analysis
-  // runs for URLs that arrived programmatically after `load()` (e.g. dynamically
-  // constructed imports in tests).
-  const validatedAtLoad = ctx.isImportValidatedAtLoad(resolvedUrl);
-  const diagnostics = analyzer.analyze(
-    analysisManifests,
-    { skipValidation: validatedAtLoad },
-    childRegistry,
-  );
-  if (!validatedAtLoad) {
-    const errors = diagnostics
-      .filter((d) => d.severity === DiagnosticSeverity.Error)
-      .map((d) => d.message);
-    if (errors.length > 0) {
-      throw new RuntimeError(
-        "ERR_MANIFEST_VALIDATION_FAILED",
-        errors.join("\n"),
-      );
-    }
-  }
-
-  // Load target module manifests for runtime. Inject variables/secrets as compile context so
-  // that ${{ variables.x }} / ${{ secrets.y }} templates in the child module resolve correctly.
-  // No env — child modules are isolated from host environment.
-  // `desugarImports` so a child library that itself uses inline `imports:` has
-  // those expanded into Telo.Import manifests and registered in its child
-  // context — without it, a transitively-imported library's inline imports
-  // would load but never execute (the execute-gap, one level down).
-  const rawManifests = await ctx.loadModule(resolvedUrl, {
-    compile: true,
-    desugarImports: true,
-    migrate: true,
-  });
-
-  // Normalize in the library's own scope: extract inline resources and resolve
-  // `!ref` sentinels to `{kind, name}` (mirrors the root load at kernel.ts).
-  // `analysisManifests` are passed as cross-module resolution targets so a library
-  // that references its OWN sub-imports' exported instances (`!ref SubAlias.name`)
-  // resolves across that inner boundary too.
-  const manifests = analyzer.normalize(rawManifests, childRegistry, analysisManifests);
+  // The library's scope is the kernel's own analysis registry seen from inside
+  // the library (`resolveLibraryScope`, cached per URL). Normalizing in it
+  // resolves the library's `!ref` sentinels to `{kind, name}` before its
+  // resources are registered below — the step the root load performs via
+  // `analyzer.normalize`; without it a `!ref` reaches its controller as a raw
+  // sentinel and Phase-5 injection, which recognizes only `{kind, name}`, skips
+  // it. Normalization still runs per site: it clones the manifests, and Phase-5
+  // injection mutates a registered resource's ref fields in place, so two import
+  // sites must never share manifest object identity.
+  const scope = await resolveLibraryScope(resolvedUrl, ctx);
+  const { analyzer } = ctx.libraryAnalysisHost();
   // Import targets must be Telo.Library — Applications are run directly, not imported.
-  const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library");
-  if (!moduleManifest) {
-    const applicationManifest = manifests.find((m: any) => m.kind === "Telo.Application");
+  if (!scope.registry) {
+    const applicationManifest = scope.rawManifests.find((m: any) => m.kind === "Telo.Application");
     if (applicationManifest) {
       throw new RuntimeError(
         "ERR_MANIFEST_VALIDATION_FAILED",
@@ -147,6 +98,13 @@ export async function create(
     }
     throw new Error(`No Telo.Library manifest found in source "${resource.source as string}"`);
   }
+  const libraryRegistry = scope.registry;
+  const manifests = analyzer.normalize(
+    scope.rawManifests,
+    libraryRegistry,
+    scope.crossModuleTargets,
+  );
+  const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library")!;
   const targetModule: string = moduleManifest.metadata.name;
 
   // Validate required inputs before injecting.
@@ -316,11 +274,21 @@ export async function create(
       .perform();
   }
 
+  const policy = (child as ModuleContext).getControllerPolicy();
   for (const manifest of manifests) {
     // The kind-only stand-ins the loader synthesizes behind a `resources:` entry
     // are a DECLARATION for the analyzer, never an instantiation: the instance
     // is the importer's, already bound above.
     if (isInjectedDeclaration(manifest)) continue;
+    // A kind is registered once per kernel, so a definition an earlier import of
+    // this library already registered is not created again. What differs per
+    // import — the context a template body runs in — is resolved per instance.
+    if (
+      (manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract") &&
+      isDefinitionRegistered(ctx.moduleContext, manifest, policy)
+    ) {
+      continue;
+    }
     child.registerManifest(manifest);
   }
 
@@ -330,7 +298,7 @@ export async function create(
   // injection before its dependency exists — e.g. an Http.Api whose inline route
   // handler is appended after it during inline-resource extraction would init,
   // and inject, before the handler is created, leaving the handler ref
-  // unresolved. The order is computed in the library's OWN scope (childRegistry),
+  // unresolved. The order is computed in the library's OWN scope (its registry view),
   // so an anonymous child resolves against the declaring library, not the
   // consumer. setInitOrder ignores names it doesn't recognize, so a partial order
   // is safe. A cycle purely among a library's own resources is invisible to the
@@ -339,7 +307,7 @@ export async function create(
   // back to registration order (which would re-manifest as a confusing runtime
   // ERR_RESOURCE_NOT_INVOKABLE). `prepare` returns null order on a ref-validation
   // error too (already reported by analyze above); those we leave to fall back.
-  const { order, cycleError } = analyzer.prepare(manifests, childRegistry);
+  const { order, cycleError } = analyzer.prepare(manifests, libraryRegistry);
   if (cycleError) {
     throw new RuntimeError(
       "ERR_CIRCULAR_DEPENDENCY",
@@ -465,9 +433,7 @@ export async function create(
       );
       // Same for kinds: `kind: Alias.Kind` resolves through the child's exported-kind table,
       // covering both locally-defined and transitively re-exported kinds in O(1).
-      (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
-        childCtx.getExportedKind(suffix),
-      );
+      (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, childCtx);
 
       return {
         result: undefined,
@@ -594,9 +560,7 @@ function borrowSharedLibrary(
             (name) => childCtx.getTerminalExport(name),
             (name) => childCtx.declaredManifestFor(name) !== undefined,
           );
-          (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, (suffix) =>
-            childCtx.getExportedKind(suffix),
-          );
+          (ctx.moduleContext as ModuleContext).registerImportedKindScope(alias, childCtx);
           return {
             result: undefined,
             // Only the alias: the root owns the library and the imports that

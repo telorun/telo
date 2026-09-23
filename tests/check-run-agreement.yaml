@@ -33,6 +33,7 @@ targets:
   - !ref templateDuplicateEntryAtRuntime
   - !ref badExports
   - !ref childAliasScope
+  - !ref importAliasDivergence
   - !ref moduleNameAlias
   - !ref duplicateName
   - !ref duplicateNameAtRuntime
@@ -273,6 +274,16 @@ kind: Assert.Manifest
 metadata:
   name: childAliasScope
 source: ./__fixtures__/check-run-agreement/child-alias-scope/telo.yaml
+expect:
+  runs: true
+---
+# An application and the library it imports both alias `Source`, naming two
+# different modules. The library's `!ref Source.value` is its own import's
+# export, at check and at run.
+kind: Assert.Manifest
+metadata:
+  name: importAliasDivergence
+source: ./__fixtures__/check-run-agreement/import-alias-divergence/telo.yaml
 expect:
   runs: true
 ---

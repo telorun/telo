@@ -154,6 +154,20 @@ describe("resolveIncludeSentinels", () => {
     expect(resource.b).toMatchObject({ __tagged: true });
   });
 
+  it("fails again on a retried creation rather than leaving the tag unresolved", async () => {
+    // A failed creation is retried on a later init pass with the same manifest
+    // object; skipping it there handed the raw tag to schema validation, which
+    // replaced the real error with a schema mismatch.
+    const resource: Record<string, unknown> = { kind: "X", a: text("nope.txt") };
+    const cache: IncludeCache = new Map();
+    await expect(resolve(resource, cache)).rejects.toMatchObject({
+      code: "ERR_INCLUDE_FILE_NOT_FOUND",
+    });
+    await expect(resolve(resource, cache)).rejects.toMatchObject({
+      code: "ERR_INCLUDE_FILE_NOT_FOUND",
+    });
+  });
+
   it("reads a file once across resources sharing a cache", async () => {
     const cache: IncludeCache = new Map();
     await resolve({ kind: "X", a: text("theme.txt") }, cache);

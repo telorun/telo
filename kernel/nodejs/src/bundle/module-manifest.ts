@@ -22,10 +22,10 @@ export function parseManifestDocs(text: string): Document[] {
  *  `Telo.Library` doc that carries its identity, `files:` / `assets:`, and the
  *  published `layers:` index. The one place that selects it, shared by every
  *  reader/writer. */
-export function findOwnerDoc(docs: Document[]): Document | undefined {
+export function findOwnerDoc(docs: readonly Document[]): Document | undefined {
   return docs.find((d) => {
-    const kind = (d.toJSON() as { kind?: string } | null)?.kind;
-    return kind !== undefined && OWNER_KINDS.has(kind);
+    const kind = d.get("kind");
+    return typeof kind === "string" && OWNER_KINDS.has(kind);
   });
 }
 
@@ -66,8 +66,14 @@ export interface OwnerManifest {
  *  (never regex-scraping). The single source both transports call for the
  *  module's name and version, its layer index, and payload detection. */
 export function readOwnerManifest(text: string): OwnerManifest {
-  const owner = findOwnerDoc(parseManifestDocs(text));
-  const parsed = owner?.toJSON() as
+  return ownerManifestOf(findOwnerDoc(parseManifestDocs(text))?.toJSON());
+}
+
+/** {@link readOwnerManifest} over an owner document already in hand — the
+ *  module doc of a loaded file's `manifests`, so a manifest the loader holds is
+ *  not parsed a second time. */
+export function ownerManifestOf(owner: unknown): OwnerManifest {
+  const parsed = owner as
     | {
         metadata?: Record<string, unknown>;
         files?: unknown;

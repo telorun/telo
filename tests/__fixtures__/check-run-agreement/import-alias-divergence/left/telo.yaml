@@ -1,0 +1,14 @@
+kind: Telo.Library
+metadata:
+  name: LeftSource
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [value]
+---
+kind: Run.Sequence
+metadata:
+  name: value
+steps: []
+outputs:
+  from: left

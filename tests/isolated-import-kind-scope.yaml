@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: IsolatedImportKindScopeTest
+  version: 1.0.0
+  description: |
+    A kind is registered once per kernel, while each isolated import of its
+    library is a context of its own. A template body or an inherited `base:`
+    mapping must run in the context of the import the instance's kind was
+    spelled through — re-exports included — not in whichever import registered
+    the kind. It used to be the latter: `A.Greet` returned `B`'s variable.
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+  A:
+    source: ./__fixtures__/isolated-import-kind-scope/greet
+    variables: { greeting: from-a }
+  B:
+    source: ./__fixtures__/isolated-import-kind-scope/greet
+    variables: { greeting: from-b }
+  W1:
+    source: ./__fixtures__/isolated-import-kind-scope/wrapper
+    variables: { greeting: from-w1 }
+  W2:
+    source: ./__fixtures__/isolated-import-kind-scope/wrapper
+    variables: { greeting: from-w2 }
+targets:
+  - !ref check
+---
+kind: A.Greet
+metadata: { name: greetA }
+---
+kind: B.Greet
+metadata: { name: greetB }
+---
+kind: A.Hello
+metadata: { name: helloA }
+---
+kind: B.Hello
+metadata: { name: helloB }
+---
+kind: W1.Greet
+metadata: { name: greetW1 }
+---
+kind: W2.Greet
+metadata: { name: greetW2 }
+---
+kind: Run.Sequence
+metadata: { name: check }
+steps:
+  - name: greetA
+    invoke: !ref greetA
+  - name: greetB
+    invoke: !ref greetB
+  - name: helloA
+    invoke: !ref helloA
+  - name: helloB
+    invoke: !ref helloB
+  - name: greetW1
+    invoke: !ref greetW1
+  - name: greetW2
+    invoke: !ref greetW2
+  - name: sameKindEachImport
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        greetA: !cel "steps.greetA.result"
+        greetB: !cel "steps.greetB.result"
+        helloA: !cel "steps.helloA.result"
+        helloB: !cel "steps.helloB.result"
+        greetW1: !cel "steps.greetW1.result"
+        greetW2: !cel "steps.greetW2.result"
+      expected:
+        greetA: from-a
+        greetB: from-b
+        helloA: from-a
+        helloB: from-b
+        greetW1: from-w1
+        greetW2: from-w2

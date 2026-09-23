@@ -1,0 +1,14 @@
+# Re-exports `Greet` from its own import, so a consumer reaches the kind two
+# imports deep; the body must run in THIS wrapper's import of the library.
+kind: Telo.Library
+metadata:
+  name: GreetingWrapper
+imports:
+  Greeting:
+    source: ../greet
+    variables:
+      greeting: !cel "variables.greeting"
+variables:
+  greeting: { type: string }
+exports:
+  kinds: [Greeting.Greet]

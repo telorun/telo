@@ -2,11 +2,14 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import {
   buildCallGraph,
+  nodeIdFor,
   projectToPairs,
   type CallGraph,
   type ResourceGraphNode,
 } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
+import { isModuleKind } from "./module-kinds.js";
 import { readSuppliedResources } from "./resource-input.js";
 
 export interface ResourceNode {
@@ -117,7 +120,7 @@ export function buildDependencyGraph(
   }
 
   if (sorted.length === nodes.size) {
-    return { order: sorted };
+    return { order: creationOrder(resources, nodes, deps, aliases, aliasesByModule) };
   }
 
   const cycleKeys = findCycle(nodes.keys(), deps);
@@ -148,6 +151,133 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
 }
 
 // --- Internals ---
+
+const DECLARATION_KINDS: ReadonlySet<string> = new Set([
+  "Telo.Import",
+  "Telo.Definition",
+  "Telo.Abstract",
+]);
+
+/**
+ * The order resources are created in: the dependency order, with the
+ * declarations a resource's kind is spelled through placed before it.
+ *
+ * `kind: Http.Api` is created against the alias its `Telo.Import` registers,
+ * and `kind: Self.Page` against the `Telo.Definition` that declares `Page`;
+ * a definition's `extends:` resolves the same way. Neither is a dependency
+ * edge — an import or a definition is not a boot-time resource — so without
+ * this they sorted after everything and every such resource failed its first
+ * creation attempt.
+ *
+ * These are SOFT edges: they order, and never fail. An import may be handed an
+ * instance of a kind it itself exports (`resources: { conn: !ref db }` where
+ * `db` is `kind: Lib.Connection`), which the runtime satisfies because the
+ * alias exists once the import is created; as a hard edge that would be a
+ * cycle. So cycle detection stays on the dependency edges alone, and when only
+ * soft edges hold the sort back, the first node whose dependencies are all met
+ * goes next.
+ *
+ * Both ends are read through {@link moduleAliasScope}: an import is keyed by the
+ * alias table it registers into, and a kind by the table its declaring module
+ * resolves in — so the two meet exactly when the kind is spelled through that
+ * import, and a definition is matched by the canonical kind the table yields.
+ */
+function creationOrder(
+  resources: ResourceManifest[],
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): ResourceNode[] {
+  const keyOf = new Map<ResourceManifest, string>();
+  for (const [key, node] of nodes) keyOf.set(node.manifest, key);
+
+  // Manifest order, so resources with nothing between them keep the order
+  // they were written in.
+  const all = new Map<string, ResourceNode>();
+  const importsByScope = new Map<AliasResolver | undefined, Map<string, string>>();
+  const definitions = new Map<string, string>();
+  const scopeOf = (m: ResourceManifest) => moduleAliasScope(m.metadata, aliases, aliasesByModule);
+  for (const m of resources) {
+    const name = m.metadata?.name;
+    if (typeof name !== "string" || typeof m.kind !== "string" || isModuleKind(m.kind)) continue;
+    let key = keyOf.get(m);
+    if (key === undefined) {
+      if (!DECLARATION_KINDS.has(m.kind)) continue;
+      key = nodeIdFor(m);
+    }
+    if (!all.has(key)) all.set(key, nodes.get(key) ?? { kind: m.kind, name, manifest: m });
+    if (m.kind === "Telo.Import") {
+      const scope = scopeOf(m);
+      let imports = importsByScope.get(scope);
+      if (!imports) importsByScope.set(scope, (imports = new Map()));
+      imports.set(name, key);
+    } else if (m.kind === "Telo.Definition" || m.kind === "Telo.Abstract") {
+      const module = declaringModuleOf(m);
+      if (module) definitions.set(`${module}.${name}`, key);
+    }
+  }
+  for (const [key, node] of nodes) if (!all.has(key)) all.set(key, node);
+
+  const declarationOf = (
+    kind: unknown,
+    scope: AliasResolver | undefined,
+  ): string | undefined => {
+    if (typeof kind !== "string") return undefined;
+    const dot = kind.indexOf(".");
+    if (dot <= 0) return undefined;
+    return (
+      importsByScope.get(scope)?.get(kind.slice(0, dot)) ??
+      definitions.get(scope?.resolveKind(kind) ?? kind)
+    );
+  };
+
+  const unmet = new Map<string, Set<string>>();
+  const dependents = new Map<string, Set<string>>();
+  for (const [key, node] of all) {
+    const set = new Set([...(deps.get(key) ?? [])].filter((d) => all.has(d)));
+    const scope = scopeOf(node.manifest);
+    for (const declared of [node.manifest.kind, (node.manifest as { extends?: unknown }).extends]) {
+      const target = declarationOf(declared, scope);
+      if (target && target !== key) set.add(target);
+    }
+    unmet.set(key, set);
+    for (const dep of set) {
+      if (!dependents.has(dep)) dependents.set(dep, new Set());
+      dependents.get(dep)!.add(key);
+    }
+  }
+
+  const queue = [...all.keys()].filter((key) => unmet.get(key)!.size === 0);
+  const done = new Set<string>();
+  const order: ResourceNode[] = [];
+  while (order.length < all.size) {
+    if (queue.length === 0) {
+      // Only soft edges can hold the sort back here — the dependency edges are
+      // acyclic — so release the first node whose dependencies are all met.
+      for (const key of all.keys()) {
+        if (done.has(key)) continue;
+        if ([...(deps.get(key) ?? [])].every((d) => done.has(d) || !all.has(d))) {
+          unmet.get(key)!.clear();
+          queue.push(key);
+          break;
+        }
+      }
+    }
+    const key = queue.shift()!;
+    if (done.has(key)) continue;
+    done.add(key);
+    order.push(all.get(key)!);
+    for (const dependent of dependents.get(key) ?? []) {
+      const set = unmet.get(dependent)!;
+      if (set.delete(key) && set.size === 0 && !done.has(dependent)) queue.push(dependent);
+    }
+  }
+  return order;
+}
+
+const declaringModuleOf = (manifest: ResourceManifest): string | undefined =>
+  (manifest.metadata as { module?: string } | undefined)?.module;
 
 /** DFS cycle detection — returns the cycle path with the repeated start node
  *  appended, following only edges into `within` when given. */

@@ -1,0 +1,4 @@
+# Shares its name with the application that imports it.
+kind: Telo.Library
+metadata:
+  name: SameName

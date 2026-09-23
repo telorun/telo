@@ -166,13 +166,22 @@ export function normalizeSelector(
  * distinct selectors can collide and no one selector has two spellings.
  */
 export function selectorKey(selector: ArtifactSelector): string {
-  const pairs: string[] = [`format=${selector.format}`];
-  for (const axis of PLATFORM_AXES) {
-    const value = selector[axis];
-    if (value !== undefined) pairs.push(`${axis}=${value}`);
+  // A layer lookup keys every layer of an artifact on each resolution; a
+  // selector is complete once built, so its key is computed once.
+  let key = selectorKeys.get(selector);
+  if (key === undefined) {
+    const pairs: string[] = [`format=${selector.format}`];
+    for (const axis of PLATFORM_AXES) {
+      const value = selector[axis];
+      if (value !== undefined) pairs.push(`${axis}=${value}`);
+    }
+    key = pairs.sort().join(";");
+    selectorKeys.set(selector, key);
   }
-  return pairs.sort().join(";");
+  return key;
 }
+
+const selectorKeys = new WeakMap<ArtifactSelector, string>();
 
 /** Human-facing rendering for diagnostics and the publish partition printout. */
 export function describeSelector(selector: ArtifactSelector): string {

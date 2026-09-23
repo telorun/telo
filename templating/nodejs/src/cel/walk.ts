@@ -38,6 +38,7 @@ export function walkCelExpressions(
     return;
   }
   if (typeof value === "string") {
+    if (!value.includes(OPEN)) return;
     const matches = [...value.matchAll(TEMPLATE_REGEX)];
     for (const m of matches) {
       const expr = m[1]!.trim();
@@ -67,10 +68,22 @@ export function walkCelExpressions(
   if (
     value !== null &&
     typeof value === "object" &&
-    !(value as { __compiled?: unknown }).__compiled
+    !(value as { __compiled?: unknown }).__compiled &&
+    isPlainObject(value)
   ) {
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      walkCelExpressions(v, path ? `${path}.${k}` : k, cb);
+    // `for…in` over a plain object sees exactly its own enumerable keys, without
+    // the array `Object.entries` allocates — this walk runs over every resource
+    // a context creates.
+    for (const k in value) {
+      walkCelExpressions((value as Record<string, unknown>)[k], path ? `${path}.${k}` : k, cb);
     }
   }
+}
+
+/** A template body forwards `self.<ref>` as the LIVE instance, whose object graph
+ *  is cyclic and holds no authored expression — walking it overflows the stack.
+ *  The rule the include walk and `compileWalker` follow. */
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }

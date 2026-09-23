@@ -1,0 +1,32 @@
+# The application and the library it imports both declare an alias `Source`,
+# naming two different modules. Inside the library, `!ref Source.value` must
+# resolve through the library's own imports — reaching the application's
+# `Source` instead returns `left`.
+kind: Telo.Application
+metadata:
+  name: ImportAliasDivergenceApp
+imports:
+  Source: ./left
+  Reader: ./reader
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: own
+    invoke: !ref Source.value
+  - name: library
+    invoke: !ref Reader.read
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        own: !cel "steps.own.result"
+        library: !cel "steps.library.result"
+      expected:
+        own: { from: left }
+        library: { source: right }

@@ -1,5 +1,19 @@
-import type { ResourceContext } from "@telorun/sdk";
+import type { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
+import type { ResourceContext, ResourceManifest } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
+
+/** The kernel's analysis state an import reads its library's scope from. */
+export interface LibraryAnalysisHost {
+  analyzer: StaticAnalyzer;
+  /** The kernel's one analysis registry; a library is read through its
+   *  `forModule` view. */
+  registry: AnalysisRegistry;
+  /** The load-time flattened set: every library's forwarded exports, the
+   *  cross-module targets a library's `!ref Alias.name` resolves against. */
+  loadTimeManifests: ResourceManifest[];
+  /** The root Application's `metadata.name`. */
+  entryModule: string | undefined;
+}
 
 /**
  * Context interface used by built-in kernel controllers (Telo.Application /
@@ -19,6 +33,7 @@ export interface BuiltinControllerContext extends ResourceContext {
    *  map) to a module that was part of the entry graph successfully
    *  analyzed during `Kernel.load()`. */
   isImportValidatedAtLoad(url: string): boolean;
+  libraryAnalysisHost(): LibraryAnalysisHost;
   /** Resolve `importSource` against `fromSource` through the loader's
    *  source-chain `resolveRelative`. Identical to what `loadGraph` used
    *  internally — so the produced URL agrees with the loader's caches. */

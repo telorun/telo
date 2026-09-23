@@ -21,6 +21,7 @@ import {
 import { isCompiledValue, RuntimeError, type ResourceDefinition } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
+import { declaringContextOf } from "./declaring-context.js";
 
 /**
  * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
@@ -171,7 +172,7 @@ export function createTemplateController(definition: {
   mount?: unknown;
   provide?: unknown;
   result?: Record<string, any>;
-}, definingContext: EvaluationContext): ControllerInstance {
+}): ControllerInstance {
   // Checked at registration (`templateTargetProblems`), so every item is a
   // `!ref` naming an entry by the time an instance exists.
   const startTargets = templateTargetsOf(definition as Record<string, unknown>).map((t) => t.name);
@@ -182,6 +183,7 @@ export function createTemplateController(definition: {
   const fillsDefaults = declaresDefaults(definition.schema);
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
+      const definingContext = declaringContextOf(resource, ctx);
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
       // init(), so capturing self here would freeze the pre-injection refs. Every

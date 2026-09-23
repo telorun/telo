@@ -87,8 +87,8 @@ const SCHEMA_AS_CONTRACT_KINDS = new Set(["Telo.Definition", "Telo.Abstract", "T
  * Walk a resource manifest's config and collect every resolved `{kind, name,
  * alias?}` reference it points at — the outbound edges for the dependency graph.
  * Called at create time, before Phase-5 injection swaps refs for live instances,
- * so the targets are still inspectable plain objects (and there are no instance
- * cycles to guard against). Deduped by alias+name. `metadata` is always skipped
+ * so the targets are still inspectable plain objects; only plain containers are
+ * descended into. Deduped by alias+name. `metadata` is always skipped
  * (the resource's own identity); `schema` is skipped only for the system kinds
  * that carry a JSON-Schema contract there (see {@link SCHEMA_AS_CONTRACT_KINDS}).
  * Ref leaves are not descended into.
@@ -113,6 +113,11 @@ function collectResourceRefs(resource: ResourceManifest): ResourceRef[] {
       seen.add(value);
       for (const item of value) visit(item);
     } else if (value && typeof value === "object") {
+      // A live instance — forwarded into a template child as `self.<ref>`, or
+      // injected on a previous pass — is not config: its graph reaches most of
+      // the kernel, and a `{kind, name}` inside it is some other resource's edge.
+      const proto = Object.getPrototypeOf(value);
+      if (proto !== Object.prototype && proto !== null) return;
       if (seen.has(value)) return;
       seen.add(value);
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
@@ -510,6 +515,14 @@ function compileWalker(value: unknown): Walker {
   return () => value;
 }
 
+/** A resource between its `create()` and its `init()`. */
+interface CreatedInstance {
+  resource: ResourceManifest;
+  instance: ResourceInstance;
+  ctx: any;
+  source: ResourceManifest;
+}
+
 /**
  * Base class for all evaluation contexts. Owns template
  * expansion, secrets redaction, and the generic resource lifecycle tree.
@@ -549,10 +562,7 @@ export class EvaluationContext implements IEvaluationContext {
    *  `source` is the manifest as REGISTERED, kept so a discarded instance is
    *  rebuilt from what the author wrote rather than from the create-time
    *  expansion of it. */
-  protected readonly createdInstances = new Map<
-    string,
-    { resource: ResourceManifest; instance: ResourceInstance; ctx: any; source: ResourceManifest }
-  >();
+  protected readonly createdInstances = new Map<string, CreatedInstance>();
 
   /**
    * Resources whose failed `init()` could not be rolled back.
@@ -1140,6 +1150,125 @@ export class EvaluationContext implements IEvaluationContext {
       { message: string; code?: string; details?: string; children?: RuntimeDiagnostic[] }
     >();
 
+    const initialize = async (
+      name: string,
+      { resource, instance, ctx, source }: CreatedInstance,
+    ): Promise<boolean> => {
+      let progress = false;
+      const initStartedAt = startTiming(this.emit, RESOURCE_INITIALIZATION_COMPLETED);
+      let initOutcome: "initialized" | "deferred" | "failed" = "failed";
+      try {
+        if (this.preInitHook) {
+          this.preInitHook(
+            resource,
+            (n, alias) =>
+              alias && alias !== "Self"
+                ? this.resolveImportedInstance(alias, n)
+                : this.resourceInstances.get(n)?.instance,
+            (n) => this.hasManifest(n) && !this.resourceInstances.has(n),
+            this,
+          );
+        }
+        const scope = effectOwnerOf(instance)?.effects;
+        scope?.openFrame("init");
+        try {
+          // What `init()` RETURNS is what undoes it. A controller that
+          // allocates nothing returns nothing; there is no `teardown()`, so an
+          // allocation outside the chain is one nothing will reclaim.
+          if (instance.init) await executeReturnedChain(await instance.init(ctx), scope);
+        } catch (error) {
+          // Recover before the next pass: the loop retries a failed init, and
+          // an init that registered a listener before it failed to connect
+          // would otherwise register that listener again on every pass.
+          //
+          // HOW MUCH unwinds depends on whether the instance survives. A
+          // deferral keeps it, so only the init frame goes — unwinding the
+          // create frame there would destroy what construction built (a
+          // connection's pool) and then re-init the same instance against it.
+          // A real failure discards the instance, so everything `create()`
+          // allocated on its behalf goes with it or nothing reclaims it.
+          const deferred = isDeferral(error);
+          const refused = (await (deferred ? scope?.unwindFrame() : scope?.unwindAll())) ?? [];
+          if (refused.length > 0) {
+            // Retrying from a state that could not be rolled back is worse
+            // than not retrying, so the resource is withheld with a cause
+            // naming both the init error and the inverse that refused. The
+            // entry stays in `createdInstances` so it is still reported as a
+            // failure; the loop skips it from here on.
+            this.withheldResources.add(name);
+            throw new RuntimeError(
+              "ERR_EFFECT_RECOVERY_FAILED",
+              `${resource.kind} '${name}' failed to initialize and could not be rolled back: ` +
+                `${refused.map((f) => `'${f.reason}' (${errorText(f.error)})`).join(", ")}`,
+              [
+                { severity: "error", message: errorText(error), resource: name },
+                ...refused.map((f) => ({
+                  severity: "error" as const,
+                  message: `inverse '${f.reason}' refused: ${errorText(f.error)}`,
+                  resource: name,
+                })),
+              ],
+            );
+          }
+          // A DEFERRAL is not a failure: it is the loop's own "your turn has
+          // not come" signal, raised when a ref names a resource that has not
+          // initialized yet. The instance stays — re-creating it would re-run
+          // `create()`, which for an import re-registers its alias and reloads
+          // its module, and for a template re-registers its children. Its init
+          // frame alone was unwound above, so the next pass re-inits a
+          // constructed resource rather than a dismantled one.
+          if (deferred) throw error;
+          // The inverses restored what init() touched OUTSIDE the instance;
+          // the instance's own half-built fields are beyond their reach, so
+          // the object goes too and the next pass builds a fresh one. That is
+          // what makes "retry from a clean state" literal rather than a
+          // convention each controller has to honour.
+          this.createdInstances.delete(name);
+          this.recreatedResources.add(name);
+          // Re-queued as REGISTERED, not as created: the create-time manifest
+          // has already been through compile-field expansion, and expanding
+          // it a second time would evaluate an author's expression twice.
+          this.pendingResources.push(source);
+          throw error;
+        }
+        // Publish BEFORE registering: publication can fail (a kind returning
+        // the reserved `status` key without declaring it, a report that does
+        // not match `status:`), and a resource that failed must not be left
+        // reachable through `getInstance` / Phase 5 injection / teardown.
+        // `publishSnapshot` looks the instance up in `createdInstances` too,
+        // so it resolves fine from here.
+        await this.publishSnapshot(name);
+        this.resourceInstances.set(name, { resource, instance });
+        // Live again: a reconcile re-initializes what it unwound, and leaving
+        // the mark would report a genuine missing-resource defect at this name
+        // as a cancellation for the rest of the process.
+        this.unwoundResources.delete(name);
+        this.createdInstances.delete(name);
+        errors.delete(name);
+        progress = true;
+        initOutcome = "initialized";
+        await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
+          resource: {
+            kind: resource.kind,
+            name: resource.metadata.name,
+            id: this.resourceId(resource.kind, resource.metadata.name),
+          },
+          ...(this.owner ? { owner: this.owner } : {}),
+        });
+      } catch (error) {
+        if (isDeferral(error)) initOutcome = "deferred";
+        if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
+        errors.set(name, formatErrorForDiagnostic(error));
+      }
+      if (initStartedAt !== undefined) {
+        await this.emit(
+          RESOURCE_INITIALIZATION_COMPLETED,
+          resourceTiming(resource, this.resourceId(resource.kind, name), initStartedAt, initOutcome),
+        );
+      }
+      return progress;
+    };
+
     let pass = 1;
     do {
       let progress = false;
@@ -1218,122 +1347,19 @@ export class EvaluationContext implements IEvaluationContext {
             resourceTiming(resource, this.resourceId(resource.kind, name), createStartedAt, createOutcome),
           );
         }
+        // Initialized as soon as it is created: the pending list is in creation
+        // order, so everything it depends on is already initialized, and a
+        // resource after it whose `create()` needs it live finds it so on this
+        // pass rather than the next.
+        const created = createOutcome === "created" ? this.createdInstances.get(name) : undefined;
+        if (created && (await initialize(name, created))) progress = true;
       }
 
-      // Init sub-phase
-      for (const [name, { resource, instance, ctx, source }] of [...this.createdInstances]) {
+      // Init sub-phase: what was created on an earlier pass, or created here
+      // but deferred.
+      for (const [name, entry] of [...this.createdInstances]) {
         if (this.resourceInstances.has(name) || this.withheldResources.has(name)) continue;
-        const initStartedAt = startTiming(this.emit, RESOURCE_INITIALIZATION_COMPLETED);
-        let initOutcome: "initialized" | "deferred" | "failed" = "failed";
-        try {
-          if (this.preInitHook) {
-            this.preInitHook(
-              resource,
-              (n, alias) =>
-                alias && alias !== "Self"
-                  ? this.resolveImportedInstance(alias, n)
-                  : this.resourceInstances.get(n)?.instance,
-              (n) => this.hasManifest(n) && !this.resourceInstances.has(n),
-              this,
-            );
-          }
-          const scope = effectOwnerOf(instance)?.effects;
-          scope?.openFrame("init");
-          try {
-            // What `init()` RETURNS is what undoes it. A controller that
-            // allocates nothing returns nothing; there is no `teardown()`, so an
-            // allocation outside the chain is one nothing will reclaim.
-            if (instance.init) await executeReturnedChain(await instance.init(ctx), scope);
-          } catch (error) {
-            // Recover before the next pass: the loop retries a failed init, and
-            // an init that registered a listener before it failed to connect
-            // would otherwise register that listener again on every pass.
-            //
-            // HOW MUCH unwinds depends on whether the instance survives. A
-            // deferral keeps it, so only the init frame goes — unwinding the
-            // create frame there would destroy what construction built (a
-            // connection's pool) and then re-init the same instance against it.
-            // A real failure discards the instance, so everything `create()`
-            // allocated on its behalf goes with it or nothing reclaims it.
-            const deferred = isDeferral(error);
-            const refused = (await (deferred ? scope?.unwindFrame() : scope?.unwindAll())) ?? [];
-            if (refused.length > 0) {
-              // Retrying from a state that could not be rolled back is worse
-              // than not retrying, so the resource is withheld with a cause
-              // naming both the init error and the inverse that refused. The
-              // entry stays in `createdInstances` so it is still reported as a
-              // failure; the loop skips it from here on.
-              this.withheldResources.add(name);
-              throw new RuntimeError(
-                "ERR_EFFECT_RECOVERY_FAILED",
-                `${resource.kind} '${name}' failed to initialize and could not be rolled back: ` +
-                  `${refused.map((f) => `'${f.reason}' (${errorText(f.error)})`).join(", ")}`,
-                [
-                  { severity: "error", message: errorText(error), resource: name },
-                  ...refused.map((f) => ({
-                    severity: "error" as const,
-                    message: `inverse '${f.reason}' refused: ${errorText(f.error)}`,
-                    resource: name,
-                  })),
-                ],
-              );
-            }
-            // A DEFERRAL is not a failure: it is the loop's own "your turn has
-            // not come" signal, raised when a ref names a resource that has not
-            // initialized yet. The instance stays — re-creating it would re-run
-            // `create()`, which for an import re-registers its alias and reloads
-            // its module, and for a template re-registers its children. Its init
-            // frame alone was unwound above, so the next pass re-inits a
-            // constructed resource rather than a dismantled one.
-            if (deferred) throw error;
-            // The inverses restored what init() touched OUTSIDE the instance;
-            // the instance's own half-built fields are beyond their reach, so
-            // the object goes too and the next pass builds a fresh one. That is
-            // what makes "retry from a clean state" literal rather than a
-            // convention each controller has to honour.
-            this.createdInstances.delete(name);
-            this.recreatedResources.add(name);
-            // Re-queued as REGISTERED, not as created: the create-time manifest
-            // has already been through compile-field expansion, and expanding
-            // it a second time would evaluate an author's expression twice.
-            this.pendingResources.push(source);
-            throw error;
-          }
-          // Publish BEFORE registering: publication can fail (a kind returning
-          // the reserved `status` key without declaring it, a report that does
-          // not match `status:`), and a resource that failed must not be left
-          // reachable through `getInstance` / Phase 5 injection / teardown.
-          // `publishSnapshot` looks the instance up in `createdInstances` too,
-          // so it resolves fine from here.
-          await this.publishSnapshot(name);
-          this.resourceInstances.set(name, { resource, instance });
-          // Live again: a reconcile re-initializes what it unwound, and leaving
-          // the mark would report a genuine missing-resource defect at this name
-          // as a cancellation for the rest of the process.
-          this.unwoundResources.delete(name);
-          this.createdInstances.delete(name);
-          errors.delete(name);
-          progress = true;
-          initOutcome = "initialized";
-          await this.emit(`${resource.kind}.${resource.metadata.name}.Initialized`, {
-            resource: {
-              kind: resource.kind,
-              name: resource.metadata.name,
-              id: this.resourceId(resource.kind, resource.metadata.name),
-            },
-            ...(this.owner ? { owner: this.owner } : {}),
-          });
-        } catch (error) {
-          if (isDeferral(error)) initOutcome = "deferred";
-          if (error instanceof RuntimeError && (error.code === "ERR_VISIBILITY_DENIED" || error.code === "ERR_FATAL")) throw error;
-          errors.set(name, formatErrorForDiagnostic(error));
-        }
-        if (initStartedAt !== undefined) {
-          await this.emit(
-            RESOURCE_INITIALIZATION_COMPLETED,
-            resourceTiming(resource, this.resourceId(resource.kind, name), initStartedAt, initOutcome),
-          );
-        }
+        if (await initialize(name, entry)) progress = true;
       }
 
       pass++;

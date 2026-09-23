@@ -24,7 +24,10 @@ type CompiledValidator = ((data: unknown) => boolean) & { errors?: any[] | null 
 
 export class DefinitionRegistry {
   constructor() {
-    for (const def of KERNEL_BUILTINS) this.register(def);
+    // The built-ins are this package's own constants, meta-validated once by
+    // their test rather than on every registry, where validating them was a
+    // third of a registry's cost.
+    for (const def of KERNEL_BUILTINS) this.add(def, true);
   }
 
   /** Per-instance AJV for cross-module $ref resolution. Isolated so each registry
@@ -53,6 +56,12 @@ export class DefinitionRegistry {
   private readonly identityMap = new Map<string, string>();
 
   register(definition: ResourceDefinition): void {
+    this.add(definition, false);
+  }
+
+  /** `trustedSchema` skips meta-validating the schema — only for the built-ins,
+   *  whose validity a test asserts once. */
+  private add(definition: ResourceDefinition, trustedSchema: boolean): void {
     const { name, module: mod } = definition.metadata;
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
@@ -85,7 +94,12 @@ export class DefinitionRegistry {
       this.identityMap.set("telo", "Telo");
     }
     if (mod && definition.schema) {
-      this.tryRegisterSchema(mod, name as string, definition.schema as Record<string, any>);
+      this.tryRegisterSchema(
+        mod,
+        name as string,
+        definition.schema as Record<string, any>,
+        trustedSchema,
+      );
     }
   }
 
@@ -152,9 +166,11 @@ export class DefinitionRegistry {
    * slot points at, and `SCHEMA_COMPILE_ERROR` from {@link schemaCompileError},
    * which wraps `compile` for this same reason.
    */
-  private tryAddSchema(schema: Record<string, any>, id: string): boolean {
+  private tryAddSchema(schema: Record<string, any>, id: string, trusted = false): boolean {
     try {
-      this.ajv.addSchema(schema, id);
+      // `trusted` skips meta-validation; only for the built-ins, whose validity
+      // their own test asserts.
+      this.ajv.addSchema(schema, id, undefined, !trusted);
       return true;
     } catch {
       return false;
@@ -245,6 +261,7 @@ export class DefinitionRegistry {
     moduleName: string,
     typeName: string,
     schema: Record<string, any>,
+    trusted: boolean,
   ): void {
     const id = canonicalTypeSchemaId(moduleName, typeName);
     if (this.registeredSchemaIds.has(id)) {
@@ -257,7 +274,7 @@ export class DefinitionRegistry {
     // A schema AJV refuses is left unregistered rather than aborting the pass —
     // see {@link tryAddSchema}. The id stays claimed either way, so a later
     // named type cannot quietly take a kind's place.
-    this.tryAddSchema(schema, id);
+    this.tryAddSchema(schema, id, trusted);
     this.registeredSchemaIds.add(id);
     this.definitionSchemaIds.add(id);
   }

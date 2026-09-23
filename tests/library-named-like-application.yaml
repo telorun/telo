@@ -1,0 +1,58 @@
+kind: Telo.Application
+metadata:
+  name: SameName
+  version: 1.0.0
+  description: |
+    An application and a library it imports may share a name. The library's
+    scope must not replace the application's: the application's resources
+    resolve their kinds through its own imports, so `mcpEndpoint.tools` is
+    injected with a live bundle. When the library's alias table took the
+    application's place, the endpoint found no definition, nothing was
+    injected, and it failed with ERR_MCP_BUNDLE_NOT_FOUND.
+imports:
+  Lib: ./__fixtures__/library-named-like-application
+  Mcp: ../modules/mcp-server
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref check
+---
+kind: Run.Value
+metadata:
+  name: echo
+value: pong
+---
+kind: Mcp.Tools
+metadata:
+  name: PingTools
+entries:
+  - name: ping
+    description: Answers pong.
+    argumentsSchema: { type: object }
+    handler: !ref echo
+    inputs: {}
+    result:
+      content:
+        - type: text
+          text: !cel "result"
+---
+kind: Mcp.HttpEndpoint
+metadata:
+  name: mcpEndpoint
+serverInfo:
+  name: same-name
+  version: 1.0.0
+tools:
+  - !ref PingTools
+---
+kind: Run.Sequence
+metadata:
+  name: check
+steps:
+  - name: echo
+    invoke: !ref echo
+  - name: assert
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.echo.result"
+      expected: pong

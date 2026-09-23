@@ -11,6 +11,7 @@ import { expandManifestFragments } from "./manifest-schemas.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { precompileDoc } from "./precompile.js";
 import { documentToAst } from "./yaml-ast.js";
+import type { CachedYamlParse } from "./yaml-parse-cache.js";
 
 export interface ParseOptions {
   /** When true, runs `precompileDoc` per document and stamps compiled CEL
@@ -60,13 +61,21 @@ function rangeFromLinePos(
   };
 }
 
-/** Pure: text in, structured load result out. No I/O, no caches. */
-export function parseLoadedFile(
-  source: string,
-  requestedUrl: string,
-  text: string,
-  options?: ParseOptions,
-): LoadedFile {
+/**
+ * The YAML half of a parse — the expensive half, and the same for every load
+ * variant of one text. `manifests` is a pristine snapshot that nothing may
+ * mutate: every variant clones it, because migration, precompile and desugaring
+ * each rewrite the tree they are given.
+ */
+export interface ParsedYaml {
+  readonly documents: LoadedFile["documents"];
+  readonly astDocuments: LoadedFile["astDocuments"];
+  readonly positions: LoadedFile["positions"];
+  readonly parseErrors: readonly ParseError[];
+  readonly manifests: ReadonlyArray<ResourceManifest | null>;
+}
+
+export function parseYamlText(text: string): ParsedYaml {
   const documents = parseAllDocuments(text, { customTags: defaultCustomTags() });
   const astDocuments = documents.map((doc) => documentToAst(doc, text));
   const positions = buildDocumentPositions(text, astDocuments);
@@ -82,10 +91,51 @@ export function parseLoadedFile(
     }
   });
 
-  const manifests: Array<ResourceManifest | null> = documents.map((doc) => {
+  const manifests = documents.map((doc) => {
     const raw = doc.toJSON();
     return raw === null || raw === undefined ? null : (raw as ResourceManifest);
   });
+  return { documents, astDocuments, positions, parseErrors, manifests };
+}
+
+const restoredParses = new WeakSet<ParsedYaml>();
+
+/** A parse restored from a {@link YamlParseCache}: the cached manifests and
+ *  positions, and the `yaml` documents parsed from `text` only if something
+ *  reads them. */
+export function restoredYaml(text: string, cached: CachedYamlParse): ParsedYaml {
+  let full: ParsedYaml | undefined;
+  const parse = () => (full ??= parseYamlText(text));
+  const restored: ParsedYaml = {
+    get documents() {
+      return parse().documents;
+    },
+    get astDocuments() {
+      return parse().astDocuments;
+    },
+    positions: cached.positions as LoadedFile["positions"],
+    parseErrors: [],
+    manifests: cached.manifests,
+  };
+  restoredParses.add(restored);
+  return restored;
+}
+
+/** Pure: text in, structured load result out. No I/O, no caches — a caller
+ *  holding `parsed` for this exact `text` passes it to skip the YAML parse. */
+export function parseLoadedFile(
+  source: string,
+  requestedUrl: string,
+  text: string,
+  options?: ParseOptions,
+  shared?: ParsedYaml,
+): LoadedFile {
+  const parsed = shared ?? parseYamlText(text);
+  const { positions } = parsed;
+  const parseErrors = [...parsed.parseErrors];
+  const manifests = (
+    shared ? structuredClone(parsed.manifests) : parsed.manifests
+  ) as Array<ResourceManifest | null>;
 
   // The migration phase, immediately after parse. It runs BEFORE precompile so
   // matchers see the values the author wrote rather than `CompiledValue`
@@ -133,12 +183,23 @@ export function parseLoadedFile(
     }
   }
 
+  if (restoredParses.has(parsed)) {
+    // Read through, so a restored parse stays unparsed unless its documents
+    // are asked for.
+    return Object.defineProperties(
+      { source, requestedUrl, text, manifests, positions, parseErrors, migrations },
+      {
+        documents: { get: () => parsed.documents, enumerable: true },
+        astDocuments: { get: () => parsed.astDocuments, enumerable: true },
+      },
+    ) as LoadedFile;
+  }
   return {
     source,
     requestedUrl,
     text,
-    documents,
-    astDocuments,
+    documents: parsed.documents,
+    astDocuments: parsed.astDocuments,
     manifests,
     positions,
     parseErrors,

@@ -149,10 +149,15 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    *  string, so depth adds no resolution hops. Built by `buildExportTable`. */
   private readonly exportedKinds = new Map<string, string>();
 
-  /** Maps import alias → a resolver into that import's exported-kind table. Registered by the
-   *  Telo.Import controller; consulted by `resolveKind` so an imported library's kinds — local
-   *  OR transitively re-exported — resolve to their true owning module in O(1). */
-  private readonly importedKindResolvers = new Map<string, (suffix: string) => string | undefined>();
+  /** Maps import alias → the imported library's context. Registered by the Telo.Import
+   *  controller; consulted by `resolveKind` so an imported library's kinds — local OR
+   *  transitively re-exported — resolve to their true owning module in O(1), and by
+   *  `resolveKindScope` for the context that declares them. */
+  private readonly importedKindScopes = new Map<string, ModuleContext>();
+
+  /** Exported kind suffix → the context that declares it: this module for a local kind,
+   *  the source import's declaring context for a re-export. Built with `exportedKinds`. */
+  private readonly exportedKindScopes = new Map<string, ModuleContext>();
 
   /**
    * Resolved controller-selection policy for this module's `Telo.Definition`s.
@@ -325,7 +330,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this.importAliases.delete(alias);
     this.importedKinds.delete(alias);
     this.importedScopes.delete(alias);
-    this.importedKindResolvers.delete(alias);
+    this.importedKindScopes.delete(alias);
   }
 
   /**
@@ -372,14 +377,19 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     return this.exportedGetters.get(name)?.();
   }
 
-  /** Register an import alias's exported-kind resolver (the child's `getExportedKind`). */
-  registerImportedKindScope(alias: string, resolve: (suffix: string) => string | undefined): void {
-    this.importedKindResolvers.set(alias, resolve);
+  /** Register the library context an import alias reaches, for its exported kinds. */
+  registerImportedKindScope(alias: string, library: ModuleContext): void {
+    this.importedKindScopes.set(alias, library);
   }
 
   /** This module's canonical kind for an exported suffix (local or re-exported), or undefined. */
   getExportedKind(suffix: string): string | undefined {
     return this.exportedKinds.get(suffix);
+  }
+
+  /** The context declaring an exported suffix (local or re-exported), or undefined. */
+  getExportedKindScope(suffix: string): ModuleContext | undefined {
+    return this.exportedKindScopes.get(suffix);
   }
 
   /** Build this module's flattened export tables from `exports.resources` / `exports.kinds`.
@@ -439,8 +449,8 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     }
     for (const k of kindEntries) {
       if (k.alias && k.alias !== "Self") {
-        const resolver = this.importedKindResolvers.get(k.alias);
-        if (!resolver) {
+        const source = this.importedKindScopes.get(k.alias);
+        if (!source) {
           throw new RuntimeError(
             "ERR_INVALID_REEXPORT",
             `Library '${moduleName}' re-exports kind '${k.alias}.${k.name}' but declares no ` +
@@ -448,7 +458,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
               `'exports.kinds' entry.`,
           );
         }
-        const canonical = resolver(k.name);
+        const canonical = source.getExportedKind(k.name);
         if (!canonical) {
           throw new RuntimeError(
             "ERR_INVALID_REEXPORT",
@@ -457,9 +467,11 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           );
         }
         this.exportedKinds.set(k.name, canonical);
+        this.exportedKindScopes.set(k.name, source.getExportedKindScope(k.name) ?? source);
         continue;
       }
       this.exportedKinds.set(k.name, `${moduleName}.${k.name}`);
+      this.exportedKindScopes.set(k.name, this);
     }
   }
 
@@ -628,6 +640,23 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    * Throws with a clear message if the alias is unknown or the kind is not exported.
    */
   resolveKind(kind: string): string {
+    return this.lookupKind(kind).canonical;
+  }
+
+  /**
+   * The module context that DECLARES `kind`, reached through the spelling this module
+   * wrote it with — the same walk as {@link resolveKind}, answering where rather than
+   * what. `A.Greet` and `B.Greet` are one canonical kind when `A` and `B` import the same
+   * library, and two contexts: a template body or an inherited `base:` mapping must run in
+   * the one its instance's kind came through, or an isolated import reads another import's
+   * variables. Undefined for a kind no module context declares (the `Telo` built-ins);
+   * throws as {@link resolveKind} does for a kind that does not resolve.
+   */
+  resolveKindScope(kind: string): ModuleContext | undefined {
+    return this.lookupKind(kind).scope;
+  }
+
+  private lookupKind(kind: string): { canonical: string; scope: ModuleContext | undefined } {
     const dot = kind.indexOf(".");
     if (dot === -1) {
       throw new Error(`Kind '${kind}' must be fully qualified (e.g. 'Module.KindName')`);
@@ -638,7 +667,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     if (!realModule) {
       let cur = this.parent;
       while (cur) {
-        if (cur instanceof ModuleContext) return cur.resolveKind(kind);
+        if (cur instanceof ModuleContext) return cur.lookupKind(kind);
         cur = cur.parent;
       }
       const known = [...this.importAliases.keys()].join(", ") || "(none)";
@@ -653,15 +682,26 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           `Exported kinds: ${[...allowed].join(", ")}`,
       );
     }
+    const library = this.importedKindScopes.get(prefix);
+    if (!library) {
+      // `Self` and the module's own name declare its own kinds; `Telo` declares none.
+      return {
+        canonical: `${realModule}.${suffix}`,
+        scope: realModule === this.importAliases.get("Self") ? this : undefined,
+      };
+    }
     // Re-export override: if this import's exported-kind table maps the suffix to a DIFFERENT
     // owning module, the kind is transitively re-exported (`exports.kinds: [Alias.Kind]`) —
     // resolve to its true owner. A local kind maps to `${realModule}.${suffix}` (no override),
     // and a module without `exports.kinds` has an empty table (nothing re-exported). Built
     // deferred, so before the import inits this returns the un-overridden kind, whose controller
     // miss makes the init loop retry until the table is ready.
-    const reExported = this.importedKindResolvers.get(prefix)?.(suffix);
-    if (reExported && reExported !== `${realModule}.${suffix}`) return reExported;
-    return `${realModule}.${suffix}`;
+    const reExported = library.getExportedKind(suffix);
+    return {
+      canonical:
+        reExported && reExported !== `${realModule}.${suffix}` ? reExported : `${realModule}.${suffix}`,
+      scope: library.getExportedKindScope(suffix) ?? library,
+    };
   }
 
   /** A module context IS the alias table, so it answers the resolver seam
