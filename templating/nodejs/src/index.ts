@@ -11,13 +11,15 @@ export {
   type CelFunctionDoc,
   type CelFunctionCategory,
 } from "./cel/catalog.js";
+export { compileExpression } from "./cel/compile.js";
 export {
-  compileExpression,
-  compileString,
-  toParameterized,
-  TEMPLATE_REGEX,
-  EXACT_TEMPLATE_REGEX,
-} from "./cel/compile.js";
+  interpolationShape,
+  literalFragments,
+  readInterpolationHoles,
+  type HoleReading,
+  type InterpolationHole,
+  type InterpolationShape,
+} from "./cel/interpolation-holes.js";
 export {
   extractAccessChains,
   findNullableAccessIssues,
@@ -43,7 +45,7 @@ export {
   type ModuleCallDispatch,
   type ModuleCallTypeResolver,
 } from "./cel/module-call.js";
-export { walkCelExpressions, type CelSurface } from "./cel/walk.js";
+export { walkCelExpressions } from "./cel/walk.js";
 
 export { celEngine } from "./engines/cel.js";
 export {
@@ -53,6 +55,7 @@ export {
   normalizeModulePath,
   type NormalizedIncludePath,
 } from "./engines/include.js";
+export { interpolateEngine } from "./engines/interpolate.js";
 export { literalEngine } from "./engines/literal.js";
 export { modulePathEngine } from "./engines/module-path.js";
 export { refEngine } from "./engines/ref.js";
@@ -61,6 +64,7 @@ export { sqlEngine, isParameterizedSql, type ParameterizedSql } from "./engines/
 export { TemplatingEngineRegistry } from "./registry.js";
 export {
   builtinEngines,
+  celExpressionsOf,
   createDefaultRegistry,
   defaultRegistry,
   producedTypeOf,
@@ -74,6 +78,7 @@ export type {
   DiagnosticFix,
   EngineDiagnostic,
   EngineFileClaim,
+  ExpressionRegion,
   TemplatingEngine,
 } from "./engine.js";
 

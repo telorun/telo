@@ -21,7 +21,7 @@ Follow this strictly:
 - if you cannot implement a feature in a way it was established or planned to be implemented, propose a new approach and ask for approval before implementing it
 - never implement logic that swallows errors
 - telo manifests MUST be type safe
-- in telo manifests, ALWAYS write CEL with the `!cel "..."` YAML tag — never the inline `"${{ ... }}"` string form. The formatter normalizes to `!cel`, and the inline form gets mangled on round-trip (it has been silently rewritten into a broken `!ref`). This applies to every CEL value, including pure expressions and string interpolations (`!cel "'http://localhost:' + string(ports.http)"`).
+- in telo manifests, CEL is ALWAYS written behind a tag: a computed value of any type with `!cel "..."`, text with values embedded in it with `!interpolate "http://localhost:${{ ports.http }}"`. A plain string holding `${{` is never a value — it is the deprecated untagged spelling, which `telo migrate` rewrites and which is refused wherever it survives.
 - in telo manifests, declare a resource INLINE at its use site when it is used exactly once — `invoke: { kind: Some.Kind, ...config }`, with no `metadata.name`. Give a resource its own top-level document only when something needs to name it: it is referenced more than once, listed in `targets:`, or exported. A named single-use resource makes the reader jump documents to follow one call. The exception is a router (`Http.Api`) mounted on a server — keep it named, because that is what makes it independently testable.
 - never use `cat` nor `sed` to read files — read them directly
 - never use `AskUserQuestion` tool, ask questions directly
@@ -54,7 +54,7 @@ Everything written for the user — a plan, a review, a chat reply, a changeset,
 
 ## Architecture
 
-Telo is a declarative runtime: YAML manifests describe desired state, the kernel resolves resource dependencies via a multi-pass init loop, and controllers implement each resource kind. CEL expressions in `${{ }}` are compiled before execution.
+Telo is a declarative runtime: YAML manifests describe desired state, the kernel resolves resource dependencies via a multi-pass init loop, and controllers implement each resource kind. CEL expressions (`!cel`, `!interpolate` holes) are compiled before execution.
 
 **Scope: everything is on the table.** Telo is intended to support every transport, every protocol, every backend domain — HTTP, MCP, gRPC, WebSocket, message queues, databases, file I/O, AI providers, workflow engines, and whatever else lands. Design abstractions for breadth, not for the current consumer. When choosing between a generic primitive and a use-case-specific shortcut, **default to the generic primitive**. "We'll only need it for X" is the wrong question — assume any transport-neutral concept (encoders, codecs, streams, schedulers, retry policies, etc.) will eventually be reused across multiple modules, and shape the API and package layout accordingly. Do not YAGNI on cross-cutting primitives.
 
@@ -225,11 +225,11 @@ Inside `Telo.Definition` schema blocks. Each annotation has ONE reader in the an
 
 `!include-text` (→ string) and `!include-bytes` (→ `Uint8Array`) embed a file that ships with the module; `!module-path` (→ `Telo.HostPath`) names a file or DIRECTORY that ships with it by location, resolved to its absolute path on disk. Paths are module-root-relative literals confined to the module, never relative to the declaring file; resolution happens at resource creation. `telo publish` / `telo package` carry what a tag claims with no `files:` entry — a `!module-path` directory is everything beneath it — and refuse a claim naming nothing (`MODULE_PATH_NOT_FOUND`) or an empty directory (`MODULE_PATH_EMPTY`); the first is also reported by every host that loads from a filesystem — the loader asks the entry's `ManifestSource.exists`, counting a path its own `sources:` block stages as a module file as present, as release planning from pins also does — while emptiness stays a publish/package refusal only. Details: `templating/nodejs/CLAUDE.md`.
 
-## CEL Templates (`${{ }}`)
+## CEL values (`!cel`, `!interpolate`)
 
-Always written with the `!cel` tag. A pure expression yields a typed value (`!cel "variables.port"`); a string is built by concatenation (`!cel "'Hello ' + variables.name + '!'"`).
+A computed value is written `!cel` and yields a typed value (`!cel "variables.port"`). Text with values embedded in it is written `!interpolate` — literal text with `${{ expr }}` holes, always a string, meaning exactly the CEL join of the text with `string(<hole>)` for each hole (`!interpolate "Hello ${{ variables.name }}!"`); a hole CEL cannot convert is `INTERPOLATION_HOLE_NOT_CONVERTIBLE` (`ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` for a `dyn` hole null at runtime). Concatenation inside `!cel` stays valid. `!sql` shares the hole grammar, which reads CEL string literals, so a hole may hold `}`; `${{ '${{' }}` is a literal `${{`. A plain string holding `${{` is the deprecated untagged spelling: the `untagged-interpolation` migration rewrites it at load (`DEPRECATED_UNTAGGED_INTERPOLATION`) and anything left is `UNTAGGED_INTERPOLATION` / `ERR_UNTAGGED_INTERPOLATION`; text that is literally `${{` is `!literal`.
 
-In scope:
+In scope (in `!cel` and in every hole):
 
 - `variables`, `secrets` — module inputs
 - `ports.<name>` — root Application only

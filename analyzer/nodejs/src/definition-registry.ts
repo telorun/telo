@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { schemaWithTagsAsText } from "./schema-tag-text.js";
 import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
@@ -170,7 +171,7 @@ export class DefinitionRegistry {
     try {
       // `trusted` skips meta-validation; only for the built-ins, whose validity
       // their own test asserts.
-      this.ajv.addSchema(schema, id, undefined, !trusted);
+      this.ajv.addSchema(schemaWithTagsAsText(schema) as object, id, undefined, !trusted);
       return true;
     } catch {
       return false;
@@ -228,7 +229,7 @@ export class DefinitionRegistry {
     const cached = this.compiledValidators.get(schema);
     if (cached) return cached;
     try {
-      const validate = this.ajv.compile(schema);
+      const validate = this.ajv.compile(schemaWithTagsAsText(schema) as object);
       this.compiledValidators.set(schema, validate);
       return validate;
     } catch {
@@ -245,7 +246,7 @@ export class DefinitionRegistry {
    *  resource of that kind. */
   schemaCompileError(schema: Record<string, any>): string | undefined {
     try {
-      this.ajv.compile(schema);
+      this.ajv.compile(schemaWithTagsAsText(schema) as object);
       return undefined;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);

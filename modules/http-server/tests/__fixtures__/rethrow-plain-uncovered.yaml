@@ -23,8 +23,8 @@ steps:
     catch:
       - name: rethrow
         throw:
-          code: "${{ error.code }}"
-          message: "${{ error.message }}"
+          code: !cel "error.code"
+          message: !cel "error.message"
 ---
 # Route covers INTERNAL_ERROR explicitly. This is only valid because the resolver
 # folds INTERNAL_ERROR into the rethrow union for an invoke-bearing try block —
@@ -44,8 +44,8 @@ routes:
           application/json:
             body: { ok: true }
     catches:
-      - when: "${{ error.code == 'INTERNAL_ERROR' }}"
+      - when: !cel "error.code == 'INTERNAL_ERROR'"
         status: 500
         content:
           application/json:
-            body: { error: "${{ error.message }}" }
+            body: { error: !cel "error.message" }

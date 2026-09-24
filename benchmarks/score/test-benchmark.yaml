@@ -44,4 +44,4 @@ scenarios:
             - { type: signup, ts: "2026-03-12T08:00:00Z", score: 10, tags: [ "priority" ] }
             - { type: pricing_view, ts: "2026-03-13T09:00:00Z", score: 40, tags: [ "engaged" ] }
             - { type: demo_request, ts: "2026-03-14T10:00:00Z", score: 75, tags: [ "high", "enterprise" ] }
-    validate: "${{ result.status == 200 }}"
+    validate: !cel "result.status == 200"

@@ -35,9 +35,9 @@ steps:
       input: "telo"
   - name: assertQuery
     inputs:
-      dimensions: "${{ steps.query.result.dimensions }}"
-      embeddings: "${{ steps.query.result.embeddings }}"
-      head: "${{ steps.query.result.embeddings[0][0] }}"
+      dimensions: !cel "steps.query.result.dimensions"
+      embeddings: !cel "steps.query.result.embeddings"
+      head: !cel "steps.query.result.embeddings[0][0]"
     invoke:
       kind: Assert.Schema
       schema:
@@ -60,8 +60,8 @@ steps:
       input: ["telo", "run"]
   - name: assertPassage
     inputs:
-      embeddings: "${{ steps.passage.result.embeddings }}"
-      head: "${{ steps.passage.result.embeddings[0][0] }}"
+      embeddings: !cel "steps.passage.result.embeddings"
+      head: !cel "steps.passage.result.embeddings[0][0]"
     invoke:
       kind: Assert.Schema
       schema:

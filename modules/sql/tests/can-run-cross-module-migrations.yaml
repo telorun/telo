@@ -30,7 +30,7 @@ steps:
 
   - name: assertSeeded
     inputs:
-      rows: "${{ steps.selectSeeded.result.rows }}"
+      rows: !cel "steps.selectSeeded.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

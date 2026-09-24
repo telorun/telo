@@ -76,15 +76,15 @@ with:
     notFoundHandler:
       invoke: !ref echoPath
       inputs:
-        path: "${{ request.path }}"
-        method: "${{ request.method }}"
+        path: !cel "request.path"
+        method: !cel "request.method"
       returns:
         - status: 404
           content:
             application/json:
               body:
-                receivedPath: "${{ result.path }}"
-                receivedMethod: "${{ result.method }}"
+                receivedPath: !cel "result.path"
+                receivedMethod: !cel "result.method"
 targets:
   - !ref Server
 steps:
@@ -94,9 +94,9 @@ steps:
     invoke: !ref fetchJson
   - name: assertResponse
     inputs:
-      status: "${{ steps.hitMissing.result.status }}"
-      receivedPath: "${{ steps.hitMissing.result.body.receivedPath }}"
-      receivedMethod: "${{ steps.hitMissing.result.body.receivedMethod }}"
+      status: !cel "steps.hitMissing.result.status"
+      receivedPath: !cel "steps.hitMissing.result.body.receivedPath"
+      receivedMethod: !cel "steps.hitMissing.result.body.receivedMethod"
     invoke:
       kind: Assert.Schema
       schema:

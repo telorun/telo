@@ -6,7 +6,7 @@ Configuration management for Telo applications: declare where values come from, 
 
 - **Single source of truth** — a `Config.EnvironmentVariableStore` declares the full key set; only declared keys are readable.
 - **Variables and secrets split** — `Config.Variables` for plain values, `Config.Secrets` for sensitive ones (redacted in logs and errors).
-- **CEL composition** — compose multiple keys into a single value with `${{ ... }}` expressions inside any map value.
+- **CEL composition** — compose multiple keys into a single value with a `!cel` expression in any map value.
 - **Fail-fast on missing keys** — missing required values are a hard boot-time error, never a silent `undefined`.
 - **One-shot shortcut** — `Config.Env` collapses store + variables + secrets into a single resource for small apps.
 
@@ -66,7 +66,7 @@ keys:
 
 ## CEL expressions in map values
 
-Use `${{ }}` in any map value to compose multiple store keys into one. All referenced keys must be declared in the store's `schema`:
+Use `!cel` in any map value to compose multiple store keys into one. All referenced keys must be declared in the store's `schema`:
 
 ```yaml
 keys:

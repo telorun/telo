@@ -29,11 +29,11 @@ steps:
         n: !cel "inputs.n"
 
   - name: increment
-    while: "${{ steps.counter.result.n < 3 }}"
+    while: !cel "steps.counter.result.n < 3"
     do:
       - name: counter
         inputs:
-          n: "${{ steps.counter.result.n }}"
+          n: !cel "steps.counter.result.n"
         invoke:
           kind: Run.Value
           inputType:
@@ -47,7 +47,7 @@ steps:
 
   - name: assertThreeIterations
     inputs:
-      n: "${{ steps.counter.result.n }}"
+      n: !cel "steps.counter.result.n"
     invoke:
       kind: Assert.Schema
       schema:
@@ -79,12 +79,12 @@ steps:
         total: !cel "inputs.total"
 
   - name: multiply
-    while: "${{ steps.accumulator.result.total < 8 }}"
+    while: !cel "steps.accumulator.result.total < 8"
     do:
       - name: accumulator
         inputs:
-          total: "${{ steps.accumulator.result.total }}"
-          factor: "${{ steps.multiplier.result.factor }}"
+          total: !cel "steps.accumulator.result.total"
+          factor: !cel "steps.multiplier.result.factor"
         invoke:
           kind: Run.Value
           inputType:
@@ -99,7 +99,7 @@ steps:
 
   - name: assertAccumulated
     inputs:
-      total: "${{ steps.accumulator.result.total }}"
+      total: !cel "steps.accumulator.result.total"
     invoke:
       kind: Assert.Schema
       schema:
@@ -111,7 +111,7 @@ steps:
 
   # --- while: condition false from the start, body never runs ---
   - name: neverRuns
-    while: "${{ false }}"
+    while: !cel "false"
     do:
       # Would fail if this ran.
       - name: shouldNotExecute

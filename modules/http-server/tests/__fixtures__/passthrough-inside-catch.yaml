@@ -6,7 +6,7 @@ imports:
   Http: ../..
   Run: ../../../run
 ---
-# try block throws A or B; catch re-raises via `throw: {code: "${{ error.code }}"}`.
+# try block throws A or B; catch re-raises via `throw: {code: !cel "error.code"}`.
 # Resolver must see that the sequence's propagated union equals the try block's {A, B}.
 kind: Run.Sequence
 metadata:
@@ -15,7 +15,7 @@ steps:
   - name: outer
     try:
       - name: branch
-        if: "${{ true }}"
+        if: !cel "true"
         then:
           - name: throwA
             throw: { code: "A", message: "a" }
@@ -25,8 +25,8 @@ steps:
     catch:
       - name: rethrow
         throw:
-          code: "${{ error.code }}"
-          message: "${{ error.message }}"
+          code: !cel "error.code"
+          message: !cel "error.message"
 ---
 # Route covers both A and B explicitly — zero analyzer errors.
 kind: Http.Api
@@ -43,8 +43,8 @@ routes:
           application/json:
             body: { ok: true }
     catches:
-      - when: "${{ error.code in ['A', 'B'] }}"
+      - when: !cel "error.code in ['A', 'B']"
         status: 400
         content:
           application/json:
-            body: { error: "${{ error.message }}" }
+            body: { error: !cel "error.message" }

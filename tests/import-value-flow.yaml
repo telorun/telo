@@ -42,7 +42,7 @@ steps:
       connection: !ref Mid.db
   - name: assertSeeded
     inputs:
-      actual: "${{ steps.select.result.rows[0].name }}"
+      actual: !cel "steps.select.result.rows[0].name"
       expected: "flowed"
     invoke:
       kind: Assert.Equals

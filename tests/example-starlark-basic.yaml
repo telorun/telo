@@ -53,7 +53,7 @@ steps:
   - name: step2
     invoke: { kind: Console.WriteLine }
     inputs:
-      output: |
+      output: !interpolate |
         Evaluated starlark code.
         Result is: ${{ steps.step1.result.result }}
 ---

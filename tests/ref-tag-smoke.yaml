@@ -38,7 +38,7 @@ steps:
     invoke: !ref computeSum
   - name: assertResult
     inputs:
-      value: "${{ steps.callByRef.result.value }}"
+      value: !cel "steps.callByRef.result.value"
     invoke:
       kind: Assert.Schema
       schema:

@@ -5,6 +5,7 @@ import {
   getRefIdentity,
   InvokeError,
   isCompiledValue,
+  type CompiledValue,
   isInvokeError,
   isCancellationError,
   isSuspension,
@@ -150,7 +151,7 @@ function localDependencyNames(refs: ResourceRef[]): string[] {
  * remaining live forms wire-friendly:
  *  - a resolved `!ref` (`{kind, name, alias?}`) → its `{kind, name}` target;
  *  - a deferred runtime expression (a `CompiledValue` left for per-call eval, e.g.
- *    an Http.Api route reading `request`) → its `${{ source }}` text — there is no
+ *    an Http.Api route reading `request`) → its tagged source text — there is no
  *    concrete value for it at the resource level;
  *  - a string carrying a known secret value → `[secret]` (substring-scrubbed), so
  *    a compile-time `${{ secrets.x }}` never lands in the stream verbatim.
@@ -186,10 +187,7 @@ export function buildResolvedProperties(
     return out;
   };
   const visit = (value: unknown): unknown => {
-    if (isCompiledValue(value)) {
-      const src = (value as { source?: unknown }).source;
-      return typeof src === "string" ? `\${{ ${src} }}` : "[expression]";
-    }
+    if (isCompiledValue(value)) return writtenExpression(value) ?? "[expression]";
     if (isResolvedRef(value)) return { kind: value.kind, name: value.name };
     if (typeof value === "string") return scrub(value);
     if (Array.isArray(value)) return value.map(visit);
@@ -429,6 +427,13 @@ export function runWithAmbientContext<T>(ctx: InvokeContext, fn: () => T): T {
   return cancellationStore.run(ctx, fn);
 }
 
+/** A compiled value as its author wrote it — `!cel "x"`, `!interpolate "a ${{ x }}"`. */
+function writtenExpression(value: CompiledValue): string | undefined {
+  if (typeof value.source !== "string") return undefined;
+  const engine = (value as { engine?: unknown }).engine;
+  return `!${typeof engine === "string" ? engine : "cel"} ${JSON.stringify(value.source)}`;
+}
+
 /** Marks a scope built by {@link EvaluationContext.bindScope}, whose properties
  *  are getters. `expandWith` merges such a scope by descriptor rather than by
  *  value — reading the value here is what a lazy binding must not do. */
@@ -448,7 +453,7 @@ function compileWalker(value: unknown): Walker {
       try {
         return compiled.call(ctx);
       } catch (error) {
-        const expr = compiled.source ? `\${{ ${compiled.source} }}` : "unknown expression";
+        const expr = writtenExpression(compiled) ?? "unknown expression";
         const msg = error instanceof Error ? error.message : String(error);
         // Reading observed state that was never reported is its own failure with
         // its own remedy, so it does not degrade into a bare "No such key".

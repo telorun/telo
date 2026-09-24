@@ -1,6 +1,7 @@
 import type { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
 import {
+  celExpressionsOf,
   extractAccessChains,
   INDEX_SEGMENT,
   resolveModuleCalls,
@@ -23,7 +24,7 @@ const NAMESPACES = ["variables", "secrets", "ports"] as const;
  * advertise a port the app never listens on).
  *
  * Generic across all three namespaces. References are collected from every CEL
- * expression (both `${{ … }}` and `!cel`, via `walkCelExpressions`) by
+ * expression (every tagged scalar's CEL, via `walkCelExpressions`) by
  * extracting member-access chains: a `<ns>.<name>` chain marks `<name>` used.
  * Dynamic access (`<ns>[expr]`, or the namespace passed whole, e.g.
  * `keys(variables)`) yields a chain that stops at the namespace root — that
@@ -61,27 +62,28 @@ export function validateUnusedDeclarations(
 
   for (const m of manifests) {
     const moduleNames = moduleCallNamesOf(moduleCallNames, m);
-    walkCelExpressions(m, "", (expr, _path, engineName) => {
-      if (engineName !== "cel") return;
-      let ast: Parameters<typeof extractAccessChains>[0];
-      try {
-        ast = celEnv.parse(expr).ast;
-      } catch {
-        return; // syntax errors are reported by the CEL engine pass
-      }
-      // The resolved tree, like every other chain walk: a module call's
-      // receiver is a module name, not a namespace root.
-      resolveModuleCalls(ast, moduleNames);
-      for (const chain of extractAccessChains(ast)) {
-        const ns = chain[0];
-        if (!used.has(ns)) continue;
-        const member = chain[1];
-        // No static member after the namespace root — either the namespace is
-        // used whole (`keys(ports)` → ["ports"]) or accessed dynamically
-        // (`ports[x]` → ["ports", "[*]"]). Neither can be attributed to a
-        // declared name, so suppress the namespace rather than false-positive.
-        if (member === undefined || member === INDEX_SEGMENT) suppressed.add(ns);
-        else used.get(ns)!.add(member);
+    walkCelExpressions(m, "", (source, _path, engineName) => {
+      for (const expr of celExpressionsOf(engineName, source)) {
+        let ast: Parameters<typeof extractAccessChains>[0];
+        try {
+          ast = celEnv.parse(expr).ast;
+        } catch {
+          continue; // syntax errors are reported by the CEL engine pass
+        }
+        // The resolved tree, like every other chain walk: a module call's
+        // receiver is a module name, not a namespace root.
+        resolveModuleCalls(ast, moduleNames);
+        for (const chain of extractAccessChains(ast)) {
+          const ns = chain[0];
+          if (!used.has(ns)) continue;
+          const member = chain[1];
+          // No static member after the namespace root — either the namespace is
+          // used whole (`keys(ports)` → ["ports"]) or accessed dynamically
+          // (`ports[x]` → ["ports", "[*]"]). Neither can be attributed to a
+          // declared name, so suppress the namespace rather than false-positive.
+          if (member === undefined || member === INDEX_SEGMENT) suppressed.add(ns);
+          else used.get(ns)!.add(member);
+        }
       }
     });
   }

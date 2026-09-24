@@ -41,15 +41,15 @@ steps:
     invoke: !ref chatStream
   - name: encode
     inputs:
-      input: "${{ steps.textStream.result.output }}"
+      input: !cel "steps.textStream.result.output"
     invoke: !ref ndjsonEnc
   - name: decode
     inputs:
-      input: "${{ steps.encode.result.output }}"
+      input: !cel "steps.encode.result.output"
     invoke: !ref textDec
   - name: assert
     inputs:
-      text: "${{ steps.decode.result.text }}"
+      text: !cel "steps.decode.result.text"
     invoke:
       kind: Assert.Schema
       schema:

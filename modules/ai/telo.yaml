@@ -720,10 +720,10 @@ schema:
             url: /v1/forecast
             method: GET
             query:
-              latitude: "${{ arguments.latitude }}"
-              longitude: "${{ arguments.longitude }}"
+              latitude: !cel "arguments.latitude"
+              longitude: !cel "arguments.longitude"
               current_weather: "true"
-          result: "${{ result.body }}"
+          result: !cel "result.body"
 ---
 # Ai.Agent — a tool-use loop. Invoked like Ai.Text (prompt xor messages, plus
 # system/options); calls the model with the merged tool set, executes any requested

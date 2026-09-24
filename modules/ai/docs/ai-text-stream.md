@@ -100,7 +100,7 @@ steps:
     invoke: !ref ChatStream
   - name: Encode
     inputs:
-      input: "${{ steps.Stream.result.output }}"
+      input: !cel "steps.Stream.result.output"
     invoke: !ref NdjsonEnc
   # steps.Encode.result.output is now Stream<Uint8Array>, one line per StreamPart.
 ```
@@ -173,7 +173,7 @@ code: |
 ```yaml
 - name: Collect
   inputs:
-    stream: "${{ steps.Stream.result.output }}"
+    stream: !cel "steps.Stream.result.output"
   invoke: !ref CollectText
 ```
 

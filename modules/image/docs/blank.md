@@ -30,7 +30,7 @@ metadata: { name: Canvas }
   invoke: !ref Canvas
 - name: marked
   inputs:
-    image: "${{ steps.board.result.image }}"
+    image: !cel "steps.board.result.image"
     shapes:
       - { x: 40, y: 40, width: 200, height: 120, label: "header" }
   invoke: !ref DrawBoxes

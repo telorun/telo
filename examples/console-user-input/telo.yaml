@@ -20,4 +20,4 @@ targets:
   - name: writeResult
     invoke: !ref Console.writeLine
     inputs:
-      output: "Username: ${{ steps.readUsername.result.value }}, Password: ${{ steps.readPassword.result.value }}"
+      output: !interpolate "Username: ${{ steps.readUsername.result.value }}, Password: ${{ steps.readPassword.result.value }}"

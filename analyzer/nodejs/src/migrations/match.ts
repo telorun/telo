@@ -60,16 +60,33 @@
  *  is refused rather than ignored — a selector that silently matches wider than
  *  it reads is the one failure this cannot tolerate. */
 
+import { interpolationShape, isTaggedSentinel } from "@telorun/templating";
 import { isInSchemaRegion } from "../schema-region.js";
 import type { MigrationPath } from "./types.js";
 
-/** The wildcard `inKind` / `under` value. Legal only alongside `inSchema`, and
- *  only for a rule keyed on an `x-telo-*` annotation. */
+/** The wildcard `inKind` / `under` value. Legal alongside `inSchema` for a rule
+ *  keyed on an `x-telo-*` annotation, and for a core entry's `scalar` rule. */
 export const MATCH_ANY = "*";
 
+/** What an untagged string scalar holds, read by the one hole grammar every tag
+ *  with holes shares: exactly one `${{ }}` hole with only whitespace around it,
+ *  or holes among text. */
+export const SCALAR_SHAPES = ["lone-hole", "interpolated"] as const;
+export type ScalarShape = (typeof SCALAR_SHAPES)[number];
+
+/** Which entry surface a rule was read from. A module ships entries in its own
+ *  artifact, so its rules may reach only its own kinds and never a wildcard. */
+export type MigrationSurface = "core" | "module";
+
 export interface MigrationMatch {
-  /** The mapping key this rule rewrites. */
-  readonly key: string;
+  /** The mapping key this rule rewrites. Exactly one of `key` / `scalar`. */
+  readonly key?: string;
+  /** An UNTAGGED string scalar — a mapping value or a sequence item, never a
+   *  key — whose text has this shape. It selects by the value a legacy spelling
+   *  IS rather than by where it sits, which is the one case a key cannot name:
+   *  an untagged `${{ }}` was a value of every field of every kind. A tagged
+   *  scalar (`!literal` included) is never matched. */
+  readonly scalar?: ScalarShape;
   /** Document `kind:` values this rule may match in. Required and non-empty:
    *  a rule that does not say which documents it touches cannot be reasoned
    *  about, and is exactly the rule that reaches into a resource's config. */
@@ -111,6 +128,7 @@ export interface MigrationMatch {
 
 export const MATCH_KEYS = [
   "key",
+  "scalar",
   "inKind",
   "under",
   "value",
@@ -154,7 +172,11 @@ function requireStringList(describe: string, raw: Record<string, unknown>, key: 
 
 /** Read a rule's `match` block, refusing anything the vocabulary does not
  *  define. `describe` names the entry and rule so a failure says which. */
-export function readMigrationMatch(describe: string, raw: unknown): MigrationMatch {
+export function readMigrationMatch(
+  describe: string,
+  raw: unknown,
+  surface: MigrationSurface = "core",
+): MigrationMatch {
   if (!isPlainObject(raw)) throw new Error(`${describe}: 'match' must be a mapping`);
 
   for (const key of Object.keys(raw)) {
@@ -164,8 +186,26 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
       );
     }
   }
-  if (typeof raw.key !== "string" || raw.key.length === 0) {
+  const bySelector = Object.hasOwn(raw, "key") ? "key" : Object.hasOwn(raw, "scalar") ? "scalar" : undefined;
+  if (bySelector === undefined || (Object.hasOwn(raw, "key") && Object.hasOwn(raw, "scalar"))) {
+    throw new Error(`${describe}: 'match' takes exactly one of 'key' or 'scalar'`);
+  }
+  if (bySelector === "key" && (typeof raw.key !== "string" || raw.key.length === 0)) {
     throw new Error(`${describe}: 'match.key' must be a non-empty string`);
+  }
+  if (bySelector === "scalar") {
+    if (!(SCALAR_SHAPES as readonly unknown[]).includes(raw.scalar)) {
+      throw new Error(
+        `${describe}: 'match.scalar' must be one of ${SCALAR_SHAPES.join(", ")}`,
+      );
+    }
+    // A scalar rule selects by the value's own text; a key, a value test or a
+    // sibling would be a second selector with nothing to anchor it to.
+    for (const key of ["value", "valueOneOf", "withSibling"] as const) {
+      if (Object.hasOwn(raw, key)) {
+        throw new Error(`${describe}: 'match.${key}' does not apply to a 'scalar' rule`);
+      }
+    }
   }
   if (Object.hasOwn(raw, "value") && Object.hasOwn(raw, "valueOneOf")) {
     throw new Error(`${describe}: 'match' takes at most one of 'value' or 'valueOneOf'`);
@@ -195,7 +235,16 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
     ...(Array.isArray(raw.inKind) ? (raw.inKind as unknown[]) : []),
     ...(Array.isArray(raw.under) ? (raw.under as unknown[]) : []),
   ].filter((value) => value === MATCH_ANY);
-  if (wildcards.length > 0) {
+  if (wildcards.length > 0 && bySelector === "scalar") {
+    // The reach is exactly the strings the loader compiled as CEL before the
+    // tag existed — every field of every kind — so the wildcard claims no more
+    // than the spelling already meant. Core only: a module names its own kinds.
+    if (surface !== "core") {
+      throw new Error(
+        `${describe}: a module's migration may not reach '${MATCH_ANY}' — it names only kinds it owns`,
+      );
+    }
+  } else if (wildcards.length > 0) {
     if (raw.inSchema !== true) {
       throw new Error(
         `${describe}: 'match.inKind' / 'match.under' may only be '${MATCH_ANY}' together with ` +
@@ -212,7 +261,8 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
   }
 
   const match: {
-    key: string;
+    key?: string;
+    scalar?: ScalarShape;
     inKind: readonly string[];
     under: readonly string[];
     value?: unknown;
@@ -221,7 +271,7 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
     notUnder?: readonly string[];
     inSchema?: boolean;
   } = {
-    key: raw.key,
+    ...(bySelector === "key" ? { key: raw.key as string } : { scalar: raw.scalar as ScalarShape }),
     inKind: requireStringList(describe, raw, "inKind"),
     under: requireStringList(describe, raw, "under"),
   };
@@ -233,11 +283,18 @@ export function readMigrationMatch(describe: string, raw: unknown): MigrationMat
   return match;
 }
 
-/** One candidate site: a mapping entry whose key some rule is interested in. */
+/** Only a string holding the hole opener can have a hole shape, so no other
+ *  string costs a site — this walk runs for every document on the boot path. */
+function isHoleCandidate(value: unknown): value is string {
+  return typeof value === "string" && value.includes("${{");
+}
+
+/** One candidate site: a mapping entry whose key some rule is interested in,
+ *  or an untagged string scalar a `scalar` rule may select. */
 interface MatchSite {
   readonly path: MigrationPath;
   readonly value: unknown;
-  readonly parent: Record<string, unknown>;
+  readonly parent: Record<string, unknown> | readonly unknown[];
 }
 
 /** Every candidate site in one document, keyed by mapping key.
@@ -252,7 +309,11 @@ interface MatchSite {
  *  the union of the applicable rules' `under`, so a region no rule can reach is
  *  never descended into and a document no rule can match is never walked at
  *  all. Only keys some rule asked for allocate a path array. */
-export type MatchIndex = ReadonlyMap<string, readonly MatchSite[]>;
+export interface MatchIndex {
+  readonly byKey: ReadonlyMap<string, readonly MatchSite[]>;
+  /** Every string value — collected only when some `scalar` rule applies. */
+  readonly scalars: readonly MatchSite[];
+}
 
 /**
  * Index `document`'s candidate sites for `keys`, descending only into the
@@ -265,9 +326,12 @@ export function buildMatchIndex(
   document: unknown,
   keys: ReadonlySet<string>,
   roots: ReadonlySet<string>,
+  scalars = false,
 ): MatchIndex {
   const index = new Map<string, MatchSite[]>();
-  if (keys.size === 0 || roots.size === 0 || !isPlainObject(document)) return index;
+  const scalarSites: MatchSite[] = [];
+  const result: MatchIndex = { byKey: index, scalars: scalarSites };
+  if ((keys.size === 0 && !scalars) || roots.size === 0 || !isPlainObject(document)) return result;
 
   // A mutable stack, materialized into an array only when a site is recorded.
   const stack: (string | number)[] = [];
@@ -282,16 +346,24 @@ export function buildMatchIndex(
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
         stack.push(i);
+        if (scalars && isHoleCandidate(node[i])) {
+          scalarSites.push({ path: [...stack], value: node[i], parent: node });
+        }
         walk(node[i]);
         stack.pop();
       }
       return;
     }
-    if (!isPlainObject(node)) return;
+    // A tagged scalar is one value the author wrote, not a mapping to reach
+    // into — its `source` is the tag's text, never a node of the document.
+    if (!isPlainObject(node) || isTaggedSentinel(node)) return;
 
     for (const [key, value] of Object.entries(node)) {
       stack.push(key);
       if (keys.has(key)) record(key, value, node);
+      if (scalars && isHoleCandidate(value)) {
+        scalarSites.push({ path: [...stack], value, parent: node });
+      }
       walk(value);
       stack.pop();
     }
@@ -306,10 +378,13 @@ export function buildMatchIndex(
     if (!everywhere && !roots.has(key)) continue;
     stack.push(key);
     if (keys.has(key)) record(key, value, document);
+    if (scalars && isHoleCandidate(value)) {
+      scalarSites.push({ path: [...stack], value, parent: document });
+    }
     walk(value);
     stack.pop();
   }
-  return index;
+  return result;
 }
 
 /** The rules in `entries` that may match a document of `kind`, with the key and
@@ -318,18 +393,20 @@ export function buildMatchIndex(
 export function applicableRules<T extends { readonly match: MigrationMatch }>(
   rules: Iterable<T>,
   kind: unknown,
-): { rules: T[]; keys: Set<string>; roots: Set<string> } {
+): { rules: T[]; keys: Set<string>; roots: Set<string>; scalars: boolean } {
   const applicable: T[] = [];
   const keys = new Set<string>();
   const roots = new Set<string>();
-  if (typeof kind !== "string") return { rules: applicable, keys, roots };
+  let scalars = false;
+  if (typeof kind !== "string") return { rules: applicable, keys, roots, scalars };
   for (const rule of rules) {
     if (!rule.match.inKind.includes(kind) && !rule.match.inKind.includes(MATCH_ANY)) continue;
     applicable.push(rule);
-    keys.add(rule.match.key);
+    if (rule.match.key !== undefined) keys.add(rule.match.key);
+    else scalars = true;
     for (const root of rule.match.under) roots.add(root);
   }
-  return { rules: applicable, keys, roots };
+  return { rules: applicable, keys, roots, scalars };
 }
 
 function valueMatches(match: MigrationMatch, value: unknown): boolean {
@@ -348,7 +425,8 @@ export function selectMatches(
   if (typeof kind !== "string") return [];
   if (!match.inKind.includes(kind) && !match.inKind.includes(MATCH_ANY)) return [];
 
-  const sites = index.get(match.key);
+  const sites =
+    match.key !== undefined ? index.byKey.get(match.key) : index.scalars;
   if (!sites) return [];
 
   const anyRoot = match.under.includes(MATCH_ANY);
@@ -366,6 +444,11 @@ export function selectMatches(
     // `notUnder` subtracts within the region, so it reads the whole path. A
     // numeric segment never equals a key name, so the raw path is enough.
     if (match.notUnder?.some((segment) => site.path.includes(segment))) continue;
+    if (match.scalar !== undefined) {
+      if (interpolationShape(site.value as string) !== match.scalar) continue;
+      out.push(site.path);
+      continue;
+    }
     if (!valueMatches(match, site.value)) continue;
     if (match.withSibling !== undefined && !Object.hasOwn(site.parent, match.withSibling)) continue;
     out.push(site.path);
@@ -377,6 +460,11 @@ export function selectMatches(
  *  The driver uses `applicableRules` + `buildMatchIndex` + `selectMatches` so
  *  one walk serves every rule that can reach the document. */
 export function findMatches(document: unknown, match: MigrationMatch): MigrationPath[] {
-  const index = buildMatchIndex(document, new Set([match.key]), new Set(match.under));
+  const index = buildMatchIndex(
+    document,
+    new Set(match.key !== undefined ? [match.key] : []),
+    new Set(match.under),
+    match.scalar !== undefined,
+  );
   return selectMatches(index, document, match);
 }

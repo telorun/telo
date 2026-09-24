@@ -49,15 +49,15 @@ steps:
     invoke: !ref chatStream
   - name: ndjsonEncode
     inputs:
-      input: "${{ steps.ndjsonStream.result.output }}"
+      input: !cel "steps.ndjsonStream.result.output"
     invoke: !ref ndjsonEnc
   - name: ndjsonDecode
     inputs:
-      input: "${{ steps.ndjsonEncode.result.output }}"
+      input: !cel "steps.ndjsonEncode.result.output"
     invoke: !ref textDec
   - name: ndjsonAssert
     inputs:
-      text: "${{ steps.ndjsonDecode.result.text }}"
+      text: !cel "steps.ndjsonDecode.result.text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -78,15 +78,15 @@ steps:
     invoke: !ref chatStream
   - name: sseEncode
     inputs:
-      input: "${{ steps.sseStream.result.output }}"
+      input: !cel "steps.sseStream.result.output"
     invoke: !ref sseEnc
   - name: sseDecode
     inputs:
-      input: "${{ steps.sseEncode.result.output }}"
+      input: !cel "steps.sseEncode.result.output"
     invoke: !ref textDec
   - name: sseAssert
     inputs:
-      text: "${{ steps.sseDecode.result.text }}"
+      text: !cel "steps.sseDecode.result.text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -104,15 +104,15 @@ steps:
     invoke: !ref chatStream
   - name: plainEncode
     inputs:
-      input: "${{ steps.plainStream.result.output }}"
+      input: !cel "steps.plainStream.result.output"
     invoke: !ref plainEnc
   - name: plainDecode
     inputs:
-      input: "${{ steps.plainEncode.result.output }}"
+      input: !cel "steps.plainEncode.result.output"
     invoke: !ref textDec
   - name: plainAssert
     inputs:
-      text: "${{ steps.plainDecode.result.text }}"
+      text: !cel "steps.plainDecode.result.text"
     invoke:
       kind: Assert.Schema
       schema:

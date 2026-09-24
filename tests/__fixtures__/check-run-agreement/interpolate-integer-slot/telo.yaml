@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: InterpolateIntegerSlotApp
+imports:
+  Lib: ./lib
+targets:
+  - name: call
+    invoke: !ref Lib.counted

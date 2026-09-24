@@ -15,6 +15,12 @@ describe("offeredValueTags", () => {
     expect(ids({ type: "string" }, null)).not.toContain("literal");
   });
 
+  it("offers !interpolate only at an evaluated slot a string satisfies", () => {
+    expect(ids({ type: "string" }, "runtime")).toContain("interpolate");
+    expect(ids({ type: "integer" }, "runtime")).not.toContain("interpolate");
+    expect(ids({ type: "string" }, null)).not.toContain("interpolate");
+  });
+
   it("offers an embed where its produced type satisfies the slot", () => {
     expect(ids({ type: "string" }, null)).toEqual(["include-text", "module-path"]);
     expect(ids({ "x-telo-type": "Telo.Bytes" }, null)).toEqual(["include-bytes"]);

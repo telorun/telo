@@ -36,6 +36,15 @@ import type {
  *  explained it, and left `${{ }}` interpolations chain-validated but never
  *  type-checked at all. */
 export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeResult {
+  return analyzeCelWithTree(source, env).result;
+}
+
+/** {@link analyzeCelExpression}, with the resolved tree it built — for a tag
+ *  that asks its own questions of one expression without parsing it again. */
+export function analyzeCelWithTree(
+  source: string,
+  env: AnalyzeEnv,
+): { result: AnalyzeResult; ast?: ASTNode } {
   const out: EngineDiagnostic[] = [];
 
   let parsed: ReturnType<typeof env.celEnv.parse>;
@@ -43,10 +52,13 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
     parsed = env.celEnv.parse(source);
   } catch (e) {
     return {
-      diagnostics: [{ code: "CEL_SYNTAX_ERROR", message: e instanceof Error ? e.message : String(e) }],
-      calls: [],
+      result: {
+        diagnostics: [{ code: "CEL_SYNTAX_ERROR", message: e instanceof Error ? e.message : String(e) }],
+        calls: [],
+      },
     };
   }
+  const ast: ASTNode = parsed.ast;
 
   // Resolution, before anything reads the tree — the audit, the type check and
   // every chain walk below all see the resolved shape, so none of them has to
@@ -94,15 +106,18 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
     // crash here silently retires static typing for that expression. Report it
     // instead: degrading is acceptable, degrading invisibly is not.
     return {
-      diagnostics: [
-        {
-          code: "CEL_TYPE_ERROR",
-          message: `the CEL type-checker failed on this expression: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        },
-      ],
-      calls: audit.calls,
+      result: {
+        diagnostics: [
+          {
+            code: "CEL_TYPE_ERROR",
+            message: `the CEL type-checker failed on this expression: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          },
+        ],
+        calls: audit.calls,
+      },
+      ast,
     };
   }
 
@@ -193,9 +208,12 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
   }
 
   return {
-    diagnostics: out,
-    calls: resolvedCalls ? withCallArguments(audit.calls, parsed.ast) : audit.calls,
-    ...(type === undefined ? {} : { type }),
+    result: {
+      diagnostics: out,
+      calls: resolvedCalls ? withCallArguments(audit.calls, parsed.ast) : audit.calls,
+      ...(type === undefined ? {} : { type }),
+    },
+    ast,
   };
 }
 
@@ -247,5 +265,9 @@ export const celEngine: TemplatingEngine = {
 
   analyze(source, env) {
     return analyzeCelExpression(source, env);
+  },
+
+  expressionRegions(source) {
+    return [{ start: 0, end: source.length }];
   },
 };

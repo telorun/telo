@@ -61,7 +61,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-/** True for a node the loader produced from a `!cel` tag or a `${{ }}` string.
+/** True for a node the loader produced from a `!cel` tag.
  *  Both markers are tested because they are not always both present: a
  *  registered definition's schema reaches the analyzer with `call` and
  *  `__compiled` dropped, keeping only `__tagged` + `source`. Testing one would

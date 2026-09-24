@@ -28,7 +28,7 @@ steps:
       connection: !ref Lib.db
   - name: assertSeeded
     inputs:
-      actual: "${{ steps.select.result.rows[0].name }}"
+      actual: !cel "steps.select.result.rows[0].name"
       expected: "seeded"
     invoke:
       kind: Assert.Equals

@@ -2,12 +2,14 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { canonicalTypeSchemaId, OBSERVED_STATE_KEY, VALUE_TYPES } from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import {
+  CEL_ENGINE,
+  celExpressionsOf,
   defaultRegistry,
   isRefSentinel,
   isTaggedSentinel,
+  makeTaggedSentinel,
   plainChainOf,
   resolveModuleCalls,
-  type CelSurface,
 } from "@telorun/templating";
 import type { DiagnosticData, DiagnosticFix } from "./types.js";
 import {
@@ -189,6 +191,7 @@ import { validateSourceEntries } from "./validate-source-entries.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
 import { validateApplicationArguments } from "./validate-application-arguments.js";
 import { validateHostPathDefaults } from "./validate-host-path-defaults.js";
+import { validateUntaggedInterpolation } from "./untagged-interpolation.js";
 import { holdsHostPath, leadingRelativeLiteral } from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
@@ -606,21 +609,6 @@ function celAccessChains(
   }
 }
 
-const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
-const CEL_EXPR_RE = /\$\{\{\s*([^}]+?)\s*\}\}/;
-
-/** Restore the delimiters an engine's fix was computed without, so the
- *  replacement is the whole scalar rather than a bare expression that would be
- *  read back as literal text. A tagged scalar carries no wrapper and passes
- *  through untouched. */
-function rewrapFix(
-  fix: DiagnosticFix | undefined,
-  wrapper: CelSurface["wrapper"],
-): DiagnosticFix | undefined {
-  if (!fix || !wrapper) return fix;
-  return { replacement: wrapper.prefix + fix.replacement + wrapper.suffix };
-}
-
 /** How the zone walks resolve a kind read off a node of a given module. */
 function regionDefResolver(
   defs: DefinitionRegistry,
@@ -658,19 +646,11 @@ function collectCelValueSlots(
 ): CelValueSlot[] {
   const slots: CelValueSlot[] = [];
 
-  // A pure CEL value behaves the same regardless of surface form: a
-  // `${{ … }}` string and a `!cel`-tagged sentinel are the same expression.
-  let celExpr: string | undefined;
+  // A tag whose produced type is fixed (`!interpolate`, `!literal`, an embed)
+  // is checked against the slot through its placeholder; only a `!cel` value's
+  // type is the expression's own.
   if (isTaggedSentinel(data)) {
-    // Non-CEL engines (e.g. `!literal`) are analyzed by their own engine pass.
-    if (data.engine !== "cel") return slots;
-    celExpr = data.source;
-  } else if (typeof data === "string" && CEL_PURE_RE.test(data)) {
-    celExpr = data.match(CEL_EXPR_RE)?.[1]?.trim();
-  }
-
-  if (celExpr !== undefined) {
-    if (schema) slots.push({ path, schema });
+    if (data.engine === CEL_ENGINE && schema) slots.push({ path, schema });
     return slots;
   }
 
@@ -1634,6 +1614,16 @@ export class StaticAnalyzer {
         ...validateApplicationArguments(allManifests as unknown as ResourceManifest[], rootModules),
       );
     }
+    if (!options?.skipValidation) {
+      // A `${{` left in a plain string: unmigrated, or no readable hole.
+      diagnostics.push(
+        ...validateUntaggedInterpolation(
+          allManifests as unknown as ResourceManifest[],
+          rootModules,
+          options?.moduleDocuments,
+        ),
+      );
+    }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
     // ...and over the manifests the DEFINITION REGISTRY holds, which are not
     // these. `normalizeInlineResources` deep-clones — that clone is the
@@ -1855,7 +1845,7 @@ export class StaticAnalyzer {
         : null;
 
     // The module doc (Application/Library) carries the Application-only `ports`
-    // namespace; threaded into per-resource CEL typing so `${{ ports.X }}`
+    // namespace; threaded into per-resource CEL typing so `!cel "ports.X"`
     // resolves its nominal brand cross-doc. A flattened set holds exactly one —
     // the entry's; see `buildKernelGlobalsSchema`.
     const moduleManifest =
@@ -2229,6 +2219,22 @@ export class StaticAnalyzer {
           // repair that is right when the path names a file of the module.
           if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
             const written = navigatePath(m, issue.path);
+            // A tag that always builds a string (`!interpolate`) is a string
+            // source whatever its text, never a relative literal to repair.
+            if (isTaggedSentinel(written)) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "HOST_PATH_UNTYPED_SOURCE",
+                source: SOURCE,
+                message:
+                  `${m.kind}/${resource.name}: '${issue.path}' is a Telo.HostPath, but !${written.engine} ` +
+                  `produces a plain string. A host path comes from a variable declared x-telo-type: ` +
+                  `Telo.HostPath (which resolves a relative value against the working directory), ` +
+                  `from !module-path, or from .joinPath('sub/dir') on either.`,
+                data: { resource, filePath, path: issue.path },
+              });
+              continue;
+            }
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "HOST_PATH_RELATIVE",
@@ -2772,19 +2778,21 @@ export class StaticAnalyzer {
           const resource = { kind: m.kind, name: m.metadata?.name as string };
           const filePath = (m.metadata as { source?: string } | undefined)?.source;
           const { expr, path, engineName, matchedScope } = e;
+          const expressions = celExpressionsOf(engineName, expr);
 
           // A forwarded expression is checked once, where it is evaluated: at the
           // entry's view unless this kind evaluates it at compile time.
           if (forwardViews?.defersCel(m, path)) return;
 
-          // A `!cel` (or `${{ }}`) in a field with no `x-telo-eval` / `x-telo-context`
-          // is never evaluated — the runtime reads it as a literal (e.g. a
-          // `concurrency` `!cel` that silently degraded to a sparse `[null, …]`).
-          // Flag it rather than letting it pass as valid CEL. Inline resources
-          // (resource-wide invocation context) carry CEL the kernel evaluates.
+          // A tag holding CEL (`!cel`, `!interpolate`, `!sql`) in a field with no
+          // `x-telo-eval` / `x-telo-context` is never evaluated — the runtime
+          // reads it as a literal (e.g. a `concurrency` `!cel` that silently
+          // degraded to a sparse `[null, …]`). Flag it rather than letting it
+          // pass as valid CEL. Inline resources (resource-wide invocation
+          // context) carry CEL the kernel evaluates.
           if (
             celRuleApplies &&
-            engineName === "cel" &&
+            expressions.length > 0 &&
             celScope.invocationContextSchema === undefined &&
             celEvalModeAt(celSites, path) === null &&
             !pathCrossesNestedResource(m, path)
@@ -2793,7 +2801,7 @@ export class StaticAnalyzer {
               severity: DiagnosticSeverity.Error,
               code: "CEL_IN_NON_EVAL_FIELD",
               source: SOURCE,
-              message: `${m.kind}/${resource.name}: CEL at '${path}' is never evaluated — the field has no x-telo-eval / x-telo-context annotation, so its value is read as a literal. Annotate the field as a CEL slot or remove the !cel tag.`,
+              message: `${m.kind}/${resource.name}: CEL at '${path}' is never evaluated — the field has no x-telo-eval / x-telo-context annotation, so its value is read as a literal. Annotate the field as a CEL slot or remove the !${engineName} tag.`,
               data: { resource, filePath, path },
             });
             return;
@@ -2803,11 +2811,10 @@ export class StaticAnalyzer {
           // through `.status` is illegal in a field that resolves at startup —
           // and a resource nothing can start reports nothing, ever. Both are
           // decided from the expression and the manifest alone.
-          if (reportsObservedState && engineName === "cel" && expr.includes(OBSERVED_STATE_KEY)) {
-            for (const chain of celAccessChains(
-              this.celEnv,
-              expr,
-              moduleCallNamesOf(moduleCallNames, m),
+          const readsObservedState = expressions.filter((x) => x.includes(OBSERVED_STATE_KEY));
+          if (reportsObservedState && readsObservedState.length > 0) {
+            for (const chain of readsObservedState.flatMap((x) =>
+              celAccessChains(this.celEnv, x, moduleCallNamesOf(moduleCallNames, m)),
             )) {
               const read = observedStateRead(chain);
               if (!read) continue;
@@ -2940,7 +2947,7 @@ export class StaticAnalyzer {
           // the host-path check needs as much as a step result's.
           const chainContext =
             effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
-          const chain = plainChainOf(`\${{${expr}}}`);
+          const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
           if (chain) {
             const produced = navigateSchemaToExprPath(chainContext, chain);
             if (produced) {
@@ -3009,11 +3016,9 @@ export class StaticAnalyzer {
           }
 
           for (const f of result.diagnostics) {
-            // A repair is applicable only when the analyzed expression covers
-            // the whole scalar. For one `${{ }}` among literal text, replacing
-            // the node would drop the text around it, so the correction stays
-            // in the message and no fix is stamped.
-            const fix = e.surface.whole ? rewrapFix(f.fix, e.surface.wrapper) : undefined;
+            // An engine's fix is always a whole-scalar replacement — a tag with
+            // holes re-anchors a hole's repair onto its text itself.
+            const fix = f.fix;
             const data = { resource, filePath, path, ...(fix ? { fix } : {}) };
             if (f.code === "CEL_SYNTAX_ERROR") {
               diagnostics.push({

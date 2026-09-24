@@ -23,11 +23,10 @@ const SOURCE = "telo-analyzer";
  * JSON Schema — can tell them apart.
  *
  * At every `x-telo-ref` slot the only accepted value is:
- *   - a `!ref` sentinel (or any tagged sentinel — e.g. a `${{ }}` ref passed
+ *   - a `!ref` sentinel (or any tagged sentinel — e.g. a `!cel` ref passed
  *     through a template), or
  *   - an inline definition: a plain object with a `kind` and NO `name` (the
- *     extractor assigns the name), or
- *   - a `${{ }}` CEL expression string (a reference flowed through CEL).
+ *     extractor assigns the name).
  *
  * Rejected, each with an actionable diagnostic pointing at `!ref`:
  *   - the object form `{ kind, name }` (the old reference object), and
@@ -60,7 +59,7 @@ export function validateReferenceForms(
     {
       onRef: (e) => {
         const value = e.value;
-        // `!ref` and `!cel`/`${{ }}` sentinels are the supported shapes.
+        // `!ref` and `!cel` sentinels are the supported shapes.
         if (isTaggedSentinel(value)) return;
 
         // A SCALAR at a slot whose union has a value branch is a value, and the
@@ -81,9 +80,7 @@ export function validateReferenceForms(
         const path = e.concretePath;
 
         if (typeof value === "string") {
-          // A `${{ }}` reference flowed through CEL is fine; any other bare
-          // string at a ref slot is the removed string / dotted-FQN form.
-          if (value.includes("${{")) return;
+          // A bare string at a ref slot is the removed string / dotted-FQN form.
           const hint = refHint(value);
           diagnostics.push({
             severity: DiagnosticSeverity.Error,

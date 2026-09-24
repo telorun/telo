@@ -60,8 +60,8 @@ function iteration(collection: string, itemAccess: string): ResourceManifest {
         },
       },
     },
-    collection: `\${{ ${collection} }}`,
-    steps: [{ name: "shape", invoke: { kind: "Some.Sink" }, inputs: { who: `\${{ ${itemAccess} }}` } }],
+    collection: { __tagged: true, engine: "cel", source: collection },
+    steps: [{ name: "shape", invoke: { kind: "Some.Sink" }, inputs: { who: { __tagged: true, engine: "cel", source: itemAccess } } }],
   } as unknown as ResourceManifest;
 }
 
@@ -103,10 +103,10 @@ describe("x-telo-context-element-from (item typed from collection)", () => {
           },
         },
       },
-      collection: "${{ inputs.payload.records }}",
+      collection: { __tagged: true, engine: "cel", source: "inputs.payload.records" },
       steps: [
-        { name: "ok", invoke: { kind: "Some.Sink" }, inputs: { a: "${{ item.id }}" } },
-        { name: "bad", invoke: { kind: "Some.Sink" }, inputs: { b: "${{ item.nope }}" } },
+        { name: "ok", invoke: { kind: "Some.Sink" }, inputs: { a: { __tagged: true, engine: "cel", source: "item.id" } } },
+        { name: "bad", invoke: { kind: "Some.Sink" }, inputs: { b: { __tagged: true, engine: "cel", source: "item.nope" } } },
       ],
     } as unknown as ResourceManifest;
 
@@ -122,7 +122,7 @@ describe("x-telo-context-element-from (item typed from collection)", () => {
       kind: "run.Iteration",
       metadata: { name: "It", module: "test" },
       inputs: {},
-      collection: "${{ 42 }}",
+      collection: { __tagged: true, engine: "cel", source: "42" },
       steps: [{ name: "s", invoke: { kind: "Some.Sink" } }],
     } as unknown as ResourceManifest;
 

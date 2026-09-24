@@ -31,7 +31,7 @@ steps:
     invoke: !ref summarize
   - name: assertText
     inputs:
-      text: "${{ steps.invoke.result.text }}"
+      text: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -43,8 +43,8 @@ steps:
         required: [ text ]
   - name: assertUsage
     inputs:
-      usage: "${{ steps.invoke.result.usage }}"
-      finishReason: "${{ steps.invoke.result.finishReason }}"
+      usage: !cel "steps.invoke.result.usage"
+      finishReason: !cel "steps.invoke.result.finishReason"
     invoke:
       kind: Assert.Schema
       schema:

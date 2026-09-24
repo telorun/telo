@@ -17,14 +17,14 @@ sidebar_label: Structured Errors
 
 Inside a `catch:` block, the CEL context gains:
 
-- `error.code` — the thrown `InvokeError.code`, or `INTERNAL_ERROR` for plain `Error` throws. Always a non-empty string, so `throw: { code: "${{ error.code }}" }` can safely rethrow it.
+- `error.code` — the thrown `InvokeError.code`, or `INTERNAL_ERROR` for plain `Error` throws. Always a non-empty string, so `throw: { code: !cel "error.code" }` can safely rethrow it.
 - `error.message` — the thrown message
 - `error.data` — the `InvokeError.data`, or `undefined` for plain errors
 - `error.step` — the name of the step that threw
 
-These four fields are statically type-checked: a typo like `${{ error.cdoe }}` inside a `catch` (or `finally`) is reported as `CEL_UNKNOWN_FIELD`, at any nesting depth.
+These four fields are statically type-checked: a typo like `!cel "error.cdoe"` inside a `catch` (or `finally`) is reported as `CEL_UNKNOWN_FIELD`, at any nesting depth.
 
-Inside a `finally` block, `error` is **nullable** — it is `null` when the `try` (and any `catch`) succeeded, and the caught failure only when a failure propagates. Accessing a field without a null-guard is a static error (`CEL_NULLABLE_ACCESS`); guard first: `${{ error == null ? 'OK' : error.code }}` or `${{ error != null && error.code == 'X' }}`.
+Inside a `finally` block, `error` is **nullable** — it is `null` when the `try` (and any `catch`) succeeded, and the caught failure only when a failure propagates. Accessing a field without a null-guard is a static error (`CEL_NULLABLE_ACCESS`); guard first: `!cel "error == null ? 'OK' : error.code"` or `!cel "error != null && error.code == 'X'"`.
 
 ```yaml
 kind: Run.Sequence
@@ -35,10 +35,10 @@ steps:
       - name: auth
         invoke: { kind: Auth.VerifyToken, name: VerifyPublishToken }
         inputs:
-          authorization: "${{ request.headers.authorization }}"
+          authorization: !cel "request.headers.authorization"
       - name: upload
         invoke: { kind: S3.Put, bucketRef: { name: ModuleStore } }
-        inputs: { key: "${{ inputs.fileKey }}", body: "${{ inputs.body }}" }
+        inputs: { key: !cel "inputs.fileKey", body: !cel "inputs.body" }
     catch:
       # Log the failure before re-raising. Plain errors rethrow too.
       - name: audit
@@ -46,15 +46,15 @@ steps:
         inputs:
           sql: "INSERT INTO publish_failures (code, message, data, step) VALUES ($1, $2, $3, $4)"
           bindings:
-            - "${{ error.code }}"
-            - "${{ error.message }}"
-            - "${{ error.data }}"
-            - "${{ error.step }}"
+            - !cel "error.code"
+            - !cel "error.message"
+            - !cel "error.data"
+            - !cel "error.step"
       - name: rethrow
         throw:
-          code: "${{ error.code }}"
-          message: "${{ error.message }}"
-          data: "${{ error.data }}"
+          code: !cel "error.code"
+          message: !cel "error.message"
+          data: !cel "error.data"
 ```
 
 A `catch` block that falls through without re-throwing *absorbs* the error. A `catch` block that ends in a `throw:` step re-raises it — the step's `code` determines which codes propagate out of the sequence.
@@ -66,8 +66,8 @@ A `throw:` step takes `{ code, message?, data? }` and throws the matching `Invok
 | Form                                  | Statically resolves to                 |
 |---------------------------------------|----------------------------------------|
 | `code: "UNAUTHORIZED"`                | `{ UNAUTHORIZED }`                     |
-| `code: "${{ 'FOO' }}"`                | `{ FOO }`                              |
-| `code: "${{ error.code }}"` inside a `catch` | the enclosing `try`'s propagated union |
+| `code: !cel "'FOO'"`                  | `{ FOO }`                              |
+| `code: !cel "error.code"` inside a `catch` | the enclosing `try`'s propagated union |
 
 The enclosing `try`'s propagated union includes `INTERNAL_ERROR` whenever the `try` block contains an `invoke:` step, since any invoked resource can throw a plain `Error` that the catch surfaces as `error.code === 'INTERNAL_ERROR'`. A surrounding `catches:` list must therefore cover `INTERNAL_ERROR` (or include a catch-all) for such a rethrow.
 
@@ -112,4 +112,4 @@ The slot's target contributes its own effective union — recursing into another
 - **Uncovered declared code** — every code in the resolved union must reach a `catches:` entry (explicit `when:` or catch-all).
 - **Unbounded union requires catch-all** — when inherit/passthrough resolution can't enumerate all codes, the `catches:` list must include a no-`when:` entry.
 - **Typed `error.data.<field>`** — validated against the per-code `data:` schema from the resolved union. Disjunctive `when:` clauses (`error.code == 'A' || error.code == 'B'`) use the *intersection* of data schemas so only fields present on every covered code narrow through.
-- **`${{ error.code }}` outside `catch:`** — using it in a `throw:` step outside an enclosing `catch` block is rejected (no enclosing try to source the union from).
+- **`!cel "error.code"` outside `catch:`** — using it in a `throw:` step outside an enclosing `catch` block is rejected (no enclosing try to source the union from).

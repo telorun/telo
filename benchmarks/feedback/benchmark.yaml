@@ -34,7 +34,7 @@ scenarios:
       body:
         text: "Benchmark feedback"
         source: bench
-    validate: "${{ result.status == 201 }}"
+    validate: !cel "result.status == 201"
   - name: GetAll
     weight: 1
     invoke:
@@ -42,4 +42,4 @@ scenarios:
     inputs:
       url: http://localhost:8844/v1/feedback
       method: GET
-    validate: "${{ result.status == 200 }}"
+    validate: !cel "result.status == 200"

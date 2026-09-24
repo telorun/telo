@@ -12,6 +12,7 @@
  */
 import { ParseError } from "@marcbachmann/cel-js";
 import {
+  celExpressionsOf,
   extractAccessChains,
   isTaggedSentinel,
   resolveModuleCalls,
@@ -78,8 +79,7 @@ export interface ModuleCallSite {
  * against the names of the module that compiled it — the list the kernel binds
  * at `create()` — and is read as is. A `!cel` sentinel no loader compiled is
  * parsed against `moduleNames`, the declaring module's. A plain string is never
- * read: loading compiles every `${{ }}` string into a compiled value, so one
- * still plain is a literal (`!literal` produces exactly that). Plain containers
+ * an expression. Plain containers
  * only: a live instance written into a slot after injection is not the
  * manifest's.
  */
@@ -107,7 +107,10 @@ export function moduleCallSites(
       return;
     }
     if (isTaggedSentinel(value)) {
-      if (value.engine === "cel") record(path, moduleCallsInSource(value.source, moduleNames));
+      record(
+        path,
+        celExpressionsOf(value.engine, value.source).flatMap((x) => moduleCallsInSource(x, moduleNames)),
+      );
       return;
     }
     if (Array.isArray(value)) {
@@ -140,8 +143,10 @@ export function moduleCallSites(
  */
 export function celResourceReads(manifest: ResourceManifest): string[] {
   const names = new Set<string>();
-  walkCelExpressions(manifest as Record<string, unknown>, "", (source: string) => {
-    for (const name of resourceReadsOf(source)) names.add(name);
+  walkCelExpressions(manifest as Record<string, unknown>, "", (source, _path, engine) => {
+    for (const expression of celExpressionsOf(engine, source)) {
+      for (const name of resourceReadsOf(expression)) names.add(name);
+    }
   });
   return [...names];
 }

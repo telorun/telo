@@ -34,12 +34,12 @@ entries:
       required: [ city ]
     handler: !ref weatherImpl
     inputs:
-      city: "${{ request.arguments.city }}"
+      city: !cel "request.arguments.city"
     result:
       isError: true
       content:
         - type: text
-          text: "city '${{ request.arguments.city }}' unavailable"
+          text: !interpolate "city '${{ request.arguments.city }}' unavailable"
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -77,7 +77,7 @@ steps:
     catch:
       - name: assertToolError
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:

@@ -51,26 +51,18 @@ export const MODULE_PATH_ENGINE = "module-path";
 /**
  * The dotted chain a value names, or undefined.
  *
- * Only a PLAIN CHAIN — `steps.encode.result.output` — in either spelling a
- * manifest may carry it: a `!cel` sentinel or the `${{ }}` string form. An
- * expression that COMPUTES rather than names has no schema to read off a context,
- * so a caller that navigates one gets nothing and reports nothing: silence where
- * the analyzer knows least is the conservative direction.
+ * Only a PLAIN CHAIN written as a `!cel` value — `steps.encode.result.output`.
+ * An expression that COMPUTES rather than names has no schema to read off a
+ * context, so a caller that navigates one gets nothing and reports nothing:
+ * silence where the analyzer knows least is the conservative direction.
  *
  * Here rather than in each caller because "is this expression a plain chain" is
  * one question, and two copies of the answer would eventually disagree about a
  * shape like `a.b[0]`.
  */
 export function plainChainOf(value: unknown): string | undefined {
-  const source = isTaggedSentinel(value)
-    ? value.engine === CEL_ENGINE
-      ? value.source
-      : undefined
-    : typeof value === "string"
-      ? /^\s*\$\{\{(.+)\}\}\s*$/.exec(value)?.[1]
-      : undefined;
-  if (typeof source !== "string") return undefined;
-  const trimmed = source.trim();
+  if (!isTaggedSentinel(value) || value.engine !== CEL_ENGINE) return undefined;
+  const trimmed = value.source.trim();
   return /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(trimmed)
     ? trimmed
     : undefined;

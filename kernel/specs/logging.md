@@ -31,7 +31,7 @@ with an active span (§7) and requires that correlation be automatic.
 **Supersedes.** `kernel/specs/telemetry-and-observability.md` describes an
 unimplemented "ambient telemetry injection" design whose manifest syntax predates
 the current surface (it uses `config:` wrappers, `dependsOn`, and the inline
-`${{ }}` string form that the formatter now mangles). Where the two disagree,
+untagged `${{ }}` string form, now a deprecated spelling). Where the two disagree,
 **this document governs for logging**. That file should be rewritten to cover
 tracing and metrics only, or removed; this spec does not itself delete it.
 

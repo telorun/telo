@@ -1,5 +1,5 @@
 import { checkSchemaCompatibility } from "@telorun/analyzer";
-import { builtinEngines, isTaggedSentinel, producedTypeOf } from "@telorun/templating";
+import { builtinEngines, defaultRegistry, isTaggedSentinel, producedTypeOf } from "@telorun/templating";
 import type { CelEvalMode } from "./cel-utils";
 import type { JsonSchemaProperty } from "./types";
 
@@ -53,6 +53,12 @@ const AUTHORABLE: Record<string, Omit<ValueTagOption, "id">> = {
     label: "!cel",
     editor: "expression",
     hint: "A CEL expression, evaluated against this field's scope.",
+    requiresEvalSlot: true,
+  },
+  interpolate: {
+    label: "!interpolate",
+    editor: "expression",
+    hint: "Text with `${{ }}` holes, each a CEL expression; always a string.",
     requiresEvalSlot: true,
   },
   literal: {
@@ -122,13 +128,18 @@ function producedFits(produced: Record<string, unknown>, prop: JsonSchemaPropert
   return checkSchemaCompatibility(produced, prop as Record<string, unknown>).compatible;
 }
 
-/** The tag a value currently carries, or null for an untagged one. A raw string
- *  holding `${{ }}` reads as untagged: it IS untagged in the manifest, which is
- *  the spelling the formatter rewrites and the round trip has been known to
- *  mangle — so the picker shows it for what it is rather than for what it
- *  means. */
+/** The tag a value currently carries, or null for an untagged one. A plain
+ *  string holding `${{ }}` reads as untagged: it IS untagged in the manifest,
+ *  a legacy spelling the analyzer reports and `telo migrate` rewrites — so the
+ *  picker shows it for what it is. */
 export function tagOf(value: unknown): string | null {
   return isTaggedSentinel(value) ? value.engine : null;
+}
+
+/** Whether a tag's scalar holds CEL, so it is edited with CEL's completions —
+ *  asked of the engine, never of the tag's name. */
+export function holdsCel(tag: string): boolean {
+  return defaultRegistry().get(tag)?.expressionRegions !== undefined;
 }
 
 /** The source text under a tag, or "" for a value carrying none. */

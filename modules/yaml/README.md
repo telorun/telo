@@ -35,7 +35,7 @@ steps:
         kind: Telo.Library
         metadata: { name: example }
 outputs:
-  firstKind: ${{ steps.parse.result.docs[0].kind }}
+  firstKind: !cel "steps.parse.result.docs[0].kind"
 ```
 
 ## Reference

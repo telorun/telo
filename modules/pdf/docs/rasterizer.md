@@ -26,7 +26,7 @@ scale: 2
 ```yaml
 - name: page
   inputs:
-    data: "${{ steps.fetch.result.bytes }}"
+    data: !cel "steps.fetch.result.bytes"
     page: 1
   invoke: !ref Render
 ```

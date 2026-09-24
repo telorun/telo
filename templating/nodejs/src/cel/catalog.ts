@@ -1,6 +1,7 @@
 import { formatLocale } from "d3-format";
 import { RE2JS } from "re2js";
 import { v1, v3, v4, v5, v6, v7, validate as uuidValidate, version as uuidVersion } from "uuid";
+import { PLAIN_ENCODINGS } from "@telorun/sdk";
 
 /** Host-injected functions that need platform APIs the templating package must
  *  not import directly (Node `crypto` / `Buffer`), keeping it browser-safe. The
@@ -1100,15 +1101,24 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
   // so an expiry could be computed and not stored. Semantics follow cel-go
   // exactly — RFC 3339 and epoch SECONDS — so `int(timestamp)` and
   // `timestamp(int)` round-trip in one unit.
+  //
+  // `string(duration)` is cel-spec's too, and cel-js omits it: seconds with a
+  // trimmed fraction, the `Telo.Duration` plain encoding, so a duration renders
+  // one way whether it is interpolated or serialized.
   {
     name: "string",
-    signature: "string(timestamp): string",
-    register: ["string(google.protobuf.Timestamp): string"],
+    signature: "string(timestamp | duration): string",
+    register: [
+      "string(google.protobuf.Timestamp): string",
+      "string(google.protobuf.Duration): string",
+    ],
     category: "conversion",
-    summary: "Format an instant as RFC 3339 (ISO-8601, UTC).",
+    summary:
+      "Format an instant as RFC 3339 (ISO-8601, UTC), or a duration as seconds with a trimmed fraction (`5400s`, `1.5s`).",
     deterministic: true,
     hostBacked: false,
-    build: () => (t: Date) => t.toISOString(),
+    build: () => (value: unknown) =>
+      value instanceof Date ? value.toISOString() : PLAIN_ENCODINGS["cel-duration"]!.encode(value),
   },
   {
     name: "int",

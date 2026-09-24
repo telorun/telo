@@ -43,7 +43,7 @@ steps:
       connection: !ref db
   - name: assert
     inputs:
-      rows: "${{ steps.select.result.rows }}"
+      rows: !cel "steps.select.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

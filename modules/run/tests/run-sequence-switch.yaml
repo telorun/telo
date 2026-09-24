@@ -14,7 +14,7 @@ metadata:
 steps:
   # --- switch: matching case executes, others do not ---
   - name: routeToB
-    switch: "${{ 'b' }}"
+    switch: !cel "'b'"
     cases:
       a:
         # Would fail if reached.
@@ -54,7 +54,7 @@ steps:
 
   - name: verifyBranchB
     inputs:
-      result: "${{ steps.branchB.result }}"
+      result: !cel "steps.branchB.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -65,7 +65,7 @@ steps:
 
   # --- switch: no match falls through to default ---
   - name: routeToDefault
-    switch: "${{ 'unknown' }}"
+    switch: !cel "'unknown'"
     cases:
       known:
         # Would fail if reached.
@@ -93,7 +93,7 @@ steps:
 
   - name: verifyDefault
     inputs:
-      result: "${{ steps.defaultCase.result }}"
+      result: !cel "steps.defaultCase.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -110,12 +110,12 @@ steps:
         role: "admin"
 
   - name: routeByRole
-    switch: "${{ steps.computeRole.result.role }}"
+    switch: !cel "steps.computeRole.result.role"
     cases:
       admin:
         - name: adminAction
           inputs:
-            role: "${{ steps.computeRole.result.role }}"
+            role: !cel "steps.computeRole.result.role"
           invoke:
             kind: Assert.Schema
             schema:
@@ -138,7 +138,7 @@ steps:
 
   - name: verifyAdminAction
     inputs:
-      result: "${{ steps.adminAction.result }}"
+      result: !cel "steps.adminAction.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -149,10 +149,10 @@ steps:
 
   # --- switch inside if: nesting ---
   - name: nested
-    if: "${{ true }}"
+    if: !cel "true"
     then:
       - name: innerSwitch
-        switch: "${{ 'x' }}"
+        switch: !cel "'x'"
         cases:
           x:
             - name: nestedMatch
@@ -168,7 +168,7 @@ steps:
 
   - name: verifyNested
     inputs:
-      result: "${{ steps.nestedMatch.result }}"
+      result: !cel "steps.nestedMatch.result"
     invoke:
       kind: Assert.Schema
       schema:

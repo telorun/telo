@@ -33,7 +33,7 @@ export function buildTypedCelEnvironment(
   extraContextSchema?: Record<string, any> | null,
   // The `ports` namespace is Application-only and lives on the module doc, not
   // on the resource being analyzed. When validating a resource, the caller
-  // passes the module manifest here so `${{ ports.X }}` types cross-doc.
+  // passes the module manifest here so `!cel "ports.X"` types cross-doc.
   rootModuleManifest?: ResourceManifest,
 ): Environment {
   try {
@@ -62,7 +62,7 @@ export function buildTypedCelEnvironment(
       | undefined;
     // A KIND document is the exception, and it is not a detail: the CEL inside
     // a `Telo.Definition`'s `schema:` — an `examples:` entry, a `description`
-    // showing `${{ secrets.API_KEY }}` — illustrates what a CONSUMER writes, in
+    // showing `!cel "secrets.API_KEY"` — illustrates what a CONSUMER writes, in
     // the consumer's scope. Closing those over the declaring module's blocks
     // reported an error against a name the module never meant to declare, and
     // one nobody could fix without deleting the example.
@@ -76,7 +76,7 @@ export function buildTypedCelEnvironment(
     );
 
     // `ports` namespace: each entry types as the brand its `protocol` selects
-    // (tcp → TcpPort, udp → UdpPort), so `${{ ports.http }}` carries a nominal
+    // (tcp → TcpPort, udp → UdpPort), so `!cel "ports.http"` carries a nominal
     // type that consuming fields can check against.
     const portsManifest = ((rootModuleManifest ?? manifest) as Record<string, unknown>).ports;
     if (portsManifest !== null && typeof portsManifest === "object" && !Array.isArray(portsManifest)) {
@@ -183,7 +183,7 @@ export function buildParameterCelEnvironment(
  * evaluated in the declaring module's own scope.
  *
  * Its `examples:` show a consumer's route reading `request` and `result`, its
- * `description`s show `${{ secrets.API_KEY }}`, and a rule condition reads the
+ * `description`s show `!cel "secrets.API_KEY"`, and a rule condition reads the
  * `self` / `referrer` its own evaluator binds. None of those names are in scope
  * where they are WRITTEN, and all of them are correct where they are READ — so
  * every check that asks "is this name in scope here" has to stand down on these
@@ -196,7 +196,8 @@ export function isKindDocument(manifest: ResourceManifest): boolean {
 /**
  * Register every nominal value brand on an analysis environment, with what a
  * brand may do: convert to its base with the base's own conversion
- * (`int(ports.http)`, `string(variables.dataDir)`), and — for a host path — be
+ * (`int(ports.http)`, `string(variables.dataDir)`), render as text
+ * (`string(ports.http)`), and — for a host path — be
  * extended with `.joinPath(relative)` and stay one.
  *
  * Static only: at runtime a branded value IS its base (an int, a string), so the
@@ -208,6 +209,12 @@ function registerValueBrands(env: Environment): void {
   for (const [brand, base] of Object.entries(VALUE_BRAND_BASE)) {
     (env as any).registerType(brand, { fields: {} });
     (env as any).registerFunction(`${base}(${brand}): ${base}`, (value: unknown) => value);
+    // Every base CEL can render as text renders its brand too — the runtime
+    // value IS the base — so `string(ports.http)` and a port in an
+    // `!interpolate` hole convert as the integer they are.
+    if (base !== "string") {
+      (env as any).registerFunction(`string(${brand}): string`, (value: unknown) => String(value));
+    }
     if (VALUE_TYPES.get(brand)?.fromHost !== undefined) {
       (env as any).registerFunction(`${brand}.joinPath(string): ${brand}`, () => {
         throw new Error("joinPath() is evaluated by the runtime, not the analyzer.");

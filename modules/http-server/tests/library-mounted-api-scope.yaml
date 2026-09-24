@@ -63,8 +63,8 @@ steps:
     invoke: !ref fetch
   - name: assertInline
     inputs:
-      status: "${{ steps.hitInline.result.status }}"
-      body: "${{ steps.hitInline.result.body }}"
+      status: !cel "steps.hitInline.result.status"
+      body: !cel "steps.hitInline.result.body"
     invoke:
       kind: Assert.Schema
       schema:
@@ -80,8 +80,8 @@ steps:
     invoke: !ref fetch
   - name: assertRef
     inputs:
-      status: "${{ steps.hitRef.result.status }}"
-      body: "${{ steps.hitRef.result.body }}"
+      status: !cel "steps.hitRef.result.status"
+      body: !cel "steps.hitRef.result.body"
     invoke:
       kind: Assert.Schema
       schema:

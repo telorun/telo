@@ -109,17 +109,17 @@ metadata: { name: SummarizeArticle }
 steps:
   - name: Summarize
     inputs:
-      prompt: "Summarize:\n${{ vars.articleText }}"
+      prompt: !interpolate "Summarize:\n${{ vars.articleText }}"
     invoke: !ref Summarizer
   - name: Save
     inputs:
-      summary: "${{ steps.Summarize.result.text }}"
+      summary: !cel "steps.Summarize.result.text"
     invoke:
       kind: Sql.Command
       connection: !ref Db
       inputs:
         sql: "INSERT INTO summaries (text) VALUES (?)"
-        bindings: ["${{ inputs.summary }}"]
+        bindings: [!cel "inputs.summary"]
 ```
 
 `steps.Summarize.result.{text,usage,finishReason}` is fully typed — the analyzer derives it from `Ai.Text`'s own declared `outputType`.

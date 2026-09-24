@@ -91,7 +91,7 @@ describe("visitManifest", () => {
   it("discovers CEL nodes by value-tree scan, including fields with no field-map entry", () => {
     const reg = registry();
     const resources: ResourceManifest[] = [
-      { kind: "demo.Job", metadata: { name: "a" }, cmd: "${{ resources.b.value }}" },
+      { kind: "demo.Job", metadata: { name: "a" }, cmd: { __tagged: true, engine: "cel", source: "resources.b.value" } },
     ] as unknown as ResourceManifest[];
 
     const exprs: string[] = [];

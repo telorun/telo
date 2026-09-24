@@ -69,8 +69,8 @@ tools:
       properties: { who: { type: string } }
       required: [who]
     inputs:
-      target: "${{ arguments.who }}"              # model `who` → invocable `target`
-    result: "${{ result.greeting }}"              # shape output into a string
+      target: !cel "arguments.who"              # model `who` → invocable `target`
+    result: !cel "result.greeting"              # shape output into a string
 ```
 
 Inside `inputs:`, the `arguments` variable is typed from the entry's `parameters`; inside `result:`, the `result` variable is typed from the invocable's declared output type when it has one (otherwise open). `parameters` is always declared explicitly — it is not derived from the invocable's `inputType`, because most invocables don't declare one.

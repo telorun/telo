@@ -82,7 +82,7 @@ The patch is declarative, and the operations are named for what they **target**:
 | --- | --- | --- |
 | `rename-key` | the matched mapping entry's key | `to` |
 | `set-value` | the value at the match | `value`, or `qualify` to prefix the existing string |
-| `set-tag` | the matched scalar | `tag` (the engine name, no `!`) |
+| `set-tag` | the matched scalar | `tag` (the engine name, no `!`), optional `source`: `text` (default — the scalar's text, unchanged) or `hole` (the expression of the lone `${{ }}` hole the text is; only on a `scalar: lone-hole` rule) |
 | `insert-item` | the matched sequence | `value`, optional `at` |
 | `remove-entry` | the matched mapping entry or sequence item | — |
 
@@ -100,7 +100,8 @@ The vocabulary is closed on purpose. Every operation has a known YAML edit form,
 
 | key | required | meaning |
 | --- | --- | --- |
-| `key` | yes | the mapping key this rule rewrites |
+| `key` | one of `key` / `scalar` | the mapping key this rule rewrites |
+| `scalar` | one of `key` / `scalar` | an untagged string scalar (a mapping value or a sequence item, never a key) whose text has this shape: `lone-hole` or `interpolated`, read by the hole grammar every tag with holes shares |
 | `inKind` | yes | document `kind:` values this rule may match in |
 | `under` | yes | top-level document keys; the match must be at or below one of them |
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
@@ -115,6 +116,10 @@ An annotation keyword occurs in author-written JSON Schema, and schema fragments
 So a rule may instead declare `inSchema: true`, bounding it to nodes reached through the **kernel's own** schema-valued keys (`schema`, `status`, `inputType`, `outputType`, `itemType`), which no kind owns. Containment is by ancestry rather than by root key, which is what reaches a route's request schema.
 
 With `inSchema`, and **only** with it, `inKind` and `under` may be `["*"]` — and **only** for a rule whose `key` begins with `x-telo-`. Both conditions are refused when the entry is read. That pairing is the containment: the region bounds where the walk may go, and the reserved key bounds what it may touch, since an `x-telo-*` key is Telo vocabulary wherever it appears and cannot mean something else inside a resource's configuration. A module-shipped entry can therefore no more spell `"*"` than it can name another module's kind.
+
+### The one spelling a key cannot name
+
+The untagged `"…${{ }}…"` interpolation was a value of every field of every kind, so it is found by what the value IS rather than where it sits: `match.scalar` selects an untagged string scalar by its shape — `lone-hole` (one `${{ }}` hole, only whitespace around it) or `interpolated` (holes among text). A tagged scalar, `!literal` included, is never matched, and a `${{` no hole can be read out of matches neither. A **core** entry may pair `scalar` with `inKind` / `under` `["*"]`: that reach is exactly the strings the loader compiled as CEL before the tag existed, so the wildcard claims no more than the spelling already meant. A module entry may not. `key`, `value`, `valueOneOf` and `withSibling` are refused beside `scalar`; `notUnder` and `inSchema` still narrow it. The core entry `untagged-interpolation` is the one user: a lone hole becomes `!cel "<expr>"` (`set-tag` with `source: hole`), anything else `!interpolate` with its text unchanged.
 
 The residue is stated rather than claimed away: a manifest that asserts *about* a schema — a schema literal under a key spelled `schema` inside an assertion's expected value — is reachable, and would be rewritten into its own synonym. That cannot be closed in a data-only matcher without naming kinds. It is accepted because the sites the wildcards reach are exactly the ones no enumeration covers, and the alternative leaves an author reading a deprecation `telo migrate` refuses to act on.
 

@@ -146,7 +146,7 @@ export function validateTemplateBody(
     let anyDynamic = false;
     entries.forEach((entry, i) => {
       const entryName = (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
-      if (typeof entryName === "string" && !entryName.includes("${{")) {
+      if (typeof entryName === "string") {
         // The kernel registers every entry into one child context by name, and
         // refuses the second with ERR_DUPLICATE_RESOURCE.
         if (siblings.includes(entryName)) {
@@ -340,7 +340,6 @@ export function validateTemplateBody(
           if (hasValueBranch && typeof value !== "object") continue;
           if (satisfiesValueBranch(value, entry.valueBranches, registry)) continue;
           if (typeof value === "string") {
-            if (value.includes("${{")) continue;
             report(
               "INVALID_REFERENCE_FORM",
               path,

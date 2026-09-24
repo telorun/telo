@@ -150,7 +150,7 @@ If a Library needs an env-derived value, the importing Application declares the 
 `Config.Env` snapshots typed env values under `resources.<Name>.X`; Application-level entries land in the root `variables.X` / `secrets.X` scope. To migrate:
 
 1. Lift each entry from the `Config.Env` resource into the Application's `variables:` / `secrets:` block.
-2. Replace `${{ resources.AppConfig.port }}` references with `${{ variables.port }}` (or `${{ secrets.<name> }}` for secret entries).
+2. Replace `!cel "resources.AppConfig.port"` references with `!cel "variables.port"` (or `!cel "secrets.<name>"` for secret entries).
 3. Delete the `Config.Env` resource.
 
 ```yaml

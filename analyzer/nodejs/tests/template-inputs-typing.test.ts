@@ -38,7 +38,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       },
       schema: { type: "object", properties: {} },
       invoke: { kind: "Sql.Query", name: "x" },
-      inputs: { sql: "${{ keys(inputs.filters).size() > 0 ? 'y' : 'n' }}" },
+      inputs: { sql: { __tagged: true, engine: "cel", source: "keys(inputs.filters).size() > 0 ? 'y' : 'n'" } },
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
@@ -54,7 +54,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       extends: "Repo.Find",
       schema: { type: "object", properties: {} },
       invoke: { kind: "Sql.Query", name: "x" },
-      inputs: { sql: "${{ keys(inputs.filters).size() > 0 ? 'y' : 'n' }}" },
+      inputs: { sql: { __tagged: true, engine: "cel", source: "keys(inputs.filters).size() > 0 ? 'y' : 'n'" } },
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([aliasImport, repositoryAbstract, def]));
@@ -74,7 +74,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       },
       schema: { type: "object", properties: {} },
       invoke: { kind: "Sql.Query", name: "x" },
-      inputs: { sql: "${{ inputs.bogus }}" },
+      inputs: { sql: { __tagged: true, engine: "cel", source: "inputs.bogus" } },
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
@@ -91,7 +91,7 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       capability: "Telo.Invocable",
       schema: { type: "object", properties: {} },
       invoke: { kind: "Sql.Query", name: "x" },
-      inputs: { sql: "${{ inputs.anything }}" },
+      inputs: { sql: { __tagged: true, engine: "cel", source: "inputs.anything" } },
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
@@ -116,13 +116,13 @@ describe("Telo.Definition: static CEL validation for `inputs`", () => {
       resources: [
         {
           kind: "Sql.Exec",
-          metadata: { name: "${{ self.name }}-exec" },
+          metadata: { name: { __tagged: true, engine: "interpolate", source: "${{ self.name }}-exec" } },
           inputs: {
-            sql: "${{ 'INSERT INTO X (' + join(keys(inputs.data), ',') + ')' }}",
+            sql: { __tagged: true, engine: "cel", source: "'INSERT INTO X (' + join(keys(inputs.data), ',') + ')'" },
           },
         },
       ],
-      invoke: "${{ self.name }}-exec",
+      invoke: { __tagged: true, engine: "interpolate", source: "${{ self.name }}-exec" },
     } as unknown as ResourceManifest;
 
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));

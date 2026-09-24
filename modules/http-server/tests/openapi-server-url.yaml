@@ -61,7 +61,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: { ok: "${{ result.ok }}" }
+            body: { ok: !cel "result.ok" }
 ---
 kind: Http.Api
 metadata: { name: apiForwarded }
@@ -72,7 +72,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: { ok: "${{ result.ok }}" }
+            body: { ok: !cel "result.ok" }
 ---
 # One reference instance, mounted on both servers: rendering is stateless, and the
 # document each one serves is its own.
@@ -115,8 +115,8 @@ steps:
     invoke: !ref fetchServerUrl
   - name: assertRelative
     inputs:
-      serverUrl: "${{ steps.hitRelative.result.serverUrl }}"
-      path: "${{ steps.hitRelative.result.path }}"
+      serverUrl: !cel "steps.hitRelative.result.serverUrl"
+      path: !cel "steps.hitRelative.result.path"
     invoke:
       kind: Assert.Schema
       schema:
@@ -134,8 +134,8 @@ steps:
     invoke: !ref fetchServerUrl
   - name: assertForwarded
     inputs:
-      serverUrl: "${{ steps.hitForwarded.result.serverUrl }}"
-      path: "${{ steps.hitForwarded.result.path }}"
+      serverUrl: !cel "steps.hitForwarded.result.serverUrl"
+      path: !cel "steps.hitForwarded.result.path"
     invoke:
       kind: Assert.Schema
       schema:

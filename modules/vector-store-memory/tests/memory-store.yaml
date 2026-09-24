@@ -54,8 +54,8 @@ steps:
       vector: [1, 0]
   - name: assertEviction
     inputs:
-      ok: "${{ size(steps.searchAll.result.matches) == 3 }}"
-      top: "${{ steps.searchAll.result.matches[0].id }}"
+      ok: !cel "size(steps.searchAll.result.matches) == 3"
+      top: !cel "steps.searchAll.result.matches[0].id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -73,8 +73,8 @@ steps:
         tier: { $gte: 4 }
   - name: assertFiltered
     inputs:
-      ok: "${{ size(steps.searchFiltered.result.matches) == 1 }}"
-      top: "${{ steps.searchFiltered.result.matches[0].id }}"
+      ok: !cel "size(steps.searchFiltered.result.matches) == 1"
+      top: !cel "steps.searchFiltered.result.matches[0].id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -92,7 +92,7 @@ steps:
           - { tier: { $lte: 2 } }
   - name: assertDropped
     inputs:
-      removed: "${{ steps.dropByFilter.result.removed }}"
+      removed: !cel "steps.dropByFilter.result.removed"
     invoke:
       kind: Assert.Schema
       schema:
@@ -110,7 +110,7 @@ steps:
     catch:
       - name: assertRejected
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -120,7 +120,7 @@ steps:
               msg: { type: string }
   - name: verifyRejected
     inputs:
-      result: "${{ steps.assertRejected.result }}"
+      result: !cel "steps.assertRejected.result"
     invoke:
       kind: Assert.Schema
       schema:

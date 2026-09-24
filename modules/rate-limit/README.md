@@ -73,4 +73,4 @@ limit: 60
 window: "60s"
 ```
 
-Invoke with `{ key: "<client id>" }`. On an HTTP route, feed `${{ request.ip }}` (see `Http.Server.trustProxy`) and map `allowed: false` to a `429` with `Retry-After: ${{ string(result.retryAfter) }}`.
+Invoke with `{ key: "<client id>" }`. On an HTTP route, feed `!cel "request.ip"` (see `Http.Server.trustProxy`) and map `allowed: false` to a `429` with a `Retry-After` header of `!cel "string(result.retryAfter)"`.

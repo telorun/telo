@@ -60,8 +60,8 @@ steps:
     invoke: !ref listTools
   - name: assertListed
     inputs:
-      toolName: "${{ steps.list.result.tools[0].name }}"
-      toolDescription: "${{ steps.list.result.tools[0].description }}"
+      toolName: !cel "steps.list.result.tools[0].name"
+      toolDescription: !cel "steps.list.result.tools[0].description"
     invoke:
       kind: Assert.Schema
       schema:

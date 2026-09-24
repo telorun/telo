@@ -57,16 +57,16 @@ steps:
     invoke: !ref aiLikeSource
   - name: project
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref deltas
   - name: collect
     inputs:
-      input: "${{ steps.project.result.output }}"
+      input: !cel "steps.project.result.output"
     invoke: !ref collectStrings
   - name: assert
     inputs:
-      text: "${{ steps.collect.result.text }}"
-      count: "${{ steps.collect.result.count }}"
+      text: !cel "steps.collect.result.text"
+      count: !cel "steps.collect.result.count"
     invoke:
       kind: Assert.Schema
       schema:
@@ -96,18 +96,18 @@ steps:
     invoke: !ref errorSource
   - name: errorProject
     inputs:
-      input: "${{ steps.errorSource.result.output }}"
+      input: !cel "steps.errorSource.result.output"
     invoke: !ref deltas
   - name: errorTried
     try:
       - name: errorDrain
         inputs:
-          input: "${{ steps.errorProject.result.output }}"
+          input: !cel "steps.errorProject.result.output"
         invoke: !ref collectStrings
     catch:
       - name: assertErrorCaught
         inputs:
-          message: "${{ error.message }}"
+          message: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -130,18 +130,18 @@ steps:
     invoke: !ref unknownSource
   - name: unknownProject
     inputs:
-      input: "${{ steps.unknownSource.result.output }}"
+      input: !cel "steps.unknownSource.result.output"
     invoke: !ref deltas
   - name: unknownTried
     try:
       - name: unknownDrain
         inputs:
-          input: "${{ steps.unknownProject.result.output }}"
+          input: !cel "steps.unknownProject.result.output"
         invoke: !ref collectStrings
     catch:
       - name: assertUnknownCaught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:

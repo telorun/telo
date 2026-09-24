@@ -18,7 +18,7 @@ Self-hosted checkpoints served over the same API are frequently **not** symmetri
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `model` | string | yes | OpenAI embedding model id (e.g. `text-embedding-3-small`, `text-embedding-3-large`). |
-| `apiKey` | string | yes | API key. Compile-time evaluated; typically `${{ secrets.openaiApiKey }}`. |
+| `apiKey` | string | yes | API key. Compile-time evaluated; typically `!cel "secrets.openaiApiKey"`. |
 | `baseUrl` | string | no | Override the base URL (default `https://api.openai.com/v1`). |
 | `dimensions` | integer | no | Output dimensionality. v3 models support truncating to fewer dimensions. |
 | `options` | object | no | Extra params merged into the request body; per-call `options` win. |

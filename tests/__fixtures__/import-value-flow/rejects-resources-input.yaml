@@ -8,6 +8,6 @@ imports:
   Data:
     source: ./data
     variables:
-      dbFile: "${{ resources.Foo.value }}"
+      dbFile: !cel "resources.Foo.value"
 targets:
   - !ref Data.migrate

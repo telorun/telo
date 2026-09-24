@@ -101,7 +101,7 @@ entries:
       required: [ city ]
     handler: !ref throwsNotFoundImpl
     inputs:
-      city: "${{ request.arguments.city }}"
+      city: !cel "request.arguments.city"
     result:
       content:
         - type: text
@@ -110,7 +110,7 @@ entries:
       - code: not_found
         error:
           code: -32001
-          message: "${{ error.message }}"
+          message: !cel "error.message"
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -137,9 +137,9 @@ steps:
     invoke: !ref mcpFetch
   - name: assertResponse
     inputs:
-      hasError: "${{ steps.callGetWeather.result.hasError }}"
-      errorCode: "${{ steps.callGetWeather.result.error.code }}"
-      errorMessage: "${{ steps.callGetWeather.result.error.message }}"
+      hasError: !cel "steps.callGetWeather.result.hasError"
+      errorCode: !cel "steps.callGetWeather.result.error.code"
+      errorMessage: !cel "steps.callGetWeather.result.error.message"
     invoke:
       kind: Assert.Schema
       schema:

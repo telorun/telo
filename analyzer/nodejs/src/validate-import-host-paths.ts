@@ -1,5 +1,5 @@
 import { isAbsoluteHostPath, type ResourceManifest } from "@telorun/sdk";
-import { isTaggedSentinel, plainChainOf } from "@telorun/templating";
+import { isTaggedSentinel, plainChainOf, producedTypeOf } from "@telorun/templating";
 import { holdsHostPath } from "./host-path-slot.js";
 import type { KernelGlobalsIndex } from "./kernel-globals.js";
 import { navigateSchemaToExprPath } from "./schema-compat.js";
@@ -47,7 +47,6 @@ export function validateImportHostPaths(
       // input accepts beside a path.
       if (
         typeof supplied === "string" &&
-        !supplied.includes("${{") &&
         !constants.includes(supplied) &&
         !isAbsoluteHostPath(supplied)
       ) {
@@ -65,14 +64,21 @@ export function validateImportHostPaths(
         });
         continue;
       }
-      const expression = isTaggedSentinel(supplied)
-        ? supplied.engine === "cel"
-          ? `\${{${supplied.source}}}`
-          : undefined
-        : typeof supplied === "string"
-          ? supplied
-          : undefined;
-      const chain = expression === undefined ? undefined : plainChainOf(expression);
+      if (isTaggedSentinel(supplied) && producedTypeOf(supplied.engine)?.type === "string") {
+        out.push({
+          severity: DiagnosticSeverity.Error,
+          code: "HOST_PATH_UNTYPED_SOURCE",
+          source: SOURCE,
+          message:
+            `Telo.Import/${String(metadata.name ?? "")}: '${input}' is a Telo.HostPath in the ` +
+            `imported library, but !${supplied.engine} produces a plain string, which reaches the ` +
+            `library unresolved. Pass a variable declared 'x-telo-type: Telo.HostPath' or a ` +
+            `!module-path.`,
+          data: { ...where, path: input },
+        });
+        continue;
+      }
+      const chain = plainChainOf(supplied);
       if (!chain) continue;
       const source = navigateSchemaToExprPath(kernelGlobals.forResource(manifest), chain);
       if (!source || holdsHostPath(source)) continue;

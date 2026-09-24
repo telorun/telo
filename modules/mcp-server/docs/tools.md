@@ -26,19 +26,19 @@ entries:
       required: [...]
     handler: <ref to a Telo.Invocable>
     inputs:                           # CEL: MCP request → handler input
-      <handlerField>: ${{ request.arguments.<x> }}
+      <handlerField>: !cel "request.arguments.<x>"
     result:                           # CEL: handler output → CallToolResult
       content:
         - type: text
-          text: ${{ result.<y> }}
-      isError: ${{ result.<bool>? }}  # optional
+          text: !cel "result.<y>"
+      isError: !cel "result.<bool>?"  # optional
     catches:                          # optional — InvokeError → JSON-RPC error
       - code: <telo_error_code>       # match by code, omit for catch-all
-        when: ${{ <bool> }}           # optional CEL predicate
+        when: !cel "<bool>"           # optional CEL predicate
         error:
           code: <jsonrpc_int>
-          message: ${{ error.message }}
-          data: ${{ error.data }}     # optional
+          message: !cel "error.message"
+          data: !cel "error.data"     # optional
 ```
 
 ## CEL scopes

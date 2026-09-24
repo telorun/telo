@@ -29,7 +29,7 @@ steps:
         sum: !cel "inputs.a + inputs.b"
   - name: verifySum
     inputs:
-      sum: "${{ steps.addNumbers.result.sum }}"
+      sum: !cel "steps.addNumbers.result.sum"
     invoke:
       kind: Assert.Schema
       schema:

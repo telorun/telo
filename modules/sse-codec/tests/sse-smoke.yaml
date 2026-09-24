@@ -43,15 +43,15 @@ steps:
     invoke: !ref source
   - name: encode
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref encoder
   - name: drain
     inputs:
-      bytes: "${{ steps.encode.result.output }}"
+      bytes: !cel "steps.encode.result.output"
     invoke: !ref drain
   - name: assert
     inputs:
-      text: "${{ steps.drain.result.text }}"
+      text: !cel "steps.drain.result.text"
     invoke:
       kind: Assert.Schema
       schema:

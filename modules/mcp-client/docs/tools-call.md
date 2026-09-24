@@ -77,7 +77,7 @@ steps:
     catch:
       - name: HandleToolError
         inputs:
-          content: "${{ error.data.content }}"
+          content: !cel "error.data.content"
         invoke: ...
 ```
 

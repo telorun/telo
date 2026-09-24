@@ -18,23 +18,23 @@ targets:
     invoke: !ref source
   - name: toBytes
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref toBytes
   - name: compress
     inputs:
-      input: "${{ steps.toBytes.result.output }}"
+      input: !cel "steps.toBytes.result.output"
     invoke: !ref compress
   - name: decompress
     inputs:
-      input: "${{ steps.compress.result.output }}"
+      input: !cel "steps.compress.result.output"
     invoke: !ref decompress
   - name: toText
     inputs:
-      input: "${{ steps.decompress.result.output }}"
+      input: !cel "steps.decompress.result.output"
     invoke: !ref toText
   - name: assert
     inputs:
-      text: "${{ steps.toText.result.text }}"
+      text: !cel "steps.toText.result.text"
     invoke: !ref assertText
 ---
 kind: Stream.Of

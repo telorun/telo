@@ -101,6 +101,7 @@ function adaptNode(node: Node, text: string): AstNode | undefined {
           range[0],
           tag,
           isTaggedSentinel(value) ? value.source : undefined,
+          typeof node.type === "string" ? node.type : undefined,
         ),
     };
   }

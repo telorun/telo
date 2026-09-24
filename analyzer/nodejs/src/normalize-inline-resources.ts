@@ -187,7 +187,7 @@ export function normalizeInlineResources(
     const provenance = provenanceOf(definition, undefined);
     for (const entry of body) {
       const name = (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
-      if (typeof name !== "string" || name.includes("${{")) continue;
+      if (typeof name !== "string") continue;
       if (typeof (entry as { kind?: unknown }).kind !== "string") continue;
       queue.push({ manifest: entry as NamedManifest, home: body, outside: [], inBody: true, ...provenance });
     }
@@ -409,8 +409,6 @@ function pureSelfField(value: unknown): string | undefined {
   } else if (value && typeof value === "object" && (value as { __compiled?: unknown }).__compiled) {
     const compiled = (value as { source?: unknown }).source;
     if (typeof compiled === "string") source = compiled;
-  } else if (typeof value === "string") {
-    source = /^\s*\$\{\{([\s\S]*)\}\}\s*$/.exec(value)?.[1];
   }
   return source === undefined ? undefined : /^self\.([A-Za-z_$][\w$]*)$/.exec(source.trim())?.[1];
 }

@@ -39,7 +39,7 @@ steps:
     invoke: !ref addNumbers
   - name: bad
     inputs:
-      value: "${{ steps.add.result.nonExistent }}"
+      value: !cel "steps.add.result.nonExistent"
     invoke:
       kind: JavaScript.Script
       code: |

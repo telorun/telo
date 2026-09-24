@@ -63,11 +63,11 @@ steps:
   # flattens the tool message content to its text part → "page rendered".
   - name: assertParts
     inputs:
-      content: "${{ steps.invoke.result.steps[0].toolResults[0].content }}"
-      textType: "${{ steps.invoke.result.steps[0].toolResults[0].content[0].type }}"
-      imageType: "${{ steps.invoke.result.steps[0].toolResults[0].content[1].type }}"
-      mediaType: "${{ steps.invoke.result.steps[0].toolResults[0].content[1].mediaType }}"
-      finalText: "${{ steps.invoke.result.text }}"
+      content: !cel "steps.invoke.result.steps[0].toolResults[0].content"
+      textType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].type"
+      imageType: !cel "steps.invoke.result.steps[0].toolResults[0].content[1].type"
+      mediaType: !cel "steps.invoke.result.steps[0].toolResults[0].content[1].mediaType"
+      finalText: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
       schema:

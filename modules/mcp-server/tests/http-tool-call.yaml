@@ -31,11 +31,11 @@ entries:
       required: [ city ]
     handler: !ref getWeatherImpl
     inputs:
-      city: "${{ request.arguments.city }}"
+      city: !cel "request.arguments.city"
     result:
       content:
         - type: text
-          text: "${{ result.summary }}"
+          text: !cel "result.summary"
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -74,7 +74,7 @@ steps:
     invoke: !ref callGetWeather
   - name: assertResponse
     inputs:
-      contentText: "${{ steps.callGetWeather.result.content[0].text }}"
+      contentText: !cel "steps.callGetWeather.result.content[0].text"
     invoke:
       kind: Assert.Schema
       schema:

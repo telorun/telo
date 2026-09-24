@@ -1,5 +1,5 @@
 import type { ASTNode, Environment } from "@marcbachmann/cel-js";
-import { isTaggedSentinel } from "@telorun/templating";
+import { CEL_ENGINE, celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
   isAmbientContractErrorCode,
@@ -33,10 +33,9 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
-const TEMPLATE_REGEX = /\$\{\{\s*([^}]+?)\s*\}\}/g;
 
 interface OutcomeEntry {
-  /** Inline `"${{ … }}"` string or a `!cel` TaggedSentinel. */
+  /** A `!cel` TaggedSentinel. */
   when?: unknown;
   body?: unknown;
   headers?: Record<string, unknown>;
@@ -166,14 +165,9 @@ function extractCoveredCodes(
   whenExpr: unknown,
   env: Environment,
 ): { proven: boolean; codes: Set<string> } {
-  // The `when:` value is either a `!cel` TaggedSentinel (carrying the raw CEL
-  // source) or an inline `"${{ … }}"` string — both forms are load-equivalent.
+  // The `when:` value is a `!cel` TaggedSentinel carrying the raw CEL source.
   const source =
-    isTaggedSentinel(whenExpr) && whenExpr.engine === "cel"
-      ? whenExpr.source
-      : typeof whenExpr === "string"
-        ? whenExpr.match(/\$\{\{\s*([^}]+?)\s*\}\}/)?.[1]
-        : undefined;
+    isTaggedSentinel(whenExpr) && whenExpr.engine === CEL_ENGINE ? whenExpr.source : undefined;
   if (!source) return { proven: false, codes: new Set() };
   let ast: ASTNode;
   try {
@@ -451,17 +445,11 @@ interface CelString {
 
 function collectCelStrings(value: unknown, path: string): CelString[] {
   const out: CelString[] = [];
-  // A `!cel` sentinel and a `${{ … }}` string are load-equivalent, and the
-  // formatter normalizes to the tag — so recognising only the string form left
-  // this check answering about a spelling no manifest in the repository uses,
-  // while walking the sentinel as a plain object found nothing.
+  // Every CEL expression a tag holds — the whole `!cel` scalar, each hole of a
+  // tag with holes — since walking a sentinel as a plain object finds nothing.
   if (isTaggedSentinel(value)) {
-    if (value.engine === "cel") out.push({ expr: value.source.trim(), path });
-    return out;
-  }
-  if (typeof value === "string") {
-    for (const m of value.matchAll(TEMPLATE_REGEX)) {
-      out.push({ expr: m[1].trim(), path });
+    for (const expr of celExpressionsOf(value.engine, value.source)) {
+      out.push({ expr: expr.trim(), path });
     }
     return out;
   }

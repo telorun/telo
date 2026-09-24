@@ -78,15 +78,25 @@ scratch variable. The next section covers it properly.
 
 ```yaml
 port:    !cel "ports.http"
-message: !cel "'Hello, ' + inputs.name + '!'"
 enabled: !cel "variables.mode == 'production'"
+message: !interpolate "Hello, ${{ inputs.name }}!"
 ```
 
-Always write CEL with the `!cel` tag — pure expressions and string
-interpolation alike. You will see the older inline form (`"${{ … }}"`) in
-existing manifests; it still evaluates, but new manifests should not use it,
-because the formatter normalizes to `!cel` and the inline form does not survive
-a round-trip through tooling intact.
+A computed value of any type is written `!cel`. Text with values embedded in it
+is written `!interpolate`: literal text with `${{ … }}` holes, each hole a CEL
+expression. It always produces a string, and each hole is converted exactly as
+CEL's `string()` converts it — a timestamp as RFC 3339, a duration as `5400s`,
+bytes as UTF-8. `telo check` reports a hole it cannot convert (a list, a map) as
+`INTERPOLATION_HOLE_NOT_CONVERTIBLE` and one that may be null as
+`CEL_NULLABLE_ACCESS`; a hole that turns out null at run time fails with
+`ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE`. Concatenation inside `!cel`
+(`!cel "'Hello, ' + inputs.name"`) is still valid.
+
+A plain string holding `${{ … }}` is never evaluated. Older manifests wrote it
+that way: it still loads — a lone `"${{ x }}"` is read as `!cel "x"` and any other
+as `!interpolate` — with a `DEPRECATED_UNTAGGED_INTERPOLATION` warning, and
+`telo migrate` rewrites the file. Text that is literally `${{` is written
+`!literal`.
 
 ### What is in scope, and where
 

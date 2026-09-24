@@ -58,10 +58,10 @@ is missing:
 - name: parse
   invoke: { kind: Yaml.Parse }
   inputs:
-    text: ${{ inputs.body }}
+    text: !cel "inputs.body"
 - name: record
   inputs:
-    description: ${{ steps.parse.result.docs[?0].?metadata.?description.orValue(null) }}
+    description: !cel "steps.parse.result.docs[?0].?metadata.?description.orValue(null)"
   invoke: { ... }
 ```
 
@@ -69,7 +69,7 @@ Add a `type(...) == string` guard if you need to reject non-string values
 (e.g. a publisher who supplies a YAML mapping where a string was expected):
 
 ```yaml
-description: ${{ type(steps.parse.result.docs[?0].?metadata.?description.orValue('')) == string ? steps.parse.result.docs[?0].?metadata.?description.orValue(null) : null }}
+description: !cel "type(steps.parse.result.docs[?0].?metadata.?description.orValue('')) == string ? steps.parse.result.docs[?0].?metadata.?description.orValue(null) : null"
 ```
 
 ## When to use this vs. the kernel's own loader

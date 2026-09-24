@@ -88,15 +88,15 @@ steps:
     invoke: !ref delayedSource
   - name: wait
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref wait
   - name: collect
     inputs:
-      input: "${{ steps.wait.result.output }}"
+      input: !cel "steps.wait.result.output"
     invoke: !ref collectChunks
   - name: assertContents
     inputs:
-      joined: "${{ steps.collect.result.joined }}"
+      joined: !cel "steps.collect.result.joined"
     invoke:
       kind: Assert.Schema
       schema:
@@ -117,15 +117,15 @@ steps:
     invoke: !ref emptySource
   - name: wait
     inputs:
-      input: "${{ steps.emptySrc.result.output }}"
+      input: !cel "steps.emptySrc.result.output"
     invoke: !ref wait
   - name: collect
     inputs:
-      input: "${{ steps.wait.result.output }}"
+      input: !cel "steps.wait.result.output"
     invoke: !ref collectChunks
   - name: assertEmptyReached
     inputs:
-      joined: "${{ steps.collect.result.joined }}"
+      joined: !cel "steps.collect.result.joined"
     invoke:
       kind: Assert.Schema
       schema:
@@ -147,18 +147,18 @@ steps:
     invoke: !ref immediateErrorSource
   - name: errWait
     inputs:
-      input: "${{ steps.errSrc.result.output }}"
+      input: !cel "steps.errSrc.result.output"
     invoke: !ref wait
   - name: errTried
     try:
       - name: errCollect
         inputs:
-          input: "${{ steps.errWait.result.output }}"
+          input: !cel "steps.errWait.result.output"
         invoke: !ref collectChunks
     catch:
       - name: assertErrCaught
         inputs:
-          message: "${{ error.message }}"
+          message: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -217,16 +217,16 @@ steps:
   - name: trackedSrc
     invoke: !ref trackedSource
   - name: wrapWait
-    inputs: { input: "${{ steps.trackedSrc.result.output }}" }
+    inputs: { input: !cel "steps.trackedSrc.result.output" }
     invoke: !ref wait
   - name: breakEarly
-    inputs: { input: "${{ steps.wrapWait.result.output }}" }
+    inputs: { input: !cel "steps.wrapWait.result.output" }
     invoke: !ref takeUntilXAndBreak
   - name: readFlag
     invoke: !ref readCancellationFlag
   - name: assertCancellationPropagated
     inputs:
-      returnCalled: "${{ steps.readFlag.result.returnCalled }}"
+      returnCalled: !cel "steps.readFlag.result.returnCalled"
     invoke:
       kind: Assert.Schema
       schema:

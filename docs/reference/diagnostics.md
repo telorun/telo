@@ -87,7 +87,10 @@ how to read a failure, and the debugging flags — see
 | `CEL_UNKNOWN_FUNCTION` | The expression calls a function that does not exist. The message suggests the nearest name; `telo cel functions` lists them all. |
 | `CEL_WRONG_CALL_FORM` | The function exists but is called the wrong way round — a method written as a global (`size(x)` vs `x.size()`), or vice versa. The message shows the correct spelling. |
 | `CEL_TYPE_ARGUMENT_MISMATCH` | The expression yields a parameterised value type (`Telo.Stream` of `Telo.Bytes`) whose arguments disagree with the field's declared ones. |
-| `CEL_NULLABLE_ACCESS` | Dereferencing a value whose schema admits `null` without a guard. |
+| `CEL_NULLABLE_ACCESS` | Dereferencing a value whose schema admits `null` without a guard — or an `!interpolate` hole that is such a value, since a null has no text. |
+| `INTERPOLATION_HOLE_NOT_CONVERTIBLE` | An `!interpolate` hole's type has no `string()` conversion (a list, a map). Convert it inside the hole, or write the whole value as `!cel`. |
+| `UNTAGGED_INTERPOLATION` | A plain string holds `${{`, which is never evaluated. Loading normally migrates it, so this means it was read without migrations or no hole can be read out of it (`"${{ foo"`). Run `telo migrate`, or tag the text `!literal` if it is literal. In an imported library it is reported at your import of it, since the library then fails to load; import a version that fixes it. |
+| `DEPRECATED_UNTAGGED_INTERPOLATION` ⚠️ | A plain string holding `${{ }}` — the legacy spelling. It still runs, rewritten at load: a lone hole to `!cel`, text with holes to `!interpolate`. `telo migrate` writes the same rewrite to the file. |
 | `CEL_IN_NON_EVAL_FIELD` | The field is never evaluated, so the expression would be read as a literal. |
 | `CEL_NONDETERMINISTIC_IN_COMPILE_FIELD` ⚠️ | `now()`, `uuidv4()` or another volatile call — or a module function that reaches one, named by its chain (`Billing.isStale → now()`) — sits in a field evaluated once at startup, so the value is baked in at load and never changes. Move it to a per-call field if it should vary. |
 | `ENGINE_DIAGNOSTIC` | A templating tag other than `!cel` (for example `!sql`) reported a problem with its body. The message carries the engine's own text. |
@@ -288,6 +291,7 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_RUNTIME_EVAL_WITHOUT_INVOKE` | A kind declares `x-telo-eval: runtime` but its resources have no `invoke()`. Runtime evaluation expands a call's inputs, and `run()` / `provide()` take none, so nothing would ever expand the field. Use `x-telo-eval: compile` for a value resolved once at creation, or give the kind an invocable controller. |
 | `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` | A resource's config does not match its kind's schema at creation. Normally caught earlier by `telo check` as `SCHEMA_VIOLATION`; at runtime it means the kernel was run without a check, or a value only known at creation (an embedded file, a CEL result) is the wrong shape. |
 | `ERR_SHARED_LIBRARY_CONFLICT` / `ERR_SHARED_LIBRARY_OVERRIDE` | The runtime half of `SHARED_LIBRARY_CONFLICT` / `SHARED_LIBRARY_OVERRIDE`, authoritative because it holds resolved values: two imports of a `lifecycle: shared` library disagree, or one carries a per-import override. |
+| `ERR_UNTAGGED_INTERPOLATION` | A plain string holding `${{` reached the compiler — read without migrations, or no hole can be read out of it. The static form is `UNTAGGED_INTERPOLATION`. |
 | `ERR_SCHEMA_PROJECTION_UNRESOLVED` | A slot that opted into a declaration-derived shape (`x-telo-schema-projection-from`) got none at dispatch. Refused rather than degraded, since a repository kind would otherwise accept arbitrary keys in a SQL identifier position. |
 
 ### Initialization
@@ -318,6 +322,7 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_RESOURCE_NOT_INVOKABLE` / `ERR_RESOURCE_NOT_RUNNABLE` | The target exists but has no `invoke`/`run`. Check the kind's capability against the slot. |
 | `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` | The values passed to, or produced by, a call do not satisfy the declared `inputType`/`outputType` — or a native function's `params` / `returns`, or an HTTP request's text at a slot whose value type's encoding does not read it. Raised as structured errors, so they can be caught — but never declared by a kind. |
 | `ERR_CONTRACT_UNRESOLVABLE` | A declared contract could not be resolved to a schema. |
+| `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | An `!interpolate` hole evaluated to null, a list or a map, which CEL's `string()` cannot turn into text. The message names the hole and the type found. Declare `outputType` on the resource producing the value so `telo check` sees its type, or guard it inside the hole. |
 | `ERR_INVOKE_CANCELLED` | The invoke was cancelled — a shutdown signal, a disconnected client, or an elapsed deadline. |
 | `ERR_EXECUTION_FAILED` | A dispatch failed; the underlying error is attached as its cause. |
 | `ERR_INVALID_VALUE` | A resource reference string is not `<Kind>.<Name>`. |

@@ -418,6 +418,7 @@ export {
   undeclaredKeySchema,
 } from "./schema-compat.js";
 export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
+export { schemaWithTagsAsText } from "./schema-tag-text.js";
 export {
   ajvErrorToPath,
   formatAjvErrors,

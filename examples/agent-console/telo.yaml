@@ -160,7 +160,7 @@ steps:
       - name: insertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "user", "${{ steps.read.result.value }}" ]
+          bindings: [ "user", !cel "steps.read.result.value" ]
         invoke:
           kind: Sql.Command
           connection: !ref chatDb
@@ -180,7 +180,7 @@ steps:
           - name: printTools
             invoke: !ref Console.writeLine
             inputs:
-              output: >-
+              output: !interpolate >-
                 {dim 🔧 ${{ steps.ask.result.steps
                   .map(s, s.toolCalls.map(tc, tc.name).join(', '))
                   .filter(line, line != '')
@@ -188,11 +188,11 @@ steps:
       - name: print
         invoke: !ref Console.writeLine
         inputs:
-          output: "{magenta.bold ai}  › ${{ steps.ask.result.text }}"
+          output: !interpolate "{magenta.bold ai}  › ${{ steps.ask.result.text }}"
       - name: insertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "assistant", "${{ steps.ask.result.text }}" ]
+          bindings: [ "assistant", !cel "steps.ask.result.text" ]
         invoke:
           kind: Sql.Command
           connection: !ref chatDb

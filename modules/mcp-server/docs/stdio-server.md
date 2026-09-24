@@ -83,10 +83,10 @@ entries:
       properties: { city: { type: string } }
       required: [ city ]
     handler: { kind: JS.Script, name: GetWeatherImpl }
-    inputs: { city: "${{ request.arguments.city }}" }
+    inputs: { city: !cel "request.arguments.city" }
     result:
       content:
-        - { type: text, text: "${{ result.summary }}" }
+        - { type: text, text: !cel "result.summary" }
 ```
 
 ## Differences from `Mcp.HttpEndpoint`

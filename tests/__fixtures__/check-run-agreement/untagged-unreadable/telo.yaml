@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: UntaggedUnreadableApp
+imports:
+  Lib: ./lib
+targets:
+  - name: call
+    invoke: !ref Lib.say

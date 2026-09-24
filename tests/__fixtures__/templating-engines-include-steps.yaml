@@ -23,8 +23,8 @@ steps:
         raw: !cel "inputs.raw"
   - name: assertPartial
     inputs:
-      computed: "${{ steps.celInPartial.result.computed }}"
-      raw: "${{ steps.celInPartial.result.raw }}"
+      computed: !cel "steps.celInPartial.result.computed"
+      raw: !cel "steps.celInPartial.result.raw"
     invoke:
       kind: Assert.Schema
       schema:

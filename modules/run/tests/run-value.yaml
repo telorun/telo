@@ -23,8 +23,8 @@ inputType:
       a: { type: number }
       b: { type: number }
 value:
-  greeting: "${{ 'Hello, ' + inputs.name + '!' }}"
-  product: "${{ inputs.a * inputs.b }}"
+  greeting: !cel "'Hello, ' + inputs.name + '!'"
+  product: !cel "inputs.a * inputs.b"
 ---
 # Constant result with no inputs — a plain literal array, any shape.
 kind: Run.Value
@@ -44,7 +44,7 @@ inputType:
     type: object
     properties:
       n: { type: integer }
-value: "${{ double(inputs.n) * 2.0 }}"
+value: !cel "double(inputs.n) * 2.0"
 ---
 kind: Run.Sequence
 metadata:
@@ -55,8 +55,8 @@ steps:
     inputs: { name: telo, a: 6, b: 7 }
   - name: verify
     inputs:
-      greeting: "${{ steps.shape.result.greeting }}"
-      product: "${{ steps.shape.result.product }}"
+      greeting: !cel "steps.shape.result.greeting"
+      product: !cel "steps.shape.result.product"
     invoke:
       kind: Assert.Schema
       schema:
@@ -74,9 +74,9 @@ steps:
     invoke: !ref parts
   - name: verify
     inputs:
-      type0: "${{ steps.parts.result[0].type }}"
-      type1: "${{ steps.parts.result[1].type }}"
-      media: "${{ steps.parts.result[1].mediaType }}"
+      type0: !cel "steps.parts.result[0].type"
+      type1: !cel "steps.parts.result[1].type"
+      media: !cel "steps.parts.result[1].mediaType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -96,7 +96,7 @@ steps:
     inputs: { n: 21 }
   - name: verify
     inputs:
-      doubled: "${{ steps.answer.result }}"
+      doubled: !cel "steps.answer.result"
     invoke:
       kind: Assert.Schema
       schema:

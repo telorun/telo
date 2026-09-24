@@ -25,7 +25,7 @@ const CEL_LANGUAGE_ID = "telo-cel";
  * pattern the source view's providers already use, keyed by model here because
  * several fields can be open at once (a form and the panel beside it).
  */
-const targets = new Map<string, CelFieldTarget & { path: string }>();
+const targets = new Map<string, CelFieldTarget & { path: string; tag: string }>();
 
 let registered = false;
 
@@ -44,16 +44,20 @@ function registerCelLanguage(monaco: Monaco): void {
       if (!target || !query) return { suggestions: [] };
 
       const text = model.getValue();
-      // The field holds a `!cel` BODY, so it is one segment spanning the whole
-      // text. Completion never parses it — `celCursorChain` is textual, which
-      // is what keeps the list alive while `request.` is mid-typed.
-      const segment = buildCelSegments(text, 0, "!cel", text)[0];
+      const offset = model.getOffsetAt(position);
+      // The field holds the tag's scalar, so its engine says where the CEL is —
+      // the whole body for `!cel`, each hole for a tag with holes. Completion
+      // never parses it — `celCursorChain` is textual, which is what keeps the
+      // list alive while `request.` is mid-typed.
+      const segment = buildCelSegments(text, 0, `!${target.tag}`, text).find(
+        (s) => offset >= s.range[0] && offset <= s.range[1],
+      );
       if (!segment) return { suggestions: [] };
 
       const results = celCompletions(
         text,
         segment,
-        model.getOffsetAt(position),
+        offset,
         target.path,
         target.resource,
         query,
@@ -85,6 +89,8 @@ function registerCelLanguage(monaco: Monaco): void {
 }
 
 interface CelExpressionEditorProps {
+  /** The tag the scalar is written under, without its `!`. */
+  tag: string;
   value: string;
   onValueChange: (next: string) => void;
   onBlur?: () => void;
@@ -105,7 +111,9 @@ const PADDING_Y = 4;
 const PADDING_X = 8;
 
 /**
- * A CEL body with the completions the analyzer resolves for this exact site.
+ * A tagged scalar holding CEL — a `!cel` body, or text with `${{ }}` holes —
+ * with the completions the analyzer resolves for this exact site, inside
+ * whichever expression the cursor is in.
  *
  * The alternative — a plain text box — is what the field had, and it made the
  * editor the one surface where an author writing CEL has no idea what is in
@@ -114,6 +122,7 @@ const PADDING_X = 8;
  * the analysis on screen, so the list is the same claim `telo check` makes.
  */
 export function CelExpressionEditor({
+  tag,
   value,
   onValueChange,
   onBlur,
@@ -125,15 +134,15 @@ export function CelExpressionEditor({
   const onBlurRef = useRef(onBlur);
   onBlurRef.current = onBlur;
   const uriRef = useRef<string | undefined>(undefined);
-  const targetRef = useRef(target);
-  targetRef.current = target;
+  const targetRef = useRef({ ...target, tag });
+  targetRef.current = { ...target, tag };
 
   // Re-published on every render: the same field can move to another resource
   // or path while the model stays (a selection change re-renders the form), and
   // a stale entry would resolve the scope of the field the user just left.
   useEffect(() => {
     const uri = uriRef.current;
-    if (uri) targets.set(uri, target);
+    if (uri) targets.set(uri, { ...target, tag });
   });
 
   useEffect(

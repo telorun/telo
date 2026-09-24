@@ -3,7 +3,6 @@ import {
   isRefSentinel,
   isTaggedSentinel,
   walkCelExpressions,
-  type CelSurface,
 } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -34,7 +33,7 @@ import { extractContextsFromSchema, pathMatchesScope } from "./validate-cel-cont
  *   per-kind field map (`RefSite`, `ScopeBoundary`, `SchemaFromSite`). This is
  *   map iteration resolved against the resource value, not a node-by-node tree
  *   descent; the field map already unifies all three annotation types.
- * - **Value-tree-driven** — compiled `${{...}}` / `!cel` nodes are found by
+ * - **Value-tree-driven** — compiled and tagged CEL nodes (`!cel`, `!interpolate`, `!sql`) are found by
  *   scanning the resource value tree (`CelSite`). CEL can sit in any string
  *   field, including ones the field map never lists, so its discovery is
  *   fundamentally not path-driven; the field map only supplies the matched
@@ -135,9 +134,6 @@ export interface CelSiteEvent {
   contextSchema?: Record<string, any>;
   /** Scope of the matched context (e.g. `$.routes[*].handler`), if matched. */
   matchedScope?: string;
-  /** Where `expr` sits in the scalar at `path`, and the delimiters to restore
-   *  around a corrected expression. See `CelSurface`. */
-  surface: CelSurface;
 }
 
 export interface ManifestVisitor {
@@ -425,7 +421,7 @@ export function visitManifest(
       // own: a nested kind's region is deeper than the enclosing definition's
       // blanket `$.resources[*]`, so it takes precedence.
       contexts.sort((a, b) => b.scope.length - a.scope.length);
-      walkCelExpressions(r, "", (expr, path, engineName, surface) => {
+      walkCelExpressions(r, "", (expr, path, engineName) => {
         let contextSchema: Record<string, any> | undefined;
         let matchedScope: string | undefined;
         for (const ctx of contexts) {
@@ -435,7 +431,7 @@ export function visitManifest(
             break;
           }
         }
-        visitor.onCel!({ source: r, path, expr, engineName, contextSchema, matchedScope, surface });
+        visitor.onCel!({ source: r, path, expr, engineName, contextSchema, matchedScope });
       });
     }
 

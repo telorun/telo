@@ -79,7 +79,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
             // Refers to the try-wrapper, which never lands in `steps`.
             // Pre-fix this slipped through because every named step was
             // registered with a permissive `result: additionalProperties: true`.
-            value: "${{ steps.wrapParse.result.docs }}",
+            value: { __tagged: true, engine: "cel", source: "steps.wrapParse.result.docs" },
           },
         },
       ],
@@ -99,13 +99,13 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
       steps: [
         {
           name: "checkSomething",
-          if: "${{ true }}",
+          if: { __tagged: true, engine: "cel", source: "true" },
           then: [{ name: "doWork", invoke: { kind: "Some.Sink" } }],
         },
         {
           name: "useCheck",
           invoke: { kind: "Some.Sink" },
-          inputs: { value: "${{ steps.checkSomething.result }}" },
+          inputs: { value: { __tagged: true, engine: "cel", source: "steps.checkSomething.result" } },
         },
       ],
     } as unknown as ResourceManifest;
@@ -125,7 +125,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
         {
           name: "second",
           invoke: { kind: "Some.Sink" },
-          inputs: { value: "${{ steps.first.result }}" },
+          inputs: { value: { __tagged: true, engine: "cel", source: "steps.first.result" } },
         },
       ],
     } as unknown as ResourceManifest;
@@ -149,7 +149,7 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
         },
         {
           name: "validateRootDoc",
-          if: "${{ !(steps.parseManifest.result.docs[?0].?kind.orValue('') in ['A','B']) }}",
+          if: { __tagged: true, engine: "cel", source: "!(steps.parseManifest.result.docs[?0].?kind.orValue('') in ['A','B'])" },
           then: [{ name: "noop", invoke: { kind: "Some.Sink" } }],
         },
       ],

@@ -50,8 +50,8 @@ steps:
       method: GET
   - name: assertOk
     inputs:
-      status: "${{ steps.hit.result.status }}"
-      message: "${{ steps.hit.result.body.message }}"
+      status: !cel "steps.hit.result.status"
+      message: !cel "steps.hit.result.body.message"
     invoke:
       kind: Assert.Schema
       schema:

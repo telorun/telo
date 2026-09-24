@@ -42,7 +42,7 @@ returns:
   - status: 200
     content:
       application/json:
-        body: { message: "${{ result.greeting }}" }
+        body: { message: !cel "result.greeting" }
         schema: { type: object, properties: { message: { type: string } } }
 ```
 
@@ -80,7 +80,7 @@ The `Accept` header decides which key wins (see [Content negotiation](#content-n
 ```yaml
 returns:
   - status: 204
-    when: "${{ result == null }}"
+    when: !cel "result == null"
     # no `content:` block — status only
 ```
 
@@ -88,21 +88,21 @@ returns:
 
 ```yaml
 catches:
-  - when: "${{ error.code == 'UNAUTHORIZED' }}"
+  - when: !cel "error.code == 'UNAUTHORIZED'"
     status: 401
     content:
       application/json:
         body:
           error:
-            code: "${{ error.code }}"
-            message: "${{ error.message }}"
+            code: !cel "error.code"
+            message: !cel "error.message"
   - status: 500 # catch-all for any declared code not matched above
     content:
       application/json:
         body:
           error:
-            code: "${{ error.code }}"
-            message: "${{ error.message }}"
+            code: !cel "error.code"
+            message: !cel "error.message"
 ```
 
 `catches:` are buffer-mode only — by the time a catch fires the response is committed pre-stream and there's no upstream iterable to feed an encoder.

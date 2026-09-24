@@ -133,7 +133,7 @@ steps:
       - name: insertUser
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "user", "${{ steps.read.result.value }}" ]
+          bindings: [ "user", !cel "steps.read.result.value" ]
         invoke:
           kind: Sql.Command
           connection: !ref chatDb
@@ -170,7 +170,7 @@ steps:
       - name: insertAssistant
         inputs:
           sql: "INSERT INTO messages (role, content) VALUES (?, ?)"
-          bindings: [ "assistant", "${{ steps.collect.result.text }}" ]
+          bindings: [ "assistant", !cel "steps.collect.result.text" ]
         invoke:
           kind: Sql.Command
           connection: !ref chatDb

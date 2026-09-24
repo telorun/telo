@@ -53,6 +53,18 @@ function renderScalar(original: string, value: unknown): string | undefined {
   return renderFixReplacement(original, value);
 }
 
+/**
+ * The scalar a `set-tag` with `source: hole` writes over `original`: the hole's
+ * expression as a double-quoted scalar. JSON's string escapes are a subset of
+ * YAML's double-quoted ones, so every character — a line break, a control
+ * character — reads back as written. A block scalar's span ends in the line
+ * break that closed its mapping entry, so that break is kept.
+ */
+function replacedScalar(original: string, expression: string): string {
+  const quoted = JSON.stringify(expression);
+  return /^[|>]/.test(original) ? quoted + (original.match(/\n\s*$/)?.[0] ?? "") : quoted;
+}
+
 /** Column of `offset` within its line, and the offset of that line's start. */
 function lineGeometry(text: string, offset: number): { lineStart: number; indent: number } {
   const lineStart = text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
@@ -123,7 +135,10 @@ export function planTextEdits(
         const existing = typeof node.tag === "string" ? node.tag : undefined;
         const tagStart = existing ? text.lastIndexOf(existing, range[0]) : -1;
         valueSpan = [tagStart >= 0 ? tagStart : range[0], range[1]];
-        scalarText ??= text.slice(range[0], range[1]);
+        const original = text.slice(range[0], range[1]);
+        scalarText = effect.replaces
+          ? replacedScalar(original, effect.source)
+          : (scalarText ?? original);
         tagText = `!${effect.tag}`;
         break;
       }

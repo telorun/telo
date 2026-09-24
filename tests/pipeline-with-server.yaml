@@ -34,7 +34,7 @@ with:
                   type: string
               required: [ "name" ]
         inputs:
-          name: "${{ request.query.name }}"
+          name: !cel "request.query.name"
         handler: !ref GreetingHandler
         returns:
           - status: 200
@@ -46,7 +46,7 @@ with:
                     message: { type: string }
                   required: [ message ]
                 body:
-                  message: "${{ result.greeting }}"
+                  message: !cel "result.greeting"
   - kind: Http.Server
     metadata:
       name: TestServer
@@ -69,7 +69,7 @@ steps:
 
   - name: verifyResponse
     inputs:
-      message: "${{ steps.fetchGreeting.result.body.message }}"
+      message: !cel "steps.fetchGreeting.result.body.message"
     invoke:
       kind: Assert.Schema
       schema:

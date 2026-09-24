@@ -37,7 +37,7 @@ steps:
               step: { type: string, const: "outer" }
               reason: { type: string, const: "expired" }
         inputs:
-          code: "${{ error.code }}"
-          message: "${{ error.message }}"
-          step: "${{ error.step }}"
-          reason: "${{ error.data.reason }}"
+          code: !cel "error.code"
+          message: !cel "error.message"
+          step: !cel "error.step"
+          reason: !cel "error.data.reason"

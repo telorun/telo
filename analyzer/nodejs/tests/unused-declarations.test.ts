@@ -40,8 +40,8 @@ describe("unused declaration warnings", () => {
     expect(paths).toEqual(["secrets.s", "variables.v"]);
   });
 
-  it("does not warn when referenced via a ${{ }} string", () => {
-    expect(unusedFor({ ports: { http: { env: "PORT" } } }, { a: "${{ ports.http }}" })).toHaveLength(
+  it({ __tagged: true, engine: "interpolate", source: "does not warn when referenced via a ${{ }} string" }, () => {
+    expect(unusedFor({ ports: { http: { env: "PORT" } } }, { a: { __tagged: true, engine: "cel", source: "ports.http" } })).toHaveLength(
       0,
     );
   });
@@ -59,7 +59,7 @@ describe("unused declaration warnings", () => {
     // declared port can be attributed — suppress rather than false-positive.
     const diags = unusedFor(
       { ports: { http: { env: "PORT" }, dns: { env: "DNS", protocol: "udp" } } },
-      { a: "${{ keys(ports) }}" },
+      { a: { __tagged: true, engine: "cel", source: "keys(ports)" } },
     );
     expect(diags).toHaveLength(0);
   });
@@ -69,7 +69,7 @@ describe("unused declaration warnings", () => {
     // declared name, so it must suppress, not record "[*]" as used.
     const diags = unusedFor(
       { ports: { http: { env: "PORT" }, dns: { env: "DNS", protocol: "udp" } } },
-      { a: '${{ ports["http"] }}' },
+      { a: { __tagged: true, engine: "cel", source: "ports[\"http\"]" } },
     );
     expect(diags).toHaveLength(0);
   });

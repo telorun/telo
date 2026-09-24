@@ -16,7 +16,7 @@ Extracts one named entry from a tar `Stream<Uint8Array>` and emits its contents 
 ```yaml
 - name: manifest
   inputs:
-    input: "${{ steps.gunzip.result.output }}"
+    input: !cel "steps.gunzip.result.output"
     path: telo.yaml
   invoke: { kind: Tar.Extract, name: Pick }
 ```

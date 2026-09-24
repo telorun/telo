@@ -636,8 +636,6 @@ function objectPlaceholder(schema: Record<string, any>): Record<string, unknown>
   return out;
 }
 
-const CEL_PURE_RE = /^\s*\$\{\{[^}]*\}\}\s*$/;
-
 /**
  * Resolve a `$ref` — the document-local `#/$defs/...` form against `root`, and
  * anything else through `external` when a caller supplies one.
@@ -836,8 +834,8 @@ export function undeclaredKeySchema(
   return addl && typeof addl === "object" ? (addl as Record<string, any>) : undefined;
 }
 
-/** Deep-clone `data`, replacing every pure CEL template string (`${{ expr }}`) with a
- *  schema-appropriate placeholder so AJV can validate non-CEL fields without false positives. */
+/** Deep-clone `data`, replacing every tagged value with a placeholder of the type
+ *  it will be, so AJV can validate the literal fields without false positives. */
 /** Everything {@link substituteCelFields} does beyond walking the value.
  *
  *  One object rather than trailing positionals: the resolver is the parameter a
@@ -878,10 +876,6 @@ export function substituteCelFields(
   const resolved = selectUnionBranch(entered.schema, data, root, external);
   const mark = () => onSubstitute?.(path);
 
-  if (typeof data === "string" && CEL_PURE_RE.test(data)) {
-    mark();
-    return celPlaceholderForSchema(resolved);
-  }
   // `!ref <name>` sentinels are identity markers, not runtime values —
   // schemas that opt into `$ref: "telo://manifest#/$defs/ResourceRef"`
   // (or `anyOf` it alongside other shapes) need the actual sentinel
@@ -913,8 +907,8 @@ export function substituteCelFields(
     mark();
     return celPlaceholderForSchema(resolved);
   }
-  // The same fact in its third spelling. An expression reaches this walk as a
-  // `${{ … }}` string or a `!cel` sentinel BEFORE `precompileDoc`, and as a
+  // The same fact in its second spelling. An expression reaches this walk as a
+  // tagged sentinel BEFORE `precompileDoc`, and as a
   // CompiledValue after — so a caller running under `compile: true` (every
   // `telo run`, unlike `telo check`) handed one to AJV as a plain object, and a
   // slot typed `boolean` rejected a `when:` the author wrote correctly. The

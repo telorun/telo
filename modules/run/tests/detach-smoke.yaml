@@ -41,7 +41,7 @@ steps:
       value: { hello: "detached" }
   - name: assertDetached
     inputs:
-      detached: "${{ steps.detach.result.detached }}"
+      detached: !cel "steps.detach.result.detached"
     invoke:
       kind: Assert.Schema
       schema:
@@ -60,8 +60,8 @@ steps:
       key: "bg"
   - name: assertWritten
     inputs:
-      state: "${{ steps.read.result.state }}"
-      hello: "${{ steps.read.result.value.hello }}"
+      state: !cel "steps.read.result.state"
+      hello: !cel "steps.read.result.value.hello"
     invoke:
       kind: Assert.Schema
       schema:

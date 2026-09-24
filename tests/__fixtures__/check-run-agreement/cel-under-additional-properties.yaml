@@ -1,7 +1,8 @@
 # A CEL value at a key described only through `additionalProperties` — a
 # response header map, or a kind's `schema.properties` (whose `description`
-# may be prose quoting `${{ … }}`, as published modules do). Both halves must
-# take the map's value schema for the stand-in.
+# may be prose quoting `${{ … }}`, as published modules do — read as
+# `!interpolate` once migrated). Both halves must take the map's value schema
+# for the stand-in.
 kind: Telo.Application
 metadata:
   name: CelUnderAdditionalProperties
@@ -24,7 +25,7 @@ schema:
     token:
       type: string
       x-telo-eval: compile
-      description: The token to send; typically `${{ secrets.token }}`.
+      description: !interpolate The token to send; typically `${{ secrets.token }}`.
 invoke: !ref echo
 resources:
   - kind: Run.Value

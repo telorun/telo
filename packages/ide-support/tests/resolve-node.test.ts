@@ -77,22 +77,26 @@ describe("resolveNodeAtPosition — structural slots", () => {
 });
 
 describe("resolveNodeAtPosition — CEL cursor", () => {
-  it("sets cel with open=true inside an unclosed ${{", () => {
-    const text = 'foo: "${{ req"\n';
-    const r = resolve(text, 0, 'foo: "${{ req'.length);
+  it("sets cel with open=true inside an unclosed hole", () => {
+    const text = 'foo: !interpolate "${{ req"\n';
+    const r = resolve(text, 0, 'foo: !interpolate "${{ req'.length);
     expect(r?.cel).toBeDefined();
     expect(r?.cel?.segment.open).toBe(true);
     expect(r?.cel?.segment.source).toBe("req");
   });
 
-  it("sets cel with open=false inside a closed ${{ }}", () => {
-    const text = 'foo: "${{ variables.x }}"\n';
-    const r = resolve(text, 0, "foo: \"${{ vari".length);
+  it("sets cel with open=false inside a closed hole", () => {
+    const text = 'foo: !interpolate "${{ variables.x }}"\n';
+    const r = resolve(text, 0, "foo: !interpolate \"${{ vari".length);
     expect(r?.cel).toBeDefined();
     expect(r?.cel?.segment.open).toBe(false);
   });
 
-  it("leaves cel unset for literal text outside ${{ }}", () => {
+  it("leaves cel unset in a plain string, which is never an expression", () => {
+    expect(resolve('foo: "${{ variables.x }}"\n', 0, 'foo: "${{ vari'.length)?.cel).toBeUndefined();
+  });
+
+  it("leaves cel unset for literal text outside a hole", () => {
     const text = 'foo: "plain text"\n';
     const r = resolve(text, 0, "foo: \"pla".length);
     expect(r?.cel).toBeUndefined();

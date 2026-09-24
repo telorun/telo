@@ -83,7 +83,7 @@ steps:
     invoke: !ref markupSource
   - name: stream
     inputs:
-      input: "${{ steps.streamSrc.result.output }}"
+      input: !cel "steps.streamSrc.result.output"
     invoke:
       kind: Console.WriteStream
   - name: assertStreamReached

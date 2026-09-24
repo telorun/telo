@@ -1,0 +1,18 @@
+# A hole whose type is unknown statically passes the check; null at run time has
+# no text, and is refused rather than rendered as nothing.
+kind: Telo.Application
+metadata:
+  name: InterpolateHoleDynNull
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: say
+    invoke:
+      kind: Run.Value
+      value: !interpolate "v=${{ dyn(null) }}"

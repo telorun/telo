@@ -82,9 +82,9 @@ routes:
     inputs:
       sql: "INSERT INTO feedback (text, source, score) VALUES (?, ?, ?)"
       bindings:
-        - "${{ request.body.text }}"
-        - "${{ request.body.source }}"
-        - "${{ size(request.body.text) }}"
+        - !cel "request.body.text"
+        - !cel "request.body.source"
+        - !cel "size(request.body.text)"
     returns:
       - status: 201
         content:
@@ -106,7 +106,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: "${{ result.rows }}"
+            body: !cel "result.rows"
 
   # GET /v1/feedback/{id} — fetch a single entry
   - request:
@@ -125,13 +125,13 @@ routes:
     inputs:
       sql: "SELECT id, text, source, score, created_at FROM feedback WHERE id = ?"
       bindings:
-        - "${{ request.params.id }}"
+        - !cel "request.params.id"
     returns:
       - status: 200
-        when: "${{ size(result.rows) > 0 }}"
+        when: !cel "size(result.rows) > 0"
         content:
           application/json:
-            body: "${{ result.rows[0] }}"
+            body: !cel "result.rows[0]"
       - status: 404
         content:
           application/json:

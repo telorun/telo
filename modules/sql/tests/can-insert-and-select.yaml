@@ -42,7 +42,7 @@ steps:
 
   - name: assertResult
     inputs:
-      rows: "${{ steps.selectRow.result.rows }}"
+      rows: !cel "steps.selectRow.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

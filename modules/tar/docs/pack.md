@@ -21,7 +21,7 @@ Builds a tar archive from an ordered list of `{ path, contents }` entries and em
         contents: "name: hello"
   invoke: { kind: Tar.Pack, name: Build }
 - name: compress
-  inputs: { input: "${{ steps.pack.result.output }}" }
+  inputs: { input: !cel "steps.pack.result.output" }
   invoke: { kind: Gzip.Encoder, name: Gzip }
 ```
 

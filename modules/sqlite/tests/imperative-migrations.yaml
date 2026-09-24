@@ -47,7 +47,7 @@ steps:
 
   - name: assertSeeded
     inputs:
-      rows: "${{ steps.selectSeeded.result.rows }}"
+      rows: !cel "steps.selectSeeded.result.rows"
     invoke:
       kind: Assert.Schema
       schema:
@@ -72,7 +72,7 @@ steps:
 
   - name: assertLedger
     inputs:
-      rows: "${{ steps.selectLedger.result.rows }}"
+      rows: !cel "steps.selectLedger.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

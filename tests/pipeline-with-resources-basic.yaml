@@ -25,7 +25,7 @@ steps:
 
   - name: verifyResult
     inputs:
-      doubled: "${{ steps.useHelper.result.doubled }}"
+      doubled: !cel "steps.useHelper.result.doubled"
     invoke:
       kind: Assert.Schema
       schema:

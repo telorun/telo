@@ -6,7 +6,7 @@ imports:
   Data:
     source: ../data
     variables:
-      dbFile: "${{ variables.dbFile }}"
+      dbFile: !cel "variables.dbFile"
 variables:
   dbFile:
     anyOf:

@@ -67,8 +67,8 @@ steps:
     invoke: !ref fetch
   - name: assertIndex
     inputs:
-      status: "${{ steps.hitIndex.result.status }}"
-      hasMarker: "${{ steps.hitIndex.result.body.contains('TELO_STATIC_INDEX') }}"
+      status: !cel "steps.hitIndex.result.status"
+      hasMarker: !cel "steps.hitIndex.result.body.contains('TELO_STATIC_INDEX')"
     invoke:
       kind: Assert.Schema
       schema:
@@ -83,9 +83,9 @@ steps:
     invoke: !ref fetch
   - name: assertAsset
     inputs:
-      status: "${{ steps.hitAsset.result.status }}"
-      isJs: "${{ steps.hitAsset.result.contentType.startsWith('text/javascript') || steps.hitAsset.result.contentType.startsWith('application/javascript') }}"
-      hasMarker: "${{ steps.hitAsset.result.body.contains('TELO_STATIC_APP') }}"
+      status: !cel "steps.hitAsset.result.status"
+      isJs: !cel "steps.hitAsset.result.contentType.startsWith('text/javascript') || steps.hitAsset.result.contentType.startsWith('application/javascript')"
+      hasMarker: !cel "steps.hitAsset.result.body.contains('TELO_STATIC_APP')"
     invoke:
       kind: Assert.Schema
       schema:
@@ -101,8 +101,8 @@ steps:
     invoke: !ref fetch
   - name: assertDeepLink
     inputs:
-      status: "${{ steps.hitDeepLink.result.status }}"
-      hasMarker: "${{ steps.hitDeepLink.result.body.contains('TELO_STATIC_INDEX') }}"
+      status: !cel "steps.hitDeepLink.result.status"
+      hasMarker: !cel "steps.hitDeepLink.result.body.contains('TELO_STATIC_INDEX')"
     invoke:
       kind: Assert.Schema
       schema:

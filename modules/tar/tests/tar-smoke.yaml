@@ -44,24 +44,24 @@ steps:
     invoke: !ref pack
   - name: compress
     inputs:
-      input: "${{ steps.pack.result.output }}"
+      input: !cel "steps.pack.result.output"
     invoke: !ref compress
   - name: gunzip
     inputs:
-      input: "${{ steps.compress.result.output }}"
+      input: !cel "steps.compress.result.output"
     invoke: !ref gunzip
   - name: extract
     inputs:
-      input: "${{ steps.gunzip.result.output }}"
+      input: !cel "steps.gunzip.result.output"
       path: telo.yaml
     invoke: !ref pick
   - name: toText
     inputs:
-      input: "${{ steps.extract.result.output }}"
+      input: !cel "steps.extract.result.output"
     invoke: !ref toText
   - name: assert
     inputs:
-      text: "${{ steps.toText.result.text }}"
+      text: !cel "steps.toText.result.text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -83,13 +83,13 @@ steps:
     try:
       - name: extract
         inputs:
-          input: "${{ steps.pack.result.output }}"
+          input: !cel "steps.pack.result.output"
           path: missing.yaml
         invoke: !ref pick
     catch:
       - name: caught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:

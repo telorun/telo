@@ -30,7 +30,7 @@ kind: McpClient.HttpClient
 metadata: { name: <Name> }
 url: <string>                          # MCP endpoint URL
 headers:                               # optional, static headers (see below)
-  authorization: "Bearer ${{ secrets.MCP_TOKEN }}"
+  authorization: !interpolate "Bearer ${{ secrets.MCP_TOKEN }}"
 sessionProvider: <ProviderName>        # optional; switches to external mode
 clientInfo:                            # optional; advertised during initialize
   name: my-client

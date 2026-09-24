@@ -48,16 +48,16 @@ routes:
           return { upstream: baseUrl ?? "(unset)", keyHint };
         }
     inputs:
-      apiKey: "${{ secrets.stripeSecretKey }}"
-      baseUrl: "${{ variables.apiBaseUrl }}"
+      apiKey: !cel "secrets.stripeSecretKey"
+      baseUrl: !cel "variables.apiBaseUrl"
     returns:
       - status: 200
         content:
           application/json:
             body:
               ok: true
-              upstream: "${{ result.upstream }}"
-              keyHint: "${{ result.keyHint }}"
+              upstream: !cel "result.upstream"
+              keyHint: !cel "result.keyHint"
 ---
 kind: Http.Server
 metadata:

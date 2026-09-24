@@ -45,8 +45,8 @@ steps:
       key: "k1"
   - name: assertMiss
     inputs:
-      state: "${{ steps.first.result.state }}"
-      source: "${{ steps.first.result.value.source }}"
+      state: !cel "steps.first.result.state"
+      source: !cel "steps.first.result.value.source"
     invoke:
       kind: Assert.Schema
       schema:
@@ -61,8 +61,8 @@ steps:
       key: "k1"
   - name: assertFresh
     inputs:
-      state: "${{ steps.second.result.state }}"
-      source: "${{ steps.second.result.value.source }}"
+      state: !cel "steps.second.result.state"
+      source: !cel "steps.second.result.value.source"
     invoke:
       kind: Assert.Schema
       schema:

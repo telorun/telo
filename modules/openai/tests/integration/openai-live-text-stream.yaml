@@ -99,23 +99,23 @@ steps:
         invoke: !ref chatStream
       - name: encode
         inputs:
-          input: "${{ steps.stream.result.output }}"
+          input: !cel "steps.stream.result.output"
         invoke: !ref ndjsonEnc
       - name: decode
         inputs:
-          input: "${{ steps.encode.result.output }}"
+          input: !cel "steps.encode.result.output"
         invoke: !ref textDec
       - name: analyze
         inputs:
-          ndjson: "${{ steps.decode.result.text }}"
+          ndjson: !cel "steps.decode.result.text"
         invoke: !ref analyzeNdjson
       - name: assert
         inputs:
-          lineCount: "${{ steps.analyze.result.lineCount }}"
-          deltaCount: "${{ steps.analyze.result.deltaCount }}"
-          text: "${{ steps.analyze.result.text }}"
-          finishReason: "${{ steps.analyze.result.finishReason }}"
-          totalTokens: "${{ steps.analyze.result.totalTokens }}"
+          lineCount: !cel "steps.analyze.result.lineCount"
+          deltaCount: !cel "steps.analyze.result.deltaCount"
+          text: !cel "steps.analyze.result.text"
+          finishReason: !cel "steps.analyze.result.finishReason"
+          totalTokens: !cel "steps.analyze.result.totalTokens"
         invoke:
           kind: Assert.Schema
           schema:

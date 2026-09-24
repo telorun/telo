@@ -48,20 +48,20 @@ steps:
     invoke: !ref source
   - name: encode
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref encoder
   - name: decode
     inputs:
-      input: "${{ steps.encode.result.output }}"
+      input: !cel "steps.encode.result.output"
     invoke: !ref decoder
   - name: toText
     inputs:
-      bytes: "${{ steps.decode.result.bytes }}"
+      bytes: !cel "steps.decode.result.bytes"
     invoke: !ref toText
   - name: assert
     inputs:
-      text: "${{ steps.toText.result.text }}"
-      length: "${{ steps.toText.result.length }}"
+      text: !cel "steps.toText.result.text"
+      length: !cel "steps.toText.result.length"
     invoke:
       kind: Assert.Schema
       schema:

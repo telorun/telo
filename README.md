@@ -37,7 +37,7 @@ $ telo ./examples/todo-app
 
 ## What It Does
 
-- **Loads** YAML resources and compiles CEL expressions (`${{ }}`) into an in-memory registry.
+- **Loads** YAML resources and compiles CEL expressions (`!cel`, `!interpolate`) into an in-memory registry.
 - **Resolves** resource dependencies via a multi-pass init loop, handling ordering automatically.
 - **Indexes** resources by Kind and Name for constant-time lookup.
 - **Dispatches** execution to the controller that owns each Kind.

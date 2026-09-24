@@ -38,8 +38,8 @@ steps:
     catch:
       - name: assertPassthrough
         inputs:
-          code: "${{ error.code }}"
-          message: "${{ error.message }}"
+          code: !cel "error.code"
+          message: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:

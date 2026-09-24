@@ -24,7 +24,7 @@ import {
   buildCelEnvironment,
   isTaggedSentinel,
   resolveModuleCalls,
-  CEL_ENGINE,
+  celExpressionsOf,
 } from "@telorun/templating";
 import type { CallGraph, CallGraphNode, StepGraphNode } from "./call-graph.js";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
@@ -95,36 +95,21 @@ const CEL_ENV = buildCelEnvironment();
  *  it. Stops at nested `{ kind }` declarations, which belong to another
  *  resource. */
 function celSources(value: unknown, path: string, out: Array<[string, string]>): void {
-  // A raw `${{ }}` string, which is what a consumer holding an unprecompiled
-  // manifest sees. Each interpolation is pushed SEPARATELY: the surrounding
-  // literal text is not CEL, and handing the whole string to a CEL parser
-  // fails — which would silently report no calls at all for every expression
-  // written this way.
-  if (typeof value === "string") {
-    for (const expression of interpolatedExpressions(value)) out.push([path, expression]);
-    return;
-  }
   if (!value || typeof value !== "object") return;
-  // By the time this pass runs the loader has PRECOMPILED every CEL slot, so the
-  // common shape is a CompiledValue rather than a string or a tag sentinel.
-  // Reading only the authored spellings is why this check was silent on every
-  // manifest that reached it — the one shape it never met was the one it always
-  // gets. An interpolated string keeps its expressions in `parts`, so those are
-  // descended into rather than read off the joined source.
-  if (isCompiledValue(value)) {
-    if (typeof value.source === "string") out.push([path, value.source]);
-    for (const [i, part] of (value.parts ?? []).entries()) {
-      if (typeof part !== "string") celSources(part, `${path}[${i}]`, out);
+  // By the time this pass runs the loader has PRECOMPILED every tagged scalar,
+  // so the common shape is a CompiledValue carrying its tag; a round-trip
+  // consumer (the editor) holds the unprecompiled sentinel. Either way the
+  // engine says where the CEL is — the whole scalar for `!cel`, each hole for a
+  // tag with holes — since handing an interpolation's text to a CEL parser
+  // fails and would silently report no calls at all.
+  if (isTaggedSentinel(value)) {
+    for (const expression of celExpressionsOf(value.engine, value.source)) {
+      out.push([path, expression]);
     }
     return;
   }
-  // An unprecompiled `!cel` tag — what a round-trip consumer (the editor) holds,
-  // and what reaches this pass whenever precompilation was not requested. Read
-  // through the templating predicates rather than by testing a marker key: the
-  // sentinel's shape is that package's, and spelling it here is a second place
-  // it would have to be kept right.
-  if (isTaggedSentinel(value) && value.engine === CEL_ENGINE) {
-    out.push([path, value.source]);
+  if (isCompiledValue(value)) {
+    if (typeof value.source === "string") out.push([path, value.source]);
     return;
   }
   if (Array.isArray(value)) {
@@ -142,23 +127,6 @@ function celSources(value: unknown, path: string, out: Array<[string, string]>):
   for (const [key, child] of Object.entries(record)) {
     if (key === "kind" || key === "metadata") continue;
     celSources(child, path ? `${path}.${key}` : key, out);
-  }
-}
-
-/** The expressions inside a `${{ … }}` interpolated string, unwrapped. Balanced
- *  on `}}` rather than on the first `}`, so an expression containing a map
- *  literal is not cut in half. */
-function interpolatedExpressions(text: string): string[] {
-  const out: string[] = [];
-  let at = 0;
-  for (;;) {
-    const open = text.indexOf("${{", at);
-    if (open < 0) return out;
-    const close = text.indexOf("}}", open + 3);
-    if (close < 0) return out;
-    const expression = text.slice(open + 3, close).trim();
-    if (expression) out.push(expression);
-    at = close + 2;
   }
 }
 

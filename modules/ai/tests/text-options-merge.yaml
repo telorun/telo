@@ -39,8 +39,8 @@ steps:
     invoke: !ref c
   - name: assert
     inputs:
-      text: "${{ steps.invoke.result.text }}"
-      finishReason: "${{ steps.invoke.result.finishReason }}"
+      text: !cel "steps.invoke.result.text"
+      finishReason: !cel "steps.invoke.result.finishReason"
     invoke:
       kind: Assert.Schema
       schema:

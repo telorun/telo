@@ -50,7 +50,7 @@ outputs:
 
 **Kernel behavior:** validates the call-site argument object against `inputs` before invoking, and validates the return value against `outputs` before returning it to the caller. Catches malformed data at the boundary — especially important for controllers wrapping external APIs or LLM outputs where the returned shape is not guaranteed.
 
-**Analyzer behavior:** uses `inputs` to validate call-site argument expressions statically; uses `outputs` to validate downstream CEL expressions that access the return value (e.g. `${{ steps.MyStep.result.rows }}`).
+**Analyzer behavior:** uses `inputs` to validate call-site argument expressions statically; uses `outputs` to validate downstream CEL expressions that access the return value (e.g. `!cel "steps.MyStep.result.rows"`).
 
 ---
 
@@ -69,12 +69,12 @@ A `retry` policy may be specified at the call site. The kernel wraps `instance.i
 ```yaml
 invoke: { kind: Http.Request, name: Api }
 inputs:
-  url: "${{ vars.endpoint }}"
+  url: !cel "vars.endpoint"
 retry:
   attempts: 3
   delay: 2000
   backoff: exponential
-  when: "${{ error.code == 429 || error.code >= 500 }}"
+  when: !cel "error.code == 429 || error.code >= 500"
 ```
 
 | Field      | Required | Description                                                                    |

@@ -1,5 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { walkCelExpressions } from "@telorun/templating";
+import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
@@ -144,9 +144,11 @@ export function validateScopedNameReach(
         if (path === "metadata" || path.startsWith("metadata.") || inScopeArray(path)) return;
         if (engine === "ref") {
           test(localName(source), path);
-        } else if (engine === "cel") {
-          for (const chain of accessChains(source, root)) {
-            if (chain[0] === "resources" && chain.length > 1) test(chain[1], path);
+        } else {
+          for (const expression of celExpressionsOf(engine, source)) {
+            for (const chain of accessChains(expression, root)) {
+              if (chain[0] === "resources" && chain.length > 1) test(chain[1], path);
+            }
           }
         }
       });

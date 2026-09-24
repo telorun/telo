@@ -31,12 +31,12 @@ routes:
           application/json:
             body: { ok: true }
     catches:
-      - when: "${{ error.code == 'BOGUS' }}"
+      - when: !cel "error.code == 'BOGUS'"
         status: 401
         content:
           application/json:
-            body: { error: "${{ error.message }}" }
+            body: { error: !cel "error.message" }
       - status: 500
         content:
           application/json:
-            body: { error: "${{ error.message }}" }
+            body: { error: !cel "error.message" }

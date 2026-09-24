@@ -33,8 +33,8 @@ steps:
 
   - name: assertGetResponse
     inputs:
-      status: "${{ steps.fetchTodo.result.status }}"
-      id: "${{ steps.fetchTodo.result.body.id }}"
+      status: !cel "steps.fetchTodo.result.status"
+      id: !cel "steps.fetchTodo.result.body.id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -65,8 +65,8 @@ steps:
 
   - name: assertClientResponse
     inputs:
-      status: "${{ steps.fetchUser.result.status }}"
-      id: "${{ steps.fetchUser.result.body.id }}"
+      status: !cel "steps.fetchUser.result.status"
+      id: !cel "steps.fetchUser.result.body.id"
     invoke:
       kind: Assert.Schema
       schema:
@@ -100,8 +100,8 @@ steps:
 
   - name: assertPostResponse
     inputs:
-      status: "${{ steps.createPost.result.status }}"
-      title: "${{ steps.createPost.result.body.title }}"
+      status: !cel "steps.createPost.result.status"
+      title: !cel "steps.createPost.result.body.title"
     invoke:
       kind: Assert.Schema
       schema:
@@ -131,7 +131,7 @@ steps:
 
   - name: assertNotFoundGraceful
     inputs:
-      status: "${{ steps.fetchMissing.result.status }}"
+      status: !cel "steps.fetchMissing.result.status"
     invoke:
       kind: Assert.Schema
       schema:

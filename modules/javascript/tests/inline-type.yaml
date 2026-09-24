@@ -45,7 +45,7 @@ steps:
     invoke: !ref greet
   - name: verifyMessage
     inputs:
-      message: "${{ steps.call.result.message }}"
+      message: !cel "steps.call.result.message"
     invoke:
       kind: Assert.Schema
       schema:

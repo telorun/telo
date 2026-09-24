@@ -16,7 +16,7 @@ describe("substituteCelFields", () => {
   const booleanSlot = { type: "object", properties: { when: { type: "boolean" } } };
 
   it("substitutes a boolean placeholder for an inline expression", () => {
-    expect(substituteCelFields({ when: "${{ size(result.rows) > 0 }}" }, booleanSlot)).toEqual({
+    expect(substituteCelFields({ when: { __tagged: true, engine: "cel", source: "size(result.rows) > 0" } }, booleanSlot)).toEqual({
       when: false,
     });
   });

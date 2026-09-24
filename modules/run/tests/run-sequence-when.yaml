@@ -14,7 +14,7 @@ metadata:
 steps:
   # Step with when:false is skipped. If it ran, its Assert.Schema would fail (const: 0 vs. 999).
   - name: shouldSkip
-    when: "${{ false }}"
+    when: !cel "false"
     inputs:
       x: 999
     invoke:
@@ -28,7 +28,7 @@ steps:
 
   # Step with when:true must run. If skipped, the outer assertion below would have no result.
   - name: shouldRun
-    when: "${{ true }}"
+    when: !cel "true"
     inputs:
       flag: "yes"
     invoke:
@@ -48,9 +48,9 @@ steps:
         ready: true
 
   - name: dataDrivenStep
-    when: "${{ steps.compute.result.ready == true }}"
+    when: !cel "steps.compute.result.ready == true"
     inputs:
-      ready: "${{ steps.compute.result.ready }}"
+      ready: !cel "steps.compute.result.ready"
     invoke:
       kind: Assert.Schema
       schema:
@@ -62,7 +62,7 @@ steps:
   # Verify ShouldRun actually ran by checking its result.
   - name: verifyRan
     inputs:
-      result: "${{ steps.shouldRun.result }}"
+      result: !cel "steps.shouldRun.result"
     invoke:
       kind: Assert.Schema
       schema:

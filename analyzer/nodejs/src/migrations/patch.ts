@@ -9,7 +9,7 @@
  *  the in-memory rewrite and the on-disk repair cannot disagree about what an
  *  operation means. */
 
-import { makeTaggedSentinel } from "@telorun/templating";
+import { makeTaggedSentinel, readInterpolationHoles } from "@telorun/templating";
 import { deepEquals } from "./match.js";
 import type {
   MigrationOperation,
@@ -21,7 +21,14 @@ import type {
 export type MigrationEffect =
   | { readonly kind: "rename-key"; readonly parent: MigrationPath; readonly from: string; readonly to: string }
   | { readonly kind: "set-value"; readonly path: MigrationPath; readonly value: unknown }
-  | { readonly kind: "set-tag"; readonly path: MigrationPath; readonly tag: string; readonly source: string }
+  | {
+      readonly kind: "set-tag";
+      readonly path: MigrationPath;
+      readonly tag: string;
+      readonly source: string;
+      /** The scalar's text is replaced by `source` rather than kept. */
+      readonly replaces?: true;
+    }
   | { readonly kind: "insert-item"; readonly path: MigrationPath; readonly index: number; readonly value: unknown }
   | { readonly kind: "remove-entry"; readonly path: MigrationPath };
 
@@ -156,10 +163,20 @@ export function planPatch(
         break;
       }
       case "set-tag": {
-        const source = scalarSource(currentValue);
-        if (source === undefined) return { ok: false, refusal: "not-a-scalar" };
-        effects.push({ kind: "set-tag", path: currentPath, tag: op.tag, source });
-        currentValue = makeTaggedSentinel(op.tag, source);
+        const text = scalarSource(currentValue);
+        if (text === undefined) return { ok: false, refusal: "not-a-scalar" };
+        if (op.source === "hole") {
+          const reading = readInterpolationHoles(text);
+          if (typeof currentValue !== "string" || !reading.ok || reading.holes.length !== 1) {
+            return { ok: false, refusal: "malformed-value" };
+          }
+          const source = reading.holes[0]!.expr;
+          effects.push({ kind: "set-tag", path: currentPath, tag: op.tag, source, replaces: true });
+          currentValue = makeTaggedSentinel(op.tag, source);
+          break;
+        }
+        effects.push({ kind: "set-tag", path: currentPath, tag: op.tag, source: text });
+        currentValue = makeTaggedSentinel(op.tag, text);
         break;
       }
       case "insert-item": {
