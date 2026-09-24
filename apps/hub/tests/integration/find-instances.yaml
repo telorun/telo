@@ -1,0 +1,307 @@
+kind: Telo.Application
+metadata:
+  name: HubFindInstancesTest
+  version: 1.0.0
+  description: |
+    The instance axis: a module that only packages ready-made instances of
+    another module's kind (a language model pack) is reached from that kind —
+    `Catalog.instances` lists it, and every projection of the kind carries the
+    count — and is a search result of its own exactly as a kind-bearing module
+    is: its instance is a hit, its module a module hit, and it counts in its
+    category. A query matching several packs of one kind returns the best one
+    with the rest folded in as `siblings`.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR (the search library's vector arm runs for
+    every query) — the docker-compose `db` service, reached through DB_HOST,
+    DB_PORT, DB_USER, DB_PASSWORD and DB_NAME. Run by the hub's own suite
+    (`pnpm run test:e2e:hub`). The embedder is a local stand-in returning a fixed
+    three-dimension vector, and the manifest bucket is never read.
+imports:
+  Http: ../../../../modules/http-server
+  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
+  Postgres: oci://ghcr.io/telorun/postgres@0.4.0#sha256-urAQgZtDIlbm4PFi0OlBgYPTU0fSdFbw3l3sHVdh-MQ
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.12.0#sha256-2PYbXSCmI2WlRtVQoQJO6ebJzmVHBOe1kJk8c3-wjfg
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Search:
+    source: ../../hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+  Catalog:
+    source: ../../hub-catalog.yaml
+    resources:
+      connection: !ref db
+      bucketGet: !ref getManifest
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: S3.Get
+metadata:
+  name: getManifest
+bucketRef:
+  kind: S3.Bucket
+  bucketName: unused
+  endpoint: http://127.0.0.1:1
+  forcePathStyle: true
+  accessKeyId: unused
+  secretAccessKey: unused
+---
+kind: Embedding.Query
+metadata:
+  name: embedQuery
+model:
+  kind: OpenAI.EmbeddingModel
+  model: stand-in
+  request:
+    kind: HttpClient.Request
+    client:
+      kind: HttpClient.Client
+      baseUrl: http://127.0.0.1:8987
+---
+kind: VectorStore.Match
+metadata:
+  name: vectorMatch
+store:
+  kind: VectorStorePgvector.Store
+  connection: !ref db
+  dimensions: 3
+  metric: cosine
+  table: resource_vectors
+topK: 5
+---
+kind: Http.Api
+metadata:
+  name: embedderApi
+routes:
+  - request: { path: /embeddings, method: POST }
+    handler:
+      kind: Run.Value
+      value:
+        data:
+          - embedding: [1.0, 0.0, 0.0]
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: Http.Server
+    metadata: { name: Embedder }
+    host: 127.0.0.1
+    port: 8987
+    mounts:
+      - path: /
+        mount: !ref embedderApi
+targets:
+  - !ref Embedder
+steps:
+  # `ocr-model` owns the `Language` kind; two packs export an instance of it, one
+  # at a superseded version whose instance must not count. The packs declare a
+  # category no kind-bearing module does.
+  - name: seedModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version)
+        VALUES (9101, 'oci://example.test/ocr-model', 'oci', '1.0.0'),
+               (9102, 'oci://example.test/ocr-lang/pol', 'oci', '1.0.0'),
+               (9103, 'oci://example.test/ocr-lang/deu', 'oci', '2.0.0')
+        ON CONFLICT DO NOTHING
+  - name: seedVersions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, description, manifest_key, categories, category_labels)
+        VALUES (9101, '1.0.0', 'sha256:test', 'OcrModel', 'Trained text recognition models.', 'test',
+                ARRAY['vision'], ARRAY['Vision']),
+               (9102, '1.0.0', 'sha256:test', 'OcrLangPol', 'Reads Polish text.', 'test',
+                ARRAY['language-packs'], ARRAY['Language Packs']),
+               (9103, '1.0.0', 'sha256:test', 'OcrLangDeu', 'Reads German text.', 'test',
+                ARRAY['language-packs'], ARRAY['Language Packs']),
+               (9103, '2.0.0', 'sha256:test', 'OcrLangDeu', 'Reads German text.', 'test',
+                ARRAY['language-packs'], ARRAY['Language Packs'])
+        ON CONFLICT DO NOTHING
+  - name: seedKinds
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO resource_kinds
+          (module_id, version, name, capability, exported, description, portable, categories, category_labels)
+        VALUES (9101, '1.0.0', 'Language', 'Telo.Provider', TRUE, 'A trained recognition model.', TRUE,
+                ARRAY['vision'], ARRAY['Vision'])
+        ON CONFLICT DO NOTHING
+  - name: seedInstances
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_resources
+          (module_id, version, name, declared, kind, kind_is_own, kind_ref, description)
+        VALUES (9102, '1.0.0', 'pol', 'pol', 'Language', FALSE, 'oci://example.test/ocr-model',
+                'Polish, Latin script'),
+               (9103, '1.0.0', 'deu', 'deu', 'Language', FALSE, 'oci://example.test/ocr-model',
+                'German, Latin script'),
+               (9103, '2.0.0', 'deu', 'deu', 'Language', FALSE, 'oci://example.test/ocr-model',
+                'German, Latin script')
+        ON CONFLICT DO NOTHING
+  - name: instances
+    invoke: !ref Catalog.instances
+    inputs:
+      ref: oci://example.test/ocr-model
+      kind: Language
+  - name: detail
+    invoke: !ref Catalog.moduleDetail
+    inputs:
+      ref: oci://example.test/ocr-model
+      version: ""
+  - name: kindHit
+    invoke: !ref Search.searchResources
+    inputs:
+      q: recognition model
+      category: ""
+      runtime: ""
+  - name: moduleHit
+    invoke: !ref Search.searchModules
+    inputs:
+      q: recognition model
+      category: ""
+      runtime: ""
+      limit: 20
+      offset: 0
+  - name: byLanguage
+    invoke: !ref Search.searchResources
+    inputs:
+      q: polish
+      category: ""
+      runtime: ""
+  - name: packModuleHit
+    invoke: !ref Search.searchModules
+    inputs:
+      q: polish
+      category: ""
+      runtime: ""
+      limit: 20
+      offset: 0
+  - name: broadModules
+    invoke: !ref Search.searchModules
+    inputs:
+      q: reads text
+      category: ""
+      runtime: ""
+      limit: 20
+      offset: 0
+  - name: broadResources
+    invoke: !ref Search.searchResources
+    inputs:
+      q: latin script
+      category: ""
+      runtime: ""
+  - name: vocabulary
+    invoke: !ref Search.categoryVocabulary
+    inputs:
+      category: ""
+  - name: assert
+    inputs:
+      actual:
+        instances: !cel >-
+          steps.instances.result.instances.map(i,
+            [i.name, i.description, i.module.ref, i.module.version, i.module.name])
+        detailCount: !cel "steps.detail.result.kinds.map(k, [k.kind, k.instances])"
+        kindHitCount: !cel >-
+          steps.kindHit.result.hits.filter(h, h.module.ref == 'oci://example.test/ocr-model')
+            .map(h, [h.kind, h.instances])
+        moduleHitCounts: !cel >-
+          steps.moduleHit.result.hits.filter(h, h.module.ref == 'oci://example.test/ocr-model')
+            .map(h, [h.matchedKinds.map(k, k.instances), h.exportedKinds.map(k, k.instances)])
+        packModuleHit: !cel >-
+          steps.packModuleHit.result.hits.map(h,
+            [h.module.ref, h.matchedKinds.map(k, [k.entry, k.name, k.kind, k.kindRef])])
+        byLanguage: !cel >-
+          steps.byLanguage.result.hits.map(h, [h.entry, h.name, h.kind, h.kindRef, h.module.ref])
+        foldedModules: !cel >-
+          steps.broadModules.result.hits
+            .filter(h, h.module.ref.startsWith('oci://example.test/ocr-lang/'))
+            .map(h, [h.module.ref, h.siblings.map(s, s.ref)])
+        foldedResources: !cel >-
+          steps.broadResources.result.hits
+            .filter(h, h.module.ref.startsWith('oci://example.test/ocr-lang/'))
+            .map(h, [h.name, h.siblings.map(s, [s.name, s.module.ref])])
+        packCategory: !cel >-
+          steps.vocabulary.result.categories.filter(c, c.category == 'language-packs')
+            .map(c, c.modules)
+        visionModules: !cel >-
+          steps.vocabulary.result.categories.filter(c, c.category == 'vision').map(c, c.modules)
+      expected:
+        instances:
+          - [deu, "German, Latin script", "oci://example.test/ocr-lang/deu", 2.0.0, OcrLangDeu]
+          - [pol, "Polish, Latin script", "oci://example.test/ocr-lang/pol", 1.0.0, OcrLangPol]
+        detailCount:
+          - [Language, 2]
+        kindHitCount:
+          - [Language, 2]
+        moduleHitCounts:
+          - [[2], [2]]
+        packModuleHit:
+          - - "oci://example.test/ocr-lang/pol"
+            - [[instance, pol, Language, "oci://example.test/ocr-model"]]
+        byLanguage:
+          - [instance, pol, Language, "oci://example.test/ocr-model", "oci://example.test/ocr-lang/pol"]
+        foldedModules:
+          - - "oci://example.test/ocr-lang/deu"
+            - ["oci://example.test/ocr-lang/pol"]
+        foldedResources:
+          - - deu
+            - [[pol, "oci://example.test/ocr-lang/pol"]]
+        packCategory: [2]
+        visionModules: [1]
+    invoke:
+      kind: Assert.Equals

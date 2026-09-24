@@ -44,13 +44,36 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, matchesGlob, normalize, relative, resolve } from "node:path";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
 
 const baseRef = process.argv[2] ?? "origin/main";
 
-/** Workspace packages with at least one changed file, by walking each changed
- *  path up to the nearest package directory. */
+/** Files npm packs whatever `files` says (npm-packlist's always-included set). */
+const ALWAYS_PACKED = /^(package\.json|readme(\.[^/]*)?|licen[cs]e(\.[^/]*)?)$/i;
+
+/** Whether `relative` (to the package dir) ships in the package's tarball. A package
+ *  with no `files` field ships everything, so every change counts. */
+function isPublished(pkg, relative) {
+  const manifest = JSON.parse(readFileSync(join(pkg.dir, "package.json"), "utf8"));
+  if (!Array.isArray(manifest.files)) return true;
+  if (ALWAYS_PACKED.test(relative)) return true;
+  const entryPoints = [manifest.main, ...Object.values(manifest.bin ?? {})]
+    .filter((entry) => typeof entry === "string")
+    .map((entry) => normalize(entry));
+  if (entryPoints.includes(relative)) return true;
+  const matches = (pattern) => {
+    const glob = normalize(pattern).replace(/\/$/, "");
+    return matchesGlob(relative, glob) || matchesGlob(relative, `${glob}/**`);
+  };
+  const included = manifest.files.filter((p) => !p.startsWith("!")).some(matches);
+  const excluded = manifest.files.filter((p) => p.startsWith("!")).some((p) => matches(p.slice(1)));
+  return included && !excluded;
+}
+
+/** Workspace packages with at least one changed PUBLISHED file, by walking each
+ *  changed path up to the nearest package directory. A change the tarball does not
+ *  carry (a package's CLAUDE.md, its tests) releases nothing. */
 function changedPackages(packages) {
   let diff;
   try {
@@ -71,7 +94,7 @@ function changedPackages(packages) {
     while (dir.startsWith(ROOT)) {
       const pkg = byDir.get(dir);
       if (pkg) {
-        changed.set(pkg.name, pkg);
+        if (isPublished(pkg, relative(pkg.dir, resolve(ROOT, file)))) changed.set(pkg.name, pkg);
         break;
       }
       const parent = dirname(dir);
@@ -255,8 +278,9 @@ for (const pkg of changedPackages(packages)) {
   if (pkg.private) continue;
   if (covered.has(pkg.name)) continue;
   console.error(
-    `::error::${pkg.name} changed but no changeset covers it. Add one with \`pnpm changeset\`, ` +
-      `or \`pnpm changeset add --empty\` if the change genuinely needs no release.`,
+    `::error::${pkg.name} changed a published file but no changeset covers it. Add one with ` +
+      `\`pnpm changeset\` naming ${pkg.name} with a bump — an empty changeset names no package ` +
+      `and does not cover it.`,
   );
   failed = 1;
 }

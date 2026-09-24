@@ -191,8 +191,8 @@ gate.
 
 A card is one reviewable change with: its intent in one
 sentence, the paths it may touch, acceptance criteria a reader can check, the gate commands
-that prove it, a **size** (the files and roughly the lines recon says it needs), and
-`effort: medium` or `effort: high`. A card must be verifiable by a command, and must not depend on
+that prove it, and a **size** (the files and roughly the lines recon says it needs). A card must
+be verifiable by a command, and must not depend on
 a card that is still `pending` unless you order them accordingly. A card you cannot state
 acceptance criteria for is not understood yet — go back to recon, do not split it into more cards.
 
@@ -256,7 +256,7 @@ thing you offer. A card that is not the feature gets cut, or put to the user as 
 No answer licenses a shortcut or an addition: a standing approval widens what you may touch, never
 what you may leave unfinished and never what the loop is for.
 
-**4. Execute.** Per card, spawn a **fresh** `builder` (`builder-high` for `effort: high`) with
+**4. Execute.** Per card, spawn a **fresh** `builder` with
 the card text, the acceptance criteria, its size, the paths it may touch, and the rules from
 `CLAUDE.md` that apply to those paths, and the decisions that bind the card. Fresh per card is not a
 preference: a builder carrying three cards of context writes worse code and costs more. Never let a

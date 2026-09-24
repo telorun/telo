@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: TesseractModelPublishedReadingTest
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+  Run: ../../run
+  TesseractModel: ../
+targets:
+  - !ref readingIsPublished
+---
+kind: TesseractModel.Language
+metadata: { name: custom }
+code: chi_sim
+data: !module-path ./__fixtures__/sample.traineddata
+---
+kind: TesseractModel.OrientationModel
+metadata: { name: osd }
+data: !module-path ./__fixtures__/sample.traineddata
+---
+# A recognizer reads a model only through this reading: `data` as an absolute
+# path, and `code` for a language.
+kind: Run.Sequence
+metadata: { name: readingIsPublished }
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        language: !cel "resources.custom"
+        orientation: !cel "resources.osd"
+      expected:
+        language:
+          code: chi_sim
+          data: !module-path ./__fixtures__/sample.traineddata
+        orientation:
+          data: !module-path ./__fixtures__/sample.traineddata

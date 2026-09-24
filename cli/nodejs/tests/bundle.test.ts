@@ -385,6 +385,66 @@ describe("ModulePayloadBuilder — staged files", () => {
         "source 'ui' entry './assets/ui/app.js': nothing in the manifest names 'assets/ui/app.js'",
       );
     });
+
+    describe("named by !module-path", () => {
+      const CSS_SHA256 = createHash("sha256").update("css").digest("hex");
+      const withModulePath = (location: string) =>
+        [
+          assetManifest("./assets/").replace(
+            "        executable: false\n",
+            [
+              "        executable: false",
+              "      ./assets/ui/style.css:",
+              "        upstream: ui",
+              "        member: package/style.css",
+              `        sha256: ${CSS_SHA256}`,
+              "        executable: false",
+              "",
+            ].join("\n"),
+          ),
+          "---",
+          "kind: Self.Thing",
+          "metadata:",
+          "  name: thing",
+          `data: !module-path ${location}`,
+          "",
+        ].join("\n");
+      const assetFiles = (payload: ModulePayload) =>
+        payload.layers.find((layer) => layer.role === "assets")?.files;
+
+      it("ships a staged file from its pin when nothing is on disk", async () => {
+        write("telo.yaml", withModulePath("./assets/ui/app.js"));
+        write("LICENSE", "MIT");
+
+        expect(assetFiles(await build("pins"))).toEqual([
+          { name: "assets/ui/app.js", sha256: APP_SHA256, executable: false },
+          { name: "assets/ui/style.css", sha256: CSS_SHA256, executable: false },
+        ]);
+      });
+
+      it("still refuses a location no entry stages and nothing is at", async () => {
+        write("telo.yaml", withModulePath("./assets/other"));
+        write("LICENSE", "MIT");
+
+        await expect(build("pins")).rejects.toThrow(
+          "!module-path at 'data': nothing at 'assets/other' (MODULE_PATH_NOT_FOUND)",
+        );
+      });
+
+      it("reads only the disk at publish: a staged file not on disk is missing, an empty directory empty", async () => {
+        write("telo.yaml", withModulePath("./assets/ui/app.js"));
+        write("LICENSE", "MIT");
+        await expect(build("disk")).rejects.toThrow(
+          "!module-path at 'data': nothing at 'assets/ui/app.js' (MODULE_PATH_NOT_FOUND)",
+        );
+
+        write("telo.yaml", withModulePath("./assets/ui"));
+        fs.mkdirSync(path.join(workdir, "assets/ui"), { recursive: true });
+        await expect(build("disk")).rejects.toThrow(
+          "!module-path at 'data': 'assets/ui' holds no files (MODULE_PATH_EMPTY)",
+        );
+      });
+    });
   });
 
   it("refuses at publish a native file no source stages that git does not track", async () => {

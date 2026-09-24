@@ -86,6 +86,34 @@ element against *itself* is just a closure:
       condition: !cel "size(this.columns) == size(this.references.columns)"
 ```
 
+### Reading what a reference names: `resolve:`
+
+A rule sees the resource as written, so a reference slot holds a reference, not
+the resource it names. A rule that needs the referenced declaration's fields opts
+in with `resolve:`, a list of JSON Pointers to this kind's own reference slots.
+Inside the condition each one reads as the declaration it names, one level deep:
+a single slot becomes that declaration, and a collection of references becomes
+the same collection with each entry resolved.
+
+```yaml
+    - resolve: [/languages]
+      in: /languages
+      condition: !cel "size(self.languages.filter(o, o.code == this.code)) == 1"
+      code: LANGUAGE_CODE_DUPLICATE
+      message: lists two language models under the same code.
+```
+
+The resolution is the one a referrer rule's `peers:` uses: the kind's reference
+slots decide what is a reference, an alias-qualified reference resolves through
+its import, and references inside a resolved declaration stay references. When
+any reference cannot be resolved — a declaration this analysis does not hold, or
+a library's `resources:` input, known only by its kind until the importer
+supplies it — the rule does not run on that resource, and the skip is reported
+(`RESOURCE_RULE_SKIPPED`) rather than evaluated over a partial set. A
+`!module-path` in a resolved declaration compares as the path its author wrote.
+
+It is opt-in so that no existing rule changes what it reads.
+
 ### Polarity
 
 `condition` is true when the rule **holds** — the same polarity as
@@ -108,6 +136,7 @@ written rather than on somebody's manifest:
   fine and would make a verdict depend on when it ran.
 - **`in:` must name a collection this kind declares** — otherwise the anchor
   points at nothing.
+- **Each `resolve:` pointer must name a field this kind declares.**
 - **The condition must parse and type-check.** One expression, one verdict: the
   templating engine's.
 - **`condition:` must carry the `!cel` tag.** The reader is lenient and a bare

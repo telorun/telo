@@ -180,15 +180,29 @@ export interface ModuleRef {
  *  relevance score, which is the only reason the two lists stay separate. */
 export interface KindInfo {
   kind: string;
+  /** The module that owns the kind — this module's own ref, or the import a
+   *  re-exported kind comes from. With `kind` it keys `/instances`. */
+  ref?: string;
+  /** Declared by another module and passed through this one's `exports.kinds`. */
+  reexported?: boolean;
   capability: string;
   abstract?: boolean;
   description: string;
   extends?: { kind: string; ref: string };
   runtime?: RuntimeSupport;
   deprecated?: KindDeprecation;
+  /** How many ready-made instances of this kind modules export. */
+  instances?: number;
 }
 
+/** One matched search entry: a kind to declare (`entry: "kind"`) or a
+ *  ready-made instance to reference (`entry: "instance"`), ranked together.
+ *  `name` is what an importer writes after its alias; `kind` is the kind the
+ *  entry is or instantiates, owned by `kindRef`. */
 export interface MatchedKind extends KindInfo {
+  entry?: "kind" | "instance";
+  name?: string;
+  kindRef?: string;
   score: number;
 }
 
@@ -219,6 +233,20 @@ export interface ModuleHit {
    *  what lets the preview panel describe any of them without a second request. */
   exportedKinds: KindInfo[];
   exportedResources: ExportedResource[];
+  /** Other modules whose every match is an instance of the same kind as this
+   *  hit's (language model packs), ranked below it and folded into it. */
+  siblings?: ModuleSibling[];
+  /** Modules implementing any of this module's kinds. */
+  implementations?: { ref: string; name: string }[];
+}
+
+export interface ModuleSibling {
+  ref: string;
+  version: string;
+  name: string;
+  description: string;
+  score: number;
+  matchedKinds: MatchedKind[];
 }
 
 export type SearchResult =
@@ -374,6 +402,38 @@ export async function fetchModule(
         : [],
     },
   };
+}
+
+/** One ready-made instance of a kind, exported by some module — a language
+ *  model pack, say, which the hub lists under the kind it instantiates rather
+ *  than as a search result of its own. */
+export interface KindInstance {
+  name: string;
+  description: string;
+  module: { ref: string; version: string; name: string; description: string };
+}
+
+export async function fetchInstances(
+  ref: string,
+  kind: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; instances: KindInstance[] } | { ok: false; error: string }> {
+  const params = new URLSearchParams({ ref, kind });
+  let res: Response;
+  try {
+    res = await fetch(`${HUB_API}/instances?${params}`, {
+      headers: { accept: "application/json" },
+      signal,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    return { ok: false, error: err instanceof Error ? err.message : "network error" };
+  }
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: errorMessage(data, res.status) };
+  const instances = (data as { instances?: unknown }).instances;
+  if (!Array.isArray(instances)) return { ok: false, error: "unexpected response from the hub" };
+  return { ok: true, instances: instances as KindInstance[] };
 }
 
 function isRegistered(data: unknown): data is { registered: true; ref: string } {

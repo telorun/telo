@@ -57,7 +57,13 @@ variables:
     default: telo
   ingestRev:
     type: integer
-    default: 2
+    default: 5
+  # Whether a `./`-relative local path may be registered through `registerModule`
+  # (the seed list). A development setting: a local module is read off the hub's
+  # own disk. `registerAndValidate` refuses one whatever this says.
+  allowLocalRefs:
+    type: boolean
+    default: false
 exports:
   resources:
     - registerModule
@@ -79,9 +85,19 @@ metadata:
 ---
 # The row insert on its own — idempotent, and the only thing the curated seed
 # list needs.
+#
+# The transport is decided here, and a ref no transport owns is refused rather
+# than recorded as one it is not. A local path is `./`-relative, confined to the
+# hub's working directory (no `..` segment), and accepted only while
+# `allowLocalRefs` is set.
 kind: Run.Sequence
 metadata:
   name: registerModule
+throws:
+  - code: ERR_INVALID_MODULE_REF
+    description: The ref is neither an `oci://` nor an `https://` ref, nor an accepted local path.
+  - code: ERR_LOCAL_REF_DISABLED
+    description: The ref is a local path and local refs are not enabled.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -89,6 +105,36 @@ inputType:
     properties:
       ref: { type: string }
 steps:
+  - name: local
+    if: !cel "inputs.ref.startsWith('./')"
+    then:
+      - name: shape
+        if: !cel "!inputs.ref.matches('^[.]/[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$')"
+        then:
+          - name: rejectShape
+            throw:
+              code: ERR_INVALID_MODULE_REF
+              message: !cel >-
+                'local module ref "' + inputs.ref + '" must be ./<dir>/… of letters, digits, '
+                  + '".", "_" and "-", with no segment starting with "."'
+      - name: enabled
+        if: !cel "!variables.allowLocalRefs"
+        then:
+          - name: rejectLocal
+            throw:
+              code: ERR_LOCAL_REF_DISABLED
+              message: !cel >-
+                'local module ref "' + inputs.ref + '" is refused: set ALLOW_LOCAL_REFS=true '
+                  + 'to seed modules from the hub filesystem'
+    else:
+      - name: remote
+        if: !cel "!inputs.ref.startsWith('oci://') && !inputs.ref.startsWith('https://')"
+        then:
+          - name: rejectRemote
+            throw:
+              code: ERR_INVALID_MODULE_REF
+              message: !cel >-
+                'module ref "' + inputs.ref + '" must start with oci://, https:// or ./'
   - name: upsert
     invoke: !ref exec
     inputs:
@@ -99,8 +145,10 @@ steps:
         - !cel "inputs.ref"
         # Transport is part of the record's identity. `url` is a single
         # manifest at a fixed https location (no version list of its own; see
-        # the README).
-        - !cel "inputs.ref.startsWith('oci://') ? 'oci' : 'url'"
+        # the README); `local` one directory on the hub's disk.
+        - !cel >-
+          inputs.ref.startsWith('oci://') ? 'oci'
+            : (inputs.ref.startsWith('https://') ? 'url' : 'local')
 ---
 # Validate a submitted ref, record it, and schedule its first ingest.
 #

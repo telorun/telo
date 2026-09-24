@@ -218,6 +218,25 @@ export function SearchModules() {
                       Deprecated
                     </span>
                   )}
+                  {interfaceOnly(hit) && (
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                      Interface only
+                    </span>
+                  )}
+                  {/* Top right, away from the runtime badges on the bottom row,
+                      which share the chip look but answer a different question. */}
+                  {hit.module.categories && hit.module.categories.length > 0 && (
+                    <span className="ml-auto flex shrink-0 items-center gap-1">
+                      {hit.module.categories.map((category) => (
+                        <span
+                          key={category.slug}
+                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                        >
+                          {category.label}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </span>
                 {/* The full ref, because the bold name is only the tail and two
                     modules on different hosts share one — `.../telorun/console`
@@ -241,7 +260,7 @@ export function SearchModules() {
                   elements inside a link is invalid and breaks keyboard order. */}
               <div className="flex flex-wrap items-center gap-1 pt-1">
                 {hit.matchedKinds.slice(0, INLINE_KINDS).map((k) => (
-                  <KindPopover key={k.kind} kind={k} />
+                  <KindPopover key={`${k.entry ?? "kind"}:${k.name ?? k.kind}`} kind={k} />
                 ))}
                 {hit.matchedKinds.length > INLINE_KINDS && (
                   <button
@@ -254,16 +273,52 @@ export function SearchModules() {
                 )}
                 <span className="ml-auto flex flex-wrap items-center gap-1">
                   <RuntimeBadges runtime={hit.module.runtime} />
-                  {hit.module.categories?.map((category) => (
-                    <span
-                      key={category.slug}
-                      className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                    >
-                      {category.label}
-                    </span>
-                  ))}
                 </span>
               </div>
+
+              {interfaceOnly(hit) && hit.implementations && hit.implementations.length > 0 && (
+                <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 pt-1 text-xs text-muted-foreground">
+                  <span>Implemented by:</span>
+                  {hit.implementations.map((i) => (
+                    <a
+                      key={i.ref}
+                      href={refToPath(i.ref)}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                        e.preventDefault();
+                        navigate(refToPath(i.ref));
+                      }}
+                      title={i.ref}
+                      className="font-medium text-foreground underline-offset-2 hover:underline"
+                    >
+                      {moduleDisplayName(i)}
+                    </a>
+                  ))}
+                </p>
+              )}
+
+              {hit.siblings && hit.siblings.length > 0 && (
+                <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 pt-1 text-xs text-muted-foreground">
+                  <span>
+                    {hit.siblings.length} more like this:
+                  </span>
+                  {hit.siblings.map((s) => (
+                    <a
+                      key={s.ref}
+                      href={refToPath(s.ref)}
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                        e.preventDefault();
+                        navigate(refToPath(s.ref));
+                      }}
+                      title={s.description || s.ref}
+                      className="font-mono underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      {s.matchedKinds[0]?.name ?? moduleDisplayName(s)}
+                    </a>
+                  ))}
+                </p>
+              )}
             </li>
           ))}
         </ul>
@@ -281,4 +336,10 @@ export function SearchModules() {
       </Sheet>
     </div>
   );
+}
+
+/** Every kind the module exports is abstract, so importing it alone gives
+ *  nothing to instantiate — an implementation is what to use. */
+function interfaceOnly(hit: ModuleHit): boolean {
+  return hit.exportedKinds.length > 0 && hit.exportedKinds.every((k) => k.abstract);
 }

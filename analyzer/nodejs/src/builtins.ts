@@ -1,5 +1,6 @@
 import { PLATFORM_AXES } from "./artifact-axes.js";
 import { manifestFragment, manifestFragmentRef, withSchemaFragments } from "./manifest-schemas.js";
+import { ABSTRACT_THROWS_SCHEMA, THROWS_SCHEMA } from "./throws-declaration.js";
 
 /** A slot holding author-written JSON Schema. Localized and hoisted by
  *  {@link withSchemaFragments} on the enclosing schema, which is what makes the
@@ -660,6 +661,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         params: SIGNATURE_PARAMS_SCHEMA,
         returns: SIGNATURE_RETURNS_SCHEMA,
         deterministic: DETERMINISTIC_SCHEMA,
+        throws: ABSTRACT_THROWS_SCHEMA,
       },
       required: ["metadata"],
       // Telo.Abstract is an extension point by design — it must accept forward-compatible
@@ -702,6 +704,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         params: SIGNATURE_PARAMS_SCHEMA,
         returns: SIGNATURE_RETURNS_SCHEMA,
         deterministic: DETERMINISTIC_SCHEMA,
+        throws: THROWS_SCHEMA,
         resources: {
           type: "array",
           items: {

@@ -63,8 +63,8 @@ being linearized into a chain.
   `!ref <Alias>.<name>`). A library may offer either or both — a library that
   exports only ready-made singletons and no kinds at all is legitimate, so a
   kinds-only index showed none of its actual entry points. Surfaced as
-  `exportedResources` on a module hit; not independently searchable yet
-  (display-only). Each entry carries the `kind` it instantiates and that
+  `exportedResources` on a module hit, and ranked by search exactly as kinds
+  are. Each entry carries the `kind` it instantiates and that
   instance's own `description`, read from the declaring doc — a bare name says
   you may write `!ref Alias.writeLine` but not what you get. Both are empty for
   a **re-export**, whose declaring doc belongs to another module; `declared`
@@ -105,33 +105,66 @@ being linearized into a chain.
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
 | browse the category facet | `GET /categories` (slug + module and kind counts) |
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
+| ready-made instances of a kind | `GET /instances?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
-| MCP (`search_resources`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
+| MCP (`search_resources`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
 | liveness | `GET /health` |
 
 **Every keyed HTTP read has an MCP twin.** `get_module` mirrors `GET /module`,
 `list_module_versions` mirrors `GET /module/versions`, `find_implementations`
-mirrors `GET /implementations`, `list_categories` mirrors `GET /categories`,
+mirrors `GET /implementations`, `find_instances` mirrors `GET /instances`,
+`list_categories` mirrors `GET /categories`,
 and `suggest_module_refs` mirrors `GET /refs` — same handler, same shape,
 reached as a tool instead of a query string.
 
-**Exported instances are hits of their own.** `/search/resources` and
-`search_resources` return, beside the kind `hits`, an `instances` list: exported
-resources (`exports.resources`) whose name or `metadata.description` matches the
-query — a ready-made function such as `hmacSha256`, which an importer calls as
-`<Alias>.hmacSha256(…)`, or a singleton it references as `!ref <Alias>.<name>`.
-Each entry is `{ name, kind, description, module: { ref, version, name }, score }`,
-`kind` being the suffix (`Function` for a `Telo.Function`). They are kept apart
-from `hits`, whose shape is unchanged, because a kind is something to declare and
-an instance something to reference — and an instance's kind is often not
-searchable at all: it may be unexported (the singleton pattern) or a built-in the
-hub keeps no row for. Instance matching is lexical only (instance descriptions
-are not embedded), runs only for a non-empty `q`, and follows the same category
-and runtime filters through the instance's kind (its module's categories where the
-kind has no row, and portable where it has no runtime data).
+**Kinds and instances are searched the same way.** What search ranks is every
+exported kind and every exported instance (`exports.resources`), as one set
+(the `search_entries` view): both are ways to get a job done, and a module that
+only ships ready-made instances — one module per OCR language model — is found
+exactly as a module declaring kinds is. Each entry is embedded (vector id
+`k:<id>` / `i:<id>`) and matched lexically over its name and description and
+its module's name and description, then RRF-fused. A hit carries `entry`
+(`kind` | `instance`), `name` (what an importer writes after its alias:
+`Bucket`, `pol`, `hmacSha256`), `kind` (the kind it is or instantiates) and
+`kindRef` (that kind's owning module); a module hit's `matchedKinds` carries the
+same four. An instance takes its runtime reach and capability from its kind's
+row (portable when there is none, e.g. a `Telo.Function`), and its categories
+from its own kind when its module declares that kind, else from its module.
+A re-exported instance is its declaring module's entry, not a second one.
+
+**A module hit names its implementations.** `/search/modules` carries
+`implementations: [{ ref, name }]` — the modules whose exported kinds extend any
+of this module's kinds, at their latest version. When every kind a module
+exports is abstract, importing it alone gives nothing to declare; the web card
+marks such a hit "Interface only" and lists these as "Implemented by:".
+
+**Siblings fold into one hit.** Instances of one kind are siblings — every
+language model of a recognizer — and a broad query matches all of them. So
+`/search/resources` keeps the best-ranked instance of each kind as the hit and
+lists the other matching ones under its `siblings` (`{ name, description,
+module: { ref, version, name }, score }`), and `/search/modules` does the same
+for modules whose every match is an instance of one kind (`siblings: [{ ref,
+version, name, description, score, matchedKinds }]`), with `total` counted
+after folding. Nothing is dropped: a sibling is listed because it matched, and
+a query naming one (`german`) leads with it. Kind hits never fold, and neither
+do instances of a built-in kind, which unrelated functions share.
+
+**An instance is also reached from the kind it instantiates.** The hub records at
+ingest which module owns each exported instance's kind — resolved through the
+exporting manifest's own `imports:`, the way `extends` is — and serves the
+reverse: `GET /instances?ref=…&kind=…` and `find_instances` list every instance
+of that kind across modules, each `{ name, description, module: { ref, version,
+name, description } }` at the module's latest version. Every projection of a
+kind carries `instances`, the count. `/module` (and `get_module`) also lists
+the kinds a module re-exports from an import (`exports.kinds:
+[TesseractModel.Language]`), marked `reexported: true` and described by the
+owning module's latest version, so the `tesseract` page reaches the language
+models of the `Language` kind it passes through. Every kind there carries `ref`,
+its owning module — the key `/instances` takes. Re-exports are never search
+hits: a kind is ranked once, under the module that declares it.
 
 **Browsing is searching with a filter, not a separate surface.** Both
 `/search/*` verbs take an optional `category`, and an empty `q` degrades to an
@@ -161,6 +194,9 @@ the **union** of module-level and kind-level categories, because a kind doc's
 `categories:` replaces its module's for that kind — so a module whose every kind
 overrides it declares a slug present in no `resource_kinds` row, and a guard
 reading kinds alone would reject a slug the hub advertises one endpoint over.
+`modules` counts only modules the module search can return — ones exporting at
+least one kind or instance; a module exporting neither still votes on the
+category's label.
 Rows are `{ category, label, modules, kinds }` everywhere, `category` being the
 key `/categories` has always used: one concept must not have two key names
 depending on which endpoint answered.
@@ -309,9 +345,10 @@ leak which refs are tracked.
 | `MANIFEST_BUCKET_ACCESS_KEY_ID` / `MANIFEST_BUCKET_SECRET_ACCESS_KEY` | Bucket credentials |
 | `MANIFEST_BUCKET_FORCE_PATH_STYLE` | `true` for MinIO/RustFS (default `false`) |
 | `SEED_REFS` | JSON array of module refs registered idempotently on boot (the curated seed; publishers also self-register via `POST /register`) |
+| `ALLOW_LOCAL_REFS` | `true` lets `SEED_REFS` name a `./`-relative module directory read from the hub's own disk (default `false`; set by the compose stack) |
 | `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
-| `INGEST_REV` | Revision of the ingest pipeline (default `2`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `INGEST_REV` | Revision of the ingest pipeline (default `5`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
 | `TELO_BIN` | Path of the telo CLI the origin reads shell out to (default `telo`) |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
@@ -349,6 +386,9 @@ pnpm run telo apps/hub/telo.yaml
 Modules enter the index two ways:
 
 - **Curated seed** — the `SEED_REFS` JSON array, registered idempotently on boot.
+  An entry must be an `oci://` or `https://` ref, or — with `ALLOW_LOCAL_REFS` —
+  a local path; anything else stops the boot with `ERR_INVALID_MODULE_REF`, and a
+  local path without the flag with `ERR_LOCAL_REF_DISABLED`.
 - **Self-service `POST /register`** — open and unauthenticated, so it is layered:
   1. **Per-IP rate limit** (`RateLimit.Guard`, default 5 per 10m) — exceeded
      requests get a `429` with `Retry-After`. Rejected refs still consume budget,
@@ -411,6 +451,27 @@ from an OCI ref in ways worth knowing:
 
 Content changes are still caught: each track re-checks the digest and re-ingests
 when it moves, so the index and cache never drift from what the URL serves.
+
+### `local` transport — development only
+
+A seed entry of the form `./modules/tesseract` names a module directory on the
+hub's own disk, relative to its working directory. The compose stack mounts the
+repository there and seeds a few of its modules this way, so an unpublished
+module is indexed as it is in the checkout. It exists only behind
+`ALLOW_LOCAL_REFS`, only through the seed — `POST /register` refuses it whatever
+the flag says, since reading an anonymous caller's path off disk is exactly what
+its shape gate prevents — and only as `./` followed by segments of letters,
+digits, `.`, `_` and `-` that do not start with `.`, so it cannot leave the
+working directory.
+
+Like a `url` ref it has one version, the one the directory declares, and no pin.
+Its manifest is cached under `local/<path>/<version>/telo.yaml`, a key no
+published ref produces. Its `imports:` are still relative on disk, so every
+cross-module ref the hub stores for it — an `extends` target, a replacement, an
+instance's kind owner — is resolved against the module's own ref:
+`../../tesseract-model` imported from `./modules/tesseract-lang/pol` is
+`./modules/tesseract-model`, the ref that module was seeded under. Its
+publisher is `local`.
 
 ## Re-ingesting
 

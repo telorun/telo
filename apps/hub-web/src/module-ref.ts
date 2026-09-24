@@ -33,11 +33,12 @@ export function shortCapability(capability: string): string {
 }
 
 /** The transport a ref addresses, by the same rule the hub records at
- *  registration: an explicit scheme cannot be inferred from host/path alone. */
-export function transportOf(ref: string): "oci" | "url" | "registry" {
+ *  registration: an explicit scheme cannot be inferred from host/path alone, and
+ *  a `./` path is a module on the hub's own disk (a development seed). */
+export function transportOf(ref: string): "oci" | "url" | "local" {
   if (ref.startsWith("oci://")) return "oci";
   if (ref.startsWith("https://")) return "url";
-  return "registry";
+  return "local";
 }
 
 /** A ref as a page path, transport-first —
@@ -49,16 +50,16 @@ export function transportOf(ref: string): "oci" | "url" | "registry" {
  *  reads as opaque and defeats the point of a shareable link. */
 export function refToPath(ref: string): string {
   const transport = transportOf(ref);
-  const bare = ref.replace(/^[a-z][a-z0-9+.-]*:\/\//, "");
+  const bare = ref.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/^\.\//, "");
   return `/module/${transport}/${bare}`;
 }
 
 /** Inverse of `refToPath`; `null` when the path is not a module route. */
 export function refFromPath(pathname: string): string | null {
-  const match = /^\/module\/(oci|url|registry)\/(.+)$/.exec(pathname.replace(/\/+$/, ""));
+  const match = /^\/module\/(oci|url|local)\/(.+)$/.exec(pathname.replace(/\/+$/, ""));
   if (!match) return null;
   const [, transport, bare] = match;
   if (transport === "oci") return `oci://${bare}`;
   if (transport === "url") return `https://${bare}`;
-  return bare;
+  return `./${bare}`;
 }

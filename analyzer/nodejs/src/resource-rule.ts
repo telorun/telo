@@ -31,6 +31,12 @@ export interface ResourceRule {
   /** JSON Pointer to the collection to iterate. Absent = the whole-resource
    *  form, which reports at the resource rather than at an element. */
   readonly in?: string;
+  /** JSON Pointers to this kind's own reference slots whose declarations the
+   *  condition reads in place of the references, resolved one level — a single
+   *  slot becomes the declaration it names, a collection its entries resolved.
+   *  Opt-in, because rewriting `self` for every rule would change what existing
+   *  rules read. */
+  readonly resolve?: readonly string[];
   /** CEL source. TRUE when the rule holds. */
   readonly condition: string;
   /** The rule's own name, carried in `data.rule`. Never a diagnostic code —
@@ -131,8 +137,16 @@ export function readResourceRules(schema: unknown): ResourceRule[] {
     }
     const pointer = entry.in;
     if (pointer !== undefined && typeof pointer !== "string") return;
+    const resolve = entry.resolve;
+    if (
+      resolve !== undefined &&
+      !(Array.isArray(resolve) && resolve.every((p) => typeof p === "string" && pointerSegments(p)))
+    ) {
+      return;
+    }
     rules.push({
       ...(pointer === undefined ? {} : { in: pointer }),
+      ...(resolve === undefined ? {} : { resolve: resolve as string[] }),
       condition,
       code,
       message,

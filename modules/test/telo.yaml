@@ -36,6 +36,7 @@ schema:
       type: array
       items:
         type: string
+      x-telo-eval: compile
       description: >
         Glob patterns to discover test manifests, resolved relative to this
         manifest's directory.
@@ -43,16 +44,19 @@ schema:
       type: array
       items:
         type: string
+      x-telo-eval: compile
       description: >
         Glob patterns to exclude from discovery. Defaults to ["**/__fixtures__/**"].
     filter:
       type: string
+      x-telo-eval: compile
       description: >
         Optional substring filter applied to each discovered path. Only matching
         tests are executed.
     concurrency:
       type: integer
       minimum: 1
+      x-telo-eval: compile
       description: >
         Maximum number of tests to run in parallel. Defaults to 3. Set to 1
         to force sequential execution.

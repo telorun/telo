@@ -1,11 +1,26 @@
 import * as React from "react";
-import { AlertCircle, ArrowLeft, GitBranch, Globe, Loader2, Scale } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ChevronRight,
+  GitBranch,
+  Globe,
+  Loader2,
+  Scale,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DeprecationNotice, RuntimeBadges } from "@/Badges";
 import { CopyButton } from "@/CopyButton";
 import { ResourcePopover } from "@/KindPopover";
-import { fetchModule, type KindInfo, type ModulePage as ModulePageData } from "@/api";
+import {
+  fetchInstances,
+  fetchModule,
+  type KindInfo,
+  type KindInstance,
+  type ModulePage as ModulePageData,
+} from "@/api";
 import { moduleDisplayName, moduleLabel, refToPath, shortCapability } from "@/module-ref";
 import { navigate } from "@/routing";
 
@@ -241,6 +256,23 @@ function KindRow({ kind }: { kind: KindInfo }) {
         <p className="text-sm leading-relaxed text-muted-foreground">{kind.description}</p>
       )}
 
+      {kind.reexported && kind.ref && (
+        <p className="text-xs text-muted-foreground">
+          Re-exported from{" "}
+          <button
+            type="button"
+            onClick={() => navigate(refToPath(kind.ref!))}
+            className="font-mono underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {kind.ref}
+          </button>
+        </p>
+      )}
+
+      {kind.ref && (kind.instances ?? 0) > 0 && (
+        <KindInstances ownerRef={kind.ref} kind={kind.kind} count={kind.instances!} />
+      )}
+
       {/* The contract a kind implements is the axis that groups backends across
           module boundaries — worth naming even before it becomes a link. */}
       {kind.extends?.kind && (
@@ -267,6 +299,77 @@ function KindRow({ kind }: { kind: KindInfo }) {
         </p>
       )}
     </li>
+  );
+}
+
+type InstancesState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; instances: KindInstance[] }
+  | { kind: "failed"; error: string };
+
+/** The ready-made instances of one kind, across every module that exports one —
+ *  how a module that only packages instances (one per OCR language) is reached.
+ *  Fetched on first open, since most readers never expand it. */
+function KindInstances({ ownerRef, kind, count }: { ownerRef: string; kind: string; count: number }) {
+  const [open, setOpen] = React.useState(false);
+  const [state, setState] = React.useState<InstancesState>({ kind: "idle" });
+  const controller = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => () => controller.current?.abort(), []);
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next || state.kind !== "idle") return;
+    controller.current = new AbortController();
+    setState({ kind: "loading" });
+    fetchInstances(ownerRef, kind, controller.current.signal)
+      .then((result) =>
+        setState(
+          result.ok
+            ? { kind: "ready", instances: result.instances }
+            : { kind: "failed", error: result.error },
+        ),
+      )
+      .catch(() => {
+        // Aborted by unmount; nothing is left to update.
+      });
+  };
+
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange} className="flex flex-col gap-1.5">
+      <CollapsibleTrigger className="group flex items-center gap-1 self-start text-xs text-primary underline-offset-2 hover:underline">
+        <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
+        {count} ready-made {count === 1 ? "instance" : "instances"}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        {state.kind === "loading" && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" /> Loading…
+          </p>
+        )}
+        {state.kind === "failed" && (
+          <p className="text-xs text-destructive">Could not load instances: {state.error}</p>
+        )}
+        {state.kind === "ready" && (
+          <ul className="flex flex-col gap-1">
+            {state.instances.map((i) => (
+              <li key={`${i.module.ref}/${i.name}`} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                <code className="font-mono font-medium">{i.name}</code>
+                {i.description && <span className="text-muted-foreground">{i.description}</span>}
+                <button
+                  type="button"
+                  onClick={() => navigate(refToPath(i.module.ref))}
+                  className="font-mono text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                >
+                  {i.module.ref}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

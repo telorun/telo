@@ -62,7 +62,9 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
+import { MODULE_PATH_ENGINE } from "@telorun/templating";
 import { isRefEntry } from "./reference-field-map.js";
+import { isInjectedDeclaration } from "./resource-input.js";
 import {
   dynamicNode,
   findDynamicLeaf,
@@ -115,8 +117,10 @@ export interface PeerBindingFailure {
    *   comparison would run against a placeholder.
    * - `unknown-shape` — the referrer's kind is not resolvable here, so which of
    *   its paths hold references is not known.
+   * - `kind-only` — a reference names a library's `resources:` input, known by its
+   *   kind alone until the importer supplies it, so it has no fields to compare.
    */
-  readonly reason: "unresolved" | "no-collection" | "dynamic" | "unknown-shape";
+  readonly reason: "unresolved" | "no-collection" | "dynamic" | "unknown-shape" | "kind-only";
   /** Where, in the referrer, for the diagnostic. */
   readonly at: string;
   /** For `dynamic`: the noun phrase naming what sits there, quoted verbatim by
@@ -291,12 +295,20 @@ function entryRefsOf(
  */
 function dynamicInDeclaration(declaration: ResourceManifest): DynamicLeaf | undefined {
   for (const [key, value] of Object.entries(declaration as Record<string, unknown>)) {
-    if (key === "metadata") continue;
+    if (key === "metadata" || isModulePath(value)) continue;
     const dynamic = dynamicNode(value, key);
     if (dynamic) return dynamic;
   }
   return undefined;
 }
+
+/** A `!module-path` names a file by the path its author wrote, which is fixed in
+ *  the manifest; only its absolute location waits for creation. Two declarations
+ *  naming one path name one file, so it compares as written. Without this, every
+ *  declaration that locates a file — a model, a static root — made any rule
+ *  binding it skip. */
+const isModulePath = (value: unknown): boolean =>
+  !!value && typeof value === "object" && (value as { engine?: unknown }).engine === MODULE_PATH_ENGINE;
 
 type EntryResult =
   | { readonly ok: true; readonly value: unknown }
@@ -317,6 +329,7 @@ function resolveEntry(
     if (reference) {
       const declaration = lookup(reference);
       if (!declaration) return { ok: false, failure: { reason: "unresolved", at } };
+      if (isInjectedDeclaration(declaration)) return { ok: false, failure: { reason: "kind-only", at } };
       const dynamic = dynamicInDeclaration(declaration);
       if (dynamic) {
         return {
@@ -348,6 +361,9 @@ function resolveEntry(
     }
     const declaration = lookup(reference);
     if (!declaration) return { ok: false, failure: { reason: "unresolved", at: `${at}.${key}` } };
+    if (isInjectedDeclaration(declaration)) {
+      return { ok: false, failure: { reason: "kind-only", at: `${at}.${key}` } };
+    }
     const dynamic = dynamicInDeclaration(declaration);
     if (dynamic) {
       return {
@@ -424,6 +440,31 @@ export class PeerBinder {
     );
     if (!entry.ok) return entry;
     return { ok: true, binding: { peers, entry: entry.value } };
+  }
+
+  /**
+   * The value at `pointer` with the references in it resolved one level — a
+   * resource rule's `resolve:` view of its OWN reference slots. A single slot
+   * yields the declaration it names; a collection yields the same collection
+   * with each entry resolved, exactly as `peers:` binds one.
+   */
+  resolveReferences(
+    manifest: ResourceManifest,
+    kind: string,
+    pointer: string,
+  ): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly failure: PeerBindingFailure } {
+    const path = pointerToPath(pointer);
+    const shapes = this.env.refSlotsOf(kind);
+    if (!shapes) return { ok: false, failure: { reason: "unknown-shape", at: path } };
+    const raw = resolvePointer(manifest, pointer);
+    if (raw === undefined || raw === null) return { ok: true, value: raw };
+    if (shapes.includes(path)) {
+      return resolveEntry(raw, path, { itemIsRef: true, properties: new Set() }, this.env.declarationOf);
+    }
+    const resolved = this.collection(manifest, pointer, path, shapes);
+    if (!resolved.ok) return resolved;
+    if (Array.isArray(raw)) return { ok: true, value: resolved.values };
+    return { ok: true, value: Object.fromEntries(resolved.keys.map((k, i) => [k, resolved.values[i]])) };
   }
 
   /** True when the rule has something to compare — the input to the
@@ -507,6 +548,35 @@ export class PeerBinder {
     const rest = slotPath.slice(collectionPath.length + 1);
     const dot = rest.indexOf(".");
     return dot === -1 ? rest : rest.slice(0, dot);
+  }
+}
+
+/** Why a binding could not be produced, as the sentence a reader acts on. Shared
+ *  by referrer rules (`peers:`) and resource rules (`resolve:`). */
+export function bindingFailureReason(failure: PeerBindingFailure): string {
+  switch (failure.reason) {
+    case "no-collection":
+      return `'${failure.at}' holds no collection to resolve.`;
+    case "unresolved":
+      return (
+        `a reference at '${failure.at}' names a declaration this analysis does not hold, ` +
+        "so it would resolve to nothing."
+      );
+    case "kind-only":
+      return (
+        `a reference at '${failure.at}' names a library's resources: input, known by its ` +
+        "kind alone until the importer supplies it, so there is nothing to compare yet."
+      );
+    case "dynamic":
+      return (
+        `a value at '${failure.at}' holds ${failure.what ?? "a value"}, which is not known ` +
+        "until the resource is created, so the comparison would run against a placeholder."
+      );
+    case "unknown-shape":
+      return (
+        `which paths under '${failure.at}' hold references is not known here, so nothing ` +
+        "could be resolved into a declaration."
+      );
   }
 }
 

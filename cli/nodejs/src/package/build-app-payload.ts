@@ -289,7 +289,7 @@ async function stageLocalModules(options: {
 
     // Everything the manifest NAMES: embedded files, assets, controller and
     // library entry points, native files.
-    const claims = expandDirectoryClaims(dir, collectModuleFileClaims(module.owner.text));
+    const claims = expandDirectoryClaims(dir, collectModuleFileClaims(module.owner.text), []);
     for (const claim of claims) {
       if (claim.role === "controller" || claim.role === "library") continue;
       copy(claim.path, claim.origin);

@@ -102,6 +102,13 @@ export {
   templateTargetsOf,
 } from "./template-targets.js";
 export { nearestName } from "./nearest-name.js";
+// An ancestor's `throws:` as a ceiling, read once for `telo check` and the kernel.
+export { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+export {
+  ABSTRACT_THROWS_SCHEMA,
+  THROWS_CAPABLE_CAPABILITIES,
+  THROWS_SCHEMA,
+} from "./throws-declaration.js";
 export type { TemplateTarget, TemplateTargetProblem } from "./template-targets.js";
 // The callable signature, and the rules a callable kind is subject to. Shared
 // with the kernel so its definition-registration refusal and `telo check` cannot
@@ -530,8 +537,10 @@ export {
   crossLayerSourceLinks,
   describeClaim,
   nativeClaimConflicts,
+  pathsAtOrBeneath,
   readAssetPatterns,
   stageableFiles,
+  stagedModuleFiles,
   unclaimedSourceEntries,
 } from "./module-named-files.js";
 export type {

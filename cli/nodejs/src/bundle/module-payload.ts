@@ -39,6 +39,7 @@ import {
   DEFAULT_MANIFEST_FILENAME,
   sha256Base64Url,
   splitIntegrity,
+  stagedModuleFiles,
   type ArtifactLayer,
   type ModuleSource,
 } from "@telorun/analyzer";
@@ -382,9 +383,13 @@ export class ModulePayloadBuilder {
       await this.transformManifest(manifestPath);
     const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
 
-    const claims = expandDirectoryClaims(manifestDir, collectModuleFileClaims(manifest));
     const native = readNativeFiles(manifest, manifestDir);
     const assetPatterns = readAssetPatterns(manifest);
+    const claims = expandDirectoryClaims(
+      manifestDir,
+      collectModuleFileClaims(manifest),
+      fromPins ? stagedModuleFiles(native, { patterns: assetPatterns, sources }) : [],
+    );
     const staged = stagedEntriesOf(sources);
     await assertNamedFiles(manifestDir, native, claims, assetPatterns, sources, staged, fromPins);
     // A notice and a staged file ship because their source names them, as if

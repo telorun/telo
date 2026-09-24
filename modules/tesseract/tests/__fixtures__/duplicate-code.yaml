@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: Probe
+  version: 1.0.0
+imports:
+  Tesseract: ../..
+---
+kind: Tesseract.Language
+metadata: { name: invoices }
+code: eng
+data: !module-path ./hello.pnm
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng, !ref invoices]

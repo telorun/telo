@@ -108,6 +108,7 @@ imports:
     variables:
       teloBin: !cel "variables.teloBin"
       ingestRev: !cel "variables.ingestRev"
+      allowLocalRefs: !cel "variables.allowLocalRefs"
 ports:
   http:
     env: PORT
@@ -132,6 +133,13 @@ variables:
     env: SEED_REFS
     type: array
     default: []
+  # Whether SEED_REFS may name a `./`-relative module directory, read off this
+  # process's own disk from its working directory — how the development stack
+  # indexes the repository's unpublished modules. `/register` never accepts one.
+  allowLocalRefs:
+    env: ALLOW_LOCAL_REFS
+    type: boolean
+    default: false
   # When the reconcile pass runs. Standard 5-field cron, in UTC.
   trackCron:
     env: TRACK_CRON
@@ -150,7 +158,7 @@ variables:
   ingestRev:
     env: INGEST_REV
     type: integer
-    default: 2
+    default: 5
   # Path of the telo CLI the origin reads shell out to (`telo` on PATH by default).
   teloBin:
     env: TELO_BIN
@@ -475,7 +483,6 @@ routes:
               categories: !cel "result.categories"
               categoryFilterDropped: !cel "result.categoryFilterDropped"
               hits: !cel "result.hits"
-              instances: !cel "result.instances"
     catches:
       # A category outside the declared vocabulary is the caller's mistake, so
       # it is a 400 carrying the vocabulary — not a 200 with an empty list.
@@ -485,6 +492,14 @@ routes:
           application/json:
             body:
               error: !cel "error.message"
+      # The embedding and vector backends declare no throw list, so anything
+      # else is a server fault: return only the code, never an upstream message.
+      - status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: search failed
 
   - request:
       path: /search/modules
@@ -546,6 +561,12 @@ routes:
           application/json:
             body:
               error: !cel "error.message"
+      - status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: search failed
 
   # Browse, not search: the categories that actually exist, with how many
   # modules and kinds sit in each. Answered by the SAME resource the search
@@ -590,6 +611,31 @@ routes:
             body:
               extends: !cel "{'ref': request.query.ref, 'kind': request.query.kind}"
               implementations: !cel "result.implementations"
+
+  # Every ready-made instance of a kind, across module boundaries — the instance
+  # axis. A module packaging instances of another module's kind (a language
+  # model pack) is reached from the kind instead of ranking as a search result.
+  - request:
+      path: /instances
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            ref: { type: string, description: "Ref of the module owning the kind." }
+            kind: { type: string, description: "Kind's suffix, e.g. Language." }
+          required: [ref, kind]
+    handler: !ref Catalog.instances
+    inputs:
+      ref: !cel "request.query.ref"
+      kind: !cel "request.query.kind"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              of: !cel "{'ref': request.query.ref, 'kind': request.query.kind}"
+              instances: !cel "result.instances"
 
   # Lexical ref typeahead (pg_trgm): completes a ref whose name the author
   # already knows — the memorable token at an OCI path's tail matches without
@@ -812,14 +858,15 @@ entries:
   # module location ref to import it under a chosen alias.
   - name: search_resources
     description: |
-      Search resource kinds across every registered Telo module, on any host or
-      transport. Each hit carries the kind suffix (e.g. `Bucket` — the prefix
-      is YOUR import alias), its capability and description, the kernels that
-      can load it, and the owning module's exact location ref + version.
-      `instances` lists ready-made exported resources whose name or description
-      matches — a function such as `hmacSha256` you call as
-      `<YourAlias>.hmacSha256(…)` or reference as `!ref <YourAlias>.hmacSha256` —
-      each with its name, kind suffix, description and module ref + version.
+      Search what registered Telo modules can do, on any host or transport.
+      A hit is either a kind to declare (`entry: kind`) or a ready-made
+      instance to reference (`entry: instance` — a function such as
+      `hmacSha256` you call as `<YourAlias>.hmacSha256(…)`, or a model such as
+      `pol` you reference as `!ref <YourAlias>.pol`), ranked together. `name`
+      is what you write after YOUR import alias, `kind` the kind it is or
+      instantiates; each hit carries its capability and description, the
+      kernels that can load it, and the owning module's exact location ref +
+      version.
       Follow up with `get_module_manifest(ref)` to read the full schemas.
     argumentsSchema:
       type: object
@@ -865,8 +912,7 @@ entries:
           # a widened search rather than from the requested category.
           text: !cel >-
             json({'query': request.arguments.query, 'categories': result.categories,
-                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits,
-                  'instances': result.instances})
+                  'categoryFilterDropped': result.categoryFilterDropped, 'hits': result.hits})
     catches:
       # -32602 (invalid params), not an empty hit list: a guessed category that
       # answered "no such kind" is what sent an agent hunting for a capability
@@ -875,6 +921,9 @@ entries:
         error:
           code: -32602
           message: !cel "error.message"
+      - error:
+          code: -32603
+          message: !cel "'search failed: ' + error.code"
 
   # get_module_manifest — keyed off the module's location ref, serving the
   # cached telo.yaml.
@@ -1002,6 +1051,34 @@ entries:
             json({'extends': {'ref': request.arguments.ref, 'kind': request.arguments.kind},
                   'implementations': result.implementations})
 
+  # find_instances — the instance axis: every ready-made instance of a kind,
+  # exported by any module, without the kind's own module knowing any of them.
+  - name: find_instances
+    description: |
+      List every ready-made instance of a given kind that any module exports
+      (e.g. every language model for an OCR recognizer), across module
+      boundaries. `ref` + `kind` name the kind exactly as a hit's
+      `module.ref` and `kind` do; a kind hit's `instances` count says
+      whether there is anything to list. Import the returned module and
+      reference the instance as `!ref <YourAlias>.<name>`.
+    argumentsSchema:
+      type: object
+      properties:
+        ref: { type: string, description: "Location ref of the module owning the kind." }
+        kind: { type: string, description: "Kind's suffix, e.g. Language." }
+      required: [ref, kind]
+      additionalProperties: false
+    handler: !ref Catalog.instances
+    inputs:
+      ref: !cel "request.arguments.ref"
+      kind: !cel "request.arguments.kind"
+    result:
+      content:
+        - type: text
+          text: !cel >-
+            json({'of': {'ref': request.arguments.ref, 'kind': request.arguments.kind},
+                  'instances': result.instances})
+
   # list_categories — the declared grouping facet, browsable directly instead
   # of learned only as a side effect of one search_resources call.
   - name: list_categories
@@ -1075,15 +1152,16 @@ instructions: !literal |
   - https://telo.run/cel.md — CEL function reference.
 
   ## Tools
-  - `search_resources(query, category?)` — find resource KINDS by what they do.
-    Each hit carries the kind suffix (`Bucket`), its capability/description, and
-    the owning module's exact location ref + version. Search UNFILTERED first:
+  - `search_resources(query, category?)` — find what can do a job: resource
+    KINDS to declare and ready-made INSTANCES to reference, ranked together
+    (`entry: kind | instance`). Each hit carries its `name` (`Bucket`, `pol`),
+    the `kind` it is or instantiates, its capability/description, and the owning
+    module's exact location ref + version. Search UNFILTERED first:
     `category` is an open, author-declared vocabulary, a guessed slug is
     rejected outright, and a wrong-but-real one hides the answer. Every response
     lists the real slugs under `categories`, so one call teaches you the set.
-    `instances` lists exported resources — ready-made functions and singletons —
-    whose name or description matches, each with its module ref: import that
-    module and call `<YourAlias>.<name>(…)` or `!ref <YourAlias>.<name>`.
+    Write a kind hit as `<YourAlias>.<name>`; reference an instance hit as
+    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`.
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.
@@ -1095,6 +1173,10 @@ instructions: !literal |
     a version instead of importing an unpinned `latest`.
   - `find_implementations(ref, kind)` — every exported kind extending a given
     contract (e.g. backends of `Sql.Connection`), across module boundaries.
+  - `find_instances(ref, kind)` — every ready-made instance of a kind that any
+    module exports (e.g. the language models an OCR recognizer takes). A kind
+    hit's `instances` count says when there are some; packs of instances are
+    listed here rather than as search results of their own.
   - `list_categories(category?)` — browse the domain facet directly, or check
     a slug/label exists before passing it to `search_resources`.
   - `suggest_module_refs(query)` — fuzzy ref typeahead for a half-remembered or
@@ -1102,7 +1184,8 @@ instructions: !literal |
 
   ## Composing an application
   1. `search_resources` for each capability you need; `find_implementations`
-     once you have an abstract kind and need a concrete backend.
+     once you have an abstract kind and need a concrete backend;
+     `find_instances` when a kind you need has ready-made instances to import.
   2. `get_module_manifest` on each hit's `module.ref`; read the
      `Telo.Definition` schemas — never guess fields from a kind name.
      `list_module_versions` first if you want a pinned, non-latest version.

@@ -9,6 +9,7 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { formatAjvErrors, validateResourceAbstract } from "../../manifest-schemas.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
+import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import {
   forgetRegisteredDefinition,
   recordRegisteredDefinition,
@@ -80,6 +81,7 @@ class ResourceAbstract implements ResourceInstance {
       this.resource as unknown as ResourceDefinition,
       ctx as unknown as DefinitionScopeHost,
     );
+    refuseThrowsOutsideCeiling(this.resource as unknown as ResourceDefinition, resolveDef);
 
     ctx.registerDefinition(this.resource);
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());

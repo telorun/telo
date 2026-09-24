@@ -325,6 +325,186 @@ migrations:
   "20260917090000_AddResourceKindIsOwn":
     statements:
       - ALTER TABLE module_resources ADD COLUMN kind_is_own BOOLEAN NOT NULL DEFAULT FALSE
+  # The module owning an exported instance's kind, resolved at ingest the way
+  # `extends_ref` is — through the declaring manifest's own `imports:` map — so
+  # `(kind_ref, kind)` names the kind across module boundaries. That is the
+  # instance axis: every module exporting a ready-made instance of one kind (a
+  # language model pack, a preconfigured connection) is reachable from the kind,
+  # without the kind's module knowing it exists and without each pack ranking as
+  # a search result of its own. Empty for a built-in kind and a re-export.
+  "20260924090000_AddResourceKindRef":
+    statements:
+      - ALTER TABLE module_resources ADD COLUMN kind_ref TEXT NOT NULL DEFAULT ''
+      - CREATE INDEX module_resources_kind_ref_idx ON module_resources (kind_ref, kind)
+      # How many instances of a kind the latest versions of every module export —
+      # the count every kind row carries, defined once for the three reads that
+      # project a kind.
+      - |
+        CREATE FUNCTION kind_instance_count(owner_ref TEXT, kind_name TEXT) RETURNS INT
+        LANGUAGE sql STABLE STRICT AS $$
+          SELECT COUNT(*)::int
+          FROM module_resources mr
+          JOIN modules m ON m.id = mr.module_id AND m.latest_version = mr.version
+          WHERE mr.kind_ref = owner_ref AND mr.kind = kind_name
+        $$
+  # A module read from the hub's own filesystem, by a `./`-relative path from the
+  # hub's working directory — the development stack seeds the repository's
+  # unpublished modules this way. Never reachable from `/register`: the seed is
+  # its only way in, and only while `ALLOW_LOCAL_REFS` is set.
+  #
+  # A local module's `imports:` stay relative (only publishing rewrites them), so
+  # an import source is meaningless until it is resolved against the importing
+  # module's own ref: `../../tesseract-model` from `./modules/tesseract-lang/pol`
+  # is `./modules/tesseract-model`, the ref that module was seeded under. Every
+  # stored cross-module ref (`extends_ref`, `replaced_by_ref`, `kind_ref`) goes
+  # through this one rule. The importer's own ref (what `Self` resolves to) and
+  # any non-relative source are returned as written.
+  "20260924100000_AddLocalTransport":
+    statements:
+      - ALTER TABLE modules DROP CONSTRAINT modules_transport_known
+      - |
+        ALTER TABLE modules ADD CONSTRAINT modules_transport_known
+        CHECK (transport IN ('oci', 'url', 'local'))
+      - |
+        CREATE OR REPLACE FUNCTION module_publisher(ref TEXT, transport TEXT) RETURNS TEXT
+        LANGUAGE sql IMMUTABLE STRICT AS $$
+          SELECT CASE
+            WHEN transport = 'local' THEN 'local'
+            WHEN transport = 'url' THEN split_part(bare, '/', 1)
+            WHEN split_part(bare, '/', 2) = '' THEN split_part(bare, '/', 1)
+            ELSE split_part(bare, '/', 1) || '/' || split_part(bare, '/', 2)
+          END
+          FROM (SELECT regexp_replace(ref, '^[a-z0-9+.-]+://', '') AS bare) AS s
+        $$
+      - |
+        CREATE FUNCTION resolve_import_ref(importer TEXT, source TEXT) RETURNS TEXT
+        LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+        DECLARE
+          segment TEXT;
+          resolved TEXT[] := '{}';
+        BEGIN
+          -- `Self` resolves to the importer's own ref at ingest, already whole.
+          IF importer NOT LIKE './%' OR source = importer OR source !~ '^\.\.?/' THEN
+            RETURN source;
+          END IF;
+          FOREACH segment IN ARRAY string_to_array(importer || '/' || source, '/') LOOP
+            IF segment = '..' THEN
+              resolved := resolved[1:cardinality(resolved) - 1];
+            ELSIF segment <> '.' AND segment <> '' THEN
+              resolved := resolved || segment;
+            END IF;
+          END LOOP;
+          RETURN './' || array_to_string(resolved, '/');
+        END
+        $$
+  # Kinds a module re-exports from one of its imports (`exports.kinds:
+  # [TesseractModel.Language]`). A separate table, not `resource_kinds` rows:
+  # that table is what search ranks, embeds and counts, and a re-export is the
+  # owner's kind — indexing it twice would list one kind under two modules. It
+  # exists for the module page, which must show everything an importer can
+  # declare through this module, and reads the kind's detail from its owner.
+  "20260924110000_AddReexportedKinds":
+    statements:
+      - |
+        CREATE TABLE module_reexported_kinds (
+          id        BIGSERIAL PRIMARY KEY,
+          module_id BIGINT NOT NULL,
+          version   TEXT NOT NULL,
+          -- The entry verbatim (`TesseractModel.Language`).
+          declared  TEXT NOT NULL,
+          -- The kind suffix, as an importer writes it after its own alias.
+          name      TEXT NOT NULL,
+          -- The owning module, resolved like `extends_ref`; '' when the alias
+          -- names no import.
+          kind_ref  TEXT NOT NULL DEFAULT '',
+          UNIQUE (module_id, version, declared),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+  # What search ranks: every exported kind AND every exported instance, as one
+  # row shape. A module is found by what it lets an importer do, and an
+  # instance does a job exactly as a kind does — a language model pack declares
+  # no kind at all, and was unfindable while search ranked kinds alone. Both
+  # search arms, the embedding pass and the facet read this, so the two can
+  # never be ranked by different rules.
+  #
+  # `id` is namespaced (`k:<resource_kinds.id>`, `i:<module_resources.id>`) and
+  # is also the vector id. `kind` is the kind the entry is or instantiates, with
+  # `kind_ref` its owning module. An instance takes its runtime reach and
+  # capability from that kind's row (portable when there is none, e.g. a
+  # built-in), and its categories from its own kind when its module declares
+  # that kind, else from its module — never from an unrelated local kind that
+  # shares the suffix. A re-exported instance (`kind` '') is its declaring
+  # module's entry, not a second one.
+  "20260924120000_AddSearchEntries":
+    statements:
+      - |
+        CREATE VIEW search_entries AS
+        SELECT 'k:' || rk.id AS id, 'kind' AS entry, rk.module_id, rk.version,
+               rk.name, rk.name AS kind, m.ref AS kind_ref,
+               rk.capability, rk.description, rk.categories, rk.category_labels,
+               rk.extends_kind, rk.extends_ref, rk.runtimes, rk.languages, rk.portable,
+               rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
+               rk.search
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id
+        WHERE rk.exported
+        UNION ALL
+        SELECT 'i:' || mr.id, 'instance', mr.module_id, mr.version,
+               mr.name, mr.kind, mr.kind_ref,
+               COALESCE(ok.capability, ''), mr.description,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.categories ELSE mv.categories END,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.category_labels ELSE mv.category_labels END,
+               '', '', COALESCE(ok.runtimes, '{}'), COALESCE(ok.languages, '{}'),
+               COALESCE(ok.portable, TRUE),
+               '', '', '',
+               to_tsvector('english', mr.name || ' ' || mr.kind || ' ' || mr.description)
+        FROM module_resources mr
+        JOIN module_versions mv ON mv.module_id = mr.module_id AND mv.version = mr.version
+        LEFT JOIN modules om ON NOT mr.kind_is_own AND mr.kind_ref <> '' AND om.ref = mr.kind_ref
+        LEFT JOIN resource_kinds ok
+          ON ok.name = mr.kind
+         AND ((mr.kind_is_own AND ok.module_id = mr.module_id AND ok.version = mr.version)
+              OR (NOT mr.kind_is_own AND ok.module_id = om.id AND ok.version = om.latest_version))
+        WHERE mr.kind <> ''
+  # A kind is also found by the words of the contract it implements: a query for
+  # what the contract does ("ocr") reaches every implementation, whose own text
+  # need not repeat the contract's vocabulary. Read from the contract's latest
+  # version; a contract the hub does not track, or a built-in, adds nothing.
+  "20260924130000_SearchEntriesIncludeContract":
+    statements:
+      - |
+        CREATE OR REPLACE VIEW search_entries AS
+        SELECT 'k:' || rk.id AS id, 'kind' AS entry, rk.module_id, rk.version,
+               rk.name, rk.name AS kind, m.ref AS kind_ref,
+               rk.capability, rk.description, rk.categories, rk.category_labels,
+               rk.extends_kind, rk.extends_ref, rk.runtimes, rk.languages, rk.portable,
+               rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
+               rk.search || COALESCE(ck.search, ''::tsvector) AS search
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id
+        LEFT JOIN modules cm ON rk.extends_ref <> '' AND cm.ref = rk.extends_ref
+        LEFT JOIN resource_kinds ck
+          ON ck.module_id = cm.id AND ck.version = cm.latest_version AND ck.name = rk.extends_kind
+        WHERE rk.exported
+        UNION ALL
+        SELECT 'i:' || mr.id, 'instance', mr.module_id, mr.version,
+               mr.name, mr.kind, mr.kind_ref,
+               COALESCE(ok.capability, ''), mr.description,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.categories ELSE mv.categories END,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.category_labels ELSE mv.category_labels END,
+               '', '', COALESCE(ok.runtimes, '{}'), COALESCE(ok.languages, '{}'),
+               COALESCE(ok.portable, TRUE),
+               '', '', '',
+               to_tsvector('english', mr.name || ' ' || mr.kind || ' ' || mr.description)
+        FROM module_resources mr
+        JOIN module_versions mv ON mv.module_id = mr.module_id AND mv.version = mr.version
+        LEFT JOIN modules om ON NOT mr.kind_is_own AND mr.kind_ref <> '' AND om.ref = mr.kind_ref
+        LEFT JOIN resource_kinds ok
+          ON ok.name = mr.kind
+         AND ((mr.kind_is_own AND ok.module_id = mr.module_id AND ok.version = mr.version)
+              OR (NOT mr.kind_is_own AND ok.module_id = om.id AND ok.version = om.latest_version))
+        WHERE mr.kind <> ''
 ---
 # CLAIM — the single statement that decides a version is due and mints the
 # identity of the attempt that will ingest it.

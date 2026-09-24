@@ -11,7 +11,8 @@ metadata:
   description: >-
     Keyed reads over the discovery index: one module's metadata, kinds and
     versions, the cached manifest text for a version, the kinds implementing a
-    contract, ref autocomplete, and how far a registration has got.
+    contract, the ready-made instances of a kind, ref autocomplete, and how far a
+    registration has got.
 requires:
   # 0.83.0: `resources:` inputs on a library.
   # 0.87.0: a `resources:` entry constrained by an ABSTRACT kind satisfies the
@@ -36,6 +37,7 @@ exports:
     - moduleDetail
     - moduleVersionList
     - implementations
+    - instances
     - refSuggestions
     - registrationStatus
 ---
@@ -127,8 +129,16 @@ steps:
                mv.languages, mv.portable,
                (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
                 FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS categories,
-               (SELECT COALESCE(json_agg(json_build_object(
-                         'kind', rk.name, 'capability', rk.capability,
+               /* The module's own kinds, then the kinds it re-exports from an
+                  import, each described by its owner's latest version. `ref`
+                  is the owning module either way, which with `kind` is what
+                  `/instances` and `/implementations` are keyed by. A
+                  re-export whose owner the hub does not track keeps its name
+                  and ref with empty detail. */
+               (SELECT COALESCE(json_agg(k.entry ORDER BY k.name), '[]'::json) FROM (
+                SELECT rk.name, json_build_object(
+                         'kind', rk.name, 'ref', m.ref, 'reexported', FALSE,
+                         'capability', rk.capability,
                          'abstract', rk.abstract, 'description', rk.description,
                          'extends', json_build_object('kind', rk.extends_kind, 'ref', rk.extends_ref),
                          'runtime', json_build_object('runtimes', rk.runtimes,
@@ -137,10 +147,32 @@ steps:
                          'deprecated', json_build_object(
                            'reason', rk.deprecated_reason,
                            'replacedBy', json_build_object('kind', rk.replaced_by_kind,
-                                                           'ref', rk.replaced_by_ref)))
-                       ORDER BY rk.name), '[]'::json)
+                                                           'ref', rk.replaced_by_ref)),
+                         'instances', kind_instance_count(m.ref, rk.name)) AS entry
                 FROM resource_kinds rk
-                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported) AS kinds,
+                WHERE rk.module_id = mv.module_id AND rk.version = mv.version AND rk.exported
+                UNION ALL
+                SELECT rx.name, json_build_object(
+                         'kind', rx.name, 'ref', rx.kind_ref, 'reexported', TRUE,
+                         'capability', COALESCE(ok.capability, ''),
+                         'abstract', COALESCE(ok.abstract, FALSE),
+                         'description', COALESCE(ok.description, ''),
+                         'extends', json_build_object('kind', COALESCE(ok.extends_kind, ''),
+                                                      'ref', COALESCE(ok.extends_ref, '')),
+                         'runtime', json_build_object('runtimes', COALESCE(ok.runtimes, '{}'),
+                                                      'languages', COALESCE(ok.languages, '{}'),
+                                                      'portable', COALESCE(ok.portable, FALSE)),
+                         'deprecated', json_build_object(
+                           'reason', COALESCE(ok.deprecated_reason, ''),
+                           'replacedBy', json_build_object('kind', COALESCE(ok.replaced_by_kind, ''),
+                                                           'ref', COALESCE(ok.replaced_by_ref, ''))),
+                         'instances', kind_instance_count(rx.kind_ref, rx.name))
+                FROM module_reexported_kinds rx
+                LEFT JOIN modules om ON om.ref = rx.kind_ref
+                LEFT JOIN resource_kinds ok
+                  ON ok.module_id = om.id AND ok.version = om.latest_version AND ok.name = rx.name
+                WHERE rx.module_id = mv.module_id AND rx.version = mv.version
+               ) k) AS kinds,
                (SELECT COALESCE(json_agg(json_build_object(
                          'name', mr.name, 'kind', mr.kind,
                          'description', mr.description, 'declared', mr.declared)
@@ -262,6 +294,47 @@ steps:
         - !cel "inputs.kind"
 outputs:
   implementations: !cel "steps.rows.result.rows"
+---
+# Every exported instance of a given kind, across module boundaries — the
+# instance axis. A module that only packages ready-made instances of another
+# module's kind (a language model pack) is reached from that kind rather than
+# ranked as a search result of its own, and the kind's module never lists it.
+kind: Run.Sequence
+metadata:
+  name: instances
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      ref: { type: string }
+      kind: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      instances: { type: array }
+    required: [instances]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mr.name, mr.description,
+               json_build_object('ref', m.ref, 'version', mr.version,
+                                 'name', COALESCE(mv.module_name, ''),
+                                 'description', COALESCE(mv.description, '')) AS module
+        FROM module_resources mr
+        JOIN modules m ON m.id = mr.module_id AND m.latest_version = mr.version
+        LEFT JOIN module_versions mv ON mv.module_id = mr.module_id AND mv.version = mr.version
+        WHERE mr.kind_ref = $1 AND mr.kind = $2
+        ORDER BY m.ref, mr.name
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.kind"
+outputs:
+  instances: !cel "steps.rows.result.rows"
 ---
 # Lexical ref typeahead (pg_trgm): completes a ref whose name the author already
 # knows — the memorable token at an OCI path's tail matches without the

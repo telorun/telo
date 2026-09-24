@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: TesseractEngineNeutralConsumerTest
+  version: 1.0.0
+  description: |
+    A library that imports only the OCR contract and borrows its recognizer reads
+    a rendered page through a Tesseract recognizer supplied by this application.
+    The library reads the top-left 200x40 pixels, so the page is laid out with its
+    third column beyond that rectangle.
+imports:
+  Tesseract: ../
+  PdfMake: ../../pdfmake
+  Pdf: ../../pdf
+  Run: ../../run
+  Assert: ../../assert
+  Consumer:
+    source: ./__fixtures__/engine-neutral-consumer.yaml
+    resources:
+      recognizer: !ref recognizer
+targets:
+  - !ref readsThroughTheContract
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.eng]
+---
+kind: Run.Sequence
+metadata: { name: readsThroughTheContract }
+steps:
+  - name: render
+    invoke:
+      kind: PdfMake.Document
+      pageMargins: [5, 3]
+      defaultStyle: { fontSize: 11 }
+      content:
+        - columns:
+            - { width: 40, text: Hello }
+            - { width: 40, text: there }
+            - { width: "*", text: beyond the region }
+          columnGap: 10
+  - name: rasterize
+    invoke: { kind: Pdf.Rasterizer, scale: 2 }
+    inputs:
+      data: !cel "steps.render.result.bytes"
+  - name: read
+    invoke: !ref Consumer.wordsInRegion
+    inputs:
+      image: !cel "steps.rasterize.result.image"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        words: !cel "steps.read.result.words"
+        firstLineBlock: !cel "steps.read.result.firstLineBlock"
+        firstWordNearLeftEdge: !cel "steps.read.result.firstWordLeft < 30"
+        firstWordNearTopEdge: !cel "steps.read.result.firstWordCorner < 20"
+      expected:
+        words: [Hello, there]
+        firstLineBlock: 0
+        firstWordNearLeftEdge: true
+        firstWordNearTopEdge: true

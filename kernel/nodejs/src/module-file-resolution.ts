@@ -5,7 +5,8 @@ import {
   PLATFORM_AXES,
   describeSelector,
   selectorMatches,
-  stageableFiles,
+  pathsAtOrBeneath,
+  stagedModuleFiles,
   type ModuleSource,
   type ModuleSources,
   type NativeEntries,
@@ -158,17 +159,16 @@ async function assertStagedFilesAt(
         `\nRun \`telo check\` on the module.`,
     );
   }
-  const assets = stageableFiles(module.native.entries, [], {
+  // The analyzer's rule, which `telo check` and release planning read too.
+  const moduleFiles = stagedModuleFiles(module.native.entries, {
     patterns: module.assetPatterns,
     sources: module.sources.sources,
   });
+  const covered = new Set(relative === "" ? moduleFiles : pathsAtOrBeneath(moduleFiles, relative));
   let archives: ArchiveReader | undefined;
   for (const source of module.sources.sources) {
     for (const entry of source.entries) {
-      const covered = relative === "" || entry.path === relative || entry.path.startsWith(`${relative}/`);
-      if (!covered) continue;
-      const moduleFile = assets.get(entry.path)?.layer === "assets" || source.notices.includes(entry.path);
-      if (!moduleFile) continue;
+      if (!covered.has(entry.path)) continue;
       archives ??= createArchiveReader();
       const reader = archives;
       const problem = await stagedEntryProblem(`'${entry.path}' is staged by source '${source.name}'`, () =>

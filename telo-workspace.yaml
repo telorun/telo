@@ -20,3 +20,7 @@ release:
     # namespace: `oci://ghcr.io/telorun/blueprints/<name>`.
     - path: blueprints/*
       registry: oci://ghcr.io/telorun/blueprints
+    # One generated module per Tesseract language, published as a family apart
+    # from the flat module namespace: `oci://ghcr.io/telorun/tesseract-lang/<code>`.
+    - path: modules/tesseract-lang/*
+      registry: oci://ghcr.io/telorun/tesseract-lang

@@ -1,5 +1,9 @@
 import { MODULE_PATH_ENGINE, normalizeModulePath, walkCelExpressions } from "@telorun/templating";
 import type { LoadedModule } from "./loaded-types.js";
+import { isModuleKind } from "./module-kinds.js";
+import { pathsAtOrBeneath, readAssetPatterns, stagedModuleFiles } from "./module-named-files.js";
+import { readNativeEntries } from "./native-entries.js";
+import { readModuleSources } from "./source-entries.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from "./types.js";
 
 /**
@@ -12,6 +16,9 @@ import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from
  * nothing rather than guessing. Well-formedness is the engine's own diagnostic;
  * a malformed path is skipped here.
  *
+ * A path at or above a module file the module's own `sources:` block stages is
+ * present: the kernel stages it on first use, so a fresh checkout has no copy yet.
+ *
  * Entry-module-scoped: a dependency's files are verified when it is published.
  */
 export async function collectModulePathDiagnostics(
@@ -21,6 +28,7 @@ export async function collectModulePathDiagnostics(
   if (!source?.exists) return [];
   const out: AnalysisDiagnostic[] = [];
   const ownerSource = entry.owner.source;
+  let staged: readonly string[] | undefined;
   for (const file of [entry.owner, ...entry.partials]) {
     const found: Array<{ index: number; at: string; written: string; relative: string }> = [];
     file.manifests.forEach((manifest, index) => {
@@ -32,6 +40,8 @@ export async function collectModulePathDiagnostics(
       });
     });
     for (const { index, at, written, relative } of found) {
+      staged ??= stagedFilesOf(entry.owner.manifests.find((m) => m && isModuleKind(m.kind)));
+      if (pathsAtOrBeneath(staged, relative).length > 0) continue;
       // Module-root-relative: resolved against the OWNER, never the partial.
       if (await source.exists(ownerSource, relative)) continue;
       const manifest = file.manifests[index]!;
@@ -51,4 +61,14 @@ export async function collectModulePathDiagnostics(
     }
   }
   return out;
+}
+
+/** None while the `sources:` block does not read, since the kernel then resolves nothing either. */
+function stagedFilesOf(owner: unknown): string[] {
+  const { sources, problems } = readModuleSources(owner);
+  if (problems.length > 0) return [];
+  return stagedModuleFiles(readNativeEntries(owner).entries, {
+    patterns: readAssetPatterns(owner),
+    sources,
+  });
 }

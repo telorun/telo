@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: OcrEngineNeutralConsumerTest
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref consumerChecksClean
+  - !ref misspelledFieldIsRefused
+---
+# A library typing its slot against the contract checks clean: the input and
+# output types are readable from CEL at the call site.
+kind: Assert.Manifest
+metadata:
+  name: consumerChecksClean
+source: ./__fixtures__/engine-neutral-consumer.yaml
+expect: {}
+---
+# The same library with `box.left` for `box.x`: the contract types the result, so
+# a misspelled field path is a check error rather than a null at run time.
+kind: Assert.Manifest
+metadata:
+  name: misspelledFieldIsRefused
+source: ./__fixtures__/misspelled-field.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'steps.read.result.words.[*].box.left' is not defined (available: x, y, width, height)"

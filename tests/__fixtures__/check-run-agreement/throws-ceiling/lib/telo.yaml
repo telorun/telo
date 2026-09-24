@@ -1,0 +1,27 @@
+# An abstract's `throws:` is a ceiling: a descendant declaring a code the
+# ancestor does not is refused by `telo check` and by the kernel alike.
+kind: Telo.Library
+metadata:
+  name: ThrowsCeilingLib
+exports:
+  kinds: [Lookup, WideLookup]
+---
+kind: Telo.Abstract
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_NOT_FOUND:
+      description: Nothing matched the key.
+---
+kind: Telo.Abstract
+metadata:
+  name: WideLookup
+extends: Self.Lookup
+throws:
+  codes:
+    ERR_NOT_FOUND:
+      description: Nothing matched the key.
+    ERR_BACKEND_DOWN:
+      description: The store could not be reached.

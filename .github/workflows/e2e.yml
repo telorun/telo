@@ -103,8 +103,10 @@ jobs:
           # Counting kinds at any version is not the same test and passed over
           # exactly this — `console` carries 40 kind rows across its versions and
           # 4 at its latest, `run` 104 and 7 — so a gate counting rows saw both
-          # as ready while a search for either returned nothing. Plus at least
-          # one embedding, for the semantic assertion.
+          # as ready while a search for either returned nothing. A module that
+          # defines no kind (a `tesseract-lang/*` model pack) is ready once its
+          # exported resources are in at its latest version instead. Plus at
+          # least one embedding, for the semantic assertion.
           # And treat a recorded `last_error` as a hard failure rather than as a
           # ref that finished — a failed ingest satisfies `last_tracked_at` and
           # would otherwise be reported, minutes later, as a mysteriously empty
@@ -127,7 +129,7 @@ jobs:
               exit 1
             fi
             total=$(psql "SELECT count(*) FROM modules" || echo 0)
-            indexed=$(psql "SELECT count(*) FROM modules m WHERE coalesce(m.latest_version, '') <> '' AND EXISTS (SELECT 1 FROM resource_kinds rk WHERE rk.module_id = m.id AND rk.version = m.latest_version)" || echo 0)
+            indexed=$(psql "SELECT count(*) FROM modules m WHERE coalesce(m.latest_version, '') <> '' AND (EXISTS (SELECT 1 FROM resource_kinds rk WHERE rk.module_id = m.id AND rk.version = m.latest_version) OR EXISTS (SELECT 1 FROM module_resources mr WHERE mr.module_id = m.id AND mr.version = m.latest_version))" || echo 0)
             kinds=$(psql "SELECT count(*) FROM resource_kinds rk JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version" || echo 0)
             vectors=$(psql "SELECT count(*) FROM resource_vectors" || echo 0)
             echo "modules: ${indexed:-0}/${total:-0} queryable of $expected seeded; kinds at latest: ${kinds:-0}; resource_vectors: ${vectors:-0}"
@@ -137,7 +139,7 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error::hub never indexed a LATEST-version kind for every seeded ref"
+          echo "::error::hub never indexed a LATEST-version kind or exported resource for every seeded ref"
           docker compose exec -T db psql -U postgres -d hub \
             -c "SELECT m.ref, m.latest_version, m.last_tracked_at, m.last_error,
                        count(rk.*) FILTER (WHERE rk.version = m.latest_version) AS kinds_at_latest,

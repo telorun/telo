@@ -4,6 +4,9 @@ import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js"
 import { resolveScopedName, resolveSlotUseAt } from "./call-graph.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import type { DefResolver } from "./extends-resolution.js";
+import { isInjectedDeclaration } from "./resource-input.js";
+import { kindThrowsDeclarer } from "./throws-ceiling.js";
 import {
   hasDeclaredUse,
   possibleUses,
@@ -234,6 +237,25 @@ export function resolveThrowsUnion(
   const definition = definitionFor(manifest.kind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) {
     const u: ThrowsUnion = { codes: new Map(), unbounded: true };
+    if (name) ctx.memo.set(name, u);
+    return u;
+  }
+
+  // A library's `resources:` input: what the importer hands in is any kind
+  // satisfying this one, so its union is the kind's ceiling, and a kind with no
+  // declared list may throw anything.
+  if (isInjectedDeclaration(manifest)) {
+    const resolveDef: DefResolver = (kind, from) =>
+      definitionFor(
+        kind,
+        ctx.defs,
+        ctx.aliases,
+        scopeResolverFor(ctx, (from?.metadata as { module?: string } | undefined)?.module),
+      );
+    const declarer = kindThrowsDeclarer(definition, resolveDef);
+    const u: ThrowsUnion = declarer
+      ? { codes: codesFromDefinition(declarer), unbounded: false }
+      : { codes: new Map(), unbounded: true };
     if (name) ctx.memo.set(name, u);
     return u;
   }

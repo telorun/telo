@@ -25,7 +25,9 @@ import type { ModuleHit } from "@/api";
 export function ModulePreview({ hit }: { hit: ModuleHit }) {
   const m = hit.module;
   const pinned = `${m.ref}@${m.version}`;
-  const matched = new Set(hit.matchedKinds.map((k) => k.kind));
+  const matched = new Set(
+    hit.matchedKinds.filter((k) => k.entry !== "instance").map((k) => k.kind),
+  );
   const otherKinds = hit.exportedKinds.filter((k) => !matched.has(k.kind));
   const path = refToPath(m.ref);
 
@@ -81,17 +83,21 @@ export function ModulePreview({ hit }: { hit: ModuleHit }) {
 
       {hit.matchedKinds.length > 0 && (
         <section className="flex flex-col gap-2">
-          <PanelTitle>Matching kinds</PanelTitle>
+          <PanelTitle>Matches</PanelTitle>
           <ul className="flex flex-col gap-2.5">
             {hit.matchedKinds.map((k) => (
-              <li key={k.kind} className="flex flex-col gap-0.5">
+              <li key={`${k.entry ?? "kind"}:${k.name ?? k.kind}`} className="flex flex-col gap-0.5">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <KindPopover
                     kind={k}
                     className="font-mono text-sm font-medium underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
                   />
                   <span className="text-xs text-muted-foreground">
-                    {k.abstract ? "abstract" : shortCapability(k.capability)}
+                    {k.entry === "instance"
+                      ? `ready-made ${k.kind}`
+                      : k.abstract
+                        ? "abstract"
+                        : shortCapability(k.capability)}
                   </span>
                   {k.deprecated?.reason && (
                     <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] text-destructive">

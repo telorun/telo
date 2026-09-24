@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata:
+  name: WrongLanguageKind
+  version: 1.0.0
+imports:
+  Tesseract: ../..
+---
+kind: Tesseract.Recognizer
+metadata: { name: recognizer }
+languages: [!ref Tesseract.osd]
