@@ -1,6 +1,6 @@
 {
   "name": "@telorun/tesseract-model-build",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Build-only package for the std/tesseract-model module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
