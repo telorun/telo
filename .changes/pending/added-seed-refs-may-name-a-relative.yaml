@@ -1,9 +1,0 @@
-modules:
-  apps/hub: Added
-body: SEED_REFS may name a ./-relative module directory read from the hub's own disk
-  when ALLOW_LOCAL_REFS is true, recorded under a new local transport; the compose stack
-  uses it to index the checkout's unpublished modules. A local module's relative imports
-  are resolved against its own ref, so its extends targets and instance kind owners link
-  to the modules seeded beside it. POST /register still refuses a path. A seed entry
-  that is neither oci://, https:// nor an accepted local path now stops the boot with
-  ERR_INVALID_MODULE_REF instead of being recorded as a url module.

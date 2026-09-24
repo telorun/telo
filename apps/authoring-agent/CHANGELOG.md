@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-09-24
+### Added
+* Search ranks exported instances exactly as it ranks kinds: each is embedded and matched, and a hit on /search/resources, search_resources or a module hit's matchedKinds carries entry (kind or instance), name, kind and kindRef. The separate instances list on /search/resources and search_resources is removed; its entries are now hits. A module that only packages ready-made instances, such as one module per OCR language model, is a search result like any other; matching instances of one kind fold into the best-ranked hit as siblings, and so do modules whose every match is one. A module hit lists its implementations, the modules extending its kinds, and a kind is also found by the words of the contract it extends. Instances are also reached from the kind they instantiate: GET /instances and the new find_instances MCP tool list every instance of a kind across modules, and every kind in a search hit or on /module carries an instances count. /categories counts only modules that export a kind or an instance. Existing versions pick up the kind owner on their next ingest; INGEST_REV now defaults to 5, which re-embeds every module. /module and get_module now also list the kinds a module re-exports from an import, marked reexported and described by their owning module, and every listed kind carries its owner's ref; re-exported kinds are not search hits. The web module page shows re-exported kinds and expands a kind's instances. The authoring agent's primer uses find_instances.
+
 ## 0.11.7 - 2026-09-19
 ### Fixed
 * The hub declares the telo release it is actually readable by: 0.87.0 refuses nine of its routes, reading a CEL condition or a computed Retry-After against the scalar the shape declares, and 0.88 and 0.89 still refuse a module it imports. The authoring agent's primer gains the pattern for running and conversing with an application.

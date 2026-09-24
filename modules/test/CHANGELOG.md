@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-09-24
+### Added
+* Test.Suite fields `include`, `exclude`, `filter` and `concurrency` now take CEL evaluated at startup, so the suite application decides which of them the command line sets: a `variables:` entry bound with `arg:`, passed in as `!cel "variables.include"`. Breaking for a suite relying on the controller reading the command line itself — `--filter`, `-f` and the bare positional filter work only once the suite application declares them.
+
 ## 0.10.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
