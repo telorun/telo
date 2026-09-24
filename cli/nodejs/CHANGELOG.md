@@ -1,5 +1,29 @@
 # @telorun/cli
 
+## 0.100.0
+
+### Minor Changes
+
+- fd9e61f: Added: a root Application reads its command line through declared bindings. A `variables:` entry may carry `arg:` beside or instead of `env:` — a flag name, `{ flag, short? }`, or `{ position }` — and one bound by `arg:` alone needs a `default:`, since a runner session supplies inputs through the environment; a `ports:` entry may add `arg:` beside the `env:` it still requires. Precedence is a value supplied by name, then the command line, then the environment, then `default:`. A repeated flag fills an array-typed entry, each token read by `items.type`; a boolean is `--x` / `--no-x`; `--` ends options. An argument nothing declares, a missing flag value, a surplus positional or a value failing its type is refused before boot in `ERR_MANIFEST_VALIDATION_FAILED`, naming what the application declares, and `--help` prints the usage the bindings describe instead of running — a synopsis (`[<name>] [--tag|-t <string>]... [--[no-]verbose]`) then one line per argument; the analyzer exports the same rendering (`renderArgumentSynopsis`, `renderApplicationUsage`) for other hosts. `telo check` reports a malformed `arg:` as a schema violation, a conflicting binding as `ARG_BINDING_INVALID`, a secret bound to the command line as `ARG_BINDING_ON_SECRET`, and `arg:` in a library as `LIBRARY_ARG_KEY_REJECTED`.
+
+  Changed: every argument after the manifest path now belongs to the application — `telo run [options] <path> [application arguments]`, as `node [options] app.js [args]` — so `telo run app.yaml --watch` becomes `telo run --watch app.yaml`. Before the path, `--inspect` reads a following `[host:]port`; a bare host is written `--inspect=<host>`. Controllers no longer receive the command line: `ctx.args`, `ParsedArgs` and a controller's `args` export are removed from the SDK (the kernel still hands an already-published controller an empty `args`).
+
+- ba6cece: Changed: `telo changed` now takes glob patterns and lists which matched files a change since `--base` reaches, instead of answering one yes/no for all its arguments — so CI can select the test manifests a pull request affects (`telo changed 'modules/*/tests/*.yaml' -o json` → `{ base, diffed, affected, unaffected }`). A `telo.yaml` is reached through its directory and its relative imports, any other Telo manifest through itself, its `__fixtures__/` and its relative imports, and any other file through itself; the closure now also follows the `workspace:` dependencies a module's controller source bundles. The exit code is 0 for any answer and non-zero only on failure, a diff that cannot be taken reports every matched file as affected, and `--fail-open` is removed. A directory argument is no longer accepted: name its `telo.yaml`.
+
+### Patch Changes
+
+- fd9e61f: Fixed: `telo release status` and `telo release check` no longer fail with `MODULE_PATH_NOT_FOUND` for a `!module-path` naming a file the module's own `sources:` block stages as a module file (an entry an `assets:` pattern selects, or a source's notice), or a directory such a file lies beneath, when that file is not yet staged on disk. Release commands digest staged files from their pins, so such a file ships from its pin, and a directory claim covers every staged file beneath it as well as what is on disk. `telo publish` and `telo package`, which read staged files from disk, still refuse a path with nothing there (`MODULE_PATH_NOT_FOUND`) and an empty directory (`MODULE_PATH_EMPTY`). The analyzer exports the shared rule (`stagedModuleFiles`, `pathsAtOrBeneath`) that `telo check` applies to the same question.
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+- Updated dependencies [fd9e61f]
+  - @telorun/analyzer@0.82.0
+  - @telorun/kernel@0.100.0
+  - @telorun/sdk@0.100.0
+  - @telorun/ide-support@0.22.2
+  - @telorun/templating@0.23.0
+
 ## 0.99.0
 
 ### Minor Changes
