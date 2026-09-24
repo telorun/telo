@@ -40,10 +40,10 @@ steps:
     inputs: { key: "" }
   - name: assertVerdicts
     inputs:
-      a1: "${{ steps.r1.result.allowed }}"
-      a2: "${{ steps.r2.result.allowed }}"
-      a3: "${{ steps.r3.result.allowed }}"
-      ae: "${{ steps.empty.result.allowed }}"
+      a1: !cel "steps.r1.result.allowed"
+      a2: !cel "steps.r2.result.allowed"
+      a3: !cel "steps.r3.result.allowed"
+      ae: !cel "steps.empty.result.allowed"
     invoke:
       kind: Assert.Schema
       schema:

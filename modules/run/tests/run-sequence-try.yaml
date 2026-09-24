@@ -24,9 +24,9 @@ steps:
     catch:
       - name: caughtMessage
         inputs:
-          msg: "${{ error.message }}"
-          step: "${{ error.step }}"
-          code: "${{ error.code }}"
+          msg: !cel "error.message"
+          step: !cel "error.step"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:
@@ -64,7 +64,7 @@ steps:
     finally:
       - name: finallyOnSuccess
         inputs:
-          done: "${{ steps.workDone.result.done }}"
+          done: !cel "steps.workDone.result.done"
         invoke:
           kind: Assert.Schema
           schema:
@@ -75,7 +75,7 @@ steps:
 
   - name: verifyFinallyRan
     inputs:
-      result: "${{ steps.finallyOnSuccess.result }}"
+      result: !cel "steps.finallyOnSuccess.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -95,7 +95,7 @@ steps:
     catch:
       - name: catchRan
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -117,7 +117,7 @@ steps:
 
   - name: verifyCatchRan
     inputs:
-      result: "${{ steps.catchRan.result }}"
+      result: !cel "steps.catchRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -128,7 +128,7 @@ steps:
 
   - name: verifyFinallyAfterCatch
     inputs:
-      result: "${{ steps.finallyRan.result }}"
+      result: !cel "steps.finallyRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -139,7 +139,7 @@ steps:
 
   # --- try: when guard skips entire block ---
   - name: skippedTry
-    when: "${{ false }}"
+    when: !cel "false"
     try:
       # Would fail if reached.
       - name: tryShouldNotRun
@@ -155,7 +155,7 @@ steps:
 
   # --- try/catch nested inside if ---
   - name: nestedTryCatch
-    if: "${{ true }}"
+    if: !cel "true"
     then:
       - name: innerTry
         try:
@@ -167,7 +167,7 @@ steps:
         catch:
           - name: innerCaught
             inputs:
-              msg: "${{ error.message }}"
+              msg: !cel "error.message"
             invoke:
               kind: Assert.Schema
               schema:
@@ -178,7 +178,7 @@ steps:
 
   - name: verifyNestedCatch
     inputs:
-      result: "${{ steps.innerCaught.result }}"
+      result: !cel "steps.innerCaught.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -201,13 +201,13 @@ steps:
         catch:
           - name: reraise
             throw:
-              code: "${{ error.code }}"
-              message: "${{ error.message }}"
+              code: !cel "error.code"
+              message: !cel "error.message"
     catch:
       - name: caughtReraised
         inputs:
-          code: "${{ error.code }}"
-          msg: "${{ error.message }}"
+          code: !cel "error.code"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:

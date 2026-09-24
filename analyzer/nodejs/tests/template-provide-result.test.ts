@@ -60,7 +60,7 @@ function makeVaultSession(resultBody: Record<string, unknown>): ResourceManifest
 
 describe("Telo.Definition: structural validation of top-level `result`", () => {
   it("accepts a result that satisfies the abstract's outputType", () => {
-    const def = makeVaultSession({ sessionId: "${{ result.body.data.session_id }}" });
+    const def = makeVaultSession({ sessionId: { __tagged: true, engine: "cel", source: "result.body.data.session_id" } });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([mcpImport, sessionAbstract, httpRequestKind, def]));
     const violations = diagnostics.filter(
       (d) => d.code === "TEMPLATE_TARGET_MISMATCH" || d.code === "CEL_UNKNOWN_FIELD",
@@ -70,7 +70,7 @@ describe("Telo.Definition: structural validation of top-level `result`", () => {
 
   it("rejects CEL access to fields not on the dispatch target's outputType", () => {
     // `result.body.data.session_id` is correct; `result.bogus` is not.
-    const def = makeVaultSession({ sessionId: "${{ result.bogus }}" });
+    const def = makeVaultSession({ sessionId: { __tagged: true, engine: "cel", source: "result.bogus" } });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([mcpImport, sessionAbstract, httpRequestKind, def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);

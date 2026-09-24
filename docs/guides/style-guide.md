@@ -109,19 +109,19 @@ name.
 
 ---
 
-## 4. Always write CEL with the `!cel` tag
+## 4. Write CEL behind a tag: `!cel` to compute, `!interpolate` to embed
 
-Every dynamic value is written `!cel "<expression>"` — pure expressions and
-string interpolation alike:
+A computed value of any type is `!cel "<expression>"`; text with values embedded
+in it is `!interpolate`, whose `${{ … }}` holes are CEL expressions:
 
 ```yaml
 port: !cel "ports.http"
-message: !cel "'Hello, ' + inputs.name + '!'"
+message: !interpolate "Hello, ${{ inputs.name }}!"
 ```
 
-Do not use the inline `"${{ … }}"` string form in new manifests. The formatter
-normalizes to `!cel`, and the inline form does not survive a round-trip through
-tooling intact.
+Never write a plain string holding `${{ … }}`. It is not evaluated — loading
+reads it as a deprecated spelling (`DEPRECATED_UNTAGGED_INTERPOLATION`) and
+`telo migrate` rewrites it.
 
 ## 5. Putting it all together
 

@@ -35,7 +35,7 @@ steps:
     invoke: !ref texter
   - name: assertText
     inputs:
-      text: "${{ steps.invoke.result.text }}"
+      text: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
       schema:

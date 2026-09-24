@@ -1,0 +1,21 @@
+# `!interpolate` always builds a plain string, so a host-path slot refuses it
+# statically whatever its text; the kernel refuses the relative path it produces.
+kind: Telo.Library
+metadata:
+  name: HostPathInterpolated
+  version: 1.0.0
+  description: >-
+    Fixture library interpolating text into a host-path slot, which telo check
+    reports at the slot and the kernel refuses at creation.
+imports:
+  Http: ../../../../../modules/http-server
+variables:
+  siteDir:
+    type: string
+    default: public
+exports:
+  resources: [site]
+---
+kind: Http.Static
+metadata: { name: site }
+root: !interpolate "${{ variables.siteDir }}/site"

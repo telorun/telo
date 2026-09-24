@@ -56,10 +56,10 @@ steps:
         invoke: !ref c
       - name: assert
         inputs:
-          text: "${{ steps.invoke.result.text }}"
-          promptTokens: "${{ steps.invoke.result.usage.promptTokens }}"
-          completionTokens: "${{ steps.invoke.result.usage.completionTokens }}"
-          finishReason: "${{ steps.invoke.result.finishReason }}"
+          text: !cel "steps.invoke.result.text"
+          promptTokens: !cel "steps.invoke.result.usage.promptTokens"
+          completionTokens: !cel "steps.invoke.result.usage.completionTokens"
+          finishReason: !cel "steps.invoke.result.finishReason"
         invoke:
           kind: Assert.Schema
           schema:

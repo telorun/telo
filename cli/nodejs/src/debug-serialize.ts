@@ -25,7 +25,7 @@ import type { LruBlobStore } from "./blob-store.js";
  *    it. No value is type-tagged: the wire's readers are not Telo.
  *  - a value with `toJSON` → its `toJSON()` result.
  *  - a bigint → a plain number when it fits a JS safe integer (CEL models small
- *    integers as bigint, so `${{ size(x) }}` reads as `3`, not `[BigInt 3]`),
+ *    integers as bigint, so `!cel "size(x)"` reads as `3`, not `[BigInt 3]`),
  *    otherwise its decimal digits as a string so no precision is lost.
  *  - any other live object (context, stream, client, Node handle) — and values
  *    JSON can't represent (functions) → a one-token `[Marker]`.

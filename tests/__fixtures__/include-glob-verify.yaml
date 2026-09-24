@@ -19,7 +19,7 @@ steps:
         product: !cel "inputs.x * inputs.y"
   - name: verifyProduct
     inputs:
-      product: "${{ steps.multiply.result.product }}"
+      product: !cel "steps.multiply.result.product"
     invoke:
       kind: Assert.Schema
       schema:

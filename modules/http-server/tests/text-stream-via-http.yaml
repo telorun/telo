@@ -92,7 +92,7 @@ routes:
           required: [ prompt ]
     handler: !ref chatStream
     inputs:
-      prompt: "${{ request.body.prompt }}"
+      prompt: !cel "request.body.prompt"
     returns:
       - status: 200
         mode: stream
@@ -123,7 +123,7 @@ routes:
           required: [ prompt ]
     handler: !ref chatStream
     inputs:
-      prompt: "${{ request.body.prompt }}"
+      prompt: !cel "request.body.prompt"
     returns:
       - status: 200
         mode: stream
@@ -154,7 +154,7 @@ routes:
           required: [ prompt ]
     handler: !ref chatStream
     inputs:
-      prompt: "${{ request.body.prompt }}"
+      prompt: !cel "request.body.prompt"
     returns:
       - status: 200
         mode: stream
@@ -187,7 +187,7 @@ routes:
           required: [ prompt ]
     handler: !ref chatStream
     inputs:
-      prompt: "${{ request.body.prompt }}"
+      prompt: !cel "request.body.prompt"
     returns:
       - status: 200
         mode: stream
@@ -237,9 +237,9 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertNdjson
     inputs:
-      status: "${{ steps.hitNdjson.result.status }}"
-      contentType: "${{ steps.hitNdjson.result.contentType }}"
-      body: "${{ steps.hitNdjson.result.body }}"
+      status: !cel "steps.hitNdjson.result.status"
+      contentType: !cel "steps.hitNdjson.result.contentType"
+      body: !cel "steps.hitNdjson.result.body"
     invoke:
       kind: Assert.Schema
       schema:
@@ -261,9 +261,9 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertSse
     inputs:
-      status: "${{ steps.hitSse.result.status }}"
-      contentType: "${{ steps.hitSse.result.contentType }}"
-      body: "${{ steps.hitSse.result.body }}"
+      status: !cel "steps.hitSse.result.status"
+      contentType: !cel "steps.hitSse.result.contentType"
+      body: !cel "steps.hitSse.result.body"
     invoke:
       kind: Assert.Schema
       schema:
@@ -282,9 +282,9 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertPlain
     inputs:
-      status: "${{ steps.hitPlain.result.status }}"
-      contentType: "${{ steps.hitPlain.result.contentType }}"
-      body: "${{ steps.hitPlain.result.body }}"
+      status: !cel "steps.hitPlain.result.status"
+      contentType: !cel "steps.hitPlain.result.contentType"
+      body: !cel "steps.hitPlain.result.body"
     invoke:
       kind: Assert.Schema
       schema:
@@ -304,7 +304,7 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertNegotiateNdjson
     inputs:
-      contentType: "${{ steps.negotiateNdjson.result.contentType }}"
+      contentType: !cel "steps.negotiateNdjson.result.contentType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -322,7 +322,7 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertNegotiateSse
     inputs:
-      contentType: "${{ steps.negotiateSse.result.contentType }}"
+      contentType: !cel "steps.negotiateSse.result.contentType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -340,7 +340,7 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assertNegotiateDefault
     inputs:
-      contentType: "${{ steps.negotiateDefault.result.contentType }}"
+      contentType: !cel "steps.negotiateDefault.result.contentType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -358,7 +358,7 @@ steps:
     invoke: !ref fetchAndDrain
   - name: assert406
     inputs:
-      status: "${{ steps.notAcceptable.result.status }}"
+      status: !cel "steps.notAcceptable.result.status"
     invoke:
       kind: Assert.Schema
       schema:

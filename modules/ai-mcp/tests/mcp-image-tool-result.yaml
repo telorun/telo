@@ -50,8 +50,8 @@ steps:
   # (not a JSON-stringified blob), carried untouched into the step trace.
   - name: assertImage
     inputs:
-      imageType: "${{ steps.invoke.result.steps[0].toolResults[0].content[0].type }}"
-      mediaType: "${{ steps.invoke.result.steps[0].toolResults[0].content[0].mediaType }}"
+      imageType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].type"
+      mediaType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].mediaType"
     invoke:
       kind: Assert.Schema
       schema:

@@ -15,7 +15,7 @@ Compresses a `Stream<Uint8Array>` into a gzip `Stream<Uint8Array>`, wrapping Nod
 
 ```yaml
 - name: compress
-  inputs: { input: "${{ steps.pack.result.output }}" }
+  inputs: { input: !cel "steps.pack.result.output" }
   invoke: { kind: Gzip.Encoder, name: Compress }
 ```
 

@@ -12,7 +12,7 @@ The Telo Kernel is a **declarative execution host**. You describe resources in Y
 
 The kernel performs three functions:
 
-- **Loader:** Reads YAML files, compiles `${{ }}` CEL expressions, and resolves controller entrypoints.
+- **Loader:** Reads YAML files, compiles CEL (`!cel` values, `!interpolate` holes), and resolves controller entrypoints.
 - **Registry:** Indexes resource instances by a composite key of `module.Kind.name`.
 - **Kernel:** Orchestrates the boot sequence, manages the event bus, and routes invocations.
 
@@ -55,9 +55,9 @@ For the complete `Telo.Definition` field reference, see [docs/resource-definitio
 
 ## 3. CEL Interpolation
 
-Before a manifest object is processed, every `${{ ... }}` expression is compiled. This runs as part of loading — any compilation error halts the boot sequence immediately.
+Before a manifest object is processed, every CEL expression — a `!cel` value, each hole of an `!interpolate` or `!sql` — is compiled. This runs as part of loading — any compilation error halts the boot sequence immediately.
 
-Host environment variables reach CEL only through typed root entries: declare a `variables:`/`secrets:`/`ports:` entry with an `env:` key and read it as `${{ variables.X }}` / `${{ secrets.X }}` / `${{ ports.X }}`.
+Host environment variables reach CEL only through typed root entries: declare a `variables:`/`secrets:`/`ports:` entry with an `env:` key and read it as `!cel "variables.X"` / `!cel "secrets.X"` / `!cel "ports.X"`.
 
 ```yaml
 variables:
@@ -65,14 +65,15 @@ variables:
     env: MY_MANIFEST_PATH
     type: string
 resources:
-  - ${{ variables.manifestPath }}
+  - !cel "variables.manifestPath"
 ```
 
 ### Interpolation
 
-- `${{ expr }}` — the interpolation syntax used throughout Telo
+- `!cel "expr"` — one expression; the value keeps its CEL type (integer, boolean, …).
+- `!interpolate "text ${{ expr }} text"` — text with holes, always a string; each hole converts through CEL's `string()`.
 
-When the entire string is a single interpolation, the result preserves the CEL type (integer, boolean, etc.). Mixed strings are coerced to string.
+A plain string holding `${{` is never compiled: it is the deprecated untagged spelling, rewritten at load by the `untagged-interpolation` migration and refused (`ERR_UNTAGGED_INTERPOLATION`) where it survives.
 
 ---
 

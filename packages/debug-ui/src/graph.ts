@@ -53,7 +53,7 @@ export interface GraphNode {
   ownerId?: string;
   /** The resource's resolved config "after templating" (from the `Created`
    *  payload) — concrete values for compile-time CEL, `{kind,name}` for refs,
-   *  `${{ … }}` for deferred runtime expressions, secrets scrubbed. */
+   *  a deferred runtime expression as its tag (`!cel "…"`), secrets scrubbed. */
   properties?: unknown;
   status: NodeStatus;
   /** Total invocations seen across the stream. */

@@ -1,0 +1,44 @@
+{
+  "$comment": "See README.md in this directory. The one entry that selects by a value's text rather than by its key: an untagged `${{ }}` was a value of every field of every kind, so the wildcard reach is exactly the strings the loader compiled as CEL before the tag existed. `scalar` is read by the shared hole grammar, so a string with no readable hole matches neither rule and is left for UNTAGGED_INTERPOLATION to report.",
+  "id": "untagged-interpolation",
+  "code": "DEPRECATED_UNTAGGED_INTERPOLATION",
+  "severity": "warning",
+  "reason": "A plain string is never an expression. A value that is one `${{ }}` hole is written `!cel`, and text with values embedded in it is written `!interpolate`, whose holes convert through CEL's own `string()` and whose result is checked against the field it fills. Read this way, a hole that is null, a list or a map at runtime fails with ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE where the untagged spelling printed empty text or a comma list: guard such a hole, or convert it inside the hole.",
+  "rules": [
+    {
+      "match": {
+        "scalar": "lone-hole",
+        "inKind": [
+          "*"
+        ],
+        "under": [
+          "*"
+        ]
+      },
+      "patch": [
+        {
+          "op": "set-tag",
+          "tag": "cel",
+          "source": "hole"
+        }
+      ]
+    },
+    {
+      "match": {
+        "scalar": "interpolated",
+        "inKind": [
+          "*"
+        ],
+        "under": [
+          "*"
+        ]
+      },
+      "patch": [
+        {
+          "op": "set-tag",
+          "tag": "interpolate"
+        }
+      ]
+    }
+  ]
+}

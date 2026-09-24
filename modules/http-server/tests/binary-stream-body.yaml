@@ -32,7 +32,7 @@ inputType:
   schema:
     type: object
     properties:
-      body: { x-telo-stream: true }
+      body: { x-telo-type: Telo.Stream }
     required: [ body ]
 outputType:
   kind: Telo.JsonSchema
@@ -83,17 +83,17 @@ routes:
       method: POST
       schema:
         body:
-          x-telo-stream: true
+          x-telo-type: Telo.Stream
     handler: !ref drainBody
     inputs:
-      body: "${{ request.body }}"
+      body: !cel "request.body"
     returns:
       - status: 200
         content:
           application/json:
             body:
-              length: "${{ result.length }}"
-              text: "${{ result.text }}"
+              length: !cel "result.length"
+              text: !cel "result.text"
 ---
 kind: Run.Sequence
 metadata: { name: testUpload }
@@ -119,9 +119,9 @@ steps:
     invoke: !ref upload
   - name: assert
     inputs:
-      status: "${{ steps.upload.result.status }}"
-      length: "${{ steps.upload.result.length }}"
-      text: "${{ steps.upload.result.text }}"
+      status: !cel "steps.upload.result.status"
+      length: !cel "steps.upload.result.length"
+      text: !cel "steps.upload.result.text"
     invoke:
       kind: Assert.Schema
       schema:

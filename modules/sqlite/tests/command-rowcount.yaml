@@ -72,10 +72,10 @@ steps:
 
   - name: assert
     inputs:
-      insert: "${{ steps.insert.result.rowCount }}"
-      updateAll: "${{ steps.updateAll.result.rowCount }}"
-      deleteOne: "${{ steps.deleteOne.result.rowCount }}"
-      deleteMissing: "${{ steps.deleteMissing.result.rowCount }}"
+      insert: !cel "steps.insert.result.rowCount"
+      updateAll: !cel "steps.updateAll.result.rowCount"
+      deleteOne: !cel "steps.deleteOne.result.rowCount"
+      deleteMissing: !cel "steps.deleteMissing.result.rowCount"
     invoke:
       kind: Assert.Schema
       schema:

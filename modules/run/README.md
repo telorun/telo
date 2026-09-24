@@ -5,7 +5,7 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 ## Why use this
 
 - **Manifest-native flow control** — branching and looping live in YAML, not in a `JS.Script` escape hatch.
-- **Typed step results** — each step's output is statically typed inside `${{ steps.<name>.result }}`, so downstream CEL expressions are validated by the analyzer.
+- **Typed step results** — each step's output is statically typed inside `!cel "steps.<name>.result"`, so downstream CEL expressions are validated by the analyzer.
 - **Structured error handling** — `try`/`catch` matches on `InvokeError` codes; see [Structured Errors](docs/structured-errors.md) for the end-to-end flow.
 - **Composes with everything** — any `Telo.Invocable` resource can be a step, so AI calls, HTTP requests, SQL queries, and your own scripts mix freely.
 
@@ -51,7 +51,7 @@ A `Run.Sequence` is a `Telo.Runnable`, so it can be a route handler. The data fl
 
 1. The route's `inputs:` is a CEL map over the request — its result is passed to the handler's `invoke()`.
 2. The sequence's `inputType:` **declares the input contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Steps read the values as `!cel "inputs.<name>"`, and the kernel fills declared defaults and validates every call against it.
-3. The sequence's `outputs:` is a CEL map producing the `result`; the route's `returns:` reads it as `${{ result }}`.
+3. The sequence's `outputs:` is a CEL map producing the `result`; the route's `returns:` reads it as `!cel "result"`.
 
 ```yaml
 kind: Http.Api

@@ -47,10 +47,16 @@ export interface SetValueOperation {
 }
 
 /** Put the matched scalar behind a templating tag (`!cel`, `!ref`, …). `tag` is
- *  the engine name without its `!`. */
+ *  the engine name without its `!`.
+ *
+ *  `source` says what the tagged scalar holds: the matched text unchanged
+ *  (`text`, the default), or the expression of the lone `${{ }}` hole the text
+ *  is (`hole`) — legal only on a `scalar: lone-hole` rule, which is what makes
+ *  it a hole the patch can read. */
 export interface SetTagOperation {
   readonly op: "set-tag";
   readonly tag: string;
+  readonly source?: "text" | "hole";
 }
 
 /** Insert an item into the matched sequence. `at` defaults to the end. */

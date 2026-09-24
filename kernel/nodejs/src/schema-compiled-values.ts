@@ -1,4 +1,5 @@
 import { isCompiledValue } from "@telorun/sdk";
+import { producedTypeOf } from "@telorun/templating";
 import {
   celPlaceholderForSchema,
   type ExternalSchemaResolver,
@@ -125,7 +126,14 @@ export function stripCompiledValues(
 
     // The analyzer's stand-in, so a value `telo check` accepts is one the kernel
     // accepts: two builders drift (a `minLength` the other ignores).
-    if (isCompiledValue(value)) return celPlaceholderForSchema(resolved as Record<string, any>);
+    // A tag whose produced type is a constant of the tag (`!interpolate` is
+    // always a string) stands in as THAT type, so `!interpolate` at an integer
+    // slot is refused here as it is statically.
+    if (isCompiledValue(value)) {
+      const engine = (value as { engine?: unknown }).engine;
+      const produced = typeof engine === "string" ? producedTypeOf(engine) : undefined;
+      return celPlaceholderForSchema((produced ?? resolved) as Record<string, any>);
+    }
     // A slot the schema declares as a reference is never config when it HOLDS a
     // reference: a `{kind, name}` ref or the live instance Phase 5 replaced it
     // with, and the schema declares no shape to validate against either way. A

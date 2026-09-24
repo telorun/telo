@@ -32,9 +32,9 @@ with:
   - kind: Http.Server
     metadata:
       name: TestServer
-    port: "${{ 8857 }}"
-    baseUrl: "${{ 'http://localhost:8857' }}"
-    host: "${{ 'localhost' }}"
+    port: !cel "8857"
+    baseUrl: !cel "'http://localhost:8857'"
+    host: !cel "'localhost'"
     mounts:
       - path: /api
         mount: !ref TestApi
@@ -49,7 +49,7 @@ steps:
 
   - name: assertPong
     inputs:
-      pong: "${{ steps.ping.result.body.pong }}"
+      pong: !cel "steps.ping.result.body.pong"
     invoke:
       kind: Assert.Schema
       schema:

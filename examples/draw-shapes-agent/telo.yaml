@@ -290,7 +290,7 @@ tools:
     # ai@0.13.0 while the runtime has always accepted content parts; the `!cel`
     # form is type-checked against that schema and would be rejected. The schema
     # is fixed in `modules/ai` — switch this to `!cel` once ai republishes.
-    result: "${{ {'type': 'image', 'data': result.image, 'mediaType': result.mediaType} }}"
+    result: !cel "{'type': 'image', 'data': result.image, 'mediaType': result.mediaType}"
   - tool: !ref validateTool
     name: validate
     description: >-

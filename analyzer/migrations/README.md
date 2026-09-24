@@ -68,7 +68,8 @@ out, and delete from it silently.
 
 | key | required | meaning |
 | --- | --- | --- |
-| `key` | yes | the mapping key this rule rewrites |
+| `key` | one of `key` / `scalar` | the mapping key this rule rewrites |
+| `scalar` | one of `key` / `scalar` | an untagged string scalar whose text is `lone-hole` or `interpolated`; a core entry may pair it with `inKind` / `under` `["*"]` |
 | `inKind` | yes | document `kind:` values this rule may match in |
 | `under` | yes | top-level document keys; the match must be at or below one of them |
 | `value` / `valueOneOf` | no | the value must equal this / be one of these |
@@ -94,6 +95,10 @@ structured value is refused when the entry is READ, rather than accepted and
 then reported forever as "fix it by hand" the first time someone runs
 `telo migrate`. Writing a structured value is a vocabulary extension (a block
 renderer), not something an entry can reach for today.
+
+`set-tag` takes an optional `source`: `text` (the default — the scalar's text,
+unchanged) or `hole` (the expression of the lone `${{ }}` hole the text is),
+which is legal only on a `scalar: lone-hole` rule.
 
 `reason` is the only prose an entry writes. The driver generates what changed
 and how to apply it identically for every entry.

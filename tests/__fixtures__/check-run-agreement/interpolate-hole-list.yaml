@@ -1,0 +1,18 @@
+# A hole CEL's `string()` cannot turn into text — refused at check, and at run
+# when the value is only known then.
+kind: Telo.Application
+metadata:
+  name: InterpolateHoleList
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: say
+    invoke:
+      kind: Run.Value
+      value: !interpolate "items ${{ [1, 2] }}"

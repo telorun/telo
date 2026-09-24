@@ -17,10 +17,10 @@ metadata:
   name: greet
 steps:
   - name: build
-    if: "${{ inputs.shout }}"
+    if: !cel "inputs.shout"
     then:
       - name: loud
-        inputs: { name: "${{ inputs.name }}" }
+        inputs: { name: !cel "inputs.name" }
         invoke:
           kind: Run.Value
           inputType:
@@ -33,7 +33,7 @@ steps:
             text: !cel "'HELLO ' + inputs.name"
     else:
       - name: quiet
-        inputs: { name: "${{ inputs.name }}" }
+        inputs: { name: !cel "inputs.name" }
         invoke:
           kind: Run.Value
           inputType:
@@ -45,7 +45,7 @@ steps:
           value:
             text: !cel "'hello ' + inputs.name"
 outputs:
-  loud: "${{ steps.loud.result.text }}"
+  loud: !cel "steps.loud.result.text"
 ---
 kind: Run.Sequence
 metadata:
@@ -58,7 +58,7 @@ steps:
       shout: true
   - name: verify
     inputs:
-      text: "${{ steps.callGreet.result.loud }}"
+      text: !cel "steps.callGreet.result.loud"
     invoke:
       kind: Assert.Schema
       schema:

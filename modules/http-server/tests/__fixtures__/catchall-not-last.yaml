@@ -27,7 +27,7 @@ routes:
           application/json:
             body: { ok: true }
       - status: 201
-        when: "${{ result.ok }}"
+        when: !cel "result.ok"
         content:
           application/json:
             body: { ok: true }

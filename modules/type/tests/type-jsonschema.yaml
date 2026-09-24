@@ -113,7 +113,7 @@ steps:
     invoke: !ref addNumbers
   - name: verifySum
     inputs:
-      sum: "${{ steps.add.result.sum }}"
+      sum: !cel "steps.add.result.sum"
     invoke:
       kind: Assert.Schema
       schema:
@@ -141,7 +141,7 @@ steps:
     catch:
       - name: verifyError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -164,8 +164,8 @@ steps:
     invoke: !ref identity
   - name: verifyPassthrough
     inputs:
-      id: "${{ steps.validInherited.result.id }}"
-      name: "${{ steps.validInherited.result.name }}"
+      id: !cel "steps.validInherited.result.id"
+      name: !cel "steps.validInherited.result.name"
     invoke:
       kind: Assert.Schema
       schema:
@@ -191,7 +191,7 @@ steps:
     catch:
       - name: verifyInheritanceError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -213,7 +213,7 @@ steps:
     invoke: !ref processAmount
   - name: verifyDoubled
     inputs:
-      doubled: "${{ steps.validAmount.result.doubled }}"
+      doubled: !cel "steps.validAmount.result.doubled"
     invoke:
       kind: Assert.Schema
       schema:
@@ -232,7 +232,7 @@ steps:
     catch:
       - name: verifyRuleError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -321,7 +321,7 @@ steps:
     catch:
       - name: verifyOutputError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -343,7 +343,7 @@ steps:
     invoke: !ref processNonNegative
   - name: verifyMid
     inputs:
-      result: "${{ steps.validMid.result.result }}"
+      result: !cel "steps.validMid.result.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -362,7 +362,7 @@ steps:
     catch:
       - name: verifyNegativeError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -381,7 +381,7 @@ steps:
     catch:
       - name: verifyLimitError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -406,8 +406,8 @@ steps:
     invoke: !ref fullIdentity
   - name: verifyFull
     inputs:
-      id: "${{ steps.validFull.result.id }}"
-      label: "${{ steps.validFull.result.label }}"
+      id: !cel "steps.validFull.result.id"
+      label: !cel "steps.validFull.result.label"
     invoke:
       kind: Assert.Schema
       schema:
@@ -430,7 +430,7 @@ steps:
     catch:
       - name: verifyTimestampError
         inputs:
-          msg: "${{ error.message }}"
+          msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:

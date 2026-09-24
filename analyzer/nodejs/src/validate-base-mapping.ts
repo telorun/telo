@@ -1,6 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
-import { isTaggedSentinel } from "@telorun/templating";
+import { celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { effectiveAuthorSchema, resolveParent, type DefResolver } from "./extends-resolution.js";
@@ -15,7 +15,7 @@ const SOURCE = "telo-analyzer";
  *  checkable. */
 function containsCel(value: unknown): boolean {
   if (isCompiledValue(value)) return true;
-  if (isTaggedSentinel(value) && value.engine === "cel") return true;
+  if (isTaggedSentinel(value) && celExpressionsOf(value.engine, value.source).length > 0) return true;
   if (Array.isArray(value)) return value.some(containsCel);
   if (value && typeof value === "object") {
     return Object.values(value as Record<string, unknown>).some(containsCel);

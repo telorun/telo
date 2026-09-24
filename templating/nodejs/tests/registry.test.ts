@@ -49,6 +49,7 @@ describe("builtinEngines + createDefaultRegistry", () => {
       "cel",
       "include-bytes",
       "include-text",
+      "interpolate",
       "literal",
       "module-path",
       "ref",

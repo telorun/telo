@@ -39,7 +39,7 @@ function runValue(
   bindings: Record<string, string>,
   value: Record<string, string>,
 ): ResourceManifest {
-  const cel = (source: string) => `\${{ ${source} }}`;
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
   return {
     kind: "run.Value",
     metadata: { name: "Priced", module: "test" },

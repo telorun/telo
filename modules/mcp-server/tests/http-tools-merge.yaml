@@ -103,11 +103,11 @@ entries:
       properties: { city: { type: string } }
       required: [ city ]
     handler: !ref weatherImpl
-    inputs: { city: "${{ request.arguments.city }}" }
+    inputs: { city: !cel "request.arguments.city" }
     result:
       content:
         - type: text
-          text: "${{ result.summary }}"
+          text: !cel "result.summary"
 ---
 kind: Mcp.Tools
 metadata: { name: DatabaseTools }
@@ -119,11 +119,11 @@ entries:
       properties: { table: { type: string } }
       required: [ table ]
     handler: !ref dbImpl
-    inputs: { table: "${{ request.arguments.table }}" }
+    inputs: { table: !cel "request.arguments.table" }
     result:
       content:
         - type: text
-          text: "rows=${{ result.rows }}"
+          text: !interpolate "rows=${{ result.rows }}"
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -149,9 +149,9 @@ steps:
     invoke: !ref mcpFetch
   - name: assertListed
     inputs:
-      hasError: "${{ steps.listTools.result.hasError }}"
-      firstName: "${{ steps.listTools.result.result.tools[0].name }}"
-      secondName: "${{ steps.listTools.result.result.tools[1].name }}"
+      hasError: !cel "steps.listTools.result.hasError"
+      firstName: !cel "steps.listTools.result.result.tools[0].name"
+      secondName: !cel "steps.listTools.result.result.tools[1].name"
     invoke:
       kind: Assert.Schema
       schema:
@@ -170,7 +170,7 @@ steps:
     invoke: !ref mcpFetch
   - name: assertWeather
     inputs:
-      contentText: "${{ steps.callWeather.result.result.content[0].text }}"
+      contentText: !cel "steps.callWeather.result.result.content[0].text"
     invoke:
       kind: Assert.Schema
       schema:
@@ -187,7 +187,7 @@ steps:
     invoke: !ref mcpFetch
   - name: assertDb
     inputs:
-      contentText: "${{ steps.callDb.result.result.content[0].text }}"
+      contentText: !cel "steps.callDb.result.result.content[0].text"
     invoke:
       kind: Assert.Schema
       schema:

@@ -27,7 +27,7 @@ inputType:
     properties:
       n: { type: integer }
 value:
-  doubled: "${{ double(inputs.n) * 2.0 }}"
+  doubled: !cel "double(inputs.n) * 2.0"
 ---
 # A Run.Sequence (Telo.Runnable with callable inputs/outputs) wrapped as a tool —
 # the composite-tool case the widened Ai.Tools `tool` slot enables. The whole
@@ -45,9 +45,9 @@ steps:
   - name: double
     invoke: !ref doubler
     inputs:
-      n: "${{ inputs.n }}"
+      n: !cel "inputs.n"
 outputs:
-  doubled: "${{ steps.double.result.doubled }}"
+  doubled: !cel "steps.double.result.doubled"
 ---
 kind: Ai.Tools
 metadata:
@@ -62,7 +62,7 @@ tools:
       required: [n]
       properties:
         n: { type: integer }
-    result: "${{ result.doubled }}"
+    result: !cel "result.doubled"
 ---
 kind: Ai.Agent
 metadata:
@@ -84,9 +84,9 @@ steps:
   # echoes that content as the final answer.
   - name: assertResult
     inputs:
-      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
-      toolResult: "${{ steps.invoke.result.steps[0].toolResults[0].content }}"
-      finalText: "${{ steps.invoke.result.text }}"
+      toolName: !cel "steps.invoke.result.steps[0].toolCalls[0].name"
+      toolResult: !cel "steps.invoke.result.steps[0].toolResults[0].content"
+      finalText: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
       schema:

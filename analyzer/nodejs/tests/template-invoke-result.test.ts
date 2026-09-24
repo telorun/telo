@@ -52,7 +52,7 @@ function makeInvokeReshaper(result: Record<string, unknown>): ResourceManifest {
 
 describe("Telo.Definition: top-level `result:` on `invoke:` template targets", () => {
   it("accepts a result that satisfies the abstract's outputType", () => {
-    const def = makeInvokeReshaper({ token: "bearer ${{ result.raw }}" });
+    const def = makeInvokeReshaper({ token: { __tagged: true, engine: "interpolate", source: "bearer ${{ result.raw }}" } });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([
       authImport,
       reshaperAbstract,
@@ -66,7 +66,7 @@ describe("Telo.Definition: top-level `result:` on `invoke:` template targets", (
   });
 
   it("rejects CEL access to fields not on the invoke target's outputType", () => {
-    const def = makeInvokeReshaper({ token: "bearer ${{ result.bogus }}" });
+    const def = makeInvokeReshaper({ token: { __tagged: true, engine: "interpolate", source: "bearer ${{ result.bogus }}" } });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([
       authImport,
       reshaperAbstract,
@@ -80,7 +80,7 @@ describe("Telo.Definition: top-level `result:` on `invoke:` template targets", (
   });
 
   it("rejects a result missing a required property of the abstract's outputType", () => {
-    const def = makeInvokeReshaper({ other: "${{ result.raw }}" });
+    const def = makeInvokeReshaper({ other: { __tagged: true, engine: "cel", source: "result.raw" } });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([
       authImport,
       reshaperAbstract,

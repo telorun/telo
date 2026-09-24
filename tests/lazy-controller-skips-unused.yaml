@@ -20,7 +20,7 @@ targets:
     invoke: !ref echoer
   - name: check
     inputs:
-      text: "${{ steps.doEcho.result.text }}"
+      text: !cel "steps.doEcho.result.text"
     invoke: !ref assertText
 ---
 kind: Lazy.Echo

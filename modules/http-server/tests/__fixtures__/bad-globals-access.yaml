@@ -29,10 +29,10 @@ routes:
       method: GET
     handler: !ref handler
     inputs:
-      key: "${{ variables.nonExistent }}"
+      key: !cel "variables.nonExistent"
     returns:
       - status: 200
         content:
           application/json:
             body:
-              ok: "${{ result.ok }}"
+              ok: !cel "result.ok"

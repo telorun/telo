@@ -58,6 +58,15 @@ targets:
   - !ref pinnedStagedFileRuns
   - !ref unpinnedStagedAssetAtRuntime
   - !ref pinnedStagedAssetRuns
+  - !ref untaggedUnreadable
+  - !ref untaggedUnreadableAtRuntime
+  - !ref interpolateHoleList
+  - !ref interpolateHoleNullable
+  - !ref interpolateHoleDynNullAtRuntime
+  - !ref interpolateIntegerSlot
+  - !ref interpolateIntegerSlotAtRuntime
+  - !ref hostPathInterpolated
+  - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
   - !ref dependencyCycleAtRuntime
   - !ref moduleCallNotCallable
@@ -1352,3 +1361,90 @@ expect:
     - code: ARG_BINDING_ON_SECRET
       message: "a secret cannot be bound to the command line"
   runFails: "Manifest validation failed"
+---
+# A plain string holding `${{` that no hole can be read out of: the untagged-
+# interpolation migration leaves it, and neither half reads it as text.
+kind: Assert.Manifest
+metadata:
+  name: untaggedUnreadable
+source: ./__fixtures__/check-run-agreement/untagged-unreadable/lib/telo.yaml
+expect:
+  errors:
+    - code: UNTAGGED_INTERPOLATION
+      message: "which is never evaluated"
+---
+# …and at the consumer's import of it, since the kernel refuses it in any module.
+kind: Assert.Manifest
+metadata:
+  name: untaggedUnreadableAtRuntime
+source: ./__fixtures__/check-run-agreement/untagged-unreadable/telo.yaml
+expect:
+  errors:
+    - code: UNTAGGED_INTERPOLATION
+      message: "the imported library 'UntaggedUnreadableLib'"
+  runFails: "Manifest validation failed"
+---
+# An `!interpolate` hole CEL's `string()` cannot convert.
+kind: Assert.Manifest
+metadata:
+  name: interpolateHoleList
+source: ./__fixtures__/check-run-agreement/interpolate-hole-list.yaml
+expect:
+  errors:
+    - code: INTERPOLATION_HOLE_NOT_CONVERTIBLE
+      message: "is list<int>"
+---
+# A hole whose declared type admits null.
+kind: Assert.Manifest
+metadata:
+  name: interpolateHoleNullable
+source: ./__fixtures__/check-run-agreement/interpolate-hole-nullable.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "'inputs.name' may be null"
+---
+# A hole of unknown type checks clean; null at run time is refused, never
+# rendered as nothing.
+kind: Assert.Manifest
+metadata:
+  name: interpolateHoleDynNullAtRuntime
+source: ./__fixtures__/check-run-agreement/interpolate-hole-dyn-null.yaml
+expect:
+  runFails: "evaluated to null, which CEL's string() cannot convert to text"
+---
+# `!interpolate` at an integer field: the tag's produced type, not the slot's,
+# is what both halves check.
+kind: Assert.Manifest
+metadata:
+  name: interpolateIntegerSlot
+source: ./__fixtures__/check-run-agreement/interpolate-integer-slot/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "must be integer"
+---
+kind: Assert.Manifest
+metadata:
+  name: interpolateIntegerSlotAtRuntime
+source: ./__fixtures__/check-run-agreement/interpolate-integer-slot/telo.yaml
+expect:
+  runFails: "/count must be integer"
+---
+# `!interpolate` at a host-path slot: a plain string whatever its text, refused
+# statically at the slot and at creation by the slot's own schema.
+kind: Assert.Manifest
+metadata:
+  name: hostPathInterpolated
+source: ./__fixtures__/check-run-agreement/host-path-interpolated/lib/telo.yaml
+expect:
+  errors:
+    - code: HOST_PATH_UNTYPED_SOURCE
+      message: "'root' is a Telo.HostPath, but !interpolate produces a plain string"
+---
+kind: Assert.Manifest
+metadata:
+  name: hostPathInterpolatedAtRuntime
+source: ./__fixtures__/check-run-agreement/host-path-interpolated/telo.yaml
+expect:
+  runFails: "does not match schema for kind Http.Static"

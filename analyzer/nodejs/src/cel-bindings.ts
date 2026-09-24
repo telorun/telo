@@ -1,6 +1,13 @@
 import { ParseError } from "@marcbachmann/cel-js";
 import { isCompiledValue } from "@telorun/sdk";
-import { buildCelEnvironment, extractAccessChains, resolveModuleCalls } from "@telorun/templating";
+import {
+  buildCelEnvironment,
+  celExpressionsOf,
+  extractAccessChains,
+  isTaggedSentinel,
+  plainChainOf,
+  resolveModuleCalls,
+} from "@telorun/templating";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 
 /** Annotation on an `x-telo-context` node naming the resource field that holds
@@ -41,9 +48,6 @@ export function findBindingSites(
   }
   return fields.length > 0 ? { field: fields[0]!, fields, scopeNames } : undefined;
 }
-
-const TEMPLATE_RE = /\$\{\{\s*([^}]+?)\s*\}\}/g;
-const EXACT_TEMPLATE_RE = /^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/;
 
 /** Parser for expressions that reach here uncompiled. Built once; the base
  *  environment is stateless and shared with the runtime's own. */
@@ -86,9 +90,9 @@ function addRootIdentifiers(
 
 /** Root identifiers a binding's value reads. Walks the whole value so a
  *  structured binding (a map with `!cel` leaves) is covered, and reads both a
- *  compiled expression and a still-raw `${{ }}` string — the editor's
- *  round-trip view never compiles. An untagged plain string is a literal, not
- *  an expression, and contributes nothing. */
+ *  compiled expression and a still-raw tagged scalar — the editor's
+ *  round-trip view never compiles. A plain string is a literal, not an
+ *  expression, and contributes nothing. */
 function collectRefs(
   value: unknown,
   out: Set<string>,
@@ -100,9 +104,9 @@ function collectRefs(
     else addRootIdentifiers((value as { source?: string }).source ?? "", out, moduleNames);
     return;
   }
-  if (typeof value === "string") {
-    for (const match of value.matchAll(TEMPLATE_RE)) {
-      addRootIdentifiers(match[1]!, out, moduleNames);
+  if (isTaggedSentinel(value)) {
+    for (const expression of celExpressionsOf(value.engine, value.source)) {
+      addRootIdentifiers(expression, out, moduleNames);
     }
     return;
   }
@@ -137,13 +141,7 @@ export function bindingDependencies(
  *  expression (`inputs.user.name`). Null for anything else — a literal, a call,
  *  a comprehension, a structured value — none of which reduces to a typed path. */
 export function bindingPathChain(value: unknown): string[] | null {
-  let source: string | undefined;
-  if (isCompiledValue(value)) source = (value as { source?: string }).source;
-  else if (typeof value === "string") source = value.match(EXACT_TEMPLATE_RE)?.[1];
-  if (source === undefined) return null;
-  const expr = source.trim();
-  if (!/^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(expr)) return null;
-  return expr.split(".");
+  return plainChainOf(value)?.split(".") ?? null;
 }
 
 /**

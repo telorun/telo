@@ -8,7 +8,7 @@ import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 /** Parity tests: `!cel`-tagged forms inside a template body must produce the
  *  same chain-validation diagnostics as the `${{ }}` interpolated form. */
 describe("Telo.Definition template bodies: tagged-CEL parity", () => {
-  it("rejects `!cel \"self.tabel\"` typo with CEL_UNKNOWN_FIELD (matching the ${{ }} form)", () => {
+  it("rejects `!cel \"self.tabel\"` typo with CEL_UNKNOWN_FIELD", () => {
     const def: ResourceManifest = {
       kind: "Telo.Definition",
       metadata: { name: "Read", module: "repo" },
@@ -62,7 +62,7 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
     expect(cel).toEqual([]);
   });
 
-  it("produces the same diagnostic code for `${{ self.X }}` and `!cel \"self.X\"` typos", () => {
+  it("produces the same diagnostic code for a hole of `!interpolate` and `!cel \"self.X\"` typos", () => {
     const taggedDef: ResourceManifest = {
       kind: "Telo.Definition",
       metadata: { name: "T", module: "m" },
@@ -77,7 +77,9 @@ describe("Telo.Definition template bodies: tagged-CEL parity", () => {
       metadata: { name: "U", module: "m" },
       capability: "Telo.Invocable",
       schema: { type: "object", properties: { table: { type: "string" } } },
-      resources: [{ kind: "X", metadata: { name: "body" }, a: "${{ self.tabel }}" }],
+      resources: [
+        { kind: "X", metadata: { name: "body" }, a: makeTaggedSentinel("interpolate", "t ${{ self.tabel }}") },
+      ],
       run: makeTaggedSentinel("ref", "body"),
     } as unknown as ResourceManifest;
 

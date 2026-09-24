@@ -141,7 +141,7 @@ export interface ManifestSource {
 
 export interface LoadOptions {
   /** When true, each YAML document is passed through the CEL precompiler before being
-   *  returned. All `${{ expr }}` template strings are replaced with `CompiledValue` wrappers
+   *  returned. Every tagged CEL scalar (`!cel`, `!interpolate`, `!sql`) is replaced with a `CompiledValue` wrapper
    *  so the kernel can evaluate them at runtime. Leave unset (false) for static analysis —
    *  the analyzer works on raw strings and does not need compiled values. */
   compile?: boolean;

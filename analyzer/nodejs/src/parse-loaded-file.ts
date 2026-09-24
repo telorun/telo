@@ -1,5 +1,5 @@
 import type { Environment } from "@marcbachmann/cel-js";
-import type { ResourceManifest } from "@telorun/sdk";
+import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import { buildCelEnvironment } from "./cel-environment.js";
@@ -176,9 +176,9 @@ export function parseLoadedFile(
       try {
         manifests[i] = precompileDoc(raw, env, moduleNames) as ResourceManifest;
       } catch (error) {
-        throw new Error(
-          `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const message = `Failed to compile manifest in ${source}: ${error instanceof Error ? error.message : String(error)}`;
+        if (error instanceof RuntimeError) throw new RuntimeError(error.code, message);
+        throw new Error(message);
       }
     }
   }

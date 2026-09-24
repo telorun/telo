@@ -41,7 +41,7 @@ exports:
     UserCreated:
       ref: InsertUser.Success
       payload:
-        isPremium: "${{ signal.data.role == 'premium' }}"
+        isPremium: !cel "signal.data.role == 'premium'"
 ---
 # Internal resource (private by default)
 kind: Postgres.Query
@@ -76,7 +76,7 @@ metadata:
 trigger: Users.UserCreated
 
 # 2. Dynamic Evaluation (CEL): Evaluates the raw payload directly (no "signal.data" wrapper).
-condition: "${{ signal.isPremium == true }}"
+condition: !cel "signal.isPremium == true"
 do:
   kind: Http.Call
   # ...

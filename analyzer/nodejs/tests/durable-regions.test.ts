@@ -142,7 +142,7 @@ describe("DURABLE_NONDETERMINISM", () => {
           metadata: { name: "importAll", module: "App" },
           reason: "every write is an upsert",
           steps: [
-            { name: "write", invoke: ref("upsert"), inputs: { key: "${{ uuidv4() }}" } },
+            { name: "write", invoke: ref("upsert"), inputs: { key: { __tagged: true, engine: "cel", source: "uuidv4()" } } },
           ],
         },
       ]),
@@ -162,7 +162,7 @@ describe("DURABLE_NONDETERMINISM", () => {
           kind: "Local.Workflow",
           metadata: { name: "onboard", module: "App" },
           steps: [
-            { name: "pay", invoke: ref("charge"), inputs: { key: "${{ uuidv4() }}" } },
+            { name: "pay", invoke: ref("charge"), inputs: { key: { __tagged: true, engine: "cel", source: "uuidv4()" } } },
           ],
         },
       ]),
@@ -178,7 +178,7 @@ describe("DURABLE_NONDETERMINISM", () => {
           metadata: { name: "importAll", module: "App" },
           reason: "every write is an upsert",
           steps: [
-            { name: "write", invoke: ref("upsert"), inputs: { key: "${{ string(1) }}" } },
+            { name: "write", invoke: ref("upsert"), inputs: { key: { __tagged: true, engine: "cel", source: "string(1)" } } },
           ],
         },
       ]),

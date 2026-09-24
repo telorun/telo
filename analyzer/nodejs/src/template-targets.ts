@@ -111,7 +111,7 @@ export function templateTargetProblems(
     // author can name.
     if (metadata?.xTeloOrigin) continue;
     const name = metadata?.name;
-    if (typeof name === "string" && !name.includes("${{")) names.push(name);
+    if (typeof name === "string") names.push(name);
     else if (name !== undefined) anyDynamic = true;
   }
 

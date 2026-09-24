@@ -73,7 +73,7 @@ When the Telo kernel starts and initializes a module, it builds this read-only s
 
 ### Example B: Merged Evaluation Context (At Execution Time)
 
-When an event occurs (e.g., a POST request to a route), the kernel injects the Execution Context into the Module Context. This unified object is what the CEL evaluator receives to resolve expressions like `${{ secrets.stripeApiKey }}` or `${{ request.body.userId }}`.
+When an event occurs (e.g., a POST request to a route), the kernel injects the Execution Context into the Module Context. This unified object is what the CEL evaluator receives to resolve expressions like `!cel "secrets.stripeApiKey"` or `!cel "request.body.userId"`.
 
 ```json
 {

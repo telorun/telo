@@ -24,5 +24,5 @@ targets:
   - name: check
     invoke: !ref Assert.equals
     inputs:
-      actual: ${{ steps.print.result }}
+      actual: !cel "steps.print.result"
       expected: "exported singleton works"

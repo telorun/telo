@@ -14,7 +14,7 @@ targets:
   - name: printResult
     invoke: !ref Console.writeLine
     inputs:
-      output: |
+      output: !interpolate |
         Evaluated JavaScript code.
         Result is: ${{ steps.step1.result.result }}
 ---

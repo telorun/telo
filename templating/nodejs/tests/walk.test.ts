@@ -11,23 +11,12 @@ function collect(value: unknown): Emit[] {
 }
 
 describe("walkCelExpressions", () => {
-  it("emits each ${{ }} segment in an untagged string with engine='cel'", () => {
-    const value = { greeting: "Hello ${{ variables.name }}!" };
-    expect(collect(value)).toEqual([["variables.name", "greeting", "cel"]]);
-  });
-
-  it("emits multiple segments in interpolated strings", () => {
-    const value = "${{ a }} and ${{ b }}";
-    const out: Emit[] = [];
-    walkCelExpressions(value, "field", (s, p, e) => out.push([s, p, e]));
-    expect(out).toEqual([
-      ["a", "field", "cel"],
-      ["b", "field", "cel"],
-    ]);
+  it("never reads a plain string as an expression", () => {
+    expect(collect({ greeting: "Hello ${{ variables.name }}!" })).toEqual([]);
   });
 
   it("recurses into arrays with [N] index segments in the path", () => {
-    const value = { steps: [{ x: "${{ a }}" }, { x: "${{ b }}" }] };
+    const value = { steps: [{ x: makeTaggedSentinel("cel", "a") }, { x: makeTaggedSentinel("cel", "b") }] };
     expect(collect(value)).toEqual([
       ["a", "steps[0].x", "cel"],
       ["b", "steps[1].x", "cel"],
@@ -61,14 +50,14 @@ describe("walkCelExpressions", () => {
   it("does not descend into a live instance, whose graph is cyclic", () => {
     class Client {
       self: Client = this;
-      label = "${{ never.read }}";
+      label = makeTaggedSentinel("cel", "never.read");
     }
-    const value = { client: new Client(), x: "${{ a }}" };
+    const value = { client: new Client(), x: makeTaggedSentinel("cel", "a") };
     expect(collect(value)).toEqual([["a", "x", "cel"]]);
   });
 
   it("descends into a null-prototype object", () => {
-    const bag = Object.assign(Object.create(null), { x: "${{ a }}" });
+    const bag = Object.assign(Object.create(null), { x: makeTaggedSentinel("cel", "a") });
     expect(collect({ bag })).toEqual([["a", "bag.x", "cel"]]);
   });
 

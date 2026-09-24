@@ -23,7 +23,7 @@ steps:
     invoke: { kind: Timer.Delay }
   - name: assertPassthrough
     inputs:
-      hello: "${{ steps.wait.result.value.hello }}"
+      hello: !cel "steps.wait.result.value.hello"
     invoke:
       kind: Assert.Schema
       schema:

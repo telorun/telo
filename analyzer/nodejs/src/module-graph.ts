@@ -47,6 +47,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import {
   buildCelEnvironment,
+  celExpressionsOf,
   extractAccessChains,
   isRefSentinel,
   isTaggedSentinel,
@@ -2473,8 +2474,8 @@ function dataEdges(
 ): GraphEdge[] {
   const out: GraphEdge[] = [];
   const seen = new Set<string>();
-  walkCelExpressions(manifest, "", (source, path) => {
-    for (const chain of accessChains(source, moduleNames)) {
+  walkCelExpressions(manifest, "", (source, path, engine) => {
+    for (const chain of celExpressionsOf(engine, source).flatMap((x) => accessChains(x, moduleNames))) {
       if (chain[0] !== "resources" || chain.length < 2) continue;
       const targetName = chain[1]!;
       // `resources.<name>` is a bare name written in THIS module's scope, so it

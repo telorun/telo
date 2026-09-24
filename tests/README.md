@@ -49,7 +49,7 @@ steps:
         }
   - name: VerifySum
     inputs:
-      sum: "${{ steps.AddNumbers.result.sum }}"
+      sum: !cel "steps.AddNumbers.result.sum"
     invoke:
       kind: Assert.Schema
       schema:
@@ -68,16 +68,16 @@ Every step has a `name`. Beyond that, a step is one of several shapes — an inv
 
 ### Invoke
 
-`{ name, inputs?, invoke }`. `inputs` is a CEL-templatable map; `invoke` declares the resource to call. The result is available to later steps as `${{ steps.<name>.result.<field> }}`.
+`{ name, inputs?, invoke }`. `inputs` is a CEL-templatable map; `invoke` declares the resource to call. The result is available to later steps as `!cel "steps.<name>.result.<field>"`.
 
 ### Conditional — `if/then/else`
 
 ```yaml
 - name: BranchOnValue
-  if: "${{ steps.Setup.result.value == 42 }}"
+  if: !cel "steps.Setup.result.value == 42"
   then:
     - name: Matched
-      inputs: { value: "${{ steps.Setup.result.value }}" }
+      inputs: { value: !cel "steps.Setup.result.value" }
       invoke:
         kind: Assert.Schema
         schema:
@@ -102,10 +102,10 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
       function main({ n }) { return { n } }
 
 - name: Increment
-  while: "${{ steps.Counter.result.n < 3 }}"
+  while: !cel "steps.Counter.result.n < 3"
   do:
     - name: Counter            # shared name overwrites prior result each iteration
-      inputs: { n: "${{ steps.Counter.result.n }}" }
+      inputs: { n: !cel "steps.Counter.result.n" }
       invoke:
         kind: JavaScript.Script
         code: |
@@ -116,7 +116,7 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
 
 ```yaml
 - name: RouteByRole
-  switch: "${{ steps.ComputeRole.result.role }}"
+  switch: !cel "steps.ComputeRole.result.role"
   cases:
     admin:
       - name: AdminAction
@@ -144,8 +144,8 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
   catch:
     - name: Inspect
       inputs:
-        msg: "${{ error.message }}"
-        step: "${{ error.step }}"
+        msg: !cel "error.message"
+        step: !cel "error.step"
       invoke:
         kind: Assert.Schema
         schema:
@@ -176,7 +176,7 @@ A do-while pattern emerges naturally from sharing a step name between a pre-loop
 
 ```yaml
 - name: ShouldSkip
-  when: "${{ false }}"
+  when: !cel "false"
   inputs: { x: 999 }
   invoke:
     kind: Assert.Schema
@@ -235,7 +235,7 @@ expect:
 Two shapes:
 
 1. **Static-analysis errors** — use `Assert.Manifest` with a fixture under `__fixtures__/` and an expected `errors[].code`.
-2. **Runtime errors** — wrap the failing step in `try/catch` and assert against `${{ error.code }}`, `${{ error.message }}`, `${{ error.step }}`, `${{ error.data.* }}`. See `modules/run/tests/invoke-error.yaml` for the canonical example.
+2. **Runtime errors** — wrap the failing step in `try/catch` and assert against `!cel "error.code"`, `!cel "error.message"`, `!cel "error.step"`, `!cel "error.data.*"`. See `modules/run/tests/invoke-error.yaml` for the canonical example.
 
 ## See also
 

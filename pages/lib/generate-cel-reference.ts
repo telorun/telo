@@ -51,8 +51,8 @@ export function generateCelReference(outFile: string): void {
     "",
     "# CEL Functions",
     "",
-    'Functions available in Telo CEL expressions (`!cel "..."` tags and `${{ }}`',
-    "interpolations). This page is generated from the runtime registry, so it",
+    'Functions available in Telo CEL expressions (`!cel "..."` tags and the `${{ }}`',
+    "holes of `!interpolate`). This page is generated from the runtime registry, so it",
     "matches what the kernel actually provides. Locally, `telo cel functions`",
     'prints the same list and `telo cel eval "<expr>"` evaluates an expression.',
     "",
@@ -82,7 +82,7 @@ export function generateCelReference(outFile: string): void {
     lines.push(`## ${CATEGORY_LABELS[category] ?? category}`, "");
     lines.push("| Signature | Description |", "| --- | --- |");
     for (const fn of byCategory.get(category)!) {
-      lines.push(`| \`${fn.signature}\` | ${fn.summary}${tags(fn)} |`);
+      lines.push(`| \`${cell(fn.signature)}\` | ${cell(fn.summary)}${tags(fn)} |`);
     }
     lines.push("");
   }
@@ -124,3 +124,8 @@ const GLOBAL = "(global)";
 /** Globals first, then receiver types alphabetically. */
 const receiverOrder = (a: string, b: string): number =>
   a === GLOBAL ? -1 : b === GLOBAL ? 1 : a.localeCompare(b);
+
+/** A table cell's text, its pipes escaped so a union signature stays one cell. */
+function cell(text: string): string {
+  return text.replaceAll("|", "\\|");
+}

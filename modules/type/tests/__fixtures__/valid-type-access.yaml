@@ -39,7 +39,7 @@ steps:
     invoke: !ref addNumbers
   - name: useResult
     inputs:
-      value: "${{ steps.add.result.sum }}"
+      value: !cel "steps.add.result.sum"
     invoke:
       kind: JavaScript.Script
       code: |

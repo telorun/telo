@@ -1,0 +1,26 @@
+# A hole whose declared type admits null is refused at check; the same value
+# null at run time is refused there.
+kind: Telo.Application
+metadata:
+  name: InterpolateHoleNullable
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: say
+    invoke:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            name: { type: [string, "null"] }
+      value: !interpolate "hello ${{ inputs.name }}"
+    inputs:
+      name: null

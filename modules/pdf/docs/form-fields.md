@@ -25,8 +25,8 @@ metadata: { name: AddFields }
 ```yaml
 - name: fielded
   inputs:
-    data: "${{ steps.fetch.result.bytes }}"
-    scale: "${{ steps.page.result.scale }}"   # from the Pdf.Rasterizer step that produced the image
+    data: !cel "steps.fetch.result.bytes"
+    scale: !cel "steps.page.result.scale"   # from the Pdf.Rasterizer step that produced the image
     fields:
       - { name: firstName, type: text,     page: 1, x: 240, y: 64, width: 300, height: 40 }
       - { name: subscribe, type: checkbox, page: 2, x: 240, y: 64, width: 40,  height: 40 }

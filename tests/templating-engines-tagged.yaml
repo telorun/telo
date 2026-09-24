@@ -12,7 +12,7 @@ targets:
 # delivery mode and asserts the value the Run.Value controller actually
 # received — !cel evaluates the expression, !literal keeps the string
 # verbatim (the literal `${{...}}` text is passed through, not interpolated),
-# and untagged ${{ ... }} interpolates as before.
+# and !interpolate joins text with its holes.
 kind: Run.Sequence
 metadata:
   name: testTagged
@@ -35,7 +35,7 @@ steps:
         value: !cel "inputs.a + inputs.b"
   - name: assertCelSum
     inputs:
-      value: "${{ steps.celTaggedSum.result.value }}"
+      value: !cel "steps.celTaggedSum.result.value"
     invoke:
       kind: Assert.Schema
       schema:
@@ -63,7 +63,7 @@ steps:
         passthrough: !cel "inputs.raw"
   - name: assertLiteralPassthrough
     inputs:
-      passthrough: "${{ steps.literalTagged.result.passthrough }}"
+      passthrough: !cel "steps.literalTagged.result.passthrough"
     invoke:
       kind: Assert.Schema
       schema:
@@ -74,11 +74,11 @@ steps:
             const: !literal "Hello ${{ this is not interpolated }}"
         required: [ passthrough ]
 
-  # Mixing tagged + untagged on the same field. Untagged ${{ }} still
-  # interpolates; tagged !cel still evaluates as a single expression.
+  # !interpolate and !cel on sibling fields: the first joins text with its
+  # holes, the second evaluates as a single expression.
   - name: mixedField
     inputs:
-      interpolated: "answer is ${{ 42 }}"
+      interpolated: !interpolate "answer is ${{ 42 }}"
       celField: !cel "100.0 - 58.0"
     invoke:
       kind: Run.Value
@@ -94,8 +94,8 @@ steps:
         celField: !cel "inputs.celField"
   - name: assertMixed
     inputs:
-      interpolated: "${{ steps.mixedField.result.interpolated }}"
-      celField: "${{ steps.mixedField.result.celField }}"
+      interpolated: !cel "steps.mixedField.result.interpolated"
+      celField: !cel "steps.mixedField.result.celField"
     invoke:
       kind: Assert.Schema
       schema:

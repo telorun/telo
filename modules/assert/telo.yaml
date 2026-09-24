@@ -239,7 +239,7 @@ schema:
 #   - name: Check
 #     invoke: { kind: Assert.Equals }
 #     inputs:
-#       actual: "${{ steps.X.result.value }}"
+#       actual: !cel "steps.X.result.value"
 #       expected: "hello"
 # Replaces the verbose `Assert.Schema { properties: { x: { const: ... } } }`
 # pattern for trivial value checks.
@@ -260,7 +260,7 @@ inputType:
     properties:
       actual:
         title: Actual
-        description: Value to check; typically a `${{ steps.X.result.y }}` reference.
+        description: Value to check; typically a `!cel` read of a step's result (`steps.X.result.y`).
       expected:
         title: Expected
         description: Value `actual` must deep-equal.
@@ -273,7 +273,7 @@ schema:
 #   - name: Check
 #     invoke: { kind: Assert.Matches }
 #     inputs:
-#       actual: "${{ steps.X.result.text }}"
+#       actual: !cel "steps.X.result.text"
 #       pattern: "^hello"
 #       flags: i
 # Replaces `Assert.Schema { properties: { x: { type: string, pattern: ... } } }`.

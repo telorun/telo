@@ -14,7 +14,7 @@ targets:
   - name: step2
     invoke: !ref Console.writeLine
     inputs:
-      output: |
+      output: !interpolate |
         Evaluated starlark code.
         Result is: ${{ steps.step1.result.result }}
 ---

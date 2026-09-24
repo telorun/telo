@@ -29,10 +29,10 @@ routes:
       method: GET
     handler: !ref handler
     inputs:
-      key: "${{ variables.apiKey }}"
+      key: !cel "variables.apiKey"
     returns:
       - status: 200
         content:
           application/json:
             body:
-              ok: "${{ result.ok }}"
+              ok: !cel "result.ok"

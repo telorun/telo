@@ -67,19 +67,19 @@ steps:
     invoke: !ref numberSource
   - name: seqTee
     inputs:
-      input: "${{ steps.seqSource.result.output }}"
+      input: !cel "steps.seqSource.result.output"
     invoke: !ref teeStream
   - name: seqDrainA
     inputs:
-      input: "${{ steps.seqTee.result.outputA }}"
+      input: !cel "steps.seqTee.result.outputA"
     invoke: !ref collectArray
   - name: seqDrainB
     inputs:
-      input: "${{ steps.seqTee.result.outputB }}"
+      input: !cel "steps.seqTee.result.outputB"
     invoke: !ref collectArray
   - name: seqAssertA
     inputs:
-      count: "${{ steps.seqDrainA.result.count }}"
+      count: !cel "steps.seqDrainA.result.count"
     invoke:
       kind: Assert.Schema
       schema:
@@ -88,7 +88,7 @@ steps:
         required: [ count ]
   - name: seqAssertB
     inputs:
-      count: "${{ steps.seqDrainB.result.count }}"
+      count: !cel "steps.seqDrainB.result.count"
     invoke:
       kind: Assert.Schema
       schema:
@@ -107,18 +107,18 @@ steps:
     invoke: !ref errorSource
   - name: errTee
     inputs:
-      input: "${{ steps.errSource.result.output }}"
+      input: !cel "steps.errSource.result.output"
     invoke: !ref teeStream
   - name: errTried
     try:
       - name: errDrainA
         inputs:
-          input: "${{ steps.errTee.result.outputA }}"
+          input: !cel "steps.errTee.result.outputA"
         invoke: !ref collectArray
     catch:
       - name: assertErrCaught
         inputs:
-          message: "${{ error.message }}"
+          message: !cel "error.message"
         invoke:
           kind: Assert.Schema
           schema:
@@ -135,19 +135,19 @@ steps:
     invoke: !ref fiveItemSource
   - name: earlyTee
     inputs:
-      input: "${{ steps.earlySource.result.output }}"
+      input: !cel "steps.earlySource.result.output"
     invoke: !ref teeStream
   - name: earlyTakeTwo
     inputs:
-      input: "${{ steps.earlyTee.result.outputA }}"
+      input: !cel "steps.earlyTee.result.outputA"
     invoke: !ref takeTwo
   - name: earlyDrainAll
     inputs:
-      input: "${{ steps.earlyTee.result.outputB }}"
+      input: !cel "steps.earlyTee.result.outputB"
     invoke: !ref collectArray
   - name: assertEarlyA
     inputs:
-      count: "${{ steps.earlyTakeTwo.result.count }}"
+      count: !cel "steps.earlyTakeTwo.result.count"
     invoke:
       kind: Assert.Schema
       schema:
@@ -156,7 +156,7 @@ steps:
         required: [ count ]
   - name: assertEarlyB
     inputs:
-      count: "${{ steps.earlyDrainAll.result.count }}"
+      count: !cel "steps.earlyDrainAll.result.count"
     invoke:
       kind: Assert.Schema
       schema:

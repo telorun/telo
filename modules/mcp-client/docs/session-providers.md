@@ -66,16 +66,16 @@ schema:
     httpClient: { type: string, x-telo-ref: Http.Client }
 resources:
   - kind: HttpClient.Request
-    metadata: { name: "${{ self.name }}-read" }
-    client: "${{ self.httpClient }}"
+    metadata: { name: !interpolate "${{ self.name }}-read" }
+    client: !cel "self.httpClient"
     inputs:
-      url:    "https://vault/v1/secret/${{ self.vaultPath }}"
+      url:    !interpolate "https://vault/v1/secret/${{ self.vaultPath }}"
       method: GET
 provide:
   kind: HttpClient.Request
-  name: "${{ self.name }}-read"
+  name: !interpolate "${{ self.name }}-read"
 result:
-  sessionId: "${{ result.body.data.session_id }}"
+  sessionId: !cel "result.body.data.session_id"
 ```
 
 ### What the analyzer catches in this example

@@ -31,7 +31,7 @@ routes:
           required: [ "name" ]
     handler: !ref sayHello
     inputs:
-      name: "${{ request.query.name }}" # CEL expression
+      name: !cel "request.query.name" # CEL expression
     returns:
       - status: 200
         content:
@@ -44,7 +44,7 @@ routes:
               required: [ greeting, nice ]
               additionalProperties: false
             body:
-              greeting: "${{ result.message }}!"
+              greeting: !interpolate "${{ result.message }}!"
               nice: "WOW"
 ---
 kind: Run.Value

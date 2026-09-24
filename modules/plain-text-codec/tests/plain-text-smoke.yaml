@@ -33,15 +33,15 @@ steps:
     invoke: !ref source
   - name: encode
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref encoder
   - name: decode
     inputs:
-      input: "${{ steps.encode.result.output }}"
+      input: !cel "steps.encode.result.output"
     invoke: !ref decoder
   - name: assert
     inputs:
-      text: "${{ steps.decode.result.text }}"
+      text: !cel "steps.decode.result.text"
     invoke:
       kind: Assert.Schema
       schema:

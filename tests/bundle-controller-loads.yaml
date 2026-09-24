@@ -19,11 +19,11 @@ targets:
     invoke: !ref producer
   - name: toText
     inputs:
-      input: "${{ steps.produce.result.output }}"
+      input: !cel "steps.produce.result.output"
     invoke: !ref toText
   - name: assert
     inputs:
-      text: "${{ steps.toText.result.text }}"
+      text: !cel "steps.toText.result.text"
     invoke: !ref assertText
   # Env-missing fallback: ProducerFallback's first candidate bundle is missing,
   # so the loader must skip it and load the second. If it works, the contract holds.
@@ -33,11 +33,11 @@ targets:
     invoke: !ref producerFb
   - name: toTextFallback
     inputs:
-      input: "${{ steps.produceFallback.result.output }}"
+      input: !cel "steps.produceFallback.result.output"
     invoke: !ref toText
   - name: assertFallback
     inputs:
-      text: "${{ steps.toTextFallback.result.text }}"
+      text: !cel "steps.toTextFallback.result.text"
     invoke: !ref assertText
   # Format-based fallback: first candidate is format=napi (file present, but the
   # Node kernel can't host that format) → env-missing → loads the format=js one.
@@ -47,11 +47,11 @@ targets:
     invoke: !ref producerFmt
   - name: toTextFormat
     inputs:
-      input: "${{ steps.produceFormat.result.output }}"
+      input: !cel "steps.produceFormat.result.output"
     invoke: !ref toText
   - name: assertFormat
     inputs:
-      text: "${{ steps.toTextFormat.result.text }}"
+      text: !cel "steps.toTextFormat.result.text"
     invoke: !ref assertText
 ---
 kind: Bundle.Producer

@@ -124,7 +124,7 @@ describe("x-telo-value-schema-from", () => {
               when: true,
               // A CEL leaf becomes a schema-shaped placeholder, so it is accepted
               // wherever its slot's declared type would be.
-              value: { tier: "freight", cost: "${{ inputs.order.weight * 2.0 }}" },
+              value: { tier: "freight", cost: { __tagged: true, engine: "cel", source: "inputs.order.weight * 2.0" } },
             },
           ],
         }),

@@ -37,7 +37,7 @@ kind: McpClient.HttpClient
 metadata: { name: RemoteMcp }
 url: https://mcp.example.com/mcp
 headers:
-  authorization: "Bearer ${{ secrets.MCP_TOKEN }}"
+  authorization: !interpolate "Bearer ${{ secrets.MCP_TOKEN }}"
 clientInfo: { name: my-mcp-app, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall

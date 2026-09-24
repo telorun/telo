@@ -1,5 +1,6 @@
 import { celEngine } from "./engines/cel.js";
 import { includeBytesEngine, includeTextEngine } from "./engines/include.js";
+import { interpolateEngine } from "./engines/interpolate.js";
 import { literalEngine } from "./engines/literal.js";
 import { modulePathEngine } from "./engines/module-path.js";
 import { refEngine } from "./engines/ref.js";
@@ -17,6 +18,7 @@ export const builtinEngines: readonly TemplatingEngine[] = [
   celEngine,
   includeBytesEngine,
   includeTextEngine,
+  interpolateEngine,
   literalEngine,
   modulePathEngine,
   refEngine,
@@ -43,6 +45,18 @@ export function createDefaultRegistry(): TemplatingEngineRegistry {
  */
 export function producedTypeOf(engineName: string): Record<string, unknown> | undefined {
   return defaultRegistry().get(engineName)?.producedType?.();
+}
+
+/**
+ * The CEL expressions a tagged scalar holds — its whole source under `!cel`,
+ * each hole under a tag with holes, none under a tag holding no CEL.
+ *
+ * The single reader of `TemplatingEngine.expressionRegions`, so an analysis pass
+ * asking "what CEL is written here" never recognises a tag by name.
+ */
+export function celExpressionsOf(engineName: string, source: string): string[] {
+  const regions = defaultRegistry().get(engineName)?.expressionRegions?.(source) ?? [];
+  return regions.map((r) => source.slice(r.start, r.end));
 }
 
 let defaultRegistryCache: TemplatingEngineRegistry | undefined;

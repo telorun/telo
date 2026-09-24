@@ -1,0 +1,31 @@
+# `!interpolate` always produces a string, so an integer field refuses it
+# whatever the holes hold — here at the library, and at creation for a consumer.
+kind: Telo.Library
+metadata:
+  name: InterpolateIntegerSlotLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [counted]
+---
+kind: Telo.Definition
+metadata:
+  name: Counted
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    count:
+      type: integer
+      x-telo-eval: runtime
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.count"
+---
+kind: Self.Counted
+metadata:
+  name: counted
+count: !interpolate "${{ 1 }}"

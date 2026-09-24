@@ -78,6 +78,12 @@ describe("ports namespace typing", () => {
     const env = buildTypedCelEnvironment(buildCelEnvironment(), appWithPorts());
     expect(env.check("ports.typo").valid).toBe(false);
   });
+
+  it("renders a branded port as text, as the integer it is at runtime", () => {
+    const env = buildTypedCelEnvironment(buildCelEnvironment(), appWithPorts());
+    expect(env.check("string(ports.http)").type).toBe("string");
+    expect(env.check("string(ports.dns)").type).toBe("string");
+  });
 });
 
 describe("cross-doc port wiring", () => {
@@ -123,11 +129,11 @@ describe("cross-doc port wiring", () => {
   }
 
   it("accepts a TcpPort wired into a TcpPort field", () => {
-    expect(analyzeWith("${{ ports.http }}")).toHaveLength(0);
+    expect(analyzeWith({ __tagged: true, engine: "cel", source: "ports.http" })).toHaveLength(0);
   });
 
   it("rejects a UdpPort wired into a TcpPort field", () => {
-    const diags = analyzeWith("${{ ports.dns }}");
+    const diags = analyzeWith({ __tagged: true, engine: "cel", source: "ports.dns" });
     expect(diags.length).toBeGreaterThan(0);
     expect(diags.some((d) => d.message.includes("Telo.UdpPort") && d.message.includes("Telo.TcpPort"))).toBe(
       true,

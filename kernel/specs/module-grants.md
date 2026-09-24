@@ -103,7 +103,7 @@ imports:
     variables:
       poolSize: 10
     secrets:
-      connectionString: "${{ resources.HostEnv.values.DATABASE_URL }}"
+      connectionString: !cel "resources.HostEnv.values.DATABASE_URL"
 
     # Explicit runtime capability authorizations
     grants:

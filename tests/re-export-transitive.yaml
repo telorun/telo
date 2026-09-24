@@ -28,7 +28,7 @@ steps:
       connection: !ref Gw.db
   - name: assertSeeded
     inputs:
-      rows: "${{ steps.select.result.rows }}"
+      rows: !cel "steps.select.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

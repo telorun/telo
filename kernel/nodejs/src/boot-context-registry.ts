@@ -1,4 +1,5 @@
 import { RuntimeError } from "@telorun/sdk";
+import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
 
 /** Stored entry for a single context provider */
 interface ProviderEntry {
@@ -58,7 +59,7 @@ export class BootContextRegistry {
    *  - `grants === undefined` → unrestricted, always included.
    *  - `grants` defined and consumer key in grants → included.
    *  - `grants` defined and consumer key NOT in grants:
-   *      - Scan the raw manifest JSON for `${{ ... }}` expressions that reference
+   *      - Scan the manifest's CEL expressions for any that reference
    *        the provider's namespace prefix (`"${kind}.${name}."`).
    *      - If a reference is found → throw ERR_VISIBILITY_DENIED immediately.
    *      - If no reference → silently exclude the provider from the context.
@@ -78,14 +79,13 @@ export class BootContextRegistry {
   ): Record<string, unknown> {
     const consumerKey = `${consumerKind}/${consumerName}`;
     const celContext: Record<string, unknown> = {};
-    const manifestJson = JSON.stringify(rawManifest);
 
     for (const provider of this.providers) {
       const isGranted = provider.grants === undefined || provider.grants.includes(consumerKey);
 
       if (!isGranted) {
         const namespacePrefix = buildProviderNamespacePrefix(provider.kind, provider.name);
-        if (manifestReferencesNamespace(manifestJson, namespacePrefix)) {
+        if (manifestReferencesNamespace(rawManifest, namespacePrefix)) {
           throw new RuntimeError(
             "ERR_VISIBILITY_DENIED",
             `Resource "${consumerKind}/${consumerName}" references context from ` +
@@ -105,7 +105,7 @@ export class BootContextRegistry {
 }
 
 /**
- * Build the namespace prefix string that appears inside a `${{ }}` expression
+ * Build the namespace prefix string that appears inside a CEL expression
  * when a consumer references this provider.
  *
  * The trailing dot ensures we match the start of a property access without
@@ -118,27 +118,15 @@ function buildProviderNamespacePrefix(kind: string, name: string): string {
 }
 
 /**
- * Scan serialized manifest JSON for any `${{ expression }}` block that contains
- * the provider's namespace prefix.
- *
- * Using JSON.stringify() as the scan target covers all nested fields uniformly.
- * The approach cannot produce false positives from field names or non-template
- * values because `${{` is not valid JSON syntax outside a string value.
+ * Whether any CEL expression the manifest holds — a `!cel` value, a hole of a
+ * tag with holes — reads through the provider's namespace prefix.
  */
-function manifestReferencesNamespace(manifestJson: string, namespacePrefix: string): boolean {
-  let searchFrom = 0;
-  while (true) {
-    const start = manifestJson.indexOf("${{", searchFrom);
-    if (start === -1) break;
-    const end = manifestJson.indexOf("}}", start + 3);
-    if (end === -1) break;
-    const expression = manifestJson.slice(start + 3, end);
-    if (expression.includes(namespacePrefix)) {
-      return true;
-    }
-    searchFrom = end + 2;
-  }
-  return false;
+function manifestReferencesNamespace(manifest: unknown, namespacePrefix: string): boolean {
+  let found = false;
+  walkCelExpressions(manifest, "", (source, _path, engine) => {
+    if (!found) found = celExpressionsOf(engine, source).some((x) => x.includes(namespacePrefix));
+  });
+  return found;
 }
 
 /**

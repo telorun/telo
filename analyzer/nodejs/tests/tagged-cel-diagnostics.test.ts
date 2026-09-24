@@ -102,10 +102,9 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
     expect(cel).toEqual([]);
   });
 
-  it("preserves the same diagnostic codes as the untagged ${{ }} path for parity", () => {
-    // Same chain, same context, two delivery modes: the diagnostic codes must
-    // match exactly so downstream filtering doesn't have to special-case the
-    // tagged path.
+  it("reports a hole of !interpolate with the same code as !cel", () => {
+    // Same chain, same context, two tags: the diagnostic codes must match
+    // exactly so downstream filtering doesn't have to special-case either.
     const def = makeKindWithContext("Test.Thing", requestContext);
     const tagged: ResourceManifest = {
       kind: "Test.Thing",
@@ -114,8 +113,8 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
     } as unknown as ResourceManifest;
     const untagged: ResourceManifest = {
       kind: "Test.Thing",
-      metadata: { name: "untagged" },
-      expr: "${{ request.bogus }}",
+      metadata: { name: "interpolated" },
+      expr: makeTaggedSentinel("interpolate", "id ${{ request.bogus }}"),
     } as unknown as ResourceManifest;
 
     const taggedDiag = new StaticAnalyzer()
@@ -131,6 +130,19 @@ describe("StaticAnalyzer with !cel-tagged values", () => {
     // Bodies differ only by the resource name prefix; the chain-error tail is identical.
     expect(taggedDiag[0].message).toContain("'request.bogus' is not defined");
     expect(untaggedDiag[0].message).toContain("'request.bogus' is not defined");
+  });
+
+  it("refuses a plain string holding ${{, which is never evaluated", () => {
+    const def = makeKindWithContext("Test.Thing", requestContext);
+    const plain = {
+      kind: "Test.Thing",
+      metadata: { name: "plain" },
+      expr: "${{ request.path }}",
+    } as unknown as ResourceManifest;
+    const codes = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([def, plain]))
+      .map((d) => d.code);
+    expect(codes).toContain("UNTAGGED_INTERPOLATION");
   });
 
   it("emits no SCHEMA_VIOLATION for a tagged scalar on a typed field", () => {

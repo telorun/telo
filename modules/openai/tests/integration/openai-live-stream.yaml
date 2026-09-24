@@ -63,11 +63,11 @@ steps:
         invoke: !ref collector
       - name: assert
         inputs:
-          deltas: "${{ steps.collect.result.deltas }}"
-          deltaCount: "${{ steps.collect.result.deltaCount }}"
-          finishReason: "${{ steps.collect.result.finishReason }}"
-          promptTokens: "${{ steps.collect.result.usage.promptTokens }}"
-          completionTokens: "${{ steps.collect.result.usage.completionTokens }}"
+          deltas: !cel "steps.collect.result.deltas"
+          deltaCount: !cel "steps.collect.result.deltaCount"
+          finishReason: !cel "steps.collect.result.finishReason"
+          promptTokens: !cel "steps.collect.result.usage.promptTokens"
+          completionTokens: !cel "steps.collect.result.usage.completionTokens"
         invoke:
           kind: Assert.Schema
           schema:

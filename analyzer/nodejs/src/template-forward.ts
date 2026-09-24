@@ -601,7 +601,6 @@ function celSource(value: unknown): string | undefined {
     const source = (value as { source?: unknown }).source;
     return typeof source === "string" ? source : undefined;
   }
-  if (typeof value === "string") return /^\s*\$\{\{([\s\S]*)\}\}\s*$/.exec(value)?.[1];
   return undefined;
 }
 
@@ -614,8 +613,7 @@ function isOpaque(value: unknown): boolean {
   return (
     isTaggedSentinel(value) ||
     isRefSentinel(value) ||
-    isCompiled(value) ||
-    (typeof value === "string" && value.includes("${{"))
+    isCompiled(value)
   );
 }
 

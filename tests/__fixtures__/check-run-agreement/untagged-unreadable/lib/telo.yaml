@@ -1,0 +1,15 @@
+# A plain string holding `${{` that no hole can be read out of: the migration
+# leaves it, `telo check` reports it here and at a consumer's import, and the
+# kernel refuses it at load.
+kind: Telo.Library
+metadata:
+  name: UntaggedUnreadableLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [say]
+---
+kind: Run.Value
+metadata:
+  name: say
+value: "hello ${{ never"

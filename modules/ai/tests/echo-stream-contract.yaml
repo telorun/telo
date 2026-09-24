@@ -30,10 +30,10 @@ steps:
     invoke: !ref collector
   - name: assert
     inputs:
-      deltas: "${{ steps.collect.result.deltas }}"
-      deltaCount: "${{ steps.collect.result.deltaCount }}"
-      finishReason: "${{ steps.collect.result.finishReason }}"
-      totalTokens: "${{ steps.collect.result.usage.totalTokens }}"
+      deltas: !cel "steps.collect.result.deltas"
+      deltaCount: !cel "steps.collect.result.deltaCount"
+      finishReason: !cel "steps.collect.result.finishReason"
+      totalTokens: !cel "steps.collect.result.usage.totalTokens"
     invoke:
       kind: Assert.Schema
       schema:

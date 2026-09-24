@@ -17,7 +17,7 @@ metadata:
 steps:
   - name: typo
     inputs:
-      value: "${{ inputs.s.slice(7) }}"
+      value: !cel "inputs.s.slice(7)"
     invoke:
       kind: JavaScript.Script
       code: |

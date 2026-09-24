@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { CelExpressionEditor } from "./cel-expression-editor";
-import { tagOf, tagSourceOf, type ValueTagOption } from "./value-tag";
+import { holdsCel, tagOf, tagSourceOf, type ValueTagOption } from "./value-tag";
 import type { CelFieldTarget } from "./types";
 
 /** The untagged option. Not an engine, so it carries no entry in the authoring
@@ -132,21 +132,22 @@ export function ValueTagField({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        {/* Only `!cel` is evaluated per scope, so only it is qualified by when.
-            Saying "compile" beside `!literal` would describe the field, not the
-            value, and the value is what the tag is about. */}
-        {active === "cel" && evalMode && (
+        {/* Only a tag holding CEL is evaluated per scope, so only it is
+            qualified by when. Saying "compile" beside `!literal` would describe
+            the field, not the value, and the value is what the tag is about. */}
+        {option && holdsCel(active) && evalMode && (
           <span className="text-[10px] text-violet-500 dark:text-violet-400">{evalMode}</span>
         )}
       </div>
 
       {!option ? (
         children
-      ) : active === "cel" && celTarget ? (
-        // `!cel` alone: the completions are CEL's own scope. `!literal` is
-        // opaque text by definition and a path names a file, so neither has
-        // anything a CEL scope could offer.
+      ) : holdsCel(active) && celTarget ? (
+        // A tag holding CEL: the completions are CEL's own scope, inside the
+        // expression the cursor is in. `!literal` is opaque text by definition
+        // and a path names a file, so neither has anything to offer.
         <CelExpressionEditor
+          tag={active}
           value={source}
           onValueChange={write}
           onBlur={onBlur}

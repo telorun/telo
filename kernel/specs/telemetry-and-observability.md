@@ -40,7 +40,7 @@ imports:
     source: users-module
 
 targets:
-  - "${{ resources.MainApi }}"
+  - !cel "resources.MainApi"
 
 ---
 # Global Telemetry Sink: Automatically cascades to all imported modules and resources.

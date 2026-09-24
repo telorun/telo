@@ -508,9 +508,8 @@ export function validateReferences(
         }
 
         // Bare strings are no longer a reference shape — `validateReferenceForms`
-        // rejects an author-written string at a ref slot before this pass runs,
-        // and a `${{ }}` reference flowed through CEL is resolved/typed
-        // elsewhere. Anything still a string here is not a reference to resolve.
+        // rejects an author-written string at a ref slot before this pass runs.
+        // Anything still a string here is not a reference to resolve.
         if (typeof val !== "object") return;
         const refVal = val as Record<string, unknown>;
 

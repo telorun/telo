@@ -120,11 +120,11 @@ steps:
     invoke: !ref mcpStatefulProbe
   - name: assertContract
     inputs:
-      sessionIdPresent: "${{ steps.probe.result.sessionIdPresent }}"
-      validCallStatus: "${{ steps.probe.result.validCallStatus }}"
-      validCallToolCount: "${{ steps.probe.result.validCallToolCount }}"
-      bogusCallStatus: "${{ steps.probe.result.bogusCallStatus }}"
-      bogusErrorCode: "${{ steps.probe.result.bogusErrorCode }}"
+      sessionIdPresent: !cel "steps.probe.result.sessionIdPresent"
+      validCallStatus: !cel "steps.probe.result.validCallStatus"
+      validCallToolCount: !cel "steps.probe.result.validCallToolCount"
+      bogusCallStatus: !cel "steps.probe.result.bogusCallStatus"
+      bogusErrorCode: !cel "steps.probe.result.bogusErrorCode"
     invoke:
       kind: Assert.Schema
       schema:

@@ -31,7 +31,7 @@ inputType:
       a: { type: number }
       b: { type: number }
 value:
-  product: "${{ inputs.a * inputs.b }}"
+  product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
 metadata:
@@ -69,8 +69,8 @@ steps:
   # final answer.
   - name: assertText
     inputs:
-      text: "${{ steps.invoke.result.text }}"
-      finishReason: "${{ steps.invoke.result.finishReason }}"
+      text: !cel "steps.invoke.result.text"
+      finishReason: !cel "steps.invoke.result.finishReason"
     invoke:
       kind: Assert.Schema
       schema:
@@ -85,8 +85,8 @@ steps:
         required: [ text, finishReason ]
   - name: assertTrace
     inputs:
-      toolName: "${{ steps.invoke.result.steps[0].toolCalls[0].name }}"
-      toolResult: "${{ steps.invoke.result.steps[0].toolResults[0].content }}"
+      toolName: !cel "steps.invoke.result.steps[0].toolCalls[0].name"
+      toolResult: !cel "steps.invoke.result.steps[0].toolResults[0].content"
     invoke:
       kind: Assert.Schema
       schema:

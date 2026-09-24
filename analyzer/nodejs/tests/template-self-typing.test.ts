@@ -24,7 +24,7 @@ function makeReadDefinition(sql: string): ResourceManifest {
       {
         kind: "Sql.Query",
         metadata: { name: "query" },
-        connection: "${{ self.connection }}",
+        connection: { __tagged: true, engine: "cel", source: "self.connection" },
       },
     ],
     invoke: { __tagged: true, engine: "ref", source: "query" },
@@ -33,8 +33,8 @@ function makeReadDefinition(sql: string): ResourceManifest {
 }
 
 describe("Telo.Definition: static CEL validation for `self`", () => {
-  it("accepts `${{ self.<declared field> }}` inside the template body", () => {
-    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([makeReadDefinition("SELECT * FROM ${{ self.table }}")]));
+  it({ __tagged: true, engine: "interpolate", source: "accepts `${{ self.<declared field> }}` inside the template body" }, () => {
+    const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([makeReadDefinition({ __tagged: true, engine: "interpolate", source: "SELECT * FROM ${{ self.table }}" })]));
     const cel = diagnostics.filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "CEL_SYNTAX_ERROR",
     );
@@ -44,7 +44,7 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
   it("rejects a typo on a declared field with CEL_UNKNOWN_FIELD", () => {
     // `self.tabel` is a typo for `self.table` — was previously silent because
     // template bodies were skipped by the analyzer.
-    const def = makeReadDefinition("SELECT * FROM ${{ self.tabel }}");
+    const def = makeReadDefinition({ __tagged: true, engine: "interpolate", source: "SELECT * FROM ${{ self.tabel }}" });
     const diagnostics = new StaticAnalyzer().analyze(withSyntheticPositions([def]));
     const unknown = diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD");
     expect(unknown.length).toBeGreaterThanOrEqual(1);
@@ -62,9 +62,9 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
         {
           kind: "X",
           metadata: { name: "body" },
-          a: "${{ self.name }}",
-          b: "${{ self.kind }}",
-          c: "${{ self.metadata.name }}",
+          a: { __tagged: true, engine: "cel", source: "self.name" },
+          b: { __tagged: true, engine: "cel", source: "self.kind" },
+          c: { __tagged: true, engine: "cel", source: "self.metadata.name" },
         },
       ],
       run: { __tagged: true, engine: "ref", source: "body" },
@@ -83,7 +83,7 @@ describe("Telo.Definition: static CEL validation for `self`", () => {
       metadata: { name: "R", module: "m" },
       capability: "Telo.Invocable",
       schema: { type: "object", properties: {} },
-      resources: [{ kind: "X", metadata: { name: "body" }, a: "${{ self.nothing }}" }],
+      resources: [{ kind: "X", metadata: { name: "body" }, a: { __tagged: true, engine: "cel", source: "self.nothing" } }],
       run: { __tagged: true, engine: "ref", source: "body" },
     } as unknown as ResourceManifest;
 

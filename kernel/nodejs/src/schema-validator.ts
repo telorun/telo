@@ -10,6 +10,7 @@ import {
   ManifestRootSchema,
   registerTeloKeywords,
   schemaIssues,
+  schemaWithTagsAsText,
   VALUE_TYPE_KEYWORD_VERSION,
   type SchemaIssue,
 } from "@telorun/analyzer";
@@ -43,7 +44,6 @@ export class SchemaValidationError extends RuntimeError {
   }
 }
 import {
-  EXACT_TEMPLATE_REGEX,
   isTaggedSentinel,
 } from "@telorun/templating";
 
@@ -119,55 +119,6 @@ function verifyAndExtractBody(text: string): string | null {
   return actual === match[1] ? body : null;
 }
 
-/** Deep-clone `value`, canonicalizing every CEL/template carrier to the bare
- *  source text `compileString` records — applied to the schema *before* both
- *  AJV compilation and cache hashing.
- *
- *  A `Telo.Definition` schema carries inline `${{ }}` templates and `!cel` /
- *  `!sql` tags (most commonly inside `description` / `examples`, but the loader
- *  rewrites them at any position), and reaches `compile()` in two forms:
- *  - the runtime feeds the precompiled tree, where each carrier is a sentinel
- *    object (`{__compiled, source, parts}` / `{__tagged, engine, source}`);
- *  - the build-time validator warm (`precompileDefinitionSchemas`) feeds the
- *    raw analysis graph, where an inline `${{ }}` is still a plain string and a
- *    `!cel` tag is a `{__tagged}` sentinel.
- *
- *  AJV meta-validates the schema it compiles and rejects a sentinel object
- *  where a keyword (`description`, …) expects a scalar, so the precompiled tree
- *  throws "schema is invalid: …/description must be string" on a cache miss.
- *  Canonicalizing fixes that *and* converges the two forms onto one cache key,
- *  so the runtime hits the warmed `__validators` entry instead of recompiling
- *  (and, on a read-only image, failing to persist) every boot:
- *  - a sentinel collapses to its `source` (interpolated → full string, exact
- *    `${{ expr }}` → bare `expr`, matching `compileString`);
- *  - a raw exact-form `"${{ expr }}"` string is reduced to the same bare `expr`,
- *    so the warm path's plain string lands on the sentinel's stripped source.
- *    Interpolated raw strings already equal the sentinel's full-string source,
- *    so they pass through untouched.
- *
- *  Canonicalizing never removes a structural node — a property literally named
- *  `description` / `examples` keeps its schema — so two genuinely different
- *  shapes never collide and the produced validator accepts the same data. A
- *  sentinel with no captured `source` collapses to `""` (a valid scalar). */
-function collapseSentinelsToSource(value: unknown): unknown {
-  if (isCompiledValue(value) || isTaggedSentinel(value)) {
-    return typeof value.source === "string" ? value.source : "";
-  }
-  if (typeof value === "string") {
-    const exact = value.match(EXACT_TEMPLATE_REGEX);
-    return exact ? exact[1].trim() : value;
-  }
-  if (Array.isArray(value)) return value.map(collapseSentinelsToSource);
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = collapseSentinelsToSource(v);
-    }
-    return out;
-  }
-  return value;
-}
-
 /** Schema keywords whose VALUE is a map keyed by author-chosen names rather
  *  than by keyword. A name may legitimately be `x-telo-…`, so the strip below
  *  must not treat a key in one of these maps as an annotation. */
@@ -203,7 +154,7 @@ const DATA_VALUE_KEYWORDS = new Set(["const", "default", "enum", "examples"]);
 const VALIDATING_ANNOTATIONS = new Set([X_TELO_TYPE]);
 
 /** Deep-clone `schema` without its `x-telo-*` annotations — applied, like
- *  {@link collapseSentinelsToSource}, before both AJV compilation and cache
+ *  `schemaWithTagsAsText` (`@telorun/analyzer`), before both AJV compilation and cache
  *  hashing.
  *
  *  Almost every `x-telo-*` keyword is analyzer/editor metadata: AJV runs `strict:
@@ -381,13 +332,13 @@ export class SchemaValidator {
 
     const injected = withImplicit;
 
-    // Canonicalize CEL/template carriers (an inline `${{ }}` left in a
-    // `description`, a `!cel` tag, …) to their bare source text so AJV can
+    // Canonicalize tagged carriers (an `!interpolate` in a `description`, a
+    // `!cel` tag, …) to their bare source text so AJV can
     // meta-validate the schema it compiles, and so the raw (warm-pass) and
     // precompiled (runtime) views of one schema land on the same cache key. The
     // hashed and the compiled schema are this same canonical form. See
-    // `collapseSentinelsToSource`.
-    const sanitized = collapseSentinelsToSource(stripTeloAnnotations(injected));
+    // `schemaWithTagsAsText`.
+    const sanitized = schemaWithTagsAsText(stripTeloAnnotations(injected));
 
     const hash = createHash("sha256")
       .update(

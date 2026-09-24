@@ -134,7 +134,7 @@ schema:
   additionalProperties: false
   required: [token]
   examples:
-    - token: "${{ secrets.apiToken }}"
+    - token: !cel "secrets.apiToken"
   properties:
     token:
       title: Token
@@ -173,7 +173,7 @@ schema:
   required: [header, key]
   examples:
     - header: x-api-key
-      key: "${{ secrets.apiKey }}"
+      key: !cel "secrets.apiKey"
   properties:
     header:
       title: Header
@@ -215,7 +215,7 @@ schema:
   required: [parameter, key]
   examples:
     - parameter: key
-      key: "${{ secrets.apiKey }}"
+      key: !cel "secrets.apiKey"
   properties:
     parameter:
       title: Parameter

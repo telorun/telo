@@ -57,7 +57,7 @@ steps:
       - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"
 ---
 # Regression coverage: two distinct non-plain objects (Date instances
@@ -96,13 +96,13 @@ steps:
       - name: shouldFail
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ steps.dates.result.a }}"
-          expected: "${{ steps.dates.result.b }}"
+          actual: !cel "steps.dates.result.a"
+          expected: !cel "steps.dates.result.b"
     catch:
       - name: assertDateMismatchCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"
   - name: maps
     invoke: !ref buildDistinctMaps
@@ -111,13 +111,13 @@ steps:
       - name: shouldFail
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ steps.maps.result.a }}"
-          expected: "${{ steps.maps.result.b }}"
+          actual: !cel "steps.maps.result.a"
+          expected: !cel "steps.maps.result.b"
     catch:
       - name: assertMapMismatchCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"
 ---
 # --- Assert.Matches --------------------------------------------------------
@@ -146,7 +146,7 @@ steps:
       - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"
 ---
 # --- Assert.Contains -------------------------------------------------------
@@ -187,7 +187,7 @@ steps:
       - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"
   - name: elementMissing
     try:
@@ -198,5 +198,5 @@ steps:
       - name: assertCaught
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: "ERR_ASSERTION_FAILED"

@@ -20,12 +20,12 @@ Calls an invocable or runnable resource. Outputs are available to subsequent ste
     kind: Sql.Read
     name: UserQuery
   inputs:
-    id: "${{ vars.userId }}"
+    id: !cel "vars.userId"
 
 - name: SendWelcomeEmail
   invoke: { kind: Http.Request, name: Mailer }
   inputs:
-    to: "${{ steps.FetchUser.result.email }}"
+    to: !cel "steps.FetchUser.result.email"
 ```
 
 | Field    | Required | Description                                                                          |
@@ -41,12 +41,12 @@ Conditional branch. Evaluates a CEL boolean; executes `then` steps on true. Opti
 
 ```yaml
 - name: CheckVerified
-  if: "${{ steps.FetchUser.result.verified }}"
+  if: !cel "steps.FetchUser.result.verified"
   then:
     - name: ProcessPayment
       invoke: { kind: Payment.Process, name: Processor }
   elseif:
-    - if: "${{ steps.FetchUser.result.pending }}"
+    - if: !cel "steps.FetchUser.result.pending"
       then:
         - name: QueuePayment
           invoke: { kind: Payment.Queue, name: Queue }
@@ -69,7 +69,7 @@ Loop. Evaluates a CEL boolean before each iteration; executes `do` steps while t
 
 ```yaml
 - name: PollStatus
-  while: "${{ steps.CheckStatus.result.pending }}"
+  while: !cel "steps.CheckStatus.result.pending"
   do:
     - name: CheckStatus
       invoke: { kind: Http.Request, name: StatusCheck }
@@ -89,7 +89,7 @@ Multi-branch dispatch. Evaluates a CEL expression and executes the matching case
 
 ```yaml
 - name: RouteByRole
-  switch: "${{ steps.FetchUser.result.role }}"
+  switch: !cel "steps.FetchUser.result.role"
   cases:
     admin:
       - name: AdminFlow
@@ -119,27 +119,27 @@ Error boundary. Executes `try` steps; on failure jumps to `catch` (if present); 
     - name: ChargeCard
       invoke: { kind: Payment.Charge, name: Stripe }
       inputs:
-        amount: "${{ steps.FetchOrder.result.total }}"
+        amount: !cel "steps.FetchOrder.result.total"
   catch:
     - name: LogFailure
       invoke: { kind: Console.Log, name: Logger }
       inputs:
-        message: "${{ error.message }}"
-        failedStep: "${{ error.step }}"
+        message: !cel "error.message"
+        failedStep: !cel "error.step"
   finally:
     - name: RecordAttempt
       invoke: { kind: Sql.Exec, name: AuditInsert }
       inputs:
-        orderId: "${{ vars.orderId }}"
-        success: "${{ error == null }}"
+        orderId: !cel "vars.orderId"
+        success: !cel "error == null"
 ```
 
 | Field     | Required | Description                                                        |
 | --------- | -------- | ------------------------------------------------------------------ |
 | `name`    | yes      | Step name                                                          |
 | `try`     | yes      | Child steps; halts on first failure and jumps to `catch`           |
-| `catch`   | no       | Runs when `try` fails; receives `${{ error }}`; swallows the error |
-| `finally` | no       | Always runs after `try`/`catch`; receives `${{ error }}`           |
+| `catch`   | no       | Runs when `try` fails; receives `!cel "error"`; swallows the error |
+| `finally` | no       | Always runs after `try`/`catch`; receives `!cel "error"`           |
 
 **Error object shape:**
 
@@ -159,7 +159,7 @@ Error boundary. Executes `try` steps; on failure jumps to `catch` (if present); 
 
 ## Data Passing
 
-Each step's result is available to all subsequent steps (at any nesting level) via `${{ steps.<name>.result }}`. The kernel tracks step results in a flat namespace across the entire tree — step names must be unique within a sequence regardless of nesting depth.
+Each step's result is available to all subsequent steps (at any nesting level) via `!cel "steps.<name>.result"`. The kernel tracks step results in a flat namespace across the entire tree — step names must be unique within a sequence regardless of nesting depth.
 
 CEL autocomplete in the editor is scoped to steps that precede the current step in execution order. Forward references are not offered.
 

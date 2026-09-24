@@ -14,9 +14,7 @@ use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
 use crate::engines::module_path::MODULE_PATH_ENGINE;
 use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 
-/// Engines this kernel recognises. `!cel` is deliberately absent: the Rust
-/// kernel has no expression engine yet, and reading a CEL expression as an
-/// opaque value would evaluate it as a literal.
+/// Engines this kernel recognises.
 ///
 /// The two `!include-*` tags ARE here, because the tag set is part of what a
 /// manifest means and a kernel that silently skipped them would read an embedded
@@ -30,6 +28,12 @@ const KNOWN_ENGINES: &[&str] = &[
     INCLUDE_BYTES_ENGINE,
     MODULE_PATH_ENGINE,
 ];
+
+/// Tags whose scalar holds CEL — the whole scalar under `!cel`, each `${{ }}`
+/// hole under `!interpolate` and `!sql`. This kernel has no expression engine,
+/// and reading one as an opaque value would evaluate it as a literal, so each is
+/// refused by name rather than as an unknown tag.
+const EXPRESSION_ENGINES: &[&str] = &["cel", "interpolate", "sql"];
 
 #[derive(Debug)]
 pub struct TagError {
@@ -66,7 +70,7 @@ pub fn yaml_to_json(value: Yaml) -> Result<Json, TagError> {
             // evaluated. Rejected on the same grounds as `!cel`.
             if s.contains("${{") {
                 return Err(TagError::new(format!(
-                    "inline `${{{{ … }}}}` expression in {s:?}: this kernel has no expression engine, and reading it as a literal string would silently produce the wrong value"
+                    "plain string {s:?} holds `${{{{`: untagged interpolation is a legacy spelling of `!cel` / `!interpolate`, and this kernel has no expression engine to evaluate either — reading it as a literal string would silently produce the wrong value"
                 )));
             }
             Ok(Json::String(s))
@@ -97,6 +101,11 @@ pub fn yaml_to_json(value: Yaml) -> Result<Json, TagError> {
         Yaml::Tagged(tagged) => {
             let engine = tagged.tag.to_string();
             let engine = engine.trim_start_matches('!').to_string();
+            if EXPRESSION_ENGINES.contains(&engine.as_str()) {
+                return Err(TagError::new(format!(
+                    "`!{engine}` holds CEL, and this kernel has no expression engine: reading it as a literal would silently produce the wrong value"
+                )));
+            }
             if !KNOWN_ENGINES.contains(&engine.as_str()) {
                 return Err(TagError::new(format!(
                     "unsupported YAML tag `!{engine}`; this kernel recognises: {}",
@@ -170,15 +179,17 @@ mod tests {
     }
 
     #[test]
-    fn unknown_tags_are_rejected_rather_than_read_as_literals() {
+    fn expression_tags_are_refused_by_name() {
         let err = parse("value: !cel \"1 + 1\"").unwrap_err();
-        assert!(err.message.contains("!cel"), "{}", err.message);
+        assert!(err.message.contains("`!cel` holds CEL"), "{}", err.message);
+        let err = parse("value: !interpolate \"port ${{ variables.port }}\"").unwrap_err();
+        assert!(err.message.contains("`!interpolate` holds CEL"), "{}", err.message);
     }
 
     #[test]
     fn inline_expressions_are_rejected_rather_than_read_as_literals() {
         let err = parse("value: \"port ${{ variables.port }}\"").unwrap_err();
-        assert!(err.message.contains("expression"), "{}", err.message);
+        assert!(err.message.contains("`!interpolate`"), "{}", err.message);
     }
 
     #[test]

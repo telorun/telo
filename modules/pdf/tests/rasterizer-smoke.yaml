@@ -41,16 +41,16 @@ steps:
     invoke: !ref Fixture.sampleFormPdf
   - name: render
     inputs:
-      data: "${{ steps.fixture.result.data }}"
+      data: !cel "steps.fixture.result.data"
       page: 1
     invoke: !ref render
   - name: assertDimensions
     inputs:
-      width: "${{ steps.render.result.width }}"
-      height: "${{ steps.render.result.height }}"
-      pageCount: "${{ steps.render.result.pageCount }}"
-      scale: "${{ steps.render.result.scale }}"
-      mediaType: "${{ steps.render.result.mediaType }}"
+      width: !cel "steps.render.result.width"
+      height: !cel "steps.render.result.height"
+      pageCount: !cel "steps.render.result.pageCount"
+      scale: !cel "steps.render.result.scale"
+      mediaType: !cel "steps.render.result.mediaType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -64,11 +64,11 @@ steps:
         required: [ width, height, pageCount, scale, mediaType ]
   - name: detect
     inputs:
-      image: "${{ steps.render.result.image }}"
+      image: !cel "steps.render.result.image"
     invoke: !ref detectFormat
   - name: assertPng
     inputs:
-      magic: "${{ steps.detect.result.magic }}"
+      magic: !cel "steps.detect.result.magic"
     invoke:
       kind: Assert.Schema
       schema:
@@ -84,19 +84,19 @@ steps:
     invoke: !ref Fixture.sampleFormPdf
   - name: render
     inputs:
-      data: "${{ steps.fixture.result.data }}"
+      data: !cel "steps.fixture.result.data"
       page: 1
       format: jpeg
       quality: 70
     invoke: !ref render
   - name: detect
     inputs:
-      image: "${{ steps.render.result.image }}"
+      image: !cel "steps.render.result.image"
     invoke: !ref detectFormat
   - name: assertJpeg
     inputs:
-      mediaType: "${{ steps.render.result.mediaType }}"
-      magic: "${{ steps.detect.result.magic }}"
+      mediaType: !cel "steps.render.result.mediaType"
+      magic: !cel "steps.detect.result.magic"
     invoke:
       kind: Assert.Schema
       schema:
@@ -115,13 +115,13 @@ steps:
     try:
       - name: render
         inputs:
-          data: "${{ steps.fixture.result.data }}"
+          data: !cel "steps.fixture.result.data"
           page: 9
         invoke: !ref render
     catch:
       - name: caught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:
@@ -139,7 +139,7 @@ steps:
     try:
       - name: render
         inputs:
-          data: "${{ steps.fixture.result.data }}"
+          data: !cel "steps.fixture.result.data"
           # Deliberately invalid, routed through CEL: a literal is rejected by
           # `telo check`, and this test is about the RUNTIME contract boundary.
           page: !cel "0"
@@ -147,7 +147,7 @@ steps:
     catch:
       - name: caught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:

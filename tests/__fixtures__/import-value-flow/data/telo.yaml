@@ -21,7 +21,7 @@ exports:
 kind: SQLite.Connection
 metadata:
   name: db
-file: "${{ variables.dbFile }}"
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Schema
 metadata:

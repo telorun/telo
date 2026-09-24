@@ -17,7 +17,7 @@
  *  that succeeds and one that never fires look identical. */
 
 import { DiagnosticSeverity } from "../types.js";
-import { readMigrationMatch } from "./match.js";
+import { readMigrationMatch, type MigrationSurface } from "./match.js";
 import type {
   MigrationEntry,
   MigrationOperation,
@@ -56,7 +56,7 @@ function requireString(file: string, node: Record<string, unknown>, key: string)
 const OPERATION_KEYS: Record<(typeof MIGRATION_OPS)[number], readonly string[]> = {
   "rename-key": ["to"],
   "set-value": ["value", "qualify"],
-  "set-tag": ["tag"],
+  "set-tag": ["tag", "source"],
   "insert-item": ["value", "at"],
   "remove-entry": [],
 };
@@ -130,8 +130,17 @@ function readOperation(file: string, raw: unknown, index: number): MigrationOper
       requireScalarValue(file, index, op, raw.value);
       return { op, value: raw.value };
     }
-    case "set-tag":
-      return { op, tag: requireString(file, raw, "tag") };
+    case "set-tag": {
+      const tag = requireString(file, raw, "tag");
+      if (!Object.hasOwn(raw, "source")) return { op, tag };
+      if (raw.source !== "text" && raw.source !== "hole") {
+        throw new MigrationEntryError(
+          file,
+          `patch[${index}].source must be 'text' or 'hole' when present`,
+        );
+      }
+      return { op, tag, source: raw.source };
+    }
     case "insert-item": {
       if (!Object.hasOwn(raw, "value")) {
         throw new MigrationEntryError(file, `patch[${index}] ('insert-item') requires 'value'`);
@@ -153,17 +162,36 @@ function readOperation(file: string, raw: unknown, index: number): MigrationOper
   }
 }
 
-function readRule(file: string, raw: unknown, index: number): MigrationRule {
+function readRule(
+  file: string,
+  raw: unknown,
+  index: number,
+  surface: MigrationSurface,
+): MigrationRule {
   if (!isPlainObject(raw)) {
     throw new MigrationEntryError(file, `rules[${index}] must be a mapping`);
   }
   if (!Array.isArray(raw.patch) || raw.patch.length === 0) {
     throw new MigrationEntryError(file, `rules[${index}].patch must be a non-empty sequence`);
   }
-  return {
-    match: readMigrationMatch(`Invalid migration entry '${file}': rules[${index}]`, raw.match),
-    patch: raw.patch.map((op, i) => readOperation(file, op, i)),
-  };
+  const match = readMigrationMatch(
+    `Invalid migration entry '${file}': rules[${index}]`,
+    raw.match,
+    surface,
+  );
+  const patch = raw.patch.map((op, i) => readOperation(file, op, i));
+  // A hole's expression exists only where the rule matched a lone hole; any
+  // other match would leave the patch nothing to read, found only at run time.
+  if (
+    patch.some((op) => op.op === "set-tag" && op.source === "hole") &&
+    match.scalar !== "lone-hole"
+  ) {
+    throw new MigrationEntryError(
+      file,
+      `rules[${index}]: 'set-tag' with 'source: hole' needs 'match.scalar: lone-hole'`,
+    );
+  }
+  return { match, patch };
 }
 
 /**
@@ -171,7 +199,11 @@ function readRule(file: string, raw: unknown, index: number): MigrationRule {
  *
  * `file` names the entry file, so a failure says which one.
  */
-export function parseMigrationEntry(file: string, data: unknown): MigrationEntry {
+export function parseMigrationEntry(
+  file: string,
+  data: unknown,
+  surface: MigrationSurface = "core",
+): MigrationEntry {
   if (!isPlainObject(data)) {
     throw new MigrationEntryError(file, "an entry must be a mapping");
   }
@@ -202,6 +234,6 @@ export function parseMigrationEntry(file: string, data: unknown): MigrationEntry
     code: requireString(file, data, "code"),
     severity,
     reason: requireString(file, data, "reason").trim(),
-    rules: data.rules.map((rule, i) => readRule(file, rule, i)),
+    rules: data.rules.map((rule, i) => readRule(file, rule, i, surface)),
   };
 }

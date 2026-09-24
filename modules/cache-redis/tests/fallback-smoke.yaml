@@ -47,8 +47,8 @@ steps:
       key: "k"
   - name: assert
     inputs:
-      state: "${{ steps.read.result.state }}"
-      ok: "${{ steps.read.result.value.ok }}"
+      state: !cel "steps.read.result.state"
+      ok: !cel "steps.read.result.value.ok"
     invoke:
       kind: Assert.Schema
       schema:

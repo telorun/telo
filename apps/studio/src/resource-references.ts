@@ -94,8 +94,8 @@ function celReferences(resources: ParsedResource[], name: string): ResourceRefer
   const out: ResourceReference[] = [];
   for (const resource of resources) {
     if (resource.name === name) continue;
-    walkCelExpressions(resource.fields, "", (source, path) => {
-      if (!readsResource(source, name)) return;
+    walkCelExpressions(resource.fields, "", (source, path, engine) => {
+      if (!readsResource(source, engine, name)) return;
       out.push({ via: "cel", source: { kind: resource.kind, name: resource.name }, path });
     });
   }
@@ -110,10 +110,10 @@ function celReferences(resources: ParsedResource[], name: string): ResourceRefer
  * An expression that does not parse is skipped — the author is mid-edit and the
  * analyzer already reports the syntax error; only that failure is tolerated.
  */
-function readsResource(source: string, name: string): boolean {
-  // One tagged segment, which is what a body already extracted from its scalar
-  // is. Offsets are irrelevant here — nothing navigates back to the document.
-  for (const segment of buildCelSegments(source, 0, "!cel", source)) {
+function readsResource(source: string, engine: string, name: string): boolean {
+  // The tag's own segments — the whole `!cel` body, or each hole. Offsets are
+  // irrelevant here — nothing navigates back to the document.
+  for (const segment of buildCelSegments(source, 0, `!${engine}`, source)) {
     let hit = false;
     try {
       walkCel(segment.ast(), (node) => {

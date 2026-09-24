@@ -49,11 +49,11 @@ Delay-then-forward — carry a value through the wait:
 - name: Hold
   inputs:
     duration: "500ms"
-    value: "${{ steps.compute.result }}"
+    value: !cel "steps.compute.result"
   invoke: { kind: Timer.Delay }
 - name: Use
   inputs:
-    payload: "${{ steps.Hold.result.value }}"
+    payload: !cel "steps.Hold.result.value"
   invoke: { kind: Sql.Command, name: Persist }
 ```
 
@@ -62,6 +62,6 @@ A dynamic duration is just CEL on the caller's side — the value reaching `dura
 ```yaml
 - name: Backoff
   inputs:
-    duration: "${{ string(steps.attempt.result.backoffMs) + 'ms' }}"
+    duration: !cel "string(steps.attempt.result.backoffMs) + 'ms'"
   invoke: { kind: Timer.Delay }
 ```

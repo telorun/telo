@@ -29,7 +29,7 @@ inputType:
     properties:
       target: { type: string }
 value:
-  greeting: "${{ 'Hello, ' + inputs.target + '!' }}"
+  greeting: !cel "'Hello, ' + inputs.target + '!'"
 ---
 kind: Ai.Tools
 metadata:
@@ -45,8 +45,8 @@ tools:
       properties:
         who: { type: string }
     inputs:
-      target: "${{ arguments.who }}"
-    result: "${{ result.greeting }}"
+      target: !cel "arguments.who"
+    result: !cel "result.greeting"
 ---
 kind: Ai.Agent
 metadata:
@@ -67,7 +67,7 @@ steps:
   # {greeting:"Hello, world!"} → result maps to the bare string → fed back → echoed.
   - name: assertText
     inputs:
-      text: "${{ steps.invoke.result.text }}"
+      text: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
       schema:

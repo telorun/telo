@@ -1,4 +1,5 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
+import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
 import {
   elementSchemaOf,
   isLiveSlot,
@@ -232,17 +233,16 @@ function applyExtends(
   return mergeTypeSchemas([...resolved, ownSchema]) as Record<string, any>;
 }
 
-/** Pull the raw expression source from a CEL field value — a compiled value
- *  (`{ source }`), or a string (`!cel "x"` or `"${{ x }}"`). Strips a lone
- *  `${{ }}` wrapper. Returns null when no source is recoverable. */
+/** The expression a `!cel` field value holds — its sentinel or its compiled
+ *  value — or null. Any other tag builds something other than the value of one
+ *  expression, and a plain string is text. */
 function celExprSource(raw: unknown): string | null {
-  let s: string | undefined;
-  if (typeof raw === "string") s = raw;
-  else if (raw && typeof raw === "object" && typeof (raw as Record<string, any>).source === "string")
-    s = (raw as Record<string, any>).source;
-  if (s == null) return null;
-  const exact = s.match(/^\s*\$\{\{\s*([^}]+?)\s*\}\}\s*$/);
-  return (exact ? exact[1] : s).trim();
+  if (isTaggedSentinel(raw)) return raw.engine === CEL_ENGINE ? raw.source.trim() : null;
+  if (raw && typeof raw === "object" && (raw as { __compiled?: unknown }).__compiled === true) {
+    const source = (raw as { source?: unknown }).source;
+    return typeof source === "string" ? source.trim() : null;
+  }
+  return null;
 }
 
 /** Member-access chain for a bare dotted-identifier expression

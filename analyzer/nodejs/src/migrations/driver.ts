@@ -182,9 +182,9 @@ function applyAll(
   for (let documentIndex = 0; documentIndex < manifests.length; documentIndex++) {
     const manifest = manifests[documentIndex];
     if (!manifest) continue;
-    const { rules, keys, roots } = applicableRules(flatRules, manifest.kind);
+    const { rules, keys, roots, scalars } = applicableRules(flatRules, manifest.kind);
     if (rules.length === 0) continue;
-    const index = buildMatchIndex(manifest, keys, roots);
+    const index = buildMatchIndex(manifest, keys, roots, scalars);
     for (const { entry, ops, match } of rules) {
       for (const path of selectMatches(index, manifest, match)) {
         candidates.push({ entry, ops, documentIndex, path });

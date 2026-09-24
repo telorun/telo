@@ -56,18 +56,18 @@ steps:
   - name: Greet
     invoke: { kind: Console.WriteLine }
     inputs:
-      output: "Hello, ${{ steps.Ask.result.value }}!"
+      output: !interpolate "Hello, ${{ steps.Ask.result.value }}!"
 ```
 
 ## Console.WriteLine
 
-Writes `inputs.output` to stdout followed by a newline. Pass `output` via the step's `inputs:` so `${{ }}` expressions resolve against the caller's scope (variables, secrets, resource snapshots, and — inside a `Run.Sequence` — `steps.<name>.result`).
+Writes `inputs.output` to stdout followed by a newline. Pass `output` via the step's `inputs:` so its CEL (`!cel`, `!interpolate` holes) resolves against the caller's scope (variables, secrets, resource snapshots, and — inside a `Run.Sequence` — `steps.<name>.result`).
 
 ```yaml
 - name: Greet
   invoke: { kind: Console.WriteLine }
   inputs:
-    output: "Hello, ${{ steps.Ask.result.value }}!"
+    output: !interpolate "Hello, ${{ steps.Ask.result.value }}!"
 ```
 
 ## Console.Write
@@ -199,7 +199,7 @@ literal: \{red\} not a tag   escaped braces - backslash also escapes itself
 - **Open-close pairing.** Every `{` opens a tag; the next whitespace separates the style chain from the content; the matching `}` closes the tag. Tags must be balanced and properly nested (LIFO).
 - **Unknown styles fall through to literal.** A typo (`{notARealStyle hi}`) or a future grammar addition this implementation doesn't yet recognize renders the entire tag as literal text — the consumer sees what they wrote, no crash.
 - **Same-axis nesting reverts to default on inner close.** `{red {green X}} more` emits red, then green, then resets foreground to terminal default (not back to red). Avoid nesting same-axis styles; nest cross-axis instead (`{red {bold X}} more red` is fine — bold and color are independent).
-- **CEL coexists.** `${{ ... }}` (dollar + double brace) is CEL; `{ ... }` (single brace, no `$`) is markup. CEL evaluation runs first; markup runs at sink write time on the post-CEL string.
+- **CEL coexists.** A `${{ ... }}` hole of `!interpolate` (dollar + double brace) is CEL; `{ ... }` (single brace, no `$`) is markup. CEL evaluation runs first; markup runs at sink write time on the post-CEL string.
 
 ### Render targets
 

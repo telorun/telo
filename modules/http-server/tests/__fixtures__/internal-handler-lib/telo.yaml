@@ -41,7 +41,7 @@ routes:
           required: [ name ]
     handler: !ref greet
     inputs:
-      name: "${{ request.query.name }}"
+      name: !cel "request.query.name"
     returns:
       - status: 200
         content:
@@ -52,4 +52,4 @@ routes:
                 message: { type: string }
               required: [ message ]
             body:
-              message: "${{ result.message }}"
+              message: !cel "result.message"

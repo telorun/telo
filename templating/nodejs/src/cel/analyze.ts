@@ -248,6 +248,18 @@ function schemaAtChain(
   return current;
 }
 
+/** The dotted chain an expression IS, when it is a plain chain whose schema
+ *  admits null — a value that may itself be null, rather than one dereferenced
+ *  through a null. */
+export function nullableValueChain(
+  node: ASTNode,
+  contextSchema: Record<string, any>,
+): string | null {
+  const chain = dottedChain(node, new Set());
+  if (chain === null) return null;
+  return schemaIsNullable(schemaAtChain(chain.split("."), contextSchema)) ? chain : null;
+}
+
 function isNullLiteral(node: ASTNode): boolean {
   return node.op === "value" && (node.args as unknown) === null;
 }

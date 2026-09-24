@@ -1,24 +1,28 @@
 import type { Environment } from "@marcbachmann/cel-js";
-import { isCompiledValue } from "@telorun/sdk";
-import { compileString, defaultRegistry, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { isCompiledValue, RuntimeError } from "@telorun/sdk";
+import {
+  defaultRegistry,
+  interpolationShape,
+  isRefSentinel,
+  isTaggedSentinel,
+} from "@telorun/templating";
+import { untaggedInterpolationMessage } from "./untagged-interpolation.js";
 
 /**
- * Walks a raw YAML document and replaces all `${{ expr }}` strings (and
- * `!cel`-tagged sentinels) with CompiledValue wrappers. Throws on CEL syntax
- * errors. Intended to be called once per document at load time.
+ * Walks a raw YAML document and replaces every tagged scalar an engine compiles
+ * (`!cel`, `!interpolate`, `!sql`, …) with a CompiledValue wrapper. Throws on
+ * CEL syntax errors. Intended to be called once per document at load time.
  *
- * Note on Telo.Definition / Telo.Abstract: the walker traverses these too.
- * Their `schema` fields are JSON Schema metadata and don't typically contain
- * `${{ }}` text, so compile is a no-op there. Their `template` fields, on
- * the other hand, *do* carry CEL — Definition-driven templates are expanded
- * by the kernel and rely on the precompiled tree. If a description or
- * example string inside a schema happens to contain `${{ }}`, it will be
- * interpreted as CEL; tag it `!literal` to opt out.
+ * A plain string is never an expression. One still holding `${{` is the
+ * untagged interpolation spelling the `untagged-interpolation` migration
+ * rewrites at load; reaching here means it was read without migrations, and it
+ * is refused (`ERR_UNTAGGED_INTERPOLATION`) rather than silently read as text.
  */
 export function precompileDoc(
   doc: unknown,
   env: Environment,
   moduleNames?: ReadonlySet<string>,
+  path = "",
 ): unknown {
   // Tagged sentinel: dispatch to the engine. The result is decorated with
   // `__tagged` + `engine` + `source` when it's a CompiledValue so the
@@ -62,14 +66,21 @@ export function precompileDoc(
     }
     return compiled;
   }
-  if (typeof doc === "string") return compileString(doc, env, moduleNames);
-  if (Array.isArray(doc)) return doc.map((item) => precompileDoc(item, env, moduleNames));
+  if (typeof doc === "string") {
+    if (interpolationShape(doc) !== "none") {
+      throw new RuntimeError("ERR_UNTAGGED_INTERPOLATION", untaggedInterpolationMessage(path));
+    }
+    return doc;
+  }
+  if (Array.isArray(doc)) {
+    return doc.map((item, i) => precompileDoc(item, env, moduleNames, `${path}[${i}]`));
+  }
   // Only recurse into plain objects. Class instances (ResourceInstance, ScopeHandle, etc.)
   // are returned as-is — their prototype methods must not be lost by object reconstruction.
   if (doc !== null && typeof doc === "object" && Object.getPrototypeOf(doc) === Object.prototype) {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc as Record<string, unknown>)) {
-      result[k] = precompileDoc(v, env, moduleNames);
+      result[k] = precompileDoc(v, env, moduleNames, path ? `${path}.${k}` : k);
     }
     return result;
   }

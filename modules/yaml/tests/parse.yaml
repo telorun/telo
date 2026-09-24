@@ -28,22 +28,22 @@ steps:
   - name: assertCount
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      actual: !cel "string(size(steps.parse.result.docs))"
       expected: "1"
   - name: assertKind
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[0].kind }}"
+      actual: !cel "steps.parse.result.docs[0].kind"
       expected: Telo.Library
   - name: assertName
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[0].metadata.name }}"
+      actual: !cel "steps.parse.result.docs[0].metadata.name"
       expected: example
   - name: assertDescription
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[0].metadata.description }}"
+      actual: !cel "steps.parse.result.docs[0].metadata.description"
       expected: A single document.
 ---
 kind: Run.Sequence
@@ -64,22 +64,22 @@ steps:
   - name: assertCount
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      actual: !cel "string(size(steps.parse.result.docs))"
       expected: "3"
   - name: assertFirstKind
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[0].kind }}"
+      actual: !cel "steps.parse.result.docs[0].kind"
       expected: Telo.Library
   - name: assertSecondName
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[1].metadata.name }}"
+      actual: !cel "steps.parse.result.docs[1].metadata.name"
       expected: Foo
   - name: assertThirdName
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ steps.parse.result.docs[2].metadata.name }}"
+      actual: !cel "steps.parse.result.docs[2].metadata.name"
       expected: Bar
 ---
 kind: Run.Sequence
@@ -92,7 +92,7 @@ steps:
   - name: assertCount
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      actual: !cel "string(size(steps.parse.result.docs))"
       expected: "0"
 ---
 kind: Run.Sequence
@@ -105,7 +105,7 @@ steps:
   - name: assertCount
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: "${{ string(size(steps.parse.result.docs)) }}"
+      actual: !cel "string(size(steps.parse.result.docs))"
       expected: "0"
 ---
 # Malformed YAML must raise ERR_PARSE_FAILED — assert via try/catch.
@@ -126,5 +126,5 @@ steps:
       - name: assertErrorCode
         invoke: { kind: Assert.Equals }
         inputs:
-          actual: "${{ error.code }}"
+          actual: !cel "error.code"
           expected: ERR_PARSE_FAILED

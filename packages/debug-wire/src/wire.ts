@@ -136,9 +136,10 @@ export interface LifecyclePayload {
   resource: WireResourceRef;
   owner?: WireOwner;
   dependencies?: WireResourceRef[];
-  /** On `Created`: the resource's resolved config "after templating" — `${{ }}` /
-   *  `!cel` reduced to concrete values, resolved `!ref`s as `{kind,name}`, deferred
-   *  runtime expressions as their `${{ source }}` text, and known secret values
+  /** On `Created`: the resource's resolved config "after templating" — `!cel` /
+   *  `!interpolate` reduced to concrete values, resolved `!ref`s as `{kind,name}`,
+   *  deferred runtime expressions as the tag they were written with
+   *  (`!cel "request.body"`), and known secret values
    *  scrubbed to `[secret]`. Plain wire-safe data; shape mirrors the manifest. */
   properties?: unknown;
 }

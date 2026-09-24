@@ -16,6 +16,7 @@ import {
   buildCelEnvironment,
   celEngine,
   extractAccessChains,
+  interpolationShape,
   resolveModuleCalls,
 } from "@telorun/templating";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
@@ -51,9 +52,9 @@ export const UNTAGGED_CONDITION =
   "or hover, so a rule silently stops being CEL to every surface but this one.";
 
 /** The repair for {@link UNTAGGED_CONDITION}: the same expression behind the tag.
- *  None for an inline `${{ }}` string, whose text is not the expression. */
+ *  None for text holding `${{`, which is not the expression. */
 export function untaggedConditionFix(condition: string): DiagnosticFix | undefined {
-  return condition.includes("${{") ? undefined : { replacement: condition, tag: "cel" };
+  return interpolationShape(condition) === "none" ? { replacement: condition, tag: "cel" } : undefined;
 }
 
 const HOST_BACKED = new Set(CEL_FUNCTIONS.filter((f) => f.hostBacked).map((f) => f.name));

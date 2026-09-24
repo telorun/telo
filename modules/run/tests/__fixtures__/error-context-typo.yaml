@@ -20,11 +20,11 @@ steps:
     catch:
       - name: rethrow
         throw:
-          code: "${{ error.cdoe }}"
-          message: "${{ error.message }}"
+          code: !cel "error.cdoe"
+          message: !cel "error.message"
     finally:
       # error is nullable in finally, but a typo is still caught.
       - name: cleanup
         throw:
-          code: "${{ error.borked }}"
+          code: !cel "error.borked"
           message: "done"

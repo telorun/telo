@@ -86,7 +86,7 @@ function analyzeWithReturn(when: string) {
 
 describe("x-telo-context-ref-from falls back to the referenced kind", () => {
   it("types `result` from the handler kind when the instance declares no outputType", () => {
-    const unknown = analyzeWithReturn("${{ result.reasson }}").filter(
+    const unknown = analyzeWithReturn({ __tagged: true, engine: "cel", source: "result.reasson" }).filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD",
     );
     expect(unknown.length).toBeGreaterThan(0);
@@ -94,7 +94,7 @@ describe("x-telo-context-ref-from falls back to the referenced kind", () => {
   });
 
   it("accepts a field the handler kind does declare", () => {
-    const unknown = analyzeWithReturn("${{ result.ok }}").filter(
+    const unknown = analyzeWithReturn({ __tagged: true, engine: "cel", source: "result.ok" }).filter(
       (d) => d.code === "CEL_UNKNOWN_FIELD",
     );
     expect(unknown).toEqual([]);

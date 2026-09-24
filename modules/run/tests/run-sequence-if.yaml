@@ -14,7 +14,7 @@ metadata:
 steps:
   # --- if/then: condition true, then branch executes ---
   - name: trueCondition
-    if: "${{ true }}"
+    if: !cel "true"
     then:
       - name: thenRan
         inputs:
@@ -30,7 +30,7 @@ steps:
   # Verify then branch produced a result (Assert.Schema returns true on pass).
   - name: verifyThenRan
     inputs:
-      result: "${{ steps.thenRan.result }}"
+      result: !cel "steps.thenRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -41,7 +41,7 @@ steps:
 
   # --- if/then/else: condition false, else branch executes ---
   - name: falseCondition
-    if: "${{ false }}"
+    if: !cel "false"
     then:
       # If this ran, assertion would fail (1 != 0).
       - name: wrongBranch
@@ -68,7 +68,7 @@ steps:
 
   - name: verifyElseRan
     inputs:
-      result: "${{ steps.elseRan.result }}"
+      result: !cel "steps.elseRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -85,11 +85,11 @@ steps:
         value: 42
 
   - name: dataDrivenIf
-    if: "${{ steps.setup.result.value == 42 }}"
+    if: !cel "steps.setup.result.value == 42"
     then:
       - name: correctBranch
         inputs:
-          value: "${{ steps.setup.result.value }}"
+          value: !cel "steps.setup.result.value"
         invoke:
           kind: Assert.Schema
           schema:
@@ -112,7 +112,7 @@ steps:
 
   - name: verifyDataBranch
     inputs:
-      result: "${{ steps.correctBranch.result }}"
+      result: !cel "steps.correctBranch.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -123,7 +123,7 @@ steps:
 
   # --- if/elseif: first elseif branch matches ---
   - name: elseIfFirstMatches
-    if: "${{ false }}"
+    if: !cel "false"
     then:
       # Would fail if reached.
       - name: wrongIfBranch
@@ -137,7 +137,7 @@ steps:
               x:
                 const: 0
     elseif:
-      - if: "${{ true }}"
+      - if: !cel "true"
         then:
           - name: firstElseIfRan
             inputs:
@@ -149,7 +149,7 @@ steps:
                 properties:
                   branch:
                     const: "elseif-1"
-      - if: "${{ true }}"
+      - if: !cel "true"
         then:
           # Would fail if reached — first matching elseif must short-circuit.
           - name: secondElseIfWrong
@@ -165,7 +165,7 @@ steps:
 
   - name: verifyFirstElseIf
     inputs:
-      result: "${{ steps.firstElseIfRan.result }}"
+      result: !cel "steps.firstElseIfRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -176,7 +176,7 @@ steps:
 
   # --- if/elseif: later elseif branch matches after earlier ones fail ---
   - name: elseIfLaterMatches
-    if: "${{ false }}"
+    if: !cel "false"
     then:
       - name: wrongIfBranch2
         inputs: { x: 1 }
@@ -184,14 +184,14 @@ steps:
           kind: Assert.Schema
           schema: { type: object, properties: { x: { const: 0 } } }
     elseif:
-      - if: "${{ false }}"
+      - if: !cel "false"
         then:
           - name: skippedElseIf
             inputs: { x: 1 }
             invoke:
               kind: Assert.Schema
               schema: { type: object, properties: { x: { const: 0 } } }
-      - if: "${{ true }}"
+      - if: !cel "true"
         then:
           - name: secondElseIfRan
             inputs:
@@ -206,7 +206,7 @@ steps:
 
   - name: verifySecondElseIf
     inputs:
-      result: "${{ steps.secondElseIfRan.result }}"
+      result: !cel "steps.secondElseIfRan.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -217,7 +217,7 @@ steps:
 
   # --- if/elseif/else: no elseif matches, fall through to else ---
   - name: elseIfFallsThroughToElse
-    if: "${{ false }}"
+    if: !cel "false"
     then:
       - name: wrongIfBranch3
         inputs: { x: 1 }
@@ -225,7 +225,7 @@ steps:
           kind: Assert.Schema
           schema: { type: object, properties: { x: { const: 0 } } }
     elseif:
-      - if: "${{ false }}"
+      - if: !cel "false"
         then:
           - name: elseIfNoMatch
             inputs: { x: 1 }
@@ -246,7 +246,7 @@ steps:
 
   - name: verifyElseAfterElseIf
     inputs:
-      result: "${{ steps.elseRanAfterElseIf.result }}"
+      result: !cel "steps.elseRanAfterElseIf.result"
     invoke:
       kind: Assert.Schema
       schema:
@@ -263,7 +263,7 @@ steps:
         role: "editor"
 
   - name: elseIfDataDriven
-    if: "${{ steps.setupRole.result.role == 'admin' }}"
+    if: !cel "steps.setupRole.result.role == 'admin'"
     then:
       - name: adminBranch
         inputs: { x: 1 }
@@ -271,11 +271,11 @@ steps:
           kind: Assert.Schema
           schema: { type: object, properties: { x: { const: 0 } } }
     elseif:
-      - if: "${{ steps.setupRole.result.role == 'editor' }}"
+      - if: !cel "steps.setupRole.result.role == 'editor'"
         then:
           - name: editorBranch
             inputs:
-              role: "${{ steps.setupRole.result.role }}"
+              role: !cel "steps.setupRole.result.role"
             invoke:
               kind: Assert.Schema
               schema:
@@ -283,7 +283,7 @@ steps:
                 properties:
                   role:
                     const: "editor"
-      - if: "${{ steps.setupRole.result.role == 'viewer' }}"
+      - if: !cel "steps.setupRole.result.role == 'viewer'"
         then:
           - name: viewerBranch
             inputs: { x: 1 }
@@ -299,7 +299,7 @@ steps:
 
   - name: verifyDataDrivenElseIf
     inputs:
-      result: "${{ steps.editorBranch.result }}"
+      result: !cel "steps.editorBranch.result"
     invoke:
       kind: Assert.Schema
       schema:

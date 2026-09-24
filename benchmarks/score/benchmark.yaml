@@ -146,4 +146,4 @@ scenarios:
             - { type: login, ts: "2026-03-19T09:19:00Z", score: 49, tags: [ "high", "engaged" ] }
             - { type: integration_added, ts: "2026-03-20T10:26:00Z", score: 66, tags: [ "engaged", "returning", "mobile" ] }
             - { type: support_ticket, ts: "2026-03-21T11:33:00Z", score: 83, tags: [ "returning", "mobile", "desktop", "enterprise" ] }
-    validate: "${{ result.status == 200 }}"
+    validate: !cel "result.status == 200"

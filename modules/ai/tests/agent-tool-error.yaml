@@ -30,7 +30,7 @@ inputType:
       a: { type: number }
       b: { type: number }
 value:
-  product: "${{ inputs.a * inputs.b }}"
+  product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
 metadata:
@@ -66,8 +66,8 @@ steps:
   # The unknown-tool error is surfaced as the tool result (not swallowed), then echoed.
   - name: assertText
     inputs:
-      text: "${{ steps.invoke.result.text }}"
-      hadError: "${{ steps.invoke.result.steps[0].toolResults[0].error }}"
+      text: !cel "steps.invoke.result.text"
+      hadError: !cel "steps.invoke.result.steps[0].toolResults[0].error"
     invoke:
       kind: Assert.Schema
       schema:

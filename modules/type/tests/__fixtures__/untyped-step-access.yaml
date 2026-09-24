@@ -25,8 +25,8 @@ steps:
     invoke: !ref compute
   - name: step2
     inputs:
-      val: "${{ steps.step1.result.anything }}"
-      deep: "${{ steps.step1.result.some.deeply.nested.field }}"
+      val: !cel "steps.step1.result.anything"
+      deep: !cel "steps.step1.result.some.deeply.nested.field"
     invoke:
       kind: JavaScript.Script
       code: |

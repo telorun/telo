@@ -7,13 +7,9 @@ import { diagnosticFix } from "../src/types.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /**
- * A repair is computed by the templating engine against the bare expression, but
- * whether it can be APPLIED is a property of how that expression sits in its
- * scalar — which only the analyzer knows. These are the two halves that live
- * here and nowhere else: the gate that withholds a fix when replacing the node
- * would destroy surrounding text, and the re-wrap that restores `${{ }}`
- * delimiters so the replacement is a whole scalar rather than a bare expression
- * the runtime would read back as literal text.
+ * A repair is always a whole-scalar replacement: the engine computes it against
+ * one expression and re-anchors it onto the scalar it came from, so a hole's
+ * repair keeps the text around it.
  */
 describe("CEL fix stamping", () => {
   const definition = {
@@ -44,13 +40,6 @@ describe("CEL fix stamping", () => {
     );
   });
 
-  it("re-wraps a pure `${{ }}` scalar so the replacement stays an expression", () => {
-    // Without the re-wrap this would write `a.b.startsWith('x')` into the
-    // manifest as literal text — valid YAML, silently never evaluated.
-    const fix = fixFor("${{ startsWith(a.b, 'x') }}");
-    expect(fix?.replacement).toBe("${{ a.b.startsWith('x') }}");
-  });
-
   it("carries no sub-range — the replacement IS the whole value", () => {
     // A range beside a whole-value replacement gives the field two readings,
     // and the minimal-edit one (splice `replacement` at `range`) duplicates
@@ -60,9 +49,10 @@ describe("CEL fix stamping", () => {
     });
   });
 
-  it("withholds a fix for one interpolation among literal text", () => {
-    // Replacing the scalar would drop "prefix " and " suffix", so the
-    // correction stays in the message and nothing claims to be applicable.
-    expect(fixFor("prefix ${{ startsWith(a.b, 'x') }} suffix")).toBeUndefined();
+  it("re-anchors a hole's fix onto the whole !interpolate text", () => {
+    expect(
+      fixFor(makeTaggedSentinel("interpolate", "prefix ${{ startsWith(a.b, 'x') }} suffix"))
+        ?.replacement,
+    ).toBe("prefix ${{ a.b.startsWith('x') }} suffix");
   });
 });

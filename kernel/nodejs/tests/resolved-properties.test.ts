@@ -22,12 +22,18 @@ describe("buildResolvedProperties — resolved config for the debug stream", () 
     expect(props.connection).toEqual({ kind: "Sql.Connection", name: "Db" });
   });
 
-  it("renders a deferred runtime expression as its `${{ source }}` text", () => {
+  it("renders a deferred runtime expression as the tag it was written with", () => {
     const props = buildResolvedProperties(
-      { kind: "X", metadata: { name: "x" }, body: compiled("request.body") } as any,
+      {
+        kind: "X",
+        metadata: { name: "x" },
+        body: compiled("request.body"),
+        greeting: { ...compiled("hi ${{ request.body }}"), __tagged: true, engine: "interpolate" },
+      } as any,
       new Set(),
     );
-    expect(props.body).toBe("${{ request.body }}");
+    expect(props.body).toBe('!cel "request.body"');
+    expect(props.greeting).toBe('!interpolate "hi ${{ request.body }}"');
   });
 
   it("renders a live injected instance as its stamped identity, not its internals", () => {

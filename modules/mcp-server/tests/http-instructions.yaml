@@ -96,7 +96,7 @@ steps:
     invoke: !ref mcpInitialize
   - name: assertInstructions
     inputs:
-      instructions: "${{ steps.initialize.result.result.instructions }}"
+      instructions: !cel "steps.initialize.result.result.instructions"
     invoke:
       kind: Assert.Schema
       schema:

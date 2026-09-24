@@ -190,6 +190,13 @@ export interface EngineFileClaim {
   readonly directory?: boolean;
 }
 
+/** One CEL expression inside a tagged scalar, by offset into the scalar's
+ *  source. */
+export interface ExpressionRegion {
+  readonly start: number;
+  readonly end: number;
+}
+
 /** Per-property templating engine. Matches a YAML tag (`!<name>`); the kernel
  *  and analyzer dispatch through the registry rather than knowing about
  *  specific engines. */
@@ -250,4 +257,13 @@ export interface TemplatingEngine {
    *  byte slot both fail statically, through the ordinary schema check and with
    *  no diagnostic code of their own. */
   producedType?(): Record<string, unknown>;
+
+  /** Where the CEL expressions sit inside the tagged scalar — the whole source
+   *  for `!cel`, each hole's expression for a tag with holes.
+   *
+   *  What an editor colours, completes, hovers and renames against, so it finds
+   *  the expressions of any tag without recognising the tag. Absent on an
+   *  engine whose scalar holds no CEL. A source the engine cannot read yields
+   *  no regions; `analyze` is what reports why. */
+  expressionRegions?(source: string): readonly ExpressionRegion[];
 }

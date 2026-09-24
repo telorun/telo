@@ -34,7 +34,7 @@ inputType:
     properties:
       seed: { type: string }
 value:
-  documentId: "${{ 'drawings/' + inputs.seed + '.png' }}"
+  documentId: !cel "'drawings/' + inputs.seed + '.png'"
 ```
 
 ## Fields
@@ -60,7 +60,7 @@ inputType:
       a: { type: number }
       b: { type: number }
 value:
-  product: "${{ inputs.a * inputs.b }}"
+  product: !cel "inputs.a * inputs.b"
 ```
 
 ## A constant (no inputs, any shape)
@@ -91,8 +91,8 @@ tools:
       required: [who]
       properties: { who: { type: string } }
     inputs:
-      target: "${{ arguments.who }}"
-    result: "${{ result.greeting }}"
+      target: !cel "arguments.who"
+    result: !cel "result.greeting"
 ---
 kind: Run.Value
 metadata: { name: Greeter }
@@ -103,7 +103,7 @@ inputType:
     properties:
       target: { type: string }
 value:
-  greeting: "${{ 'Hello, ' + inputs.target + '!' }}"
+  greeting: !cel "'Hello, ' + inputs.target + '!'"
 ```
 
 ## Numbers: int vs double
@@ -112,7 +112,7 @@ CEL distinguishes integers from doubles and does not implicitly promote between 
 
 ```yaml
 value:
-  doubled: "${{ double(inputs.n) * 2.0 }}"
+  doubled: !cel "double(inputs.n) * 2.0"
 ```
 
 ## Naming the steps of a calculation

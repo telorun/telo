@@ -34,7 +34,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: { where: "${{ result.where }}" }
+            body: { where: !cel "result.where" }
 ---
 kind: Http.Api
 metadata: { name: adminApi }
@@ -45,7 +45,7 @@ routes:
       - status: 200
         content:
           application/json:
-            body: { where: "${{ result.where }}" }
+            body: { where: !cel "result.where" }
 ---
 # Fetch a URL and parse JSON.
 kind: JS.Script
@@ -129,8 +129,8 @@ steps:
     invoke: !ref fetch
   - name: assertRoot
     inputs:
-      status: "${{ steps.hitRoot.result.status }}"
-      where: "${{ steps.hitRoot.result.body.where }}"
+      status: !cel "steps.hitRoot.result.status"
+      where: !cel "steps.hitRoot.result.body.where"
     invoke:
       kind: Assert.Schema
       schema:
@@ -145,8 +145,8 @@ steps:
     invoke: !ref fetch
   - name: assertAdmin
     inputs:
-      status: "${{ steps.hitAdmin.result.status }}"
-      where: "${{ steps.hitAdmin.result.body.where }}"
+      status: !cel "steps.hitAdmin.result.status"
+      where: !cel "steps.hitAdmin.result.body.where"
     invoke:
       kind: Assert.Schema
       schema:
@@ -161,10 +161,10 @@ steps:
     invoke: !ref inspectDoc
   - name: assertDoc
     inputs:
-      serverUrl: "${{ steps.doc.result.serverUrl }}"
-      serverCount: "${{ steps.doc.result.serverCount }}"
-      hasRoot: "${{ steps.doc.result.hasRoot }}"
-      hasAdmin: "${{ steps.doc.result.hasAdmin }}"
+      serverUrl: !cel "steps.doc.result.serverUrl"
+      serverCount: !cel "steps.doc.result.serverCount"
+      hasRoot: !cel "steps.doc.result.hasRoot"
+      hasAdmin: !cel "steps.doc.result.hasAdmin"
     invoke:
       kind: Assert.Schema
       schema:

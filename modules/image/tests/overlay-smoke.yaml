@@ -45,16 +45,16 @@ steps:
     invoke: !ref canvas
   - name: draw
     inputs:
-      image: "${{ steps.fixture.result.image }}"
+      image: !cel "steps.fixture.result.image"
       shapes:
         - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
         - { x: 100, y: 60, width: 40, height: 40, color: "#0000FF" }
     invoke: !ref draw
   - name: assertDimensions
     inputs:
-      width: "${{ steps.draw.result.width }}"
-      height: "${{ steps.draw.result.height }}"
-      mediaType: "${{ steps.draw.result.mediaType }}"
+      width: !cel "steps.draw.result.width"
+      height: !cel "steps.draw.result.height"
+      mediaType: !cel "steps.draw.result.mediaType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -66,11 +66,11 @@ steps:
         required: [ width, height, mediaType ]
   - name: checkPng
     inputs:
-      image: "${{ steps.draw.result.image }}"
+      image: !cel "steps.draw.result.image"
     invoke: !ref checkPngMagic
   - name: assertPng
     inputs:
-      isPng: "${{ steps.checkPng.result.isPng }}"
+      isPng: !cel "steps.checkPng.result.isPng"
     invoke:
       kind: Assert.Schema
       schema:
@@ -80,14 +80,14 @@ steps:
         required: [ isPng ]
   - name: drawWebp
     inputs:
-      image: "${{ steps.fixture.result.image }}"
+      image: !cel "steps.fixture.result.image"
       shapes:
         - { x: 20, y: 20, width: 60, height: 40, label: "firstName (text)" }
       format: webp
     invoke: !ref draw
   - name: assertWebp
     inputs:
-      mediaType: "${{ steps.drawWebp.result.mediaType }}"
+      mediaType: !cel "steps.drawWebp.result.mediaType"
     invoke:
       kind: Assert.Schema
       schema:
@@ -106,7 +106,7 @@ steps:
     try:
       - name: draw
         inputs:
-          image: "${{ steps.fixture.result.image }}"
+          image: !cel "steps.fixture.result.image"
           shapes:
             # Deliberately invalid, routed through CEL: a literal is rejected
             # by `telo check`; this test is about the RUNTIME boundary.
@@ -115,7 +115,7 @@ steps:
     catch:
       - name: caught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:
@@ -138,14 +138,14 @@ steps:
     try:
       - name: draw
         inputs:
-          image: "${{ steps.notAnImage.result.image }}"
+          image: !cel "steps.notAnImage.result.image"
           shapes:
             - { x: 0, y: 0, width: 5, height: 5 }
         invoke: !ref draw
     catch:
       - name: caught
         inputs:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
         invoke:
           kind: Assert.Schema
           schema:

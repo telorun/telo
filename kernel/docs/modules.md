@@ -150,8 +150,8 @@ metadata:
   name: UserRepository
   module: user-service
 inputs:
-  connectionString: "${{ variables.dbConnectionString }}"
-  debug: "${{ variables.enableDebug }}"
+  connectionString: !cel "variables.dbConnectionString"
+  debug: !cel "variables.enableDebug"
 ```
 
 ---
@@ -164,9 +164,9 @@ The root of every running instance is a `Telo.Application`. It is the only modul
 
 Host environment variables are reachable **only** by declaring a typed root entry bound to them. Each `variables:` / `secrets:` entry names a host variable via its `env:` key (and `ports:` entries do the same for inbound ports); the resolved value lands in the `variables.X` / `secrets.X` / `ports.X` CEL scope. There is no raw `env` map in CEL — a host variable that is not declared on the root is not reachable. Imported libraries are deliberately isolated from the host environment: they receive only the values explicitly passed through their declared `variables` and `secrets` contract. This is a core security boundary of the module system.
 
-- **Bound by**: an `env:` key on a root `Telo.Application`'s `variables:` / `secrets:` / `ports:` entry, read as `${{ variables.X }}` / `${{ secrets.X }}` / `${{ ports.X }}`.
+- **Bound by**: an `env:` key on a root `Telo.Application`'s `variables:` / `secrets:` / `ports:` entry, read as `!cel "variables.X"` / `!cel "secrets.X"` / `!cel "ports.X"`.
 - **Unavailable in**: an `imports:` entry's `variables:`/`secrets:` — those are a **config-only contract** whose expressions see only the importing module's `variables`/`secrets` (never `resources` or `ports`) — and any imported `Telo.Library`, regardless of nesting depth.
-- **Forwarding**: to pass an env-derived value into an import, bind it to a typed root `variables:`/`secrets:` entry and forward it as `${{ variables.X }}` / `${{ secrets.X }}`.
+- **Forwarding**: to pass an env-derived value into an import, bind it to a typed root `variables:`/`secrets:` entry and forward it as `!cel "variables.X"` / `!cel "secrets.X"`.
 
 ### 5.2 Designating a Root Module
 
@@ -204,12 +204,12 @@ imports:
       upstreamProviderUrl: "https://api.stripe.com"
       retryTimeoutMs: 5000
     secrets:
-      providerApiKey: "${{ secrets.stripeApiKey }}"
-      webhookSignature: "${{ secrets.stripeWebhookSignature }}"
+      providerApiKey: !cel "secrets.stripeApiKey"
+      webhookSignature: !cel "secrets.stripeWebhookSignature"
   UserService:
     source: oci://ghcr.io/acme/user-service@1.0.0
     variables:
-      dbConnectionString: "${{ variables.databaseUrl }}"
+      dbConnectionString: !cel "variables.databaseUrl"
 ```
 
 The child modules (`acme/payment-gateway`, `acme/user-service`) never touch the host environment. They only declare their inputs as typed `variables` and `secrets`, keeping them fully portable and environment-agnostic.
@@ -222,7 +222,7 @@ To utilize an external package, a module declares a dependency as an entry in it
 
 - **Instantiation**: The entry provides the required `variables` and `secrets`.
 - **Referencing**: Once imported, the module's snapshot is stored under `resources.<Alias>` alongside local resources. Access exported properties directly.
-- **Syntax**: `${{ resources.<Alias>.<exportProperty> }}`.
+- **Syntax**: `!cel "resources.<Alias>.<exportProperty>"`.
 
 ### 6.1 Source Resolution
 

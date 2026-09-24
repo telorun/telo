@@ -15,7 +15,7 @@ Decompresses a gzip `Stream<Uint8Array>` into a decompressed `Stream<Uint8Array>
 
 ```yaml
 - name: gunzip
-  inputs: { input: "${{ request.body }}" }
+  inputs: { input: !cel "request.body" }
   invoke: { kind: Gzip.Decoder, name: Decode }
 ```
 

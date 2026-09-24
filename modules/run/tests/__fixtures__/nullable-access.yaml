@@ -20,5 +20,5 @@ steps:
     finally:
       - name: cleanup
         throw:
-          code: "${{ error.code }}"
+          code: !cel "error.code"
           message: "done"

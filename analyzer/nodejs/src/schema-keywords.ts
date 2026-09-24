@@ -242,7 +242,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-eval": {
     title: "Evaluation mode",
     description:
-      "When `${{ }}` / `!cel` in this field is evaluated: `compile` at load, `runtime` per invocation. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
+      "When CEL in this field (`!cel`, `!interpolate`) is evaluated: `compile` at load, `runtime` per invocation. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
     type: "string",
     enum: ["compile", "runtime"],
   },

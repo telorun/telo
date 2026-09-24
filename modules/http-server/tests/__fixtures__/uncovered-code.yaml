@@ -13,7 +13,7 @@ metadata:
   name: throwsAOrB
 steps:
   - name: branch
-    if: "${{ true }}"
+    if: !cel "true"
     then:
       - name: throwA
         throw:
@@ -39,8 +39,8 @@ routes:
           application/json:
             body: { ok: true }
     catches:
-      - when: "${{ error.code == 'A' }}"
+      - when: !cel "error.code == 'A'"
         status: 400
         content:
           application/json:
-            body: { error: "${{ error.message }}" }
+            body: { error: !cel "error.message" }

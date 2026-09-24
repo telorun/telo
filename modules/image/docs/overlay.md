@@ -31,7 +31,7 @@ label: { color: "#FFFFFF", placement: top-left }
 ```yaml
 - name: marked
   inputs:
-    image: "${{ steps.page.result.image }}"
+    image: !cel "steps.page.result.image"
     shapes:
       - { x: 240, y: 64, width: 300, height: 40, label: "firstName (text)" }
       - { x: 240, y: 128, width: 40, height: 40, color: "#0066FF" }

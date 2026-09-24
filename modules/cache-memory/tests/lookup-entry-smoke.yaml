@@ -40,8 +40,8 @@ steps:
       key: "greeting"
   - name: assertFresh
     inputs:
-      state: "${{ steps.read.result.state }}"
-      hello: "${{ steps.read.result.value.hello }}"
+      state: !cel "steps.read.result.state"
+      hello: !cel "steps.read.result.value.hello"
     invoke:
       kind: Assert.Schema
       schema:
@@ -56,7 +56,7 @@ steps:
       key: "nope"
   - name: assertMiss
     inputs:
-      state: "${{ steps.readAbsent.result.state }}"
+      state: !cel "steps.readAbsent.result.state"
     invoke:
       kind: Assert.Schema
       schema:

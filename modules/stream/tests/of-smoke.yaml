@@ -16,15 +16,15 @@ targets:
     invoke: !ref source
   - name: toBytes
     inputs:
-      input: "${{ steps.source.result.output }}"
+      input: !cel "steps.source.result.output"
     invoke: !ref toBytes
   - name: toText
     inputs:
-      input: "${{ steps.toBytes.result.output }}"
+      input: !cel "steps.toBytes.result.output"
     invoke: !ref toText
   - name: assert
     inputs:
-      text: "${{ steps.toText.result.text }}"
+      text: !cel "steps.toText.result.text"
     invoke: !ref assertText
 ---
 kind: Stream.Of

@@ -44,7 +44,7 @@ expect:
   errors:
     - code: CATCHALL_NOT_LAST
 ---
-# A `throw:` step with `code: "${{ error.code }}"` inside a catch propagates the
+# A `throw:` step with `code: !cel "error.code"` inside a catch propagates the
 # enclosing try block's union. Route covers both codes → zero analyzer errors.
 kind: Assert.Manifest
 metadata:

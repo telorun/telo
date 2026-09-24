@@ -1,4 +1,6 @@
 import { ParseError, parse, type ASTNode as CelJsNode } from "@marcbachmann/cel-js";
+import { defaultRegistry, readInterpolationHoles } from "@telorun/templating";
+import { scalarRawOffsets } from "./scalar-offsets.js";
 
 /** A CEL body that does not parse — an author's expression, mid-typing or
  *  malformed. Owned here so a consumer can be lenient about author syntax
@@ -72,12 +74,14 @@ export type CelNode =
   | { kind: "unary"; range: [number, number]; op: string; operand: CelNode }
   | { kind: "binary"; range: [number, number]; op: string; left: CelNode; right: CelNode };
 
-/** A `${{ }}` / `!cel` region inside a YAML scalar. Ranges are DOCUMENT
- *  offsets; `source` is the CEL body (a longest-valid prefix when `open`).
+/** A CEL expression inside a tagged YAML scalar — a `!cel` body or one hole of
+ *  a tag with holes. Ranges are DOCUMENT offsets; `source` is the CEL body (a
+ *  longest-valid prefix when `open`).
  *  `ast()` parses lazily — nothing parses CEL during `parseToAst`, only the
  *  expression a caller actually inspects. */
 export interface CelSegment {
-  /** Segment span in document offsets (includes the `${{ }}` for interpolation). */
+  /** Segment span in document offsets — the expression, or from an unclosed
+   *  hole's `${{` to its line's end. */
   range: [number, number];
   /** The CEL body (a prefix when `open`). */
   source: string;
@@ -106,10 +110,14 @@ const BINARY_OPS = new Set([
   "&&",
 ]);
 
+/** Where an offset into a CEL body lands in the document: the body's start
+ *  added to it, or a mapping through the scalar's own escapes. */
+export type CelOffsetMap = number | ((offset: number) => number);
+
 /** Maps a `@marcbachmann/cel-js` node into the analyzer `CelNode`, translating
- *  each node's segment-relative `start`/`end` to absolute document offsets by
- *  adding `segmentStart`. */
-export function wrapCelAst(node: CelJsNode, segmentStart: number): CelNode {
+ *  each node's segment-relative `start`/`end` to absolute document offsets
+ *  through `segmentStart`. */
+export function wrapCelAst(node: CelJsNode, segmentStart: CelOffsetMap): CelNode {
   const range = abs(node, segmentStart);
   const op = node.op;
   const args = node.args as unknown;
@@ -192,15 +200,20 @@ export function wrapCelAst(node: CelJsNode, segmentStart: number): CelNode {
   return { kind: "literal", range, value: undefined };
 }
 
-function abs(node: CelJsNode, segmentStart: number): [number, number] {
+function abs(node: CelJsNode, segmentStart: CelOffsetMap): [number, number] {
   const r = node.range ?? { start: node.start, end: node.end };
-  return [r.start + segmentStart, r.end + segmentStart];
+  const at = typeof segmentStart === "number" ? (o: number) => o + segmentStart : segmentStart;
+  return [at(r.start), at(r.end)];
 }
 
 /** Parse `source` and wrap it, tolerating a trailing partial member/index
  *  access (`req.`, `req.fo`) by falling back to the longest parseable prefix.
  *  Used for `open` segments where completion fires mid-token. */
-function parseLenient(source: string, segmentStart: number, range: [number, number]): CelNode {
+function parseLenient(
+  source: string,
+  segmentStart: CelOffsetMap,
+  range: [number, number],
+): CelNode {
   const candidates = [source, source.replace(/[.?[]+\w*$/, ""), source.replace(/[.?[(]+.*$/, "")];
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
@@ -216,74 +229,63 @@ function parseLenient(source: string, segmentStart: number, range: [number, numb
   return { kind: "ident", range, name: source.trim() };
 }
 
-const OPEN_MARKER = "${{";
-
 /** Build the CEL segments of a scalar from its raw source slice. `scalarText`
  *  is `text.slice(start, valueEnd)` and `scalarStart` its document offset.
  *
- *  - `tag === "!cel"` → one closed segment spanning the tagged body.
- *  - otherwise → one closed segment per `${{ … }}` match, plus a trailing
- *    `open` segment for a dangling `${{` with no `}}` (bounded to its line, so
- *    an unterminated quote that swallowed following lines still recovers the
- *    region the user is typing in). */
+ *  The tag's engine says where its CEL sits (`expressionRegions`): one segment
+ *  spanning a `!cel` body, one per hole of a tag with holes. A plain scalar has
+ *  none. A tag whose holes cannot be read yet — a `${{` the author is still
+ *  typing — yields the holes before it plus a trailing `open` segment, bounded
+ *  to its line, so completion still has the region the cursor is in. */
 export function buildCelSegments(
   scalarText: string,
   scalarStart: number,
   tag: string | undefined,
   taggedSource: string | undefined,
+  style?: string,
 ): CelSegment[] {
-  if (tag === "!cel" && taggedSource != null) {
-    const idx = scalarText.indexOf(taggedSource);
-    const bodyStart = scalarStart + (idx >= 0 ? idx : 0);
-    const range: [number, number] = [bodyStart, bodyStart + taggedSource.length];
-    return [
-      {
-        range,
-        source: taggedSource,
-        open: false,
-        ast: () => wrapCelAst(parseCel(taggedSource), bodyStart),
-      },
-    ];
-  }
-
-  const segments: CelSegment[] = [];
-  const re = /\$\{\{([\s\S]*?)\}\}/g;
-  let match: RegExpExecArray | null;
-  let lastClosedEnd = 0;
-  while ((match = re.exec(scalarText)) !== null) {
-    const whole = match[0];
-    const inner = match[1];
-    const leadingWs = inner.match(/^\s*/)?.[0].length ?? 0;
-    const bodyStart = scalarStart + match.index + OPEN_MARKER.length + leadingWs;
-    const source = inner.trim();
-    segments.push({
-      range: [scalarStart + match.index, scalarStart + match.index + whole.length],
+  if (!tag?.startsWith("!") || taggedSource == null) return [];
+  const engine = defaultRegistry().get(tag.slice(1));
+  if (!engine?.expressionRegions) return [];
+  // Offsets into the parsed source mapped through the scalar's own escapes and
+  // indentation; where the style has no character-for-character image, the
+  // source's first occurrence in the text stands in for its start.
+  const rawOffsets = scalarRawOffsets(scalarText, style, taggedSource);
+  const idx = scalarText.indexOf(taggedSource);
+  const docAt = rawOffsets
+    ? (offset: number) => scalarStart + rawOffsets[offset]!
+    : (offset: number) => scalarStart + (idx >= 0 ? idx : 0) + offset;
+  const within = (start: number) => (offset: number) => docAt(start + offset);
+  const closed = (start: number, end: number): CelSegment => {
+    const source = taggedSource.slice(start, end);
+    return {
+      range: [docAt(start), docAt(end)],
       source,
       open: false,
-      ast: () => wrapCelAst(parseCel(source), bodyStart),
-    });
-    lastClosedEnd = match.index + whole.length;
-  }
+      ast: () => wrapCelAst(parseCel(source), within(start)),
+    };
+  };
 
-  const openIdx = scalarText.indexOf(OPEN_MARKER, lastClosedEnd);
-  if (openIdx >= 0 && scalarText.indexOf("}}", openIdx) < 0) {
-    let lineEnd = scalarText.indexOf("\n", openIdx);
-    if (lineEnd < 0) lineEnd = scalarText.length;
-    const after = openIdx + OPEN_MARKER.length;
-    // Drop a trailing scalar-closing quote so `foo: "${{ req"` recovers `req`,
-    // not `req"` — the quote closes the YAML string, it isn't part of the CEL.
-    const rawBody = scalarText.slice(after, lineEnd).replace(/["']\s*$/, "");
-    const leadingWs = rawBody.match(/^\s*/)?.[0].length ?? 0;
-    const bodyStart = scalarStart + after + leadingWs;
-    const source = rawBody.trim();
-    const range: [number, number] = [scalarStart + openIdx, scalarStart + lineEnd];
-    segments.push({
-      range,
-      source,
-      open: true,
-      ast: () => parseLenient(source, bodyStart, range),
-    });
-  }
+  const regions = engine.expressionRegions(taggedSource);
+  const reading = regions.length === 0 ? readInterpolationHoles(taggedSource) : undefined;
+  if (!reading || reading.ok) return regions.map((r) => closed(r.start, r.end));
 
+  const before = readInterpolationHoles(taggedSource.slice(0, reading.offset));
+  const segments = before.ok ? before.holes.map((h) => closed(h.exprStart, h.exprStart + h.expr.length)) : [];
+  const after = reading.offset + OPEN_MARKER.length;
+  let lineEnd = taggedSource.indexOf("\n", after);
+  if (lineEnd < 0) lineEnd = taggedSource.length;
+  const rawBody = taggedSource.slice(after, lineEnd);
+  const leadingWs = rawBody.match(/^\s*/)?.[0].length ?? 0;
+  const source = rawBody.trim();
+  const range: [number, number] = [docAt(reading.offset), docAt(lineEnd)];
+  segments.push({
+    range,
+    source,
+    open: true,
+    ast: () => parseLenient(source, within(after + leadingWs), range),
+  });
   return segments;
 }
+
+const OPEN_MARKER = "${{";

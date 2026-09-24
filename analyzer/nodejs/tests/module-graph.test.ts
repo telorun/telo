@@ -1085,7 +1085,7 @@ describe("data edges", () => {
       {
         kind: "net.Listener",
         metadata: { name: "listener" },
-        port: "${{ resources.settings.status.port }}",
+        port: { __tagged: true, engine: "cel", source: "resources.settings.status.port" },
       } as never,
       { kind: "cfg.Config", metadata: { name: "settings" } } as never,
     ]);
@@ -1101,7 +1101,7 @@ describe("data edges", () => {
       {
         kind: "net.Listener",
         metadata: { name: "listener" },
-        port: "${{ 'resources.settings.status.port' }}",
+        port: { __tagged: true, engine: "cel", source: "'resources.settings.status.port'" },
       } as never,
       { kind: "cfg.Config", metadata: { name: "settings" } } as never,
     ]);
@@ -1113,7 +1113,7 @@ describe("data edges", () => {
       {
         kind: "net.Listener",
         metadata: { name: "listener" },
-        port: "${{ resources.settings.status.port }}-${{ resources.settings.status.port }}",
+        port: { __tagged: true, engine: "interpolate", source: "${{ resources.settings.status.port }}-${{ resources.settings.status.port }}" },
       } as never,
       { kind: "cfg.Config", metadata: { name: "settings" } } as never,
     ]);
@@ -1715,7 +1715,7 @@ describe("a bare name inside a declaration", () => {
           kind: "run.Sequence",
           metadata: { name: "seq", module: "B" },
           steps: [],
-          outputs: "${{ resources.helper.status.done }}",
+          outputs: { __tagged: true, engine: "cel", source: "resources.helper.status.done" },
         } as never,
       ]),
     );

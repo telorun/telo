@@ -69,8 +69,8 @@ All clause types accept an optional `when:` boolean. When `when:` evaluates to `
 ```yaml
 where:
   - { column: status, op: eq, value: published }
-  - { column: score, op: gte, value: "${{ inputs.minScore }}" }
-  - { column: tags, op: in, value: "${{ inputs.tags }}" }
+  - { column: score, op: gte, value: !cel "inputs.minScore" }
+  - { column: tags, op: in, value: !cel "inputs.tags" }
   - { column: deleted_at, op: is_null }
 ```
 
@@ -101,7 +101,7 @@ To compare a column against another column instead of a bound value, use `ref:` 
 ```yaml
 where:
   - sql: "to_tsvector(description) @@ plainto_tsquery($1)"
-    bindings: ["${{ inputs.q }}"]
+    bindings: [!cel "inputs.q"]
 ```
 
 Placeholders in `sql:` fragments are always `$1`-based and local to that fragment. The controller renumbers them to fit their position in the global binding array.
@@ -117,7 +117,7 @@ where:
       - { column: role, op: eq, value: admin }
       - { column: role, op: eq, value: superuser }
   - and:
-      - { column: region, op: eq, value: "${{ inputs.region }}" }
+      - { column: region, op: eq, value: !cel "inputs.region" }
       - { column: active, op: eq, value: true }
 ```
 
@@ -144,7 +144,7 @@ where:
       column: deleted_at
       op: is_null
 
-  - when: "${{ inputs.excludeInternal }}"
+  - when: !cel "inputs.excludeInternal"
     not:
       sql: "namespace LIKE 'internal%'"
 ```
@@ -155,11 +155,11 @@ Any clause can include `when:` — evaluated at runtime before query constructio
 
 ```yaml
 where:
-  - when: "${{ inputs.q != '' }}"
+  - when: !cel "inputs.q != ''"
     or:
-      - { column: name, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
-      - { column: namespace, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
-      - { column: description, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+      - { column: name, op: ilike, value: !cel "'%' + inputs.q + '%'" }
+      - { column: namespace, op: ilike, value: !cel "'%' + inputs.q + '%'" }
+      - { column: description, op: ilike, value: !cel "'%' + inputs.q + '%'" }
 ```
 
 ---
@@ -175,7 +175,7 @@ columns:
 from: modules
 groupBy: [namespace, name]
 having:
-  - { column: version_count, op: gte, value: "${{ inputs.minVersions ?? 1 }}" }
+  - { column: version_count, op: gte, value: !cel "inputs.minVersions ?? 1" }
 ```
 
 `having:` accepts the same clause syntax as `where:` — structured conditions, raw fragments, `or:`, `and:`, `not:`, and `when:`.
@@ -220,8 +220,8 @@ orderBy:
 Both accept literal integers or CEL expressions. They are always bound as parameters — no injection surface.
 
 ```yaml
-limit: "${{ inputs.limit ?? 20 }}"
-offset: "${{ inputs.offset ?? 0 }}"
+limit: !cel "inputs.limit ?? 20"
+offset: !cel "inputs.offset ?? 0"
 ```
 
 ---
@@ -240,22 +240,22 @@ distinctOn: [namespace, name]
 columns: [namespace, name, version, description, published_at]
 where:
   - { column: deleted_at, op: is_null }
-  - when: "${{ inputs.q != '' }}"
+  - when: !cel "inputs.q != ''"
     or:
-      - { column: name, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
-      - { column: namespace, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
-      - { column: description, op: ilike, value: "${{ '%' + inputs.q + '%' }}" }
+      - { column: name, op: ilike, value: !cel "'%' + inputs.q + '%'" }
+      - { column: namespace, op: ilike, value: !cel "'%' + inputs.q + '%'" }
+      - { column: description, op: ilike, value: !cel "'%' + inputs.q + '%'" }
       - sql: "to_tsvector(description) @@ plainto_tsquery($1)"
-        bindings: ["${{ inputs.q }}"]
-  - when: "${{ inputs.since != '' }}"
+        bindings: [!cel "inputs.q"]
+  - when: !cel "inputs.since != ''"
     sql: "published_at > $1::timestamptz"
-    bindings: ["${{ inputs.since }}"]
+    bindings: [!cel "inputs.since"]
 orderBy:
   - { column: namespace }
   - { column: name }
   - { column: published_at, direction: desc }
-limit: "${{ inputs.limit ?? 20 }}"
-offset: "${{ inputs.offset ?? 0 }}"
+limit: !cel "inputs.limit ?? 20"
+offset: !cel "inputs.offset ?? 0"
 inputSchema:
   q: { type: string, default: "" }
   limit: { type: integer, default: 20 }
@@ -273,14 +273,14 @@ Calling it from an HTTP route:
     kind: Sql.Selection
     name: SearchModules
   inputs:
-    q: "${{ request.query.q ?? '' }}"
-    limit: "${{ int(request.query.limit ?? '20') }}"
-    offset: "${{ int(request.query.offset ?? '0') }}"
+    q: !cel "request.query.q ?? ''"
+    limit: !cel "int(request.query.limit ?? '20')"
+    offset: !cel "int(request.query.offset ?? '0')"
   response:
     - status: 200
       body:
-        results: "${{ result.rows }}"
-        count: "${{ result.rowCount }}"
+        results: !cel "result.rows"
+        count: !cel "result.rowCount"
 ```
 
 ---

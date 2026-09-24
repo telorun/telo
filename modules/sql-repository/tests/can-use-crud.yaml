@@ -67,7 +67,7 @@ steps:
 
   - name: assertRead
     inputs:
-      rows: "${{ steps.read.result.rows }}"
+      rows: !cel "steps.read.result.rows"
     invoke:
       kind: Assert.Schema
       schema:
@@ -95,7 +95,7 @@ steps:
 
   - name: assertEmpty
     inputs:
-      rows: "${{ steps.readAfterDelete.result.rows }}"
+      rows: !cel "steps.readAfterDelete.result.rows"
     invoke:
       kind: Assert.Schema
       schema:

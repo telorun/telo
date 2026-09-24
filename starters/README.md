@@ -50,8 +50,9 @@ starters/
 
 - Every starter must pass `telo check` and be self-contained (all files under
   its own folder).
-- Write **all** CEL with the `!cel` tag, never inline `${{ }}` — starters are
-  opened and round-tripped through the editor, which normalizes to `!cel`.
+- Write **all** CEL behind a tag — `!cel` for a computed value, `!interpolate`
+  for text with values in it — never a plain string holding `${{ }}`, which is
+  not evaluated.
 - List `files:` assets explicitly (no globs); a raw URL can't enumerate a glob.
 - Hosting must serve `starters.json` and every manifest/asset with CORS enabled.
 - A starter's tests live in its own `tests/` directory and run through
