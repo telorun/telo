@@ -15,7 +15,7 @@ import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import type { Argv } from "yargs";
+import type { Argv, Options } from "yargs";
 import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
@@ -283,7 +283,9 @@ export type RunArgv = {
    *  payload, which is the only cache it has; everywhere else it is resolved
    *  from the entry as usual. */
   cacheDir?: string;
-  "--"?: string[];
+  /** The application's own command line: every token after the manifest path,
+   *  read against the `arg:` bindings its root Application declares. */
+  applicationArgs?: readonly string[];
 };
 
 const DEFAULT_INSPECT_HOST = "127.0.0.1";
@@ -480,7 +482,7 @@ async function buildKernel(argv: RunArgv, log: Logger, cacheRoot: string | null)
       ),
     );
   }
-  const kernel = new Kernel({ argv: argv["--"], sources });
+  const kernel = new Kernel({ argv: [...(argv.applicationArgs ?? [])], sources });
   // Pretty controller-download progress. With --verbose, always render
   // (so captured logs/CI output get the lines too); otherwise gate on TTY
   // so CI and the docker service stay silent.
@@ -666,6 +668,11 @@ export async function run(argv: RunArgv): Promise<void> {
     });
     profiler?.end("load");
     loaded = true;
+    if (answerApplicationHelp(kernel)) {
+      await kernel.teardown();
+      debug?.stop(kernel);
+      return;
+    }
     phase = "manifestCachePersist";
     profiler?.start("manifestCachePersist");
     await persistManifestCache(argv, kernel, log, cacheRoot);
@@ -720,6 +727,16 @@ export async function run(argv: RunArgv): Promise<void> {
     reportError(argv, error, log, bootedKernel);
     process.exit(1);
   }
+}
+
+/** `--help` among the application's arguments: print the usage its `arg:`
+ *  bindings describe instead of running it. The usage IS the answer in every
+ *  output format, so it is written verbatim. */
+function answerApplicationHelp(kernel: Kernel): boolean {
+  const help = kernel.applicationHelp;
+  if (help === undefined) return false;
+  output().raw(help);
+  return true;
 }
 
 /**
@@ -829,6 +846,11 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
         cacheDir: cacheRoot,
         writeCache: argv.cacheWrite,
       });
+      if (answerApplicationHelp(kernel)) {
+        requestStop();
+        await kernel.teardown();
+        return;
+      }
       await persistManifestCache(argv, kernel, log, cacheRoot);
       debug?.markReady(kernel);
       const count = watchers.sync(await collectWatchFiles(kernel));
@@ -857,10 +879,42 @@ async function runWatch(argv: RunArgv, log: Logger): Promise<void> {
   }
 }
 
-export function runCommand(yargs: Argv): Argv {
+/** `telo run`'s own options. Declared once: yargs registers this table and
+ *  `run-invocation.ts` reads it to find where the application's arguments begin. */
+export const RUN_OPTIONS = {
+  debug: {
+    type: "boolean",
+    describe: "Write a .telo.debug.jsonl event log next to the manifest.",
+  },
+  inspect: {
+    type: "string",
+    describe:
+      "Start the live inspection endpoint. Optional [host:]port (default 127.0.0.1:9230); a bare host is written --inspect=<host>.",
+  },
+  "startup-profile": {
+    type: "string",
+    requiresArg: true,
+    describe: "Write a JSON startup timing report to <file>, without enabling debug tracing.",
+  },
+  open: {
+    type: "boolean",
+    default: true,
+    describe: "With --inspect, auto-open the UI in a browser. Use --no-open to suppress.",
+  },
+} satisfies Record<string, Options>;
+
+/** Before the path, `--inspect`'s optional value is read only when it has the
+ *  shape of a port, so the manifest is never taken as a host. */
+export const RUN_OPTIONAL_VALUE_SHAPES: Record<string, RegExp> = {
+  inspect: /^(\[[^\]]+\]:\d+|[^\s/\\]*:\d+|\d+)$/,
+};
+
+/** `applicationArgs` is every token after the manifest path — the application's
+ *  own command line, split off before yargs parses (`run-invocation.ts`). */
+export function runCommand(yargs: Argv, applicationArgs: readonly string[]): Argv {
   return yargs.command(
-    ["run <path> [..]", "$0 <path> [..]"],
-    "Run a Telo runtime from a manifest file or directory",
+    ["run <path>", "$0 <path>"],
+    "Run a Telo application: telo run [options] <path> [application arguments]. Every argument after the path is the application's, read against the `arg:` bindings it declares — `telo run <path> --help` lists them.",
     (y) =>
       y
         .positional("path", {
@@ -868,62 +922,9 @@ export function runCommand(yargs: Argv): Argv {
           type: "string",
           demandOption: true,
         })
-        .option("debug", {
-          type: "boolean",
-          describe: "Write a .telo.debug.jsonl event log next to the manifest.",
-        })
-        .option("inspect", {
-          type: "string",
-          describe:
-            "Start the live inspection endpoint. Optional [host:]port (default 127.0.0.1:9230).",
-        })
-        .option("startup-profile", {
-          type: "string",
-          requiresArg: true,
-          describe: "Write a JSON startup timing report to <file>, without enabling debug tracing.",
-        })
-        .option("open", {
-          type: "boolean",
-          default: true,
-          describe: "With --inspect, auto-open the UI in a browser. Use --no-open to suppress.",
-        })
-        .strict(false),
+        .options(RUN_OPTIONS),
     async (argv) => {
-      // Everything after the manifest path that isn't a known telo flag
-      // becomes argv for the kernel. We extract it from process.argv by
-      // finding the manifest path and taking everything after it, excluding
-      // known telo flags.
-      const knownBooleanFlags = new Set([
-        "--verbose", "--debug", "--watch", "-w",
-        "--cache-write", "--no-cache-write", "--open", "--no-open",
-        "--help", "--version",
-      ]);
-      // `--inspect` ([host:]port) and the global `-o` / `--output` are valued.
-      // The valued-flag branch below skips the `=` form and the space form
-      // alike, so neither leaks into kernel argv.
-      const knownValuedFlags = new Set(["--inspect", "--output", "-o", "--startup-profile"]);
-      const rawArgs = process.argv;
-      const pathIdx = rawArgs.indexOf(argv.path as string);
-      const sliced = pathIdx >= 0 ? rawArgs.slice(pathIdx + 1) : [];
-      const extraArgs: string[] = [];
-      for (let i = 0; i < sliced.length; i++) {
-        const a = sliced[i];
-        if (a === "--") continue;
-        if (knownBooleanFlags.has(a)) continue;
-        const eqIdx = a.indexOf("=");
-        const bare = eqIdx >= 0 ? a.slice(0, eqIdx) : a;
-        if (knownValuedFlags.has(bare)) {
-          // Only skip the next token as a value when it actually looks like one.
-          // Guards against `--inspect --verbose` (or trailing bare flag) where
-          // yargs consumed `--verbose` as the value — we still want the next flag
-          // re-evaluated by this loop rather than silently dropped.
-          const next = sliced[i + 1];
-          if (eqIdx < 0 && next !== undefined && !next.startsWith("-")) i++;
-          continue;
-        }
-        extraArgs.push(a);
-      }
-      await run({ ...(argv as any), "--": extraArgs });
+      await run({ ...(argv as any), applicationArgs });
     },
   );
 }

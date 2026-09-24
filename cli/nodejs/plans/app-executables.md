@@ -292,7 +292,7 @@ kernel's exit code rather than on a bare zero. A bespoke bootstrap would be a pa
 is SIGKILLed by its orchestrator thirty seconds into every rolling deploy.
 
 **Every argument after the program name is the application's.** `./orders --port 8080` is what
-`telo run ./telo.yaml -- --port 8080` is today. The CLI is unreachable from a packaged binary: there
+`telo run ./telo.yaml --port 8080` is. The CLI is unreachable from a packaged binary: there
 are no subcommands, no `--watch`, no `--debug`, no `--inspect`, and `--version` means whatever the
 application decides it means. That is the whole point of the distribution — the user of `./orders`
 is not a telo user — and it is why the telo version that built it is recorded in the payload index

@@ -8,6 +8,65 @@ kind: Telo.Application
 metadata:
   name: TestSuiteWindows
   version: 1.0.0
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include
+    description: Glob pattern selecting the test manifests to run, relative to this file.
+    default:
+    - "**/tests/*.yaml"
+  exclude:
+    type: array
+    items: { type: string }
+    arg: exclude
+    description: Glob pattern excluding test manifests, relative to this file.
+    default:
+    - "**/__fixtures__/**"
+    # An app's tests are the app's, not the standard library's. They pin PUBLISHED
+    # module versions, so they fail whenever a kernel or module change has landed
+    # here but not yet been released and re-pinned — a real signal, but one about
+    # the release sequence rather than about the code under test.
+    - "apps/**"
+    # Same as the root suite: most examples pin published module versions, and an
+    # example with tests is run from ITS OWN suite, which CI invokes explicitly.
+    - "examples/**"
+    # A starter's tests run the starter, which imports published modules. See
+    # `test-suite.yaml`; `starters/test-suite.yaml` runs them.
+    - "starters/**"
+    # A blueprint imports published modules too. See `test-suite.yaml`;
+    # `blueprints/test-suite.yaml` runs them.
+    - "blueprints/**"
+    # Generated and gitignored — the authoring agent's e2e output. See
+    # `test-suite.yaml` for why discovering it also double-ran its nested suite.
+    - "workspace/**"
+
+    # POSIX-only. These three drive the host shell in its own language — `printf`,
+    # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows
+    # `printf %s "$GREETING-$NAME"` comes back as its own literal text. That is
+    # cmd behaving correctly, not `Shell.LocalHost` misbehaving: the controller
+    # already resolves `%ComSpec%` and passes `/d /s /c`, and the argv test in the
+    # same file (proving `a; b && echo pwned` is NOT interpreted) passes on
+    # Windows.
+    #
+    # Excluded rather than rewritten, because what they assert IS the host shell's
+    # semantics — reaching for `node -p` to make them portable would test node
+    # instead. Covering the same ground on Windows means cmd.exe counterparts,
+    # which needs a platform gate in `Test.Suite` that does not exist yet.
+    - "modules/shell/tests/run-command.yaml"
+    - "modules/shell/tests/host-behavior.yaml"
+    - "modules/shell/tests/argv-and-env-unset.yaml"
+  filter:
+    type: string
+    arg: { position: 0 }
+    description: Run only the tests whose path contains this text.
+    default: ""
+  concurrency:
+    type: integer
+    minimum: 1
+    arg: concurrency
+    description: How many tests run at once.
+    default: 3
 imports:
   Test: ./modules/test
 targets:
@@ -16,40 +75,7 @@ targets:
 kind: Test.Suite
 metadata:
   name: runAll
-include:
-  - "**/tests/*.yaml"
-exclude:
-  - "**/__fixtures__/**"
-  # An app's tests are the app's, not the standard library's. They pin PUBLISHED
-  # module versions, so they fail whenever a kernel or module change has landed
-  # here but not yet been released and re-pinned — a real signal, but one about
-  # the release sequence rather than about the code under test.
-  - "apps/**"
-  # Same as the root suite: most examples pin published module versions, and an
-  # example with tests is run from ITS OWN suite, which CI invokes explicitly.
-  - "examples/**"
-  # A starter's tests run the starter, which imports published modules. See
-  # `test-suite.yaml`; `starters/test-suite.yaml` runs them.
-  - "starters/**"
-  # A blueprint imports published modules too. See `test-suite.yaml`;
-  # `blueprints/test-suite.yaml` runs them.
-  - "blueprints/**"
-  # Generated and gitignored — the authoring agent's e2e output. See
-  # `test-suite.yaml` for why discovering it also double-ran its nested suite.
-  - "workspace/**"
-
-  # POSIX-only. These three drive the host shell in its own language — `printf`,
-  # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows
-  # `printf %s "$GREETING-$NAME"` comes back as its own literal text. That is
-  # cmd behaving correctly, not `Shell.LocalHost` misbehaving: the controller
-  # already resolves `%ComSpec%` and passes `/d /s /c`, and the argv test in the
-  # same file (proving `a; b && echo pwned` is NOT interpreted) passes on
-  # Windows.
-  #
-  # Excluded rather than rewritten, because what they assert IS the host shell's
-  # semantics — reaching for `node -p` to make them portable would test node
-  # instead. Covering the same ground on Windows means cmd.exe counterparts,
-  # which needs a platform gate in `Test.Suite` that does not exist yet.
-  - "modules/shell/tests/run-command.yaml"
-  - "modules/shell/tests/host-behavior.yaml"
-  - "modules/shell/tests/argv-and-env-unset.yaml"
+include: !cel "variables.include"
+exclude: !cel "variables.exclude"
+filter: !cel "variables.filter"
+concurrency: !cel "variables.concurrency"

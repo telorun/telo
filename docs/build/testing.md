@@ -77,6 +77,16 @@ kind: Telo.Application
 metadata:
   name: TestSuite
   version: 1.0.0
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include
+    default: ["**/tests/*.yaml"]
+  filter:
+    type: string
+    arg: { position: 0 }
+    default: ""
 imports:
   Test: oci://ghcr.io/telorun/test@<version>
 targets:
@@ -85,19 +95,22 @@ targets:
 kind: Test.Suite
 metadata:
   name: RunAll
-include:
-  - "**/tests/*.yaml"
+include: !cel "variables.include"
 exclude:
   - "**/__fixtures__/**"
+filter: !cel "variables.filter"
 ```
+
+The suite's command line is whatever the application declares with `arg:` — here a repeatable `--include` and a positional filter:
 
 ```bash
-telo ./test-suite.yaml                 # run everything
-telo ./test-suite.yaml add             # filter by substring (matches "add-two-numbers.yaml")
-telo ./test-suite.yaml --filter=add    # same, explicit
+telo ./test-suite.yaml                                   # run everything
+telo ./test-suite.yaml add                               # filter by substring (matches "add-two-numbers.yaml")
+telo ./test-suite.yaml --include tests/add-two-numbers.yaml  # exactly this manifest
+telo ./test-suite.yaml --help                            # what the suite accepts
 ```
 
-See the [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) for the full field and CLI-flag list.
+See the [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) for the full field list.
 
 ## Step shapes
 

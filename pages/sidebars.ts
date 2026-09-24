@@ -195,6 +195,7 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/specs/durable-execution", label: "Durable Execution" },
                 { type: "doc", id: "kernel/specs/logging", label: "Logging" },
                 { type: "doc", id: "kernel/specs/module-artifact", label: "Module Artifact" },
+                { type: "doc", id: "kernel/specs/application-arguments", label: "Application Arguments" },
               ],
             },
           ],

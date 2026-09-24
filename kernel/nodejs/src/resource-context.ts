@@ -23,7 +23,6 @@ import {
   type Logger,
   type OpenSpan,
   type OpenSpanOptions,
-  type ParsedArgs,
   type ResourceDefinition,
   type ResourceHandle,
   type RuntimeSeam,
@@ -78,12 +77,22 @@ const Ajv = AjvModule.default ?? AjvModule;
  *  abandoning them (with a logged event). */
 const DETACHED_DRAIN_TIMEOUT_MS = 5000;
 
+const PUBLISHED_ARGS_SURFACE = Object.freeze({ _: Object.freeze([] as string[]) });
+
 export class ResourceContextImpl implements ResourceContext {
   readonly env: Record<string, string | undefined>;
+  /**
+   * Always empty. A controller no longer reads the command line — the root
+   * Application declares its arguments with `arg:` bindings — and the SDK no
+   * longer types this. It stays for controllers ALREADY PUBLISHED against the
+   * old surface (`test@0.10.3` reads `ctx.args.filter` in `create()`), which
+   * would otherwise throw on a property of `undefined` rather than see no
+   * arguments.
+   */
+  readonly args: Readonly<{ _: readonly string[] }> = PUBLISHED_ARGS_SURFACE;
   readonly stdin: NodeJS.ReadableStream;
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
-  readonly args: ParsedArgs;
   /** Id prefix of the context this resource was created in. A controller that
    *  spawns sub-resources composes their ids as `ownerPrefix + kind + "." + name`
    *  and stamps the owner on the child context it registers them into. */
@@ -156,7 +165,6 @@ export class ResourceContextImpl implements ResourceContext {
     stdin?: NodeJS.ReadableStream,
     stdout?: NodeJS.WritableStream,
     stderr?: NodeJS.WritableStream,
-    args?: ParsedArgs,
     ownerPrefix = "",
     /**
      * The context that OWNS this instance — the module context for a top-level
@@ -192,7 +200,6 @@ export class ResourceContextImpl implements ResourceContext {
     this.stdin = stdin ?? process.stdin;
     this.stdout = stdout ?? process.stdout;
     this.stderr = stderr ?? process.stderr;
-    this.args = args ?? { _: [] };
     this.ownerPrefix = ownerPrefix;
   }
 

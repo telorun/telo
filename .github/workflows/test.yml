@@ -124,9 +124,107 @@ jobs:
       - name: Check the VS Code extension packages
         run: pnpm --filter "./ide/vscode" vsix
 
+  # Decides once which manifest tests every platform job runs. A pull request
+  # runs only the test manifests its diff reaches — through each manifest's own
+  # file, its `__fixtures__/`, its relative imports and the workspace packages
+  # their controllers bundle (`telo changed`). Everything runs on a push to
+  # main, and whenever the change is to what EVERY test stands on: the runtime,
+  # the test runner, the suites, the dependency set or this workflow.
+  #
+  # `mode` is `full`, `selected` or `none`; `args` is a JSON array of suite
+  # arguments (`--include <path>` pairs), empty for a full run. Consumers read
+  # both through `env:`, never by interpolating them into a script: a path is
+  # a file name a pull request chose.
+  select:
+    name: Select manifest tests
+    runs-on: ubuntu-latest
+
+    outputs:
+      mode: ${{ steps.select.outputs.mode }}
+      args: ${{ steps.select.outputs.args }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.28.2
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # FAIL OPEN at every step: a diff that cannot be taken, or a `telo
+      # changed` that fails, runs everything. Only an explicit empty `affected`
+      # list runs nothing.
+      - name: Select the manifest tests this change reaches
+        id: select
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          full() {
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+            echo "args=[]" >> "$GITHUB_OUTPUT"
+            echo "$1 — running every manifest test." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          [ "$EVENT_NAME" = "pull_request" ] || full "Not a pull request"
+          git fetch --no-tags origin "$BASE_REF" || true
+          base="origin/$BASE_REF"
+          changed=$(git diff --name-only "$base...HEAD") || full "Could not diff against $base"
+          # Plain paths, deliberately not `telo changed`: a manifest under
+          # kernel/ imports modules, so it would report a module change as a
+          # runtime change.
+          if grep -qE '^(kernel|analyzer|sdk|templating|cli|modules/test)/|^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|test-suite(-windows)?\.yaml|\.github/workflows/test\.yml)$' <<<"$changed"; then
+            full "The runtime, the test runner, a suite, the dependency set or this workflow changed"
+          fi
+          # The suites apply their own `exclude:` on top, so the glob need not
+          # restate them.
+          json=$(pnpm run --silent telo changed '**/tests/*.yaml' --base "$base" -o json) \
+            || full "telo changed failed"
+          count=$(jq '.affected | length' <<<"$json") || full "telo changed returned no answer"
+          if [ "$count" = "0" ]; then
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            echo "args=[]" >> "$GITHUB_OUTPUT"
+            echo "No manifest test is reached by this change." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "mode=selected" >> "$GITHUB_OUTPUT"
+          echo "args=$(jq -c '[.affected[] | "--include", .]' <<<"$json")" >> "$GITHUB_OUTPUT"
+          {
+            echo "Running the $count manifest tests this change reaches:"
+            echo
+            jq -r '.affected[] | "- `" + . + "`"' <<<"$json"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   bun:
     name: "Linux: manifest tests (Bun)"
     runs-on: ubuntu-latest
+    needs: select
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -165,7 +263,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run tests (bun)
-        run: pnpm test
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        env:
+          SUITE_ARGS: ${{ needs.select.outputs.args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
+          pnpm test "${args[@]}"
 
       # `telo check` says an example parses; it says nothing about whether the
       # application still does what its README claims. Each example owns its
@@ -329,6 +433,7 @@ jobs:
   node:
     name: "Linux: manifest tests (Node)"
     runs-on: ubuntu-latest
+    needs: select
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -370,7 +475,13 @@ jobs:
         run: pnpm -r run build
 
       - name: Run tests (node)
-        run: pnpm run test:node
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        env:
+          SUITE_ARGS: ${{ needs.select.outputs.args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
+          pnpm run test:node "${args[@]}"
 
       # Smoke-test loading a manifest from an HTTP URL using the branch's
       # just-built CLI. Pulls the example over raw.githubusercontent.com at
@@ -405,6 +516,7 @@ jobs:
   docker:
     name: "Linux: manifest tests (Docker)"
     runs-on: ubuntu-latest
+    needs: select
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -452,7 +564,13 @@ jobs:
         run: docker build -f cli/nodejs/Dockerfile -t telo:ci .
 
       - name: Run tests (docker image)
-        run: docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        env:
+          SUITE_ARGS: ${{ needs.select.outputs.args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
+          docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml "${args[@]}"
 
   # Tests whose subject is several telo installations over ONE workspace cache —
   # a host process and two containers, glibc and musl. They live outside the
@@ -519,6 +637,7 @@ jobs:
     name: "Windows: unit & manifest tests"
     runs-on: windows-latest
     timeout-minutes: 60
+    needs: select
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -612,8 +731,18 @@ jobs:
       # the `modules/shell` tests that drive the host shell in POSIX's own
       # language (`printf`, `pwd`, `"$VAR"`), which cmd.exe does not speak. See
       # the note in that file for why they are excluded rather than rewritten.
+      #
+      # Invoked directly rather than through `pnpm run test:node:windows`: pnpm
+      # runs a script through cmd.exe, whose 8191-character command line a
+      # selection of a couple of hundred `--include` pairs exceeds.
       - name: Run telo manifest tests (Node)
-        run: pnpm run test:node:windows
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        env:
+          SUITE_ARGS: ${{ needs.select.outputs.args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS" | tr -d '\r')
+          node ./cli/nodejs/bin/telo.mjs ./test-suite-windows.yaml "${args[@]}"
 
   # macOS is POSIX, so unlike the Windows job this is not covering a separate
   # code path — it covers the platform axes that differ underneath one: an
@@ -627,6 +756,7 @@ jobs:
     name: "macOS: unit & manifest tests"
     runs-on: macos-latest
     timeout-minutes: 60
+    needs: select
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -696,7 +826,13 @@ jobs:
         run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
       - name: Run telo manifest tests (Node)
-        run: pnpm run test:node
+        if: needs.select.outputs.mode != 'none'
+        shell: bash
+        env:
+          SUITE_ARGS: ${{ needs.select.outputs.args }}
+        run: |
+          args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
+          pnpm run test:node "${args[@]}"
 
       - name: Run the example test suites (Node)
         run: pnpm run telo:node ./examples/test-suite.yaml

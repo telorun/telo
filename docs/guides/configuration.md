@@ -1,12 +1,12 @@
 ---
-description: "Bind an application to its environment with variables, secrets and ports, pass values into imported libraries, and keep one place that reads the host environment."
+description: "Bind an application to its environment and command line with variables, secrets and ports, pass values into imported libraries, and keep one place that reads the host."
 ---
 
 # Configuring an application
 
 Anything that differs between your laptop and production is **declared on the
-application** and bound to a host environment variable. There are three blocks,
-and they all work the same way.
+application** and bound to the host — an environment variable, a command-line
+argument, or both. There are three blocks, and they all work the same way.
 
 ```yaml
 kind: Telo.Application
@@ -59,13 +59,14 @@ dsn:     !cel "secrets.databaseUrl"
 
 ## Entry shape
 
-Every entry needs `env:` and — for `variables:` / `secrets:` — a `type:`:
+Every entry binds `env:` — a `variables:` entry may bind `arg:` instead, or both — and a `variables:` / `secrets:` entry declares a `type:`:
 
 | Key | Meaning |
 | --- | --- |
 | `env:` | The host environment variable to read. Conventionally `SCREAMING_SNAKE_CASE`. |
+| `arg:` | The command-line argument to read — see [Command-line arguments](#command-line-arguments). Not on `secrets:`; beside `env:` on `ports:`. |
 | `type:` | `string`, `integer`, `number`, `boolean`, `object`, or `array`. Not written on `ports:` entries — a port is always an integer. |
-| `default:` | Used when the variable is absent. An entry with no default is **required**. |
+| `default:` | Used when neither the argument nor the variable is given. An entry with no default is **required**. |
 | anything else | Any further JSON Schema keyword — `minimum`, `enum`, `pattern`, … — validated at load. |
 
 ```yaml
@@ -80,6 +81,57 @@ variables:
     type: object
     default: {}
 ```
+
+## Command-line arguments
+
+The same entry can be bound to the command line with `arg:`. Everything after the
+manifest path belongs to the application — `telo run [telo options] ./telo.yaml
+[application arguments]`, the way `node [options] app.js [args]` works — and a
+packaged application gets every argument after its program name.
+
+```yaml
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include                    # --include a.yaml --include b.yaml
+    default: ["**/tests/*.yaml"]
+  verbose:
+    type: boolean
+    arg: { flag: verbose, short: v } # --verbose / -v / --no-verbose
+    env: APP_VERBOSE
+    default: false
+  target:
+    type: string
+    arg: { position: 0 }            # the first bare argument…
+    env: DEPLOY_TARGET              # …or this, where a runner starts the app
+ports:
+  http:
+    env: PORT
+    arg: port                       # --port 9000
+    default: 8080
+```
+
+```bash
+telo run ./telo.yaml --port 9000 --include a.yaml --include b.yaml staging
+telo run ./telo.yaml --help        # the usage these bindings describe
+```
+
+- **The first source with a value wins**: the command line, then the
+  environment variable, then `default:`.
+- **Tokens are read by the entry's type** — a repeated flag fills an array, each
+  token read by `items.type`; a boolean is `--flag` or `--no-flag`; `--` ends the
+  options, so every later token is positional.
+- **Nothing undeclared gets through.** An argument no entry binds, a flag with
+  its value missing or a value of the wrong type stops the load, in the same
+  single report as a missing variable, naming what the application accepts.
+- **A secret is never an argument** (`ARG_BINDING_ON_SECRET`): a command line is
+  readable in the process table and in shell history.
+- **A runner and the studio supply values through the environment**, never the command
+  line. So a `ports:` entry always binds `env:`, and a variable bound only by `arg:` needs
+  a `default:` (`ARG_BINDING_INVALID` otherwise).
+
+The full grammar is in [Application arguments](/reference/kernel/specs/application-arguments).
 
 ## `variables` vs `secrets`
 
@@ -116,10 +168,10 @@ things follow from declaring it rather than hardcoding a number:
 
 ## Passing configuration into an import
 
-Only the root application reads the host environment. A library receives its
-values explicitly from whoever imports it — declaring an `env:` key inside a
-library is rejected (`LIBRARY_ENV_KEY_REJECTED`). Use the object form of an
-import entry:
+Only the root application reads the host environment and the command line. A
+library receives its values explicitly from whoever imports it — declaring an
+`env:` or `arg:` key inside a library is rejected (`LIBRARY_ENV_KEY_REJECTED`,
+`LIBRARY_ARG_KEY_REJECTED`). Use the object form of an import entry:
 
 ```yaml
 imports:
@@ -132,7 +184,7 @@ imports:
       apiKey: !cel "secrets.paymentsKey"
 ```
 
-That is the whole configuration boundary: one place binds the environment, and
+That is the whole configuration boundary: one place binds the host, and
 everything below it is passed values. See
 [Libraries](/learn/libraries).
 

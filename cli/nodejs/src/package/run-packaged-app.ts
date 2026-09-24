@@ -232,6 +232,6 @@ export async function runPackagedApp(app: PackagedApp, argv: readonly string[]):
     // point the kernel at a tree holding none of this application's modules.
     cacheDir: app.cacheDir,
     analysisKey: app.index.analysisKey,
-    "--": [...argv],
+    applicationArgs: [...argv],
   });
 }

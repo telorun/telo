@@ -1,0 +1,8 @@
+modules:
+  modules/test: Added
+body: 'Test.Suite fields `include`, `exclude`, `filter` and `concurrency` now take CEL
+  evaluated at startup, so the suite application decides which of them the command line
+  sets: a `variables:` entry bound with `arg:`, passed in as `!cel "variables.include"`.
+  Breaking for a suite relying on the controller reading the command line itself —
+  `--filter`, `-f` and the bare positional filter work only once the suite application
+  declares them.'

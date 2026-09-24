@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: LibraryArgKeyRejectedTest
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref testLibraryArgKeyRejected
+---
+# Only the application being run reads the command line, so a library's
+# variable bound to it is refused where it is written.
+kind: Assert.Manifest
+metadata:
+  name: testLibraryArgKeyRejected
+source: ./__fixtures__/library-with-arg-on-variable.yaml
+expect:
+  errors:
+    - code: LIBRARY_ARG_KEY_REJECTED
+      message: "variables/shouldBeRejected: 'arg:' is only permitted on Telo.Application entries"

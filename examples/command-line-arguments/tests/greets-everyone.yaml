@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: CommandLineArgumentsExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/command-line-arguments` with its inputs supplied by name — the
+    way a parent application starts it, and the source that wins over the command
+    line — and checks what it printed.
+imports:
+  App: ../../../modules/app
+  Channel: ../../../modules/channel
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref app
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: app }
+source: ../telo.yaml
+awaitStart: false
+variables:
+  name: Ada
+  also: [Grace, Linus]
+  greeting: Hi
+  shout: true
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: printed
+    invoke:
+      kind: Channel.ReadUntil
+      channel: !ref app
+      timeout: "10s"
+    inputs: { until: "HI, LINUS!\n" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.printed.result.text"
+      expected: "HI, ADA!\nHI, GRACE!\nHI, LINUS!\n"

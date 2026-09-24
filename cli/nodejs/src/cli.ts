@@ -4,7 +4,7 @@
 // Node's colour libraries before any of them computes a level. See color-bridge.
 import "./color-bridge.js";
 
-import yargs from "yargs";
+import yargs, { type Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
 import { celCommand } from "./commands/cel.js";
 import { changedCommand } from "./commands/changed.js";
@@ -15,62 +15,48 @@ import { moduleCommand } from "./commands/module.js";
 import { packageCommand } from "./commands/package.js";
 import { publishCommand } from "./commands/publish.js";
 import { releaseCommand } from "./commands/release.js";
-import { runCommand } from "./commands/run.js";
+import { RUN_OPTIONAL_VALUE_SHAPES, RUN_OPTIONS, runCommand } from "./commands/run.js";
 import { runnerCommand } from "./commands/runner.js";
 import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { cliVersion } from "./distribution-versions.js";
-import { OUTPUT_FORMATS, configureOutput, parseOutputFormat } from "./output.js";
+import { GLOBAL_OPTIONS } from "./global-options.js";
+import { configureOutput, parseOutputFormat } from "./output.js";
+import { splitRunInvocation } from "./run-invocation.js";
 
-let cli = yargs(hideBin(process.argv))
+/** Every top-level command, by name — which is also how a run is told from
+ *  another command: a first positional that names none of them is a manifest. */
+const COMMANDS: Record<string, (yargs: Argv) => Argv> = {
+  cel: celCommand,
+  changed: changedCommand,
+  check: checkCommand,
+  install: installCommand,
+  migrate: migrateCommand,
+  module: moduleCommand,
+  package: packageCommand,
+  publish: publishCommand,
+  release: releaseCommand,
+  run: (yargs) => runCommand(yargs, invocation.applicationArgs ?? []),
+  runner: runnerCommand,
+  search: searchCommand,
+  upgrade: upgradeCommand,
+};
+
+// Everything after a run's manifest path belongs to the application, so yargs
+// never sees it — see run-invocation.ts.
+const invocation = splitRunInvocation(hideBin(process.argv), new Set(Object.keys(COMMANDS)), {
+  options: { ...GLOBAL_OPTIONS, ...RUN_OPTIONS },
+  optionalValueShapes: RUN_OPTIONAL_VALUE_SHAPES,
+});
+
+let cli = yargs(invocation.cliTokens)
   .scriptName("telo")
   .usage("$0 <command> [options]");
 
-cli = celCommand(cli) as typeof cli;
-cli = changedCommand(cli) as typeof cli;
-cli = checkCommand(cli) as typeof cli;
-cli = installCommand(cli) as typeof cli;
-cli = migrateCommand(cli) as typeof cli;
-cli = moduleCommand(cli) as typeof cli;
-cli = packageCommand(cli) as typeof cli;
-cli = publishCommand(cli) as typeof cli;
-cli = releaseCommand(cli) as typeof cli;
-cli = runCommand(cli) as typeof cli;
-cli = runnerCommand(cli) as typeof cli;
-cli = searchCommand(cli) as typeof cli;
-cli = upgradeCommand(cli) as typeof cli;
+for (const register of Object.values(COMMANDS)) cli = register(cli) as typeof cli;
 
 cli
-  .option("verbose", {
-    type: "boolean",
-    default: false,
-    describe: "Enable verbose logging",
-  })
-  .option("debug", {
-    type: "boolean",
-    default: false,
-    describe: "Enable debug event streaming",
-  })
-  .option("watch", {
-    alias: "w",
-    type: "boolean",
-    default: false,
-    describe: "Watch manifest files and reload on change",
-  })
-  .option("cache-write", {
-    type: "boolean",
-    default: true,
-    describe:
-      "Persist the analysis/validator cache to disk. Use --no-cache-write for an ephemeral, read-only run (validates in-memory, reads the baked cache but never writes it).",
-  })
-  .option("output", {
-    alias: "o",
-    type: "string",
-    choices: OUTPUT_FORMATS,
-    default: "text" as const,
-    describe:
-      "Output format for the CLI's own output. `json` is a machine contract and never carries colour. Note `telo run` streams the app's stdout/stderr through untouched — the app picks its own encoding via its `logging:` block.",
-  })
+  .options(GLOBAL_OPTIONS)
   // Runs before any handler, so a call site deep inside a command reaches the
   // same decision without the format being threaded through every signature.
   .middleware((argv) => configureOutput(parseOutputFormat(argv.output)), true)

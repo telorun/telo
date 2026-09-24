@@ -100,7 +100,8 @@ package manager and a toolchain.
 ## Running it
 
 **Every argument belongs to your application.** `./orders --port 8080` passes
-`--port 8080` to the app exactly as `telo run ./telo.yaml -- --port 8080` does.
+`--port 8080` to the app exactly as `telo run ./telo.yaml --port 8080` does — read
+against the `arg:` bindings the application declares.
 A packaged binary has no subcommands and no telo flags: its user is not a telo
 user.
 

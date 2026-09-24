@@ -52,9 +52,7 @@ import {
   type InvokeOptions,
   type ModuleContext as IModuleContext,
   type LoadOptions,
-  type ParsedArgs,
 } from "@telorun/sdk";
-import { parseArgs } from "util";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
@@ -162,6 +160,8 @@ export interface KernelOptions {
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
   env?: Record<string, string | undefined>;
+  /** The root Application's own command line — every token after the manifest
+   *  path — read against the `arg:` bindings it declares. */
   argv?: string[];
   /** Manifest sources the kernel uses to resolve URLs passed to `load()`.
    *  Required: pass an explicit list (`[]` is allowed but means every URL
@@ -239,6 +239,7 @@ export class Kernel implements IKernel {
    *  the env read for each name it covers. Undefined for a kernel started by a
    *  host rather than by another application. */
   private readonly _inputs?: ApplicationInputs;
+  private _applicationHelp?: string;
 
   /** Set while a reconciliation is in flight. Two overlapping calls would
    *  interleave unwind, deregister and re-initialize on one context, and a watch
@@ -272,6 +273,8 @@ export class Kernel implements IKernel {
   readonly stdout: NodeJS.WritableStream;
   readonly stderr: NodeJS.WritableStream;
   readonly env: Record<string, string | undefined>;
+  /** The root Application's own command line, read against the `arg:` bindings
+   *  it declares (`kernel/specs/application-arguments.md`). */
   readonly argv: string[];
   /** The sources this kernel was constructed with, kept so `ctx.runtime` can
    *  give a child manifest — or a static check of one — the same resolution
@@ -1186,12 +1189,17 @@ export class Kernel implements IKernel {
       this._declaredEnvKeys = collectDeclaredEnvKeys(
         rootApplicationManifest as Record<string, any>,
       );
-      const { variables, secrets, ports } = resolveApplicationEnv(
+      const { variables, secrets, ports, help } = resolveApplicationEnv(
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
         this._inputs,
+        this.argv,
       );
+      if (help !== undefined) {
+        this._applicationHelp = help;
+        return;
+      }
       if (Object.keys(variables).length > 0) {
         this.rootContext.setVariables(variables);
       }
@@ -1264,6 +1272,12 @@ export class Kernel implements IKernel {
     }
     if (this._entryUrl === undefined) {
       throwInvalidState("boot", "load() has not been called");
+    }
+    if (this._applicationHelp !== undefined) {
+      throwInvalidState(
+        "boot",
+        "load() answered --help and resolved none of the application's inputs — print applicationHelp instead of booting",
+      );
     }
     this._bootCalled = true;
 
@@ -1706,6 +1720,13 @@ export class Kernel implements IKernel {
     return this._exitCode;
   }
 
+  /** Set by `load()` when the command line asked for `--help`: the root
+   *  Application's usage, built from its `arg:` bindings. Nothing was resolved
+   *  and nothing may be started — the host prints this and exits. */
+  get applicationHelp(): string | undefined {
+    return this._applicationHelp;
+  }
+
   requestExit(code: number): void {
     this._exitCode = Math.max(this._exitCode, code);
   }
@@ -1802,7 +1823,6 @@ export class Kernel implements IKernel {
   private createResourceContext(
     moduleContext: IModuleContext,
     resource: ResourceManifest,
-    args?: ParsedArgs,
     ownerPrefix = "",
     owningContext?: IEvaluationContext,
     resolvedKind?: string,
@@ -1816,43 +1836,10 @@ export class Kernel implements IKernel {
       this.stdin,
       this.stdout,
       this.stderr,
-      args,
       ownerPrefix,
       owningContext ?? moduleContext,
       resolvedKind,
     );
-  }
-
-  /**
-   * Parse kernel.argv using a controller's args spec (if present).
-   * If the controller exports no args spec, does a generic parse.
-   */
-  private parseArgsForController(controller: any): ParsedArgs {
-    if (this.argv.length === 0) return { _: [] };
-
-    const argSpec = controller.args;
-    if (argSpec) {
-      const options: Record<string, { type: "string" | "boolean"; short?: string }> = {};
-      for (const [name, def] of Object.entries(argSpec) as [string, any][]) {
-        options[name] = { type: def.type ?? "string" };
-        if (def.alias) options[name].short = def.alias;
-      }
-      const { values, positionals } = parseArgs({
-        args: this.argv,
-        options,
-        allowPositionals: true,
-        strict: false,
-      });
-      return { ...values, _: positionals } as ParsedArgs;
-    }
-
-    // Generic parse: no spec, best-effort
-    const { values, positionals } = parseArgs({
-      args: this.argv,
-      allowPositionals: true,
-      strict: false,
-    });
-    return { ...values, _: positionals } as ParsedArgs;
   }
 
   /**
@@ -2042,12 +2029,10 @@ export class Kernel implements IKernel {
       );
     }
 
-    const parsedArgs = this.parseArgsForController(controller);
     const moduleCtx = this.findModuleContext(evalContext);
     const ctx = this.createResourceContext(
       moduleCtx,
       processedResource,
-      parsedArgs,
       evalContext.ownerPrefix,
       // Snapshot publication targets the context that OWNS the instance — for a
       // `with:`-scoped resource that is the per-run scope child, not the module.

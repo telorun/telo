@@ -187,6 +187,7 @@ import { validateModuleArtifact } from "./validate-module-artifact.js";
 import { validateNativeEntries } from "./validate-native-entries.js";
 import { validateSourceEntries } from "./validate-source-entries.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
+import { validateApplicationArguments } from "./validate-application-arguments.js";
 import { validateHostPathDefaults } from "./validate-host-path-defaults.js";
 import { holdsHostPath, leadingRelativeLiteral } from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
@@ -1627,6 +1628,11 @@ export class StaticAnalyzer {
       diagnostics.push(
         ...validateHostPathDefaults(allManifests as unknown as ResourceManifest[], rootModules),
       );
+      // The command-line bindings the kernel parses argv against: a conflict
+      // between two of them, or a secret on the command line.
+      diagnostics.push(
+        ...validateApplicationArguments(allManifests as unknown as ResourceManifest[], rootModules),
+      );
     }
     resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
     // ...and over the manifests the DEFINITION REGISTRY holds, which are not
@@ -1709,6 +1715,18 @@ export class StaticAnalyzer {
                 `Telo.Library ${block}/${entryName}: 'env:' is only permitted on Telo.Application entries. ` +
                 `Libraries must receive values from importers via the parent manifest's variables / secrets block.`,
               data: { resource, filePath, path: `${block}.${entryName}.env` },
+            });
+          }
+          if ("arg" in (entry as Record<string, unknown>)) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "LIBRARY_ARG_KEY_REJECTED",
+              source: SOURCE,
+              message:
+                `Telo.Library ${block}/${entryName}: 'arg:' is only permitted on Telo.Application entries — ` +
+                `only the application being run reads the command line. ` +
+                `Libraries must receive values from importers via the parent manifest's variables / secrets block.`,
+              data: { resource, filePath, path: `${block}.${entryName}.arg` },
             });
           }
         }

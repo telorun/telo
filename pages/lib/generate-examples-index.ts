@@ -1,3 +1,8 @@
+import {
+  readApplicationArguments,
+  renderArgumentSynopsis,
+  type ArgBinding,
+} from "@telorun/analyzer";
 import fs from "node:fs";
 import path from "node:path";
 import { parseAllDocuments } from "yaml";
@@ -19,6 +24,12 @@ interface ExampleEntry {
    * doc, with synthesized placeholder values. Rendered as a `KEY=val …`
    * prefix on the `telo <url>` line so the docs show a runnable command. */
   envBindings: EnvBinding[];
+  /** Every command-line argument the application accepts, in the notation its
+   *  `--help` prints — rendered as a comment above the command. */
+  synopsis: string;
+  /** Arguments appended to the `telo <url>` line: every `arg:` entry that
+   *  declares `examples:`. */
+  argTokens: string[];
   /** `metadata.categories`, the author-declared grouping facet. The first entry
    * is the one the example is filed under — an example touches several domains
    * but should appear once. */
@@ -49,14 +60,16 @@ function readExampleMetadata(absPath: string): ExampleEntry | null {
         typeof metadata.name === "string" ? metadata.name : path.basename(absPath, ".yaml");
       const description =
         typeof metadata.description === "string" ? metadata.description.trim() : null;
+      const { tokens: argTokens, shown } = collectArgTokens(value);
       const envBindings = [
-        ...collectEnvBindings(value.variables, "variable"),
-        ...collectEnvBindings(value.secrets, "secret"),
+        ...collectEnvBindings(value.variables, "variable", shown),
+        ...collectEnvBindings(value.secrets, "secret", shown),
       ];
+      const synopsis = value.kind === "Telo.Application" ? renderArgumentSynopsis(value) : "";
       const categories = Array.isArray(metadata.categories)
         ? metadata.categories.filter((c: unknown): c is string => typeof c === "string")
         : [];
-      return { file: absPath, name, description, envBindings, categories };
+      return { file: absPath, name, description, envBindings, synopsis, argTokens, categories };
     }
   }
   return null;
@@ -68,11 +81,16 @@ type BindingKind = "variable" | "secret";
  * pull out every entry that binds to an env var. Entries with a `default:`
  * are skipped — the manifest already has a fallback, so the docs don't need
  * to ask the reader to set them. */
-function collectEnvBindings(block: unknown, kind: BindingKind): EnvBinding[] {
+function collectEnvBindings(
+  block: unknown,
+  kind: BindingKind,
+  shownAsArgument: ReadonlySet<unknown>,
+): EnvBinding[] {
   if (!block || typeof block !== "object" || Array.isArray(block)) return [];
   const out: EnvBinding[] = [];
   for (const raw of Object.values(block as Record<string, unknown>)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    if (shownAsArgument.has(raw)) continue;
     const spec = raw as Record<string, unknown>;
     const envKey = typeof spec.env === "string" ? spec.env : null;
     if (!envKey) continue;
@@ -80,6 +98,65 @@ function collectEnvBindings(block: unknown, kind: BindingKind): EnvBinding[] {
     out.push({ envKey, value: placeholderValue(kind, envKey, spec) });
   }
   return out;
+}
+
+/**
+ * The arguments to append to an example's command: every `arg:` entry that
+ * declares `examples:` — which is how an author chooses what the docs
+ * demonstrate. (An entry only the command line could supply needs a default, so
+ * none is required to run.) A position is shown only with every position before
+ * it, so the command stays one the application accepts. `shown` names the
+ * entries rendered here, so the env prefix does not supply them twice.
+ */
+function collectArgTokens(doc: Record<string, unknown>): {
+  tokens: string[];
+  shown: Set<unknown>;
+} {
+  if (doc.kind !== "Telo.Application") return { tokens: [], shown: new Set() };
+  const specOf = (binding: ArgBinding) =>
+    ((doc[binding.block] as Record<string, Record<string, unknown>>)[binding.name] ?? {});
+  const wanted = (spec: Record<string, unknown>) => Array.isArray(spec.examples);
+
+  const { bindings } = readApplicationArguments(doc);
+  const positions = bindings.filter((b) => b.form === "position");
+  const lastWanted = positions.map((b) => wanted(specOf(b))).lastIndexOf(true);
+  const tokens: string[] = [];
+  const shown = new Set<unknown>();
+  for (const binding of bindings) {
+    const spec = specOf(binding);
+    const include =
+      binding.form === "position" ? binding.position <= lastWanted : wanted(spec);
+    if (!include) continue;
+    shown.add(spec);
+    const values = exampleValues(binding, spec);
+    if (binding.form === "position") {
+      tokens.push(...values);
+    } else if (binding.valueType === "boolean") {
+      tokens.push(values[0] === "false" ? `--no-${binding.flag}` : `--${binding.flag}`);
+    } else {
+      for (const value of values) tokens.push(`--${binding.flag}`, value);
+    }
+  }
+  return { tokens: tokens.map(argQuote), shown };
+}
+
+/** The value(s) one binding shows: its `examples[0]` (every element, for an
+ *  array), else the same placeholder an env binding would get. */
+function exampleValues(binding: ArgBinding, spec: Record<string, unknown>): string[] {
+  const example = Array.isArray(spec.examples) ? spec.examples[0] : undefined;
+  const scalar = (v: unknown) =>
+    typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+  if (Array.isArray(example) && binding.repeated) return example.filter(scalar).map(String);
+  if (scalar(example)) return [String(example)];
+  const key = binding.block === "ports" ? "PORT" : binding.name.toUpperCase();
+  const type = binding.block === "ports" ? "integer" : binding.valueType;
+  return [placeholderValue("variable", key, { ...spec, type, examples: undefined })];
+}
+
+/** A token that needs no quoting stays bare, so the command reads the way a
+ *  person would type it. */
+function argQuote(value: string): string {
+  return /^[A-Za-z0-9._/:@%+=,-]+$/.test(value) ? value : shellQuote(value);
 }
 
 /** Pick a placeholder value for an env-bound variable/secret. Order of
@@ -171,7 +248,9 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
     lines.push(entry.description, "");
   }
   lines.push(`\`\`\`sh title="${rel}"`);
-  lines.push(`${formatEnvPrefix(entry.envBindings)}telo ${sourceUrl}`);
+  if (entry.synopsis) lines.push(`# telo <url> ${entry.synopsis}`);
+  const args = entry.argTokens.length > 0 ? ` ${entry.argTokens.join(" ")}` : "";
+  lines.push(`${formatEnvPrefix(entry.envBindings)}telo ${sourceUrl}${args}`);
   lines.push(`\`\`\``);
   lines.push(
     "",

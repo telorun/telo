@@ -53,7 +53,6 @@ function resourceContext(module: Record<string, Named>, owning?: Record<string, 
     undefined,
     undefined,
     undefined,
-    undefined,
     "",
     (owning ? contextOf(owning) : moduleContext) as never,
   );

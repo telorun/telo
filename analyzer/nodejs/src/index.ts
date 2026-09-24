@@ -468,6 +468,23 @@ export { reconcileModuleVersions } from "./reconcile-module-versions.js";
 export type { VersionReconciliation } from "./reconcile-module-versions.js";
 export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
 export {
+  ARG_NEGATION_PREFIX,
+  describeArgBinding,
+  HELP_ARG_FLAG,
+  readApplicationArguments,
+  renderApplicationUsage,
+  renderArgumentSynopsis,
+  RESERVED_ARG_FLAGS,
+} from "./application-arguments.js";
+export type {
+  ApplicationArguments,
+  ArgBinding,
+  ArgBindingIssue,
+  ArgValueType,
+  FlagArgBinding,
+  PositionalArgBinding,
+} from "./application-arguments.js";
+export {
   decodePlainLiterals,
   mapTextLeaves,
   type TextLeafMapper,

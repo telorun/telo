@@ -24,7 +24,7 @@ COPY --from=build /build /srv
 CMD ["telo", "."]
 ```
 
-The image has a smart entrypoint (like the official `node` image): a bare manifest path or a flag is routed to `telo`, so the explicit `CMD ["telo", "apps/my-app/telo.yaml", "--watch"]` and the terse `CMD ["apps/my-app/telo.yaml"]` both work. At run time, `docker run … <image> ./manifest.yaml` or `docker run … <image> --watch ./manifest.yaml` reach the CLI, while `docker run … <image> bash` drops into a shell.
+The image has a smart entrypoint (like the official `node` image): a bare manifest path or a flag is routed to `telo`, so the explicit `CMD ["telo", "--watch", "apps/my-app/telo.yaml"]` and the terse `CMD ["apps/my-app/telo.yaml"]` both work. At run time, `docker run … <image> ./manifest.yaml` or `docker run … <image> --watch ./manifest.yaml` reach the CLI, while `docker run … <image> bash` drops into a shell.
 
 ## Warm the cache with `telo install`
 

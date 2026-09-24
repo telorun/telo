@@ -58,8 +58,6 @@ export class NoopValidator implements DataValidator {
   }
 }
 
-export type ParsedArgs = Partial<Record<string, string | boolean | string[]>> & { _: string[] };
-
 /**
  * Per-call options for a by-name dispatch.
  *
@@ -79,7 +77,6 @@ export interface InvokeByNameOptions {
 }
 
 export interface ResourceContext extends ControllerContext {
-  readonly args: ParsedArgs;
   /** The id prefix of the context this resource was created in (the creating
    *  {@link EvaluationContext}'s `ownerPrefix`). A controller that spawns
    *  sub-resources composes their hierarchical ids as

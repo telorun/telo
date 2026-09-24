@@ -3,12 +3,13 @@ import { isInstanceSlot } from "@telorun/sdk";
 /**
  * Build the residual JSON Schema for a `variables` / `secrets` entry.
  *
- * For Telo.Application env-binding entries (those with an `env:` key), strips
- * the kernel-specific wrapper keys `env` and `default` — `default` here is
- * the *fallback host value* the kernel coerces when the env var is unset, not
- * a JSON Schema annotation, so it must not leak into the validator.
+ * For Telo.Application host-binding entries (those with an `env:` or `arg:`
+ * key), strips the kernel-specific wrapper keys `env`, `arg` and `default` —
+ * `default` here is the *fallback host value* the kernel coerces when no host
+ * channel supplies one, not a JSON Schema annotation, so it must not leak into
+ * the validator.
  *
- * For Telo.Library entries (no `env:`), passes the entry through unchanged.
+ * For Telo.Library entries (neither key), passes the entry through unchanged.
  * Library `default:` is a standard JSON Schema annotation and stays.
  *
  * Single source of truth for "residual schema" referenced by both the
@@ -21,14 +22,14 @@ export function residualEntrySchema(
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
     return { type: "object", additionalProperties: true };
   }
-  const isAppEnvBinding = "env" in entry;
+  const isAppEnvBinding = "env" in entry || "arg" in entry;
   // On a binding whose value is an instance (a timestamp, bytes), `type:` names
-  // how the env text is read — the plain encoding's JSON type — not the value,
+  // how the host text is read — the plain encoding's JSON type — not the value,
   // so it would refuse every decoded one.
   const coercionOnly = isAppEnvBinding && isInstanceSlot(entry);
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(entry)) {
-    if (isAppEnvBinding && (key === "env" || key === "default")) continue;
+    if (isAppEnvBinding && (key === "env" || key === "arg" || key === "default")) continue;
     if (coercionOnly && key === "type") continue;
     out[key] = value;
   }

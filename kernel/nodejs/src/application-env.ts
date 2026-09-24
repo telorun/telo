@@ -1,6 +1,10 @@
 import {
+  type ArgBinding,
   type DefResolver,
+  describeArgBinding,
   effectiveAuthorSchema,
+  readApplicationArguments,
+  renderApplicationUsage,
   residualEntrySchema,
   withLiveValuesSkipped,
 } from "@telorun/analyzer";
@@ -11,6 +15,7 @@ import type {
   TypeRule,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
+import { parseApplicationArguments } from "./application-arguments.js";
 import { create as createJsonSchemaType } from "./controllers/type/json-schema-controller.js";
 import { decodeHostValue } from "./host-paths.js";
 import { SchemaValidator } from "./schema-validator.js";
@@ -19,14 +24,15 @@ import { resolveTypeFieldSchema } from "./type-field-schema.js";
 type EntryType = "string" | "integer" | "number" | "boolean" | "object" | "array";
 
 interface EnvEntry {
-  env: string;
+  env?: string;
   type: EntryType;
+  items?: { type?: EntryType };
   default?: unknown;
   [key: string]: unknown;
 }
 
 interface PortEntry {
-  env: string;
+  env?: string;
   protocol?: "tcp" | "udp";
   default?: number;
 }
@@ -35,6 +41,17 @@ export interface EnvResolutionResult {
   variables: Record<string, unknown>;
   secrets: Record<string, unknown>;
   ports: Record<string, number>;
+  /** Set when the command line asked for `--help`: the application's usage,
+   *  answered INSTEAD of resolving anything — nothing else in the result is
+   *  populated, and the caller runs nothing. */
+  help?: string;
+}
+
+/** What the command line supplied for one block, and how each entry is spelled
+ *  there — for the value's source in a message. */
+interface ArgumentChannel {
+  values: Record<string, string | boolean | string[]>;
+  bindings: Map<string, ArgBinding>;
 }
 
 /**
@@ -64,16 +81,18 @@ const PORT_RESIDUAL_SCHEMA: Record<string, unknown> = {
 };
 
 /**
- * Populate the root Application's `variables` / `secrets` namespaces from
- * host environment variables, per the per-field `env:` mapping declared on
- * each entry.
+ * Populate the root Application's `variables` / `secrets` / `ports` namespaces
+ * from the host — the command line through each entry's `arg:` binding, the
+ * environment through its `env:` binding.
  *
- * Implements the polyglot env-resolution spec from
- * kernel/nodejs/plans/application-env-variables.md: read the env var, coerce
- * per `entry.type`, validate the coerced value (or the declared default, when
- * the env var is unset) against the entry's residual schema, and aggregate
- * every failure into a single `ERR_MANIFEST_VALIDATION_FAILED` error so all
- * problems surface before any controller initializes.
+ * For each entry the first source that has a value wins: a value supplied by
+ * name (`inputs`), then the command line, then the environment, then
+ * `default:`. The raw text is coerced per `entry.type`, validated against the
+ * entry's residual schema, and every failure — including every command-line
+ * token nothing declares — aggregates into a single
+ * `ERR_MANIFEST_VALIDATION_FAILED` error so all problems surface before any
+ * controller initializes. `--help` on the command line resolves nothing and
+ * returns the usage instead. Argument grammar: `kernel/specs/application-arguments.md`.
  *
  * This must run BEFORE any Telo.Import controller initializes — imports may
  * pass `${{ variables.X }}` as their `variables:` inputs, so the root scope
@@ -85,8 +104,23 @@ export function resolveApplicationEnv(
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
   inputs?: ApplicationInputs,
+  argv: readonly string[] = [],
 ): EnvResolutionResult {
   const errors: string[] = [];
+  const declaredArguments = readApplicationArguments(manifest);
+  for (const issue of declaredArguments.issues) errors.push(issue.message);
+  const parsed = parseApplicationArguments(declaredArguments.bindings, argv);
+  if (parsed.help && errors.length === 0) {
+    return { variables: {}, secrets: {}, ports: {}, help: renderApplicationUsage(manifest) };
+  }
+  errors.push(...parsed.errors);
+  const channel = (block: "variables" | "ports"): ArgumentChannel => ({
+    values: parsed.values[block],
+    bindings: new Map(
+      declaredArguments.bindings.filter((b) => b.block === block).map((b) => [b.name, b]),
+    ),
+  });
+
   reportUndeclaredInputs(manifest, inputs, errors);
   const variables = resolveBlock(
     manifest.variables ?? {},
@@ -95,6 +129,7 @@ export function resolveApplicationEnv(
     errors,
     false,
     inputs?.variables,
+    channel("variables"),
   );
   const secrets = resolveBlock(
     manifest.secrets ?? {},
@@ -104,11 +139,18 @@ export function resolveApplicationEnv(
     true,
     inputs?.secrets,
   );
-  const ports = resolvePorts(manifest.ports ?? {}, env, validator, errors, inputs?.ports);
+  const ports = resolvePorts(
+    manifest.ports ?? {},
+    env,
+    validator,
+    errors,
+    inputs?.ports,
+    channel("ports"),
+  );
   if (errors.length > 0) {
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
-      `Application environment validation failed:\n` +
+      `Application input validation failed:\n` +
         errors.map((e) => `  - ${e}`).join("\n"),
     );
   }
@@ -320,19 +362,20 @@ export function precompileDefinitionSchemas(
 }
 
 /**
- * Populate the root Application's `ports` namespace from host environment
- * variables. Mirrors `resolveBlock` but fixes the value type to a port integer
- * (1–65535): read `entry.env`, coerce the raw value as an integer, validate it
- * against `PORT_RESIDUAL_SCHEMA`, and fall back to `entry.default` when the env
- * var is unset. Failures aggregate into the shared `errors` list so they
- * surface alongside variable/secret problems.
+ * Populate the root Application's `ports` namespace. Mirrors `resolveBlock` but
+ * fixes the value type to a port integer (1–65535): the host text — from the
+ * command line, else `entry.env` — is coerced as an integer and validated
+ * against `PORT_RESIDUAL_SCHEMA`, falling back to `entry.default`. Failures
+ * aggregate into the shared `errors` list so they surface alongside
+ * variable/secret problems.
  */
 function resolvePorts(
   block: Record<string, PortEntry> | unknown,
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
   errors: string[],
-  supplied?: Record<string, number>,
+  supplied: Record<string, number> | undefined,
+  args: ArgumentChannel,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   if (!block || typeof block !== "object" || Array.isArray(block)) {
@@ -341,18 +384,15 @@ function resolvePorts(
   for (const [name, entry] of Object.entries(block as Record<string, PortEntry>)) {
     if (!entry || typeof entry !== "object") continue;
     // A supplied value is already in the value domain — it came from a parent
-    // manifest, not from a string in the environment — so it is validated but
-    // never coerced.
+    // manifest, not from host text — so it is validated but never coerced.
     if (supplied && Object.hasOwn(supplied, name)) {
       const validation = validateResidual(supplied[name], PORT_RESIDUAL_SCHEMA, validator);
       if (validation) errors.push(`${name}: ${validation}`);
       else out[name] = supplied[name];
       continue;
     }
-    const envKey = entry.env;
-    const raw = env[envKey];
-
-    if (raw === undefined || raw === null) {
+    const host = hostText(name, entry, env, args);
+    if (host === undefined) {
       if (entry.default !== undefined) {
         const validation = validateResidual(entry.default, PORT_RESIDUAL_SCHEMA, validator);
         if (validation) {
@@ -362,13 +402,13 @@ function resolvePorts(
         }
         continue;
       }
-      errors.push(`${name}: environment variable ${envKey} is not set (no default)`);
+      errors.push(`${name}: ${describeMissing(name, entry, args)}`);
       continue;
     }
 
     let coerced: unknown;
     try {
-      coerced = coerce(raw, "integer", envKey, false);
+      coerced = coerce(host.raw as string, "integer", host.source, false);
     } catch (e) {
       errors.push(`${name}: ${(e as Error).message}`);
       continue;
@@ -392,6 +432,7 @@ function resolveBlock(
   errors: string[],
   isSecret: boolean,
   supplied?: Record<string, unknown>,
+  args?: ArgumentChannel,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!block || typeof block !== "object" || Array.isArray(block)) {
@@ -408,10 +449,8 @@ function resolveBlock(
       else out[name] = supplied[name];
       continue;
     }
-    const envKey = entry.env;
-    const raw = env[envKey];
-
-    if (raw === undefined || raw === null) {
+    const host = hostText(name, entry, env, args);
+    if (host === undefined) {
       if (entry.default !== undefined) {
         // Decoded on a copy: the default is the manifest's own literal.
         const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
@@ -423,13 +462,13 @@ function resolveBlock(
         }
         continue;
       }
-      errors.push(`${name}: environment variable ${envKey} is not set (no default)`);
+      errors.push(`${name}: ${describeMissing(name, entry, args)}`);
       continue;
     }
 
     let coerced: unknown;
     try {
-      coerced = decodeFromOutside(coerce(raw, entry.type, envKey, isSecret), residual, validator);
+      coerced = decodeFromOutside(coerceHostText(host, entry, isSecret), residual, validator);
     } catch (e) {
       errors.push(`${name}: ${(e as Error).message}`);
       continue;
@@ -444,6 +483,58 @@ function resolveBlock(
     out[name] = coerced;
   }
   return out;
+}
+
+/** The host text an entry receives and where it came from — the command line
+ *  first, then the environment — or `undefined` when neither supplies one. A
+ *  boolean flag arrives already read; a repeated flag as its list of tokens. */
+interface HostText {
+  raw: string | boolean | string[];
+  source: string;
+}
+
+function hostText(
+  name: string,
+  entry: { env?: string },
+  env: Record<string, string | undefined>,
+  args: ArgumentChannel | undefined,
+): HostText | undefined {
+  const binding = args?.bindings.get(name);
+  if (binding && args && Object.hasOwn(args.values, name)) {
+    return { raw: args.values[name]!, source: `argument ${describeArgBinding(binding)}` };
+  }
+  if (typeof entry.env === "string") {
+    const raw = env[entry.env];
+    if (raw !== undefined && raw !== null) {
+      return { raw, source: `environment variable ${entry.env}` };
+    }
+  }
+  return undefined;
+}
+
+/** A command-line value is read per token — each element of a repeated flag by
+ *  `items.type` — where an environment value of an array or object type is one
+ *  JSON document. */
+function coerceHostText(host: HostText, entry: EnvEntry, isSecret: boolean): unknown {
+  if (typeof host.raw === "boolean") return host.raw;
+  if (Array.isArray(host.raw)) {
+    const itemType = (entry.items?.type ?? "string") as EntryType;
+    return host.raw.map((token) => coerce(token, itemType, host.source, isSecret));
+  }
+  return coerce(host.raw, entry.type, host.source, isSecret);
+}
+
+function describeMissing(
+  name: string,
+  entry: { env?: string },
+  args: ArgumentChannel | undefined,
+): string {
+  const binding = args?.bindings.get(name);
+  const channels = [
+    ...(binding ? [`argument ${describeArgBinding(binding)} was not given`] : []),
+    ...(typeof entry.env === "string" ? [`environment variable ${entry.env} is not set`] : []),
+  ];
+  return `${channels.join(" and ")} (no default)`;
 }
 
 /**
@@ -506,7 +597,7 @@ function renderRawForError(raw: string, isSecret: boolean): string {
 function coerce(
   raw: string,
   type: EntryType,
-  envKey: string,
+  source: string,
   isSecret: boolean,
 ): unknown {
   switch (type) {
@@ -516,7 +607,7 @@ function coerce(
       const trimmed = raw.trim();
       if (!/^-?\d+$/.test(trimmed)) {
         throw new Error(
-          `environment variable ${envKey}: value ${renderRawForError(raw, isSecret)} is not a valid integer`,
+          `${source}: value ${renderRawForError(raw, isSecret)} is not a valid integer`,
         );
       }
       return parseInt(trimmed, 10);
@@ -525,7 +616,7 @@ function coerce(
       const n = parseFloat(raw);
       if (Number.isNaN(n)) {
         throw new Error(
-          `environment variable ${envKey}: value ${renderRawForError(raw, isSecret)} is not a valid number`,
+          `${source}: value ${renderRawForError(raw, isSecret)} is not a valid number`,
         );
       }
       return n;
@@ -534,22 +625,22 @@ function coerce(
       if (raw === "true") return true;
       if (raw === "false") return false;
       throw new Error(
-        `environment variable ${envKey}: value ${renderRawForError(raw, isSecret)} is not a valid boolean (expected "true" or "false")`,
+        `${source}: value ${renderRawForError(raw, isSecret)} is not a valid boolean (expected "true" or "false")`,
       );
     case "object": {
-      const parsed = parseJson(raw, envKey, isSecret);
+      const parsed = parseJson(raw, source, isSecret);
       if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error(
-          `environment variable ${envKey}: expected JSON object, got ${describeJsonType(parsed)}`,
+          `${source}: expected JSON object, got ${describeJsonType(parsed)}`,
         );
       }
       return parsed;
     }
     case "array": {
-      const parsed = parseJson(raw, envKey, isSecret);
+      const parsed = parseJson(raw, source, isSecret);
       if (!Array.isArray(parsed)) {
         throw new Error(
-          `environment variable ${envKey}: expected JSON array, got ${describeJsonType(parsed)}`,
+          `${source}: expected JSON array, got ${describeJsonType(parsed)}`,
         );
       }
       return parsed;
@@ -557,14 +648,14 @@ function coerce(
   }
 }
 
-function parseJson(raw: string, envKey: string, isSecret: boolean): unknown {
+function parseJson(raw: string, source: string, isSecret: boolean): unknown {
   try {
     return JSON.parse(raw);
   } catch (e) {
     // Node's JSON.parse error embeds the offending character / position; for
     // secrets, swallow the parser detail and surface only the env var name.
     const detail = isSecret ? "value is not valid JSON" : (e as Error).message;
-    throw new Error(`environment variable ${envKey}: ${isSecret ? detail : `value is not valid JSON: ${detail}`}`);
+    throw new Error(`${source}: ${isSecret ? detail : `value is not valid JSON: ${detail}`}`);
   }
 }
 

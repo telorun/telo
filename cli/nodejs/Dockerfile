@@ -46,7 +46,7 @@ RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
 WORKDIR /workspace
 # Smart entrypoint (mirrors node's docker-entrypoint.sh): a bare manifest path or
 # flag is routed to `telo`, while `bash`/`node`/`telo …` run verbatim. A derived
-# image can write `CMD ["telo", ".", "--watch"]` or the terse `CMD ["./telo.yaml"]`.
+# image can write `CMD ["telo", "--watch", "."]` or the terse `CMD ["./telo.yaml"]`.
 ENTRYPOINT ["telo-entrypoint.sh"]
 CMD ["telo"]
 

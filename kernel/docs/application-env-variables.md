@@ -56,12 +56,15 @@ Each entry under `variables:` / `secrets:` is a single object that combines the 
 
 | Field        | Required | Description                                                                                                                                                                                                  |
 | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `env`        | yes      | Name of the host environment variable to read.                                                                                                                                                               |
+| `env`        | yes¹     | Name of the host environment variable to read.                                                                                                                                                               |
+| `arg`        | no¹      | The command-line argument to read — a flag name, `{ flag, short? }` or `{ position }`. Not on `secrets:`. See [Command-line arguments](#command-line-arguments).                                            |
 | `type`       | yes      | One of `string`, `integer`, `number`, `boolean`, `object`, `array`. Drives the coercion rule applied to the raw env-var string.                                                                              |
-| `default`    | no       | Typed fallback used when the env var is unset. If omitted and the env var is missing, `kernel.load()` fails with `ERR_MANIFEST_VALIDATION_FAILED`.                                                           |
+| `default`    | no       | Typed fallback used when neither the argument nor the env var is given. If omitted and both are missing, `kernel.load()` fails with `ERR_MANIFEST_VALIDATION_FAILED`.                                        |
 | _any other_  | no       | Standard JSON Schema keywords applied after coercion — `minimum`, `maximum`, `enum`, `pattern`, `format`, `properties`, `required`, `items`, `minItems`, `oneOf`, … Apply only those that match the `type:`. |
 
-The `env:` key is the only thing that distinguishes Application entries from Library entries. Same block names, same CEL access, same author-facing shape — Application carries `env:` per field; Library entries do not.
+¹ A `variables:` entry needs `env:`, `arg:` or both, and one bound by `arg:` alone needs a `default:` — a runner session supplies inputs through the environment; a `secrets:` entry needs `env:`.
+
+The `env:` / `arg:` keys are the only thing that distinguishes Application entries from Library entries. Same block names, same CEL access, same author-facing shape — Application carries the host bindings per field; Library entries do not.
 
 ---
 
@@ -76,7 +79,7 @@ The `env:` key is the only thing that distinguishes Application entries from Lib
 | `object`  | `JSON.parse(value)`. The parsed value must be a JSON object (`{ … }`); other top-level types (array, number, string, …) fail with `"expected JSON object, got <type>"`.   |
 | `array`   | `JSON.parse(value)`. The parsed value must be a JSON array (`[ … ]`); other top-level types fail with `"expected JSON array, got <type>"`.                                |
 
-After coercion, the value is validated against the residual JSON Schema (the entry with `env` and `default` stripped) using a standard JSON Schema draft 2020-12 validator.
+After coercion, the value is validated against the residual JSON Schema (the entry with `env`, `arg` and `default` stripped) using a standard JSON Schema draft 2020-12 validator.
 
 Object and array types are useful when a single env var needs to carry structured config:
 
@@ -107,13 +110,17 @@ SERVER_TLS='{"cert":"abc","key":"def"}' ALLOWED_ORIGINS='["https://a","https://b
 Every error encountered during env-var resolution — missing required entries, coercion failures, schema violations — is collected and reported in a single `ERR_MANIFEST_VALIDATION_FAILED` error before any controller initializes. You see all problems at once instead of failing fast on the first one:
 
 ```txt
-Application environment validation failed:
+Application input validation failed:
   - port: environment variable PORT is not set (no default)
   - logLevel: must be equal to one of the allowed values (debug | info | warn | error)
   - tls: environment variable SERVER_TLS: value is not valid JSON: …
 ```
 
 ---
+
+## Command-line arguments
+
+A `variables:` entry may also bind a command-line argument with `arg:`, beside or instead of `env:`; a `ports:` entry may add one beside its `env:`. Every token after the manifest path (`telo run [options] <path> [arguments]`) belongs to the application and is read against these bindings; the command line wins over the environment, which wins over `default:`. A repeated flag fills an array-typed entry — each token read by `items.type`, never JSON-decoded — and an argument the application does not declare is one more entry in the same `ERR_MANIFEST_VALIDATION_FAILED` report. `--help` prints the usage the bindings describe instead of running. The normative grammar is [Application arguments](../specs/application-arguments.md).
 
 ## Unused declarations
 
