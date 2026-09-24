@@ -1,0 +1,13 @@
+# Two entries bound to one flag: which one `--name` sets is undecidable.
+kind: Telo.Application
+metadata:
+  name: ArgBindingInvalid
+variables:
+  first:
+    type: string
+    arg: name
+    default: a
+  second:
+    type: string
+    arg: name
+    default: b

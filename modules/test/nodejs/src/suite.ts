@@ -7,10 +7,6 @@ import { fileURLToPath } from "url";
 
 const DEFAULT_CONCURRENCY = 3;
 
-export const args = {
-  filter: { type: "string" as const, alias: "f", description: "Filter tests by name substring" },
-};
-
 const schema = Type.Object({
   metadata: Type.Object({
     name: Type.String(),
@@ -93,7 +89,7 @@ function discoverTests(
 /** POSIX separators, matching how discovery already normalizes the paths it
  *  globs against — a label that reads `modules\shell\tests\x.yaml` on one host
  *  and `modules/shell/tests/x.yaml` on another makes the same failure look like
- *  two, and is what a user copies back into `--filter`. */
+ *  two, and is what a user copies back into the filter. */
 function labelFor(testPath: string, baseDir: string): string {
   return path.relative(baseDir, testPath).split(path.sep).join("/");
 }
@@ -234,7 +230,8 @@ export async function create(
 
       const include = manifest.include ?? ["**/tests/*.yaml"];
       const exclude = manifest.exclude ?? ["**/__fixtures__/**"];
-      const filter = (ctx.args.filter as string) || (ctx.args._[0] as string) || manifest.filter;
+      const filter = manifest.filter || undefined;
+      const requestedConcurrency = manifest.concurrency ?? DEFAULT_CONCURRENCY;
 
       const tests = discoverTests(baseDir, include, exclude, filter);
 
@@ -246,7 +243,6 @@ export async function create(
       const singleTest = tests.length === 1;
       const results: TestResult[] = [];
 
-      const requestedConcurrency = manifest.concurrency ?? DEFAULT_CONCURRENCY;
       const concurrency = singleTest ? 1 : Math.max(1, Math.min(requestedConcurrency, tests.length));
 
       let nextIdx = 0;

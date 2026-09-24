@@ -132,11 +132,13 @@ export function buildSessionPod(args: BuildPodArgs): V1Pod {
           workingDir: WORK_DIR,
           // 0.0.0.0 (not the CLI's loopback default) lets the runner reach the
           // debug server across the pod network; the port is never published.
+          // `telo run`'s own options precede the path: everything after it
+          // is the application's.
           command: [
             "telo",
             "run",
-            `${APP_DIR}/${args.entryRelativePath}`,
             ...(args.inspect ? ["--inspect", `0.0.0.0:${INSPECT_PORT}`, "--no-open"] : []),
+            `${APP_DIR}/${args.entryRelativePath}`,
           ],
           env: envVars,
           stdin: true,
@@ -515,7 +517,7 @@ function appContainer(args: BuildWatchPodArgs, app: BackendAppSpec, index: numbe
       "sh",
       "-c",
       'while [ ! -f "$TELO_ENTRY" ]; do sleep 0.2; done; ' +
-        'exec telo run "$TELO_ENTRY" --watch --inspect "$TELO_INSPECT_ADDR" --no-open',
+        'exec telo run --watch --inspect "$TELO_INSPECT_ADDR" --no-open "$TELO_ENTRY"',
     ],
     env,
     stdin: true,

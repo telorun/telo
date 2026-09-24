@@ -178,6 +178,9 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `MODULE_VERSION_HOISTED` ⚠️ | One identity imported from two sources whose contents differ; one won. Align them to be sure which. |
 | `INVALID_EXPORT` | `exports.resources` entries are plain name strings (`Name` or `Alias.Name`) — not `!ref`. |
 | `LIBRARY_ENV_KEY_REJECTED` | `env:` is only valid on a `Telo.Application`. A library receives values from its importer. |
+| `LIBRARY_ARG_KEY_REJECTED` | `arg:` is only valid on a `Telo.Application`: only the application being run reads the command line. A library receives values from its importer. |
+| `ARG_BINDING_INVALID` | An Application entry's `arg:` cannot be parsed against: a variable bound by `arg:` alone with no `default:` (a runner session could not supply it), a flag spelled `no-…` or `help`, a type the command line cannot carry (only scalars and arrays of scalars), two entries sharing a flag, short or position, a gap between positions, or an array before the last position. See [Application arguments](/reference/kernel/specs/application-arguments). |
+| `ARG_BINDING_ON_SECRET` | A `secrets:` entry carries `arg:`. A command line is readable in the process table and in shell history — bind the secret with `env:`. |
 | `MANIFEST_PARSE_FAILED` | The YAML itself did not parse. |
 | `MODULE_REQUIRES_NEWER_RUNTIME` | The module declares `requires: telo: ">=X"` (or a `host:` axis) and this runtime is older. **The module is fine; the runtime is too old.** Every other diagnostic from that module is suppressed, since they are consequences of the same skew. Upgrade telo, or pin the module to a version whose range accepts yours. See [Upgrades & version skew](/deploy/upgrades). |
 | `REQUIRES_INVALID` | A `requires:` block is malformed: `^` / `~` / a bare version / `\|\|` / a wildcard, or an unknown axis. Each bound must be testable — write `>=0.80.0`. Reported only for the entry's own modules. |
@@ -277,7 +280,7 @@ Reported by `telo release`, and by the editor as you type. See
 
 | Code | What it means and what to do |
 | --- | --- |
-| `ERR_MANIFEST_VALIDATION_FAILED` | A declared `variables:` / `secrets:` / `ports:` entry is missing from the environment or failed coercion. All failures are aggregated before any controller initializes. |
+| `ERR_MANIFEST_VALIDATION_FAILED` | A declared `variables:` / `secrets:` / `ports:` entry was given by neither the command line nor the environment and has no default, or its value failed coercion — or the command line holds an argument the application does not declare. All failures are aggregated before any controller initializes. |
 | `ERR_RUNTIME_INVALID` | An import's `runtime:` is neither a string nor an array of strings. |
 | `ERR_CIRCULAR_DEPENDENCY` | A resource graph — the application's, or an imported library's — contains a cycle, a function calling itself included. The static form is `DEPENDENCY_CYCLE`. |
 | `ERR_CALLABLE_DEFINITION_INVALID` | A callable kind, a function resource, or a kind holding a function through an untyped slot is refused at registration. The message lists each clause as `<CODE> at <path>: <message>`; the static forms are `CALLABLE_DEFINITION_INVALID`, `X_TELO_REF_CALLABLE_UNTYPED`, `FUNCTION_OPTIONAL_NOT_TRAILING`, `FUNCTION_TYPE_NAME_FORM`, `FUNCTION_NAME_RESERVED` and `CONTRACT_TYPE_NOT_FOUND`. |

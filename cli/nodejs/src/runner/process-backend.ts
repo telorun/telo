@@ -386,7 +386,9 @@ interface SpawnAppArgs {
  */
 function spawnApp(args: SpawnAppArgs): ChildProcess {
   const entry = path.join(args.workspaceDir, args.app.entryRelativePath);
-  const teloArgs = ["run", entry];
+  // `telo run`'s own options precede the path: everything after it is the
+  // application's.
+  const teloArgs = ["run"];
   if (args.watch) teloArgs.push("--watch");
   if (args.inspectPort !== undefined) {
     // Loopback only, and never published: this endpoint is the runner's own
@@ -394,6 +396,7 @@ function spawnApp(args: SpawnAppArgs): ChildProcess {
     // on the user's desktop for a session they are already watching.
     teloArgs.push("--inspect", `127.0.0.1:${args.inspectPort}`, "--no-open");
   }
+  teloArgs.push(entry);
 
   const { command, args: argv } = selfCommand(teloArgs);
   const child = spawn(command, argv, {

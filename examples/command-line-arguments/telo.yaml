@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: GreetCli
+  version: 1.0.0
+  categories: [Configuration]
+  description: |
+    A command-line program written as a manifest. Each input is a `variables:`
+    entry bound to the command line with `arg:` — a positional name, a
+    repeatable flag, short aliases and a boolean with its `--no-` form — and
+    two of them fall back to an environment variable. Every argument after
+    the manifest belongs to the application — run it with `--help` to list
+    what it accepts.
+requires:
+  telo: ">=0.100.0"
+variables:
+  name:
+    type: string
+    minLength: 1
+    description: Who to greet.
+    arg: { position: 0 }
+    env: GREET_NAME
+    default: world
+    examples: [Ada]
+  also:
+    type: array
+    items: { type: string, minLength: 1 }
+    description: Someone else to greet as well.
+    arg: { flag: also, short: a }
+    default: []
+    examples: [[Grace, Linus]]
+  greeting:
+    type: string
+    minLength: 1
+    description: The word to greet with.
+    arg: { flag: greeting, short: g }
+    default: Hello
+  shout:
+    type: boolean
+    description: Greet in capitals.
+    arg: shout
+    env: GREET_SHOUT
+    default: false
+    examples: [true]
+imports:
+  Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+targets:
+  - !ref greet
+---
+# One pass per person: the positional name first, then every `--also`.
+kind: Run.Iteration
+metadata:
+  name: greet
+collection: !cel "[variables.name] + variables.also"
+steps:
+  - name: line
+    value: !cel 'variables.greeting + ", " + item + "!"'
+  - name: print
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "variables.shout ? upper(steps.line.result) : steps.line.result"

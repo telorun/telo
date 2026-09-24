@@ -39,7 +39,7 @@ RUN mkdir -p /telo-cache && chown node:node /telo-cache
 # READ through the mount, because everything written goes to the cache above.
 USER node
 
-CMD ["pnpm", "run", "--silent", "telo", "apps/hub/telo.yaml", "--watch"]
+CMD ["pnpm", "run", "--silent", "telo", "--watch", "apps/hub/telo.yaml"]
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as build
 

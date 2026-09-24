@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: LibraryWithArgOnVariable
+variables:
+  shouldBeRejected:
+    type: string
+    arg: name

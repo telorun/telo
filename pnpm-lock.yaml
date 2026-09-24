@@ -1982,6 +1982,9 @@ importers:
       '@mdx-js/react':
         specifier: ^3.1.0
         version: 3.1.1(@types/react@19.2.14)(react@19.2.4)
+      '@telorun/analyzer':
+        specifier: workspace:*
+        version: link:../analyzer/nodejs
       '@telorun/templating':
         specifier: workspace:*
         version: link:../templating/nodejs

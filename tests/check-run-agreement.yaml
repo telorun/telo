@@ -38,6 +38,8 @@ targets:
   - !ref duplicateName
   - !ref duplicateNameAtRuntime
   - !ref ownNamePrefix
+  - !ref argBindingInvalid
+  - !ref argBindingOnSecret
   - !ref bodyOutwardRef
   - !ref inheritedRequiredHint
   - !ref inlineStepNestedInline
@@ -1327,4 +1329,26 @@ expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
       message: "at 'languages[1]': lists two language models under the same code"
+  runFails: "Manifest validation failed"
+---
+# A command-line binding the kernel cannot parse argv against is refused by
+# `telo check`, and by the kernel before any resource starts.
+kind: Assert.Manifest
+metadata:
+  name: argBindingInvalid
+source: ./__fixtures__/check-run-agreement/arg-binding-invalid.yaml
+expect:
+  errors:
+    - code: ARG_BINDING_INVALID
+      message: "flag '--name' is already bound by variables.first"
+  runFails: "Manifest validation failed"
+---
+kind: Assert.Manifest
+metadata:
+  name: argBindingOnSecret
+source: ./__fixtures__/check-run-agreement/arg-binding-on-secret.yaml
+expect:
+  errors:
+    - code: ARG_BINDING_ON_SECRET
+      message: "a secret cannot be bound to the command line"
   runFails: "Manifest validation failed"

@@ -1865,9 +1865,21 @@ system: |
   - `variables:` / `secrets:` — NAME-KEYED MAPS. Each entry binds an `env:` var
     name plus a JSON-Schema `type:` (`string|integer|number|boolean|object|
     array`) and optional `default:`. Read in CEL as `variables.X` / `secrets.X`.
+    An Application `variables:` entry may ALSO (or instead) bind a command-line
+    argument with `arg:` — `arg: port` (the flag `--port`),
+    `arg: { flag: verbose, short: v }`, or `arg: { position: 0 }` (the first
+    bare argument). Everything after the manifest path is the application's:
+    `telo run [telo options] ./telo.yaml --port 9000`, and
+    `telo run ./telo.yaml --help` prints the usage. The command line wins over
+    the env var, which wins over `default:`; an array type collects a repeated
+    flag (`--include a --include b`, each token read by `items.type`). Only
+    scalars and arrays of scalars can be bound. A variable bound by `arg:`
+    alone needs a `default:` (runners and the studio only set env vars). NEVER put `arg:` on a secret
+    (`ARG_BINDING_ON_SECRET` — a command line is visible to other processes) or
+    in a Library (`LIBRARY_ARG_KEY_REJECTED`).
   - `ports:` (Application only) — NAME-KEYED MAP. Each entry binds an `env:` var
-    and optional `default:`; the value is implicitly a port integer. Read as
-    `ports.X`.
+    (required), optionally an `arg:` beside it, and optional `default:`; the
+    value is implicitly a port integer. Read as `ports.X`.
   - `targets:` (Application only) — a flat boot list of `!ref`s to the
     Runnables / Services to start after resources init. ORDER MATTERS: a Service
     prepares in `init()` but does not begin accepting events until it is run

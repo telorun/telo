@@ -8,6 +8,33 @@ metadata:
     alone — they are ordinary tests, not a different kind of check.
 
         OPENAI_API_KEY=… telo ./examples/test-suite-live.yaml
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include
+    description: Glob pattern selecting the test manifests to run, relative to this file.
+    default:
+    - "agent-console/tests/*.yaml"
+    - "chat-console/tests/*.yaml"
+  exclude:
+    type: array
+    items: { type: string }
+    arg: exclude
+    description: Glob pattern excluding test manifests, relative to this file.
+    default:
+    - "**/__fixtures__/**"
+  filter:
+    type: string
+    arg: { position: 0 }
+    description: Run only the tests whose path contains this text.
+    default: ""
+  concurrency:
+    type: integer
+    minimum: 1
+    arg: concurrency
+    description: How many tests run at once.
+    default: 3
 imports:
   Test: ../modules/test
 targets:
@@ -15,6 +42,7 @@ targets:
 ---
 kind: Test.Suite
 metadata: { name: runLive }
-include:
-  - "agent-console/tests/*.yaml"
-  - "chat-console/tests/*.yaml"
+include: !cel "variables.include"
+exclude: !cel "variables.exclude"
+filter: !cel "variables.filter"
+concurrency: !cel "variables.concurrency"

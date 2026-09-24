@@ -216,18 +216,15 @@ jobs:
             exit 0
           fi
           git fetch --no-tags origin "${{ github.base_ref }}" || true
-          # FAIL OPEN, and read the ANSWER rather than the exit code: `changed`
-          # exits 1 for "unchanged", which is also what a crash, a bad flag or a
-          # missing toolchain exits. Treating that as "nothing changed" turns a
-          # broken gate into a silently disabled test — the one outcome worse
-          # than paying for a run. Only an explicit `false` skips.
-          # `|| true` because this shell is `bash -eo pipefail`: "unchanged" IS
-          # a non-zero exit, and it would kill the step before the test below.
-          verdict=$(pnpm run --silent telo changed \
-               ./examples/agent-console ./examples/chat-console \
+          # FAIL OPEN: only an explicit empty `affected` list skips. A crash, a
+          # bad flag or a missing toolchain yields no list, and treating that as
+          # "nothing changed" turns a broken gate into a silently disabled test
+          # — the one outcome worse than paying for a run.
+          affected=$(pnpm run --silent telo changed \
+               examples/agent-console/telo.yaml examples/chat-console/telo.yaml \
                examples/test-suite-live.yaml .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed') || true
-          if [ "$verdict" = "false" ]; then
+               --base "origin/${{ github.base_ref }}" -o json | jq '.affected | length') || true
+          if [ "$affected" = "0" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No agent-console/chat-console changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
           else
@@ -315,17 +312,14 @@ jobs:
           # depth-limited ref has no merge base with HEAD, and the three-dot
           # diff below needs one.
           git fetch --no-tags origin "${{ github.base_ref }}" || true
-          # FAIL OPEN, and read the ANSWER rather than the exit code: `changed`
-          # exits 1 for "unchanged", which is also what a crash, a bad flag or a
-          # missing toolchain exits. Treating that as "nothing changed" turns a
-          # broken gate into a silently disabled test — the one outcome worse
-          # than paying for a run. Only an explicit `false` skips.
-          # `|| true` because this shell is `bash -eo pipefail`: "unchanged" IS
-          # a non-zero exit, and it would kill the step before the test below.
-          verdict=$(pnpm run --silent telo changed \
-               ./apps/authoring-agent .github/workflows/e2e.yml \
-               --base "origin/${{ github.base_ref }}" -o json | jq -r '.changed') || true
-          if [ "$verdict" = "false" ]; then
+          # FAIL OPEN: only an explicit empty `affected` list skips. A crash, a
+          # bad flag or a missing toolchain yields no list, and treating that as
+          # "nothing changed" turns a broken gate into a silently disabled test
+          # — the one outcome worse than paying for a run.
+          affected=$(pnpm run --silent telo changed \
+               apps/authoring-agent/telo.yaml .github/workflows/e2e.yml \
+               --base "origin/${{ github.base_ref }}" -o json | jq '.affected | length') || true
+          if [ "$affected" = "0" ]; then
             echo "run=false" >> $GITHUB_OUTPUT
             echo "No authoring-agent changes — skipping the live suite." >> $GITHUB_STEP_SUMMARY
           else

@@ -342,6 +342,30 @@ const LOG_SINK_COMMON_PROPERTIES = {
   flush_interval: { type: "string", pattern: DURATION_PATTERN },
 };
 
+/** An Application input entry's command-line binding: a flag name, `{ flag,
+ *  short? }`, or `{ position }`. Closed, and the one check of its spelling; the
+ *  rules relating a binding to its entry and to the others (types, a reserved
+ *  or negation-like flag, uniqueness, contiguous positions) are
+ *  `application-arguments.ts`. */
+const ARG_FLAG_SCHEMA = { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9-]*$" };
+const ARG_BINDING_SCHEMA = {
+  anyOf: [
+    ARG_FLAG_SCHEMA,
+    {
+      type: "object",
+      required: ["flag"],
+      properties: { flag: ARG_FLAG_SCHEMA, short: { type: "string", pattern: "^[A-Za-z]$" } },
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      required: ["position"],
+      properties: { position: { type: "integer", minimum: 0 } },
+      additionalProperties: false,
+    },
+  ],
+};
+
 /** Threshold / redaction / sampling — the fields an `imports:` entry may
  *  override for its subtree (§12.2). Deliberately excludes `sinks`: sinks are
  *  process-level I/O and belong to the root Application that owns the process,
@@ -1001,21 +1025,27 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             ],
           },
         },
-        // Application-level environment contract. Each entry layers `env:`
-        // (required, names the source env var) and `default:` (optional, used
-        // when the env var is unset) on top of an open JSON Schema property
-        // schema. `type:` constrains the coercion rule applied to the raw env
-        // string (scalars per-type; `object` / `array` via JSON.parse with the
-        // matching top-level type). All other JSON Schema keywords are passed
-        // through unchanged and applied to the coerced value via the standard
-        // schema validator. See kernel/nodejs/src/application-env.ts.
+        // Application-level input contract. Each entry binds one or both host
+        // channels — `env:` (the source env var) and `arg:` (a command-line flag
+        // or position) — plus `default:` (optional, used when no channel
+        // supplies a value) on top of an open JSON Schema property schema.
+        // `type:` constrains the coercion rule applied to the raw text (scalars
+        // per-type; an env value of type `object` / `array` via JSON.parse, a
+        // repeated flag per `items.type`). All other JSON Schema keywords are
+        // passed through unchanged and applied to the coerced value via the
+        // standard schema validator. The rules relating several `arg:` bindings
+        // are `validate-application-arguments.ts`. See
+        // kernel/nodejs/src/application-env.ts and
+        // kernel/specs/application-arguments.md.
         variables: {
           type: "object",
           additionalProperties: {
             type: "object",
-            required: ["env", "type"],
+            required: ["type"],
+            anyOf: [{ required: ["env"] }, { required: ["arg"] }],
             properties: {
               env: { type: "string" },
+              arg: ARG_BINDING_SCHEMA,
               type: {
                 type: "string",
                 enum: ["string", "integer", "number", "boolean", "object", "array"],
@@ -1047,6 +1077,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         // exposed ports before launch, and the analyzer brands the resolved
         // `ports.<name>` value (tcp → TcpPort, udp → UdpPort) for static wiring
         // checks. Application-only. See kernel/nodejs/src/application-env.ts.
+        // `env:` stays required beside `arg:`: a runner publishes a port before
+        // boot and supplies it through the environment, so a port the command
+        // line alone could set is one a runner could never expose.
         ports: {
           type: "object",
           additionalProperties: {
@@ -1054,6 +1087,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             required: ["env"],
             properties: {
               env: { type: "string" },
+              arg: ARG_BINDING_SCHEMA,
               protocol: {
                 type: "string",
                 enum: ["tcp", "udp"],
