@@ -1,0 +1,10 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library's internals, so the kernel's own refusal is what remains here.
+kind: Telo.Application
+metadata:
+  name: CssSelectorLiteralApp
+imports:
+  Lib: ./lib
+targets:
+  - name: pick
+    invoke: !ref Lib.pick

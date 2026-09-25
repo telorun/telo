@@ -1501,6 +1501,32 @@ system: !literal |
       published module may still carry them and the runtime rewrites them on
       load, but never WRITE them — write `x-telo-type` instead.
 
+  ## Checked text — Telo formats
+
+  A selector field is a PLAIN STRING checked as `format: css-selector` — never
+  a value type. Declare it `type: string, format: css-selector`. The grammar is
+  a Selectors Level 4 selector list with no pseudo-elements (`p::before`), no
+  namespace prefixes (`svg|a`) and no leading combinator (`> a`); a selector
+  relative to the element it is matched from starts with `:scope`
+  (`:scope > h2`, `:has(> img)`). A literal outside the grammar is a
+  `telo check` error naming the offset and what was expected; a `!cel` value
+  there passes the check and its result is refused at creation (or dispatch)
+  with the same reason.
+
+  ## Typing a collection of entries — schema projections
+
+  A kind whose config is a collection of typed entries types what its consumers
+  read from them with `x-telo-schema-projection` on the kind document (beside
+  `schema:`): `entries` (pointer to the collection), `key` (the entry field
+  whose value picks an `x-telo-schema-map` entry), optional `name` (for an
+  array collection), `array` / `nullable` (modifier fields; an omitted one reads
+  its field's `default:`), `nested` (an entry field holding a sub-collection of
+  the SAME entry shape — the entry then projects to that sub-collection's closed
+  object, recursively) and `reference`. No other key is allowed. A consumer
+  slot declares `x-telo-schema-projection-from: <pointer to a ref>`, or `""` for
+  the declaration it is written on — which is how a kind's own `outputType`
+  types `steps.x.result.fields.cards[0].name` from its `fields:` entries.
+
   ## Functions — a computation CEL calls by name
 
   A calculation repeated across expressions is a FUNCTION: a resource of
@@ -1628,6 +1654,69 @@ system: !literal |
   straight in. `Multipart.Reader` is the same thing read incrementally — a stream
   of parts, each a stream of bytes — for an upload too large to hold; advancing
   past a part discards its remainder, so skipping one is safe.
+
+  ## Web pages — the `html` module
+
+  Parse ONCE with `Html.JsonTree` (`html:` text, or `{ bytes, charset? }` for an
+  undecoded response; `baseUrl:` the page's URL so relative links resolve), then
+  hand the page to every other html kind as `document: !cel "steps.<parse>.result"`
+  — each takes `{ document }`, never raw HTML. The page is an `Html.Parsed`
+  (`nodes`, `baseUrl`) of `Html.Node`s, readable in CEL:
+  `n.type == 'element' && 'href' in n.attrs`. `Html.Selection` (`selector:`) keeps
+  the matching subtrees; `Html.Markup` / `Html.PlainText` / `Html.Markdown` render;
+  `Html.Metadata` reads title, meta, links and JSON-LD; `Html.MainContent` isolates
+  the article (`content` is a page again — pipe it into `Html.Markdown`).
+
+  Scrape with `Html.Extraction`, whose result is TYPED from its own `fields:`, so
+  `steps.x.result.fields.cards[0].name` is checked and a typo is an error:
+
+      - name: shop
+        invoke:
+          kind: Html.Extraction
+          fields:
+            title: { selector: h1, type: text }
+            cards:
+              selector: .card
+              many: true
+              fields:
+                name: { selector: ":scope > h2", type: text }
+                price: { selector: .price, type: number }
+        inputs: { document: !cel "steps.parse.result" }
+
+  A field has `type` (`text|html|attr|number|integer`, `attr:` with `attr`) OR a
+  nested `fields:`; `many: true` gives a list, `nullable: true` a `null` instead of
+  `ERR_HTML_FIELD_MISSING`. Nested selectors run relative to each match — write a
+  child as `:scope > h2`, never `> h2`. `selector` and `attr` accept `!cel` at any
+  depth (typed as strings by `telo check`, and a computed selector's grammar is
+  checked when the resource is created); `type`, `many`, `nullable` and
+  `fields` must be literal, because they decide the result's type.
+
+  Sanitize untrusted markup with a preset — `invoke: !ref Html.basicFormatting`
+  (also `Html.stripAll`, `Html.richContent`) — or a literal `Html.SafeTree` policy
+  (`elements`, `attributes` with `protocols:` on every URL attribute; `idPrefix`
+  prefixes kept ids, names, id references and `#` links to kept targets). A policy
+  cannot keep a raw-text element (`script`, `style`, `xmp`, `iframe`, `noembed`,
+  `noframes`, `plaintext`, `noscript` — `HTML_SANITIZE_RAW_TEXT_ELEMENT`; put it in
+  `dropContent` instead), nor `svg`, `math` or `image`
+  (`HTML_SANITIZE_NOT_AN_HTML_ELEMENT`), nor list `javascript` / `vbscript` in
+  `protocols` (`HTML_SANITIZE_SCRIPT_PROTOCOL`), nor allow or force an `on*` event
+  handler (`HTML_SANITIZE_EVENT_HANDLER` in `attributes`,
+  `HTML_SANITIZE_EVENT_HANDLER_FORCED` in `setAttributes`); every `attributes` /
+  `setAttributes` key must be listed in `elements` (`HTML_SANITIZE_UNKNOWN_ELEMENT`,
+  `HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED`). SafeTree output always renders through
+  `Html.Markup` (implied elements such as `tbody` may appear in it). Markup (and
+  an Extraction `html` field, per match) writes a tree only if its markup, parsed
+  again, reads back as the same tree — as a document when the top level holds
+  `html`, else as a `template`-context fragment — and otherwise fails with
+  `ERR_HTML_NOT_SERIALIZABLE` naming the first differing node's path and what it
+  reads back as. A tree you BUILD in CEL can hit this (a comment holding `-->`, an
+  element inside `title`, a child of `img`, an HTML `style` directly under `svg`),
+  and so can a few parsed pages (nested forms, `<plaintext>`). Node names follow
+  the parser: HTML and MathML tags and HTML attribute names are lowercase, an SVG
+  tag or attribute has uppercase only in the spec's adjusted names
+  (`foreignObject`, `viewBox`), an element without `namespace` is never `svg`,
+  `math` or `image`, and no name holds whitespace, `/` or `>`. `Html.escape` /
+  `Html.unescape` are CEL functions for text.
 
   ## Retrying a step
 

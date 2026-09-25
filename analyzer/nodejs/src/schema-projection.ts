@@ -53,6 +53,13 @@ export interface SchemaProjection {
   /** Entry field that wraps the mapped node in an array. */
   readonly array?: string;
   /**
+   * Entry field holding a SUB-COLLECTION of entries of the same shape. An entry
+   * carrying it projects to the closed object that sub-collection projects to —
+   * recursively, with the same key, map and modifiers — instead of through the
+   * map; `array` and `nullable` then apply as for any entry.
+   */
+  readonly nested?: string;
+  /**
    * How an entry whose keyed field holds a REFERENCE projects.
    *
    * The map is keyed on the field's VALUE, and a reference is not a key, so a
@@ -102,6 +109,7 @@ export function readSchemaProjection(definition: unknown): SchemaProjection | un
     nameField: typeof raw.name === "string" ? raw.name : undefined,
     nullable: typeof raw.nullable === "string" ? raw.nullable : undefined,
     array: typeof raw.array === "string" ? raw.array : undefined,
+    nested: typeof raw.nested === "string" ? raw.nested : undefined,
     reference: readProjectionReference(raw.reference),
   };
 }
@@ -193,6 +201,87 @@ function navigate(root: unknown, pointer: string): unknown {
   return current;
 }
 
+/** The keys `x-telo-schema-projection` may carry. The annotation is closed: a
+ *  key nothing reads is a modifier the author believes applies and none does. */
+export const SCHEMA_PROJECTION_KEYS: readonly string[] = [
+  "entries",
+  "key",
+  "name",
+  "nullable",
+  "array",
+  "nested",
+  "reference",
+];
+
+function decodeSegment(segment: string): string {
+  return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+/** Follow a document-local `$ref` chain (`#/…`) against the kind schema. A
+ *  node that is not a local reference is returned as it is. */
+function resolveLocal(node: unknown, root: unknown): unknown {
+  let current = node;
+  const seen = new Set<unknown>();
+  while (isObject(current) && typeof current.$ref === "string" && current.$ref.startsWith("#")) {
+    if (seen.has(current)) return undefined;
+    seen.add(current);
+    let target: unknown = root;
+    for (const segment of current.$ref.slice(1).split("/")) {
+      if (segment === "") continue;
+      if (!isObject(target)) return undefined;
+      target = target[decodeSegment(segment)];
+    }
+    current = target;
+  }
+  return current;
+}
+
+/** The schema of the collection a projection names, reached from the kind
+ *  schema through `properties`, following local references. */
+export function projectionCollectionSchema(
+  kindSchema: unknown,
+  entries: string,
+): Record<string, unknown> | undefined {
+  let node = resolveLocal(kindSchema, kindSchema);
+  for (const segment of entries.split("/")) {
+    if (segment === "") continue;
+    if (!isObject(node) || !isObject(node.properties)) return undefined;
+    node = resolveLocal(node.properties[decodeSegment(segment)], kindSchema);
+  }
+  return isObject(node) ? node : undefined;
+}
+
+/** The ENTRY schema of a collection node — a keyed map's `additionalProperties`
+ *  or an array's `items` — following local references. */
+export function collectionEntrySchema(
+  collection: unknown,
+  kindSchema: unknown,
+): Record<string, unknown> | undefined {
+  if (!isObject(collection)) return undefined;
+  const raw = isObject(collection.additionalProperties)
+    ? collection.additionalProperties
+    : isObject(collection.items)
+      ? collection.items
+      : undefined;
+  const entry = resolveLocal(raw, kindSchema);
+  return isObject(entry) ? entry : undefined;
+}
+
+/** The schema of one field of a projection's entries, following local references. */
+export function projectionEntryField(
+  kindSchema: unknown,
+  projection: SchemaProjection,
+  field: string,
+): Record<string, unknown> | undefined {
+  const entry = collectionEntrySchema(
+    projectionCollectionSchema(kindSchema, projection.entries),
+    kindSchema,
+  );
+  if (!entry || !isObject(entry.properties)) return undefined;
+  const node = resolveLocal(entry.properties[field], kindSchema);
+  return isObject(node) ? node : undefined;
+}
+
 /**
  * Find the `x-telo-schema-map` a projection keys on. The map sits on the entry
  * field's schema, which is reached through the collection's own schema — a
@@ -202,20 +291,15 @@ export function projectionKeyMap(
   kindSchema: unknown,
   projection: SchemaProjection,
 ): SchemaMap | undefined {
-  let node: unknown = kindSchema;
-  for (const segment of projection.entries.split("/")) {
-    if (segment === "") continue;
-    if (!isObject(node) || !isObject(node.properties)) return undefined;
-    node = node.properties[segment];
-  }
-  if (!isObject(node)) return undefined;
-  const entry = isObject(node.additionalProperties)
-    ? node.additionalProperties
-    : isObject(node.items)
-      ? node.items
-      : undefined;
-  if (!isObject(entry) || !isObject(entry.properties)) return undefined;
-  return readSchemaMap(entry.properties[projection.key]);
+  return readSchemaMap(projectionEntryField(kindSchema, projection, projection.key));
+}
+
+/** Where a failure about one entry is anchored: the entry itself when the
+ *  projected declaration is the one carrying the diagnostic (the EMPTY
+ *  pointer), otherwise the consumer's slot — entry paths of a DIFFERENT
+ *  manifest mean nothing in the consumer's file. */
+function failureAnchor(entryPointer: string, projection: SchemaProjection, options?: ProjectOptions): string {
+  return options?.pointer === "" ? entryPointer : (options?.pointer ?? projection.entries);
 }
 
 /**
@@ -241,13 +325,10 @@ export function projectionKeyMap(
 function referencedNode(
   value: unknown,
   entryName: string,
+  entryPointer: string,
   projection: SchemaProjection,
   map: SchemaMap,
-  options?: {
-    readonly scope?: ProjectionScope;
-    readonly pointer?: string;
-    readonly failures?: ProjectionFailure[];
-  },
+  options?: ProjectOptions,
 ): Record<string, unknown> | undefined {
   const reference = projection.reference;
   if (!reference || !isObject(value)) return undefined;
@@ -259,15 +340,7 @@ function referencedNode(
   const report = (): Record<string, unknown> => {
     options?.failures?.push({
       reason: "entry-reference",
-      // The EMPTY pointer means the projected declaration is the one carrying
-      // the diagnostic, so the entry's own path is a real anchor in that file —
-      // the column, not the document root. Any other pointer names a slot
-      // holding a reference to a DIFFERENT manifest, whose entry paths mean
-      // nothing here, so the slot stays the anchor.
-      pointer:
-        options?.pointer === ""
-          ? `${projection.entries}/${entryName}`
-          : (options?.pointer ?? projection.entries),
+      pointer: failureAnchor(entryPointer, projection, options),
       entry: entryName,
       name,
     });
@@ -288,13 +361,130 @@ function referencedNode(
   return { ...base, [reference.keyword]: values };
 }
 
+/** What projecting a declaration may be given beyond the projection and map. */
+export interface ProjectOptions {
+  /** What a REFERENCE at the keyed field is resolved through. A caller with no
+   *  scope cannot resolve one, so such an entry projects OPEN — present,
+   *  untyped — rather than vanishing from the row. */
+  readonly scope?: ProjectionScope;
+  /** The consumer slot the projection is written at; the EMPTY pointer is the
+   *  declaration itself. Decides where an entry's failure is anchored. */
+  readonly pointer?: string;
+  /** Where a failure to read an entry is reported. */
+  readonly failures?: ProjectionFailure[];
+  /** The kind's `schema:`, read for the `default:` of a modifier an entry
+   *  omits. Without it an omitted modifier reads as absent. */
+  readonly kindSchema?: unknown;
+}
+
+/** One projection run: the fixed inputs, and the entries on the current path. */
+interface ProjectionRun {
+  readonly projection: SchemaProjection;
+  readonly map: SchemaMap;
+  readonly options?: ProjectOptions;
+  readonly defaults: Readonly<Record<string, unknown>>;
+  readonly ancestors: Set<object>;
+}
+
+/** The declared `default:` of each modifier field, from the entry schema. */
+function modifierDefaults(projection: SchemaProjection, kindSchema: unknown): Record<string, unknown> {
+  const defaults: Record<string, unknown> = {};
+  if (kindSchema === undefined) return defaults;
+  for (const field of [projection.array, projection.nullable]) {
+    if (field === undefined) continue;
+    const declared = projectionEntryField(kindSchema, projection, field)?.default;
+    if (declared !== undefined) defaults[field] = declared;
+  }
+  return defaults;
+}
+
+function projectCollection(
+  collection: unknown,
+  collectionPointer: string,
+  run: ProjectionRun,
+): Record<string, unknown> | undefined {
+  const pairs: [string, Record<string, unknown>][] = [];
+  const consider = (name: unknown, segment: string, entry: unknown): void => {
+    if (!isObject(entry) || typeof name !== "string") return;
+    const node = projectEntry(entry, name, `${collectionPointer}/${segment}`, run);
+    if (node) pairs.push([name, node]);
+  };
+  const { nameField } = run.projection;
+  if (Array.isArray(collection)) {
+    collection.forEach((entry, index) =>
+      consider(isObject(entry) && nameField ? entry[nameField] : undefined, String(index), entry),
+    );
+  } else if (isObject(collection)) {
+    for (const [name, entry] of Object.entries(collection)) consider(name, name, entry);
+  } else {
+    return undefined;
+  }
+  return {
+    type: "object",
+    properties: Object.fromEntries(pairs),
+    additionalProperties: false,
+  };
+}
+
+function projectEntry(
+  entry: Record<string, unknown>,
+  name: string,
+  entryPointer: string,
+  run: ProjectionRun,
+): Record<string, unknown> | undefined {
+  const { projection, map, options } = run;
+  const sub = projection.nested === undefined ? undefined : entry[projection.nested];
+  let mapped: Record<string, unknown> | undefined;
+  if (sub !== undefined) {
+    // Finite YAML cannot recurse, but an alias can point an entry back at one
+    // of its own ancestors — which would never terminate.
+    if (run.ancestors.has(entry)) {
+      options?.failures?.push({
+        reason: "nested-cycle",
+        pointer: failureAnchor(entryPointer, projection, options),
+        entry: name,
+      });
+      return {};
+    }
+    run.ancestors.add(entry);
+    try {
+      mapped = projectCollection(sub, `${entryPointer}/${projection.nested}`, run);
+    } finally {
+      run.ancestors.delete(entry);
+    }
+  } else {
+    const key = entry[projection.key];
+    mapped =
+      typeof key === "string"
+        ? map[key]
+        : referencedNode(key, name, entryPointer, projection, map, options);
+  }
+  // A value with no map entry projects to nothing rather than to `any`: the
+  // vocabulary is the kind's own enum, so an unmapped value is a gap in the
+  // kind's declaration, not a shape to guess at.
+  if (!mapped) return undefined;
+  const modifier = (field: string): unknown =>
+    entry[field] !== undefined ? entry[field] : run.defaults[field];
+  let node: Record<string, unknown> = { ...mapped };
+  if (projection.array && modifier(projection.array) === true) {
+    node = { type: "array", items: node };
+  }
+  if (projection.nullable && modifier(projection.nullable) !== false) {
+    node = { anyOf: [node, { type: "null" }] };
+  }
+  return node;
+}
+
 /**
  * Project one declaration to an object schema.
  *
  * Modifiers are a CLOSED set applied in a FIXED order — `array` wraps, then
  * `nullable` widens. Closed because each changes how the schema is assembled,
  * so a third-party modifier would be a name nothing acts on; ordered because
- * leaving it implicit is how two implementations come to disagree.
+ * leaving it implicit is how two implementations come to disagree. An entry
+ * that omits one reads the field's declared `default:`, and with none declared
+ * `array` reads as false and `nullable` as true. `nested` recurses: an entry
+ * carrying the sub-collection projects to the object it projects to.
  *
  * The projection is deliberately LOSSY. Length, precision, collation and check
  * constraints do not reach it: a consumer needs the type, its nullability and
@@ -306,59 +496,17 @@ export function projectEntries(
   manifest: unknown,
   projection: SchemaProjection,
   map: SchemaMap,
-  /** What a REFERENCE at the keyed field is resolved through, and where a
-   *  failure to resolve one is reported. A caller with no scope cannot resolve
-   *  one, so such an entry projects OPEN — present, untyped — rather than
-   *  vanishing from the row. */
-  options?: {
-    readonly scope?: ProjectionScope;
-    readonly pointer?: string;
-    readonly failures?: ProjectionFailure[];
-  },
+  options?: ProjectOptions,
 ): Record<string, unknown> | undefined {
   const entries = navigate(manifest, projection.entries);
   if (entries === undefined) return undefined;
-
-  const pairs: [string, Record<string, unknown>][] = [];
-  const consider = (name: string | undefined, entry: unknown): void => {
-    if (!isObject(entry) || name === undefined) return;
-    const key = entry[projection.key];
-    const mapped =
-      typeof key === "string"
-        ? map[key]
-        : referencedNode(key, name, projection, map, options);
-    // A value with no map entry projects to nothing rather than to `any`: the
-    // vocabulary is the kind's own enum, so an unmapped value is a gap in the
-    // kind's declaration, not a shape to guess at.
-    if (!mapped) return;
-    let node: Record<string, unknown> = { ...mapped };
-    if (projection.array && entry[projection.array] === true) {
-      node = { type: "array", items: node };
-    }
-    if (projection.nullable && entry[projection.nullable] !== false) {
-      node = { anyOf: [node, { type: "null" }] };
-    }
-    pairs.push([name, node]);
-  };
-
-  if (Array.isArray(entries)) {
-    for (const entry of entries) {
-      const name = isObject(entry) && projection.nameField
-        ? (entry[projection.nameField] as string | undefined)
-        : undefined;
-      consider(name, entry);
-    }
-  } else if (isObject(entries)) {
-    for (const [name, entry] of Object.entries(entries)) consider(name, entry);
-  } else {
-    return undefined;
-  }
-
-  return {
-    type: "object",
-    properties: Object.fromEntries(pairs),
-    additionalProperties: false,
-  };
+  return projectCollection(entries, projection.entries, {
+    projection,
+    map,
+    options,
+    defaults: modifierDefaults(projection, options?.kindSchema),
+    ancestors: new Set(),
+  });
 }
 
 /** A reference as the analyzer sees it: the internal `{kind, name, alias?}`
@@ -519,7 +667,10 @@ export type ProjectionFailure =
       readonly pointer: string;
       readonly entry: string;
       readonly name: string;
-    };
+    }
+  /** An entry's `nested` sub-collection leads back to the entry itself (a YAML
+   *  alias), so projecting it would never terminate. It projects open. */
+  | { readonly reason: "nested-cycle"; readonly pointer: string; readonly entry: string };
 
 function refTarget(
   value: unknown,
@@ -596,6 +747,12 @@ export function describeProjectionFailure(failure: ProjectionFailure): string {
         `resolves to no declaration this analysis can read — so that entry is projected as an ` +
         `open value and nothing typed from it is checked against the shape it was meant to have.`
       );
+    case "nested-cycle":
+      return (
+        `entry '${failure.entry}' at '${failure.pointer}' contains itself through its nested ` +
+        `entries, so its projection would never end — it is projected as an open value. ` +
+        `Replace the alias that points back at it with the entries themselves.`
+      );
   }
 }
 
@@ -656,7 +813,12 @@ export function resolveSchemaProjections(
       const map = projection && projectionKeyMap(target.definition.schema, projection);
       const projected =
         projection && map
-          ? projectEntries(target.manifest, projection, map, { scope, pointer, failures })
+          ? projectEntries(target.manifest, projection, map, {
+              scope,
+              pointer,
+              failures,
+              kindSchema: target.definition.schema,
+            })
           : undefined;
       if (projected) {
         const { ["x-telo-schema-projection-from"]: _dropped, ...rest } = schema;

@@ -1,0 +1,27 @@
+# `type` decides the projected type, so it is literal-only.
+kind: Telo.Application
+metadata:
+  name: ComputedType
+imports:
+  Html: ../../
+  Run: ../../../run
+variables:
+  kind:
+    env: COMPUTED_TYPE_KIND
+    type: string
+    default: text
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <h1>Title</h1> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        a: { selector: h1, type: !cel "variables.kind" }
+    inputs: { document: !cel "steps.parse.result" }

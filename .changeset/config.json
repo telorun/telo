@@ -38,6 +38,7 @@
     "@telorun/font",
     "@telorun/fs-build",
     "@telorun/gzip-build",
+    "@telorun/html-build",
     "@telorun/http-client-build",
     "@telorun/http-dispatch",
     "@telorun/http-server-build",

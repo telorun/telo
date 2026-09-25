@@ -26,24 +26,139 @@ import {
   inheritedCapability,
   type DefResolver,
 } from "./extends-resolution.js";
+import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
+
+/**
+ * THE EVAL-PATH GRAMMAR. A path is the `walkCelExpressions` spelling of where a
+ * value sits (`a.b[0].c`), generalized by three pattern forms so an annotation
+ * below a map, a list or a recursive `$ref` can be named at all:
+ *
+ * - `.*` — any one key of a map (`additionalProperties` / `patternProperties`);
+ *   a leading `*` for a map at the root;
+ * - `[*]` — any one index of a list (`items`);
+ * - `(<segments>)*` — the enclosed segments repeated zero or more times, which
+ *   is how a schema that refers to itself through a local `$ref` names every
+ *   depth at once (`fields.*(.fields.*)*.selector`).
+ *
+ * `**` is the whole resource. A path without a pattern form is exactly what it
+ * was before patterns existed, and is matched by string prefix as before.
+ */
+const PATTERN_FORM = /[*(]/;
+
+function isEvalPathPattern(path: string): boolean {
+  return path !== "**" && PATTERN_FORM.test(path);
+}
+
+const patternSources = new Map<string, string>();
+
+/** The regular-expression body of a pattern path. */
+function patternSource(pattern: string): string {
+  let source = patternSources.get(pattern);
+  if (source !== undefined) return source;
+  source = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]!;
+    if (pattern.startsWith("[*]", i)) {
+      source += String.raw`\[\d+\]`;
+      i += 2;
+    } else if (pattern.startsWith(".*", i)) {
+      source += String.raw`\.[^.[\]]+`;
+      i += 1;
+    } else if (c === "*" && i === 0) {
+      source += String.raw`[^.[\]]+`;
+    } else if (c === "(") {
+      source += "(?:";
+    } else if (pattern.startsWith(")*", i)) {
+      source += ")*";
+      i += 1;
+    } else if (c === "|") {
+      source += "|";
+    } else {
+      source += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  patternSources.set(pattern, source);
+  return source;
+}
+
+const coverRegexes = new Map<string, RegExp>();
+const exactRegexes = new Map<string, RegExp>();
+
+function coverRegex(pattern: string): RegExp {
+  let regex = coverRegexes.get(pattern);
+  if (!regex) {
+    regex = new RegExp(`^${patternSource(pattern)}(?=$|[.[])`);
+    coverRegexes.set(pattern, regex);
+  }
+  return regex;
+}
+
+function exactRegex(pattern: string): RegExp {
+  let regex = exactRegexes.get(pattern);
+  if (!regex) {
+    regex = new RegExp(`^${patternSource(pattern)}$`);
+    exactRegexes.set(pattern, regex);
+  }
+  return regex;
+}
 
 /**
  * The single containment rule for `x-telo-eval` paths, shared by every matcher so
  * the analyzer's coverage decision and the kernel's expansion/exclusion can't
  * drift. True when `target` lies in the subtree rooted at `evalPath`: `"**"`
- * covers everything; a dotted path covers itself and any descendant — `"handler"`
- * covers `handler`, `handler.body`, `handler[0]`. Targets use `walkCelExpressions`
- * form (`a.b[0].c`); eval paths are property-only (no array segments —
- * `buildEvalPaths` does not descend into `items`), so `.`/`[` boundary prefixing
- * is exact. Consumers: the analyzer's `evalPathsCover`, the kernel's `isExcluded`
- * (applied in both directions), and — structurally — `expandPaths`' navigation.
+ * covers everything; a path covers itself and any descendant — `"handler"`
+ * covers `handler`, `handler.body`, `handler[0]`, and `"fields.*.selector"`
+ * covers `fields.title.selector`. Targets use `walkCelExpressions` form
+ * (`a.b[0].c`). Consumers: the analyzer's `evalPathsCover`, the kernel's
+ * `isExcluded` (applied in both directions), and — through
+ * {@link concreteEvalPaths} — the kernel's expansion.
  */
 export function evalPathCovers(evalPath: string, target: string): boolean {
   if (evalPath === "**") return true;
+  if (isEvalPathPattern(evalPath)) return coverRegex(evalPath).test(target);
   return (
     target === evalPath || target.startsWith(`${evalPath}.`) || target.startsWith(`${evalPath}[`)
   );
+}
+
+/**
+ * The concrete places in `value` an eval path names, each as the key/index
+ * segments that reach it. A plain path names at most one place; a pattern names
+ * every place in the value it matches exactly. The walk descends only plain
+ * objects and arrays — never a value `isLeaf` claims (a compiled expression),
+ * bytes, a stream or any other instance, since nothing below one is
+ * configuration — and only while the path can still meet the pattern's literal
+ * prefix.
+ */
+export function concreteEvalPaths(
+  value: unknown,
+  evalPath: string,
+  isLeaf: (node: unknown) => boolean = () => false,
+): string[][] {
+  if (!isEvalPathPattern(evalPath)) return [evalPath.split(".")];
+  const exact = exactRegex(evalPath);
+  const prefix = evalPath.slice(0, evalPath.search(PATTERN_FORM));
+  const out: string[][] = [];
+  const walk = (node: unknown, text: string, segments: string[]): void => {
+    if (text !== "" && exact.test(text)) {
+      out.push(segments);
+      return;
+    }
+    if (!prefix.startsWith(text) && !text.startsWith(prefix)) return;
+    if (!node || typeof node !== "object" || isLeaf(node)) return;
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => walk(item, `${text}[${index}]`, [...segments, String(index)]));
+      return;
+    }
+    const proto = Object.getPrototypeOf(node);
+    if (proto !== Object.prototype && proto !== null) return;
+    for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+      walk(child, text === "" ? key : `${text}.${key}`, [...segments, key]);
+    }
+  };
+  walk(value, "", []);
+  return out;
 }
 
 /** True when any `x-telo-eval` path in the set covers `exprPath` (see
@@ -53,9 +168,14 @@ export function evalPathsCover(evalPaths: readonly string[], exprPath: string): 
 }
 
 /**
- * Traverses a definition schema and collects all paths annotated with `x-telo-eval`.
- * Root-level `x-telo-eval` produces the `"**"` wildcard (expand all fields).
- * Property-level annotations produce the dot-notation path to that property.
+ * Traverses a definition schema and collects all paths annotated with
+ * `x-telo-eval`, in the grammar above. Root-level `x-telo-eval` produces the
+ * `"**"` wildcard. Below the root the walk follows `properties`, a map's
+ * `additionalProperties` / `patternProperties` (`.*`), a list's `items` (`[*]`)
+ * and a document-local `$ref` — one the walk is already inside closes a loop,
+ * which becomes a repeated group rather than an endless descent (the
+ * `x-telo-error-context` precedent: an annotation reached through `$defs` at any
+ * depth). `oneOf` / `anyOf` / `allOf` branches are read at their own path.
  */
 export function buildEvalPaths(schema: Record<string, any>): {
   compile: string[];
@@ -68,31 +188,75 @@ export function buildEvalPaths(schema: Record<string, any>): {
   else if (schema["x-telo-eval"] === "runtime") runtime.push("**");
 
   if (schema.properties) {
+    const found: EvalSite[] = [];
     for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
-      collectEvalPathsNode(propSchema, key, compile, runtime);
+      collectEvalSites(propSchema, key, schema, [], found);
     }
+    for (const site of found) (site.mode === "compile" ? compile : runtime).push(site.path);
   }
 
   return { compile, runtime };
 }
 
-function collectEvalPathsNode(
-  node: Record<string, any>,
+interface EvalSite {
+  mode: "compile" | "runtime";
+  path: string;
+}
+
+interface RefFrame {
+  readonly ref: string;
+  readonly at: string;
+  readonly loops: string[];
+}
+
+function collectEvalSites(
+  node: unknown,
   path: string,
-  compile: string[],
-  runtime: string[],
+  root: Record<string, any>,
+  frames: readonly RefFrame[],
+  out: EvalSite[],
 ): void {
-  if (node["x-telo-eval"] === "compile") {
-    compile.push(path);
+  if (!node || typeof node !== "object") return;
+  const schema = node as Record<string, any>;
+  // A node's own annotation wins over whatever its `$ref` leads to.
+  if (schema["x-telo-eval"] === "compile" || schema["x-telo-eval"] === "runtime") {
+    out.push({ mode: schema["x-telo-eval"], path });
     return;
   }
-  if (node["x-telo-eval"] === "runtime") {
-    runtime.push(path);
+  if (typeof schema.$ref === "string" && schema.$ref.startsWith("#")) {
+    const open = frames.find((frame) => frame.ref === schema.$ref);
+    if (open) {
+      open.loops.push(path.slice(open.at.length));
+      return;
+    }
+    const frame: RefFrame = { ref: schema.$ref, at: path, loops: [] };
+    const inside: EvalSite[] = [];
+    collectEvalSites(resolveSchemaPointer(root, schema.$ref), path, root, [...frames, frame], inside);
+    const loop = frame.loops.length > 0 ? `(${[...new Set(frame.loops)].join("|")})*` : "";
+    for (const site of inside) {
+      out.push({ mode: site.mode, path: path + loop + site.path.slice(path.length) });
+    }
     return;
   }
-  if (node.properties) {
-    for (const [key, propSchema] of Object.entries(node.properties as Record<string, any>)) {
-      collectEvalPathsNode(propSchema, `${path}.${key}`, compile, runtime);
+  const child =(key: string) => (path === "" ? key : `${path}.${key}`);
+  if (schema.properties) {
+    for (const [key, propSchema] of Object.entries(schema.properties as Record<string, any>)) {
+      collectEvalSites(propSchema, child(key), root, frames, out);
+    }
+  }
+  const mapValues = [
+    schema.additionalProperties,
+    ...Object.values((schema.patternProperties ?? {}) as Record<string, unknown>),
+  ];
+  for (const value of mapValues) {
+    if (value && typeof value === "object") collectEvalSites(value, child("*"), root, frames, out);
+  }
+  if (schema.items && typeof schema.items === "object" && !Array.isArray(schema.items)) {
+    collectEvalSites(schema.items, `${path}[*]`, root, frames, out);
+  }
+  for (const key of ["oneOf", "anyOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const branch of schema[key]) collectEvalSites(branch, path, root, frames, out);
     }
   }
 }

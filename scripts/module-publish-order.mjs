@@ -20,6 +20,31 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+// Areas whose modules are importable libraries, published as OCI module
+// artifacts. `apps/` are applications, released as container images instead.
+const IMPORTABLE_AREAS = ["modules/", "blueprints/"];
+
+function releaseOrder() {
+  return JSON.parse(
+    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "inherit"],
+    }),
+  ).order;
+}
+
+/**
+ * Absolute manifest paths of every importable module the release model knows, at
+ * any depth. Listing `modules/*` directly missed nested modules
+ * (`modules/tesseract-lang/<code>`) and every blueprint, so they never published.
+ */
+export function importableManifests() {
+  return releaseOrder()
+    .filter((entry) => IMPORTABLE_AREAS.some((area) => entry.key.startsWith(area)))
+    .map((entry) => manifestPathFor(entry.key));
+}
+
 /** A manifest path as the release model keys it: workspace-relative, POSIX. The
  *  key IS `relative(root, dir)` — reconstructing it from two path segments
  *  worked only for `<area>/<name>` and dropped anything deeper into the
@@ -43,16 +68,8 @@ function moduleKeyOf(manifestPath) {
  */
 export function orderByDependencies(paths) {
   const byKey = new Map(paths.map((p) => [moduleKeyOf(p), p]));
-  const ordered = JSON.parse(
-    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"],
-    }),
-  ).order;
-
   const sorted = [];
-  for (const entry of ordered) {
+  for (const entry of releaseOrder()) {
     const path = byKey.get(entry.key);
     if (path) {
       sorted.push({ path, destination: entry.destination });
@@ -74,14 +91,7 @@ export function orderByDependencies(paths) {
  * error anywhere.
  */
 export function destinationsByManifest() {
-  const ordered = JSON.parse(
-    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"],
-    }),
-  ).order;
-  return new Map(ordered.map((entry) => [manifestPathFor(entry.key), entry.destination]));
+  return new Map(releaseOrder().map((entry) => [manifestPathFor(entry.key), entry.destination]));
 }
 
 /**
@@ -89,14 +99,7 @@ export function destinationsByManifest() {
  * module they import, transitively — what a publish of `paths` reads off disk.
  */
 export function importClosure(paths) {
-  const ordered = JSON.parse(
-    execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "inherit"],
-    }),
-  ).order;
-  const importsOf = new Map(ordered.map((entry) => [entry.key, entry.imports ?? []]));
+  const importsOf = new Map(releaseOrder().map((entry) => [entry.key, entry.imports ?? []]));
   const closure = new Set();
   const pending = paths.map(moduleKeyOf);
   while (pending.length > 0) {

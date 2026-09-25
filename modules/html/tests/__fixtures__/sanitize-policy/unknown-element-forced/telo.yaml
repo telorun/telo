@@ -1,0 +1,16 @@
+# A policy forcing attributes onto an element it does not keep: refused by
+# `telo check` at the declaration, and by the controller at creation.
+kind: Telo.Library
+metadata:
+  name: SanitizeUnknownElementForced
+imports:
+  Html: ../../../..
+exports:
+  resources: [policy]
+---
+kind: Html.SafeTree
+metadata: { name: policy }
+elements: [p]
+setAttributes:
+  input:
+    type: checkbox

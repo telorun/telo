@@ -22,7 +22,7 @@
   },
   "packageManager": "pnpm@10.28.2",
   "scripts": {
-    "prepare": "node scripts/copy-value-type-entries.mjs && node scripts/copy-zone-attribute-entries.mjs && node scripts/copy-migration-entries.mjs && node scripts/generate-telo-version.mjs && node scripts/generate-artifact-axes.mjs",
+    "prepare": "node scripts/copy-value-type-entries.mjs && node scripts/copy-zone-attribute-entries.mjs && node scripts/copy-migration-entries.mjs && node scripts/copy-format-entries.mjs && node scripts/generate-telo-version.mjs && node scripts/generate-artifact-axes.mjs",
     "telo": "bun ./cli/nodejs/bin/telo.ts",
     "telo:node": "node ./cli/nodejs/bin/telo.mjs",
     "telo:standalone": "pnpm --filter \"@telorun/cli...\" build && pnpm --filter @telorun/cli build:standalone && ./cli/nodejs/dist-standalone/telo",

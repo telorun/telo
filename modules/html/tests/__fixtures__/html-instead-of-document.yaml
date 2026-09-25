@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: HtmlInsteadOfDocument
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: render
+    invoke: { kind: Html.Markup }
+    inputs: { html: <p>x</p> }

@@ -20,6 +20,7 @@ targets:
   - !ref recognitionTimeWholeMilliseconds
   - !ref recognitionTimeBounded
   - !ref languageCodesDistinct
+  - !ref languageCodeDuplicate
 ---
 kind: Assert.Manifest
 metadata: { name: orientationNeedsModel }
@@ -92,3 +93,16 @@ expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
       message: "at 'languages[1]': lists two language models under the same code"
+---
+# Two different language models sharing a code. `telo check` reads the models the
+# recognizer references (a resource rule's `resolve:`), and the recognizer
+# refuses the same pair when it starts.
+kind: Assert.Manifest
+metadata:
+  name: languageCodeDuplicate
+source: ./__fixtures__/language-code-duplicate/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'languages[1]': lists two language models under the same code"
+  runFails: "Manifest validation failed"

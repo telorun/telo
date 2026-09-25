@@ -1,0 +1,43 @@
+# …and, when an expression computes it, by the kernel's dispatch contract with the
+# same reason — the check is clean, since the value is known only once evaluated.
+kind: Telo.Application
+metadata:
+  name: CssSelectorInputsComputed
+imports:
+  Run: ../../../modules/run
+variables:
+  sel:
+    env: CSS_SELECTOR_INPUTS_SEL
+    type: string
+    default: "p::before"
+targets:
+  - !ref main
+---
+kind: Telo.Definition
+metadata:
+  name: Match
+capability: Telo.Invocable
+schema:
+  type: object
+inputType:
+  type: object
+  properties:
+    selector:
+      type: string
+      format: css-selector
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: matched
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: match
+    invoke:
+      kind: Self.Match
+    inputs:
+      selector: !cel "variables.sel"

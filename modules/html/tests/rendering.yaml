@@ -1,0 +1,392 @@
+kind: Telo.Application
+metadata:
+  name: HtmlRenderingTest
+  version: 1.0.0
+  description: >-
+    Plain text and Markdown renderings of a parsed page, and markup serialization
+    that refuses a tree that would not read back as itself.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref plainText
+  - !ref markdown
+  - !ref markdownStyles
+  - !ref markupRefusals
+  - !ref nodeNameCase
+  - !ref legacyScript
+  - !ref serializationCorpus
+  - !ref mutationXss
+  - !ref readbackCorpus
+---
+kind: Run.Sequence
+metadata: { name: plainText }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: <h1>Title</h1><p>One   two<br>three</p><script>ignored()</script><table><tr><td>a</td><td>b</td></tr></table>
+  - name: text
+    invoke: { kind: Html.PlainText }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertText
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.text.result.text"
+      expected: "Title\n\nOne two\nthree\n\na\tb"
+---
+# A GFM table and task list, and relative links made absolute against the base.
+kind: Run.Sequence
+metadata: { name: markdown }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      baseUrl: https://example.com/docs/page.html
+      html: >-
+        <h1>Guide</h1><p>See <a href="../about">about</a> and <img src="pic.png" alt="pic">,
+        <del>old</del>.</p><ul><li><input type="checkbox" checked> done</li><li><input type="checkbox"> todo</li></ul>
+        <table><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>
+  - name: markdown
+    invoke: { kind: Html.Markdown }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMarkdown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markdown.result.markdown"
+      expected: |
+        # Guide
+
+        See [about](https://example.com/about) and ![pic](https://example.com/docs/pic.png), ~~old~~.
+
+        * [x] done
+        * [ ] todo
+
+        | A | B |
+        | - | - |
+        | 1 | 2 |
+---
+kind: Run.Sequence
+metadata: { name: markdownStyles }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: <h2>Sub</h2><p><em>a</em> <strong>b</strong></p><ul><li>x</li></ul><hr><pre><code>code</code></pre><p><del>gone</del></p>
+  - name: markdown
+    invoke:
+      kind: Html.Markdown
+      gfm: false
+      headingStyle: setext
+      bullet: "-"
+      fence: "~"
+      emphasis: _
+      strong: _
+      ruleStyle: "-"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMarkdown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markdown.result.markdown"
+      expected: |
+        Sub
+        ---
+
+        _a_ __b__
+
+        - x
+
+        ---
+
+        ~~~
+        code
+        ~~~
+
+        gone
+---
+# Trees no parser builds, whose markup reads back as another tree: each is
+# refused, naming the first differing node — including a namespace the parser
+# would not give the node where it stands.
+kind: Run.Sequence
+metadata: { name: markupRefusals }
+steps:
+  - name: cases
+    invoke:
+      kind: Run.Iteration
+      collection:
+        - path: nodes\[0\] cannot
+          document:
+            nodes: [{ type: comment, text: "--><img src=x onerror=alert(1)><!--" }]
+        - path: nodes\[0\]\.children\[0\] cannot
+          document:
+            nodes:
+              - type: element
+                tag: style
+                attrs: {}
+                children: [{ type: text, text: "</style><img src=x onerror=alert(1)>" }]
+        - path: nodes\[0\]\.children\[0\] cannot
+          document:
+            nodes:
+              - type: element
+                tag: title
+                attrs: {}
+                children: [{ type: element, tag: b, attrs: {}, children: [{ type: text, text: x }] }]
+        - path: nodes\[1\]\.children\[0\] cannot
+          document:
+            nodes:
+              - { type: text, text: a }
+              - type: element
+                tag: img
+                attrs: { src: x.png }
+                children: [{ type: text, text: caption }]
+        - path: nodes\[0\] cannot
+          document:
+            nodes:
+              - type: element
+                tag: style
+                namespace: svg
+                attrs: {}
+                children: [{ type: comment, text: "</style><img src=x onerror=alert(3)>" }]
+        - path: nodes\[0\]\.children\[0\] cannot
+          document:
+            nodes:
+              - type: element
+                tag: svg
+                namespace: svg
+                attrs: {}
+                children:
+                  - type: element
+                    tag: style
+                    attrs: {}
+                    children: [{ type: text, text: "<img src=x onerror=alert(4)>" }]
+      steps:
+        - name: render
+          try:
+            - name: markup
+              invoke: { kind: Html.Markup }
+              inputs: { document: !cel "item.document" }
+            - name: failIfReached
+              throw: { code: TEST_FAILED, message: Expected ERR_HTML_NOT_SERIALIZABLE. }
+          catch:
+            - name: assertCode
+              invoke: { kind: Assert.Equals }
+              inputs:
+                actual: !cel "error.code"
+                expected: ERR_HTML_NOT_SERIALIZABLE
+            - name: assertPath
+              invoke: { kind: Assert.Matches }
+              inputs:
+                actual: !cel "error.message"
+                pattern: !cel "item.path"
+---
+# The names only a hand-built tree holds, computed so `telo check` cannot see
+# them, are refused by the input contract before the controller runs.
+kind: Run.Sequence
+metadata: { name: nodeNameCase }
+steps:
+  - name: cases
+    invoke:
+      kind: Run.Iteration
+      collection:
+        - { tag: TITLE, error: '/document/nodes/0/tag must match pattern "^[^A-Z]*$"' }
+        - { tag: Style, error: '/document/nodes/0/tag must match pattern "^[^A-Z]*$"' }
+        - { tag: svg, error: /document/nodes/0/tag matches a shape that is not allowed here }
+      steps:
+        - name: render
+          try:
+            - name: markup
+              invoke: { kind: Html.Markup }
+              inputs:
+                document:
+                  nodes:
+                    - type: element
+                      tag: !cel "item.tag"
+                      attrs: {}
+                      children: [{ type: comment, text: "</title><img src=x onerror=alert(1)>" }]
+            - name: failIfReached
+              throw: { code: TEST_FAILED, message: Expected ERR_INPUT_INVALID. }
+          catch:
+            - name: assertRefused
+              invoke: { kind: Assert.Equals }
+              inputs:
+                actual: !cel "[error.code, error.message.contains(item.error)]"
+                expected: [ERR_INPUT_INVALID, true]
+---
+# A legacy script hiding its markup in `<!-- … -->` holds an end tag the parser
+# reads as text; it serializes, and reads back as the same tree.
+kind: Run.Sequence
+metadata: { name: legacyScript }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <script><!-- document.write("<script></script>") --></script><p>after</p>
+  - name: markup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: reparse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "steps.markup.result.html" }
+  - name: assertRoundTrip
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.reparse.result"
+      expected: !cel "steps.parse.result"
+  - name: assertScript
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.parse.result.nodes[0].children[0].children[0].children"
+      expected: [{ type: text, text: '<!-- document.write("<script></script>") -->' }]
+---
+# Every parse satisfies the node shape (the kind's output contract checks it),
+# serializes, reads back as the same tree, and — sanitized — serializes too.
+kind: Run.Sequence
+metadata: { name: serializationCorpus }
+steps:
+  - name: cases
+    invoke:
+      kind: Run.Iteration
+      collection:
+        - <!DOCTYPE html SYSTEM 'a"b'><p =x a"b=1>odd names</p>
+        - <div"x>odd tag</div"x><a:b c:d=1>colon</a:b>
+        - <!-- a -- b --><!---><!-- x --!> after
+        - "<textarea>\n\nx</textarea><pre>\n\ny</pre>"
+        - <title>a &lt;/title&gt; b</title><style>p{content:"</sty"}</style>
+        - <svg><style><b>x</b></style><title><i>y</i></title></svg>
+        - <noscript><p>x</p></noscript><iframe><b>x</b></iframe><xmp></xmp>
+        - <table><td>x</table><select><option>a<option>b</select>
+        - <template><template><p>x</p></template></template><image src=x>
+        - <p>a<br>b<hr>c</p><script>if (a < b && c > d) x("</p>")</script>
+      steps:
+        - name: parse
+          invoke: { kind: Html.JsonTree }
+          inputs: { html: !cel "item" }
+        - name: markup
+          invoke: { kind: Html.Markup }
+          inputs: { document: !cel "steps.parse.result" }
+        - name: reparse
+          invoke: { kind: Html.JsonTree }
+          inputs: { html: !cel "steps.markup.result.html" }
+        - name: assertRoundTrip
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.reparse.result"
+            expected: !cel "steps.parse.result"
+        - name: safe
+          invoke: !ref Html.richContent
+          inputs: { document: !cel "steps.parse.result" }
+        - name: safeMarkup
+          invoke: { kind: Html.Markup }
+          inputs: { document: !cel "steps.safe.result" }
+---
+# A parsed page that does not round trip: the nested-form mutation XSS payload,
+# whose markup reads back with a live `<img onerror>`. Markup refuses it.
+kind: Run.Sequence
+metadata: { name: mutationXss }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <form><math><mtext></form><form><mglyph><style></math><img src onerror=alert(1)>
+  - name: render
+    try:
+      - name: markup
+        invoke: { kind: Html.Markup }
+        inputs: { document: !cel "steps.parse.result" }
+      - name: failIfReached
+        throw: { code: TEST_FAILED, message: Expected ERR_HTML_NOT_SERIALIZABLE. }
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTML_NOT_SERIALIZABLE
+      - name: assertPath
+        invoke: { kind: Assert.Matches }
+        inputs:
+          actual: !cel "error.message"
+          pattern: "nodes\\[0\\]\\.children\\[1\\]\\.children\\[0\\]\\.children\\[0\\]\\.children\\[0\\]\\.children\\[0\\] cannot"
+---
+# Pages from the html5lib tree-construction tests — adoption agency, foster
+# parenting, foreign content and its breakouts, templates, nested forms,
+# fragments in table and select context. Each either reads back as the same
+# tree or is refused; sanitized with `richContent`, each renders.
+kind: Run.Sequence
+metadata: { name: readbackCorpus }
+steps:
+  - name: cases
+    invoke:
+      kind: Run.Iteration
+      collection:
+        - { fragment: false, html: <p>One<p>Two }
+        - { fragment: false, html: <a><p>X<a>Y</a>Z</p></a> }
+        - { fragment: false, html: <b>1<p>2</b>3</p> }
+        - { fragment: false, html: <a>1<button>2</a>3</button> }
+        - { fragment: false, html: <table>A<td>B</td>C</table> }
+        - { fragment: false, html: <div><a><b><div><div><div><div><div><div><div><div><div><div></a> }
+        - { fragment: false, html: <p><b><b><b><b><p>x }
+        - { fragment: false, html: '<!DOCTYPE html><body><title>X</title><meta name=z><link rel=foo><style>x { content:"</style" } </style>' }
+        - { fragment: false, html: <select><b><option><select><option></b></select>X }
+        - { fragment: false, html: <svg><foreignObject><p>x</p></foreignObject><desc><b>y</b></desc></svg> }
+        - { fragment: false, html: <math><mi><svg><circle/></svg></mi><annotation-xml encoding="text/html"><div>z</div></annotation-xml></math> }
+        - { fragment: false, html: <svg viewBox="0 0 1 1"><clipPath><path d="M0"/></clipPath><linearGradient/></svg> }
+        - { fragment: false, html: <svg><p>breakout</p></svg> }
+        - { fragment: false, html: <math definitionURL=x><mtext><b>t</b></mtext></math> }
+        - { fragment: false, html: <form><form>nested</form></form> }
+        - { fragment: false, html: <form><div></form><input> }
+        - { fragment: false, html: <table><form><input type=hidden><tr><td>x</td></tr></form></table> }
+        - { fragment: false, html: <frameset><frame></frameset> }
+        - { fragment: false, html: "<listing>\nx</listing>" }
+        - { fragment: false, html: <ruby>a<rb>b<rt>c<rp>d</ruby> }
+        - { fragment: false, html: <template><tr><td>x</td></tr></template><table><template><td>y</td></template></table> }
+        - { fragment: false, html: <h1><h2>x</h2></h1> }
+        - { fragment: false, html: <ul><li>a<li>b</ul><dl><dt>c<dd>d</dl> }
+        - { fragment: false, html: <noframes><p>x</noframes><noembed>&lt;</noembed> }
+        - { fragment: false, html: <body><body id=x><html lang=y> }
+        - { fragment: false, html: <!-- c --><html><!-- d --><head></head><body></body></html><!-- e --> }
+        - { fragment: false, html: <p>a<table><tr><td>b</table> }
+        - { fragment: false, html: <script>a<!--b<script>c</script>d-->e</script> }
+        - { fragment: false, html: <p>a</p><plaintext>b }
+        - { fragment: false, html: <script><!--<script>x }
+        - { fragment: true, html: <tr><td>x</td></tr> }
+        - { fragment: true, html: <td>y }
+        - { fragment: true, html: <option>a<option>b }
+        - { fragment: true, html: <caption>c</caption><col> }
+        - { fragment: true, html: </p>x }
+        - { fragment: true, html: <svg><title><b>q</b></title></svg> }
+        - { fragment: true, html: <a><table><a> }
+        - { fragment: true, html: <b><table><td><i>x</table>y }
+        - { fragment: true, html: <div><svg><foreignObject><math><mi>i</mi></math></foreignObject></svg></div> }
+        - { fragment: true, html: "<textarea>\r\nx</textarea>" }
+      steps:
+        - name: parse
+          invoke: { kind: Html.JsonTree }
+          inputs: { html: !cel "item.html", fragment: !cel "item.fragment" }
+        - name: roundTrip
+          try:
+            - name: markup
+              invoke: { kind: Html.Markup }
+              inputs: { document: !cel "steps.parse.result" }
+            - name: reparse
+              invoke: { kind: Html.JsonTree }
+              inputs: { html: !cel "steps.markup.result.html", fragment: !cel "item.fragment" }
+            - name: assertRoundTrip
+              invoke: { kind: Assert.Equals }
+              inputs:
+                actual: !cel "steps.reparse.result"
+                expected: !cel "steps.parse.result"
+          catch:
+            - name: assertRefused
+              invoke: { kind: Assert.Equals }
+              inputs:
+                actual: !cel "error.code"
+                expected: ERR_HTML_NOT_SERIALIZABLE
+        - name: safe
+          invoke: !ref Html.richContent
+          inputs: { document: !cel "steps.parse.result" }
+        - name: safeMarkup
+          invoke: { kind: Html.Markup }
+          inputs: { document: !cel "steps.safe.result" }

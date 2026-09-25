@@ -23,11 +23,16 @@
  */
 import type { ResourceManifest } from "@telorun/sdk";
 import {
+  collectionEntrySchema,
+  projectionCollectionSchema,
+  projectionEntryField,
   projectionKeyMap,
   rawSchemaProjection,
   readSchemaProjection,
+  SCHEMA_PROJECTION_KEYS,
   schemaMapBranch,
   schemaProjectionIsMisplaced,
+  type SchemaProjection,
 } from "./schema-projection.js";
 
 export interface SchemaProjectionIssue {
@@ -84,6 +89,18 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
       ),
     ];
   }
+  // Closed: a key nothing reads is a modifier the author believes applies and
+  // none does — the projection silently types something other than intended.
+  for (const key of Object.keys(raw)) {
+    if (SCHEMA_PROJECTION_KEYS.includes(key)) continue;
+    issues.push(
+      issue(
+        "SCHEMA_PROJECTION_INVALID",
+        `${base}.${key}`,
+        `'${PROJECTION}' has no '${key}'. It declares ${SCHEMA_PROJECTION_KEYS.map((k) => `'${k}'`).join(", ")}.`,
+      ),
+    );
+  }
   const missing = ["entries", "key"].filter((field) => typeof raw[field] !== "string");
   if (missing.length > 0) {
     return [
@@ -106,7 +123,7 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
   // schema with no properties and `additionalProperties: false` — one that
   // rejects every value. A keyed map needs no `name`: the map key IS the
   // identity.
-  if (collectionIsArray(schema, projection.entries) && !projection.nameField) {
+  if (isArrayCollection(projectionCollectionSchema(schema, projection.entries)) && !projection.nameField) {
     return [
       ...issues,
       issue(
@@ -118,6 +135,9 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
       ),
     ];
   }
+
+  const nestedIssue = nestedProblem(raw.nested, schema, projection);
+  if (nestedIssue) issues.push(issue("SCHEMA_PROJECTION_INVALID", `${base}.nested`, nestedIssue));
 
   const reference = raw.reference;
   if (reference !== undefined) {
@@ -178,7 +198,11 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
   // An `enum` on the keyed field is the kind's own closed vocabulary, so every
   // member of it is a value the map has to answer for. Only an enum is checked:
   // an open string field has no set to be complete against.
-  const keyField = keySchema(schema, projection.entries, projection.key);
+  const field = projectionEntryField(schema, projection, projection.key);
+  // The vocabulary may sit on a BRANCH — a slot unioning a closed value set with
+  // a reference — and the branch carrying the map is the one whose `enum` the map
+  // has to answer for. Asked through the single reader, never re-derived here.
+  const keyField = field && (schemaMapBranch(field) ?? field);
   const values = Array.isArray(keyField?.enum) ? (keyField!.enum as unknown[]) : [];
   const unmapped = values.filter((value) => typeof value === "string" && !(value in map));
   if (unmapped.length === 0) return issues;
@@ -194,40 +218,61 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
   ];
 }
 
-function collectionIsArray(schema: unknown, entries: string): boolean {
-  let node: unknown = schema;
-  for (const segment of entries.split("/")) {
-    if (segment === "") continue;
-    if (!isObject(node) || !isObject(node.properties)) return false;
-    node = node.properties[segment];
-  }
-  return isObject(node) && isObject(node.items);
+function isArrayCollection(collection: Record<string, unknown> | undefined): boolean {
+  return !!collection && isObject(collection.items) && !isObject(collection.additionalProperties);
 }
 
-function keySchema(
+/**
+ * Why `nested` cannot recurse, or undefined when it can. It must name an entry
+ * field holding a collection whose entries are the SAME shape — inline, or a
+ * local `$ref` to it — because the sub-collection is projected with the same
+ * key, map and modifiers; any other shape would be read through a vocabulary it
+ * does not declare.
+ */
+function nestedProblem(
+  nested: unknown,
   schema: unknown,
-  entries: string,
-  key: string,
-): Record<string, unknown> | undefined {
-  let node: unknown = schema;
-  for (const segment of entries.split("/")) {
-    if (segment === "") continue;
-    if (!isObject(node) || !isObject(node.properties)) return undefined;
-    node = node.properties[segment];
+  projection: SchemaProjection,
+): string | undefined {
+  if (nested === undefined) return undefined;
+  if (typeof nested !== "string") {
+    return `'nested' names the entry field holding a sub-collection of entries, as a string.`;
   }
-  if (!isObject(node)) return undefined;
-  const entry = isObject(node.additionalProperties)
-    ? node.additionalProperties
-    : isObject(node.items)
-      ? node.items
-      : undefined;
-  if (!isObject(entry) || !isObject(entry.properties)) return undefined;
-  const field = entry.properties[key];
-  if (!isObject(field)) return undefined;
-  // The vocabulary may sit on a BRANCH — a slot unioning a closed value set with
-  // a reference — and the branch carrying the map is the one whose `enum` the map
-  // has to answer for. Reading the union node instead finds no `enum` at all, so
-  // the completeness check would silently stop running exactly where the two
-  // halves can disagree. Asked through the single reader, never re-derived here.
-  return schemaMapBranch(field) ?? field;
+  const entry = collectionEntrySchema(projectionCollectionSchema(schema, projection.entries), schema);
+  const field = projectionEntryField(schema, projection, nested);
+  if (!entry || !field) {
+    return `'nested' names '${nested}', which the entries of '${projection.entries}' do not declare.`;
+  }
+  const sub = collectionEntrySchema(field, schema);
+  if (!sub || !sameShape(sub, entry)) {
+    return (
+      `'nested' names '${nested}', which is not a collection of entries shaped like those of ` +
+      `'${projection.entries}'. A nested entry is projected with the same key, map and ` +
+      `modifiers, so its collection's entries must be the same schema — inline, or a local ` +
+      `'$ref' to it.`
+    );
+  }
+  if (isArrayCollection(field) && !projection.nameField) {
+    return (
+      `'nested' names '${nested}', an array, but the projection declares no 'name' — its ` +
+      `entries would have no identity to project under.`
+    );
+  }
+  return undefined;
+}
+
+/** Structural equality that terminates on a schema aliased into itself. */
+function sameShape(a: unknown, b: unknown, seen = new Map<object, object>()): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (seen.get(a) === b) return true;
+  seen.set(a, b);
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.hasOwn(right, key) && sameShape(left[key], right[key], seen))
+  );
 }

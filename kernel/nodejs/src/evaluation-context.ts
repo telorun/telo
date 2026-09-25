@@ -30,7 +30,7 @@ import {
   type Tracer,
 } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
-import { celResourceReads, evalPathCovers } from "@telorun/analyzer";
+import { celResourceReads, concreteEvalPaths, evalPathCovers } from "@telorun/analyzer";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
@@ -2638,10 +2638,11 @@ export class EvaluationContext implements IEvaluationContext {
     const result = { ...value };
     for (const path of paths) {
       if (isExcluded(path, excludePaths)) continue;
-      const parts = path.split(".");
-      const current = getNestedValue(result, parts);
-      if (current !== undefined) {
-        setNestedValue(result, parts, this.expand(current));
+      for (const parts of concreteEvalPaths(result, path, isCompiledValue)) {
+        const current = getNestedValue(result, parts);
+        if (current !== undefined) {
+          setNestedValue(result, parts, this.expand(current));
+        }
       }
     }
     return result;
@@ -2665,12 +2666,22 @@ function getNestedValue(obj: Record<string, unknown>, parts: string[]): unknown 
   return current;
 }
 
+/** Sets a value beneath `obj`, copying each plain container on the way down so
+ *  the manifest the expansion started from keeps its compiled expressions — an
+ *  instance re-created from it must evaluate them again. */
 function setNestedValue(obj: Record<string, unknown>, parts: string[], value: unknown): void {
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const next = current[parts[i]];
     if (next === null || typeof next !== "object") return;
-    current = next as Record<string, unknown>;
+    const proto = Object.getPrototypeOf(next);
+    const copy = Array.isArray(next)
+      ? [...next]
+      : proto === Object.prototype || proto === null
+        ? { ...(next as Record<string, unknown>) }
+        : next;
+    current[parts[i]] = copy;
+    current = copy as Record<string, unknown>;
   }
   current[parts[parts.length - 1]] = value;
 }

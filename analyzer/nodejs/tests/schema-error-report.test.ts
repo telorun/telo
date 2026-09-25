@@ -206,3 +206,21 @@ describe("a deeply nested recursive union", () => {
     expect(issues[0].message).toContain("matches no alternative");
   });
 });
+
+describe("a Telo format", () => {
+  it("names the position and what was expected, rather than the format alone", () => {
+    const validate = createAjv().compile({
+      type: "object",
+      properties: { selector: { type: "string", format: "css-selector" } },
+    });
+    const data = { selector: "div[" };
+    expect(validate(data)).toBe(false);
+    expect(schemaIssues(validate.errors, data)).toEqual([
+      {
+        message: '/selector must be a css-selector: Expected attribute name at offset 3 of "div["',
+        path: "selector",
+        keyword: "format",
+      },
+    ]);
+  });
+});

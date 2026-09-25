@@ -1,0 +1,25 @@
+# The same tag computed with `!cel`: past `telo check`, and refused by the
+# kind's input contract before the controller runs.
+kind: Telo.Application
+metadata:
+  name: HtmlNodeNameAlphabetComputed
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: tag
+    value: !cel "'img src=x onerror=alert(1)'"
+  - name: render
+    invoke: { kind: Html.Markup }
+    inputs:
+      document:
+        nodes:
+          - type: element
+            tag: !cel "steps.tag.result"
+            attrs: {}
+            children: []

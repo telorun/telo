@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: HtmlMetadataTest
+  version: 1.0.0
+  description: Page metadata, including a malformed JSON-LD block.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref readsMetadata
+---
+kind: Run.Sequence
+metadata: { name: readsMetadata }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      baseUrl: https://example.com/post/1
+      html: >-
+        <html lang="fi"><head><title>  A
+        post </title><title>ignored</title>
+        <meta name="description" content="About it"><meta property="og:image" content="/a.png">
+        <meta property="og:image" content="/b.png"><meta charset="utf-8">
+        <link rel="Canonical" href="/post/1"><link rel="alternate icon" href="favicon.ico" type="image/x-icon" sizes="16x16">
+        <script type="application/ld+json">{"@type": "Article", "wordCount": 3}</script>
+        <script type=" Application/LD+JSON ">{"@type": oops}</script>
+        </head><body><svg><title>not the page title</title></svg></body></html>
+  - name: metadata
+    invoke: { kind: Html.Metadata }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMetadata
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.metadata.result"
+      expected:
+        title: A post
+        lang: fi
+        baseUrl: https://example.com/post/1
+        meta:
+          description: [About it]
+          og:image: [/a.png, /b.png]
+        links:
+          - { rel: [canonical], href: https://example.com/post/1 }
+          - rel: [alternate, icon]
+            href: https://example.com/post/favicon.ico
+            type: image/x-icon
+            sizes: 16x16
+        jsonLd:
+          - value: { "@type": Article, wordCount: 3 }
+          - error: !cel "steps.metadata.result.jsonLd[1].error"
+  - name: assertMalformedReported
+    invoke: { kind: Assert.Matches }
+    inputs:
+      actual: !cel "steps.metadata.result.jsonLd[1].error"
+      pattern: "JSON"

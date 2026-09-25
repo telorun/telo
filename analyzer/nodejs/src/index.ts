@@ -31,6 +31,7 @@ export {
   buildEvalPaths,
   celEvalModeAt,
   celEvalSites,
+  concreteEvalPaths,
   declaresCelRegion,
   evalPathCovers,
   implicitEvalSites,
@@ -257,6 +258,14 @@ export {
   VALUE_TYPE_KEYWORD_VERSION,
 } from "./value-type-keyword.js";
 export {
+  describeTeloFormatFailure,
+  TELO_AJV_FORMATS,
+  TELO_FORMATS,
+  teloFormatFailure,
+  teloFormatOf,
+} from "./telo-format.js";
+export type { TeloFormatEntry, TeloFormatFailure } from "./telo-format.js";
+export {
   applyTextEdits,
   isPlainSafe,
   quoteStyleOf,
@@ -413,6 +422,7 @@ export {
   celPlaceholderForSchema,
   checkSchemaCompatibility,
   collectProperties,
+  producedPlaceholder,
   resolveRefIn,
   selectUnionBranch,
   undeclaredKeySchema,
@@ -421,6 +431,7 @@ export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compa
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
 export {
   ajvErrorToPath,
+  explainFormatErrors,
   formatAjvErrors,
   formatSingleError,
   reduceSchemaErrors,
@@ -488,6 +499,7 @@ export type {
 export {
   decodePlainLiterals,
   mapTextLeaves,
+  type SchemaNodeVisitor,
   type TextLeafMapper,
 } from "./plain-literal-decoding.js";
 export { holdsHostPath, hostAnchorFor } from "./host-path-slot.js";

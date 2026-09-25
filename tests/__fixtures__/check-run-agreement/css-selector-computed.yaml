@@ -1,0 +1,38 @@
+# An expression at a `format: css-selector` slot is known only once evaluated:
+# clean at check, refused at creation when the value it yields is malformed.
+kind: Telo.Application
+metadata:
+  name: CssSelectorComputed
+imports:
+  Run: ../../../modules/run
+variables:
+  sel:
+    env: CSS_SELECTOR_COMPUTED_SEL
+    type: string
+    default: "svg|a"
+targets:
+  - name: pick
+    invoke: !ref pick
+---
+kind: Telo.Definition
+metadata:
+  name: Pick
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    selector:
+      type: string
+      format: css-selector
+      x-telo-eval: compile
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.selector"
+---
+kind: Self.Pick
+metadata:
+  name: pick
+selector: !cel "variables.sel"

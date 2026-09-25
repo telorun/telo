@@ -1,0 +1,231 @@
+kind: Telo.Application
+metadata:
+  name: HtmlJsonTreeTest
+  version: 1.0.0
+  description: Parsing to the node tree, serialization round trips, charset sniffing and the base URL rule.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref roundTrip
+  - !ref treeConstruction
+  - !ref bomOverridesCharset
+  - !ref metaCharset
+  - !ref fragmentParse
+  - !ref baseUrlRule
+---
+# SVG with foreignObject, MathML, a template, a legacy doctype, boolean and
+# duplicate attributes and entities: serialized, then parsed again, the tree is
+# the same.
+kind: Run.Sequence
+metadata: { name: roundTrip }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: >-
+        <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+        <p class="a" hidden id=one id=two>A &amp; B&nbsp;&lt;c&gt;</p><svg viewbox="0 0 1 1"><foreignObject><div>x</div></foreignObject><a xlink:href="#q">l</a></svg><math><mi>x</mi></math><template><b>t</b></template>
+  - name: markup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: reparse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "steps.markup.result.html" }
+  - name: assertMarkup
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markup.result.html"
+      expected: >-
+        <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd"><html><head></head><body><p class="a" hidden="" id="one">A &amp; B&nbsp;&lt;c&gt;</p><svg viewBox="0 0 1 1"><foreignObject><div>x</div></foreignObject><a xlink:href="#q">l</a></svg><math><mi>x</mi></math><template><b>t</b></template></body></html>
+  - name: assertRoundTrip
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.reparse.result"
+      expected: !cel "steps.parse.result"
+  - name: assertDoctype
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.parse.result.nodes[0]"
+      expected:
+        type: doctype
+        name: html
+        publicId: -//W3C//DTD HTML 4.01//EN
+        systemId: http://www.w3.org/TR/html4/strict.dtd
+  - name: body
+    value: !cel "steps.parse.result.nodes[1].children[1]"
+  - name: assertParagraph
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.body.result.children[0]"
+      expected:
+        type: element
+        tag: p
+        attrs: { class: a, hidden: "", id: one }
+        children: [{ type: text, text: "A & B <c>" }]
+  - name: assertForeign
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.body.result.children[1]"
+      expected:
+        type: element
+        tag: svg
+        namespace: svg
+        attrs: { viewBox: 0 0 1 1 }
+        children:
+          - type: element
+            tag: foreignObject
+            namespace: svg
+            attrs: {}
+            children: [{ type: element, tag: div, attrs: {}, children: [{ type: text, text: x }] }]
+          - type: element
+            tag: a
+            namespace: svg
+            attrs: { "xlink:href": "#q" }
+            children: [{ type: text, text: l }]
+  - name: assertMath
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.body.result.children[2]"
+      expected:
+        type: element
+        tag: math
+        namespace: mathml
+        attrs: {}
+        children: [{ type: element, tag: mi, namespace: mathml, attrs: {}, children: [{ type: text, text: x }] }]
+  - name: assertTemplate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.body.result.children[3]"
+      expected:
+        type: element
+        tag: template
+        attrs: {}
+        children: [{ type: element, tag: b, attrs: {}, children: [{ type: text, text: t }] }]
+---
+# A subset of the html5lib tree-construction cases: implied tags, the adoption
+# agency, foster parenting, and a paragraph a table closes only in no-quirks mode.
+kind: Run.Sequence
+metadata: { name: treeConstruction }
+steps:
+  - name: cases
+    invoke:
+      kind: Run.Iteration
+      collection:
+        - source: <p>One<p>Two
+          tree: <html><head></head><body><p>One</p><p>Two</p></body></html>
+        - source: <a><p></a></p>
+          tree: <html><head></head><body><a></a><p><a></a></p></body></html>
+        - source: <b><i></b></i>x
+          tree: <html><head></head><body><b><i></i></b>x</body></html>
+        - source: <table><tr><td>1</td></tr>x</table>
+          tree: <html><head></head><body>x<table><tbody><tr><td>1</td></tr></tbody></table></body></html>
+        - source: <p><table></table>
+          tree: <html><head></head><body><p><table></table></p></body></html>
+        - source: <!DOCTYPE html><p><table></table>
+          tree: <!DOCTYPE html><html><head></head><body><p></p><table></table></body></html>
+      steps:
+        - name: parse
+          invoke: { kind: Html.JsonTree }
+          inputs: { html: !cel "item.source" }
+        - name: markup
+          invoke: { kind: Html.Markup }
+          inputs: { document: !cel "steps.parse.result" }
+        - name: assertTree
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.markup.result.html"
+            expected: !cel "item.tree"
+---
+# A byte order mark wins over the declared charset.
+kind: Run.Sequence
+metadata: { name: bomOverridesCharset }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html:
+        bytes: !include-bytes ./__fixtures__/bom-utf8.html
+        charset: iso-8859-2
+      fragment: true
+  - name: assertText
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.parse.result.nodes"
+      expected:
+        - type: element
+          tag: p
+          attrs: {}
+          children: [{ type: text, text: Zażółć }]
+---
+# With no byte order mark and no declared charset, the `<meta>` prescan decides.
+kind: Run.Sequence
+metadata: { name: metaCharset }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html:
+        bytes: !include-bytes ./__fixtures__/meta-latin2.html
+  - name: text
+    invoke: { kind: Html.PlainText }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertText
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.text.result.text"
+      expected: Zażółć gęślą jaźń
+---
+kind: Run.Sequence
+metadata: { name: fragmentParse }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <li>one</li><!-- note -->two
+      fragment: true
+  - name: assertNodes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.parse.result"
+      expected:
+        nodes:
+          - { type: element, tag: li, attrs: {}, children: [{ type: text, text: one }] }
+          - { type: comment, text: " note " }
+          - { type: text, text: two }
+---
+# The first `<base href>` resolves against the page URL; with no page URL only an
+# absolute one gives a base, and nothing is inferred.
+kind: Run.Sequence
+metadata: { name: baseUrlRule }
+steps:
+  - name: relativeBase
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <base href="/docs/"><base href="https://other.example/">
+      baseUrl: https://example.com/a/page.html
+  - name: noPageUrl
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <base href="/docs/"> }
+  - name: absoluteBase
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <base href="https://example.com/docs/"> }
+  - name: pageUrlOnly
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <p>x</p>
+      baseUrl: https://example.com/a/page.html
+  - name: assertBases
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        relative: !cel "steps.relativeBase.result.baseUrl"
+        none: !cel "has(steps.noPageUrl.result.baseUrl)"
+        absolute: !cel "steps.absoluteBase.result.baseUrl"
+        page: !cel "steps.pageUrlOnly.result.baseUrl"
+      expected:
+        relative: https://example.com/docs/
+        none: false
+        absolute: https://example.com/docs/
+        page: https://example.com/a/page.html

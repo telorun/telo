@@ -50,6 +50,7 @@
     "@telorun/templating": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
+    "css-selector-parser": "^3.3.0",
     "jsonpath-plus": "^10.3.0",
     "packageurl-js": "^2.0.1",
     "yaml": "^2.8.3"

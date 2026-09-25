@@ -1,0 +1,33 @@
+# A computed selector or attribute name is typed as the text it must be, at
+# every depth of an extraction.
+kind: Telo.Application
+metadata:
+  name: ComputedNotText
+imports:
+  Html: ../../
+  Run: ../../../run
+variables:
+  n:
+    env: COMPUTED_NOT_TEXT_N
+    type: integer
+    default: 3
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>text</p> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        top: { selector: !cel "2", type: text }
+        link: { selector: a, type: attr, attr: !cel "variables.n" }
+        a:
+          selector: p
+          fields:
+            c: { selector: !cel "variables.n", type: text }
+    inputs: { document: !cel "steps.parse.result" }

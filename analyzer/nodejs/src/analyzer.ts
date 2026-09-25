@@ -145,6 +145,7 @@ import {
   unionBranches,
   inlineNamedShapes,
   navigateSchemaToExprPath,
+  resolveRefIn,
   substituteCelFields,
   validateAgainstSchema,
   type SchemaIssue,
@@ -638,13 +639,17 @@ export interface CelValueSlot {
  *  "no matching overload" used to survive next to the diagnostic that explained
  *  it. What this walk supplies is the half the engine cannot know: the declared
  *  type of the slot the value flows into. The comparison happens once both are
- *  in hand (`reportCelReturnMismatches`). */
+ *  in hand (`reportCelReturnMismatches`). A document-local `$ref` is followed
+ *  against `root`, the kind schema the walk started from — the eval-path reader
+ *  follows it too, so a slot it marks evaluated is a slot whose type is known. */
 function collectCelValueSlots(
   data: unknown,
-  schema: Record<string, any>,
+  raw: Record<string, any>,
   path: string,
+  base: Record<string, any> = raw,
 ): CelValueSlot[] {
   const slots: CelValueSlot[] = [];
+  const { schema, root } = resolveRefIn(raw, base);
 
   // A tag whose produced type is fixed (`!interpolate`, `!literal`, an embed)
   // is checked against the slot through its placeholder; only a `!cel` value's
@@ -657,7 +662,7 @@ function collectCelValueSlots(
   if (Array.isArray(data)) {
     const itemSchema = (schema.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
-      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`));
+      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`, root));
     }
   } else if (data !== null && typeof data === "object") {
     const props = (schema.properties ?? {}) as Record<string, any>;
@@ -671,6 +676,7 @@ function collectCelValueSlots(
           v,
           (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
+          root,
         ),
       );
     }

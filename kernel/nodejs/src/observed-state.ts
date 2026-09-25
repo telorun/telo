@@ -96,7 +96,7 @@ export function acceptReportedStatus(
   }
   const validate = validatorFor(opts.statusSchema);
   if (!validate(status)) {
-    const detail = formatAjvErrors(validate.errors);
+    const detail = formatAjvErrors(validate.errors, status);
     throw new RuntimeError(
       "ERR_OBSERVED_STATE_INVALID",
       `${opts.kind} '${opts.name}' reported observed state that does not match its declared 'status:': ${detail}`,

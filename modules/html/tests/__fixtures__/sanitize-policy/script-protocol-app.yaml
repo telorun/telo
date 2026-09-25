@@ -1,0 +1,7 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library's internals, so the refusal at creation is what remains here.
+kind: Telo.Application
+metadata:
+  name: SanitizeScriptProtocolApp
+imports:
+  Lib: ./script-protocol

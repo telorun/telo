@@ -1,0 +1,252 @@
+# A SafeTree policy that contradicts itself, or keeps what an allowlist cannot
+# make safe, is refused twice: by `telo check` at the library declaring it (its
+# resource rules), and by the controller at
+# creation from a consumer whose entry-scoped check is silent (`runFails:`).
+kind: Telo.Application
+metadata:
+  name: HtmlSanitizePolicyRefusalsTest
+  version: 1.0.0
+  description: Each sanitize resource rule and its controller twin refuse the same policy.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref htmlSanitizeUnknownElement
+  - !ref htmlSanitizeUnknownElementAtRuntime
+  - !ref htmlSanitizeUrlWithoutProtocols
+  - !ref htmlSanitizeUrlWithoutProtocolsAtRuntime
+  - !ref htmlSanitizeDropAllowed
+  - !ref htmlSanitizeDropAllowedAtRuntime
+  - !ref htmlSanitizeIdPrefixUnused
+  - !ref htmlSanitizeIdPrefixUnusedAtRuntime
+  - !ref htmlSanitizeRawTextStyle
+  - !ref htmlSanitizeRawTextStyleAtRuntime
+  - !ref htmlSanitizeRawTextNoscript
+  - !ref htmlSanitizeRawTextNoscriptAtRuntime
+  - !ref htmlSanitizeNotAnHtmlElement
+  - !ref htmlSanitizeNotAnHtmlElementAtRuntime
+  - !ref htmlSanitizeScriptProtocol
+  - !ref htmlSanitizeScriptProtocolAtRuntime
+  - !ref htmlSanitizeUnknownElementForced
+  - !ref htmlSanitizeUnknownElementForcedAtRuntime
+  - !ref htmlSanitizeEventHandler
+  - !ref htmlSanitizeEventHandlerAtRuntime
+  - !ref htmlSanitizeEventHandlerForced
+  - !ref htmlSanitizeEventHandlerForcedAtRuntime
+---
+# An `attributes` entry for an element the policy does not keep: a sanitize policy contradicting itself, refused at the
+# declaration…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUnknownElement
+source: ./__fixtures__/sanitize-policy/unknown-element/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'attributes.span': allows attributes on an element `elements` does not list"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUnknownElementAtRuntime
+source: ./__fixtures__/sanitize-policy/unknown-element-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT: 'attributes' names 'span'"
+---
+# A URL attribute allowed with no scheme list: a sanitize policy contradicting itself, refused at the
+# declaration…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUrlWithoutProtocols
+source: ./__fixtures__/sanitize-policy/url-without-protocols/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "allows a URL attribute without `protocols`"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUrlWithoutProtocolsAtRuntime
+source: ./__fixtures__/sanitize-policy/url-without-protocols-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_URL_WITHOUT_PROTOCOLS"
+---
+# An element both kept and dropped with its content: a sanitize policy contradicting itself, refused at the
+# declaration…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeDropAllowed
+source: ./__fixtures__/sanitize-policy/drop-allowed/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "in both `elements` and `dropContent`"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeDropAllowedAtRuntime
+source: ./__fixtures__/sanitize-policy/drop-allowed-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_DROP_ALLOWED"
+---
+# An id prefix with no id or name allowed to prefix: refused at the
+# declaration…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeIdPrefixUnused
+source: ./__fixtures__/sanitize-policy/id-prefix-unused/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `idPrefix` but allows no `id` or `name`"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeIdPrefixUnusedAtRuntime
+source: ./__fixtures__/sanitize-policy/id-prefix-unused-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_ID_PREFIX_UNUSED"
+---
+# An element whose content is raw text cannot be sanitized, so it cannot be kept:
+# refused at the declaration, anchored at the entry…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeRawTextStyle
+source: ./__fixtures__/sanitize-policy/raw-text-style/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'elements[1]': keeps an element whose content is raw text"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeRawTextStyleAtRuntime
+source: ./__fixtures__/sanitize-policy/raw-text-style-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_RAW_TEXT_ELEMENT: 'elements' lists 'style'"
+---
+# `noscript` is raw text too, since the parser runs with scripting enabled.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeRawTextNoscript
+source: ./__fixtures__/sanitize-policy/raw-text-noscript/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'elements[1]': keeps an element whose content is raw text"
+---
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeRawTextNoscriptAtRuntime
+source: ./__fixtures__/sanitize-policy/raw-text-noscript-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_RAW_TEXT_ELEMENT: 'elements' lists 'noscript'"
+---
+# `svg` (like `math` and `image`) is never written as an HTML element, so a
+# policy cannot keep it: refused at the declaration, anchored at the entry…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeNotAnHtmlElement
+source: ./__fixtures__/sanitize-policy/not-an-html-element/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'elements[0]': keeps `svg`, `math` or `image`"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeNotAnHtmlElementAtRuntime
+source: ./__fixtures__/sanitize-policy/not-an-html-element-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_NOT_AN_HTML_ELEMENT"
+---
+# A URL scheme that runs script, listed in `protocols`: refused at the
+# declaration, anchored at the element's attribute map…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeScriptProtocol
+source: ./__fixtures__/sanitize-policy/script-protocol/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'attributes.a': lists `javascript` or `vbscript` in `protocols`"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeScriptProtocolAtRuntime
+source: ./__fixtures__/sanitize-policy/script-protocol-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_SCRIPT_PROTOCOL"
+---
+# A `setAttributes` entry for an element the policy does not keep: refused at the
+# declaration, anchored at the entry…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUnknownElementForced
+source: ./__fixtures__/sanitize-policy/unknown-element-forced/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'setAttributes.input': forces attributes onto an element `elements` does not list"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeUnknownElementForcedAtRuntime
+source: ./__fixtures__/sanitize-policy/unknown-element-forced-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED"
+---
+# An event handler allowed through from the input: refused at the declaration,
+# anchored at the element's attribute map…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeEventHandler
+source: ./__fixtures__/sanitize-policy/event-handler/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'attributes.p': allows an event handler attribute"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeEventHandlerAtRuntime
+source: ./__fixtures__/sanitize-policy/event-handler-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_EVENT_HANDLER: 'p' allows the event handler 'onclick'"
+---
+# An event handler forced onto every kept element: refused at the declaration,
+# anchored at the element's entry…
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeEventHandlerForced
+source: ./__fixtures__/sanitize-policy/event-handler-forced/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'setAttributes.p': forces an event handler attribute"
+---
+# …and by the controller at creation, from a consumer whose check is silent.
+kind: Assert.Manifest
+metadata:
+  name: htmlSanitizeEventHandlerForcedAtRuntime
+source: ./__fixtures__/sanitize-policy/event-handler-forced-app.yaml
+expect:
+  errors: []
+  runFails: "HTML_SANITIZE_EVENT_HANDLER_FORCED"

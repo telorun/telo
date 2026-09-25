@@ -1,0 +1,1080 @@
+kind: Telo.Library
+metadata:
+  name: Html
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data]
+  description: |
+    Read, query and transform web pages: parse HTML (text or bytes in any charset)
+    into a tree CEL can read, select elements with CSS selectors, extract typed
+    fields for scraping, sanitize untrusted markup against an allowlist, convert to
+    Markdown or plain text, read page metadata, and isolate an article's main
+    content from navigation and ads.
+# 0.101.0 reads the extraction projection through its `$defs` entry schema and
+# `nested:` (0.100.0 reports SCHEMA_PROJECTION_INVALID here), evaluates the
+# `x-telo-eval` inside it, and checks `format: css-selector` (0.100.0 ignores
+# it). Verified by running 0.100.0.
+requires:
+  telo: ">=0.101.0"
+exports:
+  kinds:
+    - JsonTree
+    - Selection
+    - Extraction
+    - SafeTree
+    - Markup
+    - PlainText
+    - Markdown
+    - Metadata
+    - MainContent
+  resources:
+    - Node
+    - Parsed
+    - escape
+    - unescape
+    - stripAll
+    - basicFormatting
+    - richContent
+---
+# One node of a parsed page. Flat and closed, with no root-level union: a union
+# at the root reads as `dyn` to CEL, and then nothing below it is typed. Which
+# fields a node carries is keyed on `type` through the if/then/else chain below.
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+  description: >-
+    One node of a parsed HTML page as plain data: an element with its tag, foreign
+    namespace, attributes and children, a run of text, a comment, or a doctype with
+    its identifiers. Recursive, closed and position-free, so expressions can walk,
+    filter and rebuild a page tree.
+schema:
+  title: Node
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties:
+    type:
+      description: What the node is.
+      type: string
+      enum: [element, text, comment, doctype]
+    tag:
+      description: >-
+        An element's local name — lowercase for HTML and MathML, lowercase or one of
+        the spec's case-adjusted names for SVG (`foreignObject`). A letter, then
+        anything but whitespace, `/` and `>` — the characters a start tag's name can
+        hold.
+      type: string
+      pattern: "^[A-Za-z][^\\t\\n\\f\\r />]*$"
+    namespace:
+      description: The foreign namespace of an SVG or MathML element; absent for HTML.
+      type: string
+      enum: [svg, mathml]
+    attrs:
+      description: >-
+        An element's attributes, by the qualified name the parser produced (`href`,
+        `data-id`, `xlink:href`, `viewBox`), in document order. Values are the raw
+        entity-decoded text; a boolean attribute is `""`; the first duplicate wins.
+        A name holds no whitespace, `/` or `>`, and no `=` after its first character;
+        it is lowercase unless it is a case-adjusted foreign name (`viewBox`).
+      type: object
+      propertyNames:
+        pattern: "^[^\\t\\n\\f\\r />][^\\t\\n\\f\\r />=]*$"
+      additionalProperties: { type: string }
+    children:
+      description: An element's children in document order. A `<template>`'s children are its contents.
+      type: array
+      items: { $ref: "#" }
+    text:
+      description: The text of a text or comment node.
+      type: string
+    name:
+      description: A doctype's name.
+      type: string
+    publicId:
+      description: A doctype's public identifier, `""` when absent.
+      type: string
+    systemId:
+      description: A doctype's system identifier, `""` when absent.
+      type: string
+  # Names only the parser's own spelling can take: it lowercases every tag and
+  # attribute name, then restores the case of the spec's adjusted SVG and MathML
+  # names. parse5 has no entry for `feDropShadow`, so both spellings pass.
+  allOf:
+    - if: { required: [tag], not: { required: [namespace] } }
+      then:
+        properties:
+          tag:
+            pattern: "^[^A-Z]*$"
+            not: { enum: [svg, math, image] }
+          attrs: { propertyNames: { pattern: "^[^A-Z]*$" } }
+    - if: { required: [namespace], properties: { namespace: { const: mathml } } }
+      then:
+        properties:
+          tag: { pattern: "^[^A-Z]*$" }
+          attrs:
+            propertyNames:
+              anyOf:
+                - pattern: "^[^A-Z]*$"
+                - const: definitionURL
+    - if: { required: [namespace], properties: { namespace: { const: svg } } }
+      then:
+        properties:
+          tag:
+            anyOf:
+              - pattern: "^[^A-Z]*$"
+                not:
+                  enum: [
+                    altglyph, altglyphdef, altglyphitem, animatecolor, animatemotion,
+                    animatetransform, clippath, feblend, fecolormatrix,
+                    fecomponenttransfer, fecomposite, feconvolvematrix, fediffuselighting,
+                    fedisplacementmap, fedistantlight, feflood, fefunca, fefuncb, fefuncg,
+                    fefuncr, fegaussianblur, feimage, femerge, femergenode, femorphology,
+                    feoffset, fepointlight, fespecularlighting, fespotlight, fetile,
+                    feturbulence, foreignobject, glyphref, lineargradient, radialgradient,
+                    textpath
+                  ]
+              - enum: [
+                  altGlyph, altGlyphDef, altGlyphItem, animateColor, animateMotion,
+                  animateTransform, clipPath, feBlend, feColorMatrix, feComponentTransfer,
+                  feComposite, feConvolveMatrix, feDiffuseLighting, feDisplacementMap,
+                  feDistantLight, feDropShadow, feFlood, feFuncA, feFuncB, feFuncG,
+                  feFuncR, feGaussianBlur, feImage, feMerge, feMergeNode, feMorphology,
+                  feOffset, fePointLight, feSpecularLighting, feSpotLight, feTile,
+                  feTurbulence, foreignObject, glyphRef, linearGradient, radialGradient,
+                  textPath
+                ]
+          attrs:
+            propertyNames:
+              anyOf:
+                - pattern: "^[^A-Z]*$"
+                - enum: [
+                    attributeName, attributeType, baseFrequency, baseProfile, calcMode,
+                    clipPathUnits, diffuseConstant, edgeMode, filterUnits, glyphRef,
+                    gradientTransform, gradientUnits, kernelMatrix, kernelUnitLength,
+                    keyPoints, keySplines, keyTimes, lengthAdjust, limitingConeAngle,
+                    markerHeight, markerUnits, markerWidth, maskContentUnits, maskUnits,
+                    numOctaves, pathLength, patternContentUnits, patternTransform,
+                    patternUnits, pointsAtX, pointsAtY, pointsAtZ, preserveAlpha,
+                    preserveAspectRatio, primitiveUnits, refX, refY, repeatCount,
+                    repeatDur, requiredExtensions, requiredFeatures, specularConstant,
+                    specularExponent, spreadMethod, startOffset, stdDeviation, stitchTiles,
+                    surfaceScale, systemLanguage, tableValues, targetX, targetY,
+                    textLength, viewBox, viewTarget, xChannelSelector, yChannelSelector,
+                    zoomAndPan
+                  ]
+  if:
+    properties: { type: { const: element } }
+  then:
+    required: [tag, attrs, children]
+    properties:
+      text: false
+      name: false
+      publicId: false
+      systemId: false
+  else:
+    if:
+      properties: { type: { enum: [text, comment] } }
+    then:
+      required: [text]
+      properties:
+        tag: false
+        namespace: false
+        attrs: false
+        children: false
+        name: false
+        publicId: false
+        systemId: false
+    else:
+      required: [name, publicId, systemId]
+      properties:
+        tag: false
+        namespace: false
+        attrs: false
+        children: false
+        text: false
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Parsed
+  description: >-
+    A parsed HTML page or fragment as a list of top-level nodes, with the base URL
+    its relative links resolve against. The value every page transformation reads
+    and returns, so one parse feeds selection, extraction, sanitizing, rendering and
+    metadata alike.
+schema:
+  title: Parsed
+  type: object
+  additionalProperties: false
+  required: [nodes]
+  properties:
+    nodes:
+      description: The top-level nodes, in document order.
+      type: array
+      items: { $ref: "telo:Html/Node" }
+    baseUrl:
+      description: >-
+        The effective base URL: the first `<base href>` resolved against the page URL
+        supplied at parse time, or that URL. Absent when no base is known.
+      type: string
+      format: uri
+---
+kind: Telo.Definition
+metadata:
+  name: JsonTree
+  description: >-
+    Parses HTML text or raw bytes into a plain-data page tree with a standards-
+    conformant parser, sniffing the character encoding from a byte order mark, a
+    declared charset or a meta tag. Parses whole documents or fragments, records
+    the base URL, and never fails on malformed markup.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#JsonTree
+throws:
+  codes: {}
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [html]
+    properties:
+      html:
+        description: >-
+          The page: text, or bytes with an optional declared charset. Bytes are decoded
+          by a byte order mark, then `charset`, then a `<meta>` in the first 1024
+          bytes, then UTF-8; undecodable bytes become U+FFFD.
+        anyOf:
+          - type: string
+          - type: object
+            additionalProperties: false
+            required: [bytes]
+            properties:
+              bytes:
+                description: The encoded page.
+                x-telo-type: Telo.Bytes
+              charset:
+                description: >-
+                  The charset the transport declared (a `Content-Type` parameter), as a
+                  lowercase Encoding Standard label. A byte order mark overrides it.
+                type: string
+                enum: [
+                    "866", "ansi_x3.4-1968", "arabic", "ascii", "asmo-708", "big5", "big5-hkscs",
+                    "chinese", "cn-big5", "cp1250", "cp1251", "cp1252", "cp1253", "cp1254", "cp1255",
+                    "cp1256", "cp1257", "cp1258", "cp819", "cp866", "csbig5", "cseuckr",
+                    "cseucpkdfmtjapanese", "csgb2312", "csibm866", "csiso2022jp", "csiso58gb231280",
+                    "csiso88596e", "csiso88596i", "csiso88598e", "csiso88598i", "csisolatin1",
+                    "csisolatin2", "csisolatin3", "csisolatin4", "csisolatin5", "csisolatin6",
+                    "csisolatin9", "csisolatinarabic", "csisolatincyrillic", "csisolatingreek",
+                    "csisolatinhebrew", "cskoi8r", "csksc56011987", "csmacintosh", "csshiftjis",
+                    "csunicode", "cyrillic", "dos-874", "ecma-114", "ecma-118", "elot_928", "euc-jp",
+                    "euc-kr", "gb18030", "gb2312", "gb_2312", "gb_2312-80", "gbk", "greek", "greek8",
+                    "hebrew", "ibm819", "ibm866", "iso-10646-ucs-2", "iso-2022-jp", "iso-8859-1",
+                    "iso-8859-10", "iso-8859-11", "iso-8859-13", "iso-8859-14", "iso-8859-15",
+                    "iso-8859-16", "iso-8859-2", "iso-8859-3", "iso-8859-4", "iso-8859-5", "iso-8859-6",
+                    "iso-8859-6-e", "iso-8859-6-i", "iso-8859-7", "iso-8859-8", "iso-8859-8-e",
+                    "iso-8859-8-i", "iso-8859-9", "iso-ir-100", "iso-ir-101", "iso-ir-109", "iso-ir-110",
+                    "iso-ir-126", "iso-ir-127", "iso-ir-138", "iso-ir-144", "iso-ir-148", "iso-ir-149",
+                    "iso-ir-157", "iso-ir-58", "iso8859-1", "iso8859-10", "iso8859-11", "iso8859-13",
+                    "iso8859-14", "iso8859-15", "iso8859-2", "iso8859-3", "iso8859-4", "iso8859-5",
+                    "iso8859-6", "iso8859-7", "iso8859-8", "iso8859-9", "iso88591", "iso885910",
+                    "iso885911", "iso885913", "iso885914", "iso885915", "iso88592", "iso88593", "iso88594",
+                    "iso88595", "iso88596", "iso88597", "iso88598", "iso88599", "iso_8859-1",
+                    "iso_8859-15", "iso_8859-1:1987", "iso_8859-2", "iso_8859-2:1987", "iso_8859-3",
+                    "iso_8859-3:1988", "iso_8859-4", "iso_8859-4:1988", "iso_8859-5", "iso_8859-5:1988",
+                    "iso_8859-6", "iso_8859-6:1987", "iso_8859-7", "iso_8859-7:1987", "iso_8859-8",
+                    "iso_8859-8:1988", "iso_8859-9", "iso_8859-9:1989", "koi", "koi8", "koi8-r", "koi8-ru",
+                    "koi8-u", "koi8_r", "korean", "ks_c_5601-1987", "ks_c_5601-1989", "ksc5601",
+                    "ksc_5601", "l1", "l2", "l3", "l4", "l5", "l6", "l9", "latin1", "latin2", "latin3",
+                    "latin4", "latin5", "latin6", "logical", "mac", "macintosh", "ms932", "ms_kanji",
+                    "shift-jis", "shift_jis", "sjis", "sun_eu_greek", "tis-620", "ucs-2", "unicode",
+                    "unicode-1-1-utf-8", "unicode11utf8", "unicode20utf8", "unicodefeff", "unicodefffe",
+                    "us-ascii", "utf-16", "utf-16be", "utf-16le", "utf-8", "utf8", "visual",
+                    "windows-1250", "windows-1251", "windows-1252", "windows-1253", "windows-1254",
+                    "windows-1255", "windows-1256", "windows-1257", "windows-1258", "windows-31j",
+                    "windows-874", "windows-949", "x-cp1250", "x-cp1251", "x-cp1252", "x-cp1253",
+                    "x-cp1254", "x-cp1255", "x-cp1256", "x-cp1257", "x-cp1258", "x-euc-jp", "x-gbk",
+                    "x-mac-cyrillic", "x-mac-roman", "x-mac-ukrainian", "x-sjis", "x-unicode20utf8",
+                    "x-user-defined", "x-x-big5"
+                  ]
+      fragment:
+        description: >-
+          Parse as a fragment of a body — no implied `<html>`, `<head>` or `<body>`.
+        type: boolean
+        default: false
+      baseUrl:
+        description: >-
+          The page's own URL. A relative `<base href>` resolves against it; with none,
+          relative URLs stay as written.
+        type: string
+        format: uri
+outputType: !ref Parsed
+---
+kind: Telo.Definition
+metadata:
+  name: Selection
+  description: >-
+    Selects the elements of a parsed page that match a CSS selector, returning
+    each match with its whole subtree in document order and keeping the page's
+    base URL. Use it to cut a page down to the region worth processing before
+    extracting, converting or sanitizing it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Selection
+throws:
+  codes: {}
+schema:
+  type: object
+  additionalProperties: false
+  required: [selector]
+  properties:
+    selector:
+      title: Selector
+      description: >-
+        The CSS selector to match. Class and id matching is case-sensitive; a state
+        pseudo-class such as `:hover` matches nothing in a static page.
+      type: string
+      format: css-selector
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType: !ref Parsed
+---
+# The output is typed from each declaration's own `fields:` — a projection of
+# the entries through the `type` map, wrapped by `many` and widened by
+# `nullable`, recursing into `fields:` — so `result.fields.<name>` is checked
+# against what this resource declares.
+kind: Telo.Definition
+metadata:
+  name: Extraction
+  description: >-
+    Scrapes typed values out of a parsed page with CSS selectors: text, inner
+    markup, attributes, numbers and integers, single or repeated, optional or
+    required, and nested records for lists of cards or rows. The result is typed
+    from the declared fields, so a misspelled field is caught before running.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Extraction
+throws:
+  codes:
+    ERR_HTML_FIELD_MISSING:
+      description: >-
+        A field that is neither `many` nor `nullable` matched nothing, or matched an
+        element without the attribute it reads. The message names the field path.
+    ERR_HTML_FIELD_CONVERSION:
+      description: >-
+        A `number` or `integer` field matched text that is not a number or integer.
+        The message names the field path and the text.
+    ERR_HTML_NOT_SERIALIZABLE:
+      description: >-
+        An `html` field matched an element whose markup, written on its own, would not
+        read back as that element's tree. The message names the field, the first
+        differing node's path and what it reads back as.
+x-telo-schema-projection:
+  entries: /fields
+  key: type
+  array: many
+  nullable: nullable
+  nested: fields
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [fields]
+    properties:
+      fields: { x-telo-schema-projection-from: "" }
+schema:
+  type: object
+  additionalProperties: false
+  required: [fields]
+  $defs:
+    Field:
+      title: Field
+      type: object
+      additionalProperties: false
+      required: [selector]
+      properties:
+        selector:
+          description: >-
+            Where the value is. Inside a nested field it runs relative to each match of
+            the enclosing field — write `:scope > a` for a direct child. May be
+            computed with `!cel`; its result is checked at creation.
+          type: string
+          format: css-selector
+          x-telo-eval: compile
+        type:
+          description: >-
+            What to read: `text` (the rendered text), `html` (the element's markup),
+            `attr` (an attribute's raw value), `number` or `integer` (the text parsed).
+          type: string
+          enum: [text, html, attr, number, integer]
+          x-telo-schema-map:
+            text: { type: string }
+            html: { type: string }
+            attr: { type: string }
+            number: { type: number }
+            integer: { type: integer }
+        attr:
+          description: "The attribute to read, for `type: attr`. May be computed with `!cel`."
+          type: string
+          minLength: 1
+          x-telo-eval: compile
+        many:
+          description: Read every match as a list (empty when nothing matches) instead of the first.
+          type: boolean
+          default: false
+        nullable:
+          description: Yield `null` when nothing matches, instead of failing.
+          type: boolean
+          default: false
+        fields:
+          description: >-
+            A record read from each match, in place of `type` — the fields run relative
+            to the matched element.
+          type: object
+          minProperties: 1
+          additionalProperties: { $ref: "#/$defs/Field" }
+      allOf:
+        - if: { required: [type], properties: { type: { const: attr } } }
+          then: { required: [attr] }
+          else: { properties: { attr: false } }
+        - if: { required: [fields] }
+          then: { properties: { type: false } }
+          else: { required: [type] }
+        - if: { required: [many], properties: { many: { const: true } } }
+          then: { properties: { nullable: { const: false } } }
+  properties:
+    fields:
+      title: Fields
+      description: The values to read, by name.
+      type: object
+      minProperties: 1
+      additionalProperties: { $ref: "#/$defs/Field" }
+---
+kind: Telo.Definition
+metadata:
+  name: SafeTree
+  description: >-
+    Sanitizes untrusted HTML against an explicit allowlist of elements, attributes,
+    value constraints and URL schemes, removing scripts, event handlers and
+    dangerous links while keeping the text of anything unlisted. Prevents
+    cross-site scripting when displaying user content, comments or emails.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#SafeTree
+throws:
+  codes:
+    ERR_HTML_NOT_SERIALIZABLE:
+      description: >-
+        The sanitized tree still would not read back as itself after being replaced
+        by its readback three times. The message names the first differing node's
+        path and what it reads back as.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType: !ref Parsed
+schema:
+  type: object
+  additionalProperties: false
+  required: [elements]
+  $defs:
+    Constraint:
+      title: Attribute constraint
+      description: >-
+        What values the attribute may hold. `{}` allows any value; `values` and
+        `prefixes` together allow a value equal to one or starting with one;
+        `protocols` names the schemes a URL-bearing attribute may use.
+      type: object
+      additionalProperties: false
+      properties:
+        values:
+          type: array
+          items: { type: string }
+        prefixes:
+          type: array
+          items: { type: string }
+        protocols:
+          type: array
+          items:
+            type: string
+            pattern: "^[a-z][a-z0-9+.-]*$"
+    AttributeMap:
+      type: object
+      propertyNames:
+        pattern: "^[a-z][a-z0-9:_.-]*$"
+      additionalProperties: { $ref: "#/$defs/Constraint" }
+  properties:
+    elements:
+      title: Elements
+      description: >-
+        The HTML elements kept, by local name. Any other element — and every SVG or
+        MathML element — is unwrapped: it goes and its children stay, under the same
+        policy. An element whose content is raw text (`script`, `style`, `xmp`,
+        `iframe`, `noembed`, `noframes`, `plaintext`, `noscript`) cannot be kept,
+        nor can `svg`, `math` or `image`, which markup never writes as HTML elements.
+      type: array
+      uniqueItems: true
+      items:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+    attributes:
+      title: Attributes
+      description: >-
+        The attributes a kept element may carry, by element name or `"*"` for every
+        kept element. Unlisted attributes are removed. An event handler (a name
+        starting with `on`) cannot be listed — `HTML_SANITIZE_EVENT_HANDLER`.
+      type: object
+      propertyNames:
+        anyOf:
+          - const: "*"
+          - pattern: "^[a-z][a-z0-9-]*$"
+      additionalProperties: { $ref: "#/$defs/AttributeMap" }
+    setAttributes:
+      title: Set attributes
+      description: >-
+        Attribute values forced onto a kept element, overriding what it carried. An
+        event handler (a name starting with `on`) cannot be forced —
+        `HTML_SANITIZE_EVENT_HANDLER_FORCED`.
+      type: object
+      propertyNames:
+        pattern: "^[a-z][a-z0-9-]*$"
+      additionalProperties:
+        type: object
+        propertyNames:
+          pattern: "^[a-z][a-z0-9:_.-]*$"
+        additionalProperties: { type: string }
+    dropContent:
+      title: Drop content
+      description: >-
+        Elements removed together with everything inside them, by local name in any
+        namespace. Defaults to `script` and `style`.
+      type: array
+      uniqueItems: true
+      items:
+        type: string
+        pattern: "^[a-z][a-z0-9-]*$"
+      default: [script, style]
+    comments:
+      title: Comments
+      description: Keep comments.
+      type: boolean
+      default: false
+    idPrefix:
+      title: Id prefix
+      description: >-
+        Prefixed onto every kept `id` and `name` value, so user content cannot
+        collide with or clobber the page's own — and onto the references that
+        follow them: each token of a kept id-reference attribute (`for`,
+        `headers`, the `aria-*` references, …) and a `#fragment` link whose target
+        is kept in the same tree. A value `setAttributes` forces is never prefixed.
+      type: string
+  x-telo-resource-rules:
+    - in: /attributes
+      condition: !cel "key == '*' || key in self.elements"
+      code: HTML_SANITIZE_UNKNOWN_ELEMENT
+      message: >-
+        allows attributes on an element `elements` does not list, so the entry never
+        applies. Add the element to `elements` or remove the entry.
+    - in: /setAttributes
+      condition: !cel "key in self.elements"
+      code: HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED
+      message: >-
+        forces attributes onto an element `elements` does not list, so the entry never
+        applies. Add the element to `elements` or remove the entry.
+    - in: /attributes
+      condition: !cel "this.all(a, !(a in ['href', 'src', 'srcset', 'action', 'formaction', 'cite', 'poster', 'background', 'longdesc', 'xlink:href']) || 'protocols' in this[a])"
+      code: HTML_SANITIZE_URL_WITHOUT_PROTOCOLS
+      message: >-
+        allows a URL attribute without `protocols`, so a `javascript:` URL would pass.
+        List the schemes it may use, such as `protocols: [http, https]`.
+    - condition: !cel "!has(self.idPrefix) || (has(self.attributes) && self.attributes.exists(k, 'id' in self.attributes[k] || 'name' in self.attributes[k]))"
+      code: HTML_SANITIZE_ID_PREFIX_UNUSED
+      message: >-
+        sets `idPrefix` but allows no `id` or `name` attribute on any element, so
+        there is nothing for it to prefix. Allow `id` / `name` (under an element or
+        `"*"`), or remove `idPrefix`.
+    - condition: !cel "!(has(self.dropContent) ? self.dropContent : ['script', 'style']).exists(d, d in self.elements)"
+      code: HTML_SANITIZE_DROP_ALLOWED
+      message: >-
+        lists an element in both `elements` and `dropContent`; it would be removed
+        with its content, so the allow entry has no effect.
+    - in: /elements
+      condition: !cel "!(this in ['script', 'style', 'xmp', 'iframe', 'noembed', 'noframes', 'plaintext', 'noscript'])"
+      code: HTML_SANITIZE_RAW_TEXT_ELEMENT
+      message: >-
+        keeps an element whose content is raw text (`script`, `style`, `xmp`, `iframe`,
+        `noembed`, `noframes`, `plaintext`, `noscript`), which an allowlist cannot vet —
+        the browser runs or renders it as written. Drop it with `dropContent`, or leave
+        it out of `elements`.
+    - in: /elements
+      condition: !cel "!(this in ['svg', 'math', 'image'])"
+      code: HTML_SANITIZE_NOT_AN_HTML_ELEMENT
+      message: >-
+        keeps `svg`, `math` or `image`, which markup never writes as an HTML element —
+        `svg` and `math` start SVG or MathML content, and `image` reads back as `img`.
+        Remove the entry; list `img` for images.
+    - in: /attributes
+      condition: !cel "this.all(a, !('protocols' in this[a]) || !this[a].protocols.exists(p, p in ['javascript', 'vbscript']))"
+      code: HTML_SANITIZE_SCRIPT_PROTOCOL
+      message: >-
+        lists `javascript` or `vbscript` in `protocols`, so a URL attribute would keep a
+        link that runs script. Remove the scheme; list `http`, `https` or `mailto`.
+    - in: /attributes
+      condition: !cel "this.all(a, !a.startsWith('on'))"
+      code: HTML_SANITIZE_EVENT_HANDLER
+      message: >-
+        allows an event handler attribute (a name starting with `on`), which would let
+        script from the untrusted input through. Remove it; no policy may keep one.
+    - in: /setAttributes
+      condition: !cel "this.all(a, !a.startsWith('on'))"
+      code: HTML_SANITIZE_EVENT_HANDLER_FORCED
+      message: >-
+        forces an event handler attribute (a name starting with `on`), which would put
+        the policy author's own script onto every kept element. Remove it.
+---
+kind: Telo.Definition
+metadata:
+  name: Markup
+  description: >-
+    Serializes a parsed page tree back to HTML text by the standard fragment
+    serialization rules, keeping doctypes, SVG and MathML intact, and checks the
+    result by parsing it again, refusing a tree whose markup would read back as a
+    different tree. Use it to emit sanitized or edited markup.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markup
+throws:
+  codes:
+    ERR_HTML_NOT_SERIALIZABLE:
+      description: >-
+        The markup would not read back as this tree. The message names the first
+        differing node's path and what it reads back as.
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [html]
+    properties:
+      html: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: PlainText
+  description: >-
+    Renders a parsed page as the plain text a browser shows, with line breaks for
+    block elements and paragraphs, tabs between table cells, and hidden content
+    such as scripts and styles left out. For search indexing, summaries and text
+    analysis.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#PlainText
+throws:
+  codes: {}
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Markdown
+  description: >-
+    Converts a parsed page to Markdown, with GitHub-flavored tables, strikethrough,
+    task lists and autolinks, configurable heading, list, code fence and emphasis
+    styles, and relative links made absolute against the page URL. Feeds language
+    models, documentation and note-taking tools.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markdown
+throws:
+  codes: {}
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    gfm:
+      title: GitHub Flavored Markdown
+      description: Write tables, strikethrough, task lists and autolinks.
+      type: boolean
+      default: true
+      x-telo-eval: compile
+    headingStyle:
+      title: Heading style
+      description: '`atx` (`# Title`) or `setext` (underlined) for the first two levels.'
+      type: string
+      enum: [atx, setext]
+      default: atx
+      x-telo-eval: compile
+    bullet:
+      title: Bullet
+      type: string
+      enum: ["-", "*", "+"]
+      default: "*"
+      x-telo-eval: compile
+    fence:
+      title: Code fence
+      type: string
+      enum: ["`", "~"]
+      default: "`"
+      x-telo-eval: compile
+    emphasis:
+      title: Emphasis marker
+      type: string
+      enum: ["*", "_"]
+      default: "*"
+      x-telo-eval: compile
+    strong:
+      title: Strong marker
+      type: string
+      enum: ["*", "_"]
+      default: "*"
+      x-telo-eval: compile
+    ruleStyle:
+      title: Thematic break
+      type: string
+      enum: ["-", "*", "_"]
+      default: "*"
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [markdown]
+    properties:
+      markdown: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Metadata
+  description: >-
+    Reads a page's metadata: its title, language and base URL, every meta name and
+    Open Graph property with its values, every link with resolved URLs (canonical,
+    alternate, feeds, icons), and each JSON-LD structured data block, reporting a
+    malformed block rather than dropping it.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Metadata
+throws:
+  codes: {}
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [meta, links, jsonLd]
+    properties:
+      title:
+        description: The first `<title>`, with whitespace collapsed.
+        type: string
+      lang:
+        description: The root element's `lang`.
+        type: string
+      baseUrl:
+        description: The page's base URL.
+        type: string
+        format: uri
+      meta:
+        description: >-
+          Each `<meta>` `name` and `property` value, mapped to the `content` values
+          carrying it in document order.
+        type: object
+        additionalProperties:
+          type: array
+          items: { type: string }
+      links:
+        description: Every `<link>` with an `href`, in document order.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [rel, href]
+          properties:
+            rel:
+              description: The link types, lowercased.
+              type: array
+              items: { type: string }
+            href:
+              description: The target, resolved against the base URL when there is one.
+              type: string
+            type: { type: string }
+            hreflang: { type: string }
+            sizes: { type: string }
+            media: { type: string }
+            title: { type: string }
+      jsonLd:
+        description: >-
+          Each `<script type="application/ld+json">` block in document order: its
+          parsed `value`, or the parse `error` when it is malformed.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            value:
+              description: The parsed JSON-LD.
+            error:
+              description: Why the block is not valid JSON.
+              type: string
+          if: { required: [value] }
+          then: { not: { required: [error] } }
+          else: { required: [error] }
+---
+kind: Telo.Definition
+metadata:
+  name: MainContent
+  description: >-
+    Finds the main article in a web page and strips navigation, sidebars, ads and
+    comment sections, returning the readable content as a page tree plus its
+    title, author, excerpt, site name, language, direction and publication time.
+    Clean input for reading views, summarization and archiving.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#MainContent
+throws:
+  codes:
+    ERR_HTML_NO_MAIN_CONTENT:
+      description: No part of the page scored as main content.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    charThreshold:
+      title: Character threshold
+      description: The fewest characters an article must have to be accepted.
+      type: integer
+      minimum: 0
+      default: 500
+      x-telo-eval: compile
+    nbTopCandidates:
+      title: Top candidates
+      description: How many top-scoring candidate elements are compared.
+      type: integer
+      minimum: 1
+      default: 5
+      x-telo-eval: compile
+    keepClasses:
+      title: Keep classes
+      description: Keep `class` attributes in the content.
+      type: boolean
+      default: false
+      x-telo-eval: compile
+    classesToPreserve:
+      title: Classes to preserve
+      description: Classes kept even when `keepClasses` is false.
+      type: array
+      items: { type: string }
+      x-telo-eval: compile
+    linkDensityModifier:
+      title: Link density modifier
+      description: Added to the link-density limits; raise it to keep link-heavy content.
+      type: number
+      default: 0
+      x-telo-eval: compile
+    videoHosts:
+      title: Video hosts
+      description: >-
+        Hosts whose embedded videos are kept, each matching itself and its
+        subdomains. The detector's own list applies when omitted.
+      type: array
+      items: { type: string, format: hostname }
+      x-telo-eval: compile
+    jsonLd:
+      title: Use JSON-LD
+      description: Read title, author and dates from the page's JSON-LD.
+      type: boolean
+      default: true
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [document]
+    properties:
+      document: { $ref: "telo://Self/Parsed" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content]
+    properties:
+      content:
+        description: The main content, its relative URLs resolved against the page's base URL.
+        $ref: "telo://Self/Parsed"
+      title: { type: string }
+      byline: { type: string }
+      excerpt: { type: string }
+      siteName: { type: string }
+      lang: { type: string }
+      dir: { type: string }
+      publishedTime: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Escape
+  description: >-
+    Escapes text for safe inclusion in HTML by encoding ampersands, angle brackets
+    and quotes as character references, so user-supplied strings cannot inject
+    markup into templates, attributes or messages.
+capability: Telo.Callable
+deterministic: true
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Escape
+---
+kind: Telo.Definition
+metadata:
+  name: Unescape
+  description: >-
+    Decodes HTML character references — named ones such as `&amp;` and `&nbsp;` and
+    numeric ones such as `&#39;` — back to the characters they stand for, as a
+    browser reads them in text content.
+capability: Telo.Callable
+deterministic: true
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Unescape
+---
+kind: Self.Escape
+metadata:
+  name: escape
+  description: Escapes `&`, `<`, `>`, `"` and `'` in text for safe inclusion in HTML.
+---
+kind: Self.Unescape
+metadata:
+  name: unescape
+  description: Decodes named and numeric HTML character references in text.
+---
+# The presets. Changing one changes what every consumer's pages keep, so an edit
+# here is a changelog entry.
+kind: Self.SafeTree
+metadata:
+  name: stripAll
+  description: Sanitizes HTML down to its text, removing every element, script and style.
+elements: []
+---
+kind: Self.SafeTree
+metadata:
+  name: basicFormatting
+  description: >-
+    Sanitizes HTML to paragraphs, line breaks, emphasis, inline code, lists,
+    quotes and http, https and mailto links.
+elements: [p, br, a, em, strong, code, ul, ol, li, blockquote]
+attributes:
+  a:
+    href: { protocols: [http, https, mailto] }
+---
+kind: Self.SafeTree
+metadata:
+  name: richContent
+  description: >-
+    Sanitizes rendered Markdown and rich user content: basic formatting plus
+    headings, tables, preformatted code with language classes, http and https
+    images, rules, strikethrough, disclosure widgets and task-list checkboxes,
+    with ids and names kept and prefixed `user-content-`.
+elements:
+  [p, br, a, em, strong, code, ul, ol, li, blockquote, h1, h2, h3, h4, h5, h6, table, thead, tbody, tr, th, td, pre, img, hr, del, details, summary, input]
+attributes:
+  "*":
+    id: {}
+    name: {}
+  a:
+    href: { protocols: [http, https, mailto] }
+  img:
+    src: { protocols: [http, https] }
+    alt: {}
+    title: {}
+    width: {}
+    height: {}
+  code:
+    class: { prefixes: [language-] }
+setAttributes:
+  input:
+    type: checkbox
+    disabled: ""
+idPrefix: user-content-

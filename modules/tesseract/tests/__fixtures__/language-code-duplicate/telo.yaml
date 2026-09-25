@@ -5,7 +5,7 @@ metadata:
   name: LanguageCodeDuplicate
   version: 1.0.0
 imports:
-  Tesseract: ../../../../modules/tesseract
+  Tesseract: ../../..
 ---
 kind: Tesseract.Language
 metadata: { name: invoices }

@@ -11,8 +11,10 @@ import {
   registerTeloKeywords,
   schemaIssues,
   schemaWithTagsAsText,
+  TELO_FORMATS,
   VALUE_TYPE_KEYWORD_VERSION,
   type SchemaIssue,
+  type TeloFormatEntry,
 } from "@telorun/analyzer";
 import { CEL_SCALAR_FORMS, PLAIN_ENCODINGS, VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
 import { bigIntView, mergeFilledDefaults } from "./bigint-schema-view.js";
@@ -96,7 +98,15 @@ const VALUE_TYPE_DIGEST = createHash("sha256")
   )
   .digest("hex")
   .slice(0, 16);
-const VALIDATOR_RUNTIME_TAG = `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+value-types@${VALUE_TYPE_DIGEST}`;
+/** The Telo format vocabulary decides which `format:` values a compiled
+ *  validator checks at all — a name unknown when it was compiled is skipped —
+ *  so a validator cached against another vocabulary may check nothing. */
+export function formatVocabularyDigest(entries: readonly TeloFormatEntry[]): string {
+  return createHash("sha256").update(JSON.stringify(entries)).digest("hex").slice(0, 16);
+}
+const VALIDATOR_RUNTIME_TAG =
+  `ajv@${AJV_VERSION}+ajv-formats@${AJV_FORMATS_VERSION}+value-types@${VALUE_TYPE_DIGEST}` +
+  `+formats@${formatVocabularyDigest([...TELO_FORMATS.values()])}`;
 
 /** Whether a compiled validator may be persisted or read back at all. */
 function validatorCacheKeyable(report: (message: string) => void): boolean {
@@ -382,8 +392,8 @@ export class SchemaValidator {
           // integer through a double, so the digits it prints for the offending
           // value would not be the ones the author wrote.
           throw new SchemaValidationError(
-            `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors)}`,
-            schemaIssues(validate.errors),
+            `Invalid value passed: ${describeValue(data)}. Error: ${formatAjvErrors(validate.errors, data)}`,
+            schemaIssues(validate.errors, data),
           );
         }
       },

@@ -1,0 +1,944 @@
+kind: Telo.Application
+metadata:
+  name: HtmlSelectorMatchingTest
+  version: 1.0.0
+  description: >-
+    Selector matching, one case per construct — the bar any controller of these
+    kinds must pass. Each case selects from one page and compares the ids matched.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  page:
+    env: HTML_SELECTOR_PAGE
+    type: string
+    default: |-
+      <!DOCTYPE html><html lang="en"><body>
+      <nav id="nav"><a id="navlink" href="/">home</a></nav>
+      <article id="art"><section id="sec"><p id="p1">one</p><p id="p2" class="x">two</p></section><a id="artlink" href="/x">x</a></article>
+      <ul id="list"><li id="l1" class="x">1</li><li id="l2" class="a">2</li><li id="l3" class="x">3</li><li id="l4" class="b">4</li><li id="l5" class="x">5</li></ul>
+      <div id="imgbox"><h2 id="t1">T</h2><img id="i1" src="a.png"></div>
+      <div id="textbox"><h2 id="t2">T</h2><p id="t2p">p</p></div>
+      <table id="tbl"><colgroup><col id="c1"><col id="c2" span="2"></colgroup><tr><td id="r1a">a</td><td id="r1b" colspan="2">b</td></tr><tr><td id="r2a">a</td><td id="r2b">b</td><td id="r2c">c</td></tr></table>
+      <form id="f"><input id="cb" type="checkbox" checked><input id="ra" type="radio" name="g"><input id="rb" type="radio" name="g"><input id="ph" placeholder="x"><input id="num" type="number" min="1" max="5" value="3"><input id="big" type="number" min="1" max="5" value="9"><input id="req" required><button id="b1">go</button><button id="b2">again</button><input id="dis" disabled><progress id="pg"></progress></form>
+      <x-widget id="xw"></x-widget><p id="he" lang="he" dir="rtl">שלום</p><p id="blank"> </p><input id="up" type="CHECKBOX" data-x="abc">
+      </body></html>
+targets:
+  - !ref nthChildOf
+  - !ref nthLastChildOf
+  - !ref nthChildOfList
+  - !ref isComplex
+  - !ref notComplex
+  - !ref whereComplex
+  - !ref hasChild
+  - !ref hasNextSibling
+  - !ref hasLaterSibling
+  - !ref columnCombinator
+  - !ref nthCol
+  - !ref nthLastCol
+  - !ref default
+  - !ref indeterminate
+  - !ref placeholderShown
+  - !ref inRange
+  - !ref outOfRange
+  - !ref valid
+  - !ref invalid
+  - !ref defined
+  - !ref attributeValueCase
+  - !ref attributeValueExact
+  - !ref attributeValueFlag
+  - !ref lang
+  - !ref dir
+  - !ref checked
+  - !ref disabled
+  - !ref empty
+  - !ref neverHover
+  - !ref neverFocus
+  - !ref neverFocusWithin
+  - !ref neverFocusVisible
+  - !ref neverVisited
+  - !ref neverTarget
+  - !ref neverTargetWithin
+  - !ref neverLocalLink
+  - !ref neverUserInvalid
+  - !ref neverPlaying
+  - !ref neverPaused
+  - !ref neverModal
+  - !ref neverFullscreen
+  - !ref neverPopoverOpen
+  - !ref neverAutofill
+  - !ref neverStateOpen
+  - !ref neverCurrent
+  - !ref neverPast
+  - !ref neverFuture
+  - !ref nestedScope
+---
+# `:nth-child(An+B of S)` counts only the siblings matching S.
+kind: Run.Sequence
+metadata: { name: nthChildOf }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "li:nth-child(2n+1 of .x)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [l1, l5]
+---
+# `:nth-last-child(An+B of S)`, from the end.
+kind: Run.Sequence
+metadata: { name: nthLastChildOf }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "li:nth-last-child(1 of .x)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [l5]
+---
+# `of` takes a selector list.
+kind: Run.Sequence
+metadata: { name: nthChildOfList }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "li:nth-child(odd of .a, .b)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [l2]
+---
+# A complex selector inside `:is()`.
+kind: Run.Sequence
+metadata: { name: isComplex }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":is(article p)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [p1, p2]
+---
+# A complex selector inside `:not()`, against the whole document.
+kind: Run.Sequence
+metadata: { name: notComplex }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "a:not(nav a)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [artlink]
+---
+# `:where()` with a list, under a combinator.
+kind: Run.Sequence
+metadata: { name: whereComplex }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":where(nav, article) > a"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [navlink, artlink]
+---
+# `:has(> S)`.
+kind: Run.Sequence
+metadata: { name: hasChild }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "div:has(> img)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [imgbox]
+---
+# `:has(+ S)` looks at the next sibling.
+kind: Run.Sequence
+metadata: { name: hasNextSibling }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "h2:has(+ img)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [t1]
+---
+# `:has(~ S)` looks at later siblings.
+kind: Run.Sequence
+metadata: { name: hasLaterSibling }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "h2:has(~ p)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [t2]
+---
+# `col || td` — the cells in a column group's columns, spans included.
+kind: Run.Sequence
+metadata: { name: columnCombinator }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "#c2 || td"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [r1b, r2b, r2c]
+---
+# `:nth-col()`.
+kind: Run.Sequence
+metadata: { name: nthCol }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "td:nth-col(1)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [r1a, r2a]
+---
+# `:nth-last-col()`, a spanning cell belonging to each of its columns.
+kind: Run.Sequence
+metadata: { name: nthLastCol }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "td:nth-last-col(1)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [r1b, r2c]
+---
+# `:default` — a checked box and a form's first submit button.
+kind: Run.Sequence
+metadata: { name: default }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":default"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [cb, b1]
+---
+# `:indeterminate` — radios in a group with none checked, a progress with no value.
+kind: Run.Sequence
+metadata: { name: indeterminate }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":indeterminate"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [ra, rb, pg]
+---
+# `:placeholder-shown`.
+kind: Run.Sequence
+metadata: { name: placeholderShown }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":placeholder-shown"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [ph]
+---
+# `:in-range`.
+kind: Run.Sequence
+metadata: { name: inRange }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":in-range"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [num]
+---
+# `:out-of-range`.
+kind: Run.Sequence
+metadata: { name: outOfRange }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":out-of-range"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [big]
+---
+# `:valid` — constraint validation from the markup.
+kind: Run.Sequence
+metadata: { name: valid }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "form :valid"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [cb, ra, rb, ph, num, b1, b2]
+---
+# `:invalid` — a form holding an invalid control is invalid too.
+kind: Run.Sequence
+metadata: { name: invalid }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":invalid"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [f, big, req]
+---
+# `:defined` — an autonomous custom element is not, in a static page.
+kind: Run.Sequence
+metadata: { name: defined }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":not(:defined)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [xw]
+---
+# HTML compares `type` values case-insensitively.
+kind: Run.Sequence
+metadata: { name: attributeValueCase }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "input[type=checkbox]"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [cb, up]
+---
+# …and other attribute values exactly.
+kind: Run.Sequence
+metadata: { name: attributeValueExact }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "[data-x=ABC]"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# The `i` flag makes any comparison case-insensitive.
+kind: Run.Sequence
+metadata: { name: attributeValueFlag }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "[data-x=ABC i]"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [up]
+---
+# `:lang()` reads the nearest `lang`.
+kind: Run.Sequence
+metadata: { name: lang }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "p:lang(he)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [he]
+---
+# `:dir()` reads the directionality.
+kind: Run.Sequence
+metadata: { name: dir }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "p:dir(rtl)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [he]
+---
+# `:checked`.
+kind: Run.Sequence
+metadata: { name: checked }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":checked"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [cb]
+---
+# `:disabled`.
+kind: Run.Sequence
+metadata: { name: disabled }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":disabled"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [dis]
+---
+# `:empty` — white space does not count.
+kind: Run.Sequence
+metadata: { name: empty }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "p:empty"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: [blank]
+---
+# `:hover` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverHover }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":hover"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:focus` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverFocus }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":focus"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:focus-within` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverFocusWithin }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":focus-within"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:focus-visible` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverFocusVisible }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":focus-visible"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:visited` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverVisited }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":visited"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:target` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverTarget }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":target"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:target-within` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverTargetWithin }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":target-within"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:local-link` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverLocalLink }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":local-link"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:user-invalid` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverUserInvalid }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":user-invalid"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:playing` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverPlaying }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":playing"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:paused` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverPaused }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":paused"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:modal` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverModal }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":modal"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:fullscreen` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverFullscreen }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":fullscreen"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:popover-open` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverPopoverOpen }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":popover-open"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:autofill` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverAutofill }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":autofill"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:state(open)` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverStateOpen }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":state(open)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:current` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverCurrent }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":current"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:past` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverPast }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":past"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# `:future` needs a live user agent: it matches nothing in a parsed page.
+kind: Run.Sequence
+metadata: { name: neverFuture }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: ":future"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result.nodes.map(n, n.attrs.id)"
+      expected: []
+---
+# A nested field's selector is matched against the whole page, so an ancestor
+# outside the scope element still counts: `article` is above `#sec`.
+kind: Run.Sequence
+metadata: { name: nestedScope }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: !cel "variables.page" }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        section:
+          selector: "#sec"
+          fields:
+            paragraphs: { selector: ":is(article p)", type: text, many: true }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.extract.result.fields.section.paragraphs"
+      expected: [one, two]

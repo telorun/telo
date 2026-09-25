@@ -62,4 +62,22 @@ describe("substituteCelFields", () => {
       at: "2026-01-15T09:30:00Z",
     });
   });
+
+  it("stands an expression at a Telo format slot in as the format's own stand-in", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        selector: { type: "string", format: "css-selector" },
+        email: { type: "string", format: "email" },
+      },
+    };
+    const data = {
+      selector: makeTaggedSentinel("cel", "variables.sel"),
+      email: makeTaggedSentinel("cel", "variables.email"),
+    };
+    const interpolated = { selector: makeTaggedSentinel("interpolate", "a.${{ variables.cls }}") };
+    // JSON Schema's own formats keep the plain string fallback.
+    expect(substituteCelFields(data, schema)).toEqual({ selector: "*", email: "" });
+    expect(substituteCelFields(interpolated, schema)).toEqual({ selector: "*" });
+  });
 });

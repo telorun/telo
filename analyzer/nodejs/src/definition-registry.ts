@@ -12,6 +12,7 @@ import {
 } from "./reference-field-map.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
 import {
+  explainFormatErrors,
   formatSingleError,
   reduceSchemaErrors,
   schemaIssues,
@@ -211,14 +212,14 @@ export class DefinitionRegistry {
   validateWithRefs(data: unknown, schema: Record<string, any>): string[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    return reduceSchemaErrors(validate.errors).map(formatSingleError);
+    return reduceSchemaErrors(explainFormatErrors(validate.errors, data)).map(formatSingleError);
   }
 
   /** {@link validateWithRefs}, with the path each issue is anchored at. */
   validateResourceConfig(data: unknown, schema: Record<string, any>): SchemaIssue[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    return schemaIssues(validate.errors);
+    return schemaIssues(validate.errors, data);
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a

@@ -34,6 +34,10 @@ interface ExampleEntry {
    * is the one the example is filed under — an example touches several domains
    * but should appear once. */
   categories: string[];
+  /** The example's own `tests/*.yaml`, each an application of its own. */
+  tests: ExampleEntry[];
+  /** `README.md` beside the entry point, when the example has a walkthrough. */
+  readme: string | null;
 }
 
 /** Examples shown first, in this order, regardless of category. Reading order,
@@ -69,7 +73,17 @@ function readExampleMetadata(absPath: string): ExampleEntry | null {
       const categories = Array.isArray(metadata.categories)
         ? metadata.categories.filter((c: unknown): c is string => typeof c === "string")
         : [];
-      return { file: absPath, name, description, envBindings, synopsis, argTokens, categories };
+      return {
+        file: absPath,
+        name,
+        description,
+        envBindings,
+        synopsis,
+        argTokens,
+        categories,
+        tests: [],
+        readme: null,
+      };
     }
   }
   return null;
@@ -230,12 +244,101 @@ function scanExampleDirectories(root: string): ExampleEntry[] {
   if (!fs.existsSync(root)) return [];
   const entries: ExampleEntry[] = [];
   for (const name of fs.readdirSync(root).sort()) {
-    const manifest = path.join(root, name, "telo.yaml");
-    if (!fs.statSync(path.join(root, name)).isDirectory() || !fs.existsSync(manifest)) continue;
+    const dir = path.join(root, name);
+    const manifest = path.join(dir, "telo.yaml");
+    if (!fs.statSync(dir).isDirectory() || !fs.existsSync(manifest)) continue;
     const entry = readExampleMetadata(manifest);
-    if (entry) entries.push(entry);
+    if (!entry) continue;
+    entry.tests = scanDirectory(path.join(dir, "tests"));
+    const readme = path.join(dir, "README.md");
+    entry.readme = fs.existsSync(readme) ? readme : null;
+    entries.push(entry);
   }
   return entries;
+}
+
+/**
+ * A description is CommonMark, where an indented block cannot interrupt a
+ * paragraph — so the `Run, then:` + indented command a manifest description
+ * carries would render as one run-on paragraph. Each such block becomes a
+ * fenced one; indented continuation lines of a list item are left alone.
+ */
+function fenceIndentedBlocks(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  const indented = (line: string | undefined) => line !== undefined && /^ {4}/.test(line);
+  let inList = false;
+  for (let i = 0; i < lines.length; ) {
+    const line = lines[i];
+    if (indented(line) && !inList) {
+      const block: string[] = [];
+      while (
+        i < lines.length &&
+        (indented(lines[i]) || (lines[i].trim() === "" && indented(lines[i + 1])))
+      ) {
+        block.push(lines[i].slice(4));
+        i++;
+      }
+      if (out.length > 0 && out[out.length - 1].trim() !== "") out.push("");
+      out.push("```sh", ...block, "```");
+      if (i < lines.length && lines[i].trim() !== "") out.push("");
+      continue;
+    }
+    if (line.trim() === "") inList = false;
+    else if (/^\s*([-*+·]|\d+[.)])\s/.test(line)) inList = true;
+    else if (!/^\s/.test(line)) inList = false;
+    out.push(line);
+    i++;
+  }
+  return out.join("\n");
+}
+
+function firstParagraph(text: string): string {
+  return text.split(/\n\s*\n/)[0];
+}
+
+/** A fence longer than any backtick run in `text`, so the text cannot close it. */
+function fenceFor(text: string): string {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  return "`".repeat(Math.max(3, longest + 1));
+}
+
+function renderCommand(entry: ExampleEntry, rel: string, sourceUrl: string): string[] {
+  const lines = [`\`\`\`sh title="${rel}"`];
+  if (entry.synopsis) lines.push(`# telo <url> ${entry.synopsis}`);
+  const args = entry.argTokens.length > 0 ? ` ${entry.argTokens.join(" ")}` : "";
+  lines.push(`${formatEnvPrefix(entry.envBindings)}telo ${sourceUrl}${args}`);
+  lines.push(`\`\`\``);
+  return lines;
+}
+
+function renderTests(tests: ReadonlyArray<ExampleEntry>, examplesRoot: string): string[] {
+  const lines = [
+    "**Tests** — each test is an application of its own, runnable by URL like the example:",
+    "",
+  ];
+  for (const test of tests) {
+    const rel = path.relative(examplesRoot, test.file).replace(/\\/g, "/");
+    const summary = test.description
+      ? ` — ${fenceIndentedBlocks(firstParagraph(test.description))}`
+      : "";
+    lines.push(`**[${test.name}](${GITHUB_BLOB_BASE}/${rel})**${summary}`, "");
+    lines.push(...renderCommand(test, rel, `${GITHUB_RAW_BASE}/${rel}`), "");
+    const source = fs.readFileSync(test.file, "utf8").replace(/\n+$/, "");
+    const fence = fenceFor(source);
+    lines.push(
+      "<details>",
+      `<summary>Show <code>${path.basename(rel)}</code></summary>`,
+      "",
+      `${fence}yaml`,
+      source,
+      fence,
+      "",
+      "</details>",
+      "",
+    );
+  }
+  return lines;
 }
 
 function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
@@ -245,17 +348,19 @@ function renderEntry(entry: ExampleEntry, examplesRoot: string): string {
   const studioUrl = `${STUDIO_BASE}/?open=${encodeURIComponent(sourceUrl)}`;
   const lines = [`### ${entry.name}`, ""];
   if (entry.description) {
-    lines.push(entry.description, "");
+    lines.push(fenceIndentedBlocks(entry.description), "");
   }
-  lines.push(`\`\`\`sh title="${rel}"`);
-  if (entry.synopsis) lines.push(`# telo <url> ${entry.synopsis}`);
-  const args = entry.argTokens.length > 0 ? ` ${entry.argTokens.join(" ")}` : "";
-  lines.push(`${formatEnvPrefix(entry.envBindings)}telo ${sourceUrl}${args}`);
-  lines.push(`\`\`\``);
-  lines.push(
-    "",
-    `[Open in Telo Studio →](${studioUrl}) · [View \`${rel}\` on GitHub →](${blobUrl})`,
-  );
+  lines.push(...renderCommand(entry, rel, sourceUrl));
+  const links = [
+    `[Open in Telo Studio →](${studioUrl})`,
+    `[View \`${rel}\` on GitHub →](${blobUrl})`,
+  ];
+  if (entry.readme) {
+    const readmeRel = path.relative(examplesRoot, entry.readme).replace(/\\/g, "/");
+    links.push(`[Read the walkthrough →](${GITHUB_BLOB_BASE}/${readmeRel})`);
+  }
+  lines.push("", links.join(" · "), "");
+  if (entry.tests.length > 0) lines.push(...renderTests(entry.tests, examplesRoot));
   return lines.join("\n");
 }
 
@@ -271,7 +376,8 @@ export function generateExamplesIndex(examplesRoot: string, outFile: string): vo
     "",
     "Runnable Telo manifests showing common patterns. Each example is a complete",
     "application. To run an example, install [`@telorun/cli`](/learn/installation-and-cli),",
-    "and run `telo <file-url>` to execute it.",
+    "and run `telo <file-url>` to execute it. Most examples carry their own tests,",
+    "listed beneath the example with the same one-line command.",
     "",
   ];
 

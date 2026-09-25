@@ -1,0 +1,41 @@
+# A computed selector outside the grammar: clean at check, refused at creation
+# with the format's reason, naming the field it sits at.
+kind: Telo.Application
+metadata:
+  name: ComputedSelectorsMalformed
+imports:
+  Html: ../../
+  Run: ../../../run
+variables:
+  sel:
+    env: COMPUTED_SELECTOR_BAD_TOP
+    type: string
+    default: "div["
+  inner:
+    env: COMPUTED_SELECTOR_BAD_INNER
+    type: string
+    default: ":scope > span"
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: "<h1>Title</h1><div class=\"x\"><span>inside</span></div>" }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        a: { selector: !cel "variables.sel", type: text }
+        b:
+          selector: .x
+          fields:
+            c: { selector: !cel "variables.inner", type: text }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: inner
+    value: !cel "steps.extract.result.fields.b.c + '!'"
+outputs:
+  a: !cel "steps.extract.result.fields.a"
+  c: !cel "steps.inner.result"

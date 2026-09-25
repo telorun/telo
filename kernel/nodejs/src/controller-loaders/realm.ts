@@ -1,6 +1,7 @@
 import * as path from "path";
 import type { Logger } from "@telorun/sdk";
 import * as sdk from "@telorun/sdk";
+import { TELO_AJV_FORMATS } from "@telorun/analyzer";
 import ajvEqual from "ajv/dist/runtime/equal.js";
 import ajvParseJson from "ajv/dist/runtime/parseJson.js";
 import ajvQuote from "ajv/dist/runtime/quote.js";
@@ -86,7 +87,7 @@ function asModuleExports(imported: unknown): Record<string, unknown> {
 /**
  * What the kernel publishes, in the order a shim tree is written.
  *
- * The ajv entries are imported statically, so a bundled kernel carries them: a
+ * The ajv entries (and the analyzer's format table) are imported statically, so a bundled kernel carries them: a
  * validator compiled by this kernel names them, and `require`-ing them off disk
  * is precisely what fails when there is no ajv on disk to find.
  */
@@ -101,6 +102,10 @@ const ENTRIES: ReadonlyArray<RealmEntry> = [
     ["ajv/dist/runtime/uri.js", ajvUri],
     ["ajv/dist/runtime/validation_error.js", ajvValidationError],
     ["ajv-formats/dist/formats.js", ajvFormats],
+    // The format table a validator names every format through, Telo's included
+    // (`registerTeloKeywords`). Only the table: nothing else of the analyzer is
+    // a validator's to reach.
+    ["@telorun/analyzer", { TELO_AJV_FORMATS }],
   ] as ReadonlyArray<[string, unknown]>).map(([specifier, module]) => ({
     specifier,
     format: "cjs" as const,

@@ -52,6 +52,21 @@ export function navigateConcrete(root: unknown, path: string): unknown {
   return current;
 }
 
+/** The node a document-local JSON Pointer reference (`#`, `#/$defs/F`,
+ *  `#/definitions/F`, `#/properties/a~1b`) names in `root`, or undefined. The
+ *  one reading of such a reference for every walk that follows one, so a slot
+ *  the eval-path reader reaches is a slot the CEL type check types. */
+export function resolveSchemaPointer(root: Record<string, any>, ref: string): unknown {
+  if (!ref.startsWith("#")) return undefined;
+  let node: unknown = root;
+  for (const segment of ref.slice(1).split("/")) {
+    if (segment === "") continue;
+    if (!node || typeof node !== "object") return undefined;
+    node = (node as Record<string, unknown>)[segment.replace(/~1/g, "/").replace(/~0/g, "~")];
+  }
+  return node;
+}
+
 /** Resolve a local `#/$defs/<name>` ref against the root schema; any other
  *  schema (including one with no `$ref`) is returned unchanged. */
 export function resolveLocalRef(

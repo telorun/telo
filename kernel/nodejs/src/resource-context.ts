@@ -399,7 +399,7 @@ export class ResourceContextImpl implements ResourceContext {
     if (!isValid) {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
-        `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(validate.errors)}`,
+        `[${this.metadata.name}] Invalid value. Error: ${formatAjvErrors(validate.errors, view)}`,
       );
     }
   }

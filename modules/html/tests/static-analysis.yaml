@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: HtmlStaticAnalysisTest
+  version: 1.0.0
+  description: What `telo check` refuses in a manifest using the html kinds.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref misspelledInput
+  - !ref charsetBesideText
+  - !ref htmlInsteadOfDocument
+  - !ref malformedSelector
+  - !ref misspelledNestedField
+  - !ref extractionEntryRules
+  - !ref nodeNameAlphabet
+  - !ref nodeNameAlphabetComputed
+  - !ref nodeNameCase
+---
+kind: Assert.Manifest
+metadata: { name: misspelledInput }
+source: ./__fixtures__/misspelled-input.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'htlm' is not allowed"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "missing required property 'html'"
+---
+# `charset` belongs to the bytes form; beside text it is refused.
+kind: Assert.Manifest
+metadata: { name: charsetBesideText }
+source: ./__fixtures__/charset-beside-text.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'charset' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: htmlInsteadOfDocument }
+source: ./__fixtures__/html-instead-of-document.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "missing required property 'document'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'html' is not allowed"
+---
+# A selector outside the grammar, at the top level and inside a nested field,
+# where a leading combinator is written `:scope > …`.
+kind: Assert.Manifest
+metadata: { name: malformedSelector }
+source: ./__fixtures__/malformed-selector.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: 'must be a css-selector: Expected attribute name at offset 3 of "div["'
+    - code: SCHEMA_VIOLATION
+      message: 'must be a css-selector: Expected rule but ">" found at offset 0 of "> h2"'
+---
+kind: Assert.Manifest
+metadata: { name: misspelledNestedField }
+source: ./__fixtures__/misspelled-nested-field.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "nmae"
+---
+# `attr` exactly when `type: attr`, exactly one of `type` / `fields`, and no
+# `nullable` on a `many` field — each reported at the entry.
+kind: Assert.Manifest
+metadata: { name: extractionEntryRules }
+source: ./__fixtures__/extraction-entry-rules.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/fields/noAttr is missing required property 'attr'"
+    - code: SCHEMA_VIOLATION
+      message: "/fields/both/type is not allowed here"
+    - code: SCHEMA_VIOLATION
+      message: "/fields/neither is missing required property 'type'"
+    - code: SCHEMA_VIOLATION
+      message: "/fields/manyNullable/nullable must be equal to constant"
+---
+# A tag or attribute name no start tag can hold — `img src=x onerror=…` smuggled
+# in as one tag — is refused by the node shape itself, on a literal…
+kind: Assert.Manifest
+metadata: { name: nodeNameAlphabet }
+source: ./__fixtures__/node-name-alphabet.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/document/nodes/0/tag must match pattern"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/document/nodes/1/attrs must match pattern"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/document/nodes/1/attrs property name must be valid"
+---
+# …and by the kind's input contract when the name is computed.
+kind: Assert.Manifest
+metadata: { name: nodeNameAlphabetComputed }
+source: ./__fixtures__/node-name-alphabet-computed.yaml
+expect:
+  errors: []
+  runFails: "/document/nodes/0/tag must match pattern"
+---
+# Names only a hand-built tree holds — an uppercase HTML tag the parser would
+# lowercase, an `svg` with no namespace — are refused by the node shape on a
+# literal; `rendering.yaml` refuses the computed ones at the input contract.
+kind: Assert.Manifest
+metadata: { name: nodeNameCase }
+source: ./__fixtures__/node-name-case.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: '/document/nodes/0/tag must match pattern "^[^A-Z]*$"'
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: '/document/nodes/1/tag must match pattern "^[^A-Z]*$"'
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/document/nodes/2/tag matches a shape that is not allowed here"

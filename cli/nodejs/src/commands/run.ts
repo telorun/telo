@@ -635,6 +635,17 @@ export async function run(argv: RunArgv): Promise<void> {
       ? await startDebugSession(argv, log, cacheRoot)
       : undefined;
 
+  // A wait nothing can resolve (and nothing else keeps the event loop alive)
+  // drains the process with code 0 before the run finishes; that is a failure.
+  let settled = false;
+  process.once("exit", () => {
+    if (settled) return;
+    outErrLine(
+      "telo run: the process ran out of work before the application finished — something it was waiting for can never happen.",
+    );
+    process.exitCode = 1;
+  });
+
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
@@ -671,6 +682,7 @@ export async function run(argv: RunArgv): Promise<void> {
     if (answerApplicationHelp(kernel)) {
       await kernel.teardown();
       debug?.stop(kernel);
+      settled = true;
       return;
     }
     phase = "manifestCachePersist";
@@ -703,6 +715,7 @@ export async function run(argv: RunArgv): Promise<void> {
     } finally {
       if (inspectKeepAlive) clearInterval(inspectKeepAlive);
     }
+    settled = true;
     // start() resolves once the app is idle/torn down (incl. via the SIGINT
     // handler's forceIdle). Stop the debug server so its SSE sockets + heartbeats
     // don't keep the process alive past here.
@@ -711,6 +724,7 @@ export async function run(argv: RunArgv): Promise<void> {
       process.exit(kernel.exitCode);
     }
   } catch (error) {
+    settled = true;
     if (profiler && startupProfile !== undefined) {
       try {
         await writeStartupProfile(startupProfile, profiler.report("failed", phase));

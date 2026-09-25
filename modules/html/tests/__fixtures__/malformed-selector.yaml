@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: MalformedSelector
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>x</p> }
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: "div["
+    inputs: { document: !cel "steps.parse.result" }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        cards:
+          selector: .card
+          fields:
+            name: { selector: "> h2", type: text }
+    inputs: { document: !cel "steps.parse.result" }
