@@ -1,0 +1,18 @@
+# A store whose waiting readers would query the database without pause: refused
+# by `telo check` at the declaration, and by the controller when the resource is
+# created.
+kind: Telo.Library
+metadata:
+  name: PollIntervalZero
+imports:
+  RecordStreamSql: ../../..
+  SQLite: ../../../../sqlite
+exports:
+  resources: [store]
+---
+kind: RecordStreamSql.JournalStore
+metadata: { name: store }
+connection:
+  kind: SQLite.Connection
+  file: ":memory:"
+pollInterval: "0s"

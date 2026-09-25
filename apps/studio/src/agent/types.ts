@@ -64,29 +64,36 @@ export interface ToolCallView {
   checkOutput?: string;
 }
 
-export interface ChatMessage {
+/**
+ * One run of an assistant turn, in the order it streamed. A thinking segment is
+ * the model's summary of its own thinking — not the answer: it is not persisted,
+ * a resume never quotes it, and a client is free not to show it.
+ */
+export type AssistantPart =
+  | { kind: "thinking"; text: string }
+  | { kind: "text"; text: string }
+  | { kind: "tool"; tool: ToolCallView };
+
+export interface UserMessage {
   id: string;
-  role: ChatRole;
+  role: "user";
   text: string;
-  /** The thinking summary this turn streamed, accumulated. Kept apart from
-   *  `text` because it is not the answer: it is not persisted as the assistant's
-   *  message, a resume never quotes it, and a client is free not to show it.
-   *  Absent on a turn that produced none — an older transcript, or a model
-   *  asked for no summary. */
-  reasoning?: string;
-  /** Set when a tool call or answer text arrived, so the next reasoning delta
-   *  knows it is RESUMING and starts a new paragraph. Transient display state:
-   *  it never leaves the browser and is not persisted. */
-  reasoningInterrupted?: boolean;
-  tools: ToolCallView[];
-  error?: string;
-  /** True while the assistant turn is still streaming. */
-  pending?: boolean;
   /** On a message the Resume button generated: the request it is resuming. The
    *  message TEXT also reports what the interrupted turn's tools had already
    *  done, so this is what keeps a second resume quoting the original request
    *  rather than the first resume's own report of it. */
   resumedRequest?: string;
+}
+
+export interface AssistantMessage {
+  id: string;
+  role: "assistant";
+  /** The turn's parts in stream order — the one shape the live stream renders
+   *  into. Plain data, so it persists and replays as is. */
+  parts: AssistantPart[];
+  error?: string;
+  /** True while the assistant turn is still streaming. */
+  pending?: boolean;
   /** Set when the user cancelled this turn. An ending that is not `finish` is
    *  still an ending, and a CHOSEN one is not resumable work — without this a
    *  Stop whose abort request failed leaves an error banner offering to re-send
@@ -99,6 +106,8 @@ export interface ChatMessage {
    *  existed; those read as unfinished, which shows no button on its own. */
   completed?: boolean;
 }
+
+export type ChatMessage = UserMessage | AssistantMessage;
 
 export type AgentStatus = "idle" | "launching" | "seeding" | "streaming" | "error";
 

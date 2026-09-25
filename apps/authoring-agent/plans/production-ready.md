@@ -31,7 +31,7 @@ Nothing else in this plan is safe to build before these.
 
 **A2 — The turn journal is the one source of truth.**
 *Before:* the live parts go to `RecordStream.Journal`, a stdlib kind held in memory for the life of the process; SQLite gets the joined text.
-*After:* the journal itself becomes durable. `RecordStream.Journal` gains a required store (its own plan — see Delivery order). That plan also adds retention, a distinct `ERR_JOURNAL_KEY_DELETED` for a deleted key (the event route maps it to 410), and a writer heartbeat, so that a turn whose process died is reported failed rather than tailed forever. The agent's journal uses a `RecordStreamSql.JournalStore` over its existing SQLite connection in its state directory (A7), so every part of every turn — text and reasoning deltas, tool calls and results, usage — is appended there, one record per part, under the turn's key. No tee, and no second store: `GET /chat/{turnId}/events?lastEventId=` is the journal's own replay-then-tail, whether the turn is live, finished, or from before a restart. A new `GET /conversations/{id}/records?fromId=` returns the records of the conversation's turns in order — the display transcript, server-side, for every client. The agent keeps only a `turns` index of which keys belong to which conversation, in what order, with their status. That is metadata about records, not a copy of them.
+*After:* the journal itself becomes durable. `RecordStream.Journal` takes a required store and `retention:`, reports a removed key as `ERR_JOURNAL_KEY_REMOVED` (the event route maps it to 410), and reports a turn whose writer stopped heartbeating — its process died — as `ERR_JOURNAL_WRITER_LOST` rather than tailing it forever. The agent's journal uses a `RecordStreamSql.JournalStore` over its existing SQLite connection in its state directory (A7), so every part of every turn — text and reasoning deltas, tool calls and results, usage — is appended there, one record per part, under the turn's key. No tee, and no second store: `GET /chat/{turnId}/events?lastEventId=` is the journal's own replay-then-tail, whether the turn is live, finished, or from before a restart. A new `GET /conversations/{id}/records?fromId=` returns the records of the conversation's turns in order — the display transcript, server-side, for every client. The agent keeps only a `turns` index of which keys belong to which conversation, in what order, with their status. That is metadata about records, not a copy of them.
 *Why every delta is a record rather than coalesced segments:* an exact replay is the feature. Retention (A13) bounds the store; lossy writes would not.
 *Verify:* start a turn, kill the container mid-stream, restart it, and re-open the event stream with the client's last id. The transcript replays up to the last record written. The turn then ends with the journal's writer-lost error within its writer timeout, instead of tailing forever, and B1's Resume continues it. Open a second browser on the same conversation and it renders the identical transcript, tool cards included, with an empty localStorage. No table in the agent's database holds a stream part.
 
@@ -87,8 +87,8 @@ Nothing else in this plan is safe to build before these.
 
 **A13 — Retention.**
 *Before:* nothing is ever deleted.
-*After:* retention works on **whole conversations**. `RETENTION_DAYS` (default 30) deletes every conversation with no activity inside the window: its journal keys, its projection rows, its attachments and its checkpoints, together. Nothing outlives its source, so no part of a conversation can survive as the only copy. A user who wants a conversation longer exports it (E4). `CHECKPOINT_LIMIT` (default 50 per conversation) separately bounds the checkpoint store, oldest first. A deleted turn's event stream answers 410 rather than an empty replay, because the journal reports a deleted key distinctly from one it never held.
-*Verify:* with the window set to a day, yesterday's idle conversation is gone from the list, from the journal and from disk; an active conversation with old turns is untouched; the event stream of a deleted turn answers 410.
+*After:* retention works on **whole conversations**. `RETENTION_DAYS` (default 30) deletes every conversation with no activity inside the window: its journal keys, its projection rows, its attachments and its checkpoints, together. Nothing outlives its source, so no part of a conversation can survive as the only copy. A user who wants a conversation longer exports it (E4). `CHECKPOINT_LIMIT` (default 50 per conversation) separately bounds the checkpoint store, oldest first. A deleted turn's event stream answers 410 rather than an empty replay while the journal keeps the removal marker (its `retention:`), because the journal reports a removed key distinctly from one it never held.
+*Verify:* with the window set to a day, yesterday's idle conversation is gone from the list, from the journal and from disk; an active conversation with old turns is untouched; the event stream of a deleted turn answers 410 while the journal keeps its removal marker.
 
 ---
 
@@ -210,11 +210,6 @@ Editor tools are **always advertised**, because a tool list is fixed at load. A 
 
 ### E. Chat UX
 
-**E0 — The transcript keeps the stream's order.**
-*Before:* an assistant message is three buckets — one thinking string, a list of tool calls, one text string — drawn in a fixed order: all thinking on top, every tool card below it, all text at the bottom. The order the parts streamed in is discarded as each one is applied. A turn that thinks, calls a tool, thinks again and writes a file shows one merged thinking block above both cards; the model's commentary between tool calls ("Now the feature library…") is concatenated into one run below the last card.
-*After:* an assistant message is an **ordered list of parts** — thinking segment, text segment, tool call — appended in stream order. A delta extends the last part when it is of the same kind and opens a new part otherwise, which retires the flag that today only inserts a blank line where thinking resumes. A tool result updates its own call in place. The panel walks the list: each thinking segment is its own collapsible block, open while it is the part still streaming and collapsed once anything follows it; each text segment renders as markdown where it happened; tool cards sit between them. Question blocks are read from the last text segment only, the one place an answerable question can be. The resume report and E3's grouping read tool calls from the same list. Thinking is still dropped before the browser copy is saved, so after a reload the cards and text keep their order and the thoughts are gone until A2's server records — which are this same list — supply them. A transcript saved in the old shape loads in the old fixed order, the only order it recorded.
-*Verify:* that turn renders thought, card, thought, card, text — while streaming, after it finishes, and (minus the thoughts) after a reload; a transcript saved before the change still renders.
-
 **E1 — Message actions.** Copy, **Edit & resend**, **Retry**, **Delete from here**, **Branch**, on hover per message.
 *Before:* the only controls are Send, Stop and Start over; a typo means starting the thread again.
 *After:* editing a user message truncates the conversation at that turn (`DELETE /conversations/{id}/messages?from={messageId}`). The truncation deletes the journal keys and checkpoints of that turn and every later one, and rebuilds the projection. Then the edited text is re-sent. Retry does the same for the assistant turn alone. Branch copies rows up to that message into a new conversation (`POST /conversations/{id}/branch`) and leaves the original untouched, so an experiment costs nothing. Delete-from-here asks once, naming how many turns go.
@@ -290,7 +285,7 @@ Editor tools are **always advertised**, because a tool list is fixed at load. A 
 **F8 — Provider resilience.** The HTTP client already retries a transient edge. Added: a `MODEL_FALLBACK` list — on a provider error that survives retries, the turn continues on the next model, and the transcript records the switch.
 *Verify:* with a bad primary model id, a turn still completes and the record names both models.
 
-**F9 — Evaluation and feedback.** The e2e suite grows from four cases to a scenario set covering each capability here — resume after a kill, an editor tool round-trip, an attachment, a revert, a refusal, a compaction — run nightly in CI against a real key, with pass rates tracked over time. Per-turn thumbs up/down in the panel writes a `feedback` row with the turn id, and "Report this turn" bundles the transcript, the capability document and the workspace hashes into one JSON file to attach to an issue.
+**F9 — Evaluation and feedback.** The e2e suite grows from four cases to a scenario set covering each capability here — resume after a kill, an editor tool round-trip, an attachment, a revert, a refusal, a compaction — run nightly in CI against a real key, with pass rates tracked over time. From its first nightly run the scenario set also records the `edit_file` "absent or not unique" retry rate as a tracked series. Per-turn thumbs up/down in the panel writes a `feedback` row with the turn id, and "Report this turn" bundles the transcript, the capability document and the workspace hashes into one JSON file to attach to an issue.
 *Verify:* the nightly job reports a pass count per scenario, and a thumbs-down is retrievable by turn id.
 
 **F10 — Tool results the model reads as text.**
@@ -307,7 +302,6 @@ Failures remain tool errors whose message says what went wrong. A text rendering
 *Verify:*
 - **Model input:** the model-facing content of each tool contains no JSON envelope and no escaped newlines. A `read_file` of a manifest is byte-identical to the file.
 - **Studio:** Studio still pulls a written file mid-turn and still shows the verdict. A failing check renders as `file:line:col CODE message` lines in the transcript's "what the model saw" view.
-- **Measurement:** the F9 scenario set records the `edit_file` "absent or not unique" retry rate before and after, so the gain is measured, not assumed.
 
 ---
 
@@ -415,23 +409,26 @@ Three alternatives were rejected:
 
 ## Delivery order
 
-Each stage is usable on its own and unblocks the next. Three stdlib and language prerequisites are designed in plans of their own, in the packages they change, and gate the stages that need them:
+Each stage is usable on its own and unblocks the next.
 
-- **The durable journal store** (`RecordStream.JournalStore`, `RecordStream.MemoryJournalStore`, the new `record-stream-sql` module, delete, prune and writer liveness). It gates stage 1.
+The durable journal store — `RecordStream.JournalStore`, `RecordStream.MemoryJournalStore`, `RecordStreamSql.JournalStore`, removal, expiry and writer liveness — is in the repo. The agent imports every module by published pin, so stage 1's adoption of it begins once `record-stream` and `record-stream-sql` are published.
+
+Two stdlib and language prerequisites are designed in plans of their own, in the packages they change, and gate the stages that need them:
+
 - **Per-invocation scope configuration** (scope inputs, the scoped-stream refusal, sensitivity through forwarding slots). It gates stage 4.
 - **Rendezvous** (the new `rendezvous` module). It gates stage 6, together with `ai`'s tool-call identity change.
 
-1. **Durability and control** — A2, A3, A7, A4, A5, A13, plus B1 and E0. This is the "one source of truth" and "resume exactly" core; everything else assumes it. E0 lands first of all: it needs no agent change, and A2's replay renders into its shape.
+1. **Durability and control** — A2, A3, A7, A4, A5, A13, plus B1. This is the "one source of truth" and "resume exactly" core; everything else assumes it.
 2. **Boundary** — A6, A10, F5, A11, A12. The agent becomes safe to expose.
 3. **Conversations and negotiation** — A1, A8, A9, E1, E4. Multi-conversation Studio, editable history, bounded context.
 4. **Bring your own key** — H1–H8, once the per-invocation scope configuration plan has shipped, along with the tool-listing cache H1 needs in the MCP tool provider. Independent of everything before it except A1's capability document, so it can run in parallel with stage 3.
 5. **Checkpoints** — B2, B3, B4, E3. Undo, diffs, and a transcript that reads.
-6. **Editor tools** — D0 first, then D1–D3, then D4–D7; E9 lands with D0.
+6. **Editor tools** — D0 first, then D1–D3, then D4, D5, D7; E9 lands with D0.
 7. **Attachments** — C1–C4.
 8. **Context and composer** — D6, E2, E5–E8, E10, E11.
 9. **Agent capability** — F1–F4, F6–F9.
 
-F10 is independent of every stage. Its `ai` record field and Studio's switch to `output` must land before the `result:` mappings, because the mappings alone would break Studio's mid-turn pull. It should land early, measured against F9's baseline.
+F10 is independent of every stage. Its `ai` record field and Studio's switch to `output` must land before the `result:` mappings, because the mappings alone would break Studio's mid-turn pull. It should land early.
 
 ## Correctness and edge cases
 
@@ -470,5 +467,5 @@ F10 is independent of every stage. Its `ai` record field and Studio's switch to 
   - The hub's docs tools (F1).
   - Any `fs` or `http-server` surface a route needs.
 
-  The journal backend and the rendezvous primitive carry their own fragments in their own plans. Nothing in `ai`'s contracts, `openai`, `http-client` or the runner contract changes for H. That is a claim to check at the end, not an assumption to carry. The agent app and Studio take their own version bumps; published `@telorun/*` packages touched on the Studio side take a changeset, the analyzer and kernel included.
+  The rendezvous primitive carries its own fragments in its own plan; the durable journal store's fragments shipped with it. Nothing in `ai`'s contracts, `openai`, `http-client` or the runner contract changes for H. That is a claim to check at the end, not an assumption to carry. The agent app and Studio take their own version bumps; published `@telorun/*` packages touched on the Studio side take a changeset, the analyzer and kernel included.
 - The e2e suite (F9) grows one case per capability, and the agent-editor contract gets a case in the editor's own tests for each new route.

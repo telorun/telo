@@ -1,0 +1,34 @@
+# Catching only the code the call declares covers it: no catch-all is needed.
+kind: Telo.Library
+metadata:
+  name: SourceCatches
+  version: 1.0.0
+imports:
+  RecordStream: ../../..
+  Http: ../../../../http-server
+---
+kind: Http.Api
+metadata: { name: events }
+routes:
+  - request:
+      path: /events/{key}
+      method: GET
+    handler:
+      kind: RecordStream.JournalSource
+      journal:
+        kind: RecordStream.Journal
+        store: { kind: RecordStream.MemoryJournalStore }
+        retention: 1h
+    inputs:
+      key: !cel "request.params.key"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches:
+      - when: !cel "error.code == 'ERR_JOURNAL_KEY_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body: { error: !cel "error.message" }

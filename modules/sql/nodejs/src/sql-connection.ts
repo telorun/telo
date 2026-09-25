@@ -24,6 +24,12 @@ export interface SqlDialect {
     values: unknown[],
     addParam: (value: unknown) => string,
   ): string;
+
+  /** An SQL expression for the database's current wall-clock time, as integer
+   *  milliseconds since the Unix epoch, read when the statement runs — not
+   *  frozen at a transaction's start. Lets a consumer measure time on the
+   *  database's one clock rather than on each host's. */
+  renderCurrentTimeMillis(): string;
 }
 
 /** ANSI identifier quoting (`"name"`), for the dialects that follow the standard. */

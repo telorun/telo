@@ -1,0 +1,49 @@
+# A fresh process, started after the writer's has ended, replays the record from
+# the database file with its values' types intact; a mismatch fails its exit code.
+kind: Telo.Application
+metadata:
+  name: CrossProcessReader
+  version: 1.0.0
+imports:
+  RecordStream: ../../../../record-stream
+  RecordStreamSql: ../../..
+  SQLite: ../../../../sqlite
+  Stream: ../../../../stream
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  dbFile:
+    env: CROSS_PROCESS_DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+targets:
+  - !ref read
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: open
+    invoke:
+      kind: RecordStream.JournalSource
+      journal:
+        kind: RecordStream.Journal
+        store:
+          kind: RecordStreamSql.JournalStore
+          connection:
+            kind: SQLite.Connection
+            file: !cel "variables.dbFile"
+        retention: "1h"
+    inputs: { key: crossing }
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.open.result.output" }
+  - name: typesIntact
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        count: !cel "size(steps.all.result.items)"
+        bigExact: !cel "steps.all.result.items[0].data.big == 9007199254740993"
+        bigIsInt: !cel "type(steps.all.result.items[0].data.big) == int"
+        rawIntact: !cel "steps.all.result.items[0].data.raw == b'\\x00\\xff'"
+        atIsTimestamp: !cel "type(steps.all.result.items[0].data.at) == google.protobuf.Timestamp"
+      expected: { count: 1, bigExact: true, bigIsInt: true, rawIntact: true, atIsTimestamp: true }

@@ -1,0 +1,80 @@
+kind: Telo.Library
+metadata:
+  name: RecordStreamSql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Storage, Streaming]
+  description: |
+    Keeps resumable stream journals in two tables on a database you already run, so a
+    reader can replay a detached stream after a restart or from another process. Every
+    write is a single guarded statement or transaction, so the database settles races
+    between processes, and ages are measured on the database clock. Works on any SQL
+    backend.
+imports:
+  RecordStream: ../record-stream
+  Sql: ../sql
+exports:
+  kinds:
+    - JournalStore
+---
+# RecordStreamSql.JournalStore — the journal store contract over any Sql.Connection.
+# `<table>_keys` holds one header per key (value, version, database-clock write
+# time, last id); `<table>` holds the entries. Every conditional write is version
+# equality in its own WHERE; appends, truncations and deletions that touch both
+# tables run as one transaction. See docs/sql-journal-store.md.
+kind: Telo.Definition
+metadata:
+  name: JournalStore
+  description: >-
+    Stores resumable stream records in a database table, one row per record and one
+    per stream, so they survive restarts and are shared by every process on the
+    database. Creates its tables on start-up unless the application's migrations own
+    them, and polls for records another process appends.
+capability: Telo.Provider
+extends: RecordStream.JournalStore
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream-sql.mjs&local_path=./nodejs/src/index.ts#JournalStoreController
+schema:
+  type: object
+  required: [connection]
+  additionalProperties: false
+  properties:
+    connection:
+      title: Connection
+      description: The database the journal lives in.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    table:
+      title: Table
+      type: string
+      default: record_stream_journal
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      description: >-
+        Table holding the records; the per-stream table is `<table>_keys`. Give
+        journals that share a database distinct tables.
+    createTable:
+      title: Create Table
+      type: boolean
+      default: true
+      description: >-
+        Whether to create both tables if they are missing when the store starts. Set
+        false when the application's own migrations own them, or when the runtime
+        user holds no DDL grant.
+    # No `default:` — the kernel fills defaults without decoding them into an
+    # instance type, so a written `250ms` default fails validation at boot.
+    pollInterval:
+      title: Poll interval
+      description: >-
+        How often a reader waiting on a stream checks the database for a record
+        another process appended; such a reader is woken within two intervals. A
+        record written through the same store wakes its readers at once. 250ms when
+        omitted.
+      x-telo-type: Telo.Duration
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.pollInterval) || duration(self.pollInterval) > duration('0s')"
+      code: RECORD_STREAM_SQL_POLL_INTERVAL_NOT_POSITIVE
+      message: >-
+        sets `pollInterval` to zero or less; a waiting reader would query the
+        database without pause.

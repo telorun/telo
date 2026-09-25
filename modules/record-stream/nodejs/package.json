@@ -1,16 +1,32 @@
 {
-  "name": "@telorun/record-stream-build",
+  "name": "@telorun/record-stream",
   "version": "0.15.4",
   "private": true,
-  "description": "Build-only package for the std/record-stream module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "Telo record-stream module — stream operations on structured records, and the RecordStream.JournalStore contract plus the journal protocol written once above it. Never published: controllers ship inside the module artifact, and dependent modules reach this code through the module's exports.code entry.",
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
   }
 }

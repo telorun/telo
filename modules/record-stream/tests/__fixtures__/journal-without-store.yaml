@@ -1,0 +1,9 @@
+# A journal naming neither where its records live nor how long they are kept.
+kind: Telo.Application
+metadata:
+  name: JournalWithoutStore
+imports:
+  RecordStream: ../..
+---
+kind: RecordStream.Journal
+metadata: { name: journal }

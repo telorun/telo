@@ -1,15 +1,15 @@
-import type { KindRef, ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, Stream } from "@telorun/sdk";
-import { type JournalEntry, JournalStore, isJournalStore } from "./journal-store.js";
+import type { InvokeContext, KindRef, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { NEVER_CANCELLED, Stream } from "@telorun/sdk";
+import { type Journal, type JournalEntry, isJournal } from "./journal.js";
 
 interface JournalSourceResource {
   metadata: { name: string; module?: string };
-  journal?: JournalStore | KindRef<JournalStore>;
+  journal?: Journal | KindRef<Journal>;
 }
 
 interface JournalSourceInputs {
   key: string;
-  fromId?: number;
+  fromId?: number | bigint;
 }
 
 interface JournalSourceOutputs {
@@ -17,12 +17,14 @@ interface JournalSourceOutputs {
 }
 
 /**
- * RecordStream.JournalSource — read a resumable stream from a Journal. Yields
- * `{ id, data }` entries with id greater than `fromId` (0 replays from the
- * start), then tails live until the key is finished or failed. A reconnecting
- * client passes its last seen id as `fromId` (an SSE `Last-Event-ID`) so it
- * replays exactly what it missed and then continues live; the `id` on each entry
- * is what the client checkpoints and sends back.
+ * RecordStream.JournalSource — read a key from an offset: `{ id, data }` entries
+ * with id greater than `fromId`, then whatever the key's state says — tail it
+ * while it is live, end once finished, raise the recorded error once failed,
+ * raise `ERR_JOURNAL_WRITER_LOST` once its writer stopped heartbeating, and
+ * raise `ERR_JOURNAL_KEY_REMOVED` for a removed key (from this invoke when it is
+ * removed at open). A key never written is waited for. The stream ends when its
+ * consumer stops, and raises `ERR_INVOKE_CANCELLED` once this invocation is
+ * cancelled.
  */
 class JournalSource implements ResourceInstance<JournalSourceInputs, JournalSourceOutputs> {
   constructor(
@@ -30,25 +32,19 @@ class JournalSource implements ResourceInstance<JournalSourceInputs, JournalSour
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(inputs: JournalSourceInputs): Promise<JournalSourceOutputs> {
+  async invoke(inputs: JournalSourceInputs, invokeCtx?: InvokeContext): Promise<JournalSourceOutputs> {
     const name = this.resource.metadata.name;
-    const key = inputs?.key;
-    if (typeof key !== "string" || key.length === 0) {
-      throw new InvokeError("ERR_INVALID_INPUT", `RecordStream.JournalSource "${name}": 'key' must be a non-empty string.`);
-    }
-    // Coerce: a CEL integer can cross the boundary as a bigint, and a value
-    // derived from a query param may arrive as a numeric string.
-    const fromId = Number(inputs?.fromId ?? 0);
-    if (!Number.isInteger(fromId) || fromId < 0) {
-      throw new InvokeError("ERR_INVALID_INPUT", `RecordStream.JournalSource "${name}": 'fromId' must be a non-negative integer.`);
-    }
     const journal = this.ctx.resolveRef(
       this.resource.journal,
-      isJournalStore,
+      isJournal,
       () => `RecordStream.JournalSource "${name}": 'journal'`,
       "Self.Journal",
     );
-    return { output: new Stream(journal.read(key, fromId)) };
+    // A CEL integer crosses the boundary as a bigint.
+    const fromId = Number(inputs.fromId ?? 0);
+    // The stream ends when its consumer stops, and is cancelled with this invocation.
+    const cancellation = invokeCtx?.cancellation ?? NEVER_CANCELLED;
+    return { output: new Stream(await journal.open(inputs.key, fromId, cancellation)) };
   }
 
   snapshot(): Record<string, unknown> {
@@ -56,7 +52,7 @@ class JournalSource implements ResourceInstance<JournalSourceInputs, JournalSour
   }
 }
 
-export function register(_ctx: ControllerContext): void {}
+export function register(): void {}
 
 export async function create(resource: JournalSourceResource, ctx: ResourceContext): Promise<JournalSource> {
   return new JournalSource(resource, ctx);

@@ -327,7 +327,7 @@ function nativeExternalsPlugin(bundleDir: string, pkgRoot: string | null): impor
         // shipped as `.ts` source (loaded via Bun) has `.ts` entries, so a `.ts`
         // sibling resolves for that runtime too. TS extensions MUST be
         // externalized, not inlined: inlining gives each controller its own copy
-        // of a shared module (e.g. record-stream's `journal-store`), splitting
+        // of a shared module (e.g. record-stream's `journal`), splitting
         // `instanceof` / process-local state across the package's controllers.
         const ext = path.extname(resolved.path).toLowerCase();
         if (!EXTERNALIZABLE_EXTENSIONS.has(ext)) return null;

@@ -1,0 +1,43 @@
+# Writes one record into the shared database file from its own process, stamped
+# with the moment it was created, after giving the reader time to start waiting.
+kind: Telo.Application
+metadata:
+  name: CrossProcessWriter
+  version: 1.0.0
+imports:
+  RecordStream: ../../../../record-stream
+  RecordStreamSql: ../../..
+  SQLite: ../../../../sqlite
+  Stream: ../../../../stream
+  Timer: ../../../../timer
+  Run: ../../../../run
+variables:
+  dbFile:
+    env: CROSS_PROCESS_DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+targets:
+  - !ref write
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store:
+  kind: RecordStreamSql.JournalStore
+  connection:
+    kind: SQLite.Connection
+    file: !cel "variables.dbFile"
+retention: "1h"
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: letTheReaderWait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "1s" }
+  - name: record
+    invoke: { kind: Stream.Of }
+    inputs:
+      items: !cel "[{'at': now(), 'big': 9007199254740993, 'raw': b'\\x00\\xff'}]"
+  - name: drain
+    invoke: { kind: RecordStream.JournalSink, journal: !ref journal }
+    inputs: { key: crossing, input: !cel "steps.record.result.output" }

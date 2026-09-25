@@ -1,5 +1,12 @@
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "../storage-keys";
-import type { AgentHistoryRow, ChatMessage } from "./types";
+import type {
+  AgentHistoryRow,
+  AssistantMessage,
+  AssistantPart,
+  ChatMessage,
+  ToolCallView,
+  UserMessage,
+} from "./types";
 
 /** The panel's width before anyone drags it (Tailwind's `w-96`, which it was
  *  fixed at) and the narrowest it can be dragged — below this the composer and
@@ -82,9 +89,12 @@ export function saveAgentSettings(settings: AgentSettings): void {
 }
 
 export function loadChat(conversationId: string): PersistedChat {
-  const data = readJson<Partial<PersistedChat>>(CHAT_PREFIX + conversationId, {});
+  const data = readJson<Partial<Omit<PersistedChat, "messages">> & { messages?: StoredMessage[] }>(
+    CHAT_PREFIX + conversationId,
+    {},
+  );
   return {
-    messages: Array.isArray(data.messages) ? data.messages : [],
+    messages: Array.isArray(data.messages) ? data.messages.map(fromStored) : [],
     activeTurnId: typeof data.activeTurnId === "string" ? data.activeTurnId : null,
     lastEventId: typeof data.lastEventId === "number" ? data.lastEventId : 0,
     agentSession: typeof data.agentSession === "string" ? data.agentSession : null,
@@ -93,11 +103,31 @@ export function loadChat(conversationId: string): PersistedChat {
 }
 
 export function saveChat(conversationId: string, chat: PersistedChat): void {
-  writeJson(CHAT_PREFIX + conversationId, { ...chat, messages: chat.messages.map(withoutReasoning) });
+  writeJson(CHAT_PREFIX + conversationId, { ...chat, messages: chat.messages.map(withoutThinking) });
+}
+
+/** A transcript saved before parts existed: an assistant turn as three
+ *  buckets — its tool calls and its text, thinking never having been saved — and
+ *  a user message carrying an always-empty tool list. */
+type ThreeBucketAssistant = Omit<AssistantMessage, "parts"> & { text: string; tools: ToolCallView[] };
+type StoredMessage = ChatMessage | ThreeBucketAssistant | (UserMessage & { tools?: ToolCallView[] });
+
+/** A three-bucket turn loads in the fixed order it rendered in, tools then
+ *  text — the only order it recorded. */
+function fromStored(message: StoredMessage): ChatMessage {
+  if (message.role === "user") {
+    const { tools, ...user } = message as UserMessage & { tools?: ToolCallView[] };
+    return user;
+  }
+  if ("parts" in message) return message;
+  const { text, tools, ...rest } = message;
+  const parts: AssistantPart[] = tools.map((tool) => ({ kind: "tool", tool }));
+  if (text) parts.push({ kind: "text", text });
+  return { ...rest, parts };
 }
 
 /**
- * Reasoning is DISPLAY-ONLY and is dropped before persisting.
+ * Thinking is DISPLAY-ONLY and is dropped before persisting.
  *
  * It is never sent back to the agent (the encrypted reasoning that actually
  * matters rides `providerState` on the server side) and never read by resume,
@@ -109,10 +139,9 @@ export function saveChat(conversationId: string, chat: PersistedChat): void {
  * in-flight turn. Keeping the volatile, valueless half out of the payload keeps
  * the cliff far away.
  */
-function withoutReasoning(message: ChatMessage): ChatMessage {
-  if (message.reasoning === undefined) return message;
-  const { reasoning, ...rest } = message;
-  return rest;
+function withoutThinking(message: ChatMessage): ChatMessage {
+  if (message.role !== "assistant") return message;
+  return { ...message, parts: message.parts.filter((part) => part.kind !== "thinking") };
 }
 
 export function clearChat(conversationId: string): void {

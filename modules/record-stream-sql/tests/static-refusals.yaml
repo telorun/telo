@@ -1,0 +1,27 @@
+# A non-positive `pollInterval` is refused by `telo check` at the declaration and,
+# from a consumer whose entry-scoped check is silent, by the controller.
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlStaticRefusalsTest
+  version: 1.0.0
+  description: The poll interval refusal is pinned statically and at runtime.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref pollIntervalPositive
+  - !ref pollIntervalPositiveAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: pollIntervalPositive }
+source: ./__fixtures__/poll-interval-zero/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `pollInterval` to zero or less"
+---
+kind: Assert.Manifest
+metadata: { name: pollIntervalPositiveAtRuntime }
+source: ./__fixtures__/poll-interval-zero-app.yaml
+expect:
+  errors: []
+  runFails: "RECORD_STREAM_SQL_POLL_INTERVAL_NOT_POSITIVE"

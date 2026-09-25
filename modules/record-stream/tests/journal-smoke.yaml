@@ -3,91 +3,26 @@ metadata:
   name: RecordStreamJournalSmoke
   version: 1.0.0
   description: |
-    RecordStream.Journal round-trip. A stream is drained into the journal under a
-    key via JournalSink; JournalSource then replays it as `{ id, data }` entries —
-    fully from id 0, and from an offset (fromId=1) to model a client resuming from
-    its last seen id. Ids are monotonic and 1-based; data is preserved intact.
+    The journal's shared behaviour suite over the in-memory store: replay, tail,
+    finish and failure; a reader waiting for a key not yet written; removal and its
+    outcomes; a second writer refused; a paused writer kept live by its heartbeat;
+    expiry; removal between two pages; and typed values surviving the round trip.
 imports:
+  Suite:
+    source: ./__fixtures__/journal-suite
+    resources: { store: !ref store }
   RecordStream: ../
-  Stream: ../../stream
-  JS: ../../javascript
-  Run: ../../run
-  Assert: ../../assert
 targets:
-  - !ref test
+  - !ref Suite.expiry
+  - !ref Suite.roundTrip
+  - !ref Suite.typedValues
+  - !ref Suite.failedReplaysCode
+  - !ref Suite.unknownKeyWaits
+  - !ref Suite.removal
+  - !ref Suite.secondWriterBusy
+  - !ref Suite.pausedWriterStaysLive
+  - !ref Suite.removedAcrossPages
+  - !ref Suite.cancelledRead
 ---
-kind: RecordStream.Journal
-metadata: { name: turns }
----
-kind: RecordStream.JournalSink
-metadata: { name: sink }
-journal: !ref turns
----
-kind: RecordStream.JournalSource
-metadata: { name: source }
-journal: !ref turns
----
-kind: Stream.Of
-metadata: { name: turnStream }
-items:
-  - { type: text-delta, delta: "he" }
-  - { type: text-delta, delta: "llo" }
-  - { type: finish, finishReason: stop }
----
-kind: JS.Script
-metadata: { name: collect }
-code: |
-  async function main({ input }) {
-    const ids = [];
-    const types = [];
-    const deltas = [];
-    for await (const e of input) {
-      ids.push(e.id);
-      types.push(e.data.type);
-      deltas.push(e.data.delta || "");
-    }
-    return { ids, types, deltas };
-  }
----
-kind: Run.Sequence
-metadata: { name: test }
-steps:
-  - name: src
-    invoke: !ref turnStream
-  - name: write
-    invoke: !ref sink
-    inputs:
-      key: t1
-      input: !cel "steps.src.result.output"
-
-  - name: readAll
-    invoke: !ref source
-    inputs: { key: t1, fromId: 0 }
-  - name: collectAll
-    invoke: !ref collect
-    inputs: { input: !cel "steps.readAll.result.output" }
-
-  - name: readResume
-    invoke: !ref source
-    inputs: { key: t1, fromId: 1 }
-  - name: collectResume
-    invoke: !ref collect
-    inputs: { input: !cel "steps.readResume.result.output" }
-
-  - name: assert
-    inputs:
-      actual:
-        writtenCount: !cel "steps.write.result.count"
-        allIds: !cel "steps.collectAll.result.ids"
-        allTypes: !cel "steps.collectAll.result.types"
-        allDeltas: !cel "steps.collectAll.result.deltas"
-        resumeIds: !cel "steps.collectResume.result.ids"
-        resumeDeltas: !cel "steps.collectResume.result.deltas"
-      expected:
-        writtenCount: 3
-        allIds: [1, 2, 3]
-        allTypes: [text-delta, text-delta, finish]
-        allDeltas: ["he", "llo", ""]
-        resumeIds: [2, 3]
-        resumeDeltas: ["llo", ""]
-    invoke: !ref Assert.equals
+kind: RecordStream.MemoryJournalStore
+metadata: { name: store }

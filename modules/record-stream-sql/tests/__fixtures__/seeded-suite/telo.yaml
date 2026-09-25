@@ -1,0 +1,231 @@
+# Writer liveness over the SQL store, proven by editing the key table: a header's
+# database write time is moved into the past (or copied onto a key no writer
+# holds) while a sink is paused inside its own input, so nothing depends on how
+# fast anything runs. Shared by the SQLite run and the PostgreSQL integration run.
+kind: Telo.Library
+metadata:
+  name: SeededKeyTableSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: writer-liveness tests over the SQL journal store, seeded through
+    the key table.
+imports:
+  RecordStream: ../../../../record-stream
+  Sql: ../../../../sql
+  Stream: ../../../../stream
+  Run: ../../../../run
+  Assert: ../../../../assert
+variables:
+  table:
+    type: string
+    description: The store's `table:` — the key table is `<table>_keys`.
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The database the store under test writes to.
+  store:
+    kind: RecordStream.JournalStore
+    description: The SQL store under test, over `connection` and `table`.
+exports:
+  resources:
+    - lostWriter
+    - orphanedKey
+---
+kind: Stream.Of
+metadata: { name: items }
+---
+kind: Stream.Collect
+metadata: { name: collect }
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref connection
+---
+kind: Sql.Query
+metadata: { name: query }
+connection: !ref connection
+---
+# Records each id a reader replays, so a reader that ends in an error still
+# leaves evidence of what it delivered before it.
+kind: Run.Sequence
+metadata: { name: prepare }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [keys]
+    properties:
+      keys: { type: array, items: { type: string } }
+steps:
+  - name: replayedTable
+    invoke: !ref command
+    inputs:
+      sql: !cel "'CREATE TABLE IF NOT EXISTS ' + variables.table + '_replayed (journal_key TEXT NOT NULL, id BIGINT NOT NULL)'"
+  - name: clearReplayed
+    invoke: !ref command
+    inputs:
+      sql: !cel "'DELETE FROM ' + variables.table + '_replayed WHERE journal_key IN (' + inputs.keys.map(k, \"'\" + k + \"'\").join(', ') + ')'"
+  - name: clearEntries
+    invoke: !ref command
+    inputs:
+      sql: !cel "'DELETE FROM ' + variables.table + ' WHERE journal_key IN (' + inputs.keys.map(k, \"'\" + k + \"'\").join(', ') + ')'"
+  - name: clearKeys
+    invoke: !ref command
+    inputs:
+      sql: !cel "'DELETE FROM ' + variables.table + '_keys WHERE journal_key IN (' + inputs.keys.map(k, \"'\" + k + \"'\").join(', ') + ')'"
+---
+# Its writer claims with a one-hour timeout, so its heartbeat never comes due
+# while the test runs: only the seeded write time can make the key look stale.
+kind: RecordStream.Journal
+metadata: { name: slowJournal }
+store: !ref store
+retention: "1h"
+writerTimeout: "1h"
+---
+kind: RecordStream.JournalSource
+metadata: { name: slowSource }
+journal: !ref slowJournal
+---
+# Writer lost at open, and the lost writer's next append refused. The sink is
+# paused inside its own input after two records; meanwhile the key's write time
+# is moved two hours back, past the writer's recorded timeout, and a reader opens
+# it: it replays both records and raises the loss, having failed the key. When
+# the input resumes, the sink's next append is refused with the same code.
+kind: Run.Sequence
+metadata: { name: lostWriter }
+steps:
+  - name: prepare
+    invoke: !ref prepare
+    inputs: { keys: [lost] }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2 }, { n: 3, age: true }] }
+  - name: paused
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.age)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: ageTheKey
+            invoke: !ref command
+            inputs:
+              sql: !cel "'UPDATE ' + variables.table + '_keys SET written_at = written_at - 7200000 WHERE journal_key = \\'lost\\''"
+          - name: open
+            invoke: !ref slowSource
+            inputs: { key: lost }
+          - name: replay
+            try:
+              - name: record
+                invoke:
+                  kind: Stream.Tap
+                  invoke: !ref command
+                  inputs:
+                    sql: !cel "'INSERT INTO ' + variables.table + '_replayed (journal_key, id) VALUES (\\'lost\\', ' + string(item.id) + ')'"
+                inputs: { input: !cel "steps.open.result.output" }
+              - name: all
+                invoke: !ref collect
+                inputs: { input: !cel "steps.record.result.output" }
+              - name: unreachable
+                throw: { code: ERR_TEST_UNREACHABLE, message: "a lost writer's key read as finished" }
+            catch:
+              - name: readerTold
+                invoke: !ref Assert.equals
+                inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_WRITER_LOST }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    try:
+      - name: drain
+        invoke: { kind: RecordStream.JournalSink, journal: !ref slowJournal }
+        inputs: { key: lost, input: !cel "steps.paused.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a lost writer finished its drain" }
+    catch:
+      - name: appendRefused
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_WRITER_LOST }
+  - name: replayed
+    invoke: !ref query
+    inputs:
+      sql: !cel "'SELECT id FROM ' + variables.table + '_replayed WHERE journal_key = \\'lost\\' ORDER BY id'"
+  - name: bothRecordsReplayed
+    invoke: !ref Assert.equals
+    inputs: { actual: !cel "steps.replayed.result.rows.map(r, int(r.id))", expected: [1, 2] }
+---
+# Its writer heartbeats every third of half a second.
+kind: RecordStream.Journal
+metadata: { name: quickJournal }
+store: !ref store
+retention: "1h"
+writerTimeout: "500ms"
+---
+# Writer lost mid-tail. While a live writer is paused in its input, its open
+# header and its one record are copied onto a key no writer holds: a reader of
+# that copy replays the record, tails it, and — with no heartbeat ever coming —
+# raises the loss within the recorded half-second plus a poll.
+kind: Run.Sequence
+metadata: { name: orphanedKey }
+steps:
+  - name: prepare
+    invoke: !ref prepare
+    inputs: { keys: [writer, orphan] }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, orphan: true }] }
+  - name: paused
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.orphan)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: copyHeader
+            invoke: !ref command
+            inputs:
+              sql: !cel "'INSERT INTO ' + variables.table + '_keys (journal_key, header, version, written_at, last_id) SELECT \\'orphan\\', header, \\'seeded\\', written_at, last_id FROM ' + variables.table + '_keys WHERE journal_key = \\'writer\\''"
+          - name: copyEntries
+            invoke: !ref command
+            inputs:
+              sql: !cel "'INSERT INTO ' + variables.table + ' (journal_key, id, record) SELECT \\'orphan\\', id, record FROM ' + variables.table + ' WHERE journal_key = \\'writer\\''"
+          - name: started
+            value: !cel "now()"
+          - name: open
+            invoke: { kind: RecordStream.JournalSource, journal: !ref quickJournal }
+            inputs: { key: orphan }
+          - name: tail
+            try:
+              - name: record
+                invoke:
+                  kind: Stream.Tap
+                  invoke: !ref command
+                  inputs:
+                    sql: !cel "'INSERT INTO ' + variables.table + '_replayed (journal_key, id) VALUES (\\'orphan\\', ' + string(item.id) + ')'"
+                inputs: { input: !cel "steps.open.result.output" }
+              - name: all
+                invoke: !ref collect
+                inputs: { input: !cel "steps.record.result.output" }
+              - name: unreachable
+                throw: { code: ERR_TEST_UNREACHABLE, message: "an orphaned key read as finished" }
+            catch:
+              - name: readerTold
+                invoke: !ref Assert.equals
+                inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_WRITER_LOST }
+          # The timeout plus a poll, with room for a loaded machine.
+          - name: withinBound
+            invoke: !ref Assert.equals
+            inputs: { actual: !cel "now() - steps.started.result < duration('2s')", expected: true }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    invoke: { kind: RecordStream.JournalSink, journal: !ref quickJournal }
+    inputs: { key: writer, input: !cel "steps.paused.result.output" }
+  - name: replayed
+    invoke: !ref query
+    inputs:
+      sql: !cel "'SELECT id FROM ' + variables.table + '_replayed WHERE journal_key = \\'orphan\\' ORDER BY id'"
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        writerUnaffected: !cel "steps.write.result.count"
+        replayedBeforeLoss: !cel "steps.replayed.result.rows.map(r, int(r.id))"
+      expected: { writerUnaffected: 2, replayedBeforeLoss: [1] }

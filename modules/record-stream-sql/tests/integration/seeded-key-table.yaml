@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlSeededKeyTablePostgres
+  version: 1.0.0
+  description: |
+    Writer liveness over the SQL store on PostgreSQL, seeded through the key table:
+    a writer lost at open, a lost writer's next append refused, and a key with no
+    writer reported lost mid-tail. Each case clears its own keys first.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Seeded:
+    source: ../__fixtures__/seeded-suite
+    variables: { table: record_stream_journal_seeded_test }
+    resources: { connection: !ref db, store: !ref store }
+  RecordStreamSql: ../../
+  Postgres: ../../../postgres
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref Seeded.lostWriter
+  - !ref Seeded.orphanedKey
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: RecordStreamSql.JournalStore
+metadata: { name: store }
+connection: !ref db
+table: record_stream_journal_seeded_test

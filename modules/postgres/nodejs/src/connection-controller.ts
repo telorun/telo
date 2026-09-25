@@ -46,13 +46,18 @@ function sslFromSslmode(mode: string | null): SslOption {
   }
 }
 
-const postgresDialect: SqlDialect = {
+export const postgresDialect: SqlDialect = {
   placeholderStyle: "numbered",
   quoteIdentifier: quoteAnsiIdentifier,
   // PostgreSQL binds the whole set as one array parameter, which keeps the
   // statement text stable regardless of how many elements are matched.
   renderIn(column, values, addParam) {
     return `${column} = ANY(${addParam(values)})`;
+  },
+  // `clock_timestamp()` is the wall clock when evaluated; `now()` would be the
+  // transaction's start.
+  renderCurrentTimeMillis() {
+    return "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)";
   },
 };
 

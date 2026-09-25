@@ -14,13 +14,17 @@ interface SqliteConnectionManifest {
   file?: string;
 }
 
-const sqliteDialect: SqlDialect = {
+export const sqliteDialect: SqlDialect = {
   placeholderStyle: "qmark",
   quoteIdentifier: quoteAnsiIdentifier,
   // SQLite has no array type, so set membership expands to one placeholder per
   // element.
   renderIn(column, values, addParam) {
     return `${column} IN (${values.map((value) => addParam(value)).join(", ")})`;
+  },
+  // Julian day number of the Unix epoch, scaled to milliseconds.
+  renderCurrentTimeMillis() {
+    return "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)";
   },
 };
 
