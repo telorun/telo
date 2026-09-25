@@ -1,0 +1,16 @@
+# A journal whose writers would all be judged abandoned before their first
+# heartbeat: refused by `telo check` at the declaration, and by the controller
+# when the resource is created.
+kind: Telo.Library
+metadata:
+  name: WriterTimeoutZero
+imports:
+  RecordStream: ../../..
+exports:
+  resources: [journal]
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStream.MemoryJournalStore }
+retention: "1h"
+writerTimeout: "0s"

@@ -1,0 +1,115 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlCrossesProcesses
+  version: 1.0.0
+  description: |
+    Two applications over one SQLite file. A reader here waits for a key that a
+    writer in another process then appends to, and receives the record within two
+    poll intervals of its creation. After the writer's process has ended, a fresh
+    process replays the record from the file with every value's type intact.
+imports:
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../
+  SQLite: ../../sqlite
+  Sql: ../../sql
+  Stream: ../../stream
+  App: ../../app
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+# Resolved against the working directory here, so every process receives the same
+# absolute path. The file is reused between runs; the key is cleared first.
+variables:
+  dbFile:
+    env: RECORD_STREAM_SQL_CROSS_PROCESS_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/record-stream-sql-cross-process.db
+targets:
+  - !ref clear
+  - !ref follow
+  - !ref reader
+  - !ref replayInFreshProcess
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store:
+  kind: RecordStreamSql.JournalStore
+  connection: !ref db
+  pollInterval: "500ms"
+retention: "1h"
+---
+kind: Run.Sequence
+metadata: { name: clear }
+steps:
+  - name: entries
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: "DELETE FROM record_stream_journal WHERE journal_key = 'crossing'" }
+  - name: keys
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: "DELETE FROM record_stream_journal_keys WHERE journal_key = 'crossing'" }
+---
+# The reader opens the key before the writer has claimed it; each record is
+# stamped with when it arrived here.
+kind: Run.Sequence
+metadata: { name: follow }
+with:
+  - kind: App.Instance
+    metadata: { name: writer }
+    source: ./__fixtures__/cross-process/writer.yaml
+    awaitStart: false
+    variables:
+      dbFile: !cel "variables.dbFile"
+targets:
+  - !ref writer
+steps:
+  - name: open
+    invoke: { kind: RecordStream.JournalSource, journal: !ref journal }
+    inputs: { key: crossing }
+  - name: stamped
+    invoke:
+      kind: Stream.Map
+      value:
+        at: !cel "item.data.at"
+        receivedAt: !cel "now()"
+    inputs: { input: !cel "steps.open.result.output" }
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.stamped.result.output" }
+  # Two poll intervals (2 × 500ms) plus a fixed 1s of slack for scheduling — the
+  # query, the decode and a loaded machine's delay in running the reader.
+  - name: withinTwoPolls
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.all.result.items[0].receivedAt - steps.all.result.items[0].at <= duration('1s') + duration('1s')"
+      expected: true
+---
+# Started once `follow` has ended, and with it the writer's process.
+kind: App.Instance
+metadata: { name: reader }
+source: ./__fixtures__/cross-process/reader.yaml
+variables:
+  dbFile: !cel "variables.dbFile"
+---
+kind: Run.Loop
+metadata: { name: awaitReaderExit }
+condition: !cel "resources.reader.status.exitCode == null"
+# 30s for a child kernel to boot, read and exit.
+maxIterations: 1500
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: replayInFreshProcess }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitReaderExit
+  - name: replayedIntact
+    invoke: !ref Assert.equals
+    inputs: { actual: !cel "resources.reader.status.exitCode", expected: 0 }

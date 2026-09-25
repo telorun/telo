@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlJournalSuitePostgres
+  version: 1.0.0
+  description: |
+    The journal's shared behaviour suite over the SQL store on PostgreSQL. The suite
+    needs an empty store, so this test's own table is cleared before it runs.
+
+    NEEDS A LIVE POSTGRES. Kept out of `tests/` proper for exactly that reason.
+imports:
+  Suite:
+    source: ../../../record-stream/tests/__fixtures__/journal-suite
+    resources: { store: !ref store }
+  RecordStreamSql: ../../
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref clear
+  - !ref Suite.expiry
+  - !ref Suite.roundTrip
+  - !ref Suite.typedValues
+  - !ref Suite.failedReplaysCode
+  - !ref Suite.unknownKeyWaits
+  - !ref Suite.removal
+  - !ref Suite.secondWriterBusy
+  - !ref Suite.pausedWriterStaysLive
+  - !ref Suite.removedAcrossPages
+  - !ref Suite.cancelledRead
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# A table of its own, so no other test's journal shares it.
+kind: RecordStreamSql.JournalStore
+metadata: { name: store }
+connection: !ref db
+table: record_stream_journal_suite_test
+---
+kind: Run.Sequence
+metadata: { name: clear }
+steps:
+  - name: entries
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: "DELETE FROM record_stream_journal_suite_test" }
+  - name: keys
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: "DELETE FROM record_stream_journal_suite_test_keys" }

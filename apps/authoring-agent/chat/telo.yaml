@@ -1769,6 +1769,63 @@ system: !literal |
           content: !cel "steps.generate.result.images[0].data"
         invoke: !ref saveImage
 
+  ## Resumable streams — the replay journal
+
+  To let a client drop and re-attach to work that outlives its connection (an
+  SSE endpoint that survives a page refresh), run the work DETACHED into a
+  `RecordStream.Journal` under a key and read it back with a
+  `RecordStream.JournalSource` from the client's last seen id. A journal ALWAYS
+  names its `store:` and its `retention:` — both are required:
+
+      kind: RecordStream.Journal
+      metadata: { name: turns }
+      store: { kind: RecordStream.MemoryJournalStore }
+      retention: 24h
+      # writerTimeout: 30s   — optional, 30s when omitted
+
+  `RecordStream.MemoryJournalStore`, inline, keeps the records in one process.
+  When the records must survive a restart or be read by another process, use
+  `RecordStreamSql.JournalStore` (`oci://ghcr.io/telorun/record-stream-sql`) over
+  an existing `Sql.Connection` (any SQL backend):
+
+      store:
+        kind: RecordStreamSql.JournalStore
+        connection: !ref db
+        # table: record_stream_journal   — its key table is <table>_keys
+        # createTable: true               — false when migrations own the tables
+        # pollInterval: 250ms             — how often a reader in another process
+        #                                   checks; woken within two intervals
+
+  - `RecordStream.JournalSink` `{ key, input }` → `{ key, count }` claims the key,
+    appends every record, and marks it finished — or failed, recording the
+    error's code — when the stream ends. Invoke it through `Run.Detach` to
+    return the key to the client at once. While it drains it heartbeats every
+    third of `writerTimeout`, so a long silent tool call is not a dead writer.
+    It re-raises its input stream's own error unchanged; that error is not in
+    the sink's `throws:`, so a `catches:` entry naming its code is
+    `UNDECLARED_THROW_CODE`, and a trace shows the drain as
+    `InvokeRejected.Undeclared`.
+  - `RecordStream.JournalSource` `{ key, fromId? }` → `{ output }` of
+    `{ id, data }`. The CALL raises only `ERR_JOURNAL_KEY_REMOVED`, when the key
+    is already removed at open — that is its whole `throws:`, so map it in the
+    route's `catches:` (410 Gone is the natural status), and do NOT list the
+    stream's codes there (`UNDECLARED_THROW_CODE`). The returned STREAM replays
+    from `fromId`, then tails a live key, ends on a finished one, re-raises a
+    failed one's recorded error, raises `ERR_JOURNAL_WRITER_LOST` when the writer
+    stopped heartbeating past its `writerTimeout`, `ERR_JOURNAL_KEY_REMOVED` when
+    the key is removed mid-read, and `ERR_INVOKE_CANCELLED` when the invocation
+    that opened it is cancelled. A key nobody has written yet is waited for, not
+    refused. The stream ends when its consumer stops (a client disconnecting) or
+    its invocation is cancelled — it never keeps polling for a reader that left.
+  - `RecordStream.JournalRemoval` `{ key }` → `{ outcome: removed | unknown }`
+    deletes one key's records (`removed` again when it already was).
+  - `RecordStream.JournalExpiry` (no inputs) → `{ count }` applies `retention:`.
+    The journal owns no timer, so trigger it from a schedule
+    (`Scheduler.Interval` with `every:`), never from a request.
+  - A second sink on a key that exists raises `ERR_JOURNAL_KEY_BUSY`; a sink
+    whose key was removed or declared abandoned raises
+    `ERR_JOURNAL_KEY_REMOVED` / `ERR_JOURNAL_WRITER_LOST`.
+
   ## Authenticating outbound HTTP
 
   Never wire an `Authorization` header by hand, and never build a "request
@@ -2599,7 +2656,8 @@ system: !literal |
   scheduled job, wrap the body in `Lease.Critical` rather than looking for an
   overlap flag on the schedule.
 
-  Workflow for any capability you need:
+  Workflow for any capability you need (for several capabilities, do each step
+  for ALL of them in one turn — every search at once, then every manifest):
     1. `search_resources` for the capability.
     2. `get_module_manifest` on the best hit's `module.ref`; record its EXACT
        ref and `metadata.version`, and read every `Telo.Definition`
@@ -2974,6 +3032,15 @@ system: !literal |
           versions, and kinds across published modules. These duplicate
           `get_module_manifest` / `search_resources`, which are what discovery
           uses; come here only when a hub tool errors or returns nothing.
+
+  **Batch independent tool calls into ONE turn.** A turn is one model response,
+  however many tool calls it carries, and a request has a fixed number of turns:
+  run out mid-build and the whole reply is lost, with the files half-written. So
+  whenever calls do not depend on each other's results, make them together —
+  every `search_resources` a build needs in one turn, then every
+  `get_module_manifest` those hits named in the next, then the feature library
+  and the files that only need its exports written side by side. Serialize only
+  where a result genuinely decides the next call.
 
   Only those subcommands are available through the `telo` tool: it has no `run`,
   and a bare path (which the CLI would treat as `run`) is rejected too.
@@ -3639,13 +3706,15 @@ system: !literal |
   nothing else exposes is a resource kind. If you find yourself reaching for one
   to bridge two steps, the bridge is almost always a `!cel` expression in the
   second step's `inputs:`.
-# Tool calls one turn may make. Building an application is several files now — a
-# feature library per domain, a test per behaviour, the suite, the wiring — each
-# with its own check-and-fix, plus discovery and a test run. At 16 a turn ran out
-# mid-build and left the work half-written, which is the one outcome this
-# workflow must not produce. A literal because `maxSteps` is not a CEL slot on
-# this kind; the turn's real ceiling is the token budget, which settles to what
-# was actually spent.
+# Model responses one request may take — each carries any number of tool calls,
+# which is why the primer tells the agent to batch independent ones. Building an
+# application is several files — a feature library per domain, a test per
+# behaviour, the suite, the wiring — each with its own check-and-fix, plus
+# discovery and a test-and-fix loop. At 16 a build ran out mid-way and lost the
+# reply with the work half-written, which is the one outcome this workflow must
+# not produce. A literal because `maxSteps` is not a CEL slot on this kind; the
+# turn's real ceiling is the token budget, which settles to what was actually
+# spent.
 maxSteps: 40
 toolProviders:
   - provider: !ref workspaceTools

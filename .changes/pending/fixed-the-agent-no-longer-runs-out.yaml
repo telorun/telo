@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The agent no longer runs out of turns while building an application with tests.
+  Its primer tells it that a request has a fixed number of model turns and to batch
+  independent tool calls into one turn (every hub search at once, then every module
+  manifest).

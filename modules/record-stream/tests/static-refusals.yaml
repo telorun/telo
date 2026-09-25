@@ -1,0 +1,76 @@
+# A journal configuration the controller refuses at creation is refused by
+# `telo check` too: a missing store or retention at the resource, and a
+# non-positive writer timeout or negative retention both at the declaration and,
+# from a consumer whose entry-scoped check is silent, by the controller. And a
+# reader's `catches:` is checked against what the call raises, not its stream.
+kind: Telo.Application
+metadata:
+  name: RecordStreamStaticRefusalsTest
+  version: 1.0.0
+  description: Each journal refusal is pinned statically and at runtime.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref journalNeedsStoreAndRetention
+  - !ref writerTimeoutPositive
+  - !ref writerTimeoutPositiveAtRuntime
+  - !ref retentionNotNegative
+  - !ref retentionNotNegativeAtRuntime
+  - !ref sourceCatchesRemovedOnly
+  - !ref sourceCatchesStreamCode
+---
+kind: Assert.Manifest
+metadata: { name: journalNeedsStoreAndRetention }
+source: ./__fixtures__/journal-without-store.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'store'"
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'retention'"
+---
+kind: Assert.Manifest
+metadata: { name: writerTimeoutPositive }
+source: ./__fixtures__/writer-timeout-zero/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets `writerTimeout` to zero or less"
+---
+kind: Assert.Manifest
+metadata: { name: writerTimeoutPositiveAtRuntime }
+source: ./__fixtures__/writer-timeout-zero-app.yaml
+expect:
+  errors: []
+  runFails: "RECORD_STREAM_WRITER_TIMEOUT_NOT_POSITIVE"
+---
+kind: Assert.Manifest
+metadata: { name: retentionNotNegative }
+source: ./__fixtures__/retention-negative/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets a negative `retention`"
+---
+kind: Assert.Manifest
+metadata: { name: retentionNotNegativeAtRuntime }
+source: ./__fixtures__/retention-negative-app.yaml
+expect:
+  errors: []
+  runFails: "RECORD_STREAM_RETENTION_NEGATIVE"
+---
+# The only code a read raises from the call is a removal at open, so catching it
+# alone leaves nothing uncovered.
+kind: Assert.Manifest
+metadata: { name: sourceCatchesRemovedOnly }
+source: ./__fixtures__/source-catches/removed-only.yaml
+expect: {}
+---
+# A writer's loss is raised by the returned stream, so no call throws it.
+kind: Assert.Manifest
+metadata: { name: sourceCatchesStreamCode }
+source: ./__fixtures__/source-catches/writer-lost.yaml
+expect:
+  errors:
+    - code: UNDECLARED_THROW_CODE
+      message: ERR_JOURNAL_WRITER_LOST

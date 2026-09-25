@@ -1,0 +1,26 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlSeededKeyTable
+  version: 1.0.0
+  description: |
+    Writer liveness over the SQL store on SQLite, seeded through the key table: a
+    writer lost at open, a lost writer's next append refused, and a key with no
+    writer reported lost mid-tail.
+imports:
+  Seeded:
+    source: ./__fixtures__/seeded-suite
+    variables: { table: record_stream_journal }
+    resources: { connection: !ref db, store: !ref store }
+  RecordStreamSql: ../
+  SQLite: ../../sqlite
+targets:
+  - !ref Seeded.lostWriter
+  - !ref Seeded.orphanedKey
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: RecordStreamSql.JournalStore
+metadata: { name: store }
+connection: !ref db

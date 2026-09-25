@@ -1,0 +1,4 @@
+modules:
+  modules/sqlite: Added
+body: The SQLite dialect supplies renderCurrentTimeMillis(), the database clock in epoch
+  milliseconds (julianday-based).

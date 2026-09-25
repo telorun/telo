@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamSqlJournalSuite
+  version: 1.0.0
+  description: |
+    The journal's shared behaviour suite over the SQL store on an in-memory SQLite
+    database: the same proof every journal store runs.
+imports:
+  Suite:
+    source: ../../record-stream/tests/__fixtures__/journal-suite
+    resources: { store: !ref store }
+  RecordStreamSql: ../
+  SQLite: ../../sqlite
+targets:
+  - !ref Suite.expiry
+  - !ref Suite.roundTrip
+  - !ref Suite.typedValues
+  - !ref Suite.failedReplaysCode
+  - !ref Suite.unknownKeyWaits
+  - !ref Suite.removal
+  - !ref Suite.secondWriterBusy
+  - !ref Suite.pausedWriterStaysLive
+  - !ref Suite.removedAcrossPages
+  - !ref Suite.cancelledRead
+---
+kind: RecordStreamSql.JournalStore
+metadata: { name: store }
+connection:
+  kind: SQLite.Connection
+  file: ":memory:"

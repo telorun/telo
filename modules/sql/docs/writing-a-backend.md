@@ -70,6 +70,13 @@ the shared operations never branch on which database is behind a connection:
 - **Set membership** — PostgreSQL binds a whole array to one placeholder
   (`= ANY($1)`); SQLite has no array type and expands one placeholder per
   element.
+- **Current time** — required: an SQL expression for the database's current
+  wall-clock time as integer milliseconds since the Unix epoch, read when the
+  statement runs rather than frozen at a transaction's start. A consumer that
+  compares ages across processes (a journal judging whether a writer in another
+  process is still alive) needs the database's one clock, not each host's.
+  SQLite: `CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)`;
+  PostgreSQL: `CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)`.
 
 Adding a database that differs in some further construct means adding to this
 list and answering it in every dialect. That is the point: a difference is

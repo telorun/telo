@@ -4,20 +4,33 @@ metadata:
   version: 0.15.4
   repository: https://github.com/telorun/telo
   license: LicenseRef-SustainableUse
-  categories: [Streaming, Observability]
+  categories: [Streaming, Observability, Storage]
   description: |
     Operations on streams of structured records, whatever the format: project a mixed
     record stream down to plain text, fan one stream out to two consumers, run a
-    handler once a stream completes, and record a stream into a keyed replay buffer
-    so a disconnected reader can resume from where it left off and then tail live.
+    handler once a stream completes, and record a stream into a keyed, durable replay
+    journal so a reader that disconnects, or outlives a restart, resumes from where it
+    left off and then tails live, with removal, retention and writer liveness.
 exports:
   kinds:
     - ExtractText
     - Tee
     - OnComplete
+    - JournalStore
+    - MemoryJournalStore
     - Journal
     - JournalSink
     - JournalSource
+    - JournalRemoval
+    - JournalExpiry
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/record-stream` to: the store contract a backend implements and the
+  # journal protocol, one module scope across this module and every backend.
+  code:
+    - specifier: "@telorun/record-stream"
+      format: js
+      path: ./nodejs/record-stream.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Project a discriminated stream of records to a `Stream<string>`.
 #
@@ -189,42 +202,143 @@ schema:
   required: [handler]
   additionalProperties: false
 ---
-# RecordStream.Journal — an in-memory, keyed, offset-addressable replay buffer.
-# A producer streams records into it under a key (each getting a monotonic id)
-# via JournalSink; a consumer reads a resumable stream from it via JournalSource,
-# starting at any id and then tailing live until the key is finished. This is
-# what makes a DETACHED stream resumable: a client that drops and reconnects
-# re-reads from its last seen id (e.g. an SSE Last-Event-ID), replaying exactly
-# what it missed and then continuing live. Process-local; buffers are retained
-# until explicitly discarded.
+# RecordStream.JournalStore — the storage a journal runs over. A Telo.Provider: a
+# configured store, referenced by a journal's `store:`. Normative contract:
+# docs/store-contract.md.
+#
+#   read(key, fromId, limit)                → { header | null, entries } — one snapshot
+#   putIfAbsent(key, value)                 → version | null
+#   compareAndSet(key, version, value)      → version | null  (stamps the store clock)
+#   compareAndAppend(key, version, record)  → { id, version } | null
+#   compareAndTruncate(key, version, value) → version | null
+#   compareAndDelete(key, version)          → boolean
+#   scan(minAgeMs, cursor, limit)           → headers, oldest first
+#   wait(key, version, timeoutMs, cancellation) → resolves on a version change,
+#                                             the timeout or the cancellation;
+#                                             never rejects on the last two
+#
+# Journal-agnostic: a header value and a record are opaque typed frames, and no
+# backend names a journal state. The protocol lives once, in RecordStream.Journal
+# (`@telorun/record-stream`), so no backend re-expresses the ownership guard.
+kind: Telo.Abstract
+metadata:
+  name: JournalStore
+  description: >-
+    Storage for keyed, append-only record logs: per key a small versioned header and
+    an ordered log with gap-free ids, read as one consistent snapshot, written only
+    by conditional updates that report a lost race instead of failing, scanned by
+    age, and waited on for changes. What a durable, resumable stream buffer needs.
+capability: Telo.Provider
+---
+# The store in one process's memory: conditional writes are atomic because each
+# runs to completion on the event loop. Nothing survives a restart.
+kind: Telo.Definition
+metadata:
+  name: MemoryJournalStore
+  description: >-
+    Keeps resumable stream records in the running process's memory, with atomic
+    conditional writes within that process and waiting readers woken on every
+    change. Nothing is shared between instances or survives a restart, so it fits
+    development, tests and single-process runs.
+extends: Self.JournalStore
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#MemoryJournalStoreController
+schema:
+  type: object
+  additionalProperties: false
+---
+# RecordStream.Journal — a keyed, offset-addressable replay journal over a store.
+# A producer claims a key and streams records into it (JournalSink); a consumer
+# reads from any id and tails live (JournalSource). The protocol — claims,
+# heartbeats, terminal states, removal markers, expiry, the stale-writer rule —
+# lives here, once, above whichever store `store:` names.
 kind: Telo.Definition
 metadata:
   name: Journal
   description: >-
-    A keyed replay buffer holding the records of in-flight streams, each addressable
-    by offset, so a reader that disconnects can resume rather than lose what it
-    missed. Held in memory for the life of the process.
+    A keyed replay journal for detached streams: each key's records are kept in
+    order with increasing ids, so a reader that disconnects, or comes back after a
+    restart on a durable store, resumes exactly where it left off. Tracks whether
+    each key is live, finished, failed, removed or abandoned by a writer that
+    stopped sending heartbeats.
 capability: Telo.Provider
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalController
 schema:
   type: object
   additionalProperties: false
+  required: [store, retention]
+  properties:
+    store:
+      title: Store
+      description: >-
+        Where the records live. An inline memory store keeps them for one process; a
+        durable store keeps them across restarts and processes.
+      x-telo-ref:
+        kind: Self.JournalStore
+        use: dependency
+    retention:
+      title: Retention
+      description: >-
+        How long a finished or failed key is kept after it ended before an expiry
+        pass removes it — and how long the removal marker is then kept.
+      x-telo-type: Telo.Duration
+    # No `default:` — the kernel fills defaults without decoding them into an
+    # instance type, so a written `30s` default fails validation at boot.
+    writerTimeout:
+      title: Writer timeout
+      description: >-
+        How long a writer may go without a heartbeat before its key is failed as
+        abandoned; the writer sends one every third of it. 30s when omitted.
+      x-telo-type: Telo.Duration
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.writerTimeout) || duration(self.writerTimeout) > duration('0s')"
+      code: RECORD_STREAM_WRITER_TIMEOUT_NOT_POSITIVE
+      message: >-
+        sets `writerTimeout` to zero or less; every writer would be judged abandoned
+        before its first heartbeat.
+    - condition: !cel "!has(self.retention) || duration(self.retention) >= duration('0s')"
+      code: RECORD_STREAM_RETENTION_NEGATIVE
+      message: sets a negative `retention`; a key cannot be kept for less than no time.
 ---
-# Drain a stream into a Journal under `key`. Each record is appended (monotonic
-# id); on normal completion the key is finished, on error it is failed (the error
-# is recorded for readers, then rethrown — never swallowed). Invoke it WITHOUT
-# awaiting to run a turn detached: return the `key` to the client immediately and
-# let the stream fill the journal in the background.
+# Claim a key in a Journal, then drain a stream into it. The claim happens before
+# the first record is pulled; a heartbeat runs every third of the journal's
+# writer timeout for as long as the drain does, records or not. On normal
+# completion the key is finished; on an input error it is failed (the error's
+# code, message and data recorded for readers) and the error rethrown. A refused
+# write stops the drain, cancels the input and raises its code. Invoke it
+# detached to run work in the background and hand the key to a reader.
+#
+# The input stream's own error is re-raised unchanged and is NOT in `throws:` —
+# it is whatever the producer raises, which no literal list can name. So a
+# `catches:` entry naming such a code is UNDECLARED_THROW_CODE at `telo check`,
+# and a trace records the failed drain as InvokeRejected.Undeclared.
 kind: Telo.Definition
 metadata:
   name: JournalSink
   description: >-
-    Drains a stream into the replay buffer under a key, appending each record with an
-    increasing id and marking the key finished when the stream ends.
+    Drains a stream into the replay journal under a key it claims first, appending
+    each record with an increasing id and marking the key finished or failed when
+    the stream ends. Sends heartbeats while it runs, so readers can tell a slow
+    writer from a dead one.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSinkController
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: "`input` did not resolve to a stream."
+    ERR_JOURNAL_KEY_BUSY:
+      description: >-
+        The key already exists and belongs to another writer — live, finished or
+        failed. Raised when claiming it, before any record is pulled, or later if
+        another writer took it.
+    ERR_JOURNAL_KEY_REMOVED:
+      description: The key was removed, before the claim or while the drain ran.
+    ERR_JOURNAL_WRITER_LOST:
+      description: >-
+        The key was failed as abandoned because this writer's heartbeat was older
+        than its timeout; its next write is refused.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -234,7 +348,8 @@ inputType:
     properties:
       key:
         type: string
-        description: Buffer key to append under (e.g. a turn id).
+        minLength: 1
+        description: Key to claim and append under (e.g. a turn id).
       input:
         x-telo-type: Telo.Stream
         description: Async iterable of records to journal.
@@ -256,25 +371,39 @@ schema:
   properties:
     journal:
       title: Journal
-      description: Reference to the RecordStream.Journal to write into.
+      description: The journal to write into.
       x-telo-ref:
         kind: Self.Journal
         use: dependency
 ---
-# Read a resumable stream from a Journal. Yields `{ id, data }` entries with id
-# greater than `fromId` (0 replays from the start), then tails live until the key
-# is finished or failed. A reconnecting client passes its last seen id as
-# `fromId` so it replays exactly what it missed and then continues live.
+# Read a key back from a Journal: `{ id, data }` entries with id greater than
+# `fromId` (0 replays from the start), then the key's state decides — tail while
+# live, end once finished, raise the recorded error once failed, raise
+# ERR_JOURNAL_WRITER_LOST once its writer is judged dead, raise
+# ERR_JOURNAL_KEY_REMOVED once removed. A key never written is waited for.
+#
+# Only ERR_JOURNAL_KEY_REMOVED at open is raised by the call itself, so only it
+# is in `throws:`; everything else is raised by the returned stream, and listed
+# on `output`. The stream ends when its consumer stops, and raises
+# ERR_INVOKE_CANCELLED when this invocation is cancelled.
 kind: Telo.Definition
 metadata:
   name: JournalSource
   description: >-
     Reads a recorded stream back from a given offset, replaying what was missed and
     then following it live until it finishes — how a reconnecting client picks up
-    exactly where it dropped.
+    exactly where it dropped. A failed stream re-raises its recorded error, and a
+    removed or abandoned one says so with a distinct code.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSourceController
+# `throws:` is what the CALL raises; the stream it returns raises later, where
+# no `catches:` for this call can see it — so the stream's codes are listed on
+# `output` instead.
+throws:
+  codes:
+    ERR_JOURNAL_KEY_REMOVED:
+      description: Raised by the call when the key is already removed at open.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -284,7 +413,8 @@ inputType:
     properties:
       key:
         type: string
-        description: Buffer key to read.
+        minLength: 1
+        description: Key to read.
       fromId:
         type: integer
         minimum: 0
@@ -299,7 +429,13 @@ outputType:
     properties:
       output:
         x-telo-type: Telo.Stream
-        description: Async iterable of `{ id, data }` entries, then live tail until done.
+        description: >-
+          Async iterable of `{ id, data }` entries, then live tail until the key
+          ends. Raised by the stream, not the call: ERR_JOURNAL_KEY_REMOVED when the
+          key is removed or expired mid-read, ERR_JOURNAL_WRITER_LOST when its writer
+          stopped heartbeating, a failed key's recorded error with its original
+          code, and ERR_INVOKE_CANCELLED when the reading invocation is cancelled.
+          Ends when its consumer stops.
 schema:
   type: object
   additionalProperties: false
@@ -307,7 +443,91 @@ schema:
   properties:
     journal:
       title: Journal
-      description: Reference to the RecordStream.Journal to read from.
+      description: The journal to read from.
+      x-telo-ref:
+        kind: Self.Journal
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: JournalRemoval
+  description: >-
+    Removes one recorded stream by key: its records are deleted and readers are
+    told it was removed rather than left waiting. Reports whether the key was
+    removed or was never there; removing it twice reports removed again.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalRemovalController
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key:
+        type: string
+        minLength: 1
+        description: Key to remove.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [outcome]
+    properties:
+      outcome:
+        type: string
+        enum: [removed, unknown]
+        description: "`removed` — the key is removed (also when it already was); `unknown` — no such key."
+schema:
+  type: object
+  additionalProperties: false
+  required: [journal]
+  properties:
+    journal:
+      title: Journal
+      description: The journal to remove the key from.
+      x-telo-ref:
+        kind: Self.Journal
+        use: dependency
+---
+# One expiry pass. A provider performs no observable I/O at init and has no run(),
+# so the journal owns no timer: an application triggers this from its scheduler.
+kind: Telo.Definition
+metadata:
+  name: JournalExpiry
+  description: >-
+    Applies a replay journal's retention: deletes the records of every stream that
+    finished or failed longer ago than the retention window, fails streams whose
+    writer stopped sending heartbeats, and returns how many streams it removed. Run
+    it on a schedule.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalExpiryController
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [count]
+    properties:
+      count:
+        type: integer
+        description: Number of finished or failed keys whose records this pass removed.
+schema:
+  type: object
+  additionalProperties: false
+  required: [journal]
+  properties:
+    journal:
+      title: Journal
+      description: The journal whose retention to apply.
       x-telo-ref:
         kind: Self.Journal
         use: dependency

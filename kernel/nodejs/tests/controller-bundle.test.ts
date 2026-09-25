@@ -76,7 +76,7 @@ describe("controller bundling", () => {
     await write("node_modules/sharedpkg/b.js", `import { isStore } from "./store.js";\nexport function create() { return { isStore }; }`);
     // Same shape, but shipped as TypeScript SOURCE (`.ts`), loaded from `src/`
     // under a TS-aware runtime — the published-module layout (e.g.
-    // record-stream's `journal-store`). Controllers import `./store.js` but the
+    // record-stream's `journal`). Controllers import `./store.js` but the
     // resolved file is `store.ts`; that TS sibling must still be externalized, or
     // each controller inlines its own `Store` and cross-controller `instanceof`
     // splits (the real "invalid journal reference" failure).

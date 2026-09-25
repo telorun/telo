@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer names RecordStreamSql.JournalStore and its fields (connection, table,
+  createTable, pollInterval) as the journal store that survives restarts and is shared
+  between processes.

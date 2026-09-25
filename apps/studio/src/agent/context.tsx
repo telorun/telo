@@ -5,6 +5,7 @@ import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { TermsRequiredError, type RunnerTerms } from "../run/types";
 import { reconcile, seedDelta, pullFile } from "./sync";
 import { formatResumeRequest, resumePoint } from "./transcript";
+import { appendDelta, appendToolCall, settleToolCall } from "./assistant-parts";
 import {
   clearChat,
   loadAgentSettings,
@@ -19,6 +20,7 @@ import type {
   AgentStatus,
   AgentStreamPart,
   AgentWorkspace,
+  AssistantMessage,
   ChatMessage,
   CoResidentAgent,
   ToolResult,
@@ -282,8 +284,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     termsGateRef.current = handler;
   }, []);
 
-  const updateAssistant = useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  const updateAssistant = useCallback((id: string, fn: (m: AssistantMessage) => AssistantMessage) => {
+    setMessages((prev) => prev.map((m) => (m.id === id && m.role === "assistant" ? fn(m) : m)));
   }, []);
 
   // ── stream part → transcript ────────────────────────────────────────────────
@@ -296,28 +298,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       switch (part.type) {
         case "text-delta": {
           const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
-          updateAssistant(assistantId, (m) => ({ ...m, text: m.text + delta, reasoningInterrupted: true }));
+          updateAssistant(assistantId, (m) => ({ ...m, parts: appendDelta(m.parts, "text", delta) }));
           break;
         }
         case "reasoning-delta": {
-          // Accumulated separately from the answer: it is the model's précis of
-          // its own thinking, and folding it into `text` would put it in the
-          // reply, in the resume report, and in front of `splitAgentText`.
           const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
-          if (!delta) break;
-          updateAssistant(assistantId, (m) => {
-            // A turn reasons several times — once before each tool call, once
-            // before the answer — and the stream carries no part boundary this
-            // controller reads, so two summaries would otherwise join
-            // mid-sentence. A blank line where reasoning RESUMES after other
-            // content is the boundary the stream no longer supplies.
-            const resumed = !!m.reasoning && m.reasoningInterrupted === true;
-            return {
-              ...m,
-              reasoning: (m.reasoning ?? "") + (resumed ? "\n\n" : "") + delta,
-              reasoningInterrupted: false,
-            };
-          });
+          updateAssistant(assistantId, (m) => ({ ...m, parts: appendDelta(m.parts, "thinking", delta) }));
           break;
         }
         case "tool-call": {
@@ -326,11 +312,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           const toolCallId = call.id ?? `${call.name ?? "tool"}-${Math.floor(id)}`;
           updateAssistant(assistantId, (m) => ({
             ...m,
-            reasoningInterrupted: true,
-            tools: [
-              ...m.tools,
-              { toolCallId, name: call.name ?? "tool", args: call.arguments, state: "running" },
-            ],
+            parts: appendToolCall(m.parts, {
+              toolCallId,
+              name: call.name ?? "tool",
+              args: call.arguments,
+              state: "running",
+            }),
           }));
           break;
         }
@@ -347,11 +334,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           const checkOutput = parsed?.checkOutput;
           updateAssistant(assistantId, (m) => ({
             ...m,
-            tools: m.tools.map((t) =>
-              t.state === "running" && (raw.toolCallId ? t.toolCallId === raw.toolCallId : t.name === raw.name)
-                ? { ...t, state: failed ? "error" : "done", output: raw.content, checkExitCode, checkOutput }
-                : t,
-            ),
+            parts: settleToolCall(m.parts, raw, (t) => ({
+              ...t,
+              state: failed ? "error" : "done",
+              output: raw.content,
+              checkExitCode,
+              checkOutput,
+            })),
           }));
           // Eager reflection: pull the one file the agent just wrote.
           const path = parsed?.path;
@@ -532,10 +521,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       const text = message.trim();
       if (!text || locked || !conversationIdRef.current || !bridgeRef.current) return;
       setError(null);
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text, tools: [] };
+      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text };
       const assistantId = crypto.randomUUID();
       assistantIdRef.current = assistantId;
-      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", text: "", tools: [], pending: true };
+      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", parts: [], pending: true };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       dispatchTurn(text, assistantId);
     },
@@ -575,8 +564,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     assistantIdRef.current = assistantId;
     setMessages((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: "user", text, tools: [], resumedRequest: resume.request },
-      { id: assistantId, role: "assistant", text: "", tools: [], pending: true },
+      { id: crypto.randomUUID(), role: "user", text, resumedRequest: resume.request },
+      { id: assistantId, role: "assistant", parts: [], pending: true },
     ]);
     dispatchTurn(text, assistantId);
   }, [attachStream, dispatchTurn, locked, updateAssistant]);
@@ -647,7 +636,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         const pendingId = [...chat.messages].reverse().find((m) => m.role === "assistant" && m.pending)?.id;
         setMessages(
           chat.messages.map((m) =>
-            m.id === pendingId
+            m.id === pendingId && m.role === "assistant"
               ? { ...m, pending: false, error: "Interrupted — the agent session ended before this turn completed." }
               : m,
           ),

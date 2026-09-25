@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest";
 
 import { formatResumeRequest, resumePoint } from "../transcript";
-import type { ChatMessage, ToolCallView } from "../types";
+import type { AssistantMessage, AssistantPart, ChatMessage, ToolCallView, UserMessage } from "../types";
 
-const user = (id: string, text: string, over: Partial<ChatMessage> = {}): ChatMessage => ({
+const user = (id: string, text: string, over: Partial<UserMessage> = {}): ChatMessage => ({
   id,
   role: "user",
   text,
-  tools: [],
   ...over,
 });
-const assistant = (id: string, over: Partial<ChatMessage> = {}): ChatMessage => ({
+const assistant = (id: string, over: Partial<AssistantMessage> = {}): ChatMessage => ({
   id,
   role: "assistant",
-  text: "",
-  tools: [],
+  parts: [],
   ...over,
 });
+const text = (value: string): AssistantPart => ({ kind: "text", text: value });
+const tools = (...calls: ToolCallView[]): AssistantPart[] => calls.map((tool) => ({ kind: "tool", tool }));
 const wrote = (path: string, over: Partial<ToolCallView> = {}): ToolCallView => ({
   toolCallId: `t-${path}`,
   name: "write_file",
@@ -33,7 +33,7 @@ describe("resumePoint", () => {
 
   it("finds nothing once the turn reached its finish record", () => {
     expect(
-      resumePoint([user("1", "build it"), assistant("2", { text: "done", completed: true })]),
+      resumePoint([user("1", "build it"), assistant("2", { parts: [text("done")], completed: true })]),
     ).toBeNull();
   });
 
@@ -50,14 +50,14 @@ describe("resumePoint", () => {
   // that as an answer is what would offer a button with nothing to do.
   it("treats half a streamed reply as unanswered", () => {
     expect(
-      resumePoint([user("1", "build it"), assistant("2", { text: "Looking at the workspa" })]),
+      resumePoint([user("1", "build it"), assistant("2", { parts: [text("Looking at the workspa")] })]),
     ).toEqual({ request: "build it", done: [] });
   });
 
   it("carries the work the interrupted turn already did", () => {
     const point = resumePoint([
       user("1", "build it"),
-      assistant("2", { tools: [wrote("apps/todo/telo.yaml"), wrote("apps/todo/api/telo.yaml")] }),
+      assistant("2", { parts: tools(wrote("apps/todo/telo.yaml"), wrote("apps/todo/api/telo.yaml")) }),
     ]);
     expect(point?.done.map((t) => t.args)).toEqual([
       expect.objectContaining({ path: "apps/todo/telo.yaml" }),
@@ -65,15 +65,30 @@ describe("resumePoint", () => {
     ]);
   });
 
+  it("reads the tool calls from between the turn's thinking and text", () => {
+    const point = resumePoint([
+      user("1", "build it"),
+      assistant("2", {
+        parts: [
+          { kind: "thinking", text: "plan" },
+          ...tools(wrote("a.yaml")),
+          text("Now the library."),
+          ...tools(wrote("b.yaml")),
+        ],
+      }),
+    ]);
+    expect(point?.done.map((t) => (t.args as { path: string }).path)).toEqual(["a.yaml", "b.yaml"]);
+  });
+
   it("reports each target once, at its latest outcome and first position", () => {
     const point = resumePoint([
       user("1", "build it"),
       assistant("2", {
-        tools: [
+        parts: tools(
           wrote("a.yaml", { checkExitCode: 1 }),
           wrote("b.yaml"),
           wrote("a.yaml", { checkExitCode: 0 }),
-        ],
+        ),
       }),
     ]);
     expect(point?.done).toHaveLength(2);
@@ -90,9 +105,9 @@ describe("resumePoint", () => {
   it("resumes the ORIGINAL request across a chain, accumulating the work", () => {
     const point = resumePoint([
       user("1", "build it"),
-      assistant("2", { tools: [wrote("a.yaml")] }),
+      assistant("2", { parts: tools(wrote("a.yaml")) }),
       user("3", "Resume an interrupted turn…", { resumedRequest: "build it" }),
-      assistant("4", { tools: [wrote("b.yaml")] }),
+      assistant("4", { parts: tools(wrote("b.yaml")) }),
     ]);
     expect(point?.request).toBe("build it");
     expect(point?.done.map((t) => (t.args as { path: string }).path)).toEqual(["a.yaml", "b.yaml"]);
@@ -102,7 +117,7 @@ describe("resumePoint", () => {
   // the very request they stopped.
   it("finds nothing to resume after a stopped turn", () => {
     expect(
-      resumePoint([user("1", "build it"), assistant("2", { stopped: true, text: "half" })]),
+      resumePoint([user("1", "build it"), assistant("2", { stopped: true, parts: [text("half")] })]),
     ).toBeNull();
   });
 
@@ -110,9 +125,9 @@ describe("resumePoint", () => {
     expect(
       resumePoint([
         user("1", "build it"),
-        assistant("2", { tools: [wrote("a.yaml")] }),
+        assistant("2", { parts: tools(wrote("a.yaml")) }),
         user("3", "Resume…", { resumedRequest: "build it" }),
-        assistant("4", { text: "done", completed: true }),
+        assistant("4", { parts: [text("done")], completed: true }),
       ]),
     ).toBeNull();
   });

@@ -1,4 +1,5 @@
-import type { ChatMessage, ToolCallView } from "./types";
+import { toolCalls } from "./assistant-parts";
+import type { ChatMessage, ToolCallView, UserMessage } from "./types";
 
 /** What a resume needs to know: the request that was cut off, and what its
  *  tools had already accomplished when it was. */
@@ -56,33 +57,29 @@ function outcome(tool: ToolCallView): string {
  * first resume's own text and report only the second attempt's tools, losing
  * what the first one wrote.
  */
-export function resumePoint(messages: ChatMessage[]): ResumePoint | null {
-  let last = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") {
-      last = i;
-      break;
-    }
+function userMessageBefore(messages: ChatMessage[], end: number): { index: number; message: UserMessage } | null {
+  for (let i = end - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message.role === "user") return { index: i, message };
   }
-  if (last === -1) return null;
+  return null;
+}
+
+export function resumePoint(messages: ChatMessage[]): ResumePoint | null {
+  const last = userMessageBefore(messages, messages.length);
+  if (!last) return null;
   // Answered, or deliberately ended: a cancelled turn is not unfinished work.
   const ended = (m: ChatMessage) => m.role === "assistant" && (m.completed || m.stopped);
-  if (messages.slice(last + 1).some(ended)) return null;
+  if (messages.slice(last.index + 1).some(ended)) return null;
 
-  const request = messages[last].resumedRequest ?? messages[last].text;
+  const request = last.message.resumedRequest ?? last.message.text;
   if (!request.trim()) return null;
 
   // Walk back over the resume messages of this same request to its original.
   let origin = last;
-  while (messages[origin].resumedRequest !== undefined) {
-    let previous = -1;
-    for (let i = origin - 1; i >= 0; i--) {
-      if (messages[i].role === "user") {
-        previous = i;
-        break;
-      }
-    }
-    if (previous === -1) break;
+  while (origin.message.resumedRequest !== undefined) {
+    const previous = userMessageBefore(messages, origin.index);
+    if (!previous) break;
     origin = previous;
   }
 
@@ -90,9 +87,9 @@ export function resumePoint(messages: ChatMessage[]): ResumePoint | null {
   // list stays in the order the work first happened in while each line reports
   // where that target ended up — which is what the agent has to reconcile.
   const byTarget = new Map<string, ToolCallView>();
-  for (const message of messages.slice(origin + 1)) {
+  for (const message of messages.slice(origin.index + 1)) {
     if (message.role !== "assistant") continue;
-    for (const tool of message.tools) {
+    for (const tool of toolCalls(message.parts)) {
       const key = JSON.stringify([tool.name, toolPath(tool) ?? ""]);
       byTarget.set(key, tool);
     }

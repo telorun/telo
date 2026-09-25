@@ -106,15 +106,54 @@ export async function clearLinkedSlot(dir: string): Promise<void> {
  *  temp file and an atomic rename — several kernels may populate one cache
  *  directory at once, and a reader must see a whole file or none. */
 export async function writeIfChanged(file: string, content: string): Promise<void> {
-  try {
-    if ((await fs.readFile(file, "utf8")) === content) return;
-  } catch {
-    // Absent or unreadable — write it.
-  }
+  if (await holds(file, content)) return;
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${shimCounter++}.tmp`;
   await fs.writeFile(tmp, content);
-  await fs.rename(tmp, file);
+  try {
+    await replaceWith(tmp, file, content);
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
 }
+
+/**
+ * On Windows a rename onto a file another process is replacing or reading fails
+ * with `EPERM` / `EACCES` / `EBUSY` until that process lets go — parallel kernels
+ * sharing one cache directory hit this on every cold start. The contention is
+ * transient, and usually ends with the other writer having landed the very same
+ * content, which is the outcome this write wanted.
+ */
+async function replaceWith(tmp: string, file: string, content: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await fs.rename(tmp, file);
+      return;
+    } catch (err) {
+      if (!isReplaceContention(err) || attempt >= REPLACE_ATTEMPTS) throw err;
+      if (await holds(file, content)) return;
+      await new Promise((resolve) => setTimeout(resolve, REPLACE_BACKOFF_MS * attempt));
+    }
+  }
+}
+
+function isReplaceContention(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code;
+  return (
+    process.platform === "win32" && (code === "EPERM" || code === "EACCES" || code === "EBUSY")
+  );
+}
+
+async function holds(file: string, content: string): Promise<boolean> {
+  try {
+    return (await fs.readFile(file, "utf8")) === content;
+  } catch {
+    // Absent or unreadable — not holding it.
+    return false;
+  }
+}
+
+const REPLACE_ATTEMPTS = 10;
+const REPLACE_BACKOFF_MS = 20;
 
 let shimCounter = 0;

@@ -33,6 +33,10 @@ const myDialect: SqlDialect = {
   renderIn(column, values, addParam) {
     return `${column} = ANY(${addParam(values)})`;
   },
+  // Required: the database's clock in epoch milliseconds, read at statement time.
+  renderCurrentTimeMillis() {
+    return "CAST(EXTRACT(EPOCH FROM clock_timestamp()) * 1000 AS BIGINT)";
+  },
 };
 
 class MyConnection extends SqlConnectionBase {
@@ -76,8 +80,16 @@ interface SqlDialect {
   readonly placeholderStyle: "numbered" | "qmark";
   quoteIdentifier(name: string): string;
   renderIn(column: string, values: unknown[], addParam: (v: unknown) => string): string;
+  /** Required. The database's current time in integer epoch milliseconds, read
+   *  when the statement runs. */
+  renderCurrentTimeMillis(): string;
 }
 ```
+
+`renderCurrentTimeMillis()` is required: a consumer that measures ages across
+processes (`record-stream-sql`'s journal store) reads time from the database, and
+refuses a connection whose dialect does not supply it. A backend written before
+the member existed must add it.
 
 `dialect.placeholderStyle` is the single spelling of the bind style — the
 `SqlConnection` interface carries no mirror of it. A consumer that binds its own

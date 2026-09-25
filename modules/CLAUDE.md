@@ -2,6 +2,10 @@
 
 Loaded when working under `modules/`. Repo-wide rules live in the root `CLAUDE.md` — including the MANDATORY module documentation, description and release rules. The loader side of controller delivery lives in the kernel (`kernel/nodejs/CLAUDE.md`); kind semantics and annotations in `analyzer/nodejs/CLAUDE.md`.
 
+## Tests
+
+**A module has no integration tests in Node.** A test that needs something running (a database, a network service, a container) is a Telo manifest under `modules/<name>/tests/integration/*.yaml`, run by `pnpm run test:integration` in the CI job that provides that infrastructure. `nodejs/` may carry vitest unit tests that need nothing running, and never a `test:integration` script: `pnpm -r test:integration` is the kernel's Docker job, which has no database, so a module script there fails CI.
+
 ## Standard library notes
 
 `modules/` — standard library: `http-server`, `http-client`, `sql`, `javascript`, `config`, `run`, `assert`, `test`, `console`, etc.

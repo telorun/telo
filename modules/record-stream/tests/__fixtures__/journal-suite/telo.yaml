@@ -1,0 +1,424 @@
+# The journal's behaviour suite, written once against whatever store the importer
+# hands in, so every store runs the same proof. Each exported sequence is one
+# behaviour; `expiry` must run first, while the store holds only its own keys.
+kind: Telo.Library
+metadata:
+  name: JournalSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the replay journal's behaviour suite over an injected store.
+imports:
+  RecordStream: ../../..
+  Stream: ../../../../stream
+  Timer: ../../../../timer
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  store:
+    kind: RecordStream.JournalStore
+    description: The store under test. Must start empty.
+exports:
+  resources:
+    - expiry
+    - roundTrip
+    - typedValues
+    - failedReplaysCode
+    - unknownKeyWaits
+    - removal
+    - secondWriterBusy
+    - pausedWriterStaysLive
+    - removedAcrossPages
+    - cancelledRead
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: !ref store
+retention: "1h"
+---
+kind: RecordStream.JournalSink
+metadata: { name: sink }
+journal: !ref journal
+---
+kind: RecordStream.JournalSource
+metadata: { name: source }
+journal: !ref journal
+---
+kind: RecordStream.JournalRemoval
+metadata: { name: removal0 }
+journal: !ref journal
+---
+kind: Stream.Collect
+metadata: { name: collect }
+---
+kind: Stream.Of
+metadata: { name: items }
+---
+kind: RecordStream.JournalExpiry
+metadata: { name: expireNow }
+journal:
+  kind: RecordStream.Journal
+  store: !ref store
+  retention: "1ms"
+---
+# Finished keys older than retention lose their records and read as removed; a
+# second pass forgets the markers, so the keys are unknown again.
+kind: Run.Sequence
+metadata: { name: expiry }
+steps:
+  - name: first
+    invoke: !ref items
+    inputs: { items: [a, b] }
+  - name: writeFirst
+    invoke: !ref sink
+    inputs: { key: expire-1, input: !cel "steps.first.result.output" }
+  - name: second
+    invoke: !ref items
+    inputs: { items: [c] }
+  - name: writeSecond
+    invoke: !ref sink
+    inputs: { key: expire-2, input: !cel "steps.second.result.output" }
+  - name: age
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "20ms" }
+  - name: expire
+    invoke: !ref expireNow
+  - name: countExpired
+    invoke: !ref Assert.equals
+    inputs: { actual: !cel "steps.expire.result.count", expected: 2 }
+  - name: readExpired
+    try:
+      - name: open
+        invoke: !ref source
+        inputs: { key: expire-1 }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "an expired key opened" }
+    catch:
+      - name: expiredReadsRemoved
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
+  - name: ageMarkers
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "20ms" }
+  - name: expireMarkers
+    invoke: !ref expireNow
+  - name: forget
+    invoke: !ref removal0
+    inputs: { key: expire-2 }
+  - name: markersForgotten
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { count: !cel "steps.expireMarkers.result.count", outcome: !cel "steps.forget.result.outcome" }
+      expected: { count: 0, outcome: unknown }
+---
+# Replay from the start and from an offset: ids are 1-based and gap-free.
+kind: Run.Sequence
+metadata: { name: roundTrip }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs:
+      items:
+        - { type: text-delta, delta: "he" }
+        - { type: text-delta, delta: "llo" }
+        - { type: finish, finishReason: stop }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: round, input: !cel "steps.turn.result.output" }
+  - name: readAll
+    invoke: !ref source
+    inputs: { key: round }
+  - name: all
+    invoke: !ref collect
+    inputs: { input: !cel "steps.readAll.result.output" }
+  - name: readResumed
+    invoke: !ref source
+    inputs: { key: round, fromId: 1 }
+  - name: resumed
+    invoke: !ref collect
+    inputs: { input: !cel "steps.readResumed.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        written: !cel "steps.write.result"
+        all: !cel "steps.all.result.items"
+        resumedIds: !cel "steps.resumed.result.items.map(e, e.id)"
+      expected:
+        written: { key: round, count: 3 }
+        all:
+          - { id: 1, data: { type: text-delta, delta: "he" } }
+          - { id: 2, data: { type: text-delta, delta: "llo" } }
+          - { id: 3, data: { type: finish, finishReason: stop } }
+        resumedIds: [2, 3]
+---
+# A record replays with its CEL types: an int64 past 2^53 and bytes survive.
+kind: Run.Sequence
+metadata: { name: typedValues }
+steps:
+  - name: typed
+    invoke: !ref items
+    inputs:
+      items: !cel "[{'big': 9007199254740993, 'raw': b'\\x00\\xff'}]"
+  - name: write
+    invoke: !ref sink
+    inputs: { key: typed, input: !cel "steps.typed.result.output" }
+  - name: read
+    invoke: !ref source
+    inputs: { key: typed }
+  - name: replayed
+    invoke: !ref collect
+    inputs: { input: !cel "steps.read.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      # Compared in CEL: a YAML number cannot hold 2^53 + 1, and the deep-equality
+      # assertion compares only plain JSON shapes, not bytes.
+      actual:
+        bigExact: !cel "steps.replayed.result.items[0].data.big == 9007199254740993"
+        bigIsInt: !cel "type(steps.replayed.result.items[0].data.big) == int"
+        rawIntact: !cel "steps.replayed.result.items[0].data.raw == b'\\x00\\xff'"
+      expected: { bigExact: true, bigIsInt: true, rawIntact: true }
+---
+# A drain that fails records its error; a reader replays the records, then
+# raises the same code, message and data.
+kind: Run.Sequence
+metadata: { name: failedReplaysCode }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, fail: true }] }
+  - name: failing
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.fail)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: boom
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: failed, input: !cel "steps.failing.result.output" }
+    catch:
+      - name: sinkRethrows
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: read
+    invoke: !ref source
+    inputs: { key: failed }
+  - name: replay
+    try:
+      - name: all
+        invoke: !ref collect
+        inputs: { input: !cel "steps.read.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a failed key read as finished" }
+    catch:
+      - name: readerRaisesRecordedError
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { code: !cel "error.code", message: !cel "error.message", data: !cel "error.data" }
+          expected: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+---
+# A reader that arrives before the writer waits for the key, then gets it all.
+# The late writer runs in the background: draining a one-value stream whose tap
+# waits, then writes the key.
+kind: Run.Sequence
+metadata: { name: unknownKeyWaits }
+steps:
+  - name: trigger
+    invoke: !ref items
+    inputs: { items: [go] }
+  - name: lateWriter
+    invoke:
+      kind: Stream.Tap
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: later
+            invoke: { kind: Timer.Delay }
+            inputs: { duration: "100ms" }
+          - name: turn
+            invoke: !ref items
+            inputs: { items: [x, y] }
+          - name: write
+            invoke: !ref sink
+            inputs: { key: late, input: !cel "steps.turn.result.output" }
+    inputs: { input: !cel "steps.trigger.result.output" }
+  - name: startLate
+    invoke: { kind: Run.Detach, invoke: !ref collect }
+    inputs: { input: !cel "steps.lateWriter.result.output" }
+  - name: read
+    invoke: !ref source
+    inputs: { key: late }
+  - name: all
+    invoke: !ref collect
+    inputs: { input: !cel "steps.read.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.all.result.items"
+      expected: [{ id: 1, data: x }, { id: 2, data: y }]
+---
+kind: Run.Sequence
+metadata: { name: removal }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: gone, input: !cel "steps.turn.result.output" }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: gone }
+  - name: removeAgain
+    invoke: !ref removal0
+    inputs: { key: gone }
+  - name: removeUnknown
+    invoke: !ref removal0
+    inputs: { key: never-written }
+  - name: outcomes
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "steps.remove.result.outcome"
+        - !cel "steps.removeAgain.result.outcome"
+        - !cel "steps.removeUnknown.result.outcome"
+      expected: [removed, removed, unknown]
+  - name: readRemoved
+    try:
+      - name: open
+        invoke: !ref source
+        inputs: { key: gone }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a removed key opened" }
+    catch:
+      - name: refusedAtOpen
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
+---
+kind: Run.Sequence
+metadata: { name: secondWriterBusy }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: taken, input: !cel "steps.turn.result.output" }
+  - name: again
+    invoke: !ref items
+    inputs: { items: [y] }
+  - name: writeAgain
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: taken, input: !cel "steps.again.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a second writer claimed the key" }
+    catch:
+      - name: refused
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
+---
+# A writer whose input goes quiet for several timeouts keeps heartbeating, so a
+# reader tailing it sees every record and a normal end. The timeout leaves each
+# heartbeat four seconds of slack, so a loaded machine's stall cannot fail it.
+kind: Run.Sequence
+metadata: { name: pausedWriterStaysLive }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [1, 2, 3] }
+  - name: paused
+    invoke:
+      kind: Stream.Tap
+      when: !cel "item == 2"
+      invoke: { kind: Timer.Delay }
+      inputs: { duration: "13s" }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: startWriter
+    invoke:
+      kind: Run.Detach
+      invoke:
+        kind: RecordStream.JournalSink
+        journal:
+          kind: RecordStream.Journal
+          store: !ref store
+          retention: "1h"
+          writerTimeout: "6s"
+    inputs: { key: paused, input: !cel "steps.paused.result.output" }
+  - name: read
+    invoke: !ref source
+    inputs: { key: paused }
+  - name: all
+    invoke: !ref collect
+    inputs: { input: !cel "steps.read.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.all.result.items.map(e, e.data)"
+      expected: [1, 2, 3]
+---
+# A key removed while a reader is between pages raises the removal, never a
+# short replay that ends as if the key had finished.
+kind: Run.Sequence
+metadata: { name: removedAcrossPages }
+steps:
+  - name: many
+    invoke: !ref items
+    inputs: { items: !cel "range(300)" }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: paged, input: !cel "steps.many.result.output" }
+  - name: read
+    invoke: !ref source
+    inputs: { key: paged }
+  - name: replay
+    try:
+      - name: removeMidRead
+        invoke:
+          kind: Stream.Tap
+          when: !cel "item.id == 1"
+          invoke: !ref removal0
+          inputs: { key: paged }
+        inputs: { input: !cel "steps.read.result.output" }
+      - name: all
+        invoke: !ref collect
+        inputs: { input: !cel "steps.removeMidRead.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a removed key replayed as finished" }
+    catch:
+      - name: removalRaised
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
+---
+# A reader waiting on a key nobody writes is ended by its invocation's
+# cancellation, well before the journal's thirty-second writer timeout: a step
+# bound elapsing cancels the read, and the step fails as timed out.
+kind: Run.Sequence
+metadata: { name: cancelledRead }
+steps:
+  - name: bounded
+    try:
+      - name: drain
+        timeout: 300
+        invoke:
+          kind: Run.Sequence
+          steps:
+            - name: open
+              invoke: !ref source
+              inputs: { key: never-written-cancelled }
+            - name: all
+              invoke: !ref collect
+              inputs: { input: !cel "steps.open.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a read of an unwritten key ended by itself" }
+    catch:
+      - name: timedOut
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_STEP_TIMEOUT }

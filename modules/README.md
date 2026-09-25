@@ -52,6 +52,7 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | [sse-codec](./sse-codec/README.md) | Server-Sent Events encoder. |
 | [octet-codec](./octet-codec/README.md) | Raw byte encoder and decoder. |
 | [record-stream](./record-stream/README.md) | Record stream primitives. |
+| [record-stream-sql](./record-stream-sql/README.md) | Durable SQL store for the record-stream replay journal. |
 
 ### Runtime Targets
 
