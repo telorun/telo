@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.0 - 2026-09-25
+### Added
+* The SQL dialect gains a required member, renderCurrentTimeMillis(): an SQL expression for the database's current wall-clock time in integer epoch milliseconds, read when the statement runs. It lets a consumer measure ages on the database's one clock rather than each host's. Breaking for third-party SQL backends: a dialect must now supply it, and a consumer that needs it (the SQL journal store) refuses a connection whose dialect lacks it.
+
 ## 0.24.0 - 2026-08-26
 ### Added
 * 'beforeMigrations:' is now 'prepare:', named for what it is FOR — data preparation for a narrowing the reconciliation pass is about to attempt — which is what every refusal already tells the author to write. The old spelling still loads: a manifest migration rewrites the key, and nothing re-runs because the ledger stores the migration key alone.

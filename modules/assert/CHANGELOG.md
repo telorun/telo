@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1 - 2026-09-25
+### Fixed
+* The actual input's description no longer quotes a `${{ }}` expression, which a plain string never is; it points at a `!cel` read of a step's result instead.
+
 ## 0.20.0 - 2026-09-13
 ### Added
 * Assert.Manifest accepts `expect.stdout`: it runs the manifest, requires exit 0, and compares everything the run wrote to stdout with the given string exactly. The run gets its own stdout, so the assertion behaves the same on a developer machine, in CI and inside a container, without starting `telo` as a shell command.

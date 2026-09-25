@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-09-25
+### Added
+* The PostgreSQL dialect supplies renderCurrentTimeMillis(), the database clock in epoch milliseconds (clock_timestamp-based, so it is read at the statement rather than at the transaction's start).
+
 ## 0.4.0 - 2026-08-26
 ### Added
 * 'beforeMigrations:' is now 'prepare:', named for what it is FOR — data preparation for a narrowing the reconciliation pass is about to attempt — which is what every refusal already tells the author to write. The old spelling still loads: a manifest migration rewrites the key, and nothing re-runs because the ledger stores the migration key alone.

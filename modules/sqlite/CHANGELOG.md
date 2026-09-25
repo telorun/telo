@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-09-25
+### Added
+* The SQLite dialect supplies renderCurrentTimeMillis(), the database clock in epoch milliseconds (julianday-based).
+
 ## 0.6.0 - 2026-09-22
 ### Added
 * Breaking: Connection `file` is `:memory:` or a Telo.HostPath: an absolute database path, usually read from a variable declared x-telo-type: Telo.HostPath, which resolves a relative value against the working directory. A relative literal is refused (HOST_PATH_RELATIVE) instead of being opened wherever the process happened to start. Requires telo >=0.98.0.

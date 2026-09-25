@@ -1,6 +1,6 @@
 {
   "name": "@telorun/record-stream",
-  "version": "0.15.4",
+  "version": "0.16.0",
   "private": true,
   "description": "Telo record-stream module — stream operations on structured records, and the RecordStream.JournalStore contract plus the journal protocol written once above it. Never published: controllers ship inside the module artifact, and dependent modules reach this code through the module's exports.code entry.",
   "type": "module",

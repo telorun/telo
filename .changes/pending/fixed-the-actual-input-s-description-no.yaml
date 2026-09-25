@@ -1,4 +1,0 @@
-modules:
-  modules/assert: Fixed
-body: The actual input's description no longer quotes a `${{ }}` expression, which a
-  plain string never is; it points at a `!cel` read of a step's result instead.
