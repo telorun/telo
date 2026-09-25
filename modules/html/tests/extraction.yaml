@@ -1,0 +1,176 @@
+kind: Telo.Application
+metadata:
+  name: HtmlExtractionTest
+  version: 1.0.0
+  description: Every extraction mode, nested records, and every failure code.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref everyMode
+  - !ref missingField
+  - !ref conversionFailure
+  - !ref htmlNotSerializable
+  - !ref inheritedAttributeName
+---
+kind: Run.Sequence
+metadata: { name: everyMode }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: >-
+        <h1>  Shop </h1>
+        <div class="card" data-id="7"><h2>Tea</h2><span class="price"> 3.50 </span><span class="stock">12</span>
+        <a href="/tea">more</a><a>no link</a></div>
+        <div class="card" data-id="8"><h2>Coffee</h2><span class="price">4</span><span class="stock">-3</span>
+        <a href="/coffee">more</a><em>new</em></div>
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        heading: { selector: h1, type: text }
+        headingHtml: { selector: h1, type: html }
+        missingNote: { selector: .note, type: text, nullable: true }
+        noBadges: { selector: .badge, type: text, many: true }
+        cards:
+          selector: .card
+          many: true
+          fields:
+            id: { selector: ":scope", type: attr, attr: data-id }
+            name: { selector: ":scope > h2", type: text }
+            price: { selector: .price, type: number }
+            stock: { selector: .stock, type: integer }
+            links: { selector: a, type: attr, attr: href, many: true }
+            flag: { selector: em, type: text, nullable: true }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertFields
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.extract.result.fields"
+      expected:
+        heading: Shop
+        headingHtml: <h1>  Shop </h1>
+        missingNote: null
+        noBadges: []
+        cards:
+          - { id: "7", name: Tea, price: 3.5, stock: 12, links: [/tea], flag: null }
+          - { id: "8", name: Coffee, price: 4, stock: -3, links: [/coffee], flag: new }
+  - name: assertTyped
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.extract.result.fields.cards[1].stock + 1"
+      expected: -2
+---
+kind: Run.Sequence
+metadata: { name: missingField }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>no title here</p> }
+  - name: extract
+    try:
+      - name: run
+        invoke:
+          kind: Html.Extraction
+          fields:
+            page:
+              selector: body
+              fields:
+                title: { selector: h1, type: text }
+        inputs: { document: !cel "steps.parse.result" }
+      - name: failIfReached
+        throw: { code: TEST_FAILED, message: Expected ERR_HTML_FIELD_MISSING. }
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTML_FIELD_MISSING
+      - name: assertPath
+        invoke: { kind: Assert.Matches }
+        inputs:
+          actual: !cel "error.message"
+          pattern: "field 'page\\.title'"
+---
+kind: Run.Sequence
+metadata: { name: conversionFailure }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <span>12 items</span> }
+  - name: extract
+    try:
+      - name: run
+        invoke:
+          kind: Html.Extraction
+          fields:
+            count: { selector: span, type: integer }
+        inputs: { document: !cel "steps.parse.result" }
+      - name: failIfReached
+        throw: { code: TEST_FAILED, message: Expected ERR_HTML_FIELD_CONVERSION. }
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTML_FIELD_CONVERSION
+---
+# An `html` field over a subtree no markup expresses is refused, naming the
+# field and the node — here a void element given a child.
+kind: Run.Sequence
+metadata: { name: htmlNotSerializable }
+steps:
+  - name: extract
+    try:
+      - name: run
+        invoke:
+          kind: Html.Extraction
+          fields:
+            image: { selector: img, type: html }
+        inputs:
+          document:
+            nodes:
+              - type: element
+                tag: p
+                attrs: {}
+                children:
+                  - type: element
+                    tag: img
+                    attrs: { src: x.png }
+                    children: [{ type: text, text: caption }]
+      - name: failIfReached
+        throw: { code: TEST_FAILED, message: Expected ERR_HTML_NOT_SERIALIZABLE. }
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTML_NOT_SERIALIZABLE
+      - name: assertPath
+        invoke: { kind: Assert.Matches }
+        inputs:
+          actual: !cel "error.message"
+          pattern: "field 'image' reads markup, but nodes\\[0\\]\\.children\\[0\\]\\.children\\[0\\]"
+---
+# An attribute is read from the element's own attributes only: a name the
+# attribute map inherits from its prototype is as absent as any other.
+kind: Run.Sequence
+metadata: { name: inheritedAttributeName }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>text</p> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        proto: { selector: p, type: attr, attr: __proto__, nullable: true }
+        builder: { selector: p, type: attr, attr: constructor, many: true }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertAbsent
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.extract.result.fields"
+      expected: { proto: null, builder: [] }

@@ -16,9 +16,12 @@ invocation names no task and no loop. A task the invocation states loosely is sh
 and settled at the plan gate. It is never refused for missing from the backlog or for being
 small. Wherever this skill says *the feature*, it means the task.
 
-**The shape of the loop: one stop, then work.** You ask the user everything you need at the plan
-gate (phase 3) and nothing after it. A question that arrives mid-loop is not asked: an architectural one goes to `decider` (see *Decisions*), and anything else — scope,
-paths — is parked in the loop file and the card is dropped. Neither is ever guessed at.
+**The shape of the loop: one stop, then work.** The user is never asked to make a decision. Every
+choice the loop meets — design and scope alike — is settled by `decider` (see *Decisions*). The
+one stop is the plan gate (phase 3), where the user sees the settled design and approves the queue
+and its paths, or corrects it. Mid-loop nothing is asked: a choice goes to `decider`, and work that
+needs paths the queue does not name is parked in the loop file and the card is dropped. Nothing is
+ever guessed at.
 
 **One audit, at the end.** No card is reviewed on its own. Every card is proved by your own gate
 run and nothing else, and one `auditor` reads the whole working-tree diff after the last card. That
@@ -41,8 +44,8 @@ bug the feature merely exercises, a thin test suite next door. Those are reporte
 user* and in `BACKLOG.md` — and never absorbed. Overshoot is as much a defect as shortfall, and the
 more expensive one: a kind of a few hundred lines that lands thousands of lines across a hundred
 files has not delivered more, it has delivered something the user cannot review or commit. When a
-pre-existing defect genuinely blocks the feature, the card parks and the user decides; the loop
-does not fix the platform to unblock itself.
+pre-existing defect genuinely blocks the feature, the card parks and `decider` settles how the
+feature lives with it; the loop does not fix the platform to unblock itself.
 
 ## The loop file
 
@@ -69,11 +72,10 @@ Its six sections are the loop's whole memory:
   and the paths they name, nothing else.
 - **Queue** — one card per unit of work, each with status `pending` / `running` / `done` /
   `parked`, and its evidence.
-- **Decisions** — every decision `decider` made, one line each: where it arose, the decision and
-  its label, whether the user has seen it, and its artifact.
-- **For the user** — decisions you could not make, cards you dropped, and pre-existing defects
-  that blocked a card. This is what the user reads first when the loop ends, so small corrections
-  do not go here.
+- **Decisions** — every decision `decider` made, one line each: where it arose and the decision
+  itself, stated as behaviour. This line is the decision's only record.
+- **For the user** — cards you dropped and pre-existing defects that blocked a card. This is what
+  the user reads first when the loop ends, so small corrections do not go here.
 - **Incidental fixes** — behaviour-free corrections found along the way, each with its exact
   replacement, applied by you in one sweep at the end (see *Incidental fixes* below).
 - **Report** — appended as you go, never rewritten at the end. A crash must leave a readable
@@ -93,9 +95,6 @@ exists and never reconstructed at the end — a crash has to leave the evidence 
 - `00-planning/recon.md` — each `scout` report, as returned, and the recon runs of phase 1.
 - `00-planning/queue-review.md` — `reviewer`'s verdict on the queue, plus which issues you folded
   in and which you rejected, with why.
-- `00-planning/decisions/<slug>.md` and `<nn>-<card-slug>/decision-<slug>.md` — the question
-  exactly as you sent it to `decider`, followed by its answer as returned. Planning decisions go
-  in the first, decisions a card raised in the second.
 - `<nn>-<card-slug>/brief.md` — the card exactly as you handed it to the builder, written before
   you spawn it. Auditing what was built is meaningless without what was asked.
 - `<nn>-<card-slug>/builder.md` — the builder's report, as returned. A fix round is appended under
@@ -103,11 +102,19 @@ exists and never reconstructed at the end — a crash has to leave the evidence 
 - `<nn>-<card-slug>/gate.md` — every gate command you ran, with its full output. Truncate nothing
   here; the loop file is where the short version belongs.
 - `<nn>-<card-slug>/tree.diff` — `git diff` at the moment the card ended.
+- `<nn>-<card-slug>/handover.md` — written by a builder stopped for context size, for the builder
+  that takes over.
 - `98-incidental-fixes.md` — the incidental-fix sweep's `pnpm run test` output.
 - `99-final-audit.md` — the loop's one audit, over the whole working-tree diff, as returned.
 - `99-fixes/` — the final audit's fix rounds: `items.md` (the findings split into fix items), a
   brief per item sent to the builder, the builder's report per item, and the re-run gate output.
 - `99-fix-audit.md` — the verification pass over the fix diff, when fixes were made.
+
+**These are the only files a loop writes.** No decision files, no question files, no option
+analyses, no queue drafts, no design summaries: a `decider` answer lives as one line under
+*Decisions*, an `analyst`'s options live in the prompt you give `decider`, and the design the user
+must see is shown to them in the conversation at the plan gate, never parked in a file for them to
+open.
 
 `tree.diff` is this loop's substitute for a commit per card. Since the loop never commits, the
 tree at the end is one undifferentiated change; these snapshots are cumulative, so a card's own
@@ -125,19 +132,33 @@ shapes, you do not choose, and neither does a builder, `analyst`, `reviewer` or 
 covers where code lives, a package boundary or the direction of a dependency, a generic primitive
 or a specific one, a kind's schema, capability or annotations, how a static check is modelled, and
 which of several fixes a finding needs. They supply options, and `decider` decides. Spawn a fresh
-`decider` for each decision and give it:
+`decider` per set of related decisions and give it:
 
-- the question
+- the questions — every one that touches the same kind, shape, contract, boundary or
+  vocabulary, in one prompt
 - every option on the table, with who proposed it
 - the facts recon established
 - the `CLAUDE.md` rules that bear on it
 
-Its answer may pick an option as given, amend one, or be a new option. Take it as returned, and
-write the artifact before you act on it.
+**Related decisions are one call.** Questions whose answers constrain each other — a data shape
+and the kinds that consume it, where a converter lives and what it takes as input — go to ONE
+`decider`, which decides them in dependency order and makes them agree. Never split them across
+parallel deciders and reconcile afterwards: parallel answers to related questions contradict each
+other, and the reconciliation is a second decision that reopens the first. Only questions that
+share nothing run in parallel.
 
-**`decider` does not decide scope.** It ignores effort, size and backwards compatibility by design,
-so it cannot answer what the loop is for. Adding or cutting a card, narrowing the feature and widening
-a path stay with the user, at the plan gate or through a park.
+Its answer may pick an option as given, amend one, or be a new option. Take it as returned, and
+record its one line under *Decisions* before you act on it.
+
+**Scope choices go to `decider` too**, framed by the user's request: whether an optional part is
+in, how the feature lives with a pre-existing defect, whether a prerequisite is built or the
+feature narrowed. Tell it that what the request asks for is in, that what it does not ask for is
+out, and that overshoot is a defect (see *Complete is bounded by the feature*). The user corrects
+scope at the plan gate by editing the queue, not by answering questions.
+
+**Parallel deciders must not contradict each other.** Decisions that share a surface — the same
+kind, shape or boundary — go to one `decider` together, or in sequence with the earlier answers
+given as facts. Never run them in parallel and reconcile afterwards.
 
 **A decision binds the rest of the loop.**
 
@@ -151,13 +172,10 @@ a path stay with the user, at the plan gate or through a park.
 a `requires:` floor, a migration, docs or the authoring-agent primer, joins the acceptance
 criteria of the card it lands in.
 
-**When it lands decides who sees it.**
-
-- **Before the plan gate:** the user sees every decision, with its rejected options, and confirms
-  or overturns it. This keeps `CLAUDE.md`'s rule that architectural decisions are not made alone.
-- **After the gate:** a decision that fits the card's approved paths and acceptance is applied, and
-  its line in *Decisions* is marked as not yet seen by the user. A decision that needs more parks
-  the card, with the decision under *For the user*, because carrying it out is a scope question.
+**Decisions are never brought to the user.** Not for confirmation, not as a choice between
+options, not with their rejected alternatives. Before the gate, the user sees the design they
+produced — as the design, not as a list of decisions to approve. After the gate, a decision that
+fits the card's approved paths is applied; one that needs paths no card names parks the card.
 
 ## Phases
 
@@ -183,10 +201,9 @@ composition its motivating example needs. A defect found here costs one scratch 
 card's gate it costs the card.
 
 Recon will find things that are already broken. Record each as **pre-existing**, with what it
-blocks. It reaches the plan gate as a question with options — work within it, narrow the feature,
-or a separate card the user explicitly approves — never as a card you added on your own. Which of
-those to take is scope, so it is the user's. The shape of each option is architecture, so
-`decider` settles it before the gate.
+blocks, and send it to `decider`: work within it, narrow the feature, or fix it as part of the
+queue. Its answer goes into the queue; the defect is shown at the gate as a fact with what the
+design does about it, never as a question.
 
 **2. Cards.** Write the queue, with as few cards as the work allows: **one is the norm, three the
 hard maximum.** Every card boundary costs a brief, a gate and a round trip to the builder; a coarse card costs none of that. Split only along a boundary that is
@@ -241,23 +258,41 @@ that would reach for `JS.Script` where a new kind belongs. Fold its top issues i
 issue that poses a choice between shapes goes to `decider` first, and you fold in what it decides.
 Do not show the user the pre-review version.
 
-Then present the queue, each card's size and the total, and ask for:
+Then present, **in the conversation itself**:
 
-- approval of the queue as the loop's **whole** scope;
-- the standing approvals you need, each naming paths — "whatever the fix needs" is not a path —
-  always including the incidental-fix sweep and any paths it must stay out of;
-- a decision on **every** open question and every pre-existing defect recon found — `CLAUDE.md`
-  forbids a plan carrying open decisions, and mid-loop nothing is asked;
-- confirmation of every decision `decider` made during planning, each shown with its label and
-  rejected options. The user may overturn any of them. An open question is never architectural
-  at this point, because `decider` has already closed those.
+- the design: for a feature that adds surface, the actual shapes — every kind with its config,
+  inputs, outputs and throws, every shared shape, every exported instance — compact enough to read
+  in one screen; never a pointer to a file;
+- each pre-existing defect as one line: what it is and what the design does about it;
+- the queue, each card's size and the total.
 
-This is the only interactive moment. Write the answers into the loop file verbatim before starting
+Ask for exactly one thing: approval of the queue as the loop's **whole** scope, together with the
+standing approvals it needs, each naming paths — "whatever the fix needs" is not a path — always
+including the incidental-fix sweep and any paths it must stay out of. No open questions, no
+decisions to confirm, no options to pick: `decider` has closed all of them, and `CLAUDE.md`
+forbids a plan carrying open decisions.
+
+Keep it short: the public API surface only — kinds, shapes, exported instances, functions,
+formats, error codes. No internals, no decision history, no paths, no sizes unless asked.
+Nothing vendor-specific in any public name.
+
+**Every item on that surface is explained**: what it does and why it exists — the purpose it
+serves for the person writing the manifest. One line each is enough; an item with no line is not
+in the plan. The same holds for every change between rounds: each change states what it does and
+its purpose, so the user never has to ask what an entry is for.
+
+This is the only interactive moment. When the user corrects the design or the scope, fold the
+correction in — sending anything it reopens to `decider` with the correction as a fact — and
+present the **full** plan again, every round. Never a delta, never "everything else unchanged".
+A question about the plan is not a correction: answer it, briefly, and do not repeat the plan.
+If the answer suggests a change, propose it in one line and wait. A request to *propose*
+something is not a correction either: show only the proposal — what changes, what it does, why —
+and do not repeat the plan. The full plan comes back only once a change is actually applied. Write the answers into the loop file verbatim before starting
 work. If the user does not answer, stop here — do not start a loop on assumed approvals.
 
 Never present a queue you would have to apologise for, in either direction. A card you already
 know is a partial step gets re-cut before the gate, and "we could do the rest later" is not a
-thing you offer. A card that is not the feature gets cut, or put to the user as its own question.
+thing you offer. A card that is not the feature gets cut.
 No answer licenses a shortcut or an addition: a standing approval widens what you may touch, never
 what you may leave unfinished and never what the loop is for.
 
@@ -272,6 +307,17 @@ card's acceptance requires. Write the card's `brief.md` before you send it, so w
 what was actually sent. If the builder is gone, spawn a fresh one with the current card and point
 it at the earlier cards' briefs, reports and `tree.diff`. A builder whose report raises a design question has not answered it: send
 the question to `decider`, then return the decision to the same builder.
+
+**Watch the builder's context.** Right after spawning a builder, start
+`node .claude/skills/architect/watch-builder-context.mjs <agentId>` with Bash in the background,
+using the agent ID the spawn returned. It reads the builder's transcript and exits once its context
+passes 700k tokens, which wakes you; it exits with an error when it cannot find the transcript, and
+that is reported, never ignored. When it fires, `SendMessage` the builder to stop, and to write
+what it finished, what is left of the card and any state not visible in the tree to the card's
+`handover.md`. Once the builder confirms, spawn a fresh builder with the card's `brief.md`,
+`handover.md` and the earlier cards' briefs, reports and `tree.diff`, and start a new watcher for
+it. A handover is not a round: the card's fix-round count carries over. Stop the watcher when the
+loop ends.
 
 **5. Gate — you run it, not the builder.** Run the card's gate commands yourself, write each one
 and its full output to the card's `gate.md`, and put the one-line result in the card. A builder
@@ -341,8 +387,7 @@ A finding is incidental only when **all** of these hold:
 - **It changes no behaviour.** A comment, a doc or README sentence, a manifest `description`, an
   example's prose. Never code, a schema, a test, a version, or anything on a public surface.
 - **It has exactly one correct fix, stated in full** — path, lines, and the replacement text. A
-  fix that needs a judgment call is not incidental: route it as a decision (see *Decisions*), or
-  under *For the user* when it is not architectural.
+  fix that needs a judgment call is not incidental: route it as a decision (see *Decisions*).
 - **It is small** — a few lines in any one file.
 - **Its path is allowed.** Not excluded by the standing approvals, and not `CLAUDE.md`, which
   stays proposed-only.
@@ -363,8 +408,8 @@ longer matches — goes to *For the user* rather than being improvised.
 - `scout` is Haiku. Recon is reading, and reading does not need a frontier model.
 - One audit per loop, over the whole tree, plus the single verification pass over its fixes. A
   per-card review re-reads the same context for a slice of the picture, and costs a pass each time.
-- One `decider` per decision. Asking the same question again without a new fact is shopping for
-  a different answer.
+- One `decider` per set of related decisions; independent sets may run in parallel. Asking the
+  same question again without a new fact is shopping for a different answer.
 - `SendMessage` only to the builder: its next card, fix rounds, and the audit's fix items. Every
   other role is a fresh subagent.
 - Gates in one command where possible. Ten probing commands cost more than the suite.
@@ -431,5 +476,5 @@ Write it to `99-fix-audit.md`. That pass is the loop's last; anything it still r
 *For the user* with the finding and the diff, for a human to judge.
 
 Then write the closing summary in the report: cards done, cards parked, the audit's verdict and
-what remains open from it, what needs the user, the decisions made after the plan gate that the
-user has not yet seen, and what you would change about the next loop. Delete the lock last.
+what remains open from it, what needs the user, the decisions made after the plan gate, and what
+you would change about the next loop. Delete the lock last.

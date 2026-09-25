@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: MisspelledNestedField
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>x</p> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        cards:
+          selector: .card
+          many: true
+          fields:
+            name: { selector: ":scope > h2", type: text }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: first
+    value: !cel "steps.extract.result.fields.cards[0].name"
+  - name: typo
+    value: !cel "steps.extract.result.fields.cards[0].nmae"

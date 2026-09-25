@@ -44,6 +44,10 @@ modules/*/nodejs/*.mjs
 # bytes; TypeScript can only import a JSON file from inside its own package.
 analyzer/nodejs/src/migrations/entries/
 
+# Telo format entries copied in from analyzer/formats/ by the root `prepare`.
+# Same reason, same mechanism: every runtime accepts the same strings.
+analyzer/nodejs/src/formats/entries/
+
 # Value-type entries copied in from sdk/value-types/ by the SDK's `prepare`.
 # Same reason, same mechanism: every runtime reads the identical vocabulary.
 sdk/nodejs/src/value-types/entries/

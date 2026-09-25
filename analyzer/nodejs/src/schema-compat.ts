@@ -16,8 +16,10 @@ import {
   valueTypeOf,
   valueTypePlaceholder,
 } from "@telorun/sdk";
+import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
+import { teloFormatOf } from "./telo-format.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
 
 const Ajv = (AjvModule as any).default ?? AjvModule;
@@ -295,7 +297,7 @@ export function validateAgainstSchema(data: unknown, schema: Record<string, any>
     compiledSchemaValidators.set(schema, validate);
   }
   if (validate(data)) return [];
-  return schemaIssues(validate.errors);
+  return schemaIssues(validate.errors, data);
 }
 
 /** Resolves a JSON Pointer (RFC 6901, must start with "/") into a schema object.
@@ -523,6 +525,7 @@ function foldedConstraints(schema: Record<string, any>): Record<string, any> {
     }
     if (out.type === undefined && folded.type !== undefined) out.type = folded.type;
     if (out.enum === undefined && folded.enum !== undefined) out.enum = folded.enum;
+    if (out.format === undefined && folded.format !== undefined) out.format = folded.format;
     if (out.default === undefined && folded.default !== undefined) out.default = folded.default;
     if (folded.required) {
       out.required = [...new Set([...(out.required ?? []), ...folded.required])];
@@ -558,6 +561,12 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // A host path must be absolute, so its stand-in is one; whether the expression
   // really yields an absolute path is only known once it is evaluated.
   if (hostAnchorOf(schema) !== undefined) return "/";
+  // A Telo format's grammar is checked wherever a value is validated, so the
+  // stand-in for an expression must be in it: the typeless `""` is not a CSS
+  // selector. Scoped to the Telo vocabulary; JSON Schema's own formats keep the
+  // fallbacks below.
+  const format = teloFormatOf(schema);
+  if (format !== undefined) return format.standIn;
   // A `json` value type written without a `type:` stands in as its base, so the
   // keyword's range check sees a number rather than nothing.
   const jsonEntry = valueTypeOf(schema);
@@ -619,6 +628,23 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   }
 }
 
+/**
+ * The stand-in for a tag whose produced type is a constant of the tag
+ * (`!interpolate`, `!include-text` always yield a string), placed at `slot`.
+ *
+ * It is that type's placeholder, so a string tag at an integer slot is still
+ * refused — except that text at a Telo format slot stands in as the format's
+ * own stand-in, because whether the text is in the grammar is known only once
+ * it is produced, exactly as for `!cel`.
+ */
+export function producedPlaceholder(
+  produced: Record<string, any>,
+  slot: Record<string, any>,
+): unknown {
+  const format = produced.type === "string" ? teloFormatOf(foldedConstraints(slot)) : undefined;
+  return format !== undefined ? format.standIn : celPlaceholderForSchema(produced);
+}
+
 /** An object satisfying the schema's `required` list. A bare `{}` would report
  *  every required property as missing against a value the author never wrote —
  *  the case where a whole map is produced by one expression (`inputs: !cel
@@ -637,7 +663,7 @@ function objectPlaceholder(schema: Record<string, any>): Record<string, unknown>
 }
 
 /**
- * Resolve a `$ref` — the document-local `#/$defs/...` form against `root`, and
+ * Resolve a `$ref` — any document-local `#/...` pointer against `root`, and
  * anything else through `external` when a caller supplies one.
  *
  * A named shape is addressed by a registered id (`telo:<module>/<Type>`), which
@@ -673,10 +699,11 @@ export function resolveRefIn(
   external?: ExternalSchemaResolver,
 ): { schema: Record<string, any>; root: Record<string, any> } {
   if (!schema.$ref || typeof schema.$ref !== "string") return { schema, root };
-  if (schema.$ref === "#") return { schema: root, root };
-  if (schema.$ref.startsWith("#/$defs/")) {
-    const resolved = root.$defs?.[schema.$ref.slice("#/$defs/".length)];
-    return resolved ? { schema: resolved, root } : { schema, root };
+  if (schema.$ref.startsWith("#")) {
+    const resolved = resolveSchemaPointer(root, schema.$ref);
+    return resolved && typeof resolved === "object"
+      ? { schema: resolved as Record<string, any>, root }
+      : { schema, root };
   }
   const target = external?.(schema.$ref);
   return target ? { schema: target, root: target } : { schema, root };
@@ -901,7 +928,7 @@ export function substituteCelFields(
   // rather than declaring it.
   if (isTaggedSentinel(data)) {
     const produced = producedTypeOf(data.engine);
-    if (produced) return celPlaceholderForSchema(produced);
+    if (produced) return producedPlaceholder(produced, resolved);
   }
   if (isTaggedSentinel(data)) {
     mark();

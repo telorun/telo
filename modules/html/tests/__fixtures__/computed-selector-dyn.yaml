@@ -1,0 +1,26 @@
+# A dyn-typed computed selector passes the static check; a non-text result is
+# refused at creation, naming the field.
+kind: Telo.Application
+metadata:
+  name: ComputedSelectorDyn
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>text</p> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        a:
+          selector: p
+          fields:
+            c: { selector: !cel "dyn(2)", type: text }
+    inputs: { document: !cel "steps.parse.result" }

@@ -3,6 +3,7 @@ import { producedTypeOf } from "@telorun/templating";
 import {
   celPlaceholderForSchema,
   type ExternalSchemaResolver,
+  producedPlaceholder,
   resolveRefIn,
   selectUnionBranch,
   undeclaredKeySchema,
@@ -132,7 +133,9 @@ export function stripCompiledValues(
     if (isCompiledValue(value)) {
       const engine = (value as { engine?: unknown }).engine;
       const produced = typeof engine === "string" ? producedTypeOf(engine) : undefined;
-      return celPlaceholderForSchema((produced ?? resolved) as Record<string, any>);
+      return produced
+        ? producedPlaceholder(produced as Record<string, any>, resolved as Record<string, any>)
+        : celPlaceholderForSchema(resolved as Record<string, any>);
     }
     // A slot the schema declares as a reference is never config when it HOLDS a
     // reference: a `{kind, name}` ref or the live instance Phase 5 replaced it

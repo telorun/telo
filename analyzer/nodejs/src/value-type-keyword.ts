@@ -35,6 +35,7 @@ import {
   type ValueTypeEntry,
 } from "@telorun/sdk";
 import { builtinEngines } from "@telorun/templating";
+import { TELO_AJV_FORMATS, TELO_FORMATS } from "./telo-format.js";
 
 // AJV's codegen template tag. The package is consumed in both ESM and CJS interop
 // shapes, so the named export may sit on the namespace or behind `.default` —
@@ -225,17 +226,27 @@ function producingTags(entry: ValueTypeEntry): string {
 }
 
 /**
- * Register every Telo keyword on an AJV instance: the annotations as no-ops and
- * `x-telo-type` as the one that checks.
+ * Register every Telo keyword on an AJV instance: the annotations as no-ops,
+ * `x-telo-type` as the one that checks, and the Telo formats.
  *
  * Every AJV instance in the runtime and the analyzer goes through this, so a
  * schema means the same thing wherever it is validated — apart from the one
  * posture {@link TeloKeywordOptions} names, which only static analysis takes.
  */
 export function registerTeloKeywords(
-  ajv: { addKeyword: (keyword: any, definition?: any) => unknown },
+  ajv: {
+    addKeyword: (keyword: any, definition?: any) => unknown;
+    addFormat: (name: string, format: any) => unknown;
+    opts: { code: { formats?: unknown } };
+  },
   options: TeloKeywordOptions = {},
 ): void {
   for (const keyword of ANNOTATION_KEYWORDS) ajv.addKeyword(keyword);
   ajv.addKeyword(valueTypeKeyword(options));
+  for (const name of TELO_FORMATS.keys()) ajv.addFormat(name, TELO_AJV_FORMATS[name]);
+  // A standalone validator names every format through this one expression, so it
+  // points at the table holding JSON Schema's formats AND Telo's. Set whether or
+  // not `ajv-formats` ran first: its own `??=` would otherwise leave a table
+  // without the Telo formats, and a cached validator would fail to load them.
+  ajv.opts.code.formats = codegen`require("@telorun/analyzer").TELO_AJV_FORMATS`;
 }

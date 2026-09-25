@@ -2,7 +2,8 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { SchemaValidator } from "../src/schema-validator.js";
+import { TELO_FORMATS } from "@telorun/analyzer";
+import { formatVocabularyDigest, SchemaValidator } from "../src/schema-validator.js";
 
 let workdir: string;
 
@@ -266,5 +267,34 @@ describe("SchemaValidator disk cache", () => {
     expect(files).toHaveLength(1);
     // Sanity-check the file name is the expected 32-hex-char hash.
     expect(files[0]).toMatch(/^[0-9a-f]{32}\.cjs$/);
+  });
+
+  it("a Telo format survives the disk cache, and refuses with the checker's reason", async () => {
+    const schema = {
+      type: "object",
+      properties: { selector: { type: "string", format: "css-selector" } },
+    };
+    const writer = new SchemaValidator();
+    writer.setCacheDir(workdir);
+    writer.compile(schema);
+    const [file] = await fs.readdir(workdir);
+    expect(await fs.readFile(path.join(workdir, file!), "utf-8")).toContain(
+      'require("@telorun/analyzer").TELO_AJV_FORMATS',
+    );
+
+    const reader = new SchemaValidator();
+    reader.setCacheDir(workdir);
+    const cached = reader.compile(schema);
+    expect(cached.isValid({ selector: ":scope > a" })).toBe(true);
+    expect(() => cached.validate({ selector: "div[" })).toThrow(
+      '/selector must be a css-selector: Expected attribute name at offset 3 of "div["',
+    );
+  });
+
+  it("keys the cache on the Telo format vocabulary", () => {
+    const entry = [...TELO_FORMATS.values()][0]!;
+    const changed = { ...entry, conformance: { ...entry.conformance, valid: [] } };
+    expect(formatVocabularyDigest([entry])).not.toBe(formatVocabularyDigest([changed]));
+    expect(formatVocabularyDigest([entry])).not.toBe(formatVocabularyDigest([]));
   });
 });

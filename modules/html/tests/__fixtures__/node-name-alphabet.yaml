@@ -1,0 +1,27 @@
+# A tag or attribute name no start tag can hold, written as a literal node:
+# refused by `telo check` against the node shape.
+kind: Telo.Application
+metadata:
+  name: HtmlNodeNameAlphabet
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: render
+    invoke: { kind: Html.Markup }
+    inputs:
+      document:
+        nodes:
+          - type: element
+            tag: img src=x onerror=alert(1)
+            attrs: {}
+            children: []
+          - type: element
+            tag: p
+            attrs: { "a>b": "" }
+            children: []

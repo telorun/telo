@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Push module manifests to the OCI base named by TELO_OCI_REGISTRY, one repo per
-// module directory name (`<base>/<dir>`).
+// Push importable module manifests (`modules/**`, `blueprints/**`) to the
+// destination the release model gives each.
 //
 // SEPARATE FROM THE NPM RELEASE, deliberately. This used to be the tail of
 // `scripts/publish-packages.mjs`, which ran `changeset publish` and then decided
@@ -45,13 +45,18 @@
 // Env: TELO_OCI_REGISTRY (no default; e.g. oci://ghcr.io/telorun — unset skips)
 
 import { execFile, execSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { promisify } from "node:util";
 
-import { destinationsByManifest, importClosure, orderByDependencies } from "./module-publish-order.mjs";
+import {
+  destinationsByManifest,
+  importableManifests,
+  importClosure,
+  orderByDependencies,
+} from "./module-publish-order.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -151,6 +156,16 @@ if (!ociRegistry) {
 
 const queued = new Set();
 
+// The importable set — MODULES AND BLUEPRINTS, deliberately NOT the full
+// `telo-workspace.yaml` set, which also declares `apps/*`. An app is released as
+// a container image (see `.github/workflows/publish-docker.yml`), not as an OCI
+// module artifact that something else imports, so publishing one here would put
+// an artifact in the module registry that nothing resolves and that no consumer
+// expects. The workspace anchor answers "what does `telo release` version?"; this
+// answers the narrower "what is importable?", and the two are different
+// questions. Taken from the release model, so a module at any depth is included.
+const importable = importableManifests().filter((abs) => existsSync(abs));
+
 // (a) version-moved gate.
 let diff = "";
 try {
@@ -158,7 +173,8 @@ try {
 } catch {
   console.log("No prior commit to diff against — version-move gate skipped (presence gate still runs).");
 }
-for (const f of diff.split("\n").filter((p) => /^modules\/[^/]+\/telo\.yaml$/.test(p))) {
+const changedFiles = new Set(diff.split("\n").filter(Boolean));
+for (const f of importable.map((abs) => abs.replace(ROOT + "/", "")).filter((rel) => changedFiles.has(rel))) {
   const before = manifestVersionAt("HEAD^", f);
   const after = manifestVersionAt("HEAD", f);
   if (!after) {
@@ -169,32 +185,15 @@ for (const f of diff.split("\n").filter((p) => /^modules\/[^/]+\/telo\.yaml$/.te
     console.log(`  skip ${f}: metadata.version unchanged (${after}) — presence gate still applies`);
     continue;
   }
-  const abs = join(ROOT, f);
-  if (existsSync(abs)) queued.add(abs);
+  queued.add(join(ROOT, f));
 }
 
 // Presence checks that could not ANSWER — a broken credential, an unreachable
 // registry. Distinct from "no versions published", which is a real answer.
 const unanswered = [];
 
-// (b) version-absent gate, over every module manifest not already queued by (a).
-//
-// MODULES ONLY, deliberately — NOT the full `telo-workspace.yaml` set, which also
-// declares `apps/*`. An app is released as a container image (see
-// `.github/workflows/publish-docker.yml`), not as an OCI module artifact that
-// something else imports, so publishing one here would put an artifact in the
-// module registry that nothing resolves and that no consumer expects. The
-// workspace anchor answers "what does `telo release` version?"; this answers the
-// narrower "what is importable?", and the two are different questions.
-//
-// Ordering still comes from the release model (`orderByDependencies` →
-// `telo release order`), so the import graph is never re-derived here — only the
-// SET is narrowed.
-const allManifests = readdirSync(join(ROOT, "modules"), { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => join(ROOT, "modules", e.name, "telo.yaml"))
-  .filter((p) => existsSync(p));
-const toCheck = allManifests
+// (b) version-absent gate, over every importable manifest not already queued by (a).
+const toCheck = importable
   .filter((abs) => !queued.has(abs))
   .map((abs) => ({ abs, rel: abs.replace(ROOT + "/", "") }))
   .map((e) => ({ ...e, version: manifestVersionAt("HEAD", e.rel) }))

@@ -1,0 +1,267 @@
+kind: Telo.Application
+metadata:
+  name: HtmlSafeTreeTest
+  version: 1.0.0
+  description: The sanitize presets, a custom policy, and an XSS corpus.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref presets
+  - !ref customPolicy
+  - !ref xssCorpus
+  - !ref idPrefix
+  - !ref assembledTree
+  - !ref readbackSettles
+---
+kind: Run.Sequence
+metadata: { name: presets }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: >-
+        <h2 id="intro">Hi</h2><p>A <a href="https://example.com" title="t">link</a>,
+        <a href="ftp://example.com">ftp</a> and <img src="https://example.com/a.png" alt="a" onerror="x()">.</p>
+        <pre><code class="language-js extra">x()</code></pre><ul><li><input type="checkbox" checked> done</li></ul>
+        <table><tr><td style="color:red">1</td></tr></table><script>alert(1)</script>
+  - name: stripAll
+    invoke: !ref Html.stripAll
+    inputs: { document: !cel "steps.parse.result" }
+  - name: basic
+    invoke: !ref Html.basicFormatting
+    inputs: { document: !cel "steps.parse.result" }
+  - name: rich
+    invoke: !ref Html.richContent
+    inputs: { document: !cel "steps.parse.result" }
+  - name: stripAllMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.stripAll.result" }
+  - name: basicMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.basic.result" }
+  - name: richMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.rich.result" }
+  - name: assertPresets
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        stripAll: !cel "steps.stripAllMarkup.result.html"
+        basic: !cel "steps.basicMarkup.result.html"
+        rich: !cel "steps.richMarkup.result.html"
+      expected:
+        stripAll: HiA link, ftp and . x() done 1
+        basic: Hi<p>A <a href="https://example.com">link</a>, <a>ftp</a> and .</p> <code>x()</code><ul><li> done</li></ul> 1
+        rich: <h2 id="user-content-intro">Hi</h2><p>A <a href="https://example.com">link</a>, <a>ftp</a> and <img src="https://example.com/a.png" alt="a">.</p> <pre><code class="language-js extra">x()</code></pre><ul><li><input type="checkbox" disabled=""> done</li></ul> <table><tbody><tr><td>1</td></tr></tbody></table>
+---
+# Tag-specific constraints over `"*"`, exact values and prefixes, `setAttributes`
+# over the element's own value, comments kept on request, and a dropped
+# element taking its content with it.
+kind: Run.Sequence
+metadata: { name: customPolicy }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: >-
+        <!-- kept --><div class="note warn" dir="rtl" data-x="1"><span lang="en" class="other">a</span><aside>gone</aside></div><a href="/rel" target="_top" rel="me">b</a>
+  - name: clean
+    invoke:
+      kind: Html.SafeTree
+      elements: [div, span, a]
+      attributes:
+        "*":
+          class: { values: [note] }
+          dir: { values: [ltr, rtl] }
+        div:
+          class: { prefixes: [note] }
+        a:
+          href: { protocols: [https] }
+          target: {}
+      setAttributes:
+        a: { target: _blank, rel: noopener }
+      dropContent: [aside]
+      comments: true
+    inputs: { document: !cel "steps.parse.result" }
+  - name: markup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.clean.result" }
+  - name: assertClean
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markup.result.html"
+      expected: <!-- kept --><div class="note warn" dir="rtl"><span>a</span></div><a href="/rel" target="_blank" rel="noopener">b</a>
+---
+kind: Run.Sequence
+metadata: { name: xssCorpus }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: >-
+        <p onclick="x()" onmouseover=y()>1</p>
+        <a href="javascript:alert(1)">2</a><a href=" JaVa&#x09;ScRiPt:alert(1)">3</a><a href="vbscript:x">4</a>
+        <a href="data:text/html,x">5</a><a href="//evil.example/p">6</a><a href="#top">7</a>
+        <img src="x.png" srcset="a.png 1x, javascript:alert(1) 2x"><img src="x.png" srcset="a.png 1x, https://cdn.example/b.png 2x">
+        <b><i><u><p>8</p></u></i></b>
+        <script>alert(9)</script><style>p{}</style><noscript><p>10</p></noscript>
+        <svg><a xlink:href="javascript:alert(11)"><text>11</text></a><script>alert(12)</script><style>x</style></svg>
+        <math><mi>13</mi></math><iframe src="https://evil.example"></iframe><form action="javascript:x"><button formaction="javascript:y">14</button></form>
+  - name: clean
+    invoke:
+      kind: Html.SafeTree
+      elements: [p, a, img]
+      attributes:
+        a:
+          href: { protocols: [https] }
+        img:
+          src: { protocols: [https] }
+          srcset: { protocols: [https] }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: markup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.clean.result" }
+  - name: assertClean
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markup.result.html"
+      # `<noscript>` holds raw text (the parser runs with scripting on), so its
+      # markup survives only as escaped text.
+      expected: <p>1</p> <a>2</a><a>3</a><a>4</a> <a>5</a><a href="//evil.example/p">6</a><a href="#top">7</a> <img src="x.png"><img src="x.png" srcset="a.png 1x, https://cdn.example/b.png 2x"> <p>8</p> &lt;p&gt;10&lt;/p&gt; 11 1314
+---
+# `idPrefix` moves an id and everything pointing at it together: a fragment link
+# whose target is kept, and every token of an id-reference attribute. A link
+# with no kept target, an empty fragment and a forced value are left alone.
+kind: Run.Sequence
+metadata: { name: idPrefix }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: >-
+        <h2 id="install">Install</h2><a href="#install">up</a><a name="top">anchor</a>
+        <a href="#top">to anchor</a><a href="#nowhere">lost</a><a href="#">empty</a>
+  - name: rich
+    invoke: !ref Html.richContent
+    inputs: { document: !cel "steps.parse.result" }
+  - name: richMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.rich.result" }
+  - name: noTarget
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <a href="#top">top</a>, fragment: true }
+  - name: richNoTarget
+    invoke: !ref Html.richContent
+    inputs: { document: !cel "steps.noTarget.result" }
+  - name: noTargetMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.richNoTarget.result" }
+  - name: form
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      fragment: true
+      html: <label for="email" id="lbl">Mail</label><input id="email" aria-describedby="hint lbl" form="f"><p id="hint">Required</p>
+  - name: formPolicy
+    invoke:
+      kind: Html.SafeTree
+      elements: [label, input, p]
+      attributes:
+        "*": { id: {} }
+        label: { for: {} }
+        input: { aria-describedby: {} }
+      setAttributes:
+        input: { form: signup }
+      idPrefix: u-
+    inputs: { document: !cel "steps.form.result" }
+  - name: formMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.formPolicy.result" }
+  - name: assertPrefixed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rich: !cel "steps.richMarkup.result.html"
+        noTarget: !cel "steps.noTargetMarkup.result.html"
+        references: !cel "steps.formMarkup.result.html"
+      expected:
+        rich: <h2 id="user-content-install">Install</h2><a href="#user-content-install">up</a><a name="user-content-top">anchor</a> <a href="#user-content-top">to anchor</a><a href="#nowhere">lost</a><a href="#">empty</a>
+        noTarget: <a href="#top">top</a>
+        references: <label for="u-email" id="u-lbl">Mail</label><input id="u-email" aria-describedby="u-hint u-lbl" form="signup"><p id="u-hint">Required</p>
+---
+# A tree no parser built: a comment that would end early is dropped even with
+# `comments: true`, a kept void element's children follow it, and a kept
+# `title` keeps only the text inside it — so the output always serializes.
+kind: Run.Sequence
+metadata: { name: assembledTree }
+steps:
+  - name: clean
+    invoke:
+      kind: Html.SafeTree
+      elements: [p, b, img, title]
+      comments: true
+    inputs:
+      document:
+        nodes:
+          - { type: comment, text: "--><img src=x onerror=alert(1)><!--" }
+          - { type: comment, text: " kept " }
+          - type: element
+            tag: img
+            attrs: {}
+            children: [{ type: element, tag: b, attrs: {}, children: [{ type: text, text: bold }] }, { type: text, text: " tail" }]
+          - type: element
+            tag: title
+            attrs: {}
+            children: [{ type: text, text: "a " }, { type: element, tag: b, attrs: {}, children: [{ type: text, text: "</title><p>x" }] }]
+  - name: markup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.clean.result" }
+  - name: assertClean
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.markup.result.html"
+      expected: "<!-- kept --><img><b>bold</b> tail<title>a &lt;/title&gt;&lt;p&gt;x</title>"
+---
+# Output whose markup would read back as another tree is replaced by what it
+# reads back as: nested anchors come apart, and a hand-built table gains the
+# `tbody` the parser implies, though the policy does not list it.
+kind: Run.Sequence
+metadata: { name: readbackSettles }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <a><table><a>, fragment: true }
+  - name: anchors
+    invoke:
+      kind: Html.SafeTree
+      elements: [a, table]
+    inputs: { document: !cel "steps.parse.result" }
+  - name: anchorsMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.anchors.result" }
+  - name: table
+    invoke:
+      kind: Html.SafeTree
+      elements: [table, tr, td]
+    inputs:
+      document: !cel >-
+        {'nodes': [{'type': 'element', 'tag': 'table', 'attrs': {}, 'children': [
+          {'type': 'element', 'tag': 'tr', 'attrs': {}, 'children': [
+            {'type': 'element', 'tag': 'td', 'attrs': {}, 'children': [{'type': 'text', 'text': 'x'}]}]}]}]}
+  - name: tableMarkup
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.table.result" }
+  - name: assertSettled
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        anchors: !cel "steps.anchorsMarkup.result.html"
+        table: !cel "steps.tableMarkup.result.html"
+      expected:
+        anchors: <a></a><a></a><table></table>
+        table: <table><tbody><tr><td>x</td></tr></tbody></table>

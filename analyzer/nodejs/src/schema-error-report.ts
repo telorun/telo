@@ -28,6 +28,8 @@
  * would mean re-implementing AJV's resolution.
  */
 
+import { describeTeloFormatFailure, TELO_FORMATS, teloFormatFailure } from "./telo-format.js";
+
 /** An AJV error object. Structurally typed — the analyzer and the kernel hand
  *  over errors from their own AJV instances. */
 export interface AjvErrorLike {
@@ -454,9 +456,47 @@ export function ajvErrorToPath(err: AjvErrorLike): string {
   return result;
 }
 
-/** Reduced, path-anchored issues — what a diagnostic list is built from. */
-export function schemaIssues(errors: AjvErrorLike[] | null | undefined): SchemaIssue[] {
-  return reduceSchemaErrors(errors).map((err) => {
+/* ---------------------------------------------------------- telo formats */
+
+/** The value at an AJV `instancePath` under `root`, or undefined. */
+function valueAt(root: unknown, instancePath: string | undefined): unknown {
+  let current = root;
+  for (const segment of (instancePath ?? "").split("/").slice(1)) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[unescapeSegment(segment)];
+  }
+  return current;
+}
+
+/**
+ * Replace AJV's `must match format "<name>"` with the checker's reason, for a
+ * Telo format. AJV hands a format validator a string and takes back a boolean,
+ * so WHY a value failed exists only once the checker is asked again — which
+ * needs the value, and AJV's error carries it only under `verbose`. The caller
+ * hands over the root it validated instead; without it the text stays AJV's.
+ */
+export function explainFormatErrors(
+  errors: AjvErrorLike[] | null | undefined,
+  data: unknown,
+): AjvErrorLike[] | null | undefined {
+  if (!errors) return errors;
+  return errors.map((err) => {
+    const name = err.keyword === "format" ? err.params?.format : undefined;
+    if (typeof name !== "string" || !TELO_FORMATS.has(name)) return err;
+    const value = valueAt(data, err.instancePath);
+    if (typeof value !== "string") return err;
+    const failure = teloFormatFailure(name, value);
+    return failure ? { ...err, message: describeTeloFormatFailure(name, value, failure) } : err;
+  });
+}
+
+/** Reduced, path-anchored issues — what a diagnostic list is built from.
+ *  `data` is the value that was validated, read to explain a Telo format. */
+export function schemaIssues(
+  errors: AjvErrorLike[] | null | undefined,
+  data?: unknown,
+): SchemaIssue[] {
+  return reduceSchemaErrors(explainFormatErrors(errors, data)).map((err) => {
     const { missingProperty: missing, valueType } = err.params ?? {};
     return {
       message: formatSingleError(err),
@@ -469,8 +509,8 @@ export function schemaIssues(errors: AjvErrorLike[] | null | undefined): SchemaI
 }
 
 /** Reduced, rendered as one sentence — what a thrown runtime error carries. */
-export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined): string {
-  const reduced = reduceSchemaErrors(errors);
+export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined, data?: unknown): string {
+  const reduced = reduceSchemaErrors(explainFormatErrors(errors, data));
   if (reduced.length === 0) return "Unknown schema error";
   return reduced.map(formatSingleError).join("; ");
 }

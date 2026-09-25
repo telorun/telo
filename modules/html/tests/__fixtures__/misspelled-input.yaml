@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: MisspelledInput
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { htlm: <p>x</p> }

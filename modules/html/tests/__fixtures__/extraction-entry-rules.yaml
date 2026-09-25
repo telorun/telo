@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: ExtractionEntryRules
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p>x</p> }
+  - name: extract
+    invoke:
+      kind: Html.Extraction
+      fields:
+        noAttr: { selector: a, type: attr }
+        both: { selector: div, type: text, fields: { x: { selector: p, type: text } } }
+        neither: { selector: div }
+        manyNullable: { selector: p, type: text, many: true, nullable: true }
+    inputs: { document: !cel "steps.parse.result" }

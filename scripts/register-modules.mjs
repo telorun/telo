@@ -24,7 +24,7 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const IMPORTABLE = ["modules/", "blueprints/"];
 
 const ordered = JSON.parse(
-  execFileSync("node", ["./cli/nodejs/bin/telo.mjs", "release", "order", "-o", "json"], {
+  execFileSync("telo", ["release", "order", "-o", "json"], {
     cwd: ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],

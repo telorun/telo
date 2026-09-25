@@ -1,0 +1,88 @@
+kind: Telo.Application
+metadata:
+  name: HtmlMainContentTest
+  version: 1.0.0
+  description: Main content detection, its failure, and the input tree left untouched.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref findsArticle
+  - !ref noContent
+---
+kind: Run.Sequence
+metadata: { name: findsArticle }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      baseUrl: https://example.com/blog/post.html
+      html: >-
+        <html lang="en"><head><title>Telo notes - Example Blog</title>
+        <meta name="author" content="Ada Writer"></head><body>
+        <nav><a href="/">Home</a> <a href="/about">About</a></nav>
+        <article><h1>Telo notes</h1>
+        <p>The first paragraph of the article is long enough to be read as its main content,
+        and it links to <a href="other.html">another post</a> that sits beside it on the site.</p>
+        <p>A second paragraph keeps the article going with more prose, so the detector has
+        enough text to be confident that this is the content a reader came for.</p></article>
+        <footer>Copyright, legal notices and a list of unrelated links.</footer></body></html>
+  - name: before
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: main
+    invoke:
+      kind: Html.MainContent
+      charThreshold: 100
+    inputs: { document: !cel "steps.parse.result" }
+  - name: after
+    invoke: { kind: Html.Markup }
+    inputs: { document: !cel "steps.parse.result" }
+  - name: text
+    invoke: { kind: Html.PlainText }
+    inputs: { document: !cel "steps.main.result.content" }
+  - name: assertUnmutated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.after.result.html"
+      expected: !cel "steps.before.result.html"
+  - name: assertArticle
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        title: !cel "steps.main.result.title"
+        byline: !cel "steps.main.result.byline"
+        lang: !cel "steps.main.result.lang"
+        base: !cel "steps.main.result.content.baseUrl"
+        hasNav: !cel "steps.text.result.text.contains('About')"
+        hasFooter: !cel "steps.text.result.text.contains('Copyright')"
+        hasBody: !cel "steps.text.result.text.contains('A second paragraph')"
+      expected:
+        title: Telo notes - Example Blog
+        byline: Ada Writer
+        lang: en
+        base: https://example.com/blog/post.html
+        hasNav: false
+        hasFooter: false
+        hasBody: true
+---
+kind: Run.Sequence
+metadata: { name: noContent }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <html><body></body></html> }
+  - name: find
+    try:
+      - name: run
+        invoke: { kind: Html.MainContent }
+        inputs: { document: !cel "steps.parse.result" }
+      - name: failIfReached
+        throw: { code: TEST_FAILED, message: Expected ERR_HTML_NO_MAIN_CONTENT. }
+    catch:
+      - name: assertCode
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_HTML_NO_MAIN_CONTENT

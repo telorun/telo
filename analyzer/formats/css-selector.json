@@ -1,0 +1,37 @@
+{
+  "name": "css-selector",
+  "grammar": "https://www.w3.org/TR/selectors-4/#typedef-complex-selector-list",
+  "standIn": "*",
+  "description": "A CSS selector list — Selectors Level 4 <complex-selector-list> in the snapshot profile: no pseudo-elements, no namespace prefixes, no leading combinator, with :scope naming the element the selector is matched from. A relative selector (one starting with a combinator) is valid only inside :has(), and :has() does not nest.",
+  "conformance": {
+    "valid": [
+      ":scope > a",
+      "a:hover",
+      "div.card > h2",
+      "a[href^=\"http\"]",
+      "ul li:nth-child(2n+1)",
+      ":is(h1, h2)",
+      ":not(.x)",
+      ":has(> img)",
+      "*",
+      "#main, article p ~ span + em",
+      ":nth-child(2n+1 of .x)",
+      "col || td",
+      ":is(div p)",
+      ":has(+ p)",
+      ":nth-child(odd of .a, .b)"
+    ],
+    "invalid": [
+      "div[",
+      "> a",
+      "p::before",
+      "svg|a",
+      "",
+      "a,",
+      ":nosuchclass",
+      ":not(> a)",
+      ":is(+ p)",
+      ":has(:has(a))"
+    ]
+  }
+}

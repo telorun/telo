@@ -25,11 +25,11 @@
 // resolving there — no HTTP registry read origin is involved.
 
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { orderByDependencies } from "./module-publish-order.mjs";
+import { importableManifests, orderByDependencies } from "./module-publish-order.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ociRegistry = process.env.TELO_OCI_REGISTRY?.replace(/\/+$/, "");
@@ -40,14 +40,10 @@ if (!ociRegistry) {
   process.exit(1);
 }
 
-const modulesDir = join(ROOT, "modules");
-const manifests = readdirSync(modulesDir, { withFileTypes: true })
-  .filter((e) => e.isDirectory())
-  .map((e) => join(modulesDir, e.name, "telo.yaml"))
-  .filter((p) => existsSync(p));
+const manifests = importableManifests().filter((p) => existsSync(p));
 
 if (manifests.length === 0) {
-  console.error(`No module manifests found under ${modulesDir}.`);
+  console.error(`The release model lists no importable module manifests.`);
   process.exit(1);
 }
 

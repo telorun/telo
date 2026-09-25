@@ -1,0 +1,120 @@
+kind: Telo.Application
+metadata:
+  name: HtmlSelectionTest
+  version: 1.0.0
+  description: Selecting elements, and the base URL carried from the parse through a selection.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref matchesInOrder
+  - !ref staticMatching
+  - !ref baseCarried
+---
+kind: Run.Sequence
+metadata: { name: matchesInOrder }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <ul><li class="x">a</li><li>b<ul><li class="x">c</li></ul></li></ul>
+      fragment: true
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: li.x
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertMatches
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.select.result"
+      expected:
+        nodes:
+          - { type: element, tag: li, attrs: { class: x }, children: [{ type: text, text: a }] }
+          - { type: element, tag: li, attrs: { class: x }, children: [{ type: text, text: c }] }
+---
+# No doctype puts the page in quirks mode, and class matching stays
+# case-sensitive anyway; a state pseudo-class matches nothing in a static tree.
+kind: Run.Sequence
+metadata: { name: staticMatching }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs: { html: <p class="Card">a</p><a href="/x">b</a> }
+  - name: caseSensitive
+    invoke:
+      kind: Html.Selection
+      selector: .card
+    inputs: { document: !cel "steps.parse.result" }
+  - name: hovered
+    invoke:
+      kind: Html.Selection
+      selector: "a:hover, :where(p):focus"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: links
+    invoke:
+      kind: Html.Selection
+      selector: ":is(p, a):not(:hover)"
+    inputs: { document: !cel "steps.parse.result" }
+  - name: assertCounts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        caseSensitive: !cel "size(steps.caseSensitive.result.nodes)"
+        hovered: !cel "size(steps.hovered.result.nodes)"
+        links: !cel "size(steps.links.result.nodes)"
+      expected: { caseSensitive: 0, hovered: 0, links: 2 }
+---
+# A `<base>` read at the parse travels with the selected part into the kinds
+# that resolve URLs.
+kind: Run.Sequence
+metadata: { name: baseCarried }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      baseUrl: https://example.com/blog/post.html
+      html: >-
+        <html><head><base href="/assets/"><link rel="Stylesheet" href="site.css"></head>
+        <body><nav>Home</nav><article><h1>The title</h1><p>The first paragraph of the article
+        is long enough to be read as its main content, and it links to a
+        <a href="related.html">related post</a> that sits beside it on the site.</p>
+        <p>A second paragraph keeps the article going with more prose, so the detector
+        has enough text to be confident that this is the content a reader came for.</p>
+        <p><img src="photo.jpg" alt="A photo"></p></article></body></html>
+  - name: select
+    invoke:
+      kind: Html.Selection
+      selector: head, article
+    inputs: { document: !cel "steps.parse.result" }
+  - name: metadata
+    invoke: { kind: Html.Metadata }
+    inputs: { document: !cel "steps.select.result" }
+  - name: main
+    invoke:
+      kind: Html.MainContent
+      charThreshold: 100
+    inputs: { document: !cel "steps.select.result" }
+  - name: links
+    invoke:
+      kind: Html.Selection
+      selector: a, img
+    inputs: { document: !cel "steps.main.result.content" }
+  - name: assertCarried
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        selected: !cel "steps.select.result.baseUrl"
+        metadata: !cel "steps.metadata.result.baseUrl"
+        stylesheet: !cel "steps.metadata.result.links[0].href"
+        content: !cel "steps.main.result.content.baseUrl"
+        link: !cel "steps.links.result.nodes[0].attrs.href"
+        image: !cel "steps.links.result.nodes[1].attrs.src"
+      expected:
+        selected: https://example.com/assets/
+        metadata: https://example.com/assets/
+        stylesheet: https://example.com/assets/site.css
+        content: https://example.com/assets/
+        link: https://example.com/assets/related.html
+        image: https://example.com/assets/photo.jpg

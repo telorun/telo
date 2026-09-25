@@ -150,14 +150,33 @@ jobs:
           docker compose logs --no-color hub embedder
           exit 1
 
+      # `--debug` writes the run's event log (`.telo.debug.jsonl` beside the suite
+      # manifest); both it and the console output are uploaded when a run fails.
       - name: Run hub e2e suite
-        run: pnpm run test:e2e:hub
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p e2e-logs
+          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./apps/hub/test-suite-e2e.yaml 2>&1 | tee e2e-logs/hub-suite.log
 
       - name: Dump stack logs on failure
         if: failure()
         run: |
+          mkdir -p e2e-logs
           docker compose ps -a
-          docker compose logs --no-color
+          docker compose logs --no-color | tee e2e-logs/hub-stack.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-hub-logs
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            e2e-logs/
+            apps/hub/.telo.debug.jsonl
 
       - name: Stop hub stack
         if: always()
@@ -233,7 +252,23 @@ jobs:
 
       - name: Run the live example suite
         if: steps.changed.outputs.run == 'true'
-        run: pnpm run telo ./examples/test-suite-live.yaml
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p e2e-logs
+          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./examples/test-suite-live.yaml 2>&1 | tee e2e-logs/live-examples.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-live-examples-logs
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            e2e-logs/
+            examples/.telo.debug.jsonl
 
   # The authoring agent drives a real model against the live hub and authors a
   # manifest against PINNED PUBLISHED modules. No stack to bring up — what makes
@@ -328,4 +363,23 @@ jobs:
 
       - name: Run authoring agent e2e suite
         if: steps.changed.outputs.run == 'true'
-        run: pnpm run test:e2e:authoring-agent
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p e2e-logs
+          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
+
+      # `workspace/` holds what the agent built in each test, so a failed run
+      # shows the files it could not get green.
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-authoring-agent-logs
+          retention-days: 14
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            e2e-logs/
+            apps/authoring-agent/.telo.debug.jsonl
+            workspace/

@@ -11,6 +11,8 @@
 # (`runFails`). A guard that gains a kernel half and no static half fails the
 # first assertion; one that gains a static half and no kernel half fails the
 # second.
+#
+# Only kernel/analyzer-owned refusals belong here; a module's own rule pairs live in its `tests/`.
 kind: Telo.Application
 metadata:
   name: CheckRunAgreementTest
@@ -144,7 +146,11 @@ targets:
   - !ref throwsCeilingAtRuntime
   - !ref throwsShape
   - !ref throwsShapeAtRuntime
-  - !ref languageCodeDuplicate
+  - !ref cssSelectorLiteral
+  - !ref cssSelectorLiteralAtRuntime
+  - !ref cssSelectorComputedAtRuntime
+  - !ref cssSelectorInputs
+  - !ref cssSelectorInputsComputedAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1327,19 +1333,6 @@ expect:
       message: "Telo.Abstract/NotLiteral: /throws must NOT have additional properties ('inherit' is not allowed)"
   runFails: "Manifest validation failed"
 ---
-# Two different language models sharing a code. `telo check` reads the models the
-# recognizer references (a resource rule's `resolve:`), and the recognizer
-# refuses the same pair when it starts.
-kind: Assert.Manifest
-metadata:
-  name: languageCodeDuplicate
-source: ./__fixtures__/check-run-agreement/language-code-duplicate/telo.yaml
-expect:
-  errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "at 'languages[1]': lists two language models under the same code"
-  runFails: "Manifest validation failed"
----
 # A command-line binding the kernel cannot parse argv against is refused by
 # `telo check`, and by the kernel before any resource starts.
 kind: Assert.Manifest
@@ -1448,3 +1441,52 @@ metadata:
 source: ./__fixtures__/check-run-agreement/host-path-interpolated/telo.yaml
 expect:
   runFails: "does not match schema for kind Http.Static"
+---
+# A malformed selector at a `format: css-selector` slot: refused on its own line
+# with the checker's reason…
+kind: Assert.Manifest
+metadata:
+  name: cssSelectorLiteral
+source: ./__fixtures__/check-run-agreement/css-selector-literal/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: '/selector must be a css-selector: Expected attribute name at offset 3 of "div["'
+---
+# …and by the kernel at creation with the same reason, from a consumer whose
+# entry-scoped check is silent about the library's internals.
+kind: Assert.Manifest
+metadata:
+  name: cssSelectorLiteralAtRuntime
+source: ./__fixtures__/check-run-agreement/css-selector-literal/telo.yaml
+expect:
+  runFails: '/selector must be a css-selector: Expected attribute name at offset 3 of "div["'
+---
+# An expression at such a slot is checked once it has produced its value.
+kind: Assert.Manifest
+metadata:
+  name: cssSelectorComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/css-selector-computed.yaml
+expect:
+  errors: []
+  runFails: 'must be a css-selector: Namespaces are not enabled at offset 4 of "svg|a"'
+---
+# The same format at a call's `inputs:`, against the invoked kind's inputType —
+# statically for a literal…
+kind: Assert.Manifest
+metadata:
+  name: cssSelectorInputs
+source: ./__fixtures__/check-run-agreement/css-selector-inputs.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: '/selector must be a css-selector: Pseudo elements are not enabled at offset 2 of "p::before"'
+---
+# …and at dispatch for a computed value, with the same reason.
+kind: Assert.Manifest
+metadata:
+  name: cssSelectorInputsComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/css-selector-inputs-computed.yaml
+expect:
+  errors: []
+  runFails: '/selector must be a css-selector: Pseudo elements are not enabled at offset 2 of "p::before"'

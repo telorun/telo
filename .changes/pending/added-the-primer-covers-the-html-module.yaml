@@ -1,0 +1,9 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer covers the html module's serialization readback: Markup and Extraction
+  html fields write a tree only when its markup reads back as the same tree, naming the
+  first differing node otherwise; node names follow the parser's case rules; the
+  SafeTree refusal codes a policy can hit are listed: HTML_SANITIZE_RAW_TEXT_ELEMENT,
+  HTML_SANITIZE_NOT_AN_HTML_ELEMENT, HTML_SANITIZE_SCRIPT_PROTOCOL,
+  HTML_SANITIZE_EVENT_HANDLER, HTML_SANITIZE_EVENT_HANDLER_FORCED,
+  HTML_SANITIZE_UNKNOWN_ELEMENT and HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED."

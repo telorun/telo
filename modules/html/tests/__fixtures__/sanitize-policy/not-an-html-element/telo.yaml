@@ -1,0 +1,13 @@
+# A policy keeping `svg`, which markup never writes as an HTML element: refused
+# by `telo check` at the declaration, and by the controller at creation.
+kind: Telo.Library
+metadata:
+  name: SanitizeNotAnHtmlElement
+imports:
+  Html: ../../../..
+exports:
+  resources: [policy]
+---
+kind: Html.SafeTree
+metadata: { name: policy }
+elements: [svg, p]

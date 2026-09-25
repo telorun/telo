@@ -1,0 +1,16 @@
+# A sanitize policy that contradicts itself: refused by `telo check` at the
+# declaration, and by the controller when the resource is created.
+kind: Telo.Library
+metadata:
+  name: SanitizeUrlWithoutProtocols
+imports:
+  Html: ../../../..
+exports:
+  resources: [policy]
+---
+kind: Html.SafeTree
+metadata: { name: policy }
+elements: [a]
+attributes:
+  a:
+    href: {}

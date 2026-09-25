@@ -1,0 +1,32 @@
+# A malformed selector at a `format: css-selector` slot: refused by `telo check`
+# on its own line, and by the kernel at creation with the same reason.
+kind: Telo.Library
+metadata:
+  name: CssSelectorLiteral
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [pick]
+---
+kind: Telo.Definition
+metadata:
+  name: Pick
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    selector:
+      type: string
+      format: css-selector
+      x-telo-eval: compile
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.selector"
+---
+kind: Self.Pick
+metadata:
+  name: pick
+selector: "div["

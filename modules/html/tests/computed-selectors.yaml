@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: HtmlComputedSelectorsTest
+  version: 1.0.0
+  description: >-
+    An extraction's selectors and attribute names may be computed at every depth;
+    the keys that decide its result type may not.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref computedAtEveryDepth
+  - !ref typeIsLiteral
+  - !ref malformedComputedSelector
+  - !ref computedNotText
+  - !ref dynComputedSelectorNotText
+---
+kind: Assert.Manifest
+metadata: { name: computedAtEveryDepth }
+source: ./__fixtures__/computed-selectors.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata: { name: typeIsLiteral }
+source: ./__fixtures__/computed-type.yaml
+expect:
+  errors:
+    - code: CEL_IN_NON_EVAL_FIELD
+      message: "fields.a.type"
+---
+kind: Assert.Manifest
+metadata: { name: malformedComputedSelector }
+source: ./__fixtures__/computed-selectors-malformed.yaml
+expect:
+  errors: []
+  runFails: '/fields/a/selector must be a css-selector: Expected attribute name at offset 3 of "div["'
+---
+kind: Assert.Manifest
+metadata: { name: computedNotText }
+source: ./__fixtures__/computed-not-text.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "'fields.top.selector' returns 'int'"
+    - code: CEL_TYPE_ERROR
+      message: "'fields.link.attr' returns 'int'"
+    - code: CEL_TYPE_ERROR
+      message: "'fields.a.fields.c.selector' returns 'int'"
+---
+kind: Assert.Manifest
+metadata: { name: dynComputedSelectorNotText }
+source: ./__fixtures__/computed-selector-dyn.yaml
+expect:
+  errors: []
+  runFails: "/fields/a/fields/c/selector must be a css-selector string, but the expression produced the number 2"

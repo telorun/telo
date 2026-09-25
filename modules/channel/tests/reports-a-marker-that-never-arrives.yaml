@@ -68,3 +68,8 @@ steps:
           expected:
             code: ERR_CHANNEL_READ_TIMEOUT
             sawInstead: "Colour: "
+
+  # The program is still waiting for its second answer. Close its input so it
+  # finishes; otherwise the application never goes idle and the run cannot end.
+  - name: endInput
+    invoke: { kind: Channel.End, channel: !ref quiz }

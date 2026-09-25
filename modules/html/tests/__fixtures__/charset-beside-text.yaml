@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: CharsetBesideText
+imports:
+  Html: ../../
+  Run: ../../../run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: <p>x</p>
+      charset: utf-8

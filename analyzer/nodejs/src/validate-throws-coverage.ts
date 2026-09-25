@@ -536,7 +536,7 @@ const atThrows = (message: string): string =>
   message.startsWith("/ ") ? `/throws ${message.slice(2)}` : message.startsWith("/") ? `/throws${message}` : `/throws ${message}`;
 const validateAbstractThrows = (value: unknown) => {
   const validate = (abstractThrowsValidator ??= createAjv().compile(ABSTRACT_THROWS_SCHEMA));
-  return validate(value) ? [] : schemaIssues(validate.errors);
+  return validate(value) ? [] : schemaIssues(validate.errors, value);
 };
 
 function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {

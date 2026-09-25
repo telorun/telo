@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: HtmlCharacterReferencesTest
+  version: 1.0.0
+  description: Escaping and unescaping text from CEL.
+imports:
+  Html: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref roundTrip
+---
+kind: Run.Sequence
+metadata: { name: roundTrip }
+steps:
+  - name: assertEscape
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        escaped: !cel "Html.escape('<a href=\"x\">Tom & Jerry\\'s</a>')"
+        unescaped: !cel "Html.unescape('&lt;b&gt; &amp;amp; &eacute;&#233;&#xE9;&nbsp;&notanentity;')"
+        restored: !cel "Html.unescape(Html.escape('<\"&\\'>'))"
+      expected:
+        escaped: "&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;"
+        # A legacy reference such as `&not` decodes without its semicolon in text
+        # content, exactly as a browser reads it.
+        unescaped: "<b> &amp; ééé\u00a0¬anentity;"
+        restored: "<\"&'>"

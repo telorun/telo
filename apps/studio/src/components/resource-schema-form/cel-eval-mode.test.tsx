@@ -86,13 +86,11 @@ describe("celEvalModeAtPointer", () => {
     expect(celEvalModeAtPointer(schema, "/name")).toBeNull();
   });
 
-  it("does not follow a $ref, exactly as the analyzer does not", () => {
+  it("follows a local $ref, exactly as the analyzer does", () => {
     // Whatever this answers is a claim about what `telo check` accepts, so it
-    // has to answer the same way — and the analyzer's walk stops at a `$ref`.
-    // Nothing is lost in practice: a shared fragment is expanded in place at
-    // load, and a step body carries its `x-telo-fragment` stamp on the slot
-    // rather than behind the reference.
-    expect(celEvalModeAtPointer(schema, "/settings/region")).toBeNull();
+    // has to answer the same way — and the analyzer's eval-path walk follows a
+    // document-local `$ref`.
+    expect(celEvalModeAtPointer(schema, "/settings/region")).toBe("compile");
   });
 
   it("keeps what it resolved when a segment leads nowhere", () => {

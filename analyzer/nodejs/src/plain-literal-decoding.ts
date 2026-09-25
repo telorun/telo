@@ -35,8 +35,13 @@ export function decodePlainLiterals(
   return mapTextLeaves(value, schema, decodePlainText, external, rootSchema);
 }
 
-/** What a text leaf becomes, given the schema node it sits at. */
-export type TextLeafMapper = (schema: Record<string, any>, text: string) => unknown;
+/** What a text leaf becomes, given the schema node it sits at and its JSON
+ *  Pointer from the walked value's root. */
+export type TextLeafMapper = (schema: Record<string, any>, text: string, pointer: string) => unknown;
+
+/** Sees every node the walk reaches, whatever its type, with the schema node it
+ *  sits at — for a question about a slot rather than about its text. */
+export type SchemaNodeVisitor = (schema: Record<string, any>, node: unknown, pointer: string) => void;
 
 /**
  * The walk {@link decodePlainLiterals} runs, with the leaf rule supplied: every
@@ -44,7 +49,7 @@ export type TextLeafMapper = (schema: Record<string, any>, text: string) => unkn
  * the schema node it sits at. The same union branch, the same stops at reference
  * slots, compiled expressions and instances — so a caller asking another
  * question of the text leaves (is this host path absolute?) visits exactly the
- * leaves decoding does.
+ * leaves decoding does. `visit`, when given, is called on every node first.
  */
 export function mapTextLeaves(
   value: unknown,
@@ -52,20 +57,27 @@ export function mapTextLeaves(
   leaf: TextLeafMapper,
   external?: ExternalSchemaResolver,
   rootSchema: Record<string, any> = schema,
+  visit?: SchemaNodeVisitor,
 ): unknown {
-  const walk = (node: unknown, raw: Record<string, any>, base: Record<string, any>): unknown => {
+  const walk = (
+    node: unknown,
+    raw: Record<string, any>,
+    base: Record<string, any>,
+    pointer: string,
+  ): unknown => {
     const entered = resolveRefIn(raw, base, external);
     const selected = selectUnionBranch(entered.schema, node, entered.root, external);
     const { schema: here, root } = resolveRefIn(selected, entered.root, external);
 
-    if (typeof node === "string") return leaf(here, node);
+    visit?.(here, node, pointer);
+    if (typeof node === "string") return leaf(here, node, pointer);
     if (!node || typeof node !== "object") return node;
     if (here["x-telo-ref"] !== undefined) return node;
     if (isCompiledValue(node) || isTaggedSentinel(node)) return node;
 
     if (Array.isArray(node)) {
       const item = resolveRefIn((here.items ?? {}) as Record<string, any>, root, external);
-      for (let i = 0; i < node.length; i++) node[i] = walk(node[i], item.schema, item.root);
+      for (let i = 0; i < node.length; i++) node[i] = walk(node[i], item.schema, item.root, `${pointer}/${i}`);
       return node;
     }
     const proto = Object.getPrototypeOf(node);
@@ -78,11 +90,13 @@ export function mapTextLeaves(
     const record = node as Record<string, unknown>;
     for (const key of Object.keys(record)) {
       const child = properties[key] ?? additional;
-      if (child) record[key] = walk(record[key], child, root);
+      if (child) {
+        record[key] = walk(record[key], child, root, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`);
+      }
     }
     return node;
   };
-  return walk(value, schema, rootSchema);
+  return walk(value, schema, rootSchema, "");
 }
 
 /**

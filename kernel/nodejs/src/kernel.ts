@@ -85,6 +85,7 @@ import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtPath } from "./dependency-injection.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import { refuseRelativeHostPaths } from "./host-paths.js";
+import { refuseMalformedFormats } from "./telo-format-results.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
   computeAnalysisSignature,
@@ -2022,6 +2023,12 @@ export class Kernel implements IKernel {
     // Validation saw an expression's placeholder; its result is known only now.
     if (compile.length) {
       refuseRelativeHostPaths(
+        processedResource as Record<string, unknown>,
+        configSchema as Record<string, any>,
+        resourceLabel,
+        schemaForRef,
+      );
+      refuseMalformedFormats(
         processedResource as Record<string, unknown>,
         configSchema as Record<string, any>,
         resourceLabel,
