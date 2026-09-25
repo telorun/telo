@@ -1,5 +1,21 @@
 # @telorun/studio
 
+## 0.20.3
+
+### Patch Changes
+
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+- Updated dependencies [5c3ec2f]
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+  - @telorun/analyzer@0.83.0
+  - @telorun/templating@0.24.0
+  - @telorun/sdk@0.101.0
+  - @telorun/ide-support@0.23.0
+  - @telorun/debug-wire@0.4.2
+  - @telorun/debug-ui@0.6.4
+
 ## 0.20.2
 
 ### Patch Changes

@@ -1,5 +1,19 @@
 # telo-kernel
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+- Updated dependencies [5c3ec2f]
+- Updated dependencies [cd12e1b]
+- Updated dependencies [cf3d802]
+- Updated dependencies [cf3d802]
+  - @telorun/analyzer@0.83.0
+  - @telorun/kernel@0.101.0
+  - @telorun/ide-support@0.23.0
+
 ## 0.3.2
 
 ### Patch Changes
