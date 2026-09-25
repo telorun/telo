@@ -1,8 +1,0 @@
-modules:
-  modules/sql: Added
-body: "The SQL dialect gains a required member, renderCurrentTimeMillis(): an SQL
-  expression for the database's current wall-clock time in integer epoch milliseconds,
-  read when the statement runs. It lets a consumer measure ages on the database's one
-  clock rather than each host's. Breaking for third-party SQL backends: a dialect must
-  now supply it, and a consumer that needs it (the SQL journal store) refuses a
-  connection whose dialect lacks it."

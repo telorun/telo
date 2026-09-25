@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-09-25
+### Added
+* The replay journal now runs over a pluggable store. RecordStream.Journal requires a store: (a new RecordStream.JournalStore abstract whose eight primitives include wait(key, version, timeoutMs, cancellation) with a required cancellation token; RecordStream.MemoryJournalStore serves one process) and a retention:, and takes an optional writerTimeout: (30s when omitted) — a journal declared without store: or retention: no longer loads. New RecordStream.JournalRemoval removes a key, and RecordStream.JournalExpiry applies retention from a schedule. JournalSink claims its key and heartbeats while draining, and re-raises its input's own error unchanged, outside its throws:. JournalSource declares only ERR_JOURNAL_KEY_REMOVED (a key removed at open); its stream distinguishes live, finished, failed (re-raising the recorded error with its code), removed and abandoned keys, and ends when its consumer stops or its invocation is cancelled (ERR_INVOKE_CANCELLED). New codes: ERR_JOURNAL_KEY_BUSY, ERR_JOURNAL_KEY_REMOVED, ERR_JOURNAL_WRITER_LOST. Records replay with their CEL types (int64, bytes). The store contract and journal protocol ship as the @telorun/record-stream module library.
+
 ## 0.15.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

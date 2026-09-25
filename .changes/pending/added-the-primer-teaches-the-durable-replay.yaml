@@ -1,7 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: "The primer teaches the durable replay journal: a journal needs store: and
-  retention:, the in-memory store versus a durable one, JournalRemoval and its outcome,
-  JournalExpiry triggered from a schedule, the reader states, writerTimeout (30s when
-  omitted), and the codes ERR_JOURNAL_KEY_REMOVED (map it in catches:, e.g. 410),
-  ERR_JOURNAL_WRITER_LOST and ERR_JOURNAL_KEY_BUSY."
