@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 - 2026-09-26
+### Added
+* Ai.AgentStream's output is declared as a stream of the exported Ai.AgentStreamPart shape, and changes shape: each model call now ends with a step-finish part carrying that call's usage and finish reason (the terminal finish carries their sum), provider-state parts are forwarded instead of withheld, and a new providerState input reaches the first model call. A tool call keeps one id for the whole run — the tool-call part, the replayed assistant message and the tool result carry the same one, and a model that gives none gets a generated call_<uuid> instead of the old call_<step>_<index>. Tool providers' callTool receives the agent invocation's context and Ai.Tools passes it into the tool's invocation, so cancelling a run stops the running tool; a cancellation or a durable suspension from a tool now ends both agent kinds even under onToolError feedback, where it used to become an error result. A model stream ending without a finish part is refused with ERR_CONTRACT_VIOLATION.
+
 ## 0.20.1 - 2026-09-17
 ### Fixed
 * A CEL value JSON has no form for is written in its plain encoding where it leaves for a reader outside Telo - an SSE data payload, an NDJSON line, an MCP tool call's arguments and a structured tool result fed back to a model - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url, a uint as its digits, where a duration used to be written as an empty object.

@@ -1,9 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The system primer teaches RecordStream.EndHandler and RecordStream.StreamOutcome,
-  tells the agent never to write the deprecated RecordStream.OnComplete, documents
-  RecordStream.JournalSink resume and the key states it accepts, and no longer claims a
-  journal reader stops when an HTTP client disconnects. It also teaches
-  Ai.AgentStreamPart — its part order, the per-call step-finish usage, stable tool-call
-  ids, forwarded provider state and the providerState input — and that cancelling a run
-  reaches the running tool and ends both agent kinds with ERR_INVOKE_CANCELLED.

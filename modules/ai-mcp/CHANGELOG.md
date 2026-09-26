@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-09-26
+### Fixed
+* AiMcp.ToolProvider runs tools/call under the agent turn's context and abandons the call with ERR_INVOKE_CANCELLED when that turn is cancelled, instead of leaving the agent waiting on a tool nobody wants any more.
+
 ## 0.11.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.

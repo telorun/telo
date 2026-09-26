@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0 - 2026-09-26
+### Added
+* The agent keeps its state in AGENT_STATE_DIR (default <WORKSPACE_DIR>/.telo-agent), as agent.sqlite, so a restart on the same workspace keeps its conversations; the directory is hidden from GET /workspace, the WORKSPACE STATE listing and list_dir. Breaking: the chat library's dbFile variable is replaced by a required stateDir host path, workspaceDir is a required host path, and the store no longer lives in ./tmp (not migrated). POST /chat takes an optional Idempotency-Key header: a repeat returns the original turnId. Its refusals are coded: 429 ERR_RATE_LIMITED and ERR_AT_CAPACITY with retryAfter, 409 ERR_TURN_IN_PROGRESS with activeTurnId, 409 ERR_IDEMPOTENCY_KEY_IN_FLIGHT, 422 ERR_IDEMPOTENCY_KEY_REUSED; a refused start writes no user row.
+* The system primer teaches RecordStream.EndHandler and RecordStream.StreamOutcome, tells the agent never to write the deprecated RecordStream.OnComplete, documents RecordStream.JournalSink resume and the key states it accepts, and no longer claims a journal reader stops when an HTTP client disconnects. It also teaches Ai.AgentStreamPart — its part order, the per-call step-finish usage, stable tool-call ids, forwarded provider state and the providerState input — and that cancelling a run reaches the running tool and ends both agent kinds with ERR_INVOKE_CANCELLED.
+
 ## 0.13.0 - 2026-09-25
 ### Added
 * The primer covers the html module's serialization readback: Markup and Extraction html fields write a tree only when its markup reads back as the same tree, naming the first differing node otherwise; node names follow the parser's case rules; the SafeTree refusal codes a policy can hit are listed: HTML_SANITIZE_RAW_TEXT_ELEMENT, HTML_SANITIZE_NOT_AN_HTML_ELEMENT, HTML_SANITIZE_SCRIPT_PROTOCOL, HTML_SANITIZE_EVENT_HANDLER, HTML_SANITIZE_EVENT_HANDLER_FORCED, HTML_SANITIZE_UNKNOWN_ELEMENT and HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED.
