@@ -1,0 +1,373 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://telo.run/schemas/editor-protocol.json",
+  "title": "Telo editor protocol, generation 1",
+  "description": "The messages an editor host and a telo language-server engine exchange beyond LSP itself. Each host-served request (engine to host) has a `<Name>Params` and a `<Name>Result` definition; `RequirementsParams` is the engine-to-host `telo/requirements` notification; `TeloDiagnosticData` is what an engine puts in `Diagnostic.data`; `ExperimentalCapabilities` is what an engine advertises under `ServerCapabilities.experimental`. `x-telo-methods` maps each method name to its definitions. Objects are open and enumerations list the values known to this generation: a receiver ignores a member it does not know and reads an unknown enumeration value as its least-capable value (README.md, Generations). See README.md for the handshake and the generation rule.",
+  "x-telo-methods": {
+    "telo/read": {
+      "params": "#/$defs/ReadParams",
+      "result": "#/$defs/ReadResult"
+    },
+    "telo/exists": {
+      "params": "#/$defs/ExistsParams",
+      "result": "#/$defs/ExistsResult"
+    },
+    "telo/listDirectory": {
+      "params": "#/$defs/ListDirectoryParams",
+      "result": "#/$defs/ListDirectoryResult"
+    },
+    "telo/hub/searchRefs": {
+      "params": "#/$defs/SearchRefsParams",
+      "result": "#/$defs/SearchRefsResult"
+    },
+    "telo/hub/listVersions": {
+      "params": "#/$defs/ListVersionsParams",
+      "result": "#/$defs/ListVersionsResult"
+    },
+    "telo/requirements": {
+      "params": "#/$defs/RequirementsParams"
+    }
+  },
+  "$defs": {
+    "ExperimentalCapabilities": {
+      "type": "object",
+      "required": [
+        "telo"
+      ],
+      "properties": {
+        "telo": {
+          "type": "object",
+          "required": [
+            "protocol"
+          ],
+          "properties": {
+            "protocol": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The protocol generation the engine speaks."
+            }
+          }
+        }
+      }
+    },
+    "ReadParams": {
+      "type": "object",
+      "required": [
+        "uri"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "description": "A document URI (`file:///…`) or an import source (`oci://…`, `https://…`)."
+        }
+      }
+    },
+    "ReadResult": {
+      "description": "The text and the canonical location it was read from (a directory resolves to its `telo.yaml`), or null when nothing exists at the URI.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "uri",
+            "text"
+          ],
+          "properties": {
+            "uri": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ExistsParams": {
+      "type": "object",
+      "required": [
+        "base",
+        "relative"
+      ],
+      "properties": {
+        "base": {
+          "type": "string",
+          "description": "URI of a file; `relative` resolves against its directory."
+        },
+        "relative": {
+          "type": "string"
+        }
+      }
+    },
+    "ExistsResult": {
+      "type": "boolean"
+    },
+    "ListDirectoryParams": {
+      "type": "object",
+      "required": [
+        "uri"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string"
+        }
+      }
+    },
+    "DirectoryEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "description": "What the entry is, read without following a link: a symbolic link is `symlink` whatever it points at. A receiver reads a kind it does not know as `other`.",
+          "anyOf": [
+            {
+              "enum": [
+                "file",
+                "directory",
+                "symlink",
+                "other"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "ListDirectoryResult": {
+      "description": "The entries, or null when the URI names nothing or names a file.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DirectoryEntry"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "SearchRefsParams": {
+      "type": "object",
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string"
+        }
+      }
+    },
+    "HubRef": {
+      "type": "object",
+      "required": [
+        "ref",
+        "latestVersion"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "latestVersion": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "SearchRefsResult": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/HubRef"
+      }
+    },
+    "ListVersionsParams": {
+      "type": "object",
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string"
+        }
+      }
+    },
+    "ModuleVersion": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "integrity": {
+          "type": "string",
+          "pattern": "^sha256-[A-Za-z0-9_-]{43}$",
+          "description": "Canonical import pin: `sha256-` and 43 base64url characters."
+        }
+      }
+    },
+    "ListVersionsResult": {
+      "description": "Newest first; empty for a ref the hub does not track.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModuleVersion"
+      }
+    },
+    "VersionBound": {
+      "type": "object",
+      "required": [
+        "version",
+        "inclusive"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "inclusive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "VersionInterval": {
+      "description": "A `requires: telo:` range reduced to its edges; an absent edge is open.",
+      "type": "object",
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/VersionBound"
+        },
+        "max": {
+          "$ref": "#/$defs/VersionBound"
+        }
+      }
+    },
+    "RequirementsRange": {
+      "type": "object",
+      "required": [
+        "module",
+        "text",
+        "interval"
+      ],
+      "properties": {
+        "module": {
+          "type": "string",
+          "description": "URI of the module document declaring the range."
+        },
+        "text": {
+          "type": "string",
+          "description": "The range as written."
+        },
+        "interval": {
+          "$ref": "#/$defs/VersionInterval"
+        }
+      }
+    },
+    "RequirementsParams": {
+      "type": "object",
+      "required": [
+        "owner",
+        "documents",
+        "ranges"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ranges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RequirementsRange"
+          }
+        }
+      }
+    },
+    "DiagnosticFix": {
+      "type": "object",
+      "required": [
+        "replacement"
+      ],
+      "properties": {
+        "replacement": {
+          "type": "string"
+        },
+        "tag": {
+          "description": "The YAML tag the replacement is written behind. A receiver that does not know a tag offers no fix for it.",
+          "anyOf": [
+            {
+              "enum": [
+                "ref",
+                "cel",
+                "module-path"
+              ]
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "TeloDiagnosticData": {
+      "type": "object",
+      "properties": {
+        "fix": {
+          "$ref": "#/$defs/DiagnosticFix"
+        },
+        "resource": {
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "UpgradeImportsArguments": {
+      "type": "object",
+      "required": [
+        "uri",
+        "aliases"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

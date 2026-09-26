@@ -32,10 +32,6 @@ import type {
 import { loadDeploymentsForWorkspace } from "../storage-deployments";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
-import {
-  setActiveSettings,
-  setActiveWorkspaceAdapter,
-} from "../components/views/source/provider-state";
 import type { PersistedEditorState } from "./useEditorPersistence";
 
 /** A resolved remote-open plan (root + same-origin relative cascade), held
@@ -383,17 +379,6 @@ export function useWorkspaceLifecycle({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.workspace?.rootDir]);
-
-  // Keep the source-view completion provider's side-channel refs in sync with
-  // the current workspace adapter + settings. The provider needs the
-  // WorkspaceAdapter (to list directories for relative-path completion) and
-  // the registry server list (to fan out search/version queries). Both are
-  // ambient at the time a completion request fires — refs avoid re-registering
-  // the Monaco provider on every workspace/settings change.
-  useEffect(() => {
-    setActiveWorkspaceAdapter(workspaceAdapterRef.current ?? undefined);
-    setActiveSettings(settings);
-  }, [state.workspace, settings]);
 
   async function handleOpen() {
     setError(null);

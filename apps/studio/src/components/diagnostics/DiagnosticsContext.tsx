@@ -1,10 +1,9 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { Range } from "@telorun/analyzer";
-import type { WorkspaceDiagnostics } from "../../analysis";
+import { emptyDiagnostics, type WorkspaceDiagnostics } from "../../language/engine-diagnostics";
 
 export interface DiagnosticsContextValue {
-  /** Opens the source view for `filePath` and reveals `range` when present.
-   *  No-ops when `filePath` is the UNKNOWN_FILE_KEY sentinel. */
+  /** Opens the source view for `filePath` and reveals `range` when present. */
   navigate: (filePath: string, range?: Range) => void;
   /** Current workspace diagnostics snapshot. Carried on the same context so
    *  UI sites can call aggregation helpers (summarizeResource, summarizeFiles)
@@ -40,6 +39,8 @@ export function useDiagnosticsContext(): DiagnosticsContextValue | null {
   return useContext(DiagnosticsContext);
 }
 
+const EMPTY = emptyDiagnostics();
+
 /** Convenience: returns a pseudo-EditorState slice suitable for passing to
  *  the aggregation helpers (summarizeResource, summarizeFiles). Returns an
  *  empty WorkspaceDiagnostics if the context is absent, so call sites don't
@@ -47,16 +48,7 @@ export function useDiagnosticsContext(): DiagnosticsContextValue | null {
 export function useDiagnosticsState(): { diagnostics: WorkspaceDiagnostics } {
   const ctx = useContext(DiagnosticsContext);
   if (ctx) return { diagnostics: ctx.diagnostics };
-  return {
-    diagnostics: {
-      byResource: new Map(),
-      byFile: new Map(),
-      registryByFile: new Map(),
-      graphByFile: new Map(),
-      analysisByFile: new Map(),
-      moduleGraphByFile: new Map(),
-    },
-  };
+  return { diagnostics: EMPTY };
 }
 
 /** Active module's file paths (owner + partials). Empty array when no module

@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: Billing
+  version: 1.0.0
+requires:
+  telo: ">=0.100.0"
+imports:
+  Ledger: ../ledger
+include:
+  - handlers.yaml
+targets:
+  - !ref charge
+---
+kind: Telo.Function
+metadata:
+  name: withVat
+  description: Adds VAT to a net price.
+params:
+  - name: net
+    schema: { type: number }
+returns:
+  schema: { type: number }
+body: !cel "net * 1.23"

@@ -1,6 +1,6 @@
 import type { ModuleVersionLookup } from "@telorun/ide-support";
 import { useMemo } from "react";
-import { fetchHubVersions, type ModuleVersion } from "../../hub-search";
+import { hubClient, type ModuleVersion } from "../../hub-search";
 
 /** How long a module's version list stays usable before the hub is asked again.
  *  The Imports view re-derives its affordances on every analysis pass, and a
@@ -54,6 +54,7 @@ function cacheFor(hubUrl: string | undefined): Map<string, Entry> {
 export function useModuleVersions(hubUrl: string | undefined): ModuleVersionLookup {
   return useMemo(() => {
     const byRef = cacheFor(hubUrl);
+    const hub = hubClient(hubUrl);
     return (baseRef) => {
       const now = Date.now();
       const hit = byRef.get(baseRef);
@@ -61,7 +62,7 @@ export function useModuleVersions(hubUrl: string | undefined): ModuleVersionLook
         return hit.versions;
       }
 
-      const versions = fetchHubVersions(hubUrl, baseRef);
+      const versions = hub.listVersions(baseRef);
       const entry: Entry = { at: now, versions };
       byRef.set(baseRef, entry);
       // Demote THIS entry, never whatever is in the map when the rejection

@@ -1,0 +1,54 @@
+{
+  "name": "@telorun/language-host",
+  "version": "0.0.0",
+  "description": "The editor-side half of telo's language tooling: chooses the telo version a module is edited against, fetches and verifies that version's language-server engine, and routes one LSP endpoint across engines.",
+  "keywords": [
+    "telo",
+    "lsp",
+    "language-server",
+    "editor"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "packages/language-host"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "prepack": "cp ../../LICENSE .",
+    "postpack": "rm -f LICENSE"
+  },
+  "dependencies": {
+    "@telorun/editor-protocol": "workspace:*",
+    "vscode-languageserver-protocol": "3.18.4"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

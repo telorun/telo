@@ -126,17 +126,21 @@ export function sliceOf(fileText: string, node: AstNode): YamlSlice {
   return { start, end, text, indent, trailing, eol };
 }
 
-/** The file text with `edited` written back over the slice's span. Continuation
- *  lines are re-indented — including ones the user added, which is what makes a
- *  line typed at the pane's left margin land at the node's own depth. */
-export function spliceSlice(fileText: string, slice: YamlSlice, edited: string): string {
+/** `edited` as it is written into the file: continuation lines re-indented —
+ *  including ones the user added, which is what makes a line typed at the
+ *  pane's left margin land at the node's own depth. */
+export function writtenSlice(slice: YamlSlice, edited: string): string {
   const lines = edited.split(/\r?\n/);
-  const reindented = [
+  return [
     lines[0],
     ...lines.slice(1).map((line) => (line.trim() === "" ? "" : slice.indent + line)),
   ].join(slice.eol);
+}
+
+/** The file text with `edited` written back over the slice's span. */
+export function spliceSlice(fileText: string, slice: YamlSlice, edited: string): string {
   return (
-    fileText.slice(0, slice.start) + reindented + slice.trailing + fileText.slice(slice.end)
+    fileText.slice(0, slice.start) + writtenSlice(slice, edited) + slice.trailing + fileText.slice(slice.end)
   );
 }
 
@@ -144,11 +148,6 @@ export function spliceSlice(fileText: string, slice: YamlSlice, edited: string):
 export interface SlicePosition {
   line: number;
   character: number;
-}
-
-export interface SliceRange {
-  start: SlicePosition;
-  end: SlicePosition;
 }
 
 /** Line/character of an offset in `text`. */
@@ -162,35 +161,49 @@ function positionAt(text: string, offset: number): SlicePosition {
 }
 
 /**
- * Where a FILE range falls inside the slice, or null when it falls outside.
+ * Where a FILE position falls inside the slice, or undefined when it falls
+ * outside the span.
  *
  * Two shifts, and they differ per line: every line moves up by the slice's start
  * line, and the columns move by what was taken off the front — the slice's own
  * start column on the first line (whose leading whitespace lies before the span)
  * and the stripped indent on every line after it. Getting this wrong does not
- * fail loudly; it silently underlines the wrong text, which is worse than
- * showing nothing.
+ * fail loudly; it silently points at the wrong text, which is worse than
+ * pointing at nothing.
  */
-export function rangeInSlice(
+export function positionInSlice(
   fileText: string,
   slice: YamlSlice,
-  range: SliceRange,
-): SliceRange | null {
+  position: SlicePosition,
+): SlicePosition | undefined {
   const start = positionAt(fileText, slice.start);
-  const lineCount = fileText.slice(slice.start, slice.end).split("\n").length;
-  const lastLine = start.line + lineCount - 1;
-  if (range.end.line < start.line || range.start.line > lastLine) return null;
-
-  const shift = (position: SlicePosition): SlicePosition => {
-    const line = Math.max(0, Math.min(position.line, lastLine) - start.line);
-    const taken = position.line === start.line ? start.character : indentWidth(slice);
-    return { line, character: Math.max(0, position.character - taken) };
-  };
-  return { start: shift(range.start), end: shift(range.end) };
+  const end = positionAt(fileText, slice.end - slice.trailing.length);
+  if (position.line < start.line || position.line > end.line) return undefined;
+  if (position.line === start.line && position.character < start.character) return undefined;
+  if (position.line === end.line && position.character > end.character) return undefined;
+  const taken = position.line === start.line ? start.character : slice.indent.length;
+  return { line: position.line - start.line, character: Math.max(0, position.character - taken) };
 }
 
-function indentWidth(slice: YamlSlice): number {
-  return slice.indent.length;
+/** Where a slice position lies in the FILE — the inverse of {@link positionInSlice}. */
+export function positionInFile(fileText: string, slice: YamlSlice, position: SlicePosition): SlicePosition {
+  const start = positionAt(fileText, slice.start);
+  const taken = position.line === 0 ? start.character : slice.indent.length;
+  return { line: start.line + position.line, character: position.character + taken };
+}
+
+/** The span of the node `pointer` names in the resource `kind` / `name`, in
+ *  `fileText` as it is now; undefined when the text does not hold it. */
+export function sliceInText(
+  documents: AstDocument[],
+  fileText: string,
+  kind: string,
+  name: string,
+  pointer: string,
+): YamlSlice | undefined {
+  const doc = findResourceDocument(documents, kind, name);
+  const node = doc && nodeAtPointer(doc.root, pointer);
+  return node ? sliceOf(fileText, node) : undefined;
 }
 
 /** Finds the source span for one resource's `pointer` across the files a module

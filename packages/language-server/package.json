@@ -1,0 +1,65 @@
+{
+  "name": "@telorun/language-server",
+  "version": "0.101.0",
+  "description": "The telo language-server engine: every Telo diagnostic and editor feature of one telo version as a single self-contained, I/O-free ES module speaking LSP over a message port.",
+  "keywords": [
+    "telo",
+    "lsp",
+    "language-server",
+    "editor",
+    "yaml"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "packages/language-server"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "teloEditorProtocol": 1,
+  "teloInlines": [
+    "@telorun/analyzer",
+    "@telorun/editor-protocol",
+    "@telorun/glob",
+    "@telorun/ide-support",
+    "@telorun/sdk",
+    "@telorun/templating"
+  ],
+  "exports": {
+    ".": "./dist/language-server.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/language-server.mjs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "prepare": "node ../../scripts/generate-telo-version.mjs",
+    "prepack": "node scripts/check-engine-identity.mjs && cp ../../LICENSE .",
+    "postpack": "rm -f LICENSE"
+  },
+  "devDependencies": {
+    "@telorun/analyzer": "workspace:*",
+    "@telorun/editor-protocol": "workspace:*",
+    "@telorun/glob": "workspace:*",
+    "@telorun/ide-support": "workspace:*",
+    "@telorun/sdk": "workspace:*",
+    "@telorun/templating": "workspace:*",
+    "acorn": "^8.16.0",
+    "acorn-walk": "^8.3.5",
+    "ajv": "^8.17.1",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8",
+    "vscode-languageserver": "^10.1.2",
+    "vscode-languageserver-textdocument": "^1.0.15",
+    "yaml": "^2.8.3"
+  }
+}

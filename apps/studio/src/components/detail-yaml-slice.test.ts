@@ -1,7 +1,7 @@
 import { parseToAst } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import type { ModuleSourceFile } from "../model";
-import { locateSlice, rangeInSlice, spliceSlice } from "./detail-yaml-slice";
+import { locateSlice, positionInFile, positionInSlice, spliceSlice } from "./detail-yaml-slice";
 
 const TEXT = `kind: Run.Sequence
 metadata:
@@ -80,62 +80,37 @@ describe("locateSlice", () => {
   });
 });
 
-describe("rangeInSlice", () => {
+describe("positionInSlice / positionInFile", () => {
   // In TEXT, `invoke: !ref client` is line 6 (0-indexed) at column 4, and the
   // step slice at /steps/0 starts on line 4 at column 4 with a 4-space indent
   // stripped from its continuation lines.
   const stepSlice = () => locateSlice(files(), "Run.Sequence", "main", "/steps/0")!;
 
   it("shifts a continuation line by the stripped indent", () => {
-    const located = stepSlice();
-    const range = rangeInSlice(located.fileText, located.slice, {
-      start: { line: 6, character: 4 },
-      end: { line: 6, character: 10 },
-    });
-    expect(range).toEqual({
-      start: { line: 2, character: 0 },
-      end: { line: 2, character: 6 },
-    });
+    const { fileText, slice } = stepSlice();
+    expect(positionInSlice(fileText, slice, { line: 6, character: 10 })).toEqual({ line: 2, character: 6 });
+    expect(positionInFile(fileText, slice, { line: 2, character: 6 })).toEqual({ line: 6, character: 10 });
   });
 
   it("shifts the first line by the slice's own start column instead", () => {
     // The first line's leading whitespace lies BEFORE the span, so it is not
     // part of what was stripped.
-    const located = stepSlice();
-    const range = rangeInSlice(located.fileText, located.slice, {
-      start: { line: 4, character: 4 },
-      end: { line: 4, character: 8 },
-    });
-    expect(range).toEqual({
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 4 },
-    });
+    const { fileText, slice } = stepSlice();
+    expect(positionInSlice(fileText, slice, { line: 4, character: 8 })).toEqual({ line: 0, character: 4 });
+    expect(positionInFile(fileText, slice, { line: 0, character: 4 })).toEqual({ line: 4, character: 8 });
   });
 
-  it("drops a range outside the slice rather than clamping it", () => {
-    // Underlining a line the diagnostic says nothing about is worse than
-    // showing nothing.
-    const located = stepSlice();
-    const above = rangeInSlice(located.fileText, located.slice, {
-      start: { line: 1, character: 0 },
-      end: { line: 1, character: 8 },
-    });
-    const below = rangeInSlice(located.fileText, located.slice, {
-      start: { line: 17, character: 0 },
-      end: { line: 17, character: 4 },
-    });
-    expect(above).toBeNull();
-    expect(below).toBeNull();
+  it("answers outside for a position beyond the span rather than clamping it", () => {
+    // Pointing at a line the answer says nothing about is worse than nothing.
+    const { fileText, slice } = stepSlice();
+    expect(positionInSlice(fileText, slice, { line: 1, character: 0 })).toBeUndefined();
+    expect(positionInSlice(fileText, slice, { line: 17, character: 0 })).toBeUndefined();
+    expect(positionInSlice(fileText, slice, { line: 4, character: 2 })).toBeUndefined();
   });
 
-  it("maps a whole-document range one-to-one", () => {
-    const located = locateSlice(files(), "Run.Sequence", "main", "")!;
-    expect(
-      rangeInSlice(located.fileText, located.slice, {
-        start: { line: 2, character: 2 },
-        end: { line: 2, character: 6 },
-      }),
-    ).toEqual({ start: { line: 2, character: 2 }, end: { line: 2, character: 6 } });
+  it("maps a whole-document position one-to-one", () => {
+    const { fileText, slice } = locateSlice(files(), "Run.Sequence", "main", "")!;
+    expect(positionInSlice(fileText, slice, { line: 2, character: 6 })).toEqual({ line: 2, character: 6 });
   });
 });
 

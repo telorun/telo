@@ -5,6 +5,7 @@ import {
   lowerBound,
   parseVersionRange,
   rangeAccepts,
+  rangeInterval,
   upperBound,
 } from "../src/version-range.js";
 
@@ -117,6 +118,20 @@ describe("edges", () => {
 
   it("leaves an open range without an upper edge", () => {
     expect(upperBound(parsed(">=0.80.0"))).toBeUndefined();
+  });
+});
+
+describe("rangeInterval", () => {
+  // A host picking a telo version compares plain versions only, so the interval
+  // must carry each edge's inclusivity exactly — a tie keeps the exclusive one.
+  it("reduces a range to its binding edges with their inclusivity", () => {
+    expect(rangeInterval(parsed(">=0.40.0 >0.40.0 <=0.60.0 <0.50.0"))).toEqual({
+      min: { version: "0.40.0", inclusive: false },
+      max: { version: "0.50.0", inclusive: false },
+    });
+    expect(rangeInterval(parsed(">=0.100.0"))).toEqual({
+      min: { version: "0.100.0", inclusive: true },
+    });
   });
 });
 

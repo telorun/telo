@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: RemoteConsumer
+  version: 1.0.0
+imports:
+  Ledger: ../ledger
+  Remote: oci://registry.example.test/telo/remote@1.0.0
+targets:
+  - !ref tick
+  - !ref entry
+---
+kind: Remote.Tick
+metadata:
+  name: tick
+---
+kind: Ledger.Entry
+metadata:
+  name: entry
+amount: 1

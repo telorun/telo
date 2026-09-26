@@ -14,7 +14,6 @@ export type {
   ModuleVersionLookup,
 } from "./build-import-upgrades.js";
 export { moduleManifestCacheUrl } from "./manifest-cache-url.js";
-export { parseModuleVersions } from "./parse-module-versions.js";
 export { findImportEntries } from "./find-import-entries.js";
 export type {
   ImportEntry,

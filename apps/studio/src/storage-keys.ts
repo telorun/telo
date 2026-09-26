@@ -30,6 +30,9 @@ export const LOCAL_KEYS = {
   colorMode: "telo-studio:color-mode",
   previewNoticeDismissed: "telo-studio:preview-notice-dismissed:v1",
   agentSettings: "telo-studio:agent:settings:v1",
+  /** The last catalog of telo versions read from the engine registry, for
+   *  choosing an engine offline. */
+  engineCatalog: "telo-studio:engine-catalog:v1",
 } as const;
 
 /** `localStorage`, key prefixes — the tail is a workspace path or an id. */
@@ -39,6 +42,10 @@ export const LOCAL_PREFIXES = {
   history: "telo-studio:history:v1:",
   agentChat: "telo-studio:agent:chat:",
   agentConv: "telo-studio:agent:conv:",
+  /** The `telo.version` setting, one per workspace root. */
+  teloVersion: "telo-studio:telo-version:v1:",
+  /** Auto resolutions of each module's telo version, one entry per workspace root. */
+  engineResolutions: "telo-studio:engine-resolutions:v1:",
 } as const;
 
 /** `sessionStorage`, key prefixes — the tail is a run session id. Resume

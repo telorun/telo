@@ -2,7 +2,8 @@
  *  Powers the "Add import" dialog's autocomplete: the hub is the single source
  *  of importable modules (no per-registry fan-out). */
 
-import { parseModuleVersions, type ModuleVersion } from "@telorun/ide-support";
+import type { ModuleVersion } from "@telorun/ide-support";
+import { HubClient } from "@telorun/language-host";
 
 export type { ModuleVersion };
 
@@ -78,38 +79,18 @@ export async function searchHubModules(
   return (data.hits ?? []).filter((h) => h.module?.ref);
 }
 
-/** Every version the hub tracks for `baseRef`, newest first — the hub's
- *  ordering is authoritative, so index 0 is the latest.
+/** The hub's version lists, through the one reader every editor host shares.
  *
- *  `baseRef` must be the bare registered ref (`oci://ghcr.io/acme/telo-s3`,
- *  `oci://ghcr.io/telorun/console`); the hub matches it exactly. This is the only version source
- *  the editor has: a browser cannot speak the OCI protocol, so `tags/list` is
- *  out of reach and the hub's ingest is what holds the version list.
- *
- *  Returns `[]` for a module the hub does not track (404). Any other failure
- *  throws, so a caller can tell an outage or a misconfigured hub from a module
- *  that genuinely has no versions. */
-export async function fetchHubVersions(
-  hubUrl: string | undefined,
-  baseRef: string,
-): Promise<ModuleVersion[]> {
-  const base = resolveHubUrl(hubUrl);
-  const url = `${base}/module/versions?ref=${encodeURIComponent(baseRef)}`;
-  let res: Response;
-  try {
-    res = await fetch(url, { headers: { accept: "application/json" } });
-  } catch (err) {
-    throw new Error(
-      `Could not reach the telo hub at ${base}: ${errText(err)}. Check the hub URL in settings (it must allow CORS).`,
-    );
-  }
-  if (res.status === 404) return [];
-  if (!res.ok) {
-    throw new Error(
-      `Hub version lookup for ${baseRef} failed at ${base}: HTTP ${res.status} ${res.statusText}.`,
-    );
-  }
-  return parseModuleVersions(await res.json());
+ *  `listVersions(baseRef)` answers every version the hub tracks, newest first —
+ *  the hub's ordering is authoritative, so index 0 is the latest. `baseRef` must
+ *  be the bare registered ref (`oci://ghcr.io/telorun/console`); the hub matches
+ *  it exactly. This is the only version source the editor has: a browser cannot
+ *  speak the OCI protocol, so `tags/list` is out of reach and the hub's ingest
+ *  is what holds the list. A module the hub does not track answers `[]`; any
+ *  other failure rejects naming the hub, so a caller can tell an outage or a
+ *  misconfigured hub from a module that genuinely has no versions. */
+export function hubClient(hubUrl: string | undefined): HubClient {
+  return new HubClient({ url: () => resolveHubUrl(hubUrl) });
 }
 
 /** The pinned import source for a hit: `<ref>@<version>` (e.g.

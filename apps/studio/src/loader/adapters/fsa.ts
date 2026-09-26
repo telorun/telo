@@ -81,7 +81,7 @@ export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
     }
     const result: DirEntry[] = [];
     for await (const [name, handle] of dir.entries()) {
-      result.push({ name: name as string, isDirectory: handle.kind === "directory" });
+      result.push({ name: name as string, isDirectory: handle.kind === "directory", kind: handle.kind });
     }
     return result;
   }

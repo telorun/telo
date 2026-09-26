@@ -3,71 +3,31 @@ import {
   StaticAnalyzer,
   collectModuleDocuments,
   flattenForAnalyzer,
-  importResolutionDiagnostics,
-  remapMigratedPaths,
-  type DocumentPosition,
   type ManifestAnalysis,
   type LoadedGraph,
   type ManifestSource,
   type ModuleGraph,
   type ZoneExportCache,
 } from "@telorun/analyzer";
-import { compromisedFiles, normalizeDiagnostic, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { isWorkspaceModule } from "./loader";
 import { createEditorLoader } from "./loader/subgraph";
 import { createWorkspaceDocumentSource } from "./loader/workspace-source";
 import type { Workspace } from "./model";
 
-/** Per-resource position lookup table built from the analysis graph, keyed by
- *  `${source}::${kind}::${name}`. `analyzeClosure` reads positions from this
- *  map to recover diagnostic ranges the analyzer didn't inline. */
-type PositionMap = Map<string, DocumentPosition>;
-
-/** Build the position side-table from a loaded graph. Mirrors the keys the
- *  diagnostic router looks up (`${file.source}::${kind}::${name}`). */
-function buildPositionMap(graph: LoadedGraph): PositionMap {
-  const positions: PositionMap = new Map();
-  for (const mod of graph.modules.values()) {
-    for (const file of [mod.owner, ...mod.partials]) {
-      for (let i = 0; i < file.manifests.length; i++) {
-        const m = file.manifests[i];
-        if (!m) continue;
-        const kind = (m as { kind?: unknown }).kind;
-        const name = (m.metadata as { name?: unknown } | undefined)?.name;
-        if (typeof kind === "string" && typeof name === "string" && name) {
-          positions.set(`${file.source}::${kind}::${name}`, file.positions[i]);
-        }
-      }
-    }
-  }
-  return positions;
-}
-
-/** Sentinel key used in `WorkspaceDiagnostics.byFile` when the analyzer emits
- *  a diagnostic that cannot be tied to any file (no `data.resource` and no
- *  `data.filePath`). Surfaced only by `summarizeWorkspace`; UI sites that key
- *  on file/resource identity skip it. */
-export const UNKNOWN_FILE_KEY = "__unknown__";
-
-export interface WorkspaceDiagnostics {
-  /** filePath → resourceName → diagnostics. Only diagnostics with
-   *  `data.resource.{kind,name}` that resolves to a known manifest.
-   *  Pre-normalized via `normalizeDiagnostic`, so every consumer reads the
-   *  same resolved `range` / `severity` / `code` without re-running the
-   *  fallback chain. */
-  byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
-  /** filePath → diagnostics NOT tied to a named resource. Includes
-   *  `UNKNOWN_FILE_KEY` when the analyzer gives us nothing to route on. */
-  byFile: Map<string, NormalizedDiagnostic[]>;
+/**
+ * The in-process model studio's structured views read — the topology and
+ * module graph, schema forms and their CEL editor, the template canvas,
+ * resource create and edit. It is built by studio's bundled analyzer. It
+ * produces NO diagnostics: every diagnostic studio shows is the engine's, for
+ * the telo version the module is edited against (`language/`).
+ */
+export interface WorkspaceAnalysis {
   /** filePath → the AnalysisRegistry of the closure that owns that file.
    *  Each Application (and each orphan library) is analyzed against its own
    *  registry so two apps importing different versions of the same library
-   *  never share — and thus never overwrite — each other's definitions. The
-   *  Monaco completion provider selects the registry for the active module. */
+   *  never share — and thus never overwrite — each other's definitions. */
   registryByFile: Map<string, AnalysisRegistry>;
-  /** filePath → the LoadedGraph of the owning closure. Retained (alongside the
-   *  registry) so cross-file features — go-to-definition — can resolve a `!ref`
-   *  target's source location across the graph's modules. Same first-closure-wins
+  /** filePath → the LoadedGraph of the owning closure. Same first-closure-wins
    *  routing as `registryByFile`. */
   graphByFile: Map<string, LoadedGraph>;
   /** filePath → the analysis of that file's closure, as a thunk so a closure
@@ -78,10 +38,19 @@ export interface WorkspaceDiagnostics {
   analysisByFile: Map<string, () => ManifestAnalysis>;
   /** filePath → the module graph of the closure that owns it: the boxes, rows
    *  and classed edges the topology canvas draws. Built from the SAME flattened
-   *  manifest set the checker ran over, so a node the canvas shows is a node the
-   *  diagnostics are about, and a cross-module reference is an ordinary edge
-   *  rather than an opaque leaf. Lazy, per closure, like `analysisByFile`. */
+   *  manifest set the analysis ran over, so a cross-module reference is an
+   *  ordinary edge rather than an opaque leaf. Lazy, per closure, like
+   *  `analysisByFile`. */
   moduleGraphByFile: Map<string, () => ModuleGraph>;
+}
+
+export function emptyAnalysis(): WorkspaceAnalysis {
+  return {
+    registryByFile: new Map(),
+    graphByFile: new Map(),
+    analysisByFile: new Map(),
+    moduleGraphByFile: new Map(),
+  };
 }
 
 /** The set of modules that anchor an independent analysis context: every
@@ -99,245 +68,39 @@ function computeClosureRoots(app: Workspace): string[] {
   return [...app.modules.keys()].filter((p) => isWorkspaceModule(app, p)).sort();
 }
 
-interface MergeAccumulators {
-  byResource: Map<string, Map<string, NormalizedDiagnostic[]>>;
-  byFile: Map<string, NormalizedDiagnostic[]>;
-  registryByFile: Map<string, AnalysisRegistry>;
-  graphByFile: Map<string, LoadedGraph>;
-  analysisByFile: Map<string, () => ManifestAnalysis>;
-  moduleGraphByFile: Map<string, () => ModuleGraph>;
-  /** Dedup key set for diagnostics that route to no file at all. */
-  unknownSeen: Set<string>;
-  /** External (registry/remote) files already claimed by an earlier closure.
-   *  Such files never anchor their own closure, so the first closure that
-   *  surfaces them owns their diagnostics (first-closure-wins). */
-  externalFilesClaimed: Set<string>;
-}
-
 /** Analyzes a single closure — the graph rooted at `root` — with its own
- *  registry and merges the results into the shared accumulators.
+ *  registry and records which files it serves.
  *
  *  The manifest list and resolved module identity come straight from the
- *  analyzer's `flattenForAnalyzer(graph)` — the same flatten the CLI's
- *  `telo check` runs — so the editor no longer re-derives forwarding,
- *  re-export, or `resolvedModuleName` stamping on its own.
- *
- *  Diagnostics for a WORKSPACE file are emitted only by the closure where that
- *  file is the root (its owner + `include:` partials), never by a consumer
- *  closure where the same file appears as a forwarded foreign dependency — its
- *  own closure already validates the full module. Every workspace file is the
- *  local root of exactly one closure, so this needs no cross-closure dedup.
- *
- *  EXTERNAL (registry/remote) files never anchor a closure, yet `telo check`
- *  validates and reports forwarded imported definitions against their source
- *  file. To match that — and to avoid silently swallowing those errors — an
- *  external file's diagnostics are emitted by the first closure that surfaces
- *  them (`externalFilesClaimed` enforces first-closure-wins). */
-function analyzeClosure(
-  app: Workspace,
-  graph: LoadedGraph,
-  acc: MergeAccumulators,
-  zoneExportCache?: ZoneExportCache,
-): void {
+ *  analyzer's `flattenForAnalyzer(graph)` — the same flatten `telo check`
+ *  runs. The analyzer runs to populate the registry (definitions, forwarded
+ *  imports, resolved kinds) the structured views read; its verdicts are not
+ *  kept. */
+function analyzeClosure(graph: LoadedGraph, acc: WorkspaceAnalysis, zoneExportCache?: ZoneExportCache): void {
   const manifests = flattenForAnalyzer(graph);
-  const positions = buildPositionMap(graph);
-
-  const analyzer = new StaticAnalyzer();
   const registry = new AnalysisRegistry();
   // `moduleDocuments` carries each imported library's full documents (the
   // flatten above forwards only export surfaces) so the zone stage can derive
   // an export's open requirements. The cache is HOST-lifetime — this registry
   // is fresh per closure per run, so a cache on it would die at the boundary
   // it exists to cross, and the editor re-analyzes on every keystroke.
-  // Analysis ran over the MIGRATED tree while positions come from the raw file,
-  // so every `data.path` is mapped back through the migration driver's
-  // provenance record before it is routed — the same call
-  // `assembleGraphDiagnostics` makes for the CLI and VS Code. A no-op when
-  // nothing in the closure was migrated. The migration deprecations themselves
-  // carry the author's path already and route by the same resource identity, so
-  // they join the list rather than needing routing of their own.
-  const diagnostics = [
-    ...graph.migrationDiagnostics,
-    ...remapMigratedPaths(
-      graph,
-      analyzer.analyze(
-        manifests,
-        { moduleDocuments: collectModuleDocuments(graph) },
-        registry,
-        zoneExportCache,
-      ),
-    ),
-  ];
-
-  // A file that fails to parse (mangled tree) or whose import failed to resolve
-  // (broken kind resolution) yields a spurious analyze cascade that would bury
-  // the real parse / import error (both routed separately below). Drop only
-  // those files' analysis diagnostics — via the SAME `compromisedFiles` policy
-  // VS Code applies through `assembleGraphDiagnostics`, so the editor and the
-  // extension suppress exactly the same set. Unlike the one-shot CLI, a closure
-  // spans many files, most still valid, so the rest keep full analysis and the
-  // registry stays populated.
-  const compromised = compromisedFiles(graph);
+  new StaticAnalyzer().analyze(
+    manifests,
+    { moduleDocuments: collectModuleDocuments(graph) },
+    registry,
+    zoneExportCache,
+  );
 
   // Files local to this closure's root: the entry module's owner + its
   // `include:` partials, keyed by the same `metadata.source` values
   // `flattenForAnalyzer` stamps (each file's canonical source).
-  const rootLocalFiles = new Set<string>();
-  rootLocalFiles.add(graph.entry.owner.source);
-  for (const p of graph.entry.partials) rootLocalFiles.add(p.source);
-
-  const sourceByManifest = new Map<string, string>();
+  const rootLocalFiles = new Set<string>([graph.entry.owner.source, ...graph.entry.partials.map((p) => p.source)]);
   const closureFiles = new Set<string>();
   for (const m of manifests) {
     const source = (m.metadata as { source?: string }).source;
-    if (source) {
-      sourceByManifest.set(`${m.kind}/${m.metadata.name}`, source);
-      closureFiles.add(source);
-    }
+    if (source) closureFiles.add(source);
   }
 
-  const appendByFile = (filePath: string, diag: NormalizedDiagnostic) => {
-    let bucket = acc.byFile.get(filePath);
-    if (!bucket) {
-      bucket = [];
-      acc.byFile.set(filePath, bucket);
-    }
-    bucket.push(diag);
-  };
-
-  // Whether this closure is the one that emits diagnostics for `file`. A
-  // workspace file is owned by the closure where it is the root (its own
-  // module); an external (registry/remote) file — which never anchors a
-  // closure — is owned by the first closure that surfaces it.
-  const claimsFile = (file: string): boolean => {
-    if (rootLocalFiles.has(file)) return true;
-    if (isWorkspaceModule(app, file)) return false;
-    return !acc.externalFilesClaimed.has(file);
-  };
-
-  for (const diag of diagnostics) {
-    const data = diag.data as
-      | { resource?: { kind?: string; name?: string }; filePath?: string }
-      | undefined;
-    const kind = data?.resource?.kind;
-    const name = data?.resource?.name;
-
-    // Resolve the owning file. The analyzer stamps the precise per-resource
-    // source on `data.filePath`; prefer it over the `${kind}/${name}`
-    // projection, which collapses resources that share a name across modules
-    // in the same closure (resource names are module-scoped, so two modules
-    // may each declare e.g. `Http.Server/main`). Fall back to the projection
-    // only when the diagnostic carries no `filePath`.
-    //
-    // The position side-table lets the normalizer recover ranges from
-    // `positionIndex` / `sourceLine` when the analyzer didn't include an
-    // inline `d.range`; it is keyed by the same per-doc source.
-    const stampedFilePath = data?.filePath;
-    const filePath =
-      kind && name ? (stampedFilePath ?? sourceByManifest.get(`${kind}/${name}`)) : undefined;
-    const routedFile = filePath ?? stampedFilePath;
-    if (routedFile && compromised.has(routedFile)) continue;
-    const ownerPosition =
-      filePath && kind && name ? positions.get(`${filePath}::${kind}::${name}`) : undefined;
-    const normalized = normalizeDiagnostic(diag, {
-      registry,
-      positionIndex: ownerPosition?.positionIndex,
-      sourceLine: ownerPosition?.sourceLine,
-    });
-
-    if (filePath) {
-      if (!claimsFile(filePath)) continue;
-      let moduleMap = acc.byResource.get(filePath);
-      if (!moduleMap) {
-        moduleMap = new Map();
-        acc.byResource.set(filePath, moduleMap);
-      }
-      let list = moduleMap.get(name!);
-      if (!list) {
-        list = [];
-        moduleMap.set(name!, list);
-      }
-      list.push(normalized);
-      continue;
-    }
-
-    // Fall through: no resource identity — route by data.filePath when this
-    // closure claims it, otherwise the unknown-file bucket (deduped across
-    // closures). A filePath this closure does not claim belongs to another.
-    if (stampedFilePath) {
-      if (!claimsFile(stampedFilePath)) continue;
-      appendByFile(stampedFilePath, normalized);
-      continue;
-    }
-    const dedupKey = `${normalized.code}::${normalized.message}`;
-    if (acc.unknownSeen.has(dedupKey)) continue;
-    acc.unknownSeen.add(dedupKey);
-    appendByFile(UNKNOWN_FILE_KEY, normalized);
-  }
-
-  // Version-reconciliation diagnostics are a property of the whole graph, not
-  // of any single closure's claimed files: a hoist/conflict is only visible
-  // from the importer that pulls both versions together (a sub-library analyzed
-  // standalone sees no skew). Route them straight to their `data.filePath`,
-  // bypassing `claimsFile`, and dedupe across closures by file+code+message so
-  // the same skew surfaces exactly once.
-  for (const vd of graph.versionDiagnostics) {
-    const filePath = (vd.data as { filePath?: string } | undefined)?.filePath;
-    if (!filePath) continue;
-    const dedupKey = `version::${filePath}::${vd.code}::${vd.message}`;
-    if (acc.unknownSeen.has(dedupKey)) continue;
-    acc.unknownSeen.add(dedupKey);
-    const moduleDocPos = graph.modules.get(filePath)?.owner.positions[0];
-    appendByFile(
-      filePath,
-      normalizeDiagnostic(vd, {
-        registry,
-        positionIndex: moduleDocPos?.positionIndex,
-        sourceLine: moduleDocPos?.sourceLine,
-      }),
-    );
-  }
-
-  // Import-resolution failures (`graph.errors`) are graph-level like version
-  // diagnostics — a broken import is only visible from the importer that
-  // declares it. Converted through the shared `importResolutionDiagnostics` (the
-  // same one the CLI/VS Code hosts use), routed to `data.filePath`, deduped
-  // across closures, and anchored at `imports.<alias>` via the module doc's
-  // position index.
-  for (const id of importResolutionDiagnostics(graph)) {
-    const filePath = (id.data as { filePath?: string } | undefined)?.filePath;
-    if (!filePath) continue;
-    const dedupKey = `import::${filePath}::${id.code}::${id.message}`;
-    if (acc.unknownSeen.has(dedupKey)) continue;
-    acc.unknownSeen.add(dedupKey);
-    const moduleDocPos = graph.modules.get(filePath)?.owner.positions[0];
-    appendByFile(
-      filePath,
-      normalizeDiagnostic(id, {
-        registry,
-        positionIndex: moduleDocPos?.positionIndex,
-        sourceLine: moduleDocPos?.sourceLine,
-      }),
-    );
-  }
-
-  // Parse-failure diagnostics are graph-level too: a file that fails to parse
-  // yields a mangled manifest tree no closure claims. Route by `data.filePath`,
-  // carrying the diagnostic's own YAML-reported range.
-  for (const pd of graph.parseDiagnostics) {
-    const filePath = (pd.data as { filePath?: string } | undefined)?.filePath;
-    if (!filePath) continue;
-    const dedupKey = `parse::${filePath}::${pd.code}::${pd.message}`;
-    if (acc.unknownSeen.has(dedupKey)) continue;
-    acc.unknownSeen.add(dedupKey);
-    appendByFile(filePath, normalizeDiagnostic(pd, { registry }));
-  }
-
-  // Registry routing: a root-local file resolves completions against THIS
-  // closure's registry (its own definitions + forwarded imports) — authoritative,
-  // so it wins regardless of closure order. Other closure files (forwarded
-  // foreign deps, including read-only external modules that never anchor a
-  // closure) take the first registry that references them as a fallback.
   // Built lazily and once per closure, so a closure whose files are never
   // opened costs nothing and one that is opened builds its indices a single
   // time rather than per keystroke.
@@ -369,6 +132,10 @@ function analyzeClosure(
     return moduleGraph;
   };
 
+  // A root-local file resolves against THIS closure's registry — authoritative,
+  // so it wins regardless of closure order. Other closure files (forwarded
+  // foreign deps, including read-only external modules that never anchor a
+  // closure) take the first registry that references them.
   for (const f of rootLocalFiles) {
     acc.registryByFile.set(f, registry);
     acc.graphByFile.set(f, graph);
@@ -376,9 +143,6 @@ function analyzeClosure(
     acc.moduleGraphByFile.set(f, moduleGraphOf);
   }
   for (const f of closureFiles) {
-    // External files surfaced here are now owned by this closure; later
-    // closures importing the same dependency defer to it (first-closure-wins).
-    if (!rootLocalFiles.has(f) && !isWorkspaceModule(app, f)) acc.externalFilesClaimed.add(f);
     if (!acc.registryByFile.has(f)) acc.registryByFile.set(f, registry);
     if (!acc.graphByFile.has(f)) acc.graphByFile.set(f, graph);
     if (!acc.analysisByFile.has(f)) acc.analysisByFile.set(f, analysisOf);
@@ -387,15 +151,13 @@ function analyzeClosure(
 }
 
 /**
- * Runs static analysis on the entire Workspace and returns diagnostics routed
- * into resource-scoped and file-scoped buckets.
+ * Builds the structured views' model of the entire Workspace.
  *
  * Each workspace-local module anchors its own analysis closure. For each, the
  * editor drives the analyzer's own `Loader.loadGraph` + `flattenForAnalyzer`
  * pipeline — the exact one `telo check` uses — over an in-memory source backed
- * by the editor's live `documents` (so unsaved edits are analyzed and inline
- * imports are followed + flattened identically to the CLI). The editor no
- * longer maintains a parallel flatten/forwarding/identity implementation.
+ * by the editor's live `documents` (so unsaved edits are reflected and inline
+ * imports are followed + flattened identically to the CLI).
  *
  * Async because `loadGraph` reads through the source chain (the in-memory
  * documents, then the manifest + registry adapters for any transitive
@@ -411,17 +173,8 @@ export async function analyzeWorkspace(
    *  the user is editing invalidates by construction. Omit it and every run
    *  rebuilds each dependency's graph. */
   zoneExportCache?: ZoneExportCache,
-): Promise<WorkspaceDiagnostics> {
-  const acc: MergeAccumulators = {
-    byResource: new Map(),
-    byFile: new Map(),
-    registryByFile: new Map(),
-    graphByFile: new Map(),
-    analysisByFile: new Map(),
-    moduleGraphByFile: new Map(),
-    unknownSeen: new Set(),
-    externalFilesClaimed: new Set(),
-  };
+): Promise<WorkspaceAnalysis> {
+  const acc: WorkspaceAnalysis = emptyAnalysis();
 
   // One loader for the whole pass: its file cache parses each shared dependency
   // once across closures. A fresh loader per `analyzeWorkspace` call means the
@@ -434,18 +187,13 @@ export async function analyzeWorkspace(
     try {
       graph = await loader.loadGraph(root, { desugarImports: true, migrate: true });
     } catch (err) {
-      console.error(`Failed to load analysis graph for ${root}:`, err);
+      // The engine reports why this module cannot load; the structured views
+      // simply have no model for it.
+      console.error(`Failed to load the structured-view model for ${root}:`, err);
       continue;
     }
-    analyzeClosure(app, graph, acc, zoneExportCache);
+    analyzeClosure(graph, acc, zoneExportCache);
   }
 
-  return {
-    byResource: acc.byResource,
-    byFile: acc.byFile,
-    registryByFile: acc.registryByFile,
-    graphByFile: acc.graphByFile,
-    analysisByFile: acc.analysisByFile,
-    moduleGraphByFile: acc.moduleGraphByFile,
-  };
+  return acc;
 }

@@ -64,7 +64,7 @@ describe("materializeModule — blank", () => {
 
 describe("materializeModule — overwrite", () => {
   it("throws ModuleExistsError naming the directory when occupied", async () => {
-    const { adapter } = memAdapter({ "/ws/apps/notes": [{ name: "telo.yaml", isDirectory: false }] });
+    const { adapter } = memAdapter({ "/ws/apps/notes": [{ name: "telo.yaml", isDirectory: false, kind: "file" }] });
     await expect(
       materializeModule(adapter, "/ws", {
         kind: "Application",
@@ -76,7 +76,7 @@ describe("materializeModule — overwrite", () => {
   });
 
   it("detects a directory with content even without a telo.yaml", async () => {
-    const { adapter } = memAdapter({ "/ws/apps/notes": [{ name: "index.html", isDirectory: false }] });
+    const { adapter } = memAdapter({ "/ws/apps/notes": [{ name: "index.html", isDirectory: false, kind: "file" }] });
     await expect(
       materializeModule(adapter, "/ws", {
         kind: "Application",
@@ -89,7 +89,7 @@ describe("materializeModule — overwrite", () => {
 
   it("deletes then writes when overwrite is set", async () => {
     const { adapter, deleted, writes } = memAdapter({
-      "/ws/apps/notes": [{ name: "telo.yaml", isDirectory: false }],
+      "/ws/apps/notes": [{ name: "telo.yaml", isDirectory: false, kind: "file" }],
     });
     await materializeModule(adapter, "/ws", {
       kind: "Application",
@@ -106,7 +106,7 @@ describe("materializeModule — overwrite", () => {
 describe("materializeModule — atomicity", () => {
   it("does not delete the existing directory when the starter fetch fails", async () => {
     const { adapter, deleted, writes } = memAdapter({
-      "/ws/apps/notes": [{ name: "index.html", isDirectory: false }],
+      "/ws/apps/notes": [{ name: "index.html", isDirectory: false, kind: "file" }],
     });
     await expect(
       materializeModule(adapter, "/ws", {

@@ -86,7 +86,7 @@ describe("readManifestUrlParam", () => {
 describe("manifestExists", () => {
   it("detects an existing file in its directory", async () => {
     const adapter = listDirAdapter({
-      "/workspace/apps/hello": [{ name: "telo.yaml", isDirectory: false }],
+      "/workspace/apps/hello": [{ name: "telo.yaml", isDirectory: false, kind: "file" }],
     });
     expect(await manifestExists(adapter, "/workspace/apps/hello/telo.yaml")).toBe(true);
   });
