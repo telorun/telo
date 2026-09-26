@@ -72,6 +72,9 @@ metadata:
 source: ./__fixtures__/zone-deferred-at-consumer.yaml
 expect:
   errors: []
+  warnings:
+    - code: ZONE_REQUIREMENT_DEFERRED
+      message: "insertAccount → auditOnDone.handler"
 ---
 # `Cache.View.invoke` declares a case map on `/revalidate`. Under the default
 # `sync` the controller never detaches, so the requirement travels through and

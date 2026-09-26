@@ -27,6 +27,8 @@ exports:
     - AgentStream
     - ImageModel
     - Image
+  resources:
+    - AgentStreamPart
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/ai` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -204,6 +206,80 @@ schema:
     finishReason:
       description: Why generation ended, on the terminal `finish` part.
       $ref: "telo://Self/FinishReason"
+---
+# Ai.AgentStreamPart — what a streaming agent emits: the model's parts, plus what
+# only the loop knows. `step-finish` closes EACH model call with that call's usage
+# and finish reason, when its stream ends and before its tools run — a call a
+# cancellation interrupts before its `finish` reports none. `tool-result` reports a tool the agent ran.
+# `finish` is the one terminator, carrying the usage of every call summed. A
+# `tool-call` keeps its id for the whole run: the assistant message that replays it
+# and the `tool-result` answering it carry the same one. Exported so a consumer
+# (a handler persisting a transcript) types the records it reads by `!ref`.
+kind: Telo.JsonSchema
+metadata:
+  name: AgentStreamPart
+  description: One event of a streamed tool-use run — a text or reasoning delta, a completed content part, a tool call with its fixed id, opaque provider state, the usage of one model call, a tool's result, or the terminal record with the usage of every call summed.
+schema:
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties:
+    type:
+      type: string
+      enum:
+        - text-delta
+        - reasoning-delta
+        - content-part
+        - tool-call
+        - provider-state
+        - step-finish
+        - tool-result
+        - finish
+    delta:
+      type: string
+      description: The text a `text-delta` or `reasoning-delta` adds.
+    part:
+      description: The completed part a `content-part` carries.
+      $ref: "telo://Self/ContentPart"
+    toolCall:
+      description: >-
+        The call a `tool-call` part carries. Its id is the one the tool's result and
+        the replayed assistant message carry.
+      $ref: "telo://Self/ToolCall"
+    providerState:
+      description: >-
+        Opaque provider state, forwarded as the model produced it. Pass it back as
+        the next run's `providerState` input to continue the model's reasoning.
+    usage:
+      description: >-
+        On a `step-finish`, what that model call consumed; on the terminal `finish`,
+        the sum over every call.
+      $ref: "telo://Self/Usage"
+    finishReason:
+      description: Why the call (`step-finish`) or the run (`finish`) ended.
+      $ref: "telo://Self/FinishReason"
+    toolResult:
+      description: What a `tool-result` part carries — the executed call's result.
+      type: object
+      additionalProperties: false
+      required: [toolCallId, name, content]
+      properties:
+        toolCallId:
+          type: string
+          description: The id of the `tool-call` this answers.
+        name:
+          type: string
+          description: The tool's name as the model saw it.
+        content:
+          description: What was fed back to the model — text, or content parts.
+          anyOf:
+            - type: string
+            - type: array
+              items:
+                $ref: "telo://Self/ContentPart"
+        error:
+          type: boolean
+          description: True when the call failed and `content` is the error fed back.
 ---
 # Why generation ended. Declared once: it was restated in five places with four
 # different value sets, so a value one kind produced was rejected by the next —
@@ -610,8 +686,10 @@ schema:
 # Ai.ToolProvider — abstract source of callable tools, mounted into an Ai.Agent the
 # same way an Http.Api mounts into an Http.Server. Implementations expose a runtime
 # instance with two methods (documented convention, like Ai.Model's invoke/stream):
-#   listTools(): ToolDescriptor[]   — what to advertise to the model
-#   callTool(name, arguments): any  — dispatch a model-requested call
+#   listTools(): ToolDescriptor[]        — what to advertise to the model
+#   callTool(name, arguments, ctx): any  — dispatch a model-requested call; `ctx` is
+#                                          the agent invocation's context, handed on
+#                                          to the tool so a cancelled turn stops it
 # `Ai.Tools` (static list, here) and `AiMcp.ToolProvider` (MCP discovery, in
 # @telorun/ai-mcp) both implement it; the agent never learns which.
 kind: Telo.Abstract
@@ -825,7 +903,9 @@ schema:
       default: throw
     onToolError:
       title: On tool error
-      description: feedback → record the error and return it to the model; throw → abort the invoke.
+      description: >-
+        feedback → record the error and return it to the model; throw → abort the invoke.
+        A cancelled turn and a durable suspension are not tool errors and always propagate.
       type: string
       enum: [feedback, throw]
       default: feedback
@@ -879,16 +959,17 @@ schema:
 # convention) instead of a buffered object: the assistant's text streams token-by-token
 # and every tool call surfaces the moment it happens. Pipe `result.output` through a
 # format-codec encoder (Sse.Encoder / Ndjson.Encoder) in an Http.Api `mode: stream`
-# route to serve it over SSE. The stream carries a discriminated union of records:
-# `text-delta` | `tool-call` | `tool-result` | `finish` | `error`.
+# route to serve it over SSE. Each record is an Ai.AgentStreamPart. A failure — and a
+# cancelled turn, whose context also reaches every running tool — rejects the
+# iteration rather than yielding a record.
 kind: Telo.Definition
 metadata:
   name: AgentStream
   description: >-
     Runs a tool-use loop and emits it as it happens: assistant text deltas, every tool
-    call and its result, then a terminal finish. A failure rejects the iteration.
-    Same configuration as the
-    buffered loop, shaped for serving live output.
+    call with a stable id and its result, each model call's usage, then a terminal
+    finish with the total. Cancelling the run stops the model and any running tool;
+    a failure rejects the iteration.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController
@@ -904,7 +985,7 @@ throws:
         `model` did not resolve to a live model instance. A wiring failure, not a
         request failure.
     ERR_CONTRACT_VIOLATION:
-      description: A provider reported a token count that is not a representable integer.
+      description: A provider reported a token count that is not a representable integer, or a model stream ended without a `finish` part.
     ERR_AGENT_MAX_STEPS:
       description: >-
         The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
@@ -925,6 +1006,10 @@ inputType:
           $ref: "telo://Self/Message"
       system: { type: string }
       options: { type: object, additionalProperties: true }
+      providerState:
+        description: >-
+          Opaque state a previous run's `provider-state` part carried, handed
+          unchanged to the first model call.
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -932,12 +1017,16 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-type: Telo.Stream
+        x-telo-type:
+          name: Telo.Stream
+          of:
+            $ref: "telo://Self/AgentStreamPart"
         description: >-
-          Async iterable of AgentStreamPart records: `text-delta` (assistant text),
-          `tool-call` (a tool the model requested), `tool-result` (its execution
-          result: `{toolCallId, name, content, error?}`), then a terminal `finish`
-          (accumulated usage + finishReason) or `error`.
+          The run's parts in order: each model call's own parts (text and reasoning
+          deltas, content parts, tool calls, provider state) closed by a `step-finish`
+          with that call's usage, then a `tool-result` per tool it ran; after the last
+          call, one terminal `finish` with the usage of every call summed. A failure
+          or a cancelled turn rejects the iteration instead.
     required: [output]
     additionalProperties: false
 schema:
@@ -985,7 +1074,8 @@ schema:
       description: >-
         feedback → emit a tool-result with error:true and continue; throw → raise the
         tool's error, rejecting the iteration. Parts already emitted still reach the
-        consumer, and an encoder frames the rejection for the wire.
+        consumer, and an encoder frames the rejection for the wire. A cancelled turn and
+        a durable suspension are not tool errors and always propagate.
       type: string
       enum: [feedback, throw]
       default: feedback

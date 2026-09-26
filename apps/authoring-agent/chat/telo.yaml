@@ -14,26 +14,29 @@ metadata:
     reach the operator's key or registry credentials. Plus live Telo hub discovery tools (an
     AiMcp.ToolProvider over the hub's MCP endpoint — search_resources /
     get_module_manifest), SQLite conversation history, and the ChatHandler that
-    ties them together (persist user turn, replay history, stream the agent's
-    output, persist the assistant turn at end-of-stream). Exported so the app and
-    its tests drive the same handler. Parameterized by the OpenAI key and the
-    SQLite file; the workspace is ./workspace.
+    ties them together (admit a turn at most once per idempotency key, persist the
+    user turn, replay history, stream the agent's output, persist the assistant
+    turn at end-of-stream). Exported so the app and its tests drive the same
+    handler. Parameterized by the OpenAI key, the workspace directory and the
+    agent's state directory, which holds `agent.sqlite`.
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
   OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.15.1#sha256-Z6HrB5UBztVEilByoYh6Pe_TbQl3N-uhYLA0fzeQpJw
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.1#sha256-qOWJKsRw1H8vQiR8L0m3hnAsJf0otEPYMZ6yYzU_CbA
-  Fs: oci://ghcr.io/telorun/fs@0.10.1#sha256-pj5pToa-5CERdxQQpeRNYEJmtNWsNYIGKqehjamHXUo
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.5.1#sha256-EwMIFmqcg8lg56OCcySKg5NgZ4iNP7hX-no8pEfjV6c
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
   RecordStream: oci://ghcr.io/telorun/record-stream@0.15.4#sha256-L4b4EJ4vVPnHszy59Jy7WlZaldAk0kP2Z1sKYwDKhNg
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.7.0#sha256-i1Nen64mCl25XONkoBGRqiTptxBSBA8zBcW6om9autg
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
+  Idempotency: oci://ghcr.io/telorun/idempotency@0.10.0#sha256-PE0WF0dQRTcQvi8UbUNcvEoqBmwgH8xP_l661wTyt70
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.11.0#sha256-uL3TNWg-Pn3W3VIgrGhbdVUIE5U-mamF3h0LglLKGaM
 secrets:
   openaiApiKey:
     type: string
@@ -42,13 +45,19 @@ variables:
   # because a co-resident agent edits the SESSION's shared workspace volume, which
   # the runner mounts at a path of its choosing — the agent is one writer on that
   # volume beside the application containers, not the owner of a directory inside
-  # its own container. Defaults to the standalone layout.
+  # its own container. A host path the importer supplies absolute: the standalone
+  # default lives on the Application, which is where a relative path is anchored.
   workspaceDir:
     type: string
-    default: ./workspace
-  dbFile:
+    x-telo-type: Telo.HostPath
+  # The agent's own state — `agent.sqlite` (conversation history and the
+  # admission record `Idempotency-Key` replays from). The Application defaults it
+  # to `.telo-agent` inside the workspace, so a co-resident agent keeps its
+  # conversations on the session volume, which outlives the container. The
+  # directory is excluded from every listing the agent and its clients see.
+  stateDir:
     type: string
-    default: ./tmp/authoring-agent.sqlite
+    x-telo-type: Telo.HostPath
   model:
     type: string
     # THE model this agent runs on — declared once, here, and inherited by every
@@ -161,7 +170,7 @@ exports:
 ---
 kind: SQLite.Connection
 metadata: { name: chatDb }
-file: !cel "variables.dbFile"
+file: !cel "variables.stateDir.joinPath('agent.sqlite')"
 ---
 kind: SQLite.Schema
 metadata: { name: initSchema }
@@ -342,9 +351,10 @@ metadata: { name: stateStore }
 kind: KvStoreMemory.Store
 metadata: { name: leaseStore }
 ---
-# One in-flight turn per conversation. detach mode: the POST handler acquires and
-# gets { acquired } synchronously (200 vs 409), while the turn runs detached and
-# the lease frees on its terminal. ttl self-heals a conversation if a turn dies.
+# One in-flight turn per conversation, held in memory. detach mode: admission
+# acquires and learns { acquired } synchronously (ERR_TURN_IN_PROGRESS when not),
+# while the turn runs detached and the lease frees on its terminal. ttl
+# self-heals a conversation if a turn dies.
 kind: Lease.Critical
 metadata: { name: turnLock }
 store: !ref leaseStore
@@ -384,7 +394,7 @@ steps:
   - name: create
     invoke: !ref createDirectory
     inputs:
-      path: !cel "variables.workspaceDir"
+      path: !cel "string(variables.workspaceDir)"
       createParents: true
 ---
 kind: Shell.LocalHost
@@ -632,9 +642,10 @@ tools:
     name: list_dir
     description: >-
       List a directory relative to the workspace root; recursive optional, and
-      the whole root when `path` is omitted. Caches and vendor directories
-      (`.telo`, `node_modules`, `.git`, `dist`) are filtered out at any depth —
-      their absence from a listing is not evidence that files are missing.
+      the whole root when `path` is omitted. Caches, vendor directories and the
+      agent's own state (`.telo`, `node_modules`, `.git`, `dist`, `.telo-agent`)
+      are filtered out at any depth — their absence from a listing is not
+      evidence that files are missing.
     parameters:
       type: object
       additionalProperties: false
@@ -647,7 +658,7 @@ tools:
     inputs:
       path: !cel "'path' in arguments ? arguments.path : ''"
       recursive: !cel "'recursive' in arguments ? arguments.recursive : false"
-      exclude: [".telo", "node_modules", ".git", "dist", ".probes"]
+      exclude: [".telo", "node_modules", ".git", "dist", ".probes", ".telo-agent"]
   - tool: !ref removeFile
     name: delete_file
     description: >-
@@ -1010,6 +1021,26 @@ system: !literal |
   mounting one MUST cover its codes or end with a catch-all entry (no `when:`,
   placed last), or `telo check` reports UNCOVERED_THROW_CODE.
 
+  `Ai.AgentStream`'s `output` is a stream of `Ai.AgentStreamPart` records (an
+  exported shape — type a consumer's records with `items: !ref
+  Ai.AgentStreamPart`), discriminated by `type`: `text-delta`, `reasoning-delta`,
+  `content-part`, `tool-call`, `provider-state`, `step-finish`, `tool-result`,
+  `finish`. For one tool round the order is: the first model call's parts,
+  `step-finish` (that call's `usage` and `finishReason`), a `tool-result` per tool
+  it ran, the second call's parts, its `step-finish`, then ONE terminal `finish`
+  whose `usage` is the sum of every `step-finish`. Account for spend per call from
+  `step-finish`, not only from `finish`, which a cancelled or failed run never
+  reaches. A `tool-call`'s `toolCall.id` is fixed for the whole run — the
+  `tool-result`'s `toolResult.toolCallId` equals it (a generated `call_<uuid>` when
+  the model gives none). `provider-state` parts are forwarded as well as replayed
+  to the next call; keep the last one's `providerState` and pass it back as the
+  next run's `providerState` input to continue the model's reasoning. Cancelling
+  the invocation (a step's `timeout:`, a cancelled run) reaches the running model
+  call AND the running tool — `Ai.Tools` passes it into the tool's invocation,
+  `AiMcp.ToolProvider` into its `tools/call` — and both agent kinds end with
+  `ERR_INVOKE_CANCELLED` even under `onToolError: feedback`, which only turns
+  genuine tool failures into `error: true` results.
+
   `catches:` is declared per SCOPE, not only per route: `Http.Api` and
   `Http.Server` each take a list of their own, and a route's entries are tried
   first, then its router's, then the server's, then a built-in
@@ -1064,6 +1095,36 @@ system: !literal |
   `RecordStream.Tee` when one consumer is a per-value side effect such as
   printing command output live, because a Tee buffers whichever branch is
   drained second for the whole stream.
+
+  To act once a stream ENDS — persist a streamed reply, settle a budget, mark
+  work finished — wrap it in `RecordStream.EndHandler` (`{ input, context? }` →
+  `{ output }`, every item forwarded in order) with `handler: !ref <Invocable or
+  Run.Sequence>` and an `inputs:` map that builds the handler's arguments. The
+  handler runs exactly once, whichever way the stream ends; the map is CEL over
+  three bindings: `records` (everything forwarded up to the ending), `context`
+  (the caller's `context` input, `{}` when none) and `outcome`, a
+  `RecordStream.StreamOutcome` `{ state, error }` — `completed` (error null),
+  `failed` (error `{ code?, message, data? }`, code preserved), `cancelled` with
+  the `ERR_INVOKE_CANCELLED` error when the invocation was cancelled, or
+  `cancelled` with a null error when the consumer stopped reading:
+
+      kind: RecordStream.EndHandler
+      metadata: { name: persist }
+      handler: !ref persistTurn
+      inputs:
+        conversationId: !cel "context.conversationId"
+        status: !cel "outcome.state"
+        content: !cel "records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
+
+  The map is checked against the handler's `inputType` like any call site, so
+  declare exactly the keys you map there; a handler taking nothing gets
+  `inputs: {}`. `outcome.error` may be null — guard it
+  (`outcome.error != null && has(outcome.error.code) ? outcome.error.code : ''`).
+  The handler runs without
+  the stream's cancellation, so it can still write after a cancel; if it (or the
+  map) fails, the stream ends with that error. Never write
+  `RecordStream.OnComplete` — it is deprecated (`DEPRECATED_KIND`) and runs its
+  handler only on completion.
 
   A contract property carrying auth material is marked `x-telo-sensitive: true`
   on the `inputType` / `outputType` — the kernel then redacts it in trace
@@ -1815,8 +1876,8 @@ system: !literal |
     stopped heartbeating past its `writerTimeout`, `ERR_JOURNAL_KEY_REMOVED` when
     the key is removed mid-read, and `ERR_INVOKE_CANCELLED` when the invocation
     that opened it is cancelled. A key nobody has written yet is waited for, not
-    refused. The stream ends when its consumer stops (a client disconnecting) or
-    its invocation is cancelled — it never keeps polling for a reader that left.
+    refused. The stream ends when its consumer stops or its invocation is
+    cancelled.
   - `RecordStream.JournalRemoval` `{ key }` → `{ outcome: removed | unknown }`
     deletes one key's records (`removed` again when it already was).
   - `RecordStream.JournalExpiry` (no inputs) → `{ count }` applies `retention:`.
@@ -1825,6 +1886,15 @@ system: !literal |
   - A second sink on a key that exists raises `ERR_JOURNAL_KEY_BUSY`; a sink
     whose key was removed or declared abandoned raises
     `ERR_JOURNAL_KEY_REMOVED` / `ERR_JOURNAL_WRITER_LOST`.
+  - `resume: true` on the sink's inputs (`{ key, input, resume: true }`)
+    CONTINUES a key instead of refusing it, when its last writer failed or
+    stopped heartbeating past its timeout (that key is first failed as
+    `ERR_JOURNAL_WRITER_LOST`). The records already there are kept and new ids
+    follow the last one, so a reader reconnecting from its last id gets the
+    continuation and then the new ending; `count` is what this drain appended.
+    A never-written key is claimed as usual. A key whose writer is alive, and a
+    finished key, still raise `ERR_JOURNAL_KEY_BUSY`; a removed key raises
+    `ERR_JOURNAL_KEY_REMOVED`.
 
   ## Authenticating outbound HTTP
 
@@ -2732,6 +2802,12 @@ system: !literal |
     question (the version rides the ref — there is no `--version` flag), but
     they are the FALLBACK for when a hub tool errors or returns nothing, never
     the first move: discovery goes through the hub tools.
+  - NEVER read, write or delete anything under `.telo-agent/` at the workspace
+    root. It is YOUR OWN state — this conversation's history and the record that
+    stops a retried message starting a second turn — kept on the workspace volume
+    so it survives a restart. It is not the user's project: no listing shows it
+    and Studio never syncs it, and touching it corrupts the conversation you are
+    in.
 
   A loose `hello.yaml` at the workspace root still runs, but it is not a module
   studio can open: the scan matches `telo.yaml` alone. Put new work in
@@ -3005,8 +3081,8 @@ system: !literal |
     - `read_file` — read a file's contents.
     - `list_dir` — list a directory (optionally recursive), the workspace root
       when `path` is omitted. It never returns `.telo/`, `node_modules/`,
-      `.git/` or `dist/` at any depth, so a listing shows the files you author
-      and nothing else.
+      `.git/`, `dist/` or `.telo-agent/` at any depth, so a listing shows the
+      files you author and nothing else.
     - `delete_file` — delete a file (or a directory tree with `recursive`).
     - `telo_check` — run `telo check` on a manifest file on demand. Use it to
       re-validate files you did not just write — e.g. every file that referenced
@@ -3755,19 +3831,103 @@ steps:
       amount: !cel "size(inputs.records.filter(r, r.type == 'finish')) > 0 ? inputs.records.filter(r, r.type == 'finish')[0].usage.totalTokens : inputs.context.reserved"
       reserved: !cel "inputs.context.reserved"
 ---
-# POST /chat entry. Persists the user message under a fresh uuidv7 id (which
-# becomes the turnId), starts the agent turn DETACHED into the journal under
-# that turnId, and returns { turnId } immediately — off the response path.
-# The client then consumes GET /chat/{turnId}/events to stream the reply, so a
-# reload can re-attach and resume the pending turn.
+# POST /chat entry. Admits a turn — per-IP throttle, spend reservation, the
+# one-turn-per-conversation lease — and returns { turnId } immediately, the turn
+# itself running DETACHED into the journal under that id. The client then
+# consumes GET /chat/{turnId}/events to stream the reply, so a reload can
+# re-attach and resume the pending turn.
+#
+# With an Idempotency-Key the admission runs at most once per
+# `<conversationId>:<key>`: a repeat replays the original { turnId } instead of
+# starting a second turn, which is what makes a client's blind retry of a POST
+# that did land safe. The record lives on `agent.sqlite`, so it survives a
+# restart. A refused admission throws, which releases the key — a retry after a
+# 429 is a new attempt, not a replay of the refusal.
 kind: Run.Sequence
 metadata: { name: chatStart }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
+    required: [conversationId, message, clientIp, idempotencyKey]
     properties:
       conversationId: { type: string }
+      message: { type: string }
+      clientIp: { type: string }
+      # Empty when the request carried no Idempotency-Key header.
+      idempotencyKey: { type: string, maxLength: 255 }
+steps:
+  # Minted outside the idempotent region: the id a fresh admission uses, and
+  # unused when a repeat replays the one the first admission settled.
+  - name: turn
+    value:
+      id: !cel "uuidv7()"
+  - name: admission
+    if: !cel "inputs.idempotencyKey == ''"
+    then:
+      - name: direct
+        invoke: !ref admitTurn
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+          turnId: !cel "steps.turn.result.id"
+          message: !cel "inputs.message"
+          clientIp: !cel "inputs.clientIp"
+    else:
+      - name: once
+        invoke:
+          kind: Idempotency.Once
+          store:
+            kind: KvStoreSql.Store
+            connection: !ref chatDb
+            table: turn_admissions
+          # Admission is milliseconds of work; the claim only has to outlive a
+          # holder that died mid-admission.
+          claimTtl: 30s
+          ttl: 24h
+          invoke: !ref admitTurn
+        inputs:
+          key: !cel "inputs.conversationId + ':' + inputs.idempotencyKey"
+          inputs:
+            conversationId: !cel "inputs.conversationId"
+            turnId: !cel "steps.turn.result.id"
+            message: !cel "inputs.message"
+            clientIp: !cel "inputs.clientIp"
+      - name: inFlight
+        if: !cel "steps.once.result.state == 'in-flight'"
+        then:
+          - name: refuseInFlight
+            throw:
+              code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT
+              message: >-
+                A request with this Idempotency-Key is still being admitted.
+                Retry it with the same key.
+      # The same key names the same request: a different message under it is a
+      # client bug, never a second turn and never the first turn's id.
+      - name: reused
+        if: !cel "steps.once.result.state == 'replayed' && steps.once.result.result.fingerprint != sha256(inputs.message)"
+        then:
+          - name: refuseReused
+            throw:
+              code: ERR_IDEMPOTENCY_KEY_REUSED
+              message: >-
+                This Idempotency-Key was already used for a different message in
+                this conversation. Send a new key for a new message.
+outputs:
+  turnId: !cel "inputs.idempotencyKey == '' ? steps.direct.result.turnId : steps.once.result.result.turnId"
+---
+# One admission attempt. Every refusal is a coded error the route maps to its
+# status, and each is raised BEFORE anything is written: the user's message is
+# recorded by the admitted turn's first step, so a refused start leaves no row.
+kind: Run.Sequence
+metadata: { name: admitTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [conversationId, turnId, message, clientIp]
+    properties:
+      conversationId: { type: string }
+      turnId: { type: string }
       message: { type: string }
       clientIp: { type: string }
 steps:
@@ -3776,63 +3936,70 @@ steps:
     invoke: !ref ipGuard
     inputs:
       key: !cel "inputs.clientIp"
-  - name: gate
-    if: !cel "steps.guard.result.allowed"
+  - name: throttled
+    if: !cel "!steps.guard.result.allowed"
     then:
-      # Reserve worst-case spend up front. A denied reserve refunds itself, so an
-      # over-ceiling request is a clean 429 with no turn started.
-      - name: reserve
+      - name: refuseThrottled
+        throw:
+          code: ERR_RATE_LIMITED
+          message: Too many turns started from this address. Retry after `retryAfter` seconds.
+          data:
+            retryAfter: !cel "steps.guard.result.retryAfter"
+  # Reserve worst-case spend up front. A denied reserve refunds itself, so an
+  # over-ceiling request is a clean refusal with no turn started.
+  - name: reserve
+    invoke: !ref budget
+    inputs:
+      op: reserve
+      key: "global"
+      amount: !cel "variables.reservePerTurn"
+  - name: overBudget
+    if: !cel "!steps.reserve.result.allowed"
+    then:
+      - name: refuseAtCapacity
+        throw:
+          code: ERR_AT_CAPACITY
+          message: The agent's spend ceiling is reached. Retry after `retryAfter` seconds.
+          data:
+            retryAfter: !cel "steps.reserve.result.retryAfter"
+  - name: startTurn
+    invoke: !ref turnLock
+    inputs:
+      key: !cel "inputs.conversationId"
+      holder: !cel "inputs.turnId"
+      inputs:
+        conversationId: !cel "inputs.conversationId"
+        turnId: !cel "inputs.turnId"
+        message: !cel "inputs.message"
+        reserved: !cel "steps.reserve.result.reserved"
+  # A turn is already in flight for this conversation — refuse the overlap so two
+  # turns never write the shared workspace at once, refunding the reservation
+  # since no turn runs.
+  - name: overlap
+    if: !cel "!steps.startTurn.result.acquired"
+    then:
+      - name: refund
         invoke: !ref budget
         inputs:
-          op: reserve
+          op: settle
           key: "global"
-          amount: !cel "variables.reservePerTurn"
-      - name: admit
-        if: !cel "steps.reserve.result.allowed"
-        then:
-          - name: insertUser
-            inputs:
-              sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?) RETURNING id"
-              bindings:
-                - !cel "uuidv7()"
-                - !cel "inputs.conversationId"
-                - !cel "inputs.message"
-            invoke:
-              kind: Sql.Query
-              connection: !ref chatDb
-          - name: startTurn
-            invoke: !ref turnLock
-            inputs:
-              key: !cel "inputs.conversationId"
-              holder: !cel "string(steps.insertUser.result.rows[0].id)"
-              inputs:
-                conversationId: !cel "inputs.conversationId"
-                turnId: !cel "string(steps.insertUser.result.rows[0].id)"
-                reserved: !cel "steps.reserve.result.reserved"
-          # Overlapping turn (409) — refund the reservation since no turn runs.
-          - name: maybeRefund
-            if: !cel "!steps.startTurn.result.acquired"
-            then:
-              - name: refund
-                invoke: !ref budget
-                inputs:
-                  op: settle
-                  key: "global"
-                  amount: 0
-                  reserved: !cel "steps.reserve.result.reserved"
+          amount: 0
+          reserved: !cel "steps.reserve.result.reserved"
+      - name: refuseOverlap
+        throw:
+          code: ERR_TURN_IN_PROGRESS
+          message: A turn is already running for this conversation.
+          data:
+            activeTurnId: !cel "steps.startTurn.result.holder"
 outputs:
-  # allowed=false → 429 (per-IP throttle OR spend ceiling); allowed && !acquired
-  # → 409 (turn in flight, holder is its turnId); allowed && acquired → 200.
-  allowed: !cel "steps.guard.result.allowed && steps.reserve.result.allowed"
-  retryAfter: !cel "steps.guard.result.allowed ? steps.reserve.result.retryAfter : steps.guard.result.retryAfter"
-  acquired: !cel "steps.guard.result.allowed && steps.reserve.result.allowed && steps.startTurn.result.acquired"
-  turnId: !cel "(steps.guard.result.allowed && steps.reserve.result.allowed) ? string(steps.insertUser.result.rows[0].id) : ''"
-  activeTurnId: !cel "(steps.guard.result.allowed && steps.reserve.result.allowed) ? steps.startTurn.result.holder : ''"
+  turnId: !cel "inputs.turnId"
+  # What a replay under the same key is compared against.
+  fingerprint: !cel "sha256(inputs.message)"
 ---
-# The detached turn body: replay history, stream the agent, persist the assistant
-# turn at end-of-stream (Tap), and journal every record under the turnId (Sink)
-# so GET /chat/{turnId}/events can replay + tail it. Runs off the request path;
-# has no outputs.
+# The detached turn body: record the user's message, replay history, stream the
+# agent, persist the assistant turn at end-of-stream (Tap), and journal every
+# record under the turnId (Sink) so GET /chat/{turnId}/events can replay + tail
+# it. Runs off the request path, only once admission succeeded; has no outputs.
 kind: Run.Sequence
 metadata: { name: turnRunner }
 inputType:
@@ -3842,8 +4009,20 @@ inputType:
     properties:
       conversationId: { type: string }
       turnId: { type: string }
+      message: { type: string }
       reserved: { type: integer }
 steps:
+  # The user row takes the turn's id, so history orders it before the reply.
+  - name: insertUser
+    inputs:
+      sql: "INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?)"
+      bindings:
+        - !cel "inputs.turnId"
+        - !cel "inputs.conversationId"
+        - !cel "inputs.message"
+    invoke:
+      kind: Sql.Command
+      connection: !ref chatDb
   - name: readHistory
     inputs:
       sql: "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
@@ -3865,7 +4044,7 @@ steps:
     inputs:
       path: ""
       recursive: true
-      exclude: [".telo", "node_modules", ".git", "dist", ".probes"]
+      exclude: [".telo", "node_modules", ".git", "dist", ".probes", ".telo-agent"]
   - name: ask
     invoke: !ref author
     inputs:

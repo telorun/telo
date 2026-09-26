@@ -8,13 +8,15 @@ metadata:
   description: |
     Operations on streams of structured records, whatever the format: project a mixed
     record stream down to plain text, fan one stream out to two consumers, run a
-    handler once a stream completes, and record a stream into a keyed, durable replay
-    journal so a reader that disconnects, or outlives a restart, resumes from where it
-    left off and then tails live, with removal, retention and writer liveness.
+    handler exactly once however a stream ends, and record a stream into a keyed,
+    durable replay journal so a reader that disconnects, or outlives a restart, resumes
+    from where it left off and tails live, with removal, retention, writer liveness and
+    continuing a failed or abandoned recording.
 exports:
   kinds:
     - ExtractText
     - Tee
+    - EndHandler
     - OnComplete
     - JournalStore
     - MemoryJournalStore
@@ -23,6 +25,8 @@ exports:
     - JournalSource
     - JournalRemoval
     - JournalExpiry
+  resources:
+    - StreamOutcome
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/record-stream` to: the store contract a backend implements and the
   # journal protocol, one module scope across this module and every backend.
@@ -148,6 +152,144 @@ schema:
   type: object
   additionalProperties: false
 ---
+# How a stream ended, as a handler receives it: `completed` with no error,
+# `failed` with the input's error, or `cancelled` — with the cancellation's
+# error when its invocation was cancelled, with none when its consumer stopped
+# reading. A handler types its `outcome` input against it by `!ref`.
+kind: Telo.JsonSchema
+metadata:
+  name: StreamOutcome
+  description: >-
+    How a stream ended: completed, failed with the error that ended it, or
+    cancelled, with the cancellation's error when the work was cancelled and none
+    when its reader stopped early.
+schema:
+  type: object
+  additionalProperties: false
+  required: [state, error]
+  properties:
+    state:
+      type: string
+      enum: [completed, failed, cancelled]
+    error:
+      description: >-
+        The error that ended the stream, as data — null when it completed or its
+        consumer stopped reading.
+      # The nullable form CEL recognises: reading a field of it unguarded is
+      # CEL_NULLABLE_ACCESS.
+      type: [object, "null"]
+      additionalProperties: false
+      required: [message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        data: {}
+---
+# Passthrough that runs a handler exactly once on whichever ending the stream
+# reaches. Every item forwards to `output` in order as it arrives; the handler is
+# called with the author's `inputs:` map, evaluated once per ending over three
+# bindings — `records` (every item observed up to the ending), `context` (the
+# caller's `context` input, `{}` when none) and `outcome`, a StreamOutcome:
+#
+#   - the input ran to its end              → completed, error null
+#   - the input raised                      → failed, its code, message and data
+#   - the invocation was cancelled          → cancelled, the ERR_INVOKE_CANCELLED error
+#   - the consumer stopped reading          → cancelled, error null
+#
+# The handler runs on a context without the stream's cancellation, so it can still
+# persist when the ending IS the cancellation. It is awaited before the ending
+# reaches the consumer; a handler failure ends the stream with the handler's error,
+# the original ending attached as its cause; so does a map that fails to evaluate.
+# The map is checked against the handler's `inputType` like any other call site's
+# arguments: a missing required key, a key a closed contract refuses and a
+# mistyped literal are static errors. A durable
+# suspension is not an ending:
+# it passes through and the handler is not called. Records are buffered in memory,
+# bounded by the input stream's length.
+kind: Telo.Definition
+metadata:
+  name: EndHandler
+  description: >-
+    Forwards a stream live and runs a handler exactly once when it ends — completed,
+    failed, cancelled or abandoned by its reader — with every record observed and
+    how it ended. The handler still runs after a cancellation, so persisting a
+    partial result, releasing a budget or marking work finished never depends on the
+    stream succeeding.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#EndHandlerController
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      input:
+        x-telo-type: Telo.Stream
+        description: Async iterable to forward and observe.
+      context:
+        description: >-
+          Caller data the handler's `inputs:` map reads as `context`; `{}` when the
+          caller passes none.
+        type: object
+        additionalProperties: true
+        default: {}
+    required: [input]
+    additionalProperties: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: >-
+          Every item from `input`, in order. Ends as the input does, once the
+          handler has run; raises the input's error, the invocation's
+          ERR_INVOKE_CANCELLED, or the handler's error when it fails.
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  properties:
+    handler:
+      title: Handler
+      description: >-
+        Invocable or Runnable (e.g. a Run.Sequence) called exactly once when the
+        stream ends, with the arguments `inputs` maps.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.consumer
+        inputs: /inputs
+    inputs:
+      title: Handler inputs
+      description: >-
+        The handler's arguments, evaluated once per ending. CEL here reads
+        `records` (every item observed), `outcome` (a StreamOutcome) and `context`
+        (the caller's `context` input). Checked against the handler's `inputType`;
+        a handler taking no arguments is written `inputs: {}`.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        required: [records, outcome, context]
+        properties:
+          records:
+            type: array
+            description: Every item the stream carried up to its ending, in order.
+          outcome:
+            $ref: "telo://Self/StreamOutcome"
+          context:
+            type: object
+            additionalProperties: true
+            description: The caller's `context` input.
+  required: [handler, inputs]
+  additionalProperties: false
+---
+# Deprecated: RecordStream.EndHandler runs its handler on every ending of the stream,
+# with how it ended; this kind runs it only on completion. Kept unchanged, with no
+# migration, since the two call their handler with different inputs.
+#
 # Passthrough that fires a side effect once the input completes. Every item forwards
 # to `output` in order as it arrives (the consumer streams live); when `input` runs to
 # its end, the `handler` Invocable is called once with `{ records, context }` — records
@@ -162,6 +304,12 @@ kind: Telo.Definition
 metadata:
   name: OnComplete
   description: Forwards a stream live and, once it completes normally, invokes a handler once with all observed records.
+  deprecated:
+    reason: >-
+      Runs its handler only when the stream completes, so a failed, cancelled or
+      abandoned stream leaves no trace. Its replacement runs the handler on every
+      ending and says which one it was.
+    replacedBy: Self.EndHandler
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#OnCompleteController
@@ -302,8 +450,10 @@ schema:
       message: sets a negative `retention`; a key cannot be kept for less than no time.
 ---
 # Claim a key in a Journal, then drain a stream into it. The claim happens before
-# the first record is pulled; a heartbeat runs every third of the journal's
-# writer timeout for as long as the drain does, records or not. On normal
+# the first record is pulled. With `resume: true` an existing key is continued
+# rather than refused when its last writer failed or stopped heartbeating: the log
+# is kept and ids continue from its last one. A heartbeat runs every third of the
+# journal's writer timeout for as long as the drain does, records or not. On normal
 # completion the key is finished; on an input error it is failed (the error's
 # code, message and data recorded for readers) and the error rethrown. A refused
 # write stops the drain, cancels the input and raises its code. Invoke it
@@ -320,7 +470,8 @@ metadata:
     Drains a stream into the replay journal under a key it claims first, appending
     each record with an increasing id and marking the key finished or failed when
     the stream ends. Sends heartbeats while it runs, so readers can tell a slow
-    writer from a dead one.
+    writer from a dead one, and can resume a recording whose writer failed or died,
+    continuing its ids so readers pick up where they stopped.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSinkController
@@ -330,9 +481,9 @@ throws:
       description: "`input` did not resolve to a stream."
     ERR_JOURNAL_KEY_BUSY:
       description: >-
-        The key already exists and belongs to another writer — live, finished or
-        failed. Raised when claiming it, before any record is pulled, or later if
-        another writer took it.
+        The key already exists and belongs to another writer — live, finished or,
+        without `resume`, failed. Raised when claiming it, before any record is
+        pulled, or later if another writer took it.
     ERR_JOURNAL_KEY_REMOVED:
       description: The key was removed, before the claim or while the drain ran.
     ERR_JOURNAL_WRITER_LOST:
@@ -353,6 +504,15 @@ inputType:
       input:
         x-telo-type: Telo.Stream
         description: Async iterable of records to journal.
+      resume:
+        type: boolean
+        default: false
+        description: >-
+          Continue the key instead of refusing it when it exists and its last writer
+          failed, or its writer stopped heartbeating (that key is failed as lost
+          first). The records already there are kept and new ids follow the last
+          one. A key with a live writer, a finished key and a removed key are still
+          refused.
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -363,7 +523,7 @@ outputType:
       key: { type: string }
       count:
         type: integer
-        description: Number of records appended before the stream completed.
+        description: Number of records this drain appended before the stream completed.
 schema:
   type: object
   additionalProperties: false

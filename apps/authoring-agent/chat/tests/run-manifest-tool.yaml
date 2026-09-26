@@ -20,7 +20,8 @@ imports:
     secrets:
       openaiApiKey: dummy-key-never-used
     variables:
-      dbFile: ":memory:"
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state-off')"
       teloProgram: [echo]
       # The default, restated: what this case asserts is that the default is the
       # closed one, so reading it from the library would assert nothing.
@@ -30,11 +31,20 @@ imports:
     secrets:
       openaiApiKey: dummy-key-never-used
     variables:
-      dbFile: ":memory:"
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state-on')"
       teloProgram: [echo]
       allowManifestRuns: true
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.0#sha256-CHKb_ylzNVdyIA4XFFvofXSbgCUAyuaiSgWXyZKtPSI
+variables:
+  # Where this case's workspace and agent state live — the library takes both
+  # as host paths, and neither is ever read here beyond the spawned program's cwd.
+  scratch:
+    env: CHAT_TEST_RUN_MANIFEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/run-manifest-tool
 targets:
   # The workspace is gitignored, so a fresh checkout has none — and every
   # command spawns with it as cwd.

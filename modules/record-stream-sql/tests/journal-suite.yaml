@@ -22,6 +22,9 @@ targets:
   - !ref Suite.pausedWriterStaysLive
   - !ref Suite.removedAcrossPages
   - !ref Suite.cancelledRead
+  - !ref Suite.resumeContinuesFailed
+  - !ref Suite.resumeKeyStates
+  - !ref Suite.resumeLiveWriterBusy
 ---
 kind: RecordStreamSql.JournalStore
 metadata: { name: store }

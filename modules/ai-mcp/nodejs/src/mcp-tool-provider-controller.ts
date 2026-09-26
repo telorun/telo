@@ -1,7 +1,7 @@
 import type { ContentPart } from "@telorun/ai";
 import type { AiToolProviderInstance, ToolDescriptor } from "@telorun/ai";
-import type { ResourceInstance } from "@telorun/sdk";
-import { InvokeError } from "@telorun/sdk";
+import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import { ERR_INVOKE_CANCELLED, InvokeError, isCancellationError } from "@telorun/sdk";
 
 /**
  * AiMcp.ToolProvider — bridges an MCP server (any Mcp.Client) to the Ai.ToolProvider
@@ -11,10 +11,17 @@ import { InvokeError } from "@telorun/sdk";
  *   listTools() → tools/list   → ToolDescriptor[] (inputSchema becomes `parameters`)
  *   callTool()  → tools/call   → the tool's content (the agent stringifies it)
  *
+ * A `tools/call` runs under the agent turn's context: it is handed to the client, so
+ * a client that honours cancellation aborts the request, and the call is abandoned
+ * the moment that turn is cancelled whether or not the client does.
+ *
  * The agent never learns it is MCP; `modules/ai` never depends on `@telorun/mcp-client`.
  */
 interface McpClientInstance {
-  invoke(input: { method: string; params?: Record<string, unknown> }): Promise<unknown>;
+  invoke(
+    input: { method: string; params?: Record<string, unknown> },
+    ctx?: InvokeContext,
+  ): Promise<unknown>;
 }
 
 interface McpToolProviderResource {
@@ -57,7 +64,10 @@ function normalizeMcpContent(content: unknown): unknown {
 }
 
 class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
-  constructor(private readonly resource: McpToolProviderResource) {}
+  constructor(
+    private readonly resource: McpToolProviderResource,
+    private readonly ctx: ResourceContext,
+  ) {}
 
   private client(): McpClientInstance {
     const client = this.resource.client;
@@ -83,11 +93,16 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
     }));
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const result = (await this.client().invoke({
-      method: "tools/call",
-      params: { name, arguments: args },
-    })) as McpToolCallResult;
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<unknown> {
+    const call = this.client().invoke(
+      { method: "tools/call", params: { name, arguments: args } },
+      invokeCtx,
+    );
+    const result = (await this.untilCancelled(call, name, invokeCtx)) as McpToolCallResult;
     if (result?.isError) {
       throw new InvokeError(
         "ERR_MCP_TOOL_ERROR",
@@ -99,6 +114,48 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
     return result;
   }
 
+  /** Settle with `call`, or reject with `ERR_INVOKE_CANCELLED` the moment the turn
+   *  is cancelled. An abandoned call that later fails for another reason is
+   *  logged, since nothing is left waiting to receive it. */
+  private untilCancelled(
+    call: Promise<unknown>,
+    name: string,
+    invokeCtx: InvokeContext | undefined,
+  ): Promise<unknown> {
+    const token = invokeCtx?.cancellation;
+    if (!token) return call;
+    return new Promise((resolve, reject) => {
+      let abandoned = false;
+      const unsubscribe = token.onCancelled((reason) => {
+        abandoned = true;
+        reject(
+          new InvokeError(
+            ERR_INVOKE_CANCELLED,
+            `AiMcp.ToolProvider "${this.resource.metadata.name}": MCP tool "${name}" was cancelled (${reason ?? "no reason given"}).`,
+          ),
+        );
+      });
+      call.then(
+        (value) => {
+          unsubscribe();
+          resolve(value);
+        },
+        (err: unknown) => {
+          unsubscribe();
+          if (!abandoned) {
+            reject(err);
+          } else if (!isCancellationError(err)) {
+            this.ctx.log.warn(
+              "AiMcp.ToolProvider's cancelled MCP tool call failed after it was abandoned",
+              { "mcp.tool.name": name },
+              { error: err },
+            );
+          }
+        },
+      );
+    });
+  }
+
   snapshot(): Record<string, unknown> {
     return {};
   }
@@ -106,7 +163,10 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
 
 export function register(): void {}
 
-export async function create(resource: McpToolProviderResource): Promise<McpToolProvider> {
-  return new McpToolProvider(resource);
+export async function create(
+  resource: McpToolProviderResource,
+  ctx: ResourceContext,
+): Promise<McpToolProvider> {
+  return new McpToolProvider(resource, ctx);
 }
 

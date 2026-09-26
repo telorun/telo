@@ -1,0 +1,255 @@
+kind: Telo.Application
+metadata:
+  name: ChatStartIdempotency
+  version: 1.0.0
+  description: |
+    POST /chat with an Idempotency-Key admits a turn at most once: a repeat
+    returns the original turnId and exactly one user row exists; the same key
+    with a different message is refused with ERR_IDEMPOTENCY_KEY_REUSED. A refused
+    start writes nothing: an agent whose spend ceiling is already reached answers
+    429 ERR_AT_CAPACITY, leaves the conversation empty, and refuses a retry under
+    the same key again rather than replaying the refusal. A key whose admission is
+    still claimed by another request answers 409 ERR_IDEMPOTENCY_KEY_IN_FLIGHT —
+    the claim is seeded straight into the instance's `agent.sqlite`, so the
+    overlap is a fact rather than a race — and starts nothing.
+
+    Key-free: the admitted turn fails in the background at its first model call
+    (a dummy key, or no network), which is not what is under test — the user row
+    is written by the turn's first step, before the model is reached.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspaces, emptied before each run.
+  scratch:
+    env: CHAT_TEST_IDEMPOTENCY_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/chat-start-idempotency
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: sameKey
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18433 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('admitted')"
+          secrets:
+            openaiApiKey: dummy-key-never-used
+      targets: [ !ref agent ]
+      steps:
+        - name: first
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18433/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              message: add a health endpoint
+        - name: repeat
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18433/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              message: add a health endpoint
+        - name: reused
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18433/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              message: something else entirely
+        - name: replayed
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              first: !cel "steps.first.result.status"
+              repeat: !cel "steps.repeat.result.status"
+              sameTurn: !cel "steps.repeat.result.body.turnId == steps.first.result.body.turnId"
+              reused: !cel "steps.reused.result.status"
+              reusedCode: !cel "steps.reused.result.body.code"
+            expected:
+              first: 200
+              repeat: 200
+              sameTurn: true
+              reused: 422
+              reusedCode: ERR_IDEMPOTENCY_KEY_REUSED
+        # The admitted turn records the message as its first step, off the
+        # request path — so wait for it to appear, then count.
+        - name: history
+          retry: { attempts: 40, initialDelay: 100, factor: 1, jitter: none }
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: read
+                invoke:
+                  kind: HttpClient.Request
+                  url: http://127.0.0.1:18433/conversations/3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+                  method: GET
+              - name: notYet
+                if: !cel "size(steps.read.result.body.messages) == 0"
+                then:
+                  - name: waiting
+                    throw:
+                      code: ERR_TEST_NO_USER_ROW_YET
+                      message: The admitted turn has not recorded the user message yet.
+            outputs:
+              messages: !cel "steps.read.result.body.messages"
+        - name: oneUserRow
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.history.result.messages.map(m, {'id': m.id, 'role': m.role, 'content': m.content})"
+            expected:
+              - id: !cel "steps.first.result.body.turnId"
+                role: user
+                content: add a health endpoint
+  - name: atCapacity
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18434 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('refused')"
+            # Below one turn's reservation, so every start is refused.
+            budgetLimit: 1
+          secrets:
+            openaiApiKey: dummy-key-never-used
+      targets: [ !ref agent ]
+      steps:
+        - name: refused
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18434/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+              message: add a health endpoint
+        # A refusal releases the key: the same key is a fresh attempt, refused
+        # on its own merits, not a replay of an admission.
+        - name: retried
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18434/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+              message: add a health endpoint
+        - name: read
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18434/conversations/5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+            method: GET
+        - name: nothingWritten
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              status: !cel "steps.refused.result.status"
+              code: !cel "steps.refused.result.body.code"
+              hasRetryAfter: !cel "'retryAfter' in steps.refused.result.body"
+              retriedCode: !cel "steps.retried.result.body.code"
+              messages: !cel "steps.read.result.body.messages"
+            expected:
+              status: 429
+              code: ERR_AT_CAPACITY
+              hasRetryAfter: true
+              retriedCode: ERR_AT_CAPACITY
+              messages: []
+  - name: inFlight
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18435 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('in-flight')"
+          secrets:
+            openaiApiKey: dummy-key-never-used
+        # The instance's own database, reached from outside it.
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('in-flight').joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Command
+          metadata: { name: seedClaim }
+          connection: !ref agentDb
+      targets: [ !ref agent ]
+      steps:
+        # An unexpired claim on `<conversationId>:<key>`, as another request
+        # admitting under that key leaves it: the record Idempotency.Once writes.
+        - name: claim
+          invoke: !ref seedClaim
+          inputs:
+            sql: "INSERT INTO turn_admissions (store_key, value, version, expires_at) VALUES (?, ?, ?, ?)"
+            bindings:
+              - 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:send-1
+              - '{"holder":"another-request","settled":false}'
+              - claim-1
+              # 2100-01-01: never lapses within the test.
+              - 4102444800000
+        - name: overlapping
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18435/chat
+            method: POST
+          inputs:
+            headers: { idempotency-key: send-1 }
+            body:
+              conversationId: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+              message: add a health endpoint
+        - name: read
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18435/conversations/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+            method: GET
+        - name: refusedInFlight
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              status: !cel "steps.overlapping.result.status"
+              code: !cel "steps.overlapping.result.body.code"
+              messages: !cel "steps.read.result.body.messages"
+            expected:
+              status: 409
+              code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT
+              messages: []

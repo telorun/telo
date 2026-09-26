@@ -1,8 +1,11 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import {
   isInvokeError,
+  type CancellationToken,
   type ControllerContext,
+  type InvokeContext,
   type ResourceContext,
 } from "@telorun/sdk";
 import { isAbsolute, resolve } from "node:path";
@@ -10,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { bridgeStderrChunk } from "./stderr-bridge.js";
 
 import {
+  cancelledError,
   jsonRpcError,
   protocolError,
   transportError,
@@ -90,6 +94,14 @@ export class McpStdioClient {
       stderr: "pipe",
     });
     const client = new Client(this.clientInfo, { capabilities: {} });
+    // The SDK reports failures that belong to no pending request here — among
+    // them a `notifications/cancelled` it could not deliver.
+    client.onerror = (err) => {
+      this.ctx.log.warn("MCP stdio client reported an error", { "mcp.transport": "stdio" }, {
+        error: err,
+        eventName: "mcp.client.error",
+      });
+    };
 
     try {
       await client.connect(transport);
@@ -126,41 +138,107 @@ export class McpStdioClient {
     this.transport = transport;
   }
 
-  async invoke(inputs: InvokeInput): Promise<Record<string, unknown>> {
-    if (!this.client) {
+  /** A cancelled invocation aborts its request: the SDK sends the server
+   *  `notifications/cancelled` and the call rejects with `ERR_INVOKE_CANCELLED`. */
+  async invoke(
+    inputs: InvokeInput,
+    invokeCtx?: InvokeContext,
+  ): Promise<Record<string, unknown>> {
+    const client = this.client;
+    if (!client) {
       throw transportError("Mcp.StdioClient.invoke called before init()");
     }
     if (!inputs || typeof inputs.method !== "string") {
       throw protocolError("Mcp.StdioClient.invoke requires inputs.method");
     }
+    const token = invokeCtx?.cancellation;
+    // A per-request signal: the SDK never removes the abort listener it adds,
+    // so handing it a long-lived token's signal would accumulate one per call.
+    // Aborted with an McpError, which the SDK rejects with as-is — so that one
+    // rejection is recognisable by identity (`abort.signal.reason`).
+    const abort = new AbortController();
+    const unlink = token?.onCancelled((reason) =>
+      abort.abort(new McpError(ErrorCode.RequestTimeout, reason ?? "Invoke cancelled")),
+    );
     try {
-      const { method, params } = inputs;
-      if (method === "tools/call") {
-        const callParams = (params ?? {}) as {
-          name?: string;
-          arguments?: Record<string, unknown>;
-        };
-        if (!callParams.name) {
-          throw protocolError("tools/call requires params.name");
-        }
-        const res = await this.client.callTool({
-          name: callParams.name,
-          arguments: callParams.arguments ?? {},
-        });
-        return res as unknown as Record<string, unknown>;
-      }
-      if (method === "tools/list") {
-        const res = await this.client.listTools((params ?? {}) as { cursor?: string });
-        return res as unknown as Record<string, unknown>;
-      }
-      throw protocolError(
-        `Mcp.StdioClient v1 does not implement method '${method}'`,
-        { method },
-      );
+      const request = this.send(client, inputs, abort.signal);
+      return token ? await this.untilCancelled(request, inputs, token, abort.signal) : await request;
     } catch (err) {
       if (isInvokeError(err)) throw err;
       throw mapSdkError(err);
+    } finally {
+      unlink?.();
     }
+  }
+
+  private async send(
+    client: Client,
+    inputs: InvokeInput,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    const { method, params } = inputs;
+    if (method === "tools/call") {
+      const callParams = (params ?? {}) as {
+        name?: string;
+        arguments?: Record<string, unknown>;
+      };
+      if (!callParams.name) {
+        throw protocolError("tools/call requires params.name");
+      }
+      const res = await client.callTool(
+        { name: callParams.name, arguments: callParams.arguments ?? {} },
+        undefined,
+        { signal },
+      );
+      return res as unknown as Record<string, unknown>;
+    }
+    if (method === "tools/list") {
+      const res = await client.listTools((params ?? {}) as { cursor?: string }, { signal });
+      return res as unknown as Record<string, unknown>;
+    }
+    throw protocolError(
+      `Mcp.StdioClient v1 does not implement method '${method}'`,
+      { method },
+    );
+  }
+
+  /** Settle with `request`, or reject with `ERR_INVOKE_CANCELLED` the moment
+   *  `token` cancels. After that, the SDK's own rejection for the abort is the
+   *  expected ending and is dropped; any other late failure is logged, since
+   *  nothing is left waiting to receive it. */
+  private untilCancelled(
+    request: Promise<Record<string, unknown>>,
+    inputs: InvokeInput,
+    token: CancellationToken,
+    signal: AbortSignal,
+  ): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      let cancelled = false;
+      const unsubscribe = token.onCancelled(() => {
+        cancelled = true;
+        reject(
+          cancelledError(`Mcp.StdioClient[${this.manifest.metadata.name}] ${inputs.method}`, token),
+        );
+      });
+      request.then(
+        (value) => {
+          unsubscribe();
+          resolve(value);
+        },
+        (err: unknown) => {
+          unsubscribe();
+          if (!cancelled) {
+            reject(err);
+          } else if (err !== signal.reason) {
+            this.ctx.log.warn(
+              "MCP request failed after its invocation was cancelled",
+              { "mcp.transport": "stdio", "mcp.method": inputs.method },
+              { error: err, eventName: "mcp.request.failed_after_cancel" },
+            );
+          }
+        },
+      );
+    });
   }
 
   /** Resolve a relative `./` / `../` entry against the declaring module's own

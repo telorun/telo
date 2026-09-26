@@ -5,13 +5,16 @@
 // the kernel test runner skips it.
 //
 // Protocol: newline-delimited JSON-RPC 2.0 over stdin/stdout. Supports just
-// what tools-call-stdio.yaml needs: initialize, notifications/initialized,
-// tools/list, tools/call (echo).
+// what the stdio tests need: initialize, notifications/initialized,
+// notifications/cancelled, tools/list, tools/call (echo; wait_for_cancel, which
+// never answers; cancelled_count, how many of those the client cancelled).
 
 import { stdin, stdout } from "node:process";
 
 stdin.setEncoding("utf8");
 let buffer = "";
+const waiting = new Set();
+let cancelled = 0;
 
 function write(envelope) {
   stdout.write(JSON.stringify(envelope) + "\n");
@@ -35,6 +38,10 @@ function handle(message) {
 
   // notifications carry no id — no response.
   if (method === "notifications/initialized") return;
+  if (method === "notifications/cancelled") {
+    if (waiting.delete(params?.requestId)) cancelled++;
+    return;
+  }
 
   if (method === "tools/list") {
     write({
@@ -60,6 +67,14 @@ function handle(message) {
   if (method === "tools/call") {
     const name = params?.name;
     const args = params?.arguments ?? {};
+    if (name === "wait_for_cancel") {
+      waiting.add(id);
+      return;
+    }
+    if (name === "cancelled_count") {
+      write({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: String(cancelled) }] } });
+      return;
+    }
     if (name !== "echo") {
       write({
         jsonrpc: "2.0",

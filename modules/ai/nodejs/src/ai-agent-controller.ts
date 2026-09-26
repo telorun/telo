@@ -8,7 +8,7 @@ import {
   buildInitialMessages,
   dispatchToolCall,
   mergeAgentOptions,
-  normalizeToolCalls,
+  normalizeToolCall,
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
@@ -140,12 +140,13 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
         };
       }
 
-      const normalized = normalizeToolCalls(calls, step);
+      const normalized = calls.map(normalizeToolCall);
       messages.push({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
 
       const trace: StepTrace = { text: result.text ?? "", toolCalls: normalized, toolResults: [] };
       for (const call of normalized) {
-        const record = await dispatchToolCall(call, dispatch, onToolError, label);
+        ctx?.cancellation.throwIfCancelled();
+        const record = await dispatchToolCall(call, dispatch, onToolError, label, ctx);
         trace.toolResults.push(record);
         messages.push({ role: "tool", content: record.content, toolCallId: call.id });
       }

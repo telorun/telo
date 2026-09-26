@@ -1,11 +1,15 @@
 import {
   fetchOrThrow,
+  isCancellationError,
+  type CancellationToken,
   type ControllerContext,
+  type InvokeContext,
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
 
 import {
+  cancelledError,
   protocolError,
   sessionInvalidError,
   transportError,
@@ -126,17 +130,27 @@ export class McpHttpClient {
     }));
   }
 
-  async invoke(inputs: InvokeInput): Promise<Record<string, unknown>> {
+  /** A cancelled invocation aborts its request, sends the server
+   *  `notifications/cancelled` for it, and rejects with `ERR_INVOKE_CANCELLED`. */
+  async invoke(
+    inputs: InvokeInput,
+    invokeCtx?: InvokeContext,
+  ): Promise<Record<string, unknown>> {
     if (!inputs || typeof inputs.method !== "string") {
       throw protocolError("Mcp.HttpClient.invoke requires inputs.method");
     }
+    const token = invokeCtx?.cancellation;
+    if (token?.isCancelled) throw cancelledError(this.describe(inputs), token);
     if (this.hasSessionProvider) {
-      return this.invokeExternal(inputs);
+      return this.invokeExternal(inputs, token);
     }
-    return this.invokeSelfHandshake(inputs);
+    return this.invokeSelfHandshake(inputs, token);
   }
 
-  private async invokeExternal(inputs: InvokeInput): Promise<Record<string, unknown>> {
+  private async invokeExternal(
+    inputs: InvokeInput,
+    token: CancellationToken | undefined,
+  ): Promise<Record<string, unknown>> {
     // The `sessionProvider` x-telo-ref is replaced with the live instance by
     // Phase-5 injection before the controller runs.
     const provider = this.manifest.sessionProvider as SessionProviderInstance | undefined;
@@ -151,27 +165,16 @@ export class McpHttpClient {
         `${this.manifest.kind}: sessionProvider returned no sessionId`,
       );
     }
-    const { result } = await postJsonRpc(
-      this.manifest.url,
-      this.manifest.headers ?? {},
-      sessionId,
-      this.buildRequest(inputs),
-    );
-    return result;
+    return this.request(sessionId, inputs, token);
   }
 
   private async invokeSelfHandshake(
     inputs: InvokeInput,
+    token: CancellationToken | undefined,
   ): Promise<Record<string, unknown>> {
     try {
-      const sessionId = await this.ensureSession();
-      const { result } = await postJsonRpc(
-        this.manifest.url,
-        this.manifest.headers ?? {},
-        sessionId,
-        this.buildRequest(inputs),
-      );
-      return result;
+      const sessionId = await this.untilCancelled(this.ensureSession(), inputs, token);
+      return await this.request(sessionId, inputs, token);
     } catch (err) {
       if (!isInvokeErrorWithCode(err, "ERR_MCP_SESSION_INVALID")) {
         throw err;
@@ -180,15 +183,9 @@ export class McpHttpClient {
       // original request once. A second rejection surfaces to the caller.
       this.cachedSessionId = null;
       this.handshakeComplete = false;
-      const sessionId = await this.ensureSession();
+      const sessionId = await this.untilCancelled(this.ensureSession(), inputs, token);
       try {
-        const { result } = await postJsonRpc(
-          this.manifest.url,
-          this.manifest.headers ?? {},
-          sessionId,
-          this.buildRequest(inputs),
-        );
-        return result;
+        return await this.request(sessionId, inputs, token);
       } catch (retryErr) {
         if (isInvokeErrorWithCode(retryErr, "ERR_MCP_SESSION_INVALID")) {
           throw sessionInvalidError(
@@ -199,6 +196,87 @@ export class McpHttpClient {
         throw retryErr;
       }
     }
+  }
+
+  /** POST one request under `token`. A cancellation that aborts the POST in
+   *  flight tells the server with `notifications/cancelled`, as the Streamable
+   *  HTTP transport requires: a dropped connection alone does not cancel. */
+  private async request(
+    sessionId: string | null,
+    inputs: InvokeInput,
+    token: CancellationToken | undefined,
+  ): Promise<Record<string, unknown>> {
+    if (token?.isCancelled) throw cancelledError(this.describe(inputs), token);
+    const request = this.buildRequest(inputs);
+    try {
+      const { result } = await postJsonRpc(
+        this.manifest.url,
+        this.manifest.headers ?? {},
+        sessionId,
+        request,
+        token,
+      );
+      return result;
+    } catch (err) {
+      if (isCancellationError(err)) this.notifyCancelled(sessionId, request.id, token?.reason);
+      throw err;
+    }
+  }
+
+  private notifyCancelled(sessionId: string | null, requestId: number, reason: string | undefined) {
+    const note: JsonRpcNotification = {
+      jsonrpc: "2.0",
+      method: "notifications/cancelled",
+      params: { requestId, ...(reason !== undefined ? { reason } : {}) },
+    };
+    postJsonRpc(this.manifest.url, this.manifest.headers ?? {}, sessionId, note).catch(
+      (err: unknown) => {
+        this.ctx.log.warn(
+          "Could not tell the MCP server a request was cancelled",
+          { "mcp.transport": "http", "mcp.request.id": requestId },
+          { error: err, eventName: "mcp.cancel.failed" },
+        );
+      },
+    );
+  }
+
+  /** Wait for a shared step (the handshake) unless this invocation is cancelled
+   *  first; the step itself runs on for the callers still waiting on it. */
+  private untilCancelled<T>(
+    pending: Promise<T>,
+    inputs: InvokeInput,
+    token: CancellationToken | undefined,
+  ): Promise<T> {
+    if (!token) return pending;
+    return new Promise<T>((resolve, reject) => {
+      let abandoned = false;
+      const unsubscribe = token.onCancelled(() => {
+        abandoned = true;
+        reject(cancelledError(this.describe(inputs), token));
+      });
+      pending.then(
+        (value) => {
+          unsubscribe();
+          resolve(value);
+        },
+        (err: unknown) => {
+          unsubscribe();
+          if (!abandoned) {
+            reject(err);
+            return;
+          }
+          this.ctx.log.warn(
+            "MCP handshake failed after the invocation waiting on it was cancelled",
+            { "mcp.transport": "http" },
+            { error: err, eventName: "mcp.handshake.failed" },
+          );
+        },
+      );
+    });
+  }
+
+  private describe(inputs: InvokeInput): string {
+    return `Mcp.HttpClient[${this.manifest.metadata.name}] ${inputs.method}`;
   }
 
   private async ensureSession(): Promise<string | null> {

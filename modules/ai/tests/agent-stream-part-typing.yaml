@@ -1,0 +1,27 @@
+# A handler typing the records of an agent stream by the exported part shape is
+# checked below it: a misspelled field on a record is refused, a declared one is
+# clean.
+kind: Telo.Application
+metadata:
+  name: AgentStreamPartTypingTest
+  version: 1.0.0
+  description: Ai.AgentStreamPart types the records a consumer reads.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref misspelledField
+  - !ref declaredField
+---
+kind: Assert.Manifest
+metadata: { name: misspelledField }
+source: ./__fixtures__/agent-stream-part-typing/typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.records.[*].usge' is not defined"
+---
+kind: Assert.Manifest
+metadata: { name: declaredField }
+source: ./__fixtures__/agent-stream-part-typing/typed.yaml
+expect:
+  errors: []

@@ -33,6 +33,9 @@ targets:
   - !ref Suite.pausedWriterStaysLive
   - !ref Suite.removedAcrossPages
   - !ref Suite.cancelledRead
+  - !ref Suite.resumeContinuesFailed
+  - !ref Suite.resumeKeyStates
+  - !ref Suite.resumeLiveWriterBusy
 ---
 kind: Postgres.Connection
 metadata: { name: db }

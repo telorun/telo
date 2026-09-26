@@ -11,6 +11,7 @@ sidebar_label: AiMcp.ToolProvider
 
 - `listTools()` → the server's `tools/list` (each tool's `inputSchema` becomes the model-facing `parameters`).
 - `callTool(name, args)` → the server's `tools/call`; the returned content is fed back to the model. A tool error (`isError`) raises `ERR_MCP_TOOL_ERROR`, surfaced through the agent's `onToolError`.
+- Cancellation: the `tools/call` runs under the agent turn's context, which is handed to the `Mcp.Client` — so a client that honours cancellation aborts the request — and the call is abandoned with `ERR_INVOKE_CANCELLED` the moment the turn is cancelled, whether or not the client does. That ends the agent under either `onToolError`.
 
 The MCP `content` array is translated into [Ai content parts](../../ai/docs/ai-model.md) block-by-block: a text block stays a text part, and an **image** block (`{ type: "image", data, mimeType }`) becomes an image part with its `mimeType` renamed to the contract's `mediaType` — so a vision MCP tool's image reaches the model as an image rather than a JSON-stringified blob. A result containing any unrecognized block kind (resource link, audio, …) is passed through untouched for the agent to serialize. A tool's `structuredContent`, when present, takes precedence and is fed back as-is.
 

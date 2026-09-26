@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Exercises history seeding without any AI: importMessages bulk-inserts the
-    rows a client ferries back into a fresh session's empty DB, idempotently
+    rows a client ferries back into a session's DB, idempotently
     (INSERT OR IGNORE by id — a re-import must not duplicate or overwrite), and
     historyQuery reads the conversation back in id order — the exact pair the
     app's POST /conversations/{id}/messages and GET /conversations/{id} routes
@@ -17,9 +17,18 @@ imports:
       # required import input here.
       openaiApiKey: dummy-key-never-used
     variables:
-      dbFile: ":memory:"
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.0#sha256-CHKb_ylzNVdyIA4XFFvofXSbgCUAyuaiSgWXyZKtPSI
+variables:
+  # The agent's state is a file now, so it outlives the run: each run seeds a
+  # conversation of its own rather than reading the last run's rows back.
+  scratch:
+    env: CHAT_TEST_HISTORY_IMPORT_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/history-import
 targets:
   - !ref Chat.initSchema
   - !ref test
@@ -27,34 +36,44 @@ targets:
 kind: Run.Sequence
 metadata: { name: test }
 steps:
+  # The store is a file that outlives the run, and row ids are global: every
+  # run gets a conversation and row ids of its own, so nothing a previous run
+  # left behind can satisfy (or break) this one.
+  - name: run
+    value:
+      conversationId: !cel "uuidv4()"
+      prefix: !cel "uuidv4() + '-'"
   - name: seed
     invoke: !ref Chat.importMessages
     inputs:
-      conversationId: c1
+      conversationId: !cel "steps.run.result.conversationId"
       messages:
-        - { id: m1, role: user, content: hello, createdAt: "2026-07-09 10:00:00" }
-        - { id: m2, role: assistant, content: hi!, createdAt: "2026-07-09 10:00:05" }
+        - { id: !cel "steps.run.result.prefix + 'm1'", role: user, content: hello, createdAt: "2026-07-09 10:00:00" }
+        - { id: !cel "steps.run.result.prefix + 'm2'", role: assistant, content: hi!, createdAt: "2026-07-09 10:00:05" }
   # Re-import with one duplicate (mutated content) and one new row: the
   # duplicate must neither double nor overwrite, the new row must land.
   - name: reseed
     invoke: !ref Chat.importMessages
     inputs:
-      conversationId: c1
+      conversationId: !cel "steps.run.result.conversationId"
       messages:
-        - { id: m2, role: assistant, content: changed, createdAt: "2026-07-09 10:00:05" }
-        - { id: m3, role: user, content: next, createdAt: "2026-07-09 10:01:00" }
+        - { id: !cel "steps.run.result.prefix + 'm2'", role: assistant, content: changed, createdAt: "2026-07-09 10:00:05" }
+        - { id: !cel "steps.run.result.prefix + 'm3'", role: user, content: next, createdAt: "2026-07-09 10:01:00" }
   - name: read
     invoke: !ref Chat.historyQuery
     inputs:
       sql: "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC"
       bindings:
-        - c1
+        - !cel "steps.run.result.conversationId"
   - name: assert
     inputs:
       actual:
         ids: !cel "steps.read.result.rows.map(r, r.id)"
         contents: !cel "steps.read.result.rows.map(r, r.content)"
       expected:
-        ids: [m1, m2, m3]
+        ids:
+          - !cel "steps.run.result.prefix + 'm1'"
+          - !cel "steps.run.result.prefix + 'm2'"
+          - !cel "steps.run.result.prefix + 'm3'"
         contents: [hello, hi!, next]
     invoke: !ref Assert.equals

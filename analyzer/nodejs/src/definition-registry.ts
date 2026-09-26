@@ -188,10 +188,16 @@ export class DefinitionRegistry {
   /** The schema registered under `id`, for a structural comparison that must see
    *  THROUGH a named shape. Declaring a shape once and referencing it is the
    *  sanctioned way to reuse one, so a comparator that cannot follow the
-   *  reference judges two opaque nodes and learns nothing. */
+   *  reference judges two opaque nodes and learns nothing.
+   *
+   *  A registered id is READ, never compiled: this is a structural lookup, and
+   *  compiling a shape the registry holds but cannot compile throws out of
+   *  whichever walk asked. That shape's compile failure is reported where the
+   *  shape is validated, not here. */
   schemaForId(id: string): Record<string, any> | undefined {
-    const compiled = this.ajv.getSchema(id);
-    const schema = compiled?.schema;
+    let entry = this.ajv.schemas[id] ?? this.ajv.refs[id];
+    while (typeof entry === "string") entry = this.ajv.schemas[entry] ?? this.ajv.refs[entry];
+    const schema = entry ? entry.schema : this.ajv.getSchema(id)?.schema;
     return schema && typeof schema === "object" ? (schema as Record<string, any>) : undefined;
   }
 

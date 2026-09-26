@@ -14,11 +14,11 @@ sidebar_label: Ai.ToolProvider
 ```ts
 interface AiToolProviderInstance {
   listTools(): Promise<ToolDescriptor[]> | ToolDescriptor[]; // { name, description?, parameters }
-  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  callTool(name: string, args: Record<string, unknown>, ctx?: InvokeContext): Promise<unknown>;
 }
 ```
 
-The agent calls `listTools()` to learn what to advertise to the model and `callTool()` to dispatch a model-requested call. It never learns which concrete provider it has — so MCP, a static list, or a future OpenAPI/registry source all compose without the agent changing.
+The agent calls `listTools()` to learn what to advertise to the model and `callTool()` to dispatch a model-requested call. `ctx` is the agent invocation's context: a provider hands it to whatever runs the tool, so cancelling the agent's turn stops the tool. A tool that ends because of that cancellation (`ERR_INVOKE_CANCELLED`) or suspends a durable run (`ERR_DURABLE_SUSPENDED`) ends the agent too, whatever its `onToolError` says. It never learns which concrete provider it has — so MCP, a static list, or a future OpenAPI/registry source all compose without the agent changing.
 
 `callTool` may return a plain value (written back to the model as plain JSON — a CEL value JSON has no form for in its plain encoding, such as a duration as `"5400s"` or a timestamp as RFC 3339 text in UTC), a string, or **multimodal content parts** — a `ContentPart[]` (`{ type: "text", text }` and/or `{ type: "image", data, mediaType }`). When a tool answers with content parts the agent carries them through the `tool` message untouched, so a vision tool can hand the model an image. An image part's `data` is raw bytes (`Uint8Array`, what a rasterizer/overlay tool result produces) or a base64 string; provider translation normalizes either to its wire shape.
 
@@ -58,7 +58,7 @@ tools:
 | `inputs`      | CEL object             | no       | Maps the model's `arguments` into the invocable's input. Omit to forward verbatim. |
 | `result`      | CEL                    | no       | Shapes the invocable's `result` into the value fed back — a string, or content parts (`{ type: "image", data: result.image, mediaType: result.mediaType }`) to hand the model an image. Omit to write the output as plain JSON. |
 
-By default the model's arguments forward straight to `invoke()` and the output is written back to the model as plain JSON. The optional `inputs:`/`result:` mappings bridge invocables whose call shape differs from what the model produces:
+By default the model's arguments forward straight to `invoke()` — under the agent invocation's context, so cancelling the turn cancels the tool — and the output is written back to the model as plain JSON. The optional `inputs:`/`result:` mappings bridge invocables whose call shape differs from what the model produces:
 
 ```yaml
 tools:

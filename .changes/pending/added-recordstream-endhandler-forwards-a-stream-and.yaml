@@ -1,0 +1,14 @@
+modules:
+  modules/record-stream: Added
+body: "RecordStream.EndHandler forwards a stream and runs its handler exactly once on
+  every ending — completed, failed, cancelled by its invocation, or stopped by its
+  consumer. The handler is called with an inputs map the author writes, evaluated once
+  per ending over three bindings: records (every item observed), context (the caller's
+  context input, which defaults to {}) and outcome, a RecordStream.StreamOutcome. telo
+  check compares the map against the handler's inputType, so a missing or refused key
+  and a misspelled or unguarded outcome field are static errors. The handler runs
+  without the stream's cancellation, and its failure, or a map that fails to evaluate,
+  ends the stream with the original ending as its cause. RecordStream.StreamOutcome is
+  exported as a Telo.JsonSchema { state, error } with a nullable error.
+  RecordStream.JournalSink takes resume: true to continue a failed key, or one whose
+  writer stopped heartbeating, keeping its records and continuing their ids."

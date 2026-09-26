@@ -118,7 +118,10 @@ the single most useful table on the page:
 | a bare name | inside a kind that declares `bindings:` | a value you named yourself — see below |
 
 Everything here is **typed**. `steps.Greet.result.mesage` is a
-`CEL_UNKNOWN_FIELD` error at check time, not `undefined` at 3am.
+`CEL_UNKNOWN_FIELD` error at check time, not `undefined` at 3am. That holds
+through a named shape too: an `inputType` or `outputType` property written as
+`!ref Money` types `inputs.price.amont` and `steps.quote.result.price.amont`
+against `Money`'s fields.
 
 `module.<field>` is the one that saves you from restating a value you already
 wrote down:

@@ -6,7 +6,7 @@ import type {
   ModelStreamResult,
   StreamPart,
 } from "@telorun/ai";
-import { EchoBase, NO_USAGE, type EchoResource } from "./echo-base.js";
+import { EchoBase, type EchoResource } from "./echo-base.js";
 
 /** The streaming echo — `Ai.ModelStream`. */
 class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStreamInstance {
@@ -19,6 +19,9 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
   }
 
   private async *parts(input: ModelInvokeInput): AsyncIterable<StreamPart> {
+    if (this.resource.echoProviderState) {
+      yield { type: "provider-state", providerState: { received: input.providerState ?? null } };
+    }
     if (this.shouldCallTool(input)) {
       const plan = this.resource.emitToolCall!;
       yield {
@@ -26,7 +29,7 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
         toolCall: { id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} },
       };
       // `tool-calls` rather than `stop` is what drives the agent's second turn.
-      yield { type: "finish", usage: NO_USAGE, finishReason: "tool-calls" };
+      yield { type: "finish", usage: this.usage, finishReason: "tool-calls" };
       return;
     }
     // Opaque state, emitted before the deltas the way a provider that keeps its
@@ -48,7 +51,7 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
       yield { type: "text-delta", delta: ch };
       emitted++;
     }
-    yield { type: "finish", usage: NO_USAGE, finishReason: "stop" };
+    yield { type: "finish", usage: this.usage, finishReason: "stop" };
   }
 }
 

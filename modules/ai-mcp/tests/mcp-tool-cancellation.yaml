@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpToolCancellationTest
+  version: 1.0.0
+  description: |
+    A turn cancelled while an MCP tool call is in flight ends with the
+    cancellation, and the cancellation reaches the MCP client handling the call:
+    the stub's never-answering tool is told to stop, and counts it.
+imports:
+  Ai: ../../ai
+  AiMcp: ../
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testCancelledToolCall
+---
+kind: Stub.StubClient
+metadata:
+  name: mcpServer
+---
+kind: Ai.Agent
+metadata:
+  name: assistant
+model:
+  kind: AiEcho.EchoModel
+  emitToolCall:
+    name: wait_for_cancel
+toolProviders:
+  - provider:
+      kind: AiMcp.ToolProvider
+      client: !ref mcpServer
+---
+# The step's bound cancels the turn while `wait_for_cancel` is in flight. Under
+# the default `onToolError: feedback` the cancellation still propagates — it is
+# not a tool failure — so the step fails as timed out rather than completing.
+kind: Run.Sequence
+metadata:
+  name: testCancelledToolCall
+steps:
+  - name: bounded
+    try:
+      - name: run
+        timeout: 300
+        invoke: !ref assistant
+        inputs: { prompt: "wait please" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a cancelled tool call completed the turn" }
+    catch:
+      - name: timedOut
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_STEP_TIMEOUT }
+  - name: count
+    invoke: !ref mcpServer
+    inputs: { method: tools/call, params: { name: cancelled_count } }
+  - name: clientSawCancellation
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.count.result.content"
+      expected: [{ type: text, text: "1" }]

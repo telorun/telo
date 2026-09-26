@@ -7,6 +7,8 @@ Stream operations on structured records. Format-neutral transformers, sources, a
 - **Tagged-union projection** — `ExtractText` projects a discriminated stream down to `Stream<string>` via a per-variant `emit` / `drop` / `throw` action map.
 - **Loud on unknown variants** — unmapped discriminator values throw `ERR_UNKNOWN_RECORD`; new record kinds never silently disappear.
 - **Lazy fan-out** — `Tee` serializes source pulls and buffers per-consumer, so each branch sees every item in order.
+- **Every ending observed** — `EndHandler` runs its handler once whether the stream completes, fails, is cancelled or is abandoned by its reader, and says which.
+- **Resumable recordings** — a journal key whose writer failed or died can be continued, so readers pick up where they stopped.
 - **Stream-typed** — every input and output is `x-telo-stream: true`, so chains compose with codecs, sinks, and other stream kinds.
 
 ## Kinds
@@ -15,7 +17,9 @@ Stream operations on structured records. Format-neutral transformers, sources, a
 | --- | --- |
 | `RecordStream.ExtractText` | Project a discriminated `Stream<record>` to `Stream<string>` via a per-variant action map. |
 | `RecordStream.Tee` | Fan one input stream out to two consumers; each output sees every item. |
-| `RecordStream.OnComplete` | Forward a stream while firing a handler once, at end-of-stream, with every item observed. |
+| `RecordStream.EndHandler` | Forward a stream and run a handler exactly once on whichever ending it reaches, with every item observed and how it ended. |
+| `RecordStream.StreamOutcome` | Exported shape (`Telo.JsonSchema`): how a stream ended — `{ state, error }`. |
+| `RecordStream.OnComplete` | **Deprecated** — use `EndHandler`. Fires its handler only when the stream completes. |
 | `RecordStream.JournalStore` | Abstract: the storage a journal runs over (see [the store contract](docs/store-contract.md)). |
 | `RecordStream.MemoryJournalStore` | A journal store in the process's memory. |
 | `RecordStream.Journal` | A keyed, offset-addressable replay journal over a store (Provider). |
@@ -93,55 +97,87 @@ Source is pulled lazily — at most one source `next()` is in flight at any time
 
 If the source iterator throws, both outputs throw the same error on their next pull.
 
-## RecordStream.OnComplete
+## RecordStream.EndHandler
 
-A passthrough that fires a side effect once the input has been fully consumed. Every item forwards to `output` in order as it arrives — the downstream consumer streams live — and when the input completes normally the injected `handler` is called **once** with `{ records, context }`: `records` is the full list of items observed, `context` is the opaque caller data passed through the `context` input.
+A passthrough that runs a handler **exactly once** on whichever ending the stream reaches. Every item forwards to `output` in order as it arrives — the downstream consumer streams live — and when the stream ends the injected `handler` is called with the arguments its `inputs:` map builds. The map is CEL, evaluated once per ending, and it sees `records` (every item observed up to the ending), `outcome` (how it ended, a `RecordStream.StreamOutcome`) and `context` (the caller data passed through the `context` input, `{}` when none).
 
-This closes the persist-while-streaming loop: an HTTP handler streams an AI/agent response to the client via `output`, and at end-of-stream `handler` writes the turn to a store. It's the answer to "I need to tee one branch to a SQL sink" — the second branch of a `Tee` has no autonomous driver inside a stream handler, whereas `OnComplete` is driven by the response being consumed.
+The map is what `telo check` compares against the handler's `inputType`, exactly as it checks any other call site's arguments: a key the handler requires and the map omits, a key a closed contract refuses, or a misspelled `outcome` field is a static error at the `inputs:` map, not a failure at the end of a stream. A handler that takes no arguments is written `inputs: {}`.
 
-The kind is domain-neutral — it does no CEL and knows nothing of SQL. The projection from `records` to whatever the store needs lives in `handler`, typically a `Run.Sequence`:
+This closes the persist-while-streaming loop: an HTTP handler streams an AI/agent response to the client via `output`, and when the stream ends `handler` writes the turn to a store — including a partial turn whose stream failed or was cancelled, and the status that says so. The projection from `records` and `outcome` to what the store needs is the `inputs:` map; the store write is the `handler`, typically a `Run.Sequence`:
 
 ```yaml
-kind: RecordStream.OnComplete
-metadata: { name: Persist }
-handler: !ref PersistTurn        # a Run.Sequence taking { records, context }
+kind: RecordStream.EndHandler
+metadata: { name: persist }
+handler: !ref persistTurn
+inputs:
+  conversationId: !cel "context.conversationId"
+  status: !cel "outcome.state"
+  content: !cel "records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
 ---
 kind: Run.Sequence
-metadata: { name: PersistTurn }
-inputs: { records: {}, context: {} }
+metadata: { name: persistTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [conversationId, status, content]
+    additionalProperties: false
+    properties:
+      conversationId: { type: string }
+      status: { type: string }
+      content: { type: string }
 steps:
-  - name: Insert
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref db }
     inputs:
-      sql: "INSERT INTO turns (conversation_id, content) VALUES (?, ?)"
+      sql: "INSERT INTO turns (conversation_id, status, content) VALUES (?, ?, ?)"
       bindings:
-        - !cel "inputs.context.conversationId"
-        - !cel "inputs.records.filter(r, r.type == 'text-delta').map(r, r.delta).join('')"
-    invoke: { kind: Sql.Command, connection: !ref Db }
+        - !cel "inputs.conversationId"
+        - !cel "inputs.status"
+        - !cel "inputs.content"
 ```
 
-Wired into an HTTP stream route, `handler` runs after the last frame flushes to the client:
+Wired into an HTTP stream route, `handler` runs once the last frame has been pulled:
 
 ```yaml
-- name: Ask
-  invoke: !ref Assistant           # Ai.AgentStream → { output: stream }
-  inputs: { messages: !cel "steps.History.result.rows" }
-- name: Persist
-  invoke: !ref Persist
+- name: ask
+  invoke: !ref assistant           # Ai.AgentStream → { output: stream }
+  inputs: { messages: !cel "steps.history.result.rows" }
+- name: persist
+  invoke: !ref persist
   inputs:
-    input: !cel "steps.Ask.result.output"
+    input: !cel "steps.ask.result.output"
     context: { conversationId: !cel "inputs.conversationId" }
-# return { output: steps.Persist.result.output } to the response
+# return { output: steps.persist.result.output } to the response
 ```
 
-### Semantics
+### Endings
 
-- `handler` is called **once**, after `input` runs to its end. Not called if the input throws (the error propagates) or the consumer cancels early (`break` / aborted response) — completion means the input reached its end.
+| The stream | `outcome.state` | `outcome.error` |
+| --- | --- | --- |
+| ran to its end | `completed` | `null` |
+| raised an error | `failed` | the error as `{ code?, message, data? }` — its code preserved |
+| was cancelled by the invocation that produced it (a step's `timeout:`, a cancelled run) | `cancelled` | the `ERR_INVOKE_CANCELLED` error |
+| was stopped by its consumer (`break`, an aborted response) | `cancelled` | `null` |
+
+- The handler runs **once** per stream, before the ending reaches the consumer: the consumer sees the end, the input's error or `ERR_INVOKE_CANCELLED` only after the handler has returned.
+- The handler runs on a context **without the stream's cancellation**, so when the ending IS a cancellation it can still invoke whatever it needs — a database write, a budget release.
+- A handler failure is not swallowed: the stream ends with the **handler's** error, with the error that ended the stream attached as its `cause`. An `inputs:` map that fails to evaluate is a handler failure too.
+- A durable suspension (`ERR_DURABLE_SUSPENDED`) is not an ending: it passes through and the handler is not called.
+- A stream nothing ever reads has no ending, so its handler never runs.
 - Records are buffered in memory, bounded by the input stream's length (same envelope as `Tee`).
-- A `handler` error is not swallowed: it propagates as the output stream terminates.
+
+### RecordStream.StreamOutcome
+
+An exported `Telo.JsonSchema` instance, `{ state: completed | failed | cancelled, error }`, where `error` is `null` or `{ code?, message, data? }`. It types the `outcome` binding in an EndHandler's `inputs:` map, so `outcome.stat` is `CEL_UNKNOWN_FIELD` and reading `outcome.error.code` without a null guard is `CEL_NULLABLE_ACCESS`. A handler that takes the whole outcome declares that input with `!ref RecordStream.StreamOutcome`.
+
+## RecordStream.OnComplete (deprecated)
+
+Declaring it reports `DEPRECATED_KIND`, naming `RecordStream.EndHandler` as its replacement; it keeps working unchanged. It forwards a stream and calls its handler once with `{ records, context }` **only** when the input runs to its end — not when the input errors or its consumer stops — so a failed or cancelled stream leaves no trace. Its handler's arguments are fixed by the controller and are not checked against the handler's contract. There is no automatic migration, because the replacement's handler is called with an `inputs:` map and runs on every ending: move to `EndHandler`, map `records` and `context` onto what the handler takes, and branch on `outcome.state` where the handler should only act on completion.
 
 ## RecordStream.Journal — resumable, offset-addressable replay
 
-`OnComplete` and `Tee` observe a stream as it is consumed **once**; neither
+`EndHandler` and `Tee` observe a stream as it is consumed **once**; neither
 survives the consumer disconnecting. `Journal` decouples producing a stream from
 consuming it, so a **detached** stream becomes **resumable**: a producer streams
 records into a keyed journal, and any number of consumers read them back from any
@@ -191,7 +227,7 @@ replays with its type and value on every store.
 
 ### Writing — `RecordStream.JournalSink`
 
-`{ key, input }` → `{ key, count }`. The sink **claims** the key before it pulls
+`{ key, input, resume? }` → `{ key, count }`. The sink **claims** the key before it pulls
 the first record, then appends each record with the next id (1-based,
 gap-free). On normal completion the key is **finished**; on an input error it is
 **failed** — the error's code, message and data are recorded for readers — and
@@ -207,11 +243,31 @@ The sink raises:
 
 | Code | When |
 | --- | --- |
-| `ERR_JOURNAL_KEY_BUSY` | The key already exists and belongs to another writer — live, finished or failed. Raised at the claim, before any record is pulled, or later if another writer took the key. |
+| `ERR_JOURNAL_KEY_BUSY` | The key already exists and belongs to another writer — live, finished or, without `resume`, failed. Raised at the claim, before any record is pulled, or later if another writer took the key. |
 | `ERR_JOURNAL_KEY_REMOVED` | The key was removed, before the claim or while the drain ran. |
 | `ERR_JOURNAL_WRITER_LOST` | This writer's key was failed as abandoned; its next write is refused. |
 
 On any of these the sink stops the drain and cancels its input.
+
+#### Continuing a key — `resume: true`
+
+Without `resume` an existing key is refused. With it, a key whose last writer
+failed, or stopped heartbeating, is **continued** by this sink instead: the
+records already there are kept, and new ids follow the last one with no gap.
+`count` is the number of records this drain appended.
+
+| The key | With `resume: true` |
+| --- | --- |
+| never written | claimed fresh, as without `resume` |
+| failed | taken over |
+| open, writer's heartbeat older than its timeout | failed as `ERR_JOURNAL_WRITER_LOST` (at the version that was read, so a writer that is alive after all wins), then taken over |
+| open, writer alive | `ERR_JOURNAL_KEY_BUSY` |
+| finished | `ERR_JOURNAL_KEY_BUSY` |
+| removed | `ERR_JOURNAL_KEY_REMOVED` |
+
+On takeover the key is open under the new writer, with the new writer's timeout.
+A reader that hit the failure reconnects from the last id it received and gets
+the continuation, then the key's new ending.
 
 The sink also re-raises its input stream's own error unchanged — whatever the
 producer raised. That error is not in the kind's `throws:`, since no literal list

@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: OnCompleteDeprecated
+  version: 1.0.0
+imports:
+  RecordStream: ../../
+  Run: ../../../run
+---
+kind: RecordStream.OnComplete
+metadata: { name: persist }
+handler:
+  kind: Run.Sequence
+  steps:
+    - name: noop
+      value: 1

@@ -15,7 +15,8 @@ imports:
       # The tool never touches the model; the key is only a required import input.
       openaiApiKey: dummy-key-never-used
     variables:
-      dbFile: ":memory:"
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
       # `echo`, not a real CLI. What this manifest owns is the VERB GUARD and
       # the argv it composes — whether `telo cel functions` prints the right
       # thing is the CLI's own business, tested in `cli/nodejs`. Echoing the
@@ -25,6 +26,14 @@ imports:
       teloProgram: [echo]
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.0#sha256-CHKb_ylzNVdyIA4XFFvofXSbgCUAyuaiSgWXyZKtPSI
+variables:
+  # Where this case's workspace and agent state live — the library takes both
+  # as host paths, and neither is ever read here beyond the spawned program's cwd.
+  scratch:
+    env: CHAT_TEST_TELO_CLI_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/telo-cli-tool
 targets:
   # The workspace is gitignored, so a fresh checkout has none — and every
   # command spawns with it as cwd.

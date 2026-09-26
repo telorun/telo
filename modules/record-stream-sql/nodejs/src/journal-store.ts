@@ -58,7 +58,7 @@ function isSqlConnection(value: unknown): value is SqlConnection {
 }
 
 /** A table name reaches SQL as an identifier, never a bind parameter: restricted
- *  to a safe character set AND double-quoted at every use. */
+ *  to a safe character set AND quoted through the dialect at every use. */
 function validateTableName(table: string, describe: string): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(table)) {
     throw new InvokeError(

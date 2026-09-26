@@ -29,6 +29,12 @@ export interface EchoResource {
   failAfterDeltas?: number;
   /** Test-only: emit this as a `provider-state` part before the deltas. */
   emitProviderState?: string;
+  /** Test-only: emit `{ received }` as a `provider-state` part at the start of every
+   *  call, `received` being the `providerState` that call was given (null when
+   *  none) — so a test sees what reached each call and what is replayed. */
+  echoProviderState?: boolean;
+  /** Test-only: the token usage every call reports. Zero when unset. */
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
 export const NO_USAGE = {
@@ -42,6 +48,11 @@ export const NO_USAGE = {
 /** Shared behaviour, so the two contracts cannot drift into echoing differently. */
 export abstract class EchoBase {
   constructor(protected readonly resource: EchoResource) {}
+
+  protected get usage() {
+    const usage = this.resource.usage;
+    return usage ? { ...usage, unit: "tokens", total: usage.totalTokens } : NO_USAGE;
+  }
 
   snapshot(): Record<string, unknown> {
     return { suffix: this.resource.suffix ?? "" };

@@ -16,6 +16,7 @@ imports:
 targets:
   - !ref Seeded.lostWriter
   - !ref Seeded.orphanedKey
+  - !ref Seeded.resumeStaleWriter
 ---
 kind: SQLite.Connection
 metadata: { name: db }

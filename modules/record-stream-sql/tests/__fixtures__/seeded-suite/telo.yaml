@@ -30,6 +30,7 @@ exports:
   resources:
     - lostWriter
     - orphanedKey
+    - resumeStaleWriter
 ---
 kind: Stream.Of
 metadata: { name: items }
@@ -229,3 +230,59 @@ steps:
         writerUnaffected: !cel "steps.write.result.count"
         replayedBeforeLoss: !cel "steps.replayed.result.rows.map(r, int(r.id))"
       expected: { writerUnaffected: 2, replayedBeforeLoss: [1] }
+---
+# A stale writer's key taken over with `resume`. While a live writer is paused in
+# its input, its open header and its one record are copied onto a key no writer
+# holds, with the write time moved two hours back — past the recorded one-hour
+# timeout. A resuming sink fails that key as lost and takes it over: the copied
+# record stays id 1, the continuation is id 2, and the key finishes.
+kind: Run.Sequence
+metadata: { name: resumeStaleWriter }
+steps:
+  - name: prepare
+    invoke: !ref prepare
+    inputs: { keys: [resume-writer, resume-orphan] }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, orphan: true }] }
+  - name: paused
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.orphan)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: copyHeader
+            invoke: !ref command
+            inputs:
+              sql: !cel "'INSERT INTO ' + variables.table + '_keys (journal_key, header, version, written_at, last_id) SELECT \\'resume-orphan\\', header, \\'seeded\\', written_at - 7200000, last_id FROM ' + variables.table + '_keys WHERE journal_key = \\'resume-writer\\''"
+          - name: copyEntries
+            invoke: !ref command
+            inputs:
+              sql: !cel "'INSERT INTO ' + variables.table + ' (journal_key, id, record) SELECT \\'resume-orphan\\', id, record FROM ' + variables.table + ' WHERE journal_key = \\'resume-writer\\''"
+          - name: continuation
+            invoke: !ref items
+            inputs: { items: [{ n: 9 }] }
+          - name: resume
+            invoke: { kind: RecordStream.JournalSink, journal: !ref slowJournal }
+            inputs: { key: resume-orphan, input: !cel "steps.continuation.result.output", resume: true }
+          - name: read
+            invoke: !ref slowSource
+            inputs: { key: resume-orphan }
+          - name: all
+            invoke: !ref collect
+            inputs: { input: !cel "steps.read.result.output" }
+          - name: check
+            invoke: !ref Assert.equals
+            inputs:
+              actual: { resumed: !cel "steps.resume.result", all: !cel "steps.all.result.items" }
+              expected:
+                resumed: { key: resume-orphan, count: 1 }
+                all: [{ id: 1, data: { n: 1 } }, { id: 2, data: { n: 9 } }]
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    invoke: { kind: RecordStream.JournalSink, journal: !ref slowJournal }
+    inputs: { key: resume-writer, input: !cel "steps.paused.result.output" }
+  - name: writerUnaffected
+    invoke: !ref Assert.equals
+    inputs: { actual: !cel "steps.write.result.count", expected: 2 }

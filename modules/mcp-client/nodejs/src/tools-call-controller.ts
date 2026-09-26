@@ -1,6 +1,7 @@
 import {
   type ControllerContext,
   type Invocable,
+  type InvokeContext,
   type ResourceContext,
 } from "@telorun/sdk";
 
@@ -37,15 +38,20 @@ export class McpToolsCall {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(inputs: ToolsCallInput): Promise<ToolsCallResult> {
+  async invoke(inputs: ToolsCallInput, invokeCtx?: InvokeContext): Promise<ToolsCallResult> {
     if (!inputs || typeof inputs.name !== "string") {
       throw protocolError("Mcp.ToolsCall requires inputs.name");
     }
     const client = this.resolveClient();
-    const raw = await client.invoke({
-      method: "tools/call",
-      params: { name: inputs.name, arguments: inputs.arguments ?? {} },
-    });
+    // The client is called directly, so the invocation's context (and with it
+    // cancellation) is handed on explicitly.
+    const raw = await client.invoke(
+      {
+        method: "tools/call",
+        params: { name: inputs.name, arguments: inputs.arguments ?? {} },
+      },
+      invokeCtx,
+    );
 
     // Soft-failure conversion per §4 of the implementation plan: the MCP
     // server returns isError: true on the success channel for a tool-level

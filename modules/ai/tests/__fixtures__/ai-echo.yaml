@@ -95,6 +95,22 @@ schema:
         Test-only marker: emit this value as a `provider-state` part, the way a
         provider that keeps its reasoning server-side does.
       type: string
+    echoProviderState:
+      title: Echo provider state
+      description: |
+        Test-only marker: open every call with a `provider-state` part holding
+        `{ received }`, the `providerState` that call was given (null when none).
+      type: boolean
+    usage:
+      title: Usage
+      description: "Test-only marker: the token usage every call reports. Zero when unset."
+      type: object
+      properties:
+        promptTokens: { type: integer, minimum: 0 }
+        completionTokens: { type: integer, minimum: 0 }
+        totalTokens: { type: integer, minimum: 0 }
+      required: [ promptTokens, completionTokens, totalTokens ]
+      additionalProperties: false
     failAfterDeltas:
       title: Fail after deltas
       description: |

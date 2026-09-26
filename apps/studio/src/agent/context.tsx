@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { AgentClient, openAgentStream, type AgentStreamHandle } from "./client";
+import { AgentClient, openAgentStream, type AgentStreamHandle, type StartTurnRefused } from "./client";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { TermsRequiredError, type RunnerTerms } from "../run/types";
@@ -105,6 +105,24 @@ function isUpstreamGone(err: unknown): boolean {
   if (err instanceof TypeError) return true; // fetch network failure
   const message = err instanceof Error ? err.message : String(err);
   return /\((502|503|504)\)/.test(message);
+}
+
+/** What the user reads for a refused turn start, by the refusal's `code`. A turn
+ *  already running for this conversation is an error, not something to attach
+ *  to: this client's own retries are recognised by their `Idempotency-Key`, so
+ *  a running turn it did not start belongs to someone else. */
+function refusalMessage(refusal: StartTurnRefused): string {
+  const retryIn = refusal.retryAfter ? ` in ${refusal.retryAfter}s` : "";
+  switch (refusal.code) {
+    case "ERR_AT_CAPACITY":
+      return `The agent is at capacity — try again${retryIn}.`;
+    case "ERR_RATE_LIMITED":
+      return `Too many turns started — try again${retryIn}.`;
+    case "ERR_TURN_IN_PROGRESS":
+      return "A turn is already running for this conversation.";
+    default:
+      return refusal.message;
+  }
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null);
@@ -469,23 +487,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (superseded()) return;
           const outcome = await c.startTurn(convId, text);
           if (superseded()) return;
-          if (outcome.kind === "denied") {
-            setError(`At capacity — try again${outcome.retryAfter ? ` in ${outcome.retryAfter}s` : ""}.`);
-            setStatus("error");
-            updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
-            return;
-          }
-          if (outcome.kind === "conflict") {
-            if (outcome.activeTurnId) {
-              // One conversation per workspace, so an in-flight turn is our own
-              // — typically the retry of a POST whose first attempt landed.
-              // Attach to it instead of erroring; the replay fills this bubble.
-              setTurnId(outcome.activeTurnId);
-              setStatus("streaming");
-              attachStream(outcome.activeTurnId, 0);
-              return;
+          if (outcome.kind === "refused") {
+            if (outcome.status >= 502 && outcome.status <= 504) {
+              invalidateLaunched(`POST /chat answered ${outcome.status}`);
             }
-            setError("A turn is already running for this workspace.");
+            setError(refusalMessage(outcome));
             setStatus("error");
             updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
             return;

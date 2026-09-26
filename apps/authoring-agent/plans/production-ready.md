@@ -42,7 +42,7 @@ Nothing else in this plan is safe to build before these.
 
 **A4 — Abort.**
 *Before:* Stop closes the client's stream and 404s; the turn runs on.
-*After:* `POST /chat/{turnId}/abort` cancels the running turn, releases the conversation lease, settles the budget reservation to actual usage, appends a terminal `aborted` record to the turn, and answers `{ cancelled: true }`. A turn already finished answers `{ cancelled: false }` rather than an error.
+*After:* `POST /chat/{turnId}/abort` cancels the running turn, releases the conversation lease, settles the budget reservation to actual usage, appends a terminal `aborted` record to the turn, and answers `{ cancelled: true }`. A turn already finished answers `{ cancelled: false }` rather than an error. The cancellation reaches the running model call and the running tool — `Ai.Tools` passes it into the tool's invocation, `AiMcp.ToolProvider` into its `tools/call` — and ends the turn with `ERR_INVOKE_CANCELLED`. Actual usage is the sum of the turn's `step-finish` records, one per model call that completed; a call the abort interrupted reports none.
 *Verify:* start a long build, press Stop, and the workspace stops changing within a second; the transcript's last record is `aborted`; `POST /chat` for the same conversation is accepted immediately afterwards (no 409 from a stranded lease).
 
 **A5 — Idempotent turn start.**
@@ -57,7 +57,7 @@ Nothing else in this plan is safe to build before these.
 
 **A7 — Agent state lives on the session volume.**
 *Before:* the SQLite file sits in the container.
-*After:* `AGENT_STATE_DIR` defaults to `<WORKSPACE_DIR>/.telo-agent` and holds `agent.sqlite`, `attachments/`, and `checkpoints/`. The directory is excluded from the editor↔workspace sync in both directions, exactly as the runner-seeded workspace marker is. A co-resident agent therefore keeps its conversations across a container restart, because the volume outlives the container.
+*After:* `AGENT_STATE_DIR` defaults to `<WORKSPACE_DIR>/.telo-agent` and holds `agent.sqlite`; attachments and checkpoints are created there by the features that need them. The directory is excluded from the editor↔workspace sync in both directions, exactly as the runner-seeded workspace marker is. A co-resident agent therefore keeps its conversations across a container restart, because the volume outlives the container.
 *Verify:* restart the agent container in a live watch session; the conversation list, the transcripts and the checkpoints are all still there. The editor's file tree never shows `.telo-agent`, and a turn that changes nothing pushes no writes.
 
 **A8 — Conversations as first-class objects.**
@@ -153,10 +153,7 @@ Nothing else in this plan is safe to build before these.
 - **The agent is single-instance.** It uses the in-memory store, as its lease and budget stores already are. A multi-instance deployment swaps the backend, as it would swap those.
 
 *The editor executes in the model's order, not the announcement order.* Because a step's tool calls are all announced before the first is dispatched, the editor sees `run_app` before the server has executed the `write_file` the model placed ahead of it. So the editor runs an editor tool only once every earlier tool call of the same step has its result on the stream. The server dispatches sequentially, so this reproduces the model's order exactly.
-*The key must be reachable, and it must be unique.* Today a tool handler receives only the model's `arguments`, never the call's id. And the `tool-call` part is emitted before ids are normalized, so a call without a provider id reaches the editor with none, while dispatch invents `call_<step>_<i>`, which repeats across turns. The `ai` module therefore changes in three ways:
-- a tool's `inputs:` mapping can read the call's id and name;
-- the emitted `tool-call` part carries the same normalized id that dispatch uses;
-- a fallback id is globally unique.
+*The key must be reachable, and it must be unique.* The `tool-call` part carries the one id dispatch uses and the `tool-result` answers under, and a call without a provider id gets a generated `call_<uuid>`, unique across turns and processes. A tool handler, though, receives only the model's `arguments`, never the call's id, so the `ai` module changes in one way: a tool's `inputs:` mapping can read the call's id and name.
 
 The handler keys its await by that id.
 Rejected alternatives, once: an MCP server in the editor (a browser tab cannot listen); a fenced block in the reply text like `telo-questions` (a block ends the turn, and these are mid-turn actions whose result the model must see); a Studio-to-agent websocket (a second transport for what the existing stream plus one POST already carry).
@@ -411,12 +408,12 @@ Three alternatives were rejected:
 
 Each stage is usable on its own and unblocks the next.
 
-The durable journal store — `RecordStream.JournalStore`, `RecordStream.MemoryJournalStore`, `RecordStreamSql.JournalStore`, removal, expiry and writer liveness — is in the repo. The agent imports every module by published pin, so stage 1's adoption of it begins once `record-stream` and `record-stream-sql` are published.
+The durable journal store — `RecordStream.JournalStore`, `RecordStream.MemoryJournalStore`, `RecordStreamSql.JournalStore`, removal, expiry and writer liveness — is in the repo, and so are stage 1's other stdlib prerequisites: `RecordStream.EndHandler` with `RecordStream.StreamOutcome`, `RecordStream.JournalSink`'s `resume`, and in `ai` the per-call `step-finish` usage, forwarded provider state and the `providerState` input, stable tool-call ids, and cancellation reaching tools (`ai-mcp` included). They ship in this publish round together with A7 and A5. The agent imports every module by published pin, so A2, A3, A4, A13 and B1 follow once that round is published.
 
 Two stdlib and language prerequisites are designed in plans of their own, in the packages they change, and gate the stages that need them:
 
 - **Per-invocation scope configuration** (scope inputs, the scoped-stream refusal, sensitivity through forwarding slots). It gates stage 4.
-- **Rendezvous** (the new `rendezvous` module). It gates stage 6, together with `ai`'s tool-call identity change.
+- **Rendezvous** (the new `rendezvous` module). It gates stage 6, together with `ai`'s binding of the call's id and name in a tool's `inputs:` mapping.
 
 1. **Durability and control** — A2, A3, A7, A4, A5, A13, plus B1. This is the "one source of truth" and "resume exactly" core; everything else assumes it.
 2. **Boundary** — A6, A10, F5, A11, A12. The agent becomes safe to expose.
@@ -462,7 +459,7 @@ F10 is independent of every stage. Its `ai` record field and Studio's switch to 
 - The agent's README grows the new routes, the new environment variables (`ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, the now-optional operator key, and the rest of G1), the `x-telo-model-key` header, the capability document's shape, the data-retention statement and the two deployment modes' differences; Studio's package guide gains the editor-tool mechanism, the approval model and the credential-store seam.
 - Module changes take a `telo release` fragment each:
   - `ai`'s `output` field on the tool-result record (F10), documented in its agent-stream docs as structured output for clients, beside `content` for the model. It is an added field that older clients ignore, so it needs no `requires:` floor.
-  - `ai`'s tool-call identity (D0): the call's id and name readable in a tool's `inputs:` mapping; the emitted `tool-call` part carrying the normalized id; globally unique fallback ids. The context binding is new vocabulary on `Ai.Tools`' own schema, delivered in `ai`'s artifact, so `ai` needs no floor. The agent, which writes it, declares its own.
+  - `ai`'s tool-call binding (D0): the call's id and name readable in a tool's `inputs:` mapping. The context binding is new vocabulary on `Ai.Tools`' own schema, delivered in `ai`'s artifact, so `ai` needs no floor. The agent, which writes it, declares its own.
   - `ai-mcp`'s cached tool listing (H1).
   - The hub's docs tools (F1).
   - Any `fs` or `http-server` surface a route needs.

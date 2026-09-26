@@ -153,11 +153,13 @@ export interface ToolResultRecord {
 }
 
 /** Tagged part emitted by a streaming *agent* (`Ai.AgentStream`) — the module's
- *  streaming deliverable, distinct from the model-facing `StreamPart`. It is a
- *  superset: the shared members are reused, and the agent adds `tool-result` for
- *  a tool it executed. This is the element type the streaming `output` carries. */
+ *  streaming deliverable, declared as `Ai.AgentStreamPart`. A superset of the
+ *  model-facing `StreamPart`: `step-finish` closes each model call with that
+ *  call's usage, `tool-result` reports a tool the agent executed, and `finish` —
+ *  the only terminator — carries the usage of every call summed. */
 export type AgentStreamPart =
   | StreamPart
+  | { type: "step-finish"; usage: Usage; finishReason: FinishReason }
   | { type: "tool-result"; toolResult: ToolResultRecord };
 
 /**
@@ -293,7 +295,9 @@ export interface ToolDescriptor {
  */
 export interface AiToolProviderInstance {
   listTools(): Promise<ToolDescriptor[]> | ToolDescriptor[];
-  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  /** `ctx` is the agent invocation's context: a provider hands it to whatever
+   *  runs the tool, so cancelling the turn stops the tool too. */
+  callTool(name: string, args: Record<string, unknown>, ctx?: InvokeContext): Promise<unknown>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
 }

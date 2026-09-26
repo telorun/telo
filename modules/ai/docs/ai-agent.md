@@ -65,7 +65,7 @@ toolProviders:
 | `options`       | object          | no       | Option overrides passed to the model each turn (merged under `inputs.options`).          |
 | `maxSteps`      | integer         | no       | Max model turns. Default `8`.                                                            |
 | `onMaxSteps`    | `throw\|return` | no       | At the cap without finishing: `throw` raises `ERR_AGENT_MAX_STEPS`; `return` hands back the last turn's text (`finishReason: tool-calls`). Default `throw`. |
-| `onToolError`   | `feedback\|throw`| no      | When a tool throws or the model names an unknown tool: `feedback` records it in `steps` and returns it to the model so it can recover; `throw` aborts. Default `feedback`. |
+| `onToolError`   | `feedback\|throw`| no      | When a tool throws or the model names an unknown tool: `feedback` records it in `steps` and returns it to the model so it can recover; `throw` aborts. Default `feedback`. A cancelled invocation and a durable suspension are not tool errors: they propagate either way. |
 | `toolProviders` | array           | no       | Tool sources — see below.                                                                |
 
 ### `toolProviders[]`
@@ -95,7 +95,11 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 - `text` — the model's final answer.
 - `usage` — token usage summed across every model call in the loop.
 - `finishReason` — from the final turn.
-- `steps` — one entry per turn that called tools: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+- `steps` — one entry per turn that called tools: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and the result's `toolCallId` and the replayed assistant message carry the same one. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+
+## Cancellation
+
+The invocation's context reaches every model call and every tool: the agent hands it to the tool provider's `callTool`, which passes it on to whatever runs the tool. Cancelling the invocation — a step's `timeout:`, a cancelled run — stops a running tool and ends the agent with `ERR_INVOKE_CANCELLED`, under either `onToolError`.
 
 ## See also
 

@@ -1,0 +1,6 @@
+modules:
+  modules/mcp-client: Fixed
+body: "Mcp.HttpClient, Mcp.StdioClient, Mcp.ToolsCall and Mcp.ToolsList honour the
+  invocation's cancellation: a cancelled request is aborted, the server is sent
+  notifications/cancelled for it, and the call rejects with ERR_INVOKE_CANCELLED instead
+  of running on."
