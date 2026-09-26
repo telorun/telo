@@ -9,8 +9,10 @@ const KIND_MAP: Record<CompletionResult["kind"], vscode.CompletionItemKind> = {
   enumMember: vscode.CompletionItemKind.EnumMember,
   property: vscode.CompletionItemKind.Property,
   folder: vscode.CompletionItemKind.Folder,
+  file: vscode.CompletionItemKind.File,
   module: vscode.CompletionItemKind.Module,
   value: vscode.CompletionItemKind.Value,
+  keyword: vscode.CompletionItemKind.Keyword,
 };
 
 function toItem(r: CompletionResult): vscode.CompletionItem {
@@ -27,6 +29,7 @@ function toItem(r: CompletionResult): vscode.CompletionItem {
     const { start, end } = r.replaceRange;
     item.range = new vscode.Range(start.line, start.character, end.line, end.character);
   }
+  if (r.retrigger) item.command = { command: "editor.action.triggerSuggest", title: "" };
   return item;
 }
 
@@ -43,7 +46,11 @@ export class TeloCompletionProvider implements vscode.CompletionItemProvider {
     const text = document.getText();
     const threaded = this.cache.docsFor(filePath, text);
     const manifestDirUri = vscode.Uri.file(path.dirname(filePath));
-    const adapter = new VsCodeIdeAdapter(manifestDirUri);
+    // Before the first analysis a file is taken as its own module's owner.
+    const moduleRootUri = vscode.Uri.file(
+      path.dirname(this.cache.moduleOwnerFor(filePath) ?? filePath),
+    );
+    const adapter = new VsCodeIdeAdapter(manifestDirUri, moduleRootUri);
     const results = await buildCompletions(
       text,
       position.line,

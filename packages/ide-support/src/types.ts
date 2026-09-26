@@ -20,7 +20,15 @@ import type {
   Range,
 } from "@telorun/analyzer";
 
-export type CompletionKind = "class" | "enumMember" | "property" | "folder" | "module" | "value";
+export type CompletionKind =
+  | "class"
+  | "enumMember"
+  | "property"
+  | "folder"
+  | "file"
+  | "module"
+  | "value"
+  | "keyword";
 
 /** A source span the host replaces wholesale when a completion is accepted. */
 export interface ReplaceRange {
@@ -45,6 +53,9 @@ export interface CompletionResult {
    *  containing non-word characters (`/`, `@`, `.`). A zero-width range is a
    *  pure insert. */
   replaceRange?: ReplaceRange;
+  /** The host reopens completion once this item is accepted — what comes next
+   *  has completions of its own (a tag's value, a directory's entries). */
+  retrigger?: boolean;
 }
 
 /** Rendered hover for the symbol under the cursor. `contents` is GitHub-flavored
@@ -172,6 +183,16 @@ export interface IdeEnvironmentAdapter {
    *  (`GET /module/versions?ref=`). The browser cannot call OCI `tags/list`;
    *  the hub holds them from ingest. */
   listVersionsForRef(ref: string): Promise<string[]>;
+  /** Entries of `relPath`, resolved against the ROOT of the module the manifest
+   *  belongs to — the directory every `!include-*` / `!module-path` path is
+   *  measured from, which for a partial is not the partial's own directory.
+   *  Returns [] if the path doesn't exist or isn't a directory. */
+  listModuleEntries(relPath: string): Promise<ModuleEntry[]>;
+}
+
+export interface ModuleEntry {
+  name: string;
+  directory: boolean;
 }
 
 export interface NormalizedDiagnostic {

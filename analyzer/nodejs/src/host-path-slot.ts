@@ -53,6 +53,63 @@ export function leadingRelativeLiteral(
   return constants.includes(literal) ? undefined : literal;
 }
 
+/** Where a host path comes from — the closing advice of every host-path finding. */
+export const HOST_PATH_SOURCES =
+  "A host path comes from a variable declared x-telo-type: Telo.HostPath (which resolves a " +
+  "relative value against the working directory), from !module-path, or from " +
+  ".joinPath('sub/dir') on either.";
+
+/** The constants a union accepts beside the path, as a closing hint — a typo of
+ *  one reads as a relative path, and naming it is what points at the repair. */
+export function alsoAccepts(slot: Record<string, any> | undefined): string {
+  const constants = (slot ? (unionBranches(slot) ?? []) : [])
+    .filter((branch) => typeof branch.const === "string")
+    .map((branch) => `'${branch.const as string}'`);
+  return constants.length === 0 ? "" : ` The field also accepts ${constants.join(", ")}.`;
+}
+
+/**
+ * Whether an expression at a union beside a host path can hold nothing but the
+ * union's constants (`":memory:"`): it is that literal (`literal`, read off the
+ * parsed expression), or it reads a source declared `const` / `enum` over them.
+ */
+export function holdsOnlyConstants(
+  slot: Record<string, any>,
+  literal: string | undefined,
+  source: Record<string, any> | undefined,
+): boolean {
+  const constants = (unionBranches(slot) ?? [])
+    .filter((branch) => "const" in branch)
+    .map((branch) => branch.const);
+  const held =
+    literal !== undefined
+      ? [literal]
+      : source && "const" in source
+        ? [source.const]
+        : Array.isArray(source?.enum)
+          ? (source.enum as unknown[])
+          : [];
+  return held.length > 0 && held.every((value) => constants.includes(value));
+}
+
+/**
+ * The branches of a host-path slot an expression may fill. A constant beside the
+ * path is filled only by an expression {@link holdsOnlyConstants} admits: any
+ * other string expression might equal it or might be a relative path, and only
+ * the second reaches the runtime's refusal.
+ */
+export function hostPathBranchesFor(
+  slot: Record<string, any>,
+  literal: string | undefined,
+  source: Record<string, any> | undefined,
+): Record<string, any> {
+  const branches = unionBranches(slot);
+  if (!branches || hostAnchorOf(slot) !== undefined) return slot;
+  if (holdsOnlyConstants(slot, literal, source)) return slot;
+  const paths = branches.filter((branch) => !("const" in branch));
+  return { ...slot, ...(slot.anyOf ? { anyOf: paths } : { oneOf: paths }) };
+}
+
 /** A module doc's `variables:` / `secrets:` entries that hold a host path — what
  *  an importer must supply as one — keyed `variables.<name>`, each with the
  *  constants a union beside the path accepts (`":memory:"`), which are not paths. */

@@ -7,6 +7,44 @@ const analyze = (expr: string) => analyzeCelExpression(expr, env);
 const codes = (expr: string) => analyze(expr).diagnostics.map((d) => d.code);
 const first = (expr: string) => analyze(expr).diagnostics[0]!;
 
+describe("explaining a rejected read", () => {
+  const schema = { type: "object", properties: { db: { type: "string" } } };
+  const typed = buildCelEnvironment();
+  (typed as any).registerVariable({ name: "variables", schema: { db: "string" } });
+  const explainSchema = () => ({ type: "object", properties: { variables: schema } });
+
+  it("names the undeclared field and what is declared, in place of the checker's wording", () => {
+    const { diagnostics } = analyzeCelExpression("variables.dbb", {
+      celEnv: typed,
+      contextSchema: null,
+      explainSchema,
+    });
+    expect(diagnostics).toEqual([
+      { code: "CEL_UNKNOWN_FIELD", message: "'variables.dbb' is not defined (available: db)" },
+    ]);
+  });
+
+  it("never judges an expression the checker accepted", () => {
+    const { diagnostics } = analyzeCelExpression("variables.db", {
+      celEnv: typed,
+      contextSchema: null,
+      explainSchema: () => ({ type: "object", properties: { variables: { properties: {} } } }),
+    });
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("keeps the checker's error when the chain the explain schema lacks is one the checker accepts", () => {
+    const env = buildCelEnvironment();
+    (env as any).registerVariable({ name: "variables", schema: { db: "string", port: "int" } });
+    const { diagnostics } = analyzeCelExpression("variables.port + 'x'", {
+      celEnv: env,
+      contextSchema: null,
+      explainSchema,
+    });
+    expect(diagnostics.map((d) => d.code)).toEqual(["CEL_TYPE_ERROR"]);
+  });
+});
+
 describe("call form classification", () => {
   it("reads a global call of a method as a call-form error, not a type error", () => {
     // The distinction is the whole point: cel-js reports

@@ -194,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerCompletionItemProvider(
       teloSelector,
       completionProvider,
-      " ", ":", "/", "@",
+      " ", ":", "/", "@", "!",
     ),
     // The marker's checks and completions rest on a listing of the repo; a
     // module appearing or disappearing is what makes one stale, and that is

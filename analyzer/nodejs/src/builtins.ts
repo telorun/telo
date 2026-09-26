@@ -1044,7 +1044,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             required: ["type"],
             anyOf: [{ required: ["env"] }, { required: ["arg"] }],
             properties: {
-              env: { type: "string" },
+              env: { type: "string", minLength: 1 },
               arg: ARG_BINDING_SCHEMA,
               type: {
                 type: "string",
@@ -1060,7 +1060,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             type: "object",
             required: ["env", "type"],
             properties: {
-              env: { type: "string" },
+              env: { type: "string", minLength: 1 },
               type: {
                 type: "string",
                 enum: ["string", "integer", "number", "boolean", "object", "array"],
@@ -1086,7 +1086,7 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
             type: "object",
             required: ["env"],
             properties: {
-              env: { type: "string" },
+              env: { type: "string", minLength: 1 },
               arg: ARG_BINDING_SCHEMA,
               protocol: {
                 type: "string",

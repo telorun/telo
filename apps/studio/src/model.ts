@@ -247,7 +247,8 @@ export interface WorkspaceAdapter {
   readFile(path: string): Promise<string>;
   /** Write text file; creates parent directories if needed. */
   writeFile(path: string, text: string): Promise<void>;
-  /** List directory entries (one level). */
+  /** List directory entries (one level). Throws `DirectoryNotFoundError` when
+   *  the path names nothing or names a file. */
   listDir(path: string): Promise<DirEntry[]>;
   /** Create directory (recursive). */
   createDir(path: string): Promise<void>;

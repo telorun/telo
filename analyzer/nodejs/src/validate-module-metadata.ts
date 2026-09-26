@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { isTaggedSentinel } from "@telorun/templating";
 
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -194,7 +195,9 @@ function validateFieldTypes(
       continue;
     }
 
-    if (typeOf(value) !== expected) {
+    // A tagged value is reported by its tag's own placement check, which says
+    // why it is wrong; a type complaint beside it would misdescribe it.
+    if (typeOf(value) !== expected && !isTaggedSentinel(value)) {
       out.push({
         severity: DiagnosticSeverity.Warning,
         code: "METADATA_INVALID_TYPE",

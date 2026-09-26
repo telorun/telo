@@ -87,10 +87,10 @@ describe("an undeclared root identifier", () => {
 describe("variables and secrets, typed per declaring module", () => {
   it("reports an unknown member of a declared block", () => {
     expect(codesFor({ label: makeTaggedSentinel("cel", "variables.nope") })).toContain(
-      "CEL_TYPE_ERROR",
+      "CEL_UNKNOWN_FIELD",
     );
     expect(codesFor({ label: makeTaggedSentinel("cel", "secrets.nope") })).toContain(
-      "CEL_TYPE_ERROR",
+      "CEL_UNKNOWN_FIELD",
     );
   });
 

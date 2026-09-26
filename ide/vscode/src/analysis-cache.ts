@@ -43,6 +43,19 @@ export class TeloAnalysisCache {
     return this.byFile.get(filePath)?.graph;
   }
 
+  /** The owner file of the module `filePath` belongs to — itself, or the file
+   *  that includes it as a partial. Undefined before the first analysis. */
+  moduleOwnerFor(filePath: string): string | undefined {
+    const graph = this.graphFor(filePath);
+    if (!graph) return undefined;
+    for (const mod of graph.modules.values()) {
+      if (mod.owner.source === filePath || mod.partials.some((p) => p.source === filePath)) {
+        return mod.owner.source;
+      }
+    }
+    return undefined;
+  }
+
   /** The cached AST when it still matches `text`, else undefined so the caller
    *  falls back to a local parse. */
   docsFor(filePath: string, text: string): AstDocument[] | undefined {

@@ -20,6 +20,8 @@ export default defineConfig({
       // differently from the app would pass against code the app never runs,
       // which is how a stale `dist` went unnoticed here for two weeks.
       "@telorun/analyzer": path.resolve(__dirname, "../../analyzer/nodejs/src/index.ts"),
+      "@telorun/templating": path.resolve(__dirname, "../../templating/nodejs/src/index.ts"),
+      "@telorun/ide-support": path.resolve(__dirname, "../../packages/ide-support/src/index.ts"),
       "fs/promises": path.resolve(__dirname, "./src/empty.ts"),
       fs: path.resolve(__dirname, "./src/empty.ts"),
       path: path.resolve(__dirname, "./src/empty.ts"),

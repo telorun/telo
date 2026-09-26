@@ -3,7 +3,14 @@ import type { editor, Position } from "monaco-editor";
 import { buildCompletions } from "@telorun/ide-support";
 import { pathDirname } from "../../../loader/paths";
 import { EditorIdeAdapter } from "./ide-adapter";
-import { analysisRef, registryRef, settingsRef, threadedDocs, workspaceRef } from "./provider-state";
+import {
+  analysisRef,
+  currentPathRef,
+  registryRef,
+  settingsRef,
+  threadedDocs,
+  workspaceRef,
+} from "./provider-state";
 
 type Monaco = Parameters<OnMount>[1];
 
@@ -13,12 +20,14 @@ export function registerYamlCompletions(monaco: Monaco): void {
     enumMember: monaco.languages.CompletionItemKind.EnumMember,
     property: monaco.languages.CompletionItemKind.Property,
     folder: monaco.languages.CompletionItemKind.Folder,
+    file: monaco.languages.CompletionItemKind.File,
     module: monaco.languages.CompletionItemKind.Module,
     value: monaco.languages.CompletionItemKind.Value,
+    keyword: monaco.languages.CompletionItemKind.Keyword,
   } as const;
 
   monaco.languages.registerCompletionItemProvider("yaml", {
-    triggerCharacters: [" ", ":", "/", "@"],
+    triggerCharacters: [" ", ":", "/", "@", "!"],
     async provideCompletionItems(model: editor.ITextModel, position: Position) {
       const word = model.getWordUntilPosition(position);
       const defaultRange = {
@@ -31,9 +40,12 @@ export function registerYamlCompletions(monaco: Monaco): void {
       const workspace = workspaceRef.current;
       const settings = settingsRef.current;
       const manifestDir = pathDirname(model.uri.path);
+      // Every source tab belongs to the active module, whose owner file anchors
+      // module-relative paths.
+      const moduleRoot = pathDirname(currentPathRef.current ?? model.uri.path);
       const adapter =
         workspace && settings
-          ? new EditorIdeAdapter(manifestDir, workspace, settings.hubUrl)
+          ? new EditorIdeAdapter(manifestDir, moduleRoot, workspace, settings.hubUrl)
           : undefined;
 
       const text = model.getValue();
@@ -71,6 +83,7 @@ export function registerYamlCompletions(monaco: Monaco): void {
             filterText: r.filterText,
             preselect: r.preselect,
             range,
+            command: r.retrigger ? { id: "editor.action.triggerSuggest", title: "" } : undefined,
           };
         }),
       };

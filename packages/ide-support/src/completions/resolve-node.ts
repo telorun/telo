@@ -41,13 +41,18 @@ export interface ResolvedCursor {
   /** Key slot: keys already present in the container (the key under the cursor
    *  excluded so it still suggests itself). */
   existingKeys?: Set<string>;
-  /** Key slot: the kind of the nearest enclosing inline resource (or the root
-   *  resource), whose schema the prop keys are completed against. Falls back to
-   *  the document kind at the root. */
+  /** The kind of the nearest enclosing inline resource (or the root resource),
+   *  whose schema the slot is completed against. Absent at a root declaring no
+   *  resource kind. */
   resourceKind?: string;
-  /** Key slot: number of `path` segments that reach `resourceKind`'s map, so
-   *  the schema-relative path is `path.slice(resourceDepth)`. */
+  /** Number of `path` segments that reach `resourceKind`'s map, so the
+   *  schema-relative path is `path.slice(resourceDepth)`. */
   resourceDepth?: number;
+  /** Value slot: the concrete path of `resourceKind`'s map, so the
+   *  resource-relative concrete path is what follows it in `concretePath`. */
+  resourceConcretePath?: string;
+  /** Value slot: the scalar's tag, when written out in front of it. */
+  tag?: ResolvedTag;
   /** The path with sequence INDICES kept (`routes[0].handler.url`),
    *  as distinct from `path`, through which arrays are transparent. This is the
    *  address the analyzer speaks — an `x-telo-context` scope, an error-bearing
@@ -58,6 +63,17 @@ export interface ResolvedCursor {
    *  segment plus the cursor's document offset — what completion and hover
    *  hit-test the expression's chain against. */
   cel?: { segment: CelSegment; offset: number };
+}
+
+export interface ResolvedTag {
+  /** The tag as written, `!` included. */
+  text: string;
+  replaceRange: { start: Position; end: Position };
+  /** Set when the cursor sits on the tag: its text up to the cursor. */
+  prefix?: string;
+  /** True when nothing follows the tag on its line — the value is still to be
+   *  written. */
+  bare: boolean;
 }
 
 function within(range: [number, number], offset: number): boolean {
@@ -96,15 +112,43 @@ function resourceKindOf(map: AstMap): string | undefined {
 
 /** The kind + path-depth of the nearest enclosing inline resource (or the root
  *  resource). `depth` is the number of `path` segments consumed to reach that
- *  map, so a prop-key `yamlPath` relative to it is `path.slice(depth)`. */
+ *  map, so a prop-key `yamlPath` relative to it is `path.slice(depth)`;
+ *  `concrete` is that map's own concrete path. */
 interface ResourceScope {
   kind?: string;
   depth: number;
+  concrete: string;
 }
 
-function enter(scope: ResourceScope, map: AstMap, ancestorsLen: number): ResourceScope {
+const ROOT_SCOPE: ResourceScope = { depth: 0, concrete: "" };
+
+function enter(
+  scope: ResourceScope,
+  map: AstMap,
+  ancestorsLen: number,
+  concrete: string,
+): ResourceScope {
   const kind = resourceKindOf(map);
-  return kind ? { kind, depth: ancestorsLen } : scope;
+  return kind ? { kind, depth: ancestorsLen, concrete } : scope;
+}
+
+/** The span of a scalar's tag, when it is written out in front of the value.
+ *  The AST's range covers the value alone; the tag precedes it, separated by
+ *  whitespace — or ends exactly at the range for a tag with no value yet. A tag
+ *  whose text does not read back verbatim (`!!str`, which the parser expands)
+ *  has no span. */
+function tagSpan(node: AstNode, text: string): [number, number] | undefined {
+  if (node.kind !== "scalar" || !node.tag) return undefined;
+  let end = node.range[0];
+  while (end > 0 && /\s/.test(text[end - 1]!)) end--;
+  const start = end - node.tag.length;
+  return start >= 0 && text.slice(start, end) === node.tag ? [start, end] : undefined;
+}
+
+/** A value's span with its tag included, so a cursor on the tag is on the value. */
+function valueSpan(node: AstNode, text: string): [number, number] {
+  const tag = tagSpan(node, text);
+  return tag ? [tag[0], node.range[1]] : node.range;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +175,7 @@ type Descent =
       keyName?: string;
       keyEnd: number;
       valueNode: AstNode;
+      scope: ResourceScope;
     }
   | { type: "empty" };
 
@@ -145,9 +190,10 @@ function descend(
   concrete: string,
   offset: number,
   scope: ResourceScope,
+  text: string,
 ): Descent | undefined {
   if (node.kind === "map") {
-    const mapScope = enter(scope, node, ancestors.length);
+    const mapScope = enter(scope, node, ancestors.length, concrete);
     for (const pair of node.entries) {
       const keyName = scalarString(pair.key);
       if (within(pair.key.range, offset)) {
@@ -161,11 +207,15 @@ function descend(
           scope: mapScope,
         };
       }
-      if (pair.value && within(pair.value.range, offset)) {
+      if (pair.value && within(valueSpan(pair.value, text), offset)) {
         const childAncestors = keyName != null ? [...ancestors, keyName] : ancestors;
         const childConcrete = keyName != null ? joinKey(concrete, keyName) : concrete;
         if (pair.value.kind === "map" || pair.value.kind === "seq") {
-          return descend(pair.value, childAncestors, childConcrete, offset, mapScope) ?? { type: "empty" };
+          return (
+            descend(pair.value, childAncestors, childConcrete, offset, mapScope, text) ?? {
+              type: "empty",
+            }
+          );
         }
         return {
           type: "value",
@@ -175,6 +225,7 @@ function descend(
           keyName,
           keyEnd: pair.key.range[1],
           valueNode: pair.value,
+          scope: mapScope,
         };
       }
     }
@@ -186,10 +237,10 @@ function descend(
     // `x-telo-context` scope, an error-bearing region and a step's identity are
     // all addressed per item, so a CEL site is unreachable without the index.
     for (const [index, item] of node.items.entries()) {
-      if (within(item.range, offset)) {
+      if (within(valueSpan(item, text), offset)) {
         const itemConcrete = `${concrete}[${index}]`;
         if (item.kind === "map" || item.kind === "seq") {
-          return descend(item, ancestors, itemConcrete, offset, scope) ?? { type: "empty" };
+          return descend(item, ancestors, itemConcrete, offset, scope, text) ?? { type: "empty" };
         }
         // A bare scalar list item (`targets:\n  - One`) has no enclosing map of
         // keyed siblings — leave `container` undefined rather than treating the
@@ -201,6 +252,7 @@ function descend(
           concretePath: itemConcrete,
           keyEnd: item.range[0],
           valueNode: item,
+          scope,
         };
       }
     }
@@ -243,7 +295,7 @@ function collectScopes(
   pairs: PairScope[],
 ): void {
   if (node.kind === "map") {
-    const mapScope = enter(scope, node, ancestors.length);
+    const mapScope = enter(scope, node, ancestors.length, concrete);
     const keys = new Set<string>();
     let childColumn = -1;
     for (const pair of node.entries) {
@@ -309,7 +361,7 @@ function columnSearch(
 ): KeyResolution {
   const maps: MapScope[] = [];
   const pairs: PairScope[] = [];
-  collectScopes(root, [], "", { depth: 0 }, lineOffsets, maps, pairs);
+  collectScopes(root, [], "", ROOT_SCOPE, lineOffsets, maps, pairs);
 
   // Sibling level: a map whose children already sit at the cursor's column.
   let sibling: MapScope | undefined;
@@ -349,7 +401,7 @@ function columnSearch(
     };
   }
 
-  return { path: [], concrete: "", existingKeys: new Set(), scope: { depth: 0 } };
+  return { path: [], concrete: "", existingKeys: new Set(), scope: ROOT_SCOPE };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +439,7 @@ export function resolveNodeAtPosition(
   const doc = docs[docIndex];
   const docKind = docKindOf(doc);
 
-  const found = doc.root ? descend(doc.root, [], "", offset, { depth: 0 }) : undefined;
+  const found = doc.root ? descend(doc.root, [], "", offset, ROOT_SCOPE, text) : undefined;
 
   // Cursor sits on an existing map key → key/prop-key position.
   if (found?.type === "key") {
@@ -443,6 +495,17 @@ export function resolveNodeAtPosition(
     }
 
     const clampedEnd = Math.min(offset, value.range[1]);
+    const span = tagSpan(value, text);
+    let tag: ResolvedTag | undefined;
+    if (span) {
+      const lineEnd = text.indexOf("\n", span[1]);
+      tag = {
+        text: value.tag!,
+        replaceRange: { start: toPos(span[0]), end: toPos(span[1]) },
+        prefix: within(span, offset) ? text.slice(span[0], offset) : undefined,
+        bare: text.slice(span[1], lineEnd < 0 ? text.length : lineEnd).trim() === "",
+      };
+    }
     return {
       docIndex,
       offset,
@@ -456,7 +519,12 @@ export function resolveNodeAtPosition(
       spaceAfterColon: value.range[0] - found.keyEnd >= 2,
       siblingKind: found.container ? siblingKindOf(found.container) : undefined,
       replaceRange: { start: toPos(value.range[0]), end: toPos(value.range[1]) },
-      cel,
+      resourceKind: found.scope.kind,
+      resourceDepth: found.scope.depth,
+      resourceConcretePath: found.scope.concrete,
+      tag,
+      // The tag is not the value: a cursor on it is not inside its expression.
+      cel: tag?.prefix !== undefined ? undefined : cel,
     };
   }
 
@@ -464,7 +532,7 @@ export function resolveNodeAtPosition(
   // resolved by cursor column.
   const resolution: KeyResolution = doc.root
     ? columnSearch(doc.root, character, offset, lineOffsets)
-    : { path: [], concrete: "", existingKeys: new Set<string>(), scope: { depth: 0 } };
+    : { path: [], concrete: "", existingKeys: new Set<string>(), scope: ROOT_SCOPE };
   return {
     docIndex,
     offset,

@@ -12,7 +12,8 @@ import {
 import { isInstantiableDefinition } from "./instantiable-kind.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
-import type { ContractDirection, DefResolver } from "./extends-resolution.js";
+import { celEvalModeAt, kindCelEvalSites } from "./eval-paths.js";
+import { inheritedCapability, type ContractDirection, type DefResolver } from "./extends-resolution.js";
 import { resolveContract } from "./invocation-contract.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
@@ -262,6 +263,25 @@ export class AnalysisRegistry {
    *  contract. */
   outputTypeForKind(kind: string): Record<string, unknown> | undefined {
     return this.contractForKind(kind, "outputType");
+  }
+
+  /**
+   * Whether the value at `path` of a resource of `kind` is evaluated, and when —
+   * null when it is read as a literal (a CEL tag there is `CEL_IN_NON_EVAL_FIELD`),
+   * undefined when no such rule governs the kind (no definition, or a structural
+   * `Telo.Template` kind whose CEL the kernel evaluates by other rules). The same
+   * sites and the same gate the analysis pass applies, so an editor offers an
+   * expression tag exactly where `telo check` accepts one.
+   *
+   * `path` is the concrete spelling with indices kept (`routes[0].returns[1].when`).
+   */
+  celEvalModeAt(kind: string, path: string): "compile" | "runtime" | null | undefined {
+    const def = this.resolveDefinition(kind);
+    if (!def?.schema) return undefined;
+    const resolveDef = this.scopedDefResolver();
+    const capability = inheritedCapability(def, resolveDef);
+    if (capability === undefined || capability === "Telo.Template") return undefined;
+    return celEvalModeAt(kindCelEvalSites(def, resolveDef), path);
   }
 
   private contractForKind(

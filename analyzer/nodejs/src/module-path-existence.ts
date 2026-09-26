@@ -4,6 +4,7 @@ import { isModuleKind } from "./module-kinds.js";
 import { pathsAtOrBeneath, readAssetPatterns, stagedModuleFiles } from "./module-named-files.js";
 import { readNativeEntries } from "./native-entries.js";
 import { readModuleSources } from "./source-entries.js";
+import { isNeverInstantiated } from "./validate-include-placement.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from "./types.js";
 
 /**
@@ -32,7 +33,8 @@ export async function collectModulePathDiagnostics(
   for (const file of [entry.owner, ...entry.partials]) {
     const found: Array<{ index: number; at: string; written: string; relative: string }> = [];
     file.manifests.forEach((manifest, index) => {
-      if (!manifest) return;
+      // Never resolved there, so `MODULE_PATH_OUTSIDE_RESOURCE` is the finding.
+      if (!manifest || isNeverInstantiated(manifest.kind)) return;
       walkCelExpressions(manifest, "", (written, at, engine) => {
         if (engine !== MODULE_PATH_ENGINE) return;
         const { path: relative } = normalizeModulePath(written);

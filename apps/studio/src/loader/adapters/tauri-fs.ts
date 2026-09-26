@@ -2,6 +2,7 @@ import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
 import { expandGlobViaList, pathDirname, pathExtname, pathResolve } from "../paths";
+import { DirectoryNotFoundError } from "./directory-not-found";
 
 // ---------------------------------------------------------------------------
 // TauriFsAdapter — implements both ManifestSource and WorkspaceAdapter via
@@ -34,7 +35,10 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
   }
 
   async listDir(path: string): Promise<DirEntry[]> {
-    const { readDir } = await import("@tauri-apps/plugin-fs");
+    const { readDir, exists, stat } = await import("@tauri-apps/plugin-fs");
+    if (!(await exists(path)) || !(await stat(path)).isDirectory) {
+      throw new DirectoryNotFoundError(path);
+    }
     const entries = await readDir(path);
     return entries.map((e: { name: string; isDirectory: boolean }) => ({
       name: e.name,

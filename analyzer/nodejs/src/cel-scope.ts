@@ -415,6 +415,9 @@ export interface CelScope {
    *  import alias) may name here, in declaration order: what `<receiver>.` offers
    *  and every one of them resolves. */
   moduleFunctionsOf: (receiver: string) => ReadonlyArray<{ name: string; function: ResolvedFunction }>;
+  /** The site's names as a schema — the context, or the kernel globals where no
+   *  context applied — for explaining a rejection the checker already made. */
+  explainSchema: () => Record<string, any> | null;
 }
 
 /** The analyzer state a scope is resolved against — everything a manifest set
@@ -632,6 +635,15 @@ export class CelScopeResolver {
       moduleCallFlags: (qualified) => this.inputs.callableFlags?.ofCall(m, qualified),
       moduleFunction: resolved,
       moduleFunctionsOf: (receiver) => functions?.callablesThrough(m, receiver) ?? [],
+      // The observed-state context that stands in where no `x-telo-context`
+      // matched carries no globals; merging is a no-op for one that does.
+      explainSchema: () =>
+        parameterScope
+          ? contextSchema
+          : mergeKernelGlobalsIntoContext(
+              contextSchema ?? { type: "object", properties: {}, additionalProperties: true },
+              this.inputs.kernelGlobals.forResource(m),
+            ),
     };
   }
 
