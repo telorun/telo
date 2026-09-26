@@ -1,0 +1,4 @@
+kind: Ledger.Entry
+metadata:
+  name: charge
+amount: !cel "Self.withVat(10.0)"

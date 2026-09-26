@@ -95,12 +95,31 @@ fails on the version and never has to interpret an axis it has never heard of.
 
 There is no separate range per kernel. `telo` names the **manifest surface generation** a
 runtime implements — one scale reported by the Node kernel, the Rust kernel and any
-future Go kernel alike, independent of each one's own crate or package version. Writing
-bounds per kernel would restate one fact several times, and would ask you to assert
-things about kernels you have never run.
+future Go kernel alike. Writing bounds per kernel would restate one fact several times,
+and would ask you to assert things about kernels you have never run.
+
+**Telo's own packages and crates carry the generation as their version.** The runtime
+packages — `@telorun/sdk`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`,
+`@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` — are released
+together at one version, and their Rust twins (`telo-kernel`, `telo-cli`,
+`telo-analyzer`, `telo-templating`, `telorun-sdk`) carry the same number. So
+`>=0.100.0` means telo 0.100.0 whichever of them you look at: the CLI you verify with,
+the kernel that loads the module, and the editor engine checking it as you type.
 
 A kernel that implements only a *subset* of a generation claims none and skips the check.
 A version expresses *older*, not *smaller*.
+
+## In the editor
+
+Editors read the same ranges to decide which telo a module is edited against
+(the `telo.version` setting's `auto`): a module declaring `requires: telo:` is
+edited against the lowest available version its own range and its imports'
+ranges accept; a module declaring none stays on the editor's bundled version
+when its imports accept that, else moves to the lowest version they all accept;
+and when nothing satisfies them, the bundled version runs and its load gate
+names the module that refuses it. Declaring a floor therefore also decides what
+your editor checks you against. See
+[Editing against a telo version](../guides/editor-telo-version.md).
 
 ## Verifying it
 

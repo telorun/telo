@@ -1,8 +1,11 @@
-# The extension ships as a single esbuild bundle (`dist/extension.js`), so
+# The extension ships as one esbuild bundle (`dist/extension.js`) plus the
+# bundled telo engine (`dist/engine/language-server.mjs`), so
 # nothing that produced it needs to travel with it.
 .vscodeignore
 .gitignore
 src/**
+tests/**
+vitest.config.mts
 scripts/**
 node_modules/**
 tsconfig.json

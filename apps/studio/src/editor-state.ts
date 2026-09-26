@@ -1,3 +1,5 @@
+import { emptyAnalysis } from "./analysis";
+import { emptyDiagnostics } from "./language/engine-diagnostics";
 import { isWorkspaceModule } from "./loader";
 import type { EditorState, Workspace } from "./model";
 
@@ -10,14 +12,8 @@ export const INITIAL_STATE: EditorState = {
   activeView: "topology",
   selectedResource: null,
   panelStack: [],
-  diagnostics: {
-    byResource: new Map(),
-    byFile: new Map(),
-    registryByFile: new Map(),
-    graphByFile: new Map(),
-    analysisByFile: new Map(),
-    moduleGraphByFile: new Map(),
-  },
+  diagnostics: emptyDiagnostics(),
+  analysis: emptyAnalysis(),
   sourceRevealRequest: null,
   deploymentsByApp: {},
   viewportByModule: {},

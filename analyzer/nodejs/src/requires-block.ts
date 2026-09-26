@@ -217,8 +217,8 @@ export interface HostVersions {
  * makes, pointed in the safe direction. The test is a parse, not a shape: `0.76`
  * and `2024.1` look like versions and are not three-part ones, so a cheaper
  * check (a leading digit, say) would fail them CLOSED and gate every module in
- * the graph on a number nothing could compare. `AnalysisOptions.teloVersion` is
- * hand-written by definition, so that is exactly where such a value arrives.
+ * the graph on a number nothing could compare. `manifestCompatibility`'s version
+ * is its caller's to supply, so that is exactly where such a value arrives.
  */
 export function evaluateRequires(
   block: RequiresBlock,

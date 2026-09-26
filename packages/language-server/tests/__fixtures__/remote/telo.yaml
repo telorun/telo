@@ -1,0 +1,15 @@
+# Served by the test host as `oci://registry.example.test/telo/remote@1.0.0` —
+# never read from this path by the engine.
+kind: Telo.Library
+metadata:
+  name: Remote
+  version: 1.0.0
+exports:
+  kinds: [Tick]
+---
+kind: Telo.Definition
+metadata:
+  name: Tick
+capability: Telo.Runnable
+schema:
+  type: object

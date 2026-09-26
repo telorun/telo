@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "customConditions": ["source"],
+    "strict": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "WebWorker"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

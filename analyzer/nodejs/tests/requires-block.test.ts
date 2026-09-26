@@ -5,6 +5,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 import { evaluateRequires, readRequires } from "../src/requires-block.js";
+import { TELO_SURFACE_VERSION } from "../src/telo-version.js";
 import { validateRequires } from "../src/validate-requires.js";
 import { DiagnosticSeverity } from "../src/types.js";
 
@@ -115,8 +116,8 @@ describe("evaluateRequires", () => {
   // The guard is a PARSE, not a shape test. `0.76` and `2024.1` look like
   // versions and are not three-part ones, so a leading-digit test would fail
   // them CLOSED and gate every module on a number nothing could compare —
-  // exactly the direction this refuses to fail in. `teloVersion` is hand-written
-  // by definition, so this is where such a value arrives.
+  // exactly the direction this refuses to fail in. `manifestCompatibility`'s
+  // version is its caller's to supply, so this is where such a value arrives.
   it("treats a version it cannot parse as satisfied, not as failing", () => {
     const b = readRequires({ requires: { telo: ">=0.80.0" } }).block;
     for (const running of ["0.76", "2024.1", "dev", "v", ""]) {
@@ -130,18 +131,18 @@ describe("evaluateRequires", () => {
 
 describe("validateRequires", () => {
   it("gates a module the runtime is too old for", () => {
-    const diagnostics = validateRequires([doc({ telo: ">=0.80.0" })], { teloVersion: "0.76.0" });
+    const diagnostics = validateRequires([doc({ telo: ">=999.0.0" })]);
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       code: "MODULE_REQUIRES_NEWER_RUNTIME",
       severity: DiagnosticSeverity.Error,
     });
-    expect(diagnostics[0]?.message).toContain(">=0.80.0");
-    expect(diagnostics[0]?.message).toContain("0.76.0");
+    expect(diagnostics[0]?.message).toContain(">=999.0.0");
+    expect(diagnostics[0]?.message).toContain(TELO_SURFACE_VERSION);
   });
 
   it("says nothing when the requirement is met", () => {
-    expect(validateRequires([doc({ telo: ">=0.80.0" })], { teloVersion: "0.85.0" })).toEqual([]);
+    expect(validateRequires([doc({ telo: ">=0.1.0" })])).toEqual([]);
   });
 
   // A published dependency's malformed block is not the consumer's to FIX — but
@@ -151,7 +152,6 @@ describe("validateRequires", () => {
   it("errors on the entry's own malformed block and warns on a dependency's", () => {
     const manifests = [doc({ telo: "^0.80.0" }, "Mine"), doc({ telo: "^0.80.0" }, "Theirs")];
     const diagnostics = validateRequires(manifests, {
-      teloVersion: "0.85.0",
       entryModules: new Set(["Mine"]),
     });
     expect(diagnostics).toHaveLength(2);
@@ -165,20 +165,20 @@ describe("validateRequires", () => {
   // An older runtime not knowing a newer axis is a consequence of the version
   // skew, not a second defect.
   it("suppresses unknown-axis complaints while the telo gate is failing", () => {
-    const manifests = [doc({ telo: ">=0.90.0", host: { futureAxis: ">=1.0.0" }, other: "x" })];
-    const codes = validateRequires(manifests, { teloVersion: "0.76.0" }).map((d) => d.code);
+    const manifests = [doc({ telo: ">=999.0.0", host: { futureAxis: ">=1.0.0" }, other: "x" })];
+    const codes = validateRequires(manifests).map((d) => d.code);
     expect(codes).toEqual(["MODULE_REQUIRES_NEWER_RUNTIME"]);
   });
 
   it("reports an unknown axis once the telo requirement is satisfied", () => {
     const manifests = [doc({ telo: ">=0.10.0", futureAxis: "x" })];
-    const codes = validateRequires(manifests, { teloVersion: "0.76.0" }).map((d) => d.code);
+    const codes = validateRequires(manifests).map((d) => d.code);
     expect(codes).toEqual(["REQUIRES_INVALID"]);
   });
 
   it("ignores non-module docs", () => {
     const definition = { kind: "Telo.Definition", metadata: { name: "Query" }, requires: 5 };
-    expect(validateRequires([definition as never], { teloVersion: "0.1.0" })).toEqual([]);
+    expect(validateRequires([definition as never])).toEqual([]);
   });
 });
 

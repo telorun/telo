@@ -1,0 +1,4 @@
+kind: Telo.Library
+metadata:
+  name: One
+  version: 1.0.0

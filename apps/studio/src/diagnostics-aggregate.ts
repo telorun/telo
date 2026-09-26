@@ -1,6 +1,5 @@
 import { DiagnosticSeverity } from "@telorun/analyzer";
 import type { NormalizedDiagnostic } from "@telorun/ide-support";
-import { UNKNOWN_FILE_KEY, type WorkspaceDiagnostics } from "./analysis";
 import { normalizePath } from "./loader";
 import type { EditorState, ParsedManifest } from "./model";
 
@@ -84,8 +83,7 @@ export function summarizeFiles(
 }
 
 /** Flattens every diagnostic in the workspace. Intended for a future
- *  Problems panel. Includes entries under the UNKNOWN_FILE_KEY sentinel so
- *  diagnostics the analyzer couldn't tie to a file are still surfaced. */
+ *  Problems panel. */
 export function summarizeWorkspace(
   state: Pick<EditorState, "diagnostics">,
 ): DiagnosticsSummary | null {
@@ -114,5 +112,3 @@ export function getModuleFiles(manifest: ParsedManifest): string[] {
   }
   return [...keys];
 }
-
-export { UNKNOWN_FILE_KEY };

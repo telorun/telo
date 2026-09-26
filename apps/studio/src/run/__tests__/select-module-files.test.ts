@@ -15,7 +15,7 @@ function listDirFromTree(tree: Record<string, "file" | "dir">) {
       if (slash === -1) seen.set(rest, kind === "dir");
       else seen.set(rest.slice(0, slash), true);
     }
-    return [...seen].map(([name, isDirectory]) => ({ name, isDirectory }));
+    return [...seen].map(([name, isDirectory]) => ({ name, isDirectory, kind: isDirectory ? "directory" : "file" }) as const);
   };
 }
 

@@ -3,7 +3,7 @@
   "displayName": "Telo",
   "version": "0.4.0",
   "private": true,
-  "description": "YAML diagnostics and completions for Telo manifests",
+  "description": "Diagnostics, completions and refactorings for Telo manifests, from the telo version each module is edited against",
   "keywords": [
     "telo",
     "vscode",
@@ -24,7 +24,7 @@
   "publisher": "telorun",
   "icon": "icon.png",
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Linters",
@@ -71,6 +71,11 @@
         "command": "telo.refreshImportUpgrades",
         "title": "Check Imports for Updates",
         "category": "Telo"
+      },
+      {
+        "command": "telo.selectVersion",
+        "title": "Select Telo Version",
+        "category": "Telo"
       }
     ],
     "menus": {
@@ -88,6 +93,12 @@
     "configuration": {
       "title": "Telo",
       "properties": {
+        "telo.version": {
+          "type": "string",
+          "default": "auto",
+          "pattern": "^(auto|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?)$",
+          "markdownDescription": "The telo version manifests are edited against: `auto` picks one per module from its `requires: telo:` and its imports' ranges, or an exact engine identity pins every module to it — a published version (`0.102.0`), or a development build's (`0.102.0+unreleased`). Run **Telo: Select Telo Version** to choose from the versions available."
+        },
         "telo.importUpgrades.enabled": {
           "type": "boolean",
           "default": true,
@@ -97,11 +108,6 @@
           "type": "string",
           "default": "https://telo.sh",
           "description": "Base URL of the Telo hub used for federated import-source autocomplete (ref search and version lists)."
-        },
-        "telo.manifestCacheUrl": {
-          "type": "string",
-          "default": "https://manifests.telo.sh",
-          "description": "Base URL of the static manifest cache used to read a candidate version's telo.yaml when checking whether an import upgrade can run on this telo. Point at a self-hosted hub's cache to check privately published modules."
         }
       }
     }
@@ -109,21 +115,24 @@
   "scripts": {
     "build": "pnpm --filter \"telo-vscode^...\" build && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "vsix": "pnpm run build && node scripts/stage-license.mjs && vsce package --no-dependencies --out telo-vscode.vsix"
+    "vsix": "pnpm run build && node scripts/stage-license.mjs && vsce package --no-dependencies --out telo-vscode.vsix",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@telorun/analyzer": "workspace:*",
-    "@telorun/glob": "workspace:*",
-    "@telorun/ide-support": "workspace:*",
+    "@telorun/editor-protocol": "workspace:*",
     "@telorun/kernel": "workspace:*",
-    "minimatch": "^10.0.1"
+    "@telorun/language-host": "workspace:*",
+    "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
+    "@telorun/language-server": "workspace:*",
     "@types/node": "^24.0.0",
-    "@types/vscode": "~1.85.0",
+    "@types/vscode": "~1.91.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.27.4",
     "ovsx": "^1.0.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.8",
+    "vscode-languageserver-protocol": "3.18.4"
   }
 }

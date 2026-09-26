@@ -15,8 +15,9 @@ type Monaco = Parameters<OnMount>[1];
  * Otherwise: colors keyed by the ide-support token types (`type` = resource
  * kind, `interface` = capability, `variable` = `!ref` target). Monaco maps a
  * semantic token type to a theme rule whose `token` equals the type name, so
- * these paint the tokens `buildSemanticTokens` emits. Colors mirror the VS Code
- * Dark+/Light+ conventions used by the extension's TextMate grammar.
+ * these paint the tokens the engine emits (ide-support's `buildSemanticTokens`).
+ * Colors mirror the VS Code Dark+/Light+ conventions used by the extension's
+ * TextMate grammar.
  */
 const DARK_RULES = [
   { token: "type", foreground: "4EC9B0" },
