@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.2 - 2026-09-26
+### Fixed
+* Mcp.HttpClient, Mcp.StdioClient, Mcp.ToolsCall and Mcp.ToolsList honour the invocation's cancellation: a cancelled request is aborted, the server is sent notifications/cancelled for it, and the call rejects with ERR_INVOKE_CANCELLED instead of running on.
+
 ## 0.15.1 - 2026-09-17
 ### Fixed
 * A CEL value JSON has no form for is written in its plain encoding where it leaves for a reader outside Telo - an SSE data payload, an NDJSON line, an MCP tool call's arguments and a structured tool result fed back to a model - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url, a uint as its digits, where a duration used to be written as an empty object.

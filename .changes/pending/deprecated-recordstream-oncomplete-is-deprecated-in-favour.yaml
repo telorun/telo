@@ -1,5 +1,0 @@
-modules:
-  modules/record-stream: Deprecated
-body: RecordStream.OnComplete is deprecated in favour of RecordStream.EndHandler, which
-  runs its handler on every ending of the stream rather than only on completion. It
-  keeps working unchanged and reports DEPRECATED_KIND where it is declared.
