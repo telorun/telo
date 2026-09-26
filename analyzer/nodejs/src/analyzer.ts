@@ -1587,7 +1587,6 @@ export class StaticAnalyzer {
     // version skew. Reporting them beside the gate would bury the one message
     // that names the actual cause and the actual fix.
     const requiresDiagnostics = validateRequires(allManifests as unknown as ResourceManifest[], {
-      teloVersion: options?.teloVersion,
       hostVersions: options?.hostVersions,
       entryModules: rootModules,
     });

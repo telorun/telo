@@ -509,11 +509,6 @@ export function DetailPanel({
             pointer={selectionContext?.pointer ?? ""}
             readOnly={readOnly}
             onSourceEdit={onSourceEdit}
-            // The whole resource's, unfiltered: the pane holds a span of the
-            // file and decides for itself which of them fall inside it — the
-            // form's per-field matching is by PATH, which says nothing about
-            // where a diagnostic lands in the text.
-            diagnostics={detailSummary?.diagnostics ?? []}
           />
         </div>
       ) : (

@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig } from "vite";
+import { bundledEnginePlugin } from "./vite-bundled-engine";
 
 export default defineConfig({
   plugins: [
@@ -9,6 +10,7 @@ export default defineConfig({
         plugins: ["babel-plugin-react-compiler"],
       },
     }),
+    bundledEnginePlugin(),
   ],
   resolve: {
     alias: {
@@ -32,6 +34,8 @@ export default defineConfig({
       "@telorun/analyzer": path.resolve(__dirname, "../../analyzer/nodejs/src/index.ts"),
       "@telorun/templating": path.resolve(__dirname, "../../templating/nodejs/src/index.ts"),
       "@telorun/ide-support": path.resolve(__dirname, "../../packages/ide-support/src/index.ts"),
+      "@telorun/language-host": path.resolve(__dirname, "../../packages/language-host/src/index.ts"),
+      "@telorun/editor-protocol": path.resolve(__dirname, "../../packages/editor-protocol/src/index.ts"),
       "fs/promises": path.resolve(__dirname, "./src/empty.ts"),
       fs: path.resolve(__dirname, "./src/empty.ts"),
       path: path.resolve(__dirname, "./src/empty.ts"),

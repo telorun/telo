@@ -18,6 +18,12 @@
 !packages/debug-ui
 !packages/glob/nodejs
 !package.json
+# The root `prepare` derives TELO_SURFACE_VERSION from the changesets `fixed`
+# group and the pending changesets; it reads every member of that group,
+# language-server included, and writes the engine's identity into it.
+!.changeset
+!packages/language-server
+!packages/editor-protocol
 !pnpm-*
 !tsconfig.base.json
 

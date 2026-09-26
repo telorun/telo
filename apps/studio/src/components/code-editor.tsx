@@ -20,6 +20,9 @@ interface CodeEditorProps {
    *  with them — setting markers on this model, say. The widget keeps owning
    *  its own value and language. */
   onReady?: OnMount;
+  /** URI of an existing model to edit instead of one of the widget's own; the
+   *  model is its owner's, kept when the widget unmounts. */
+  path?: string;
 }
 
 type Monaco = Parameters<OnMount>[1];
@@ -56,6 +59,7 @@ export function CodeEditor({
   readOnly = false,
   className,
   onReady,
+  path,
 }: CodeEditorProps) {
   const onBlurRef = useRef(onBlur);
   useEffect(() => {
@@ -95,6 +99,7 @@ export function CodeEditor({
       <Editor
         height={height}
         theme={monacoTheme}
+        {...(path ? { path, keepCurrentModel: true } : {})}
         value={value}
         onChange={(next) => onValueChange(next ?? "")}
         onMount={handleMount}

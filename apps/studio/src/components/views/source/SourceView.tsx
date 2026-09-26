@@ -1,13 +1,12 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDiagnosticsContext } from "../../diagnostics/DiagnosticsContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
 import type { ViewProps } from "../types";
 import { useMonacoTheme } from "../../../theme/color-mode";
-import { moduleParseError, parseModuleDocument } from "../../../yaml-document";
-import { toMonacoMarker } from "./markers";
-import { teloThemeName } from "./monaco-theme";
-import { registerTeloLanguageFeatures } from "./register-language-features";
+import { pathToFileUri } from "../../../language/file-uri";
+import { isWorkspaceWrite } from "../../../language/workspace-models";
+import { commitSourceText } from "./commit-source-text";
+import { defineTeloThemes, teloThemeName } from "./monaco-theme";
 
 const DEBOUNCE_MS = 500;
 
@@ -75,15 +74,6 @@ export function SourceView({
   // don't want a state update on every timer schedule.
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // Per-tab flag set immediately before a programmatic `model.setValue()` and
-  // consumed by the next `handleChange` for that tab. Monaco fires `onChange`
-  // synchronously during `setValue`, which would otherwise flip the tab to
-  // `dirty` even though the edit came from upstream (e.g. a form edit flowing
-  // through workspace.documents → sourceFiles). A dirty tab blocks the
-  // useEffect below from resyncing localText, so subsequent external edits
-  // would be invisible in Monaco until the debounce fires.
-  const programmaticUpdateRef = useRef<Set<string>>(new Set());
-
   // Monaco editor + monaco instance refs keyed by filePath. Used to set /
   // clear error markers per tab.
   const editorsRef = useRef<Record<string, MonacoEditor>>({});
@@ -146,24 +136,10 @@ export function SourceView({
     });
   }, [sourceFiles]);
 
-  // When a non-dirty tab's localText changes (via the useEffect above from
-  // an upstream workspace edit), push that text into the tab's Monaco
-  // editor via setValue so the visible buffer matches. Monaco's default
-  // setValue preserves cursor position. We don't push when dirty — the
-  // user's typing wins.
-  useEffect(() => {
-    for (const [filePath, state] of Object.entries(tabStates)) {
-      if (state.dirty) continue;
-      const editor = editorsRef.current[filePath];
-      if (!editor) continue;
-      const model = editor.getModel();
-      if (!model) continue;
-      if (model.getValue() !== state.localText) {
-        programmaticUpdateRef.current.add(filePath);
-        model.setValue(state.localText);
-      }
-    }
-  }, [tabStates]);
+  // Each tab edits the workspace's own model of its file (`WorkspaceModels`,
+  // at the file's `file:` URI), which is also the document the language server
+  // analyses: an upstream edit (a form, the agent) is written into it there,
+  // and the user's typing reaches the engine as they type.
 
   // Cleanup debounce timers on unmount (module switch, workspace close).
   useEffect(() => {
@@ -235,17 +211,10 @@ export function SourceView({
     ]);
   }
 
-  // Bumped in handleMount so the marker effect runs once editors are actually
-  // attached. Without this, first-render markers would miss (onMount fires
-  // after effects, so `editorsRef.current[filePath]` is undefined on the
-  // initial pass).
-  const [mountTick, setMountTick] = useState(0);
-
-  // Register themes + language providers before the editor is created so the
-  // custom theme name resolves on first paint. WeakSet-guarded to run once per
-  // Monaco runtime.
+  // Define the themes before the editor is created so the custom theme name
+  // resolves on first paint. The language features are the LSP bridge's.
   const handleBeforeMount = useCallback((monaco: Monaco) => {
-    registerTeloLanguageFeatures(monaco);
+    defineTeloThemes(monaco);
   }, []);
 
   const handleMount = useCallback(
@@ -253,43 +222,9 @@ export function SourceView({
       (editor, monaco) => {
         editorsRef.current[filePath] = editor;
         monacoRef.current = monaco;
-        setMountTick((t) => t + 1);
       },
     [],
   );
-
-  // Push analyzer diagnostics to Monaco markers under owner "telo". The
-  // existing `setMarker` path uses owner "yaml-parse" and handles parse
-  // errors — Monaco composes markers across owners per model, so both
-  // coexist. Keyed on diagnostics + file list so each analysis pass writes
-  // fresh markers (including clearing stale ones on files whose diagnostics
-  // dropped to empty).
-  const diagnosticsCtx = useDiagnosticsContext();
-  const workspaceDiagnostics = diagnosticsCtx?.diagnostics;
-  useEffect(() => {
-    const monaco = monacoRef.current;
-    if (!monaco || !workspaceDiagnostics) return;
-
-    for (const file of sourceFiles) {
-      const editor = editorsRef.current[file.filePath];
-      const model = editor?.getModel();
-      if (!model) continue;
-
-      const fileBucket = workspaceDiagnostics.byFile.get(file.filePath) ?? [];
-      const resourceBuckets = Array.from(
-        workspaceDiagnostics.byResource.get(file.filePath)?.values() ?? [],
-      ).flat();
-      const diags = [...fileBucket, ...resourceBuckets];
-
-      // Diagnostics arrive pre-normalized from analyzeWorkspace, so the
-      // resolved range / severity already reflects the same fallback chain
-      // the VS Code extension uses. Just hand each one to the Monaco-marker
-      // converter — no per-marker re-resolution needed.
-      const markers = diags.map((d) => toMonacoMarker(d, monaco));
-
-      monaco.editor.setModelMarkers(model, "telo", markers);
-    }
-  }, [workspaceDiagnostics, sourceFiles, mountTick]);
 
   // Not memoized via useCallback: the inner `commit` closure and the
   // `onSourceEdit` prop both change identity across renders, and a
@@ -300,10 +235,8 @@ export function SourceView({
   // `commit` / `onSourceEdit`.
   function handleChange(filePath: string, value: string | undefined) {
     if (value == null) return;
-    if (programmaticUpdateRef.current.has(filePath)) {
-      programmaticUpdateRef.current.delete(filePath);
-      return;
-    }
+    // The workspace writing its text into the model, not the user typing.
+    if (isWorkspaceWrite(pathToFileUri(filePath))) return;
     setTabStates((prev) => ({
       ...prev,
       [filePath]: {
@@ -322,34 +255,12 @@ export function SourceView({
   }
 
   function commit(filePath: string, text: string) {
-    // Single parse: `parseModuleDocument` packages the parse result +
-    // error aggregation into a `ModuleDocument` that is handed straight
-    // to `onSourceEdit`, so the Editor doesn't re-parse.
-    const moduleDoc = parseModuleDocument(filePath, text);
-    const parseError = moduleParseError(moduleDoc);
-    if (parseError) {
-      setTabStates((prev) => ({
-        ...prev,
-        [filePath]: {
-          localText: text,
-          dirty: true,
-          parseError,
-        },
-      }));
-      setMarker(filePath, parseError);
-      return;
-    }
-
-    setMarker(filePath, null);
+    const parseError = commitSourceText(filePath, text, onSourceEdit);
+    setMarker(filePath, parseError);
     setTabStates((prev) => ({
       ...prev,
-      [filePath]: {
-        localText: text,
-        dirty: false,
-        parseError: null,
-      },
+      [filePath]: { localText: text, dirty: parseError !== null, parseError },
     }));
-    onSourceEdit(filePath, moduleDoc);
   }
 
   // Prepare a list of tabs to render. Avoids re-computing on every keystroke
@@ -384,6 +295,8 @@ export function SourceView({
             key={file.filePath}
             height="100%"
             theme={monacoTheme}
+            path={pathToFileUri(file.filePath)}
+            keepCurrentModel
             language="yaml"
             defaultValue={displayText}
             beforeMount={handleBeforeMount}
@@ -458,6 +371,8 @@ export function SourceView({
                 key={file.filePath}
                 height="100%"
                 theme={monacoTheme}
+                path={pathToFileUri(file.filePath)}
+                keepCurrentModel
                 language="yaml"
                 defaultValue={displayText}
                 beforeMount={handleBeforeMount}

@@ -5,6 +5,8 @@ import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
+import type { TeloLanguage } from "../hooks/useLanguageSession";
+import { TeloVersionControl } from "./TeloVersionControl";
 
 /** Workspace-global chrome only. Running belongs to one Application, so its
  *  trigger, status and history live in that module's own view-tab strip — a
@@ -24,6 +26,9 @@ interface TopBarProps {
   /** Toggle the authoring-agent chat side panel. */
   onToggleChat?: () => void;
   chatOpen?: boolean;
+  /** The telo version the active module is edited against; null until the
+   *  workspace's language session is up. */
+  teloLanguage?: TeloLanguage | null;
 }
 
 export function TopBar({
@@ -37,6 +42,7 @@ export function TopBar({
   canRedo,
   onToggleChat,
   chatOpen,
+  teloLanguage,
 }: TopBarProps) {
   const label = activeManifest?.metadata.name ?? (workspace ? "(no module selected)" : "");
   const diagState = useDiagnosticsState();
@@ -56,7 +62,8 @@ export function TopBar({
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex items-center gap-2">
+        {teloLanguage && <TeloVersionControl language={teloLanguage} />}
         {onOpen && (
           <Button variant="ghost" size="sm" onClick={onOpen}>
             Open folder…

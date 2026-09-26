@@ -40,9 +40,10 @@ export class TauriFsAdapter implements ManifestSource, WorkspaceAdapter {
       throw new DirectoryNotFoundError(path);
     }
     const entries = await readDir(path);
-    return entries.map((e: { name: string; isDirectory: boolean }) => ({
+    return entries.map((e) => ({
       name: e.name,
       isDirectory: e.isDirectory,
+      kind: e.isSymlink ? "symlink" : e.isDirectory ? "directory" : e.isFile ? "file" : "other",
     }));
   }
 

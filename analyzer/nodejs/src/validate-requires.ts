@@ -40,9 +40,6 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 const SOURCE = "telo-analyzer";
 
 export interface ValidateRequiresOptions {
-  /** The surface generation the analyzing runtime implements. Defaults to this
-   *  build's own — see `AnalysisOptions.teloVersion`. */
-  teloVersion?: string;
   /** Versions the running host can speak for. Absent in a browser, where there
    *  is no host to report; supplied by the kernel and CLI. */
   hostVersions?: HostVersions;
@@ -56,7 +53,7 @@ export function validateRequires(
   manifests: ResourceManifest[],
   options: ValidateRequiresOptions = {},
 ): AnalysisDiagnostic[] {
-  const running = options.teloVersion ?? TELO_SURFACE_VERSION;
+  const running = TELO_SURFACE_VERSION;
   const out: AnalysisDiagnostic[] = [];
 
   for (const manifest of manifests) {

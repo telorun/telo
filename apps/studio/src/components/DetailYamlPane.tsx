@@ -1,16 +1,13 @@
-import type { OnMount } from "@monaco-editor/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { pathToFileUri } from "../language/file-uri";
+import { useLanguageModels } from "../language/language-models-context";
 import type { ModuleDocument, ModuleSourceFile } from "../model";
-import type { LocatedDiagnostic } from "../diagnostics-aggregate";
-import { parseModuleDocument, moduleParseError } from "../yaml-document";
 import { CodeEditor } from "./code-editor";
-import { toMonacoMarker } from "./views/source/markers";
-import { locateSlice, rangeInSlice, spliceSlice, type LocatedSlice } from "./detail-yaml-slice";
+import { YamlSliceProjection, type SliceView } from "./detail-yaml-projection";
+import { findResourceDocument } from "./detail-yaml-slice";
+import { commitSourceText } from "./views/source/commit-source-text";
 
 const DEBOUNCE_MS = 500;
-
-type MonacoEditor = Parameters<OnMount>[0];
-type Monaco = Parameters<OnMount>[1];
 
 interface DetailYamlPaneProps {
   sourceFiles: ModuleSourceFile[];
@@ -19,186 +16,125 @@ interface DetailYamlPaneProps {
   pointer: string;
   readOnly: boolean;
   onSourceEdit: (filePath: string, moduleDoc: ModuleDocument) => void;
-  /** The resource's analyzer diagnostics, addressed to the FILE. Those falling
-   *  inside the slice are shown on the lines they belong to. */
-  diagnostics: readonly LocatedDiagnostic[];
 }
 
+let projectedModels = 0;
+
 /**
- * The selected node's own YAML, editable in place.
+ * The selected node's own YAML, editable in place — a live projection of its
+ * document's model, the one the language engine analyses and the source view
+ * edits.
  *
- * A commit SPLICES the edited span back into the file and re-parses the whole
- * file — the source view's write path, not the form's. The form's path diffs a
- * projected fields object and applies AST ops, which loses every comment inside
- * a structurally replaced subtree; splicing the span the pane just showed keeps
- * read and write symmetric, so what a user reads is what they edit.
+ * The pane holds no text of its own. A keystroke is spliced into the document
+ * model at once (so completion, hover, rename and diagnostics are the engine's,
+ * served through that document), and whatever else changes the document — the
+ * source view, a rename, an engine edit, the workspace — re-derives the pane.
+ * The span shown is the AUTHOR'S BYTES, dedented; the form's path diffs a
+ * projected fields object and loses the comments inside a replaced subtree, so
+ * reading and writing the same span is what keeps the pane symmetric.
  *
- * Validity is judged on the SPLICED FILE, never on the slice alone. A slice is
- * frequently not a standalone YAML document (a block scalar's body, a sequence
- * item's contents), so parsing it in isolation would invent errors for text that
- * is perfectly valid where it actually lives.
+ * Committing to the workspace is the source view's path over the document's
+ * text, after the same debounce: validity is judged on the WHOLE FILE, never on
+ * the slice, which is often not a standalone YAML document, and unparseable text
+ * is never committed.
  */
-export function DetailYamlPane({
-  sourceFiles,
-  resource,
-  pointer,
-  readOnly,
-  onSourceEdit,
-  diagnostics,
-}: DetailYamlPaneProps) {
-  const located = useMemo(
-    () => locateSlice(sourceFiles, resource.kind, resource.name, pointer),
-    [sourceFiles, resource.kind, resource.name, pointer],
+export function DetailYamlPane({ sourceFiles, resource, pointer, readOnly, onSourceEdit }: DetailYamlPaneProps) {
+  const languageModels = useLanguageModels();
+  const filePath = useMemo(
+    () =>
+      sourceFiles.find((f) => !f.parseError && findResourceDocument(f.documents, resource.kind, resource.name))
+        ?.filePath,
+    [sourceFiles, resource.kind, resource.name],
   );
 
-  const [buffer, setBuffer] = useState(located?.slice.text ?? "");
-  const [parseError, setParseError] = useState<string | null>(null);
-  const dirtyRef = useRef(false);
-  // Set when a commit is handed to the host, cleared by the next incoming slice.
-  // That bounce is our own edit coming back through the workspace, and absorbing
-  // it is what stops the re-seed below from overwriting the buffer the user is
-  // still in — the incoming text is only byte-identical when the re-indent
-  // round-trips exactly, which a hand-indented line need not.
-  const bouncingRef = useRef(false);
+  // A document model appears once the workspace's models are built; wait for it
+  // rather than showing a pane nothing serves.
+  const [modelsChanged, setModelsChanged] = useState(0);
+  useEffect(() => {
+    if (!languageModels) return;
+    const created = languageModels.monaco.editor.onDidCreateModel(() => setModelsChanged((n) => n + 1));
+    return () => created.dispose();
+  }, [languageModels]);
+  const document = useMemo(
+    () =>
+      languageModels && filePath
+        ? languageModels.monaco.editor.getModel(languageModels.monaco.Uri.parse(pathToFileUri(filePath)))
+        : null,
+    // `modelsChanged` re-reads a model created since.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [languageModels, filePath, modelsChanged],
+  );
 
-  // Refs the debounce and the flush read when they fire — each has advanced
-  // past whatever scheduled it.
-  const bufferRef = useRef(buffer);
+  const [view, setView] = useState<SliceView | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const projectionRef = useRef<YamlSliceProjection | null>(null);
+  const [projectedUri, setProjectedUri] = useState<string | null>(null);
+
   const readOnlyRef = useRef(readOnly);
   const onSourceEditRef = useRef(onSourceEdit);
-  bufferRef.current = buffer;
   readOnlyRef.current = readOnly;
   onSourceEditRef.current = onSourceEdit;
-
-  const identity = `${resource.kind} ${resource.name} ${pointer}`;
-  const identityRef = useRef(identity);
-
-  // The slice a pending commit writes into. Refreshed only while the identity
-  // holds, so a workspace update mid-edit is adopted (the file text and the
-  // node's offsets both move) while a MOVE to another node leaves it pointing
-  // at the node the user was typing in — which is what the flush commits to.
-  const targetRef = useRef(located);
-  if (identityRef.current === identity) targetRef.current = located;
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  function commit(target: LocatedSlice, text: string) {
-    const nextText = spliceSlice(target.fileText, target.slice, text);
-    let moduleDoc: ModuleDocument;
-    try {
-      moduleDoc = parseModuleDocument(target.filePath, nextText);
-    } catch (err) {
-      setParseError(err instanceof Error ? err.message : String(err));
-      return;
-    }
-    const error = moduleParseError(moduleDoc);
-    if (error) {
-      // The edit stays in the buffer and `dirty` stays set, so the next
-      // keystroke retries. Committing unparseable text would take the whole
-      // module's AST down with it.
-      setParseError(error);
-      return;
-    }
-    setParseError(null);
-    dirtyRef.current = false;
-    bouncingRef.current = true;
-    onSourceEditRef.current(target.filePath, moduleDoc);
-  }
-
-  function flush() {
-    if (timerRef.current !== undefined) {
-      clearTimeout(timerRef.current);
+  useEffect(() => {
+    if (!languageModels || !document || !filePath) return;
+    const { monaco, projections } = languageModels;
+    const commit = () => {
       timerRef.current = undefined;
-    }
-    const target = targetRef.current;
-    if (!dirtyRef.current || !target || readOnlyRef.current) return;
-    commit(target, bufferRef.current);
-  }
+      setParseError(commitSourceText(filePath, document.getValue(), onSourceEditRef.current));
+    };
+    const model = monaco.editor.createModel(
+      "",
+      "yaml",
+      monaco.Uri.parse(`${projections.scheme}:///${++projectedModels}${encodeURI(filePath)}`),
+    );
+    const projection: YamlSliceProjection = new YamlSliceProjection(
+      model,
+      document,
+      { filePath, kind: resource.kind, name: resource.name, pointer },
+      setView,
+      () => projections.changed(projection),
+    );
+    const registration = projections.add(projection);
+    projectionRef.current = projection;
+    setView(projection.current());
+    setParseError(null);
+    setProjectedUri(model.uri.toString());
+    return () => {
+      // Moving to another node, or leaving the pane, inside the debounce window
+      // commits what was typed rather than dropping it.
+      if (timerRef.current !== undefined) {
+        clearTimeout(timerRef.current);
+        if (!readOnlyRef.current) commit();
+      }
+      projectionRef.current = null;
+      registration.dispose();
+      projection.dispose();
+      model.dispose();
+    };
+  }, [languageModels, document, filePath, resource.kind, resource.name, pointer]);
 
-  // The debounce is scheduled by the keystroke, NOT by an effect over `buffer`:
-  // an effect's cleanup runs on every buffer change, so flushing there committed
-  // (and re-parsed the whole module) once per character — the debounce existed
-  // and never applied.
   function handleChange(next: string) {
-    dirtyRef.current = true;
-    setBuffer(next);
+    const projection = projectionRef.current;
+    if (!projection || projection.isDeriving() || readOnlyRef.current || !filePath || !document) return;
+    projection.edit(next);
     if (timerRef.current !== undefined) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = undefined;
-      const target = targetRef.current;
-      if (!dirtyRef.current || !target || readOnlyRef.current) return;
-      commit(target, bufferRef.current);
+      if (readOnlyRef.current) return;
+      setParseError(commitSourceText(filePath, document.getValue(), onSourceEditRef.current));
     }, DEBOUNCE_MS);
   }
 
-  const incoming = located?.slice.text;
-  useEffect(() => {
-    // A different node is a different buffer — always re-seed, and drop the
-    // dirty state, which belongs to the node just left (the flush below has
-    // already committed it). `targetRef` moves here too: a re-seed that sets an
-    // identical string bails out of the re-render, so waiting for the next
-    // render to adopt the new slice would leave the next edit aimed at the node
-    // the user has already left.
-    if (identityRef.current !== identity) {
-      identityRef.current = identity;
-      targetRef.current = located;
-      dirtyRef.current = false;
-      bouncingRef.current = false;
-      setParseError(null);
-      setBuffer(incoming ?? "");
-      return;
-    }
-    if (incoming === undefined) return;
-    if (bouncingRef.current) {
-      bouncingRef.current = false;
-      return;
-    }
-    if (dirtyRef.current) return;
-    setBuffer(incoming);
-    // `located` is read only on the identity-change branch, where it is this
-    // render's value by construction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identity, incoming]);
-
-  // Flush on the way out — moving to another node, or unmounting (switching
-  // back to the form), inside the debounce window would otherwise drop the
-  // edit. Keyed on identity alone: React runs every cleanup before any effect
-  // body, so this commits to the old node before the re-seed above swaps in the
-  // new one.
-  useEffect(
-    () => () => flush(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [identity],
-  );
-
-  // Analyzer diagnostics on the lines they belong to. Positions are the FILE's,
-  // so each is shifted into the slice; one falling outside is dropped rather
-  // than clamped, which would underline a line it says nothing about.
-  const handles = useRef<{ editor: MonacoEditor; monaco: Monaco } | null>(null);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    const current = handles.current;
-    const model = current?.editor.getModel();
-    if (!current || !model || !located) return;
-    const markers = diagnostics
-      .filter((entry) => entry.filePath === located.filePath)
-      .flatMap((entry) => {
-        const range = rangeInSlice(located.fileText, located.slice, entry.diagnostic.range);
-        if (!range) return [];
-        return [toMonacoMarker({ ...entry.diagnostic, range }, current.monaco)];
-      });
-    current.monaco.editor.setModelMarkers(model, "telo", markers);
-    // `buffer` is a dependency because a marker sits at a position in the text
-    // the user may have moved since the analysis that produced it.
-  }, [diagnostics, located, buffer, ready]);
-
-  if (!located) {
-    return (
-      <p className="p-3 text-xs text-zinc-400 dark:text-zinc-600">
-        {pointer
-          ? `Nothing is written at ${pointer} yet — author it in the form, then it appears here.`
-          : "No source document found for this resource."}
-      </p>
-    );
+  const message = !filePath
+    ? "No source document found for this resource."
+    : !document
+      ? `${filePath} has no editor model yet, so its YAML cannot be shown or edited.`
+      : view && "error" in view
+        ? view.error
+        : null;
+  if (message || !view || "error" in view || !projectedUri) {
+    return <p className="p-3 text-xs text-zinc-400 dark:text-zinc-600">{message}</p>;
   }
 
   return (
@@ -210,16 +146,13 @@ export function DetailYamlPane({
       )}
       <div className="min-h-0 flex-1 p-2">
         <CodeEditor
-          value={buffer}
+          path={projectedUri}
+          value={view.text}
           onValueChange={handleChange}
           mimeType="application/yaml"
           height="100%"
           readOnly={readOnly}
           className="h-full"
-          onReady={(editor, monaco) => {
-            handles.current = { editor, monaco };
-            setReady(true);
-          }}
         />
       </div>
     </div>

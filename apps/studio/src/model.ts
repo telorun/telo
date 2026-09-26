@@ -1,5 +1,7 @@
+import type { DirectoryEntryKind } from "@telorun/editor-protocol";
 import type { AstDocument, LoadedFile, Range } from "@telorun/analyzer";
-import type { WorkspaceDiagnostics } from "./analysis";
+import type { WorkspaceAnalysis } from "./analysis";
+import type { WorkspaceDiagnostics } from "./language/engine-diagnostics";
 
 /** A user-configured runner: an instance of an adapter *type* (`adapterId`)
  *  with that adapter's opaque config. The user manages a list of these (add /
@@ -263,6 +265,9 @@ export interface WorkspaceAdapter {
 export interface DirEntry {
   name: string;
   isDirectory: boolean;
+  /** What the entry is, read without following a link: a symbolic link is
+   *  `symlink` (and `isDirectory` false) whatever it points at. */
+  kind: DirectoryEntryKind;
 }
 
 export type ViewId = "topology" | "outline" | "source" | "run";
@@ -354,7 +359,11 @@ export interface EditorState {
   activeView: ViewId;
   selectedResource: { kind: string; name: string } | null;
   panelStack: PanelEntry[];
+  /** Every diagnostic studio shows — as the engine of each module's telo
+   *  version published it (`useLanguageSession`, its only producer). */
   diagnostics: WorkspaceDiagnostics;
+  /** The bundled analyzer's model the structured views read. */
+  analysis: WorkspaceAnalysis;
   /** Transient request for SourceView to activate a tab and reveal a range.
    *  Written by `navigateToDiagnostic` in Editor; consumed by SourceView
    *  (keyed on `nonce` for idempotency across remounts). Never cleared — the

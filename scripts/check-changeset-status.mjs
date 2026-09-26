@@ -30,6 +30,25 @@
 // changeset text), so it also fires for a `debug-wire` change that reaches debug-ui
 // by propagation.
 //
+// It also gates INLINED packages — a workspace package whose code ships inside
+// another published package's build, so a change to it reaches users only through
+// a release of the package that inlines it. The edge is DECLARED: a published
+// package whose build inlines workspace code lists every such package — the full
+// closure, direct and transitive — in a `teloInlines` array in its package.json
+// (`@telorun/language-server` names the analyzer, editor-protocol, glob,
+// ide-support, sdk and templating). Nothing is inferred from dependency fields,
+// which say what is installed, not what is bundled. The declaration is kept
+// honest from both ends: the build calls `verifyInlines` (exported here) against
+// its bundler's metafile and fails unless the list is exactly what the bundle
+// holds, and this gate fails on a listed name that is not a workspace package. A
+// changed inlined package needs the inliner named by a changeset or moving in the
+// planned release.
+//
+// It also gates the Rust twins of the telo version line: a crate at `<x>/rust`
+// whose Node twin is on the line carries that twin's version
+// (`version-line.mjs`), and a disagreement between the two halves of one
+// artifact fails here.
+//
 // It also gates the `ignore` list itself, because that list is hand-maintained
 // and changesets validates it as a WHOLE: an ignored package's dependent must be
 // ignored too, so a new module depending on `@telorun/sql` makes `changeset
@@ -44,10 +63,16 @@
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, matchesGlob, normalize, relative, resolve } from "node:path";
+import { dirname, join, matchesGlob, normalize, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { ROOT, loadWorkspace } from "./module-ownership.mjs";
+import { rustTwinMismatches, workspacePackages } from "./version-line.mjs";
 
-const baseRef = process.argv[2] ?? "origin/main";
+// Set by the CLI entry below; the exported `verifyInlines` needs none of them.
+let baseRef;
+let workspace;
+let packages;
+let covered;
 
 /** Files npm packs whatever `files` says (npm-packlist's always-included set). */
 const ALWAYS_PACKED = /^(package\.json|readme(\.[^/]*)?|licen[cs]e(\.[^/]*)?)$/i;
@@ -124,15 +149,12 @@ function coveredByChangesets() {
   return covered;
 }
 
-const workspace = loadWorkspace();
-const packages = workspace.packages;
-const covered = coveredByChangesets();
-let failed = 0;
-
 /** A package a MODULE owns — its version is the module's, moved by
  *  `telo release apply`, never by changesets. One reader, shared with the release
  *  and prune scripts (`module-ownership.mjs`). */
-const moduleOwned = (pkg) => workspace.isModuleOwned(pkg.name);
+function moduleOwned(pkg) {
+  return workspace.isModuleOwned(pkg.name);
+}
 
 /** The `ignore` list must name exactly the module-owned packages (plus whatever
  *  else is deliberately off the ledger), and nothing that no longer exists. */
@@ -269,21 +291,145 @@ async function checkBakedPins(packages) {
   return bad;
 }
 
-const ignoreListFailed = checkIgnoreList();
-const bakedPinsFailed = await checkBakedPins(packages);
-failed = ignoreListFailed || bakedPinsFailed ? 1 : 0;
-
-for (const pkg of changedPackages(packages)) {
-  if (moduleOwned(pkg)) continue;
-  if (pkg.private) continue;
-  if (covered.has(pkg.name)) continue;
-  console.error(
-    `::error::${pkg.name} changed a published file but no changeset covers it. Add one with ` +
-      `\`pnpm changeset\` naming ${pkg.name} with a bump — an empty changeset names no package ` +
-      `and does not cover it.`,
-  );
-  failed = 1;
+/** A package's declared `teloInlines`, or `[]`. A value that is not an array of
+ *  strings is a malformed declaration, refused rather than read as empty. */
+function declaredInlines(dir, name) {
+  const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+  const list = manifest.teloInlines ?? [];
+  if (!Array.isArray(list) || list.some((entry) => typeof entry !== "string")) {
+    throw new Error(`${name}'s package.json declares teloInlines as something other than a list of package names.`);
+  }
+  return list;
 }
 
-if (failed === 0) console.log("check-changeset-status: every changed published package is covered.");
-process.exit(failed);
+/**
+ * The build half of `teloInlines`: compare the declaration with what the bundle
+ * actually holds. `metafile` is esbuild's, built with `absWorkingDir: packageDir`
+ * (its input paths are relative to it); each input is attributed to the
+ * workspace package whose directory contains it (third-party code under
+ * `node_modules` is not a workspace package, and the package's own sources are
+ * not an inline). Returns one message per disagreement, empty when the list is
+ * exactly the bundle's set.
+ */
+export function verifyInlines(packageDir, metafile) {
+  const dirs = [...workspacePackages()]
+    .map(([name, { dir }]) => ({ name, dir: resolve(dir) }))
+    .sort((a, b) => b.dir.length - a.dir.length);
+  const own = dirs.find((d) => d.dir === resolve(packageDir));
+  if (!own) return [`${packageDir} is not a workspace package.`];
+
+  const actual = new Set();
+  for (const input of Object.keys(metafile.inputs)) {
+    const file = resolve(packageDir, input);
+    if (file.split(sep).includes("node_modules")) continue;
+    const owner = dirs.find((d) => file.startsWith(d.dir + sep));
+    if (owner && owner.name !== own.name) actual.add(owner.name);
+  }
+  const declared = new Set(declaredInlines(packageDir, own.name));
+
+  const problems = [];
+  for (const name of [...actual].sort()) {
+    if (!declared.has(name)) {
+      problems.push(`${name} is inlined into the bundle but missing from ${own.name}'s teloInlines.`);
+    }
+  }
+  for (const name of [...declared].sort()) {
+    if (!actual.has(name)) {
+      problems.push(`${name} is listed in ${own.name}'s teloInlines but the bundle holds none of it.`);
+    }
+  }
+  return problems;
+}
+
+/** Published packages' declared inlines, as `inlined -> inliners`, plus every
+ *  listed name that is not a workspace package. */
+function inliners(packages) {
+  const byName = new Set(packages.map((pkg) => pkg.name));
+  const result = new Map();
+  const unknown = [];
+  for (const pkg of packages) {
+    if (pkg.private || moduleOwned(pkg)) continue;
+    for (const name of declaredInlines(pkg.dir, pkg.name)) {
+      if (!byName.has(name)) {
+        unknown.push({ inliner: pkg.name, name });
+        continue;
+      }
+      result.set(name, [...(result.get(name) ?? []), pkg.name]);
+    }
+  }
+  return { byInlined: result, unknown };
+}
+
+/** A changed inlined package whose inliner is not releasing. */
+async function checkInlined(changed) {
+  const { byInlined, unknown } = inliners(packages);
+  let bad = 0;
+  for (const { inliner, name } of unknown) {
+    console.error(
+      `::error::${inliner}'s teloInlines names ${name}, which is not a workspace package. Remove ` +
+        `it, or correct the name — as written the gate protects nothing for it.`,
+    );
+    bad = 1;
+  }
+  const needed = changed.flatMap((pkg) =>
+    (byInlined.get(pkg.name) ?? []).map((inliner) => ({ inlined: pkg.name, inliner })),
+  );
+  if (needed.length === 0) return bad;
+  let moving = new Map();
+  if (readdirSync(join(ROOT, ".changeset")).some((f) => f.endsWith(".md") && f !== "README.md")) {
+    try {
+      moving = await plannedReleases();
+    } catch (error) {
+      const detail = (error.stderr ?? error.message ?? "").toString().trim();
+      console.error(`::error::the release plan could not be read, so inlined packages are unchecked: ${detail}`);
+      return 1;
+    }
+  }
+  for (const { inlined, inliner } of needed) {
+    if (covered.has(inliner) || moving.has(inliner)) continue;
+    console.error(
+      `::error::${inlined} changed and ${inliner} inlines it into its build, but ${inliner} is not ` +
+        `releasing. Add ${inliner} to a changeset — the change reaches users only through it.`,
+    );
+    bad = 1;
+  }
+  return bad;
+}
+
+/** Rust twins that disagree with their Node twin. */
+function checkRustTwins() {
+  const mismatches = rustTwinMismatches(workspacePackages());
+  for (const message of mismatches) console.error(`::error::${message}`);
+  return mismatches.length > 0 ? 1 : 0;
+}
+
+async function main() {
+  baseRef = process.argv[2] ?? "origin/main";
+  workspace = loadWorkspace();
+  packages = workspace.packages;
+  covered = coveredByChangesets();
+
+  const changed = changedPackages(packages);
+  const ignoreListFailed = checkIgnoreList();
+  const bakedPinsFailed = await checkBakedPins(packages);
+  const inlinedFailed = await checkInlined(changed);
+  const twinsFailed = checkRustTwins();
+  let failed = ignoreListFailed || bakedPinsFailed || inlinedFailed || twinsFailed ? 1 : 0;
+
+  for (const pkg of changed) {
+    if (moduleOwned(pkg)) continue;
+    if (pkg.private) continue;
+    if (covered.has(pkg.name)) continue;
+    console.error(
+      `::error::${pkg.name} changed a published file but no changeset covers it. Add one with ` +
+        `\`pnpm changeset\` naming ${pkg.name} with a bump — an empty changeset names no package ` +
+        `and does not cover it.`,
+    );
+    failed = 1;
+  }
+
+  if (failed === 0) console.log("check-changeset-status: every changed published package is covered.");
+  process.exit(failed);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

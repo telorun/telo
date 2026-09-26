@@ -18,10 +18,16 @@ small. Wherever this skill says *the feature*, it means the task.
 
 **The shape of the loop: one stop, then work.** The user is never asked to make a decision. Every
 choice the loop meets — design and scope alike — is settled by `decider` (see *Decisions*). The
-one stop is the plan gate (phase 3), where the user sees the settled design and approves the queue
-and its paths, or corrects it. Mid-loop nothing is asked: a choice goes to `decider`, and work that
-needs paths the queue does not name is parked in the loop file and the card is dropped. Nothing is
-ever guessed at.
+one stop is the plan gate (phase 3), where the user sees the settled design and approves its
+public surface and the queue, or corrects it. Mid-loop nothing is asked: a choice goes to `decider`,
+and work that would change the approved public surface is parked in the loop file and the card is
+dropped. Nothing is ever guessed at.
+
+**The user approves public surface, and only public surface.** Every approval the loop asks for —
+at the plan gate and at any later gate — is stated as the public surface it adds, changes or
+removes: kinds, fields, exports, functions, protocol methods, settings, commands, file formats,
+diagnostic codes, CLI flags, published package names — each with what it does and why. Nothing else
+is put to the user, and nothing else is a reason for a gate.
 
 **One audit, at the end.** No card is reviewed on its own. Every card is proved by your own gate
 run and nothing else, and one `auditor` reads the whole working-tree diff after the last card. That
@@ -67,9 +73,9 @@ overwrite each other.
 
 Its six sections are the loop's whole memory:
 
-- **Standing approvals** — the queue as the loop's whole scope and the paths you may touch. Written at the plan gate, by the user's answer. This is the authorization
+- **Standing approvals** — the queue and its public surface as the loop's whole scope. Written at the plan gate, by the user's answer. This is the authorization
   that `CLAUDE.md`'s edit-gate requires, and it is scoped: approval covers the cards in the queue
-  and the paths they name, nothing else.
+  and the surface they deliver, nothing else.
 - **Queue** — one card per unit of work, each with status `pending` / `running` / `done` /
   `parked`, and its evidence.
 - **Decisions** — every decision `decider` made, one line each: where it arose and the decision
@@ -175,15 +181,16 @@ criteria of the card it lands in.
 **Decisions are never brought to the user.** Not for confirmation, not as a choice between
 options, not with their rejected alternatives. Before the gate, the user sees the design they
 produced — as the design, not as a list of decisions to approve. After the gate, a decision that
-fits the card's approved paths is applied; one that needs paths no card names parks the card.
+stays within the approved public surface is applied; one that adds, changes or removes public
+surface the gate did not approve needs a new gate, stated as that surface change.
 
 ## Phases
 
 **A plan already settled in the conversation.** When the user and you have already agreed the plan
-in this conversation before the loop starts — the queue, the paths, and every open decision — it is
+in this conversation before the loop starts — the queue, its public surface, and every open decision — it is
 the plan gate's answer. Skip phases 1–3: write the plan into the loop file verbatim, marked as
 established in conversation, and start at phase 4. What the plan gate would ask for and the
-conversation did not settle — a card without checkable acceptance, a missing path approval, an open
+conversation did not settle — a card without checkable acceptance, an unapproved piece of public surface, an open
 decision — you ask for, and only that, before starting; it is still the loop's one interactive
 moment. The rules on what a card may not be still hold: a settled plan that breaks one is raised
 with the user, not built.
@@ -266,9 +273,8 @@ Then present, **in the conversation itself**:
 - each pre-existing defect as one line: what it is and what the design does about it;
 - the queue, each card's size and the total.
 
-Ask for exactly one thing: approval of the queue as the loop's **whole** scope, together with the
-standing approvals it needs, each naming paths — "whatever the fix needs" is not a path — always
-including the incidental-fix sweep and any paths it must stay out of. No open questions, no
+Ask for exactly one thing: approval of the public surface and the queue as the loop's **whole**
+scope. No open questions, no
 decisions to confirm, no options to pick: `decider` has closed all of them, and `CLAUDE.md`
 forbids a plan carrying open decisions.
 
@@ -351,7 +357,7 @@ create — pre-existing, in a sibling, in shared code — is never sent to the b
 `BACKLOG.md`. A fix round never shrinks the card to make findings go away — dropping a case,
 loosening a schema, weakening acceptance criteria or deleting a check to reach green is worse than
 leaving the card red, because the report will then read green. Nor does it grow the card: a fix
-that needs paths or behaviour beyond the acceptance criteria parks the card. Removing a redundant
+that needs public surface or behaviour beyond the acceptance criteria parks the card. Removing a redundant
 test that the audit called out is not weakening a test.
 
 **7. Report and compound.** Snapshot `git diff` into the card's `tree.diff`, then append the
@@ -372,9 +378,10 @@ directly it blocks a card. A blocker parks the card that hit it, with the defect
 user* and in `BACKLOG.md`.
 
 A user message mid-loop resumes or stops existing cards. When acting on it would take work no
-approved card covers — a new card, a widened path, a design pass for a fix — that is a new plan
-gate: write the proposed cards with their sizes, present them, and wait for an answer that names
-them. "Continue" or "do card 3" approves card 3, not the platform fix card 3 is parked on.
+approved card covers — a new card, a change to the approved public surface, a design pass for a
+fix — that is a new plan gate: present the surface change (what is added, changed or removed, each
+with what it does and why) and any new cards with their sizes, and wait for an answer that
+approves them. "Continue" or "do card 3" approves card 3, not the platform fix card 3 is parked on.
 
 ## Incidental fixes
 
@@ -389,8 +396,7 @@ A finding is incidental only when **all** of these hold:
 - **It has exactly one correct fix, stated in full** — path, lines, and the replacement text. A
   fix that needs a judgment call is not incidental: route it as a decision (see *Decisions*).
 - **It is small** — a few lines in any one file.
-- **Its path is allowed.** Not excluded by the standing approvals, and not `CLAUDE.md`, which
-  stays proposed-only.
+- **Its path is one the loop's cards touch.** Not `CLAUDE.md`, which stays proposed-only.
 
 Record one under *Incidental fixes* in the loop file the moment it turns up — whoever found it:
 a builder's report, an auditor's finding, or you — and carry on. Work a card *needs* is never
@@ -424,9 +430,9 @@ longer matches — goes to *For the user* rather than being improvised.
   is fixed*).
 - **Never make an architectural decision yourself, and never overrule `decider`.** Bring a new
   fact to a fresh `decider` instead.
-- **Never edit a path a card does not name.** If a card needs a file outside its paths, park
-  it and say so. Your incidental-fix sweep is bound the same way: only the recorded paths, within
-  the standing approvals.
+- **Never change public surface the user did not approve.** A change that adds, changes or
+  removes unapproved surface parks the card or goes to a new gate stated as surface. Your
+  incidental-fix sweep touches only the recorded entries.
 - Never weaken or delete a test to make a gate pass. A gate that passes because its check was
   removed is the failure this loop exists to prevent.
 - Report failures as failures, in the report, with the output. A loop that ends claiming eight
@@ -439,8 +445,8 @@ longer matches — goes to *For the user* rather than being improvised.
 
 ## Ending the loop
 
-Stop when the queue has no `pending` card, when the user's standing approvals no longer cover
-what is left, when two cards park — with three cards at most, that is a signal the plan was wrong,
+Stop when the queue has no `pending` card, when what is left needs public surface the user has
+not approved, when two cards park — with three cards at most, that is a signal the plan was wrong,
 not the builder. Every card not started is reported as not started.
 
 ### The audit
@@ -458,8 +464,8 @@ whole rather than a slice at a time. A static-analysis gap in the loop's own cha
 however the cards were written; a pre-existing one goes to `BACKLOG.md`.
 
 **Then fix what is relevant**, because nothing else will. First split the relevant findings into
-**fix items**: each item is one finding, or several that share a fix, with the paths it touches —
-only paths the cards name — and what must be true once it is fixed. Write the split to
+**fix items**: each item is one finding, or several that share a fix, with the paths it touches
+and what must be true once it is fixed — within the approved public surface. Write the split to
 `99-fixes/items.md` before sending anything. Send each item to the builder with `SendMessage`, its
 brief written to `99-fixes/` first; the builder holds every card's code, including both sides of a
 cross-card seam. When the builder is gone, a fresh `builder` gets the item with the loop's

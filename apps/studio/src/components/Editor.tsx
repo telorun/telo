@@ -106,14 +106,9 @@ import { EditorTabs } from "./EditorTabs";
 import type { TabItem } from "./EditorTabs";
 import { FileEditor } from "./views/FileEditor";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
-import {
-  setActiveCurrentPath,
-  setActiveDocs,
-  setActiveGraph,
-  setActiveNavigator,
-  setActiveAnalysis,
-  setActiveRegistry,
-} from "./views/source/provider-state";
+import { setActiveAnalysis } from "./views/source/provider-state";
+import { useLanguageSession } from "../hooks/useLanguageSession";
+import { LanguageModelsContext } from "../language/language-models-context";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -466,11 +461,12 @@ export function Editor() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Debounced analysis: re-analyze whenever the workspace changes. Held while
-  // external dependencies are still streaming in, so the first paint doesn't
-  // flash transient "unresolved import" diagnostics — analysis runs once the
-  // dependency merge clears `dependenciesPending` (which produces a new
-  // workspace and re-triggers this effect).
+  // Debounced model build for the structured views: rebuilt whenever the
+  // workspace changes. Held while external dependencies are still streaming in,
+  // so imported kinds resolve on the first build — it runs once the dependency
+  // merge clears `dependenciesPending` (which produces a new workspace and
+  // re-triggers this effect). Diagnostics are not built here: they come from
+  // the engine, through `useLanguageSession`.
   useEffect(() => {
     if (!state.workspace || state.workspace.dependenciesPending) return;
     if (analysisTimerRef.current) clearTimeout(analysisTimerRef.current);
@@ -478,7 +474,7 @@ export function Editor() {
     analysisTimerRef.current = setTimeout(async () => {
       const manifestAdapter = manifestAdapterRef.current;
       if (!manifestAdapter) return;
-      const diagnostics = await analyzeWorkspace(
+      const analysis = await analyzeWorkspace(
         workspace,
         manifestAdapter,
         createManifestSources(settings),
@@ -486,7 +482,7 @@ export function Editor() {
       );
       setState((s) => {
         if (s.workspace !== workspace) return s;
-        return { ...s, diagnostics };
+        return { ...s, analysis };
       });
     }, 300);
     return () => {
@@ -494,25 +490,13 @@ export function Editor() {
     };
   }, [state.workspace]);
 
-  // Point the completion provider at the registry of the active module's
-  // analysis closure. Each Application (and orphan library) owns an isolated
-  // registry, so completion reflects exactly the kinds in scope for the file
-  // being edited — never a sibling app's differently-versioned imports.
+  // What CEL sees in the active module's closure, for the form's CEL editor —
+  // built on first use, so opening a module is what pays for it rather than
+  // every model build.
   useEffect(() => {
     const path = state.activeModulePath;
-    setActiveRegistry(path ? state.diagnostics.registryByFile.get(path) : undefined);
-    // What CEL sees in this file's closure — built on first use, so opening a
-    // file is what pays for it rather than every analysis pass.
-    setActiveAnalysis(path ? state.diagnostics.analysisByFile.get(path)?.() : undefined);
-    // The loaded graph + active path back go-to-definition (`!ref` → target
-    // resource across the module's files).
-    setActiveGraph(path ? state.diagnostics.graphByFile.get(path) : undefined);
-    setActiveCurrentPath(path ?? undefined);
-    // Thread the active file's already-parsed AST so source completion can
-    // reuse it instead of re-parsing (the provider guards on text identity).
-    const loaded = path ? state.workspace?.documents.get(path)?.loaded : undefined;
-    setActiveDocs(loaded ? { text: loaded.text, docs: loaded.astDocuments } : undefined);
-  }, [state.diagnostics, state.activeModulePath, state.workspace]);
+    setActiveAnalysis(path ? state.analysis.analysisByFile.get(path)?.() : undefined);
+  }, [state.analysis, state.activeModulePath]);
 
 
   // Persist deployment config on every mutation. Workspace-scoped, stored
@@ -1239,10 +1223,6 @@ export function Editor() {
   const revealNonceRef = useRef(0);
   const navigateToDiagnostic = useCallback(
     (filePath: string, range?: Range) => {
-      // UNKNOWN_FILE_KEY is not a real path — surfaced only in the future
-      // Problems panel and never in resource-anchored UI. Guard here in case
-      // a call site slips through.
-      if (filePath === "__unknown__") return;
       const workspace = state.workspace;
       if (!workspace) return;
       const normalized = normalizePath(filePath);
@@ -1268,11 +1248,16 @@ export function Editor() {
     [state.workspace, state.activeModulePath],
   );
 
-  // Bridge cross-file go-to-definition into the app's navigation. Depends on the
-  // memoized callback, so it re-registers only when the closed-over state changes.
-  useEffect(() => {
-    setActiveNavigator(navigateToDiagnostic);
-  }, [navigateToDiagnostic]);
+  // Every diagnostic, and the source view's language features, come from the
+  // engine of the telo version each module is edited against.
+  const { language: teloLanguage, models: languageModels } = useLanguageSession({
+    state,
+    setState,
+    settings,
+    workspaceAdapterRef,
+    navigate: navigateToDiagnostic,
+    onShowMessage: (message) => setToast({ title: "Telo", description: message }),
+  });
 
   // ---------------------------------------------------------------------------
   // Resource creation
@@ -1310,9 +1295,9 @@ export function Editor() {
   const moduleGraphByName = useCallback(
     (moduleName: string) => {
       const file = fileByModuleName.get(moduleName);
-      return (file ? state.diagnostics.moduleGraphByFile.get(file)?.() : undefined) ?? null;
+      return (file ? state.analysis.moduleGraphByFile.get(file)?.() : undefined) ?? null;
     },
-    [fileByModuleName, state.diagnostics],
+    [fileByModuleName, state.analysis],
   );
 
   /** A templated kind's body in the active module's closure, drawn as a module
@@ -1321,11 +1306,11 @@ export function Editor() {
   const templateGraphByKind = useCallback(
     (kindId: string) => {
       const file = state.activeModulePath;
-      const analysis = file ? state.diagnostics.analysisByFile.get(file)?.() : undefined;
-      const registry = file ? state.diagnostics.registryByFile.get(file) : undefined;
+      const analysis = file ? state.analysis.analysisByFile.get(file)?.() : undefined;
+      const registry = file ? state.analysis.registryByFile.get(file) : undefined;
       return analysis && registry ? templateGraphOf(analysis, registry, kindId) : null;
     },
-    [state.activeModulePath, state.diagnostics],
+    [state.activeModulePath, state.analysis],
   );
 
   /** Whether that module's files are editable here — false for one resolved
@@ -1449,7 +1434,7 @@ export function Editor() {
   // through the generic ref writer. The Application root is fed in as a
   // synthesized manifest so its `targets` are pruned the same way.
   function pruneDanglingRefs(ws: Workspace, modulePath: string, deleted: string): Workspace {
-    const registry = state.diagnostics.registryByFile.get(modulePath);
+    const registry = state.analysis.registryByFile.get(modulePath);
     const manifest = ws.modules.get(modulePath);
     if (!registry || !manifest) return ws;
 
@@ -1655,7 +1640,7 @@ export function Editor() {
 
     // No registry means the reference set is UNKNOWN, not empty — the one input
     // on which reading it as empty would delete a resource unchecked.
-    const registry = state.diagnostics.registryByFile.get(modulePath);
+    const registry = state.analysis.registryByFile.get(modulePath);
     if (!registry) {
       setInlineBlocked({ name, references: [] });
       return;
@@ -1986,6 +1971,7 @@ export function Editor() {
   });
 
   return (
+    <LanguageModelsContext.Provider value={languageModels}>
     <DiagnosticsProvider
       navigate={navigateToDiagnostic}
       diagnostics={state.diagnostics}
@@ -2003,6 +1989,7 @@ export function Editor() {
         canRedo={canRedo}
         onToggleChat={agentVisible ? agent.togglePanel : undefined}
         chatOpen={agent.panelOpen}
+        teloLanguage={teloLanguage}
       />
 
       {error && (
@@ -2079,11 +2066,11 @@ export function Editor() {
                       viewData,
                       registry:
                         (state.activeModulePath
-                          ? state.diagnostics.registryByFile.get(state.activeModulePath)
+                          ? state.analysis.registryByFile.get(state.activeModulePath)
                           : undefined) ?? null,
                       moduleGraph:
                         (state.activeModulePath
-                          ? state.diagnostics.moduleGraphByFile.get(state.activeModulePath)?.()
+                          ? state.analysis.moduleGraphByFile.get(state.activeModulePath)?.()
                           : undefined) ?? null,
                       moduleGraphFor: moduleGraphByName,
                       templateGraphFor: templateGraphByKind,
@@ -2323,5 +2310,6 @@ export function Editor() {
       </ToastProvider>
     </div>
     </DiagnosticsProvider>
+    </LanguageModelsContext.Provider>
   );
 }

@@ -1,7 +1,7 @@
 import { DiagnosticSeverity, type NormalizedDiagnostic } from "@telorun/ide-support";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { WorkspaceDiagnostics } from "../analysis";
+import type { WorkspaceDiagnostics } from "../language/engine-diagnostics";
 import type { ModuleViewData, Selection } from "../model";
 import { DetailPanel } from "./DetailPanel";
 import { DiagnosticsProvider } from "./diagnostics/DiagnosticsContext";
@@ -67,10 +67,7 @@ function workspaceDiagnostics(): WorkspaceDiagnostics {
   return {
     byResource: new Map([["/t.yaml", new Map([["server", [diagnostic]]])]]),
     byFile: new Map(),
-    registryByFile: new Map(),
-    graphByFile: new Map(),
-    analysisByFile: new Map(),
-  } as unknown as WorkspaceDiagnostics;
+  };
 }
 
 const selection: Selection = {
