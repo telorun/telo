@@ -223,6 +223,38 @@ function parentPath(path: string): string | undefined {
   return cut <= 0 ? "" : path.slice(0, cut);
 }
 
+/** The schema node a keyword error was raised by: its schemaPath minus the
+ *  keyword segment. */
+function schemaNodeOf(error: AjvErrorLike): string | undefined {
+  const path = error.schemaPath;
+  if (typeof path !== "string") return undefined;
+  const cut = path.lastIndexOf("/");
+  return cut < 0 ? undefined : path.slice(0, cut);
+}
+
+/**
+ * Where one schema node refused a value's JSON TYPE, every other keyword that
+ * node raised against the same value is a consequence of it — an `enum` or a
+ * `minLength` judged on a value of the wrong kind — and reported beside it says
+ * one mistake twice.
+ */
+function withoutTypeConsequences(errors: AjvErrorLike[]): AjvErrorLike[] {
+  const typed = new Set<string>();
+  for (const e of errors) {
+    const node = schemaNodeOf(e);
+    if (e.keyword === "type" && node !== undefined) typed.add(`${e.instancePath ?? ""}\0${node}`);
+  }
+  if (typed.size === 0) return errors;
+  return errors.filter((e) => {
+    const node = schemaNodeOf(e);
+    return (
+      e.keyword === "type" ||
+      node === undefined ||
+      !typed.has(`${e.instancePath ?? ""}\0${node}`)
+    );
+  });
+}
+
 /**
  * Replace each failing union with the errors of the branch the author plainly
  * meant, recursively, outside in.
@@ -237,6 +269,7 @@ function parentPath(path: string): string | undefined {
  */
 export function reduceSchemaErrors(errors: AjvErrorLike[] | null | undefined): AjvErrorLike[] {
   if (!errors || errors.length === 0) return [];
+  errors = withoutTypeConsequences(errors);
 
   const occurrences: Occurrence[] = errors
     .filter((e) => UNION_KEYWORDS.has(e.keyword ?? "") && typeof e.schemaPath === "string")

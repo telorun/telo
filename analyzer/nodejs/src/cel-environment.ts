@@ -223,6 +223,24 @@ function registerValueBrands(env: Environment): void {
   }
 }
 
+/**
+ * What a checker rejection of an expression reading a brand should add: the
+ * operations {@link registerValueBrands} gives it. A brand is a type of its own,
+ * so an operator its base accepts (`+` on a string) finds no overload, and the
+ * checker's wording says only that. The brand comes from the engine's checked
+ * `readTypes`, never from the checker's wording.
+ */
+export function valueBrandHint(readTypes: readonly string[] | undefined): string {
+  const brand = readTypes?.find((type) => VALUE_BRAND_BASE[type] !== undefined);
+  if (!brand) return "";
+  const base = VALUE_BRAND_BASE[brand]!;
+  const join =
+    VALUE_TYPES.get(brand)?.fromHost !== undefined
+      ? `, or extend it with .joinPath('sub/dir'), which keeps it a ${brand}`
+      : "";
+  return ` ('${brand}' is a type of its own: read it as its base with ${base}(…)${join}.)`;
+}
+
 /** Register a `variables`/`secrets` namespace typed from a module doc's schema map
  *  (`{ name: <schema>, … }`), falling back to dyn `map` when absent or untyped. */
 function registerConfigNamespace(

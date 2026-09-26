@@ -2,6 +2,7 @@ import {
   parseModuleVersions,
   type HubRef,
   type IdeEnvironmentAdapter,
+  type ModuleEntry,
   type ModuleVersion,
 } from "@telorun/ide-support";
 import * as vscode from "vscode";
@@ -45,7 +46,31 @@ export async function fetchHubVersions(ref: string): Promise<ModuleVersion[]> {
  *  the base for all relative-path resolution. Federated ref / version lookups
  *  go to the configured telo hub. */
 export class VsCodeIdeAdapter implements IdeEnvironmentAdapter {
-  constructor(private readonly manifestDirUri: vscode.Uri) {}
+  constructor(
+    private readonly manifestDirUri: vscode.Uri,
+    private readonly moduleRootUri: vscode.Uri,
+  ) {}
+
+  async listModuleEntries(relPath: string): Promise<ModuleEntry[]> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(
+        vscode.Uri.joinPath(this.moduleRootUri, relPath),
+      );
+      return entries.map(([name, type]) => ({
+        name,
+        directory: (type & vscode.FileType.Directory) !== 0,
+      }));
+    } catch (err) {
+      // A path being typed names nothing yet, or names a file.
+      if (
+        err instanceof vscode.FileSystemError &&
+        (err.code === "FileNotFound" || err.code === "FileNotADirectory")
+      ) {
+        return [];
+      }
+      throw err;
+    }
+  }
 
   async listDirectories(relPath: string): Promise<string[]> {
     const targetUri = this.resolveRel(relPath);

@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
+    "@telorun/templating": "workspace:*",
     "yaml": "^2.8.3"
   },
   "devDependencies": {

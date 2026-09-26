@@ -205,6 +205,17 @@ function compare(
   if (Boolean(sourceType) !== Boolean(targetType)) {
     const declared = (sourceType ?? targetType)!;
     const other = sourceType ? target : source;
+    // A `fromHost` type is made only by anchoring, so its base does not satisfy
+    // it: a target declaring one is refused by any source that says what it is.
+    if (
+      targetType?.entry?.fromHost !== undefined &&
+      (source.type !== undefined || source.const !== undefined || source.enum !== undefined)
+    ) {
+      issues.push(
+        `${path || "/"}: value type mismatch — target expects '${targetType.name}', source is a plain value`,
+      );
+      return;
+    }
     if (declared.entry && typeof other.type === "string") {
       const base = celBaseOfValueType(declared.entry);
       const asJson = base === undefined ? undefined : declared.entry.base;
@@ -406,9 +417,31 @@ const INSTANCE_CEL_TYPES: ReadonlySet<string> = new Set(
   Object.values(VALUE_TYPE_BINDINGS).map((binding) => binding.celType),
 );
 
+/** The JSON types of a node's `const` / `enum` values; empty when it lists none. */
+function literalJsonTypes(schema: Record<string, any>): string[] {
+  const values: unknown[] =
+    "const" in schema ? [schema.const] : Array.isArray(schema.enum) ? schema.enum : [];
+  const types = new Set<string>();
+  for (const value of values) {
+    if (value === null) types.add("null");
+    else if (Array.isArray(value)) types.add("array");
+    else if (typeof value === "number") types.add(Number.isInteger(value) ? "integer" : "number");
+    else types.add(typeof value);
+  }
+  return [...types];
+}
+
 /** Check whether a CEL return type is compatible with a JSON Schema type constraint. */
 export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<string, any>): boolean {
   if (celType === "dyn") return true;
+  // A union is a CHOICE, satisfied by satisfying any branch — split BEFORE a
+  // brand degrades to its base, or a `Telo.HostPath` source would reach the
+  // host-path branch as a plain string and be refused by the one branch it fits.
+  // Distributed for the same reason `compare` does it: accepting every union
+  // outright turns the check off for exactly the slots that admit more than one
+  // shape, and those are the ones where the branches carry the information.
+  const branches = valueTypeOf(schema) === undefined ? unionBranches(schema) : undefined;
+  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
   // Nominal value brands: when the expression's type is a recognized brand,
   // a branded consuming field must match exactly (a UdpPort wired into a
   // TcpPort-branded field is the error we want). An unbranded field accepts
@@ -445,16 +478,15 @@ export function celTypeSatisfiesJsonSchema(celType: string, schema: Record<strin
   ) {
     return false;
   }
-  if (!schema.type && !schema.anyOf && !schema.oneOf && !schema.allOf) return true;
-  // `allOf` is a conjunction and says too little to judge from a single CEL
-  // type. A union is a CHOICE, so it is satisfied by satisfying any branch —
-  // distributed for the same reason `compare` does it: accepting every union
-  // outright turns the check off for exactly the slots that admit more than one
-  // shape, and those are the ones where the branches carry the information.
+  // `allOf` is a conjunction and says too little to judge from a single CEL type.
   if (schema.allOf) return true;
-  const branches = unionBranches(schema);
-  if (branches) return branches.some((branch) => celTypeSatisfiesJsonSchema(celType, branch));
-  const schemaTypes = Array.isArray(schema.type) ? schema.type : [schema.type];
+  // A `const` / `enum` with no `type` still says what its values are.
+  const schemaTypes: string[] = schema.type
+    ? Array.isArray(schema.type)
+      ? schema.type
+      : [schema.type]
+    : literalJsonTypes(schema);
+  if (schemaTypes.length === 0) return true;
   const accepted: Record<string, string[]> = {
     int: ["integer", "number"],
     uint: ["integer", "number"],

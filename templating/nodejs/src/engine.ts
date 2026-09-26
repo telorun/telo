@@ -79,6 +79,16 @@ export interface AnalyzeEnv {
    * unqualified, which is what it says with no host rule to consult.
    */
   readonly couldNameModule?: (name: string) => boolean;
+
+  /**
+   * The names this site reads, as a schema — consulted ONLY to explain a
+   * rejection `check()` already made. A chain naming a field it does not declare
+   * is then reported as `CEL_UNKNOWN_FIELD` with the fields it does, rather than
+   * the checker's own wording. Never a verdict of its own: an expression the
+   * checker accepts is not re-judged against it. Lazy, since only a failing
+   * expression asks.
+   */
+  readonly explainSchema?: () => Record<string, unknown> | null;
 }
 
 /** A mechanically applicable repair for a diagnostic. `replacement` is the
@@ -164,6 +174,13 @@ export interface AnalyzeResult {
   readonly type?: string;
   /** Every function call in the source, in source order. */
   readonly calls: readonly CallSite[];
+  /** The string the whole expression is a literal of, read off the parsed tree
+   *  (so `(':memory:')` is one), when it is one. */
+  readonly stringLiteral?: string;
+  /** When the checker rejected the expression, the CEL type of each plain chain
+   *  it reads (`variables.db` → `Telo.HostPath`), so a host can say how to use a
+   *  value whose type is what the rejection turned on. */
+  readonly readTypes?: readonly string[];
 }
 
 /** One module-relative file a tagged node embeds, reported by the engine that

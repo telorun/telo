@@ -2,6 +2,7 @@ import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
 import { expandGlobViaList, pathExtname, pathResolve } from "../paths";
+import { DirectoryNotFoundError } from "./directory-not-found";
 
 // ---------------------------------------------------------------------------
 // FsaAdapter — File System Access API (Chrome/Edge). Read + write.
@@ -66,7 +67,18 @@ export class FsaAdapter implements ManifestSource, WorkspaceAdapter {
 
   async listDir(path: string): Promise<DirEntry[]> {
     const parts = this.toRelParts(path);
-    const dir = await this.resolveDir(parts);
+    let dir: FileSystemDirectoryHandle;
+    try {
+      dir = await this.resolveDir(parts);
+    } catch (error) {
+      if (
+        error instanceof DOMException &&
+        (error.name === "NotFoundError" || error.name === "TypeMismatchError")
+      ) {
+        throw new DirectoryNotFoundError(path);
+      }
+      throw error;
+    }
     const result: DirEntry[] = [];
     for await (const [name, handle] of dir.entries()) {
       result.push({ name: name as string, isDirectory: handle.kind === "directory" });

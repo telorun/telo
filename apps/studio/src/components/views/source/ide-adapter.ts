@@ -1,7 +1,8 @@
-import type { HubRef, IdeEnvironmentAdapter } from "@telorun/ide-support";
+import type { HubRef, IdeEnvironmentAdapter, ModuleEntry } from "@telorun/ide-support";
 import type { WorkspaceAdapter } from "../../../model";
 import { pathJoin } from "../../../loader/paths";
 import { fetchHubVersions, resolveHubUrl } from "../../../hub-search";
+import { DirectoryNotFoundError } from "../../../loader/adapters/directory-not-found";
 
 interface RefsResponse {
   refs?: Array<{ ref?: string; latestVersion?: string; description?: string }>;
@@ -16,10 +17,22 @@ export class EditorIdeAdapter implements IdeEnvironmentAdapter {
 
   constructor(
     private readonly manifestDir: string,
+    private readonly moduleRoot: string,
     private readonly workspace: WorkspaceAdapter,
     hubUrl: string | undefined,
   ) {
     this.hubUrl = resolveHubUrl(hubUrl);
+  }
+
+  async listModuleEntries(relPath: string): Promise<ModuleEntry[]> {
+    try {
+      const entries = await this.workspace.listDir(pathJoin(this.moduleRoot, relPath));
+      return entries.map((e) => ({ name: e.name, directory: e.isDirectory }));
+    } catch (error) {
+      // A path being typed names nothing yet, or names a file.
+      if (error instanceof DirectoryNotFoundError) return [];
+      throw error;
+    }
   }
 
   async listDirectories(relPath: string): Promise<string[]> {

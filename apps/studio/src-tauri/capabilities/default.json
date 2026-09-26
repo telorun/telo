@@ -12,6 +12,7 @@
     "fs:allow-mkdir",
     "fs:allow-remove",
     "fs:allow-exists",
+    "fs:allow-stat",
     {
       "identifier": "fs:scope",
       "allow": [{ "path": "$HOME/**" }]

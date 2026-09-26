@@ -128,11 +128,18 @@ export function analyzeCelWithTree(
   // not become a hard error on valid CEL. Reporting nothing where cel-js is
   // happy makes an unknown future macro a silent no-op rather than a manifest
   // this analyzer refuses and the kernel would run fine.
+  // What explaining a rejection already reported, so the context's own chain
+  // check below does not report it twice.
+  const explained = new Set<string>();
   if (checkError !== undefined) {
     // `check()` stops at its first problem; the audit enumerates every bad call,
     // which is the whole reason it exists as more than a message rewriter.
     out.push(...audit.diagnostics);
-    if (audit.diagnostics.length === 0) {
+    const unknownFields =
+      audit.diagnostics.length === 0 ? explainUnknownFields(parsed.ast, env) : [];
+    out.push(...unknownFields);
+    for (const d of unknownFields) explained.add(d.message);
+    if (audit.diagnostics.length === 0 && unknownFields.length === 0) {
       out.push({
         code: "CEL_TYPE_ERROR",
         message: checkError + explainUnresolved(audit.unresolved, env.celEnv) + DYN_HINT(checkError),
@@ -193,7 +200,7 @@ export function analyzeCelWithTree(
     const contextSchema = env.contextSchema as Record<string, any>;
     for (const chain of extractAccessChains(parsed.ast)) {
       const err = validateChainAgainstSchema(chain, contextSchema);
-      if (err) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
+      if (err && !explained.has(err)) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
     }
 
     for (const issue of findNullableAccessIssues(parsed.ast, contextSchema)) {
@@ -212,9 +219,49 @@ export function analyzeCelWithTree(
       diagnostics: out,
       calls: resolvedCalls ? withCallArguments(audit.calls, parsed.ast) : audit.calls,
       ...(type === undefined ? {} : { type }),
+      ...(ast.op === "value" && typeof ast.args === "string" ? { stringLiteral: ast.args } : {}),
+      ...(checkError === undefined ? {} : { readTypes: chainTypes(parsed.ast, env) }),
     },
     ast,
   };
+}
+
+/** Every chain naming a field the site's names do not declare, as the host's
+ *  explain schema reads them — the readable half of a rejection the checker
+ *  reported in its own words. The explain schema is not the checker's
+ *  environment, so a chain is reported only when the checker rejects it too;
+ *  otherwise the rejection was about something else and keeps its own words. */
+function explainUnknownFields(ast: ASTNode, env: AnalyzeEnv): EngineDiagnostic[] {
+  const schema = env.explainSchema?.();
+  if (!schema) return [];
+  const out: EngineDiagnostic[] = [];
+  const reported = new Set<string>();
+  for (const chain of extractAccessChains(ast)) {
+    const message = validateChainAgainstSchema(chain, schema as Record<string, any>);
+    if (message && !reported.has(message) && checkerRejects(chain, env)) {
+      reported.add(message);
+      out.push({ code: "CEL_UNKNOWN_FIELD", message });
+    }
+  }
+  return out;
+}
+
+/** The checked type of each distinct plain chain the expression reads. */
+function chainTypes(ast: ASTNode, env: AnalyzeEnv): string[] {
+  const types = new Set<string>();
+  for (const chain of extractAccessChains(ast)) {
+    if (chain.includes(INDEX_SEGMENT)) continue;
+    const result = env.celEnv.check(chain.join("."));
+    if (result.valid && result.type !== undefined) types.add(result.type);
+  }
+  return [...types];
+}
+
+/** Does the checker reject the chain's named prefix (up to its first index)? */
+function checkerRejects(chain: readonly string[], env: AnalyzeEnv): boolean {
+  const end = chain.indexOf(INDEX_SEGMENT);
+  const named = end === -1 ? chain : chain.slice(0, end);
+  return !env.celEnv.check(named.join(".")).valid;
 }
 
 /** The audited call sites, each module call carrying its arguments as the type

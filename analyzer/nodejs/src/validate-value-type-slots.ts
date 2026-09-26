@@ -25,7 +25,7 @@ import { distance } from "./levenshtein.js";
 import { isInSchemaRegion } from "./schema-region.js";
 
 export interface ValueTypeSlotIssue {
-  code: "X_TELO_TYPE_UNKNOWN" | "X_TELO_TYPE_ARGUMENT_UNKNOWN";
+  code: "X_TELO_TYPE_UNKNOWN" | "X_TELO_TYPE_ARGUMENT_UNKNOWN" | "X_TELO_TYPE_BASE_MISMATCH";
   manifest: ResourceManifest;
   /** Dotted path to the annotated schema node, e.g. `schema.properties.body`. */
   path: string;
@@ -73,6 +73,16 @@ function declaredNames(): string {
   return [...VALUE_TYPES.keys()].join(", ");
 }
 
+const JSON_TYPES: ReadonlySet<string> = new Set([
+  "string",
+  "integer",
+  "number",
+  "boolean",
+  "object",
+  "array",
+  "null",
+]);
+
 /** Report the annotation on one schema node. */
 function checkNode(
   node: Record<string, unknown>,
@@ -102,6 +112,29 @@ function checkNode(
     return;
   }
 
+  // A brand refines its base JSON type, so a `type:` beside it naming another
+  // makes the node unsatisfiable: every value fails one of the two.
+  const base = slot.entry.representation === "json" ? slot.entry.base : undefined;
+  const declaredTypes = typeof node.type === "string" ? [node.type] : node.type;
+  // A misspelt type name is the schema check's to report, not a disagreement.
+  if (
+    base !== undefined &&
+    Array.isArray(declaredTypes) &&
+    declaredTypes.every((t) => typeof t === "string" && JSON_TYPES.has(t))
+  ) {
+    const fits = declaredTypes.includes(base) || (base === "integer" && declaredTypes.includes("number"));
+    if (!fits) {
+      issues.push({
+        code: "X_TELO_TYPE_BASE_MISMATCH",
+        manifest,
+        path,
+        message:
+          `'${slot.entry.name}' is ${/^[aeiou]/.test(base) ? "an" : "a"} ${base}, but this node declares type ` +
+          `'${declaredTypes.join(" | ")}', so no value satisfies both. Declare type: ${base}.`,
+      });
+    }
+  }
+
   const declared = new Set(slot.entry.parameters.map((p) => p.name));
   for (const argument of Object.keys(slot.args)) {
     if (declared.has(argument)) continue;
@@ -123,7 +156,8 @@ function checkNode(
  *  Descends through every container rather than through a keyword list: a value
  *  type is legal at any schema position — a property, an item, a union branch, a
  *  `$defs` entry, a type argument — and enumerating positions is how a check
- *  ends up not covering the one an author used. */
+ *  ends up not covering the one an author used. `schemaRoot` says the value is
+ *  a schema whatever the region rule reads at its position. */
 function walk(
   value: unknown,
   manifest: ResourceManifest,
@@ -131,13 +165,14 @@ function walk(
   segments: (string | number)[],
   seen: Set<object>,
   issues: ValueTypeSlotIssue[],
+  schemaRoot = false,
 ): void {
   if (value === null || typeof value !== "object") return;
   if (seen.has(value)) return;
   seen.add(value);
   if (Array.isArray(value)) {
     value.forEach((item, i) =>
-      walk(item, manifest, `${path}[${i}]`, [...segments, i], seen, issues),
+      walk(item, manifest, `${path}[${i}]`, [...segments, i], seen, issues, schemaRoot),
     );
     return;
   }
@@ -146,7 +181,7 @@ function walk(
   // is safe anywhere, unlike a rewrite — but an `x-telo-type` key sitting in a
   // resource's own configuration is not a schema annotation and is not this
   // check's to judge.
-  if (isInSchemaRegion([...segments, X_TELO_TYPE])) {
+  if (schemaRoot || isInSchemaRegion([...segments, X_TELO_TYPE])) {
     checkNode(node, manifest, path, issues);
   }
   for (const [key, child] of Object.entries(node)) {
@@ -166,17 +201,41 @@ function walk(
           [...segments, X_TELO_TYPE, argName],
           seen,
           issues,
+          schemaRoot,
         );
       }
       continue;
     }
-    walk(child, manifest, path ? `${path}.${key}` : key, [...segments, key], seen, issues);
+    walk(
+      child,
+      manifest,
+      path ? `${path}.${key}` : key,
+      [...segments, key],
+      seen,
+      issues,
+      schemaRoot,
+    );
   }
 }
+
+/** A module doc's `variables:` / `secrets:` entries are schemas as well, one
+ *  per input, though the keys holding them are no schema region. */
+const MODULE_INPUT_BLOCKS = ["variables", "secrets"] as const;
 
 /** Every `x-telo-type` problem in one manifest, wherever a schema is written. */
 export function validateValueTypeSlots(manifest: ResourceManifest): ValueTypeSlotIssue[] {
   const issues: ValueTypeSlotIssue[] = [];
-  walk(manifest, manifest, "", [], new Set<object>(), issues);
+  const seen = new Set<object>();
+  if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") {
+    for (const block of MODULE_INPUT_BLOCKS) {
+      const entries = (manifest as Record<string, unknown>)[block];
+      if (!entries || typeof entries !== "object" || Array.isArray(entries)) continue;
+      for (const [name, entry] of Object.entries(entries as Record<string, unknown>)) {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+        walk(entry, manifest, `${block}.${name}`, [block, name], seen, issues, true);
+      }
+    }
+  }
+  walk(manifest, manifest, "", [], seen, issues);
   return issues;
 }

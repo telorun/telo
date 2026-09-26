@@ -6,6 +6,7 @@ import {
   type CelSegment,
 } from "@telorun/analyzer";
 import type { ReplaceRange } from "../types.js";
+import { valueTag } from "../value-tags/offered-value-tags.js";
 import { resolveNodeAtPosition } from "./resolve-node.js";
 
 export type { ReplaceRange };
@@ -88,6 +89,32 @@ export type CompletionCtx =
       segment: CelSegment;
       /** Cursor as a document offset. */
       offset: number;
+    }
+  | {
+      /** Cursor sits on a value's YAML tag (`root: !mo|`). What is offered is
+       *  every tag the field takes, so its schema is addressed relative to the
+       *  nearest enclosing resource. */
+      type: "value-tag";
+      /** Absent at a document declaring no resource kind. */
+      kind?: string;
+      yamlPath: string[];
+      /** Resource-relative, sequence indices kept — what the eval mode is
+       *  resolved at. */
+      concretePath: string;
+      /** The value is a sequence item, so the field's schema is its item's. */
+      isItem: boolean;
+      /** Nothing follows the tag yet, so a pick may lead into the value. */
+      bare: boolean;
+      replaceRange: ReplaceRange;
+    }
+  | {
+      /** Cursor sits in the value of a tag naming a location inside the module
+       *  (`!module-path ./pu|`). */
+      type: "module-file";
+      names: "file" | "file-or-directory";
+      /** Text from the start of the value to the cursor. */
+      prefix: string;
+      replaceRange: ReplaceRange;
     };
 
 /** Returns every schema branch reachable from `node` after peeling `anyOf` /
@@ -250,6 +277,38 @@ export function navigateSchema(
   return unionLeaves(current, leaves);
 }
 
+/**
+ * The schema of the field at `path`, as DECLARED — combinators kept.
+ *
+ * `navigateSchema` merges a leaf's branches into one object node, which is what
+ * key completion wants and exactly what a type comparison must not see: a
+ * `Telo.HostPath` branch of an `anyOf` stops being one. `isItem` selects the
+ * field's item schema, for a value written as a sequence item.
+ */
+export function fieldSchemaAt(
+  schema: Record<string, any>,
+  path: string[],
+  isItem: boolean,
+  schemaFrom?: SchemaFromResolver,
+): Record<string, any> | undefined {
+  if (path.length === 0) return undefined;
+  const parent = navigateSchema(schema, path.slice(0, -1), schemaFrom);
+  const key = path[path.length - 1]!;
+  let field = parent?.properties?.[key] ?? parent?.additionalProperties;
+  if (!field || typeof field !== "object") return undefined;
+  field = resolveLocalRef(field, schema);
+  if (isItem) {
+    while (field?.type === "array" && field.items) field = resolveLocalRef(field.items, schema);
+  }
+  return field;
+}
+
+/** `concretePath` relative to the resource map at `resourceConcrete`. */
+function relativeConcretePath(concretePath: string, resourceConcrete: string): string {
+  if (!resourceConcrete) return concretePath;
+  return concretePath.slice(resourceConcrete.length).replace(/^\./, "");
+}
+
 /** Merge multiple peeled schema branches into one node for completion purposes.
  *  Property maps are unioned (first branch wins on key collision). `required`
  *  becomes the intersection so optional-in-any-branch keys still surface.
@@ -328,6 +387,31 @@ export function detectContext(
   const { docKind } = resolved;
 
   if (resolved.slot === "value") {
+    const tag = resolved.tag;
+    if (tag?.prefix !== undefined) {
+      const depth = resolved.resourceDepth ?? 0;
+      return {
+        type: "value-tag",
+        kind: resolved.resourceKind ?? docKind,
+        yamlPath: resolved.path.slice(depth),
+        concretePath: relativeConcretePath(
+          resolved.concretePath ?? "",
+          resolved.resourceConcretePath ?? "",
+        ),
+        isItem: resolved.container === undefined,
+        bare: tag.bare,
+        replaceRange: tag.replaceRange,
+      };
+    }
+    const names = tag ? valueTag(tag.text.slice(1))?.names : undefined;
+    if (names && resolved.replaceRange) {
+      return {
+        type: "module-file",
+        names,
+        prefix: resolved.prefix ?? "",
+        replaceRange: resolved.replaceRange,
+      };
+    }
     // Inside a CEL body — structural completion does not apply; what completes
     // are the names the expression may use.
     if (resolved.cel) {

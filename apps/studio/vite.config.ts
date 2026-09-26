@@ -27,8 +27,11 @@ export default defineConfig({
       // someone remembered `pnpm --filter @telorun/analyzer build`, and the
       // failure mode is a stale picture with no error anywhere. Safe from
       // source for the reason debug-ui is: the analyzer is browser-safe by
-      // contract, importing no Node built-ins.
+      // contract, importing no Node built-ins. Templating and ide-support are
+      // browser-safe by the same contract and went stale the same way.
       "@telorun/analyzer": path.resolve(__dirname, "../../analyzer/nodejs/src/index.ts"),
+      "@telorun/templating": path.resolve(__dirname, "../../templating/nodejs/src/index.ts"),
+      "@telorun/ide-support": path.resolve(__dirname, "../../packages/ide-support/src/index.ts"),
       "fs/promises": path.resolve(__dirname, "./src/empty.ts"),
       fs: path.resolve(__dirname, "./src/empty.ts"),
       path: path.resolve(__dirname, "./src/empty.ts"),

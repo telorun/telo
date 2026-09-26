@@ -1,5 +1,10 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { canonicalTypeSchemaId, OBSERVED_STATE_KEY, VALUE_TYPES } from "@telorun/sdk";
+import {
+  canonicalTypeSchemaId,
+  OBSERVED_STATE_KEY,
+  readValueTypeSlot,
+  VALUE_TYPES,
+} from "@telorun/sdk";
 import type { Environment } from "@marcbachmann/cel-js";
 import {
   CEL_ENGINE,
@@ -24,6 +29,7 @@ import {
   buildImportInputCelEnvironment,
   buildTypedCelEnvironment,
   isKindDocument,
+  valueBrandHint,
   type CelHandlers,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
@@ -148,6 +154,7 @@ import {
   resolveRefIn,
   substituteCelFields,
   validateAgainstSchema,
+  VALUE_BRAND_BASE,
   type SchemaIssue,
 } from "./schema-compat.js";
 import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
@@ -192,8 +199,16 @@ import { validateSourceEntries } from "./validate-source-entries.js";
 import { validateIncludePlacement } from "./validate-include-placement.js";
 import { validateApplicationArguments } from "./validate-application-arguments.js";
 import { validateHostPathDefaults } from "./validate-host-path-defaults.js";
+import { validateInputDefaults } from "./validate-input-defaults.js";
 import { validateUntaggedInterpolation } from "./untagged-interpolation.js";
-import { holdsHostPath, leadingRelativeLiteral } from "./host-path-slot.js";
+import {
+  alsoAccepts,
+  HOST_PATH_SOURCES,
+  holdsHostPath,
+  holdsOnlyConstants,
+  hostPathBranchesFor,
+  leadingRelativeLiteral,
+} from "./host-path-slot.js";
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
@@ -683,6 +698,17 @@ function collectCelValueSlots(
   }
 
   return slots;
+}
+
+/** What a slot holds, as a type-mismatch message names it: its value type, its
+ *  JSON type, or a union's branches (`Telo.HostPath | ":memory:"`). */
+function describeSlotType(schema: Record<string, any>): string {
+  const branches = schema["x-telo-type"] === undefined ? unionBranches(schema) : undefined;
+  if (branches) return branches.map(describeSlotType).join(" | ");
+  if ("const" in schema) return JSON.stringify(schema.const);
+  const type = readValueTypeSlot(schema)?.name ?? schema.type;
+  if (Array.isArray(type)) return type.join(" | ");
+  return typeof type === "string" ? type : "unknown";
 }
 
 export interface StaticAnalyzerOptions {
@@ -1619,6 +1645,9 @@ export class StaticAnalyzer {
       diagnostics.push(
         ...validateApplicationArguments(allManifests as unknown as ResourceManifest[], rootModules),
       );
+      diagnostics.push(
+        ...validateInputDefaults(allManifests as unknown as ResourceManifest[], rootModules),
+      );
     }
     if (!options?.skipValidation) {
       // A `${{` left in a plain string: unmigrated, or no readable hole.
@@ -1869,6 +1898,8 @@ export class StaticAnalyzer {
     const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
     // The expression's source, for what its text alone decides.
     const celSourceByPath = new Map<ResourceManifest, Map<string, string>>();
+    // The string an expression is a literal of, as the engine parsed it.
+    const celLiteralByPath = new Map<ResourceManifest, Map<string, string>>();
     // The schema an expression RESOLVES TO, beside the CEL type it carries. Both
     // are needed and neither replaces the other: the CEL type answers "does this
     // fit the slot at all", the schema answers "do their type arguments agree",
@@ -2227,6 +2258,7 @@ export class StaticAnalyzer {
             const written = navigatePath(m, issue.path);
             // A tag that always builds a string (`!interpolate`) is a string
             // source whatever its text, never a relative literal to repair.
+            const slotSchema = navigateSchemaToExprPath(projected, issue.path);
             if (isTaggedSentinel(written)) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
@@ -2234,9 +2266,7 @@ export class StaticAnalyzer {
                 source: SOURCE,
                 message:
                   `${m.kind}/${resource.name}: '${issue.path}' is a Telo.HostPath, but !${written.engine} ` +
-                  `produces a plain string. A host path comes from a variable declared x-telo-type: ` +
-                  `Telo.HostPath (which resolves a relative value against the working directory), ` +
-                  `from !module-path, or from .joinPath('sub/dir') on either.`,
+                  `produces a plain string. ${HOST_PATH_SOURCES}${alsoAccepts(slotSchema)}`,
                 data: { resource, filePath, path: issue.path },
               });
               continue;
@@ -2245,7 +2275,7 @@ export class StaticAnalyzer {
               severity: DiagnosticSeverity.Error,
               code: "HOST_PATH_RELATIVE",
               source: SOURCE,
-              message: `${m.kind}/${resource.name}: ${issue.message}`,
+              message: `${m.kind}/${resource.name}: ${issue.message}.${alsoAccepts(slotSchema)}`,
               data: {
                 resource,
                 filePath,
@@ -2886,6 +2916,7 @@ export class StaticAnalyzer {
             moduleCallType,
             moduleCallResult,
             moduleCallFlags,
+            explainSchema,
           } = celScope.scopeFor({
             source: m,
             path,
@@ -2908,6 +2939,7 @@ export class StaticAnalyzer {
             // policies below read `deterministic === false` for a module call as
             // they do for a catalog one.
             moduleCallFlags,
+            explainSchema,
             // `scopeFor` registers every kernel global (none in a parameter scope,
             // which replaces them) and every name the site's context declares,
             // so a root this environment does not know is one
@@ -2932,6 +2964,11 @@ export class StaticAnalyzer {
             let sources = celSourceByPath.get(m);
             if (!sources) celSourceByPath.set(m, (sources = new Map()));
             sources.set(path, expr);
+            if (result.stringLiteral !== undefined) {
+              let literals = celLiteralByPath.get(m);
+              if (!literals) celLiteralByPath.set(m, (literals = new Map()));
+              literals.set(path, result.stringLiteral);
+            }
           }
 
           // The producer half of the type-argument check. A CEL type is a bare
@@ -3055,7 +3092,9 @@ export class StaticAnalyzer {
                 severity: DiagnosticSeverity.Error,
                 code: f.code,
                 source: SOURCE,
-                message: `${m.kind}/${resource.name}: !${engineName}: ${f.message}`,
+                message:
+                  `${m.kind}/${resource.name}: !${engineName}: ${f.message}` +
+                  (f.code === "CEL_TYPE_ERROR" ? valueBrandHint(result.readTypes) : ""),
                 data,
               });
             }
@@ -3079,8 +3118,22 @@ export class StaticAnalyzer {
       );
       const target = result ?? slot.schema;
       const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
-      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, target) && holdsHostPath(target)) {
-        const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";
+      const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";
+      const baseType = type.split("<")[0]!;
+      const hostPath = holdsHostPath(target);
+      const fits = celTypeSatisfiesJsonSchema(
+        baseType,
+        hostPath
+          ? hostPathBranchesFor(
+              target,
+              celLiteralByPath.get(slot.manifest)?.get(slot.path),
+              celSourceSchemaByPath.get(slot.manifest)?.get(slot.path),
+            )
+          : target,
+      );
+      // Text that is not a host path is the host-path finding; a value that is
+      // not text at all is an ordinary type mismatch.
+      if (!fits && hostPath && (baseType === "string" || VALUE_BRAND_BASE[baseType] === "string")) {
         const leading = leadingRelativeLiteral(expression, target);
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
@@ -3091,15 +3144,13 @@ export class StaticAnalyzer {
             (leading !== undefined
               ? `this expression builds a path starting with '${leading}', which is relative.`
               : `this expression produces a plain '${type}'.`) +
-            ` A host path comes from a variable declared x-telo-type: Telo.HostPath (which ` +
-            `resolves a relative value against the working directory), from !module-path, or ` +
-            `from .joinPath('sub/dir') on either.`,
+            ` ${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
           data,
         });
         continue;
       }
-      if (!celTypeSatisfiesJsonSchema(type.split("<")[0]!, target)) {
-        const expected = target["x-telo-type"] ?? target.type ?? "unknown";
+      if (!fits) {
+        const expected = describeSlotType(target);
         diagnostics.push(
           result
             ? {
@@ -3133,10 +3184,9 @@ export class StaticAnalyzer {
           code: "HOST_PATH_RELATIVE",
           source: SOURCE,
           message:
-            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' builds a path ` +
-            `starting with '${leading}', so it is relative, and a Telo.HostPath must be absolute. ` +
-            `Start it from a variable declared x-telo-type: Telo.HostPath, which resolves a ` +
-            `relative value against the working directory.`,
+            `${slot.resource.kind}/${slot.resource.name}: '${slot.path}' is a Telo.HostPath, but ` +
+            `this expression builds a path starting with '${leading}', which is relative. ` +
+            `${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
           data,
         });
         continue;
@@ -3151,6 +3201,7 @@ export class StaticAnalyzer {
       if (
         holdsHostPath(target) &&
         !holdsHostPath(produced) &&
+        !holdsOnlyConstants(target, undefined, produced) &&
         (produced.type !== undefined ||
           produced["x-telo-type"] !== undefined ||
           unionBranches(produced) !== undefined)

@@ -538,6 +538,7 @@ describe("buildCompletions — inline import sources", () => {
         },
       ],
       listVersionsForRef: async () => ["1.2.3"],
+      listModuleEntries: async () => [],
     };
   }
 

@@ -23,6 +23,11 @@ const NEVER_INSTANTIATED: ReadonlySet<string> = new Set([
   "Telo.Import",
 ]);
 
+/** Whether a doc of this kind is never created, so no tag in it is resolved. */
+export function isNeverInstantiated(kind: string): boolean {
+  return NEVER_INSTANTIATED.has(kind);
+}
+
 /**
  * An `!include-text` / `!include-bytes` / `!module-path` in a doc that is never
  * instantiated is never read.

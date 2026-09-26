@@ -16,4 +16,5 @@ declare module "@tauri-apps/plugin-fs" {
   export function remove(path: string, options?: { recursive?: boolean }): Promise<void>;
   export function rename(oldPath: string, newPath: string): Promise<void>;
   export function exists(path: string): Promise<boolean>;
+  export function stat(path: string): Promise<{ isDirectory: boolean; isFile: boolean }>;
 }
