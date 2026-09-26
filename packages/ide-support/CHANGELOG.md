@@ -1,5 +1,20 @@
 # @telorun/ide-support
 
+## 0.102.0
+
+### Minor Changes
+
+- eadb75a: Removed: `parseModuleVersions`. Editors read the hub's `GET /module/versions` answer through `@telorun/language-host`'s `HubClient`, which applies the same rules (newest first, an entry without a version dropped, a non-canonical `integrity` discarded).
+- eadb75a: Changed: the telo runtime packages share one version line. `@telorun/sdk`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`, `@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` form one changesets `fixed` group (the `linked` group is gone): a changeset naming any of them releases all of them at one version, so this release puts every member on the same number, and that number is the manifest surface generation a module's `requires: telo:` range is written against. `TELO_SURFACE_VERSION` is the line's version with any pending bump applied, and the Rust twins (`telo-kernel`, `telo-cli`, `telo-analyzer`, `telo-templating`, `telorun-sdk`) carry their Node twin's version in `Cargo.toml` and `Cargo.lock`.
+
+### Patch Changes
+
+- Updated dependencies [eadb75a]
+- Updated dependencies [eadb75a]
+- Updated dependencies [eadb75a]
+  - @telorun/analyzer@0.102.0
+  - @telorun/templating@0.102.0
+
 ## 0.24.0
 
 ### Minor Changes
