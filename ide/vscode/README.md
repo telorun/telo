@@ -1,6 +1,6 @@
 # Telo for VS Code
 
-Language support for [Telo](https://telo.run) manifests — diagnostics, completions, hover docs, go-to-definition, rename and import upgrades, all computed from the same static analyzer the `telo check` CLI uses.
+Language support for [Telo](https://telo.run) manifests — diagnostics, completions, hover docs, go-to-definition, rename and import upgrades, all computed by the telo version each module is edited against: that version's own engine, the same analysis its `telo check` performs.
 
 Telo is a declarative runtime for backend applications: YAML manifests describe desired state, and the kernel resolves the dependency graph and runs a controller for each resource kind. Because manifests are statically analyzable, most mistakes are catchable before anything runs — this extension is where you see them.
 
@@ -56,7 +56,7 @@ Applying an upgrade rewrites the source ref and re-pins it to the new version's 
 
 Where the hub has no pin for the target version, the upgrade still applies and the stale pin is removed — it hashes the `telo.yaml` of the version being replaced — with a notification saying so. Run `telo upgrade` to re-pin from the origin.
 
-A lens only ever offers a version this Telo can run. Each candidate's own `telo.yaml` is read from the manifest cache (`telo.manifestCacheUrl`) and its declared [`requires.telo`](https://telo.run/extend/declaring-runtime-requirements) range checked, newest-first, so an upgrade stops at the newest hostable version instead of walking you into a manifest the load gate rejects. When a newer version was held back the lens says so (`↑ 0.9.0 → 1.0.0 ⚠`, with the reason in its tooltip); when nothing newer can run, the entry shows `⚠ … · update telo to upgrade` rather than silently reading as up to date. A candidate that cannot be read is never treated as incompatible — an unreachable cache must not freeze your imports.
+A lens only ever offers a version the telo you are editing against can run. Each candidate's own `telo.yaml` is read from its registry, exactly as `telo upgrade` reads it, and its declared [`requires.telo`](https://telo.run/extend/declaring-runtime-requirements) range checked, newest-first, so an upgrade stops at the newest hostable version instead of walking you into a manifest the load gate rejects. When a newer version was held back the lens says so (`↑ 0.9.0 → 1.0.0 ⚠`, with the reason in its tooltip); when nothing newer can run, the entry shows `⚠ … · update telo to upgrade` rather than silently reading as up to date. A candidate that cannot be read is never treated as incompatible — an unreachable registry must not freeze your imports.
 
 Version lookups and compatibility answers are memoized so lens resolution stays off the keystroke path. Run **Telo: Check Imports for Updates** to drop the memo and re-check. Hub failures go to the `Telo` output channel.
 
@@ -64,16 +64,31 @@ Version lookups and compatibility answers are memoized so lens resolution stays 
 
 `telo.yaml` and `*.telo.yaml` get a dedicated grammar plus semantic tokens, so `!ref` targets and `!cel` expressions are highlighted as references and code rather than plain strings.
 
+## Which telo you edit against
+
+The status bar shows **Telo X** — the telo version the active file's module is edited against — with **(pinned)** when the `telo.version` setting fixes it, and **(unreleased build)** when the engine is a development build of `X` rather than the published one. Its tooltip says what chose `X`, or names the error when no version can run — including an engine that crashed or never started, which **Retry** starts again. Click it, or run **Telo: Select Telo Version**, to choose: **Auto** (with the version it resolves to), then the bundled version and every available version newest first, each marked as accepted or refused by the module's `requires: telo:` ranges and as cached or not. Picking one writes `telo.version`.
+
+With `auto`, each module gets a version of its own:
+
+1. A module declaring `requires: telo:` is edited against the **lowest available version** its range and every imported module's range accept.
+2. A module declaring none stays on the **bundled version** if its imports' ranges accept it, else the lowest version they all accept.
+3. When nothing satisfies the ranges, the bundled version runs and reports the module that refuses it; the status says no available telo satisfies them.
+
+The bundled version ships inside the extension. Other versions are the published `@telorun/language-server` releases, downloaded from npm when a module needs one, verified against their published `sha512` integrity and cached in the extension's storage. Offline, the last cached list of versions and every cached engine still work; a version that is neither cached nor downloadable — or a pin naming a version that cannot be offered — shows as an error in the status item, with one notification offering **Select version** and **Retry**. No other version is used in its place. Running (`telo run`) is unaffected by any of this. Guide: [Editing against a telo version](https://telo.run/learn/editor-telo-version).
+
 ## Settings
 
 | Setting | Default | Description |
 | --- | --- | --- |
+| `telo.version` | `auto` | The telo version manifests are edited against: `auto` chooses per module as above, an exact engine identity pins every module to it — a published version (`0.102.0`) or a development build's (`0.102.0+unreleased`). |
 | `telo.importUpgrades.enabled` | `true` | Show upgrade CodeLenses over `imports:`. Disable to stop the editor contacting the hub entirely. |
 | `telo.hubUrl` | `https://telo.sh` | Hub **API** host used for import-source autocomplete and version lists. This is the machine-facing endpoint — the browsable index lives at [hub.telo.run](https://hub.telo.run). |
 
 ## Network access
 
-Analysis is local. The extension contacts the network in two cases only: resolving imports that are not on disk, and checking module versions for the upgrade lenses. Setting `telo.importUpgrades.enabled` to `false` stops the latter.
+Analysis is local. The extension contacts the network in three cases only: resolving imports that are not on disk, checking module versions for the upgrade lenses, and reading the list of telo versions from the npm registry (`registry.npmjs.org`) and downloading an engine a module needs. Setting `telo.importUpgrades.enabled` to `false` stops the lens lookups.
+
+The `telo.manifestCacheUrl` setting is gone: an upgrade candidate's `telo.yaml` is now read through the same transports as any import, origin-direct.
 
 ## Learn more
 

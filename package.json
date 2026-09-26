@@ -41,7 +41,7 @@
     "release": "changeset publish",
     "publish-modules": "node scripts/publish-modules.mjs",
     "register-modules": "node scripts/register-modules.mjs",
-    "version-packages": "changeset version && node scripts/stamp-chart-version.mjs",
+    "version-packages": "changeset version && node scripts/version-line.mjs && node scripts/stamp-chart-version.mjs",
     "check:charts": "node scripts/stamp-chart-version.mjs --check"
   },
   "devDependencies": {

@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata:
+  name: Ledger
+  version: 1.0.0
+requires:
+  telo: ">=0.90.0 <99.0.0"
+exports:
+  kinds: [Entry]
+---
+kind: Telo.Definition
+metadata:
+  name: Entry
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    amount:
+      type: number
+      x-telo-eval: runtime

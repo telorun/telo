@@ -218,6 +218,39 @@ function lowest(list: VersionComparator[]): VersionComparator | undefined {
   );
 }
 
+/** One edge of a {@link VersionInterval}. */
+export interface VersionIntervalBound {
+  version: string;
+  inclusive: boolean;
+}
+
+/** A range reduced to its binding edges — what a consumer that only compares
+ *  plain versions needs, with the grammar left behind. An absent edge is open. */
+export interface VersionInterval {
+  min?: VersionIntervalBound;
+  max?: VersionIntervalBound;
+}
+
+/** The interval `range` admits: its tightest lower and upper comparators, an
+ *  exclusive one winning a tie at the same version. Every comparator is a bound,
+ *  so this is the range exactly, not an approximation. */
+export function rangeInterval(range: VersionRange): VersionInterval {
+  const tightest = (operators: ComparatorOperator[], sign: 1 | -1, exclusive: ComparatorOperator) =>
+    range.comparators
+      .filter((c) => operators.includes(c.operator))
+      .reduce<VersionComparator | undefined>((best, c) => {
+        if (best === undefined) return c;
+        const cmp = compareParsedModuleVersions(c.parsed, best.parsed) * sign;
+        return cmp > 0 || (cmp === 0 && c.operator === exclusive) ? c : best;
+      }, undefined);
+  const low = tightest([">=", ">"], 1, ">");
+  const high = tightest(["<=", "<"], -1, "<");
+  return {
+    ...(low ? { min: { version: low.raw, inclusive: low.operator === ">=" } } : {}),
+    ...(high ? { max: { version: high.raw, inclusive: high.operator === "<=" } } : {}),
+  };
+}
+
 /** True when no version can satisfy the range — `>=0.90.0 <0.80.0`. Reported
  *  rather than left to fail mysteriously at every consumer. */
 export function isUnsatisfiable(range: VersionRange): boolean {

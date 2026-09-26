@@ -10,6 +10,9 @@ on:
       - 'sdk/**'
       - 'templating/**'
       - 'packages/ide-support/**'
+      - 'packages/language-server/**'
+      - 'packages/language-host/**'
+      - 'packages/editor-protocol/**'
   workflow_dispatch:
 
 permissions:

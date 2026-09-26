@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { DiagnosticSeverity, type Range } from "@telorun/analyzer";
 import { SEVERITY_CHIP_CLASS, SEVERITY_LABEL } from "./severity";
-import { UNKNOWN_FILE_KEY } from "../../analysis";
 import type { LocatedDiagnostic } from "../../diagnostics-aggregate";
 import { Button } from "../ui/button";
 
@@ -42,7 +41,6 @@ function DiagnosticBlock({
 }) {
   const { filePath, diagnostic: d } = located;
   const sevLabel = SEVERITY_LABEL[d.severity];
-  const isUnknown = filePath === UNKNOWN_FILE_KEY;
   const fieldPath =
     typeof (d.data as { path?: unknown } | undefined)?.path === "string"
       ? (d.data as { path: string }).path
@@ -73,7 +71,7 @@ function DiagnosticBlock({
         <div className="font-mono text-[0.7rem] text-muted-foreground">at {fieldPath}</div>
       )}
       <div className="flex items-center justify-end gap-1">
-        {!isUnknown && onNavigate && (
+        {onNavigate && (
           <Button
             type="button"
             variant="ghost"

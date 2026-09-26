@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/logging-basics", label: "Logging basics" },
         { type: "doc", id: "docs/guides/libraries", label: "Libraries" },
         { type: "doc", id: "docs/guides/workspaces", label: "Workspaces" },
+        { type: "doc", id: "docs/guides/editor-telo-version", label: "Editing against a telo version" },
         { type: "doc", id: "cli/README", label: "Installation & CLI" },
         { type: "doc", id: "docs/guides/packaging-an-app", label: "Packaging an application" },
         { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImportUpgrades,
-  parseModuleVersions,
   type ImportUpgradeEdit,
   type ModuleVersionLookup,
   type VersionCompatibilityCheck,
@@ -402,32 +401,5 @@ describe("buildImportUpgrades", () => {
       // affordance instead of showing nothing for an import that IS behind.
       expect(set?.skipped[0].keyRange).toBeDefined();
     });
-  });
-});
-
-describe("parseModuleVersions", () => {
-  it("reads the route's entries and preserves its ordering", () => {
-    expect(
-      parseModuleVersions({
-        ref: "oci://ghcr.io/telorun/timer",
-        versions: [{ version: "2.1.0", integrity: TIMER_NEW_PIN }, { version: "2.0.0" }],
-      }),
-    ).toEqual([{ version: "2.1.0", integrity: TIMER_NEW_PIN }, { version: "2.0.0" }]);
-  });
-
-  it("drops an integrity that is not a canonical hash, keeping the version", () => {
-    expect(
-      parseModuleVersions({ versions: [{ version: "1.0.0", integrity: "sha256-nope" }] }),
-    ).toEqual([{ version: "1.0.0" }]);
-  });
-
-  it("tolerates every shape a hub could answer with", () => {
-    expect(parseModuleVersions(undefined)).toEqual([]);
-    expect(parseModuleVersions({})).toEqual([]);
-    expect(parseModuleVersions({ versions: "1.0.0" })).toEqual([]);
-    // Bare strings: what the route returned before it carried pins. Dropped
-    // rather than coerced — a version list from a hub that old carries no pin
-    // to write, and guessing at the shape is what hid the last drift.
-    expect(parseModuleVersions({ versions: ["1.0.0", { version: "" }, null] })).toEqual([]);
   });
 });

@@ -42,9 +42,9 @@ export interface ModuleVersion {
  *
  *  Deliberately NOT `adapter.listVersionsForRef`, which answers `string[]`:
  *  completion offers names, an upgrade writes a pin, so the two want different
- *  things from one route. A host backed by the hub fetches
- *  `GET /module/versions` and passes the body through
- *  {@link parseModuleVersions}. */
+ *  things from one route. A host backed by the hub reads
+ *  `GET /module/versions`, carrying an `integrity` only when it is a canonical
+ *  pin. */
 export type ModuleVersionLookup = (baseRef: string) => Promise<ModuleVersion[]>;
 
 /** Everything an upgrade needs from its host: what versions exist, and whether

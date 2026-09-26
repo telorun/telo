@@ -1,85 +1,42 @@
-import { DEFAULT_MANIFEST_FILENAME, type ManifestSource } from "@telorun/analyzer";
+import type { DirectoryEntry, DirectoryEntryKind } from "@telorun/editor-protocol";
+import type { FileKind, HostFileSystem } from "@telorun/language-host";
+import type { Dirent } from "fs";
 import * as fs from "fs/promises";
-import * as path from "path";
 import { fileURLToPath } from "url";
-import { minimatch } from "minimatch";
 
-function toFilePath(url: string): string {
-  return url.startsWith("file://") ? fileURLToPath(url) : url;
+function isMissing(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "ENOENT" || code === "ENOTDIR";
 }
 
-/** Node.js fs-based ManifestSource for local files. */
-export class NodeAdapter implements ManifestSource {
-  constructor(private readonly cwd: string = process.cwd()) {}
+/** What an entry is, read without following it: a link is `symlink`. */
+function kindOf(entry: Dirent): DirectoryEntryKind {
+  if (entry.isSymbolicLink()) return "symlink";
+  if (entry.isDirectory()) return "directory";
+  return entry.isFile() ? "file" : "other";
+}
 
-  supports(url: string): boolean {
-    return (
-      url.startsWith("file://") ||
-      url.startsWith("/") ||
-      url.startsWith("./") ||
-      url.startsWith("../") ||
-      (!url.includes("://") && !url.includes("@"))
-    );
-  }
-
-  async read(url: string): Promise<{ text: string; source: string }> {
-    const filePath = toFilePath(url);
-    const stat = await fs.stat(filePath).catch(() => null);
-    const resolvedPath =
-      stat?.isDirectory() ? path.join(filePath, DEFAULT_MANIFEST_FILENAME) : filePath;
-    const text = await fs.readFile(resolvedPath, "utf8");
-    return { text, source: resolvedPath };
-  }
-
-  resolveRelative(base: string, relative: string): string {
-    const baseDir = path.dirname(path.resolve(this.cwd, toFilePath(base)));
-    return path.resolve(baseDir, relative);
-  }
-
-  async expandGlob(base: string, patterns: string[]): Promise<string[]> {
-    const baseDir = path.dirname(path.resolve(this.cwd, toFilePath(base)));
-    const entries = await fs.readdir(baseDir, { recursive: true, withFileTypes: true });
-    const normalizedPatterns = patterns.map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""));
-    const matched: string[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
-      const relative = path.relative(baseDir, path.join(entry.parentPath, entry.name));
-      const normalized = relative.replace(/\\/g, "/");
-      if (normalizedPatterns.some((p) => minimatch(normalized, p))) {
-        matched.push(path.resolve(baseDir, relative));
-      }
-    }
-    return matched.sort();
-  }
-
-  async exists(base: string, relative: string): Promise<boolean> {
+/** The workspace on this machine's disk, as the raw file system the language
+ *  host builds every `telo/*` answer on. `stat` follows links; a listing
+ *  reports each entry's own kind. A path naming nothing is `undefined`; any
+ *  other failure rejects with the operating system's reason. */
+export class NodeAdapter implements HostFileSystem {
+  async stat(uri: string): Promise<FileKind | undefined> {
     try {
-      await fs.stat(path.resolve(path.dirname(path.resolve(this.cwd, toFilePath(base))), relative));
-      return true;
+      const stat = await fs.stat(fileURLToPath(uri));
+      return stat.isDirectory() ? "directory" : "file";
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      if (isMissing(error)) return undefined;
       throw error;
     }
   }
 
-  async resolveOwnerOf(fileUrl: string): Promise<string | null> {
-    const resolved = path.resolve(this.cwd, toFilePath(fileUrl));
-    let dir = path.dirname(resolved);
+  readText(uri: string): Promise<string> {
+    return fs.readFile(fileURLToPath(uri), "utf8");
+  }
 
-    while (true) {
-      const candidate = path.join(dir, DEFAULT_MANIFEST_FILENAME);
-      if (candidate !== resolved) {
-        try {
-          await fs.access(candidate);
-          return candidate;
-        } catch {
-          // telo.yaml not found at this level
-        }
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    return null;
+  async readDirectory(uri: string): Promise<DirectoryEntry[]> {
+    const entries = await fs.readdir(fileURLToPath(uri), { withFileTypes: true });
+    return entries.map((e) => ({ name: e.name, kind: kindOf(e) }));
   }
 }

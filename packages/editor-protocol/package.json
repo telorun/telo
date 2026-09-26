@@ -1,0 +1,52 @@
+{
+  "name": "@telorun/editor-protocol",
+  "version": "0.0.0",
+  "description": "The Telo editor protocol: the contract between an editor host and a telo language-server engine — the telo/* requests, the telo/requirements notification and the protocol generation.",
+  "keywords": [
+    "telo",
+    "lsp",
+    "language-server",
+    "editor",
+    "protocol"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "packages/editor-protocol"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./editor-protocol-schema.json": "./editor-protocol-schema.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "src/**",
+    "editor-protocol-schema.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
+    "prepack": "cp ../../LICENSE .",
+    "postpack": "rm -f LICENSE"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

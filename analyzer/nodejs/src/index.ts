@@ -291,11 +291,14 @@ export {
   lowerBound,
   parseVersionRange,
   rangeAccepts,
+  rangeInterval,
   upperBound,
 } from "./version-range.js";
 export type {
   ComparatorOperator,
   VersionComparator,
+  VersionInterval,
+  VersionIntervalBound,
   VersionRange,
   VersionRangeResult,
 } from "./version-range.js";

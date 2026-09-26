@@ -2,6 +2,10 @@ import { parseToAst } from "@telorun/analyzer";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModuleDocument, ModuleSourceFile } from "../model";
+import { LanguageModelsContext } from "../language/language-models-context";
+import type { MonacoApi } from "../language/lsp-to-monaco";
+import { ModelProjections } from "../language/model-projections";
+import { fakeMonaco } from "../language/__tests__/fake-monaco";
 import { DetailYamlPane } from "./DetailYamlPane";
 
 // Monaco does not run under jsdom. A textarea mirroring the value /
@@ -42,21 +46,34 @@ function files(): ModuleSourceFile[] {
 
 type SourceEdit = (filePath: string, doc: ModuleDocument) => void;
 
-function pane(pointer: string, onSourceEdit: SourceEdit = () => undefined, readOnly = false) {
-  return render(
-    <DetailYamlPane
-      sourceFiles={files()}
-      resource={{ kind: "Run.Sequence", name: "main" }}
-      pointer={pointer}
-      readOnly={readOnly}
-      onSourceEdit={onSourceEdit}
-      diagnostics={[]}
-    />,
+let fake: ReturnType<typeof fakeMonaco>;
+let projections: ModelProjections;
+let document: ReturnType<MonacoApi["editor"]["createModel"]>;
+
+function Pane(props: { pointer: string; onSourceEdit?: SourceEdit; readOnly?: boolean }) {
+  return (
+    <LanguageModelsContext.Provider value={{ monaco: fake.monaco, projections }}>
+      <DetailYamlPane
+        sourceFiles={files()}
+        resource={{ kind: "Run.Sequence", name: "main" }}
+        pointer={props.pointer}
+        readOnly={props.readOnly ?? false}
+        onSourceEdit={props.onSourceEdit ?? (() => undefined)}
+      />
+    </LanguageModelsContext.Provider>
   );
+}
+
+function pane(pointer: string, onSourceEdit: SourceEdit = () => undefined, readOnly = false) {
+  return render(<Pane pointer={pointer} onSourceEdit={onSourceEdit} readOnly={readOnly} />);
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
+  fake = fakeMonaco();
+  projections = new ModelProjections("projection");
+  // The workspace's model of the file — what the pane projects.
+  document = fake.monaco.editor.createModel(TEXT, "yaml", fake.monaco.Uri.parse("file:///t.yaml"));
 });
 
 afterEach(() => {
@@ -73,6 +90,22 @@ describe("DetailYamlPane", () => {
   it("shows the whole resource document for an empty pointer", () => {
     pane("");
     expect(screen.getByTestId("yaml-editor")).toHaveValue(TEXT.trimEnd());
+  });
+
+  it("writes a keystroke into the document model at once", () => {
+    pane("/steps/0/inputs");
+    fireEvent.change(screen.getByTestId("yaml-editor"), {
+      target: { value: "url: https://example.org\nmethod: POST" },
+    });
+    expect(document.getValue()).toBe(
+      TEXT.replace("      url: https://example.com", "      url: https://example.org\n      method: POST"),
+    );
+  });
+
+  it("re-derives its text when the document model is edited elsewhere", () => {
+    pane("/steps/0/inputs");
+    act(() => document.setValue(TEXT.replace("https://example.com", "https://example.net")));
+    expect(screen.getByTestId("yaml-editor")).toHaveValue("url: https://example.net");
   });
 
   it("commits a spliced whole-file edit after the debounce", () => {
@@ -104,16 +137,7 @@ describe("DetailYamlPane", () => {
     fireEvent.change(screen.getByTestId("yaml-editor"), {
       target: { value: "url: https://example.org" },
     });
-    view.rerender(
-      <DetailYamlPane
-        sourceFiles={files()}
-        resource={{ kind: "Run.Sequence", name: "main" }}
-        pointer="/metadata"
-        readOnly={false}
-        onSourceEdit={onSourceEdit}
-        diagnostics={[]}
-      />,
-    );
+    view.rerender(<Pane pointer="/metadata" onSourceEdit={onSourceEdit} />);
 
     expect(onSourceEdit).toHaveBeenCalledTimes(1);
     expect(onSourceEdit.mock.calls[0][1].loaded.text).toContain("url: https://example.org");

@@ -1169,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "telo-analyzer"
-version = "0.76.0"
+version = "0.83.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "telo-cli"
-version = "0.92.0"
+version = "0.101.0"
 dependencies = [
  "flate2",
  "serde_json",
@@ -1193,7 +1193,7 @@ dependencies = [
 
 [[package]]
 name = "telo-kernel"
-version = "0.92.0"
+version = "0.101.0"
 dependencies = [
  "flate2",
  "jsonschema",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "telo-templating"
-version = "0.21.0"
+version = "0.24.0"
 dependencies = [
  "serde_json",
  "serde_yaml",
@@ -1231,7 +1231,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk"
-version = "0.92.0"
+version = "0.101.0"
 dependencies = [
  "jsonschema",
  "libloading",

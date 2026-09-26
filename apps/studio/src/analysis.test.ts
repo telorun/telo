@@ -39,7 +39,7 @@ function inMemoryAdapter(files: Record<string, string>) {
         if (slash === -1) seen.set(rest, false);
         else seen.set(rest.slice(0, slash), true);
       }
-      return [...seen].map(([name, isDirectory]) => ({ name, isDirectory }));
+      return [...seen].map(([name, isDirectory]) => ({ name, isDirectory, kind: isDirectory ? "directory" : "file" }) as const);
     },
     async createDir() {},
     async delete(path: string) {
@@ -163,108 +163,9 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(httpImport?.resolvedPath).toBe("/ws/http/telo.yaml");
     expect(workspace.modules.has("/ws/http/telo.yaml")).toBe(true);
 
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    // Collect every diagnostic across resource/file buckets.
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) all.push({ code: d.code, message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) all.push({ code: d.code, message: d.message });
-    }
-
-    const undefinedKind = all.filter((d) => d.code === "UNDEFINED_KIND");
-    expect(
-      undefinedKind,
-      `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
-    ).toHaveLength(0);
-  });
-
-  it("resolves a cross-module `!ref Alias.export` in a flat targets invoke step", async () => {
-    // Reproduces the editor/CLI divergence: an Application imports a workspace
-    // library and drives one of its exported instances from a flat `targets`
-    // invoke step (`invoke: !ref Console.writeLine`). The CLI resolves this
-    // because `flattenForAnalyzer` forwards the library's `exports.resources`
-    // instance flagged `forwardedExport`, so `!ref Console.writeLine` resolves
-    // to `{kind, name}` before AJV runs. The editor must do the same via
-    // `selectModuleManifestsForAnalysis`; otherwise the raw `!ref` sentinel
-    // reaches the `targets` schema and every anyOf branch fails (the reported
-    // SCHEMA_VIOLATION storm).
-    const files: Record<string, string> = {
-      "/ws/app/telo.yaml": [
-        "kind: Telo.Application",
-        "metadata:",
-        "  name: app",
-        "  version: 1.0.0",
-        "imports:",
-        "  Console: ../console",
-        "targets:",
-        "  - invoke: !ref Console.writeLine",
-        "    inputs:",
-        "      output: Hello from Telo!",
-        "",
-      ].join("\n"),
-      "/ws/console/telo.yaml": [
-        "kind: Telo.Library",
-        "metadata:",
-        "  name: console",
-        "  version: 1.0.0",
-        "exports:",
-        "  resources:",
-        "    - writeLine",
-        "---",
-        "kind: Telo.Definition",
-        "metadata:",
-        "  name: WriteLine",
-        "capability: Telo.Invocable",
-        "controllers:",
-        "  pkg:npm: '@telorun/console'",
-        "inputType:",
-        "  type: object",
-        "  properties:",
-        "    output: { type: string }",
-        "schema:",
-        "  type: object",
-        "---",
-        "kind: Self.WriteLine",
-        "metadata:",
-        "  name: writeLine",
-        "",
-      ].join("\n"),
-    };
-
-    const adapter = inMemoryAdapter(files);
-    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-
-    const appManifest = workspace.modules.get("/ws/app/telo.yaml");
-    expect(appManifest, "app manifest should be loaded").toBeTruthy();
-    const consoleImport = appManifest!.imports.find((i) => i.name === "Console");
-    expect(consoleImport?.resolvedPath, "inline import should resolve").toBe(
-      "/ws/console/telo.yaml",
-    );
-
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) all.push({ code: d.code, message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) all.push({ code: d.code, message: d.message });
-    }
-
-    const offending = all.filter(
-      (d) => d.code === "SCHEMA_VIOLATION" || d.code === "UNRESOLVED_REFERENCE",
-    );
-    expect(
-      offending,
-      `targets invoke step should resolve cleanly; got: ${JSON.stringify(offending, null, 2)}`,
-    ).toHaveLength(0);
+    const analysis = await analyzeWorkspace(workspace, adapter, []);
+    const registry = analysis.registryByFile.get("/ws/app/telo.yaml");
+    expect(registry?.resolveDefinition("Http.Server")?.metadata.name).toBe("Server");
   });
 
   it("resolves Telo.Definition kinds from a registry-style Telo.Library import", async () => {
@@ -327,23 +228,9 @@ describe("analyzeWorkspace — imported library kinds", () => {
       `imported library should be registered at ${httpImport?.resolvedPath}`,
     ).toBe(true);
 
-    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) all.push({ code: d.code, message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) all.push({ code: d.code, message: d.message });
-    }
-
-    const undefinedKind = all.filter((d) => d.code === "UNDEFINED_KIND");
-    expect(
-      undefinedKind,
-      `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
-    ).toHaveLength(0);
+    const analysis = await analyzeWorkspace(workspace, adapter, [registry]);
+    const appRegistry = analysis.registryByFile.get("/ws/app/telo.yaml");
+    expect(appRegistry?.resolveDefinition("Http.Server")?.metadata.name).toBe("Server");
   });
 
   it("resolves x-telo-schema-from across a registry module's transitive INLINE import", async () => {
@@ -420,94 +307,11 @@ describe("analyzeWorkspace — imported library kinds", () => {
     const adapter = inMemoryAdapter(files);
     const registry = inMemoryRegistry(registryFiles);
     const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values())
-      for (const list of fileMap.values()) for (const d of list) all.push({ code: d.code, message: d.message });
-    for (const list of diagnostics.byFile.values())
-      for (const d of list) all.push({ code: d.code, message: d.message });
-
-    const schemaFrom = all.filter((d) => d.code === "SCHEMA_FROM_MISSING_PATH");
+    const analysis = await analyzeWorkspace(workspace, adapter, [registry]);
+    const appRegistry = analysis.registryByFile.get("/ws/app/telo.yaml");
     expect(
-      schemaFrom,
-      `expected no SCHEMA_FROM_MISSING_PATH; got: ${JSON.stringify(schemaFrom, null, 2)}`,
-    ).toHaveLength(0);
-  });
-
-  it("surfaces diagnostics on a registry module's forwarded definition (not silently dropped)", async () => {
-    // External (registry/remote) modules never anchor their own analysis closure,
-    // yet `telo check <app>` validates forwarded imported definitions and reports
-    // errors against their source file. The editor must do the same — emitting
-    // such diagnostics from the first consumer closure — rather than swallowing
-    // them behind the workspace-only root-local filter.
-    const files: Record<string, string> = {
-      "/ws/app/telo.yaml": [
-        "kind: Telo.Application",
-        "metadata:",
-        "  name: app",
-        "  version: 1.0.0",
-        "---",
-        "kind: Telo.Import",
-        "metadata:",
-        "  name: Bad",
-        "source: std/bad@1.0.0",
-        "",
-      ].join("\n"),
-    };
-
-    const registryFiles: Record<string, Record<string, string>> = {
-      "std/bad@1.0.0": {
-        "telo.yaml": [
-          "kind: Telo.Library",
-          "metadata:",
-          "  name: bad",
-          "  version: 1.0.0",
-          "exports:",
-          "  kinds:",
-          "    - Thing",
-          "---",
-          "kind: Telo.Definition",
-          "metadata:",
-          "  name: Thing",
-          "capability: Telo.Invocable",
-          "controllers:",
-          "  pkg:npm: '@telorun/bad'",
-          "schema:",
-          "  type: object",
-          "  properties:",
-          "    name: { type: string }",
-          "invoke:",
-          "  kind: bad.Thing",
-          "  name: x",
-          // `self.bogus` is not in this definition's schema → CEL_UNKNOWN_FIELD,
-          // attributed to the registry file.
-          "inputs:",
-          "  name: '${{ self.bogus }}'",
-          "",
-        ].join("\n"),
-      },
-    };
-
-    const adapter = inMemoryAdapter(files);
-    const registry = inMemoryRegistry(registryFiles);
-    const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
-
-    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
-
-    const regFile = "registry://std/bad@1.0.0/telo.yaml";
-    const onRegistryFile: Array<{ code?: string; message: string }> = [];
-    for (const list of diagnostics.byResource.get(regFile)?.values() ?? []) {
-      for (const d of list) onRegistryFile.push({ code: d.code, message: d.message });
-    }
-    for (const d of diagnostics.byFile.get(regFile) ?? []) {
-      onRegistryFile.push({ code: d.code, message: d.message });
-    }
-
-    expect(
-      onRegistryFile.some((d) => d.code === "CEL_UNKNOWN_FIELD"),
-      `registry definition error should surface on ${regFile}; got: ${JSON.stringify(onRegistryFile, null, 2)}`,
-    ).toBe(true);
+      appRegistry?.resolveSchemaFrom("Inner.Request/$defs/Matcher", "outer.Api")?.properties,
+    ).toEqual({ path: { type: "string" }, method: { type: "string" } });
   });
 
   it("resolves a cross-module abstract implementation forwarded from an imported library", async () => {
@@ -589,23 +393,10 @@ describe("analyzeWorkspace — imported library kinds", () => {
 
     const adapter = inMemoryAdapter(files);
     const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) all.push({ code: d.code, message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) all.push({ code: d.code, message: d.message });
-    }
-
-    const mismatch = all.filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
-    expect(
-      mismatch,
-      `AiMcp.ToolProvider should be a known implementation of ai.ToolProvider; got: ${JSON.stringify(mismatch, null, 2)}`,
-    ).toHaveLength(0);
+    const analysis = await analyzeWorkspace(workspace, adapter, []);
+    expect(analysis.registryByFile.get("/ws/app/telo.yaml")?.implementationsOf("ai.ToolProvider")).toContain(
+      "ai-mcp.ToolProvider",
+    );
   });
 
   it("resolves a cross-module abstract implementation across REGISTRY imports", async () => {
@@ -740,23 +531,10 @@ describe("analyzeWorkspace — imported library kinds", () => {
     const adapter = inMemoryAdapter(files);
     const registry = inMemoryRegistry(registryFiles);
     const workspace = await loadWorkspace("/ws", adapter, adapter, [registry]);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) all.push({ code: d.code, message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) all.push({ code: d.code, message: d.message });
-    }
-
-    const mismatch = all.filter((d) => d.code === "REFERENCE_KIND_MISMATCH");
-    expect(
-      mismatch,
-      `AiMcp.ToolProvider should be a known implementation of ai.ToolProvider; got: ${JSON.stringify(mismatch, null, 2)}`,
-    ).toHaveLength(0);
+    const analysis = await analyzeWorkspace(workspace, adapter, [registry]);
+    expect(analysis.registryByFile.get("/ws/app/telo.yaml")?.implementationsOf("ai.ToolProvider")).toContain(
+      "ai-mcp.ToolProvider",
+    );
   });
 
   it("isolates apps importing different versions of the same library", async () => {
@@ -830,173 +608,17 @@ describe("analyzeWorkspace — imported library kinds", () => {
     expect(workspace.modules.has("registry://std/widget@1.0.0/telo.yaml")).toBe(true);
     expect(workspace.modules.has("registry://std/widget@2.0.0/telo.yaml")).toBe(true);
 
-    const diagnostics = await analyzeWorkspace(workspace, adapter, [registry]);
+    const analysis = await analyzeWorkspace(workspace, adapter, [registry]);
 
-    const violations: Array<{ message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values()) {
-      for (const list of fileMap.values()) {
-        for (const d of list) if (d.code === "SCHEMA_VIOLATION") violations.push({ message: d.message });
-      }
-    }
-    for (const list of diagnostics.byFile.values()) {
-      for (const d of list) if (d.code === "SCHEMA_VIOLATION") violations.push({ message: d.message });
-    }
-
-    expect(
-      violations,
-      `each app should validate against its own imported version; got: ${JSON.stringify(violations, null, 2)}`,
-    ).toHaveLength(0);
-
-    // Each app's resource is owned by its own closure registry.
-    expect(diagnostics.registryByFile.has("/ws/app-a/telo.yaml")).toBe(true);
-    expect(diagnostics.registryByFile.has("/ws/app-b/telo.yaml")).toBe(true);
-    expect(diagnostics.registryByFile.get("/ws/app-a/telo.yaml")).not.toBe(
-      diagnostics.registryByFile.get("/ws/app-b/telo.yaml"),
-    );
-  });
-
-  it("routes diagnostics to the resource's own file when two modules share a (kind, name)", async () => {
-    // Resource names are module-scoped, so an app and a library it imports may
-    // each legitimately declare `Widget.Box/dup`. Both sit in the app's
-    // analysis closure. Routing must use each diagnostic's own `data.filePath`
-    // rather than a `${kind}/${name}` projection (which collapses the two to a
-    // single file and misattributes one module's diagnostic to the other).
-    const files: Record<string, string> = {
-      "/ws/app/telo.yaml": [
-        "kind: Telo.Application",
-        "metadata:",
-        "  name: app",
-        "  version: 1.0.0",
-        "---",
-        "kind: Telo.Import",
-        "metadata:",
-        "  name: Mod",
-        "source: ../mod",
-        "---",
-        "kind: Widget.Box", // undefined kind → UNDEFINED_KIND, in app's file
-        "metadata:",
-        "  name: dup",
-        "",
-      ].join("\n"),
-      "/ws/mod/telo.yaml": [
-        "kind: Telo.Library",
-        "metadata:",
-        "  name: mod",
-        "  version: 1.0.0",
-        "---",
-        "kind: Widget.Box", // same kind+name, in the library's file
-        "metadata:",
-        "  name: dup",
-        "",
-      ].join("\n"),
-    };
-
-    const adapter = inMemoryAdapter(files);
-    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const appDup = diagnostics.byResource.get("/ws/app/telo.yaml")?.get("dup");
-    const modDup = diagnostics.byResource.get("/ws/mod/telo.yaml")?.get("dup");
-
-    expect(
-      appDup?.some((d) => d.code === "UNDEFINED_KIND"),
-      "app's Widget.Box/dup should report against /ws/app/telo.yaml",
-    ).toBe(true);
-    expect(
-      modDup?.some((d) => d.code === "UNDEFINED_KIND"),
-      "library's Widget.Box/dup should report against /ws/mod/telo.yaml",
-    ).toBe(true);
-  });
-
-  it("resolves diagnostic positions per (kind, name), not name alone", async () => {
-    // Two resources share `metadata.name: dup` but have different kinds.
-    // Both emit UNDEFINED_KIND (no Telo.Definition for either kind).
-    // The diagnostics' resolved ranges must reflect each resource's own
-    // line. Pre-fix the positions map was keyed by name only, so the
-    // later-emitted resource's positions overwrote the earlier one's.
-    const files: Record<string, string> = {
-      "/ws/app/telo.yaml": [
-        "kind: Telo.Application", // doc 0, line 0
-        "metadata:",
-        "  name: app",
-        "  version: 1.0.0",
-        "---",
-        "kind: Foo.A", // doc 1, line 5
-        "metadata:",
-        "  name: dup",
-        "---",
-        "kind: Bar.B", // doc 2, line 9
-        "metadata:",
-        "  name: dup",
-        "",
-      ].join("\n"),
-    };
-
-    const adapter = inMemoryAdapter(files);
-    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const byResource = diagnostics.byResource.get("/ws/app/telo.yaml");
-    expect(byResource).toBeTruthy();
-    const dup = byResource!.get("dup");
-    expect(dup).toBeTruthy();
-    expect(dup!.length).toBeGreaterThanOrEqual(2);
-
-    // Each UNDEFINED_KIND diagnostic carries the offending kind in its
-    // message; pair the message with the resolved range to verify the
-    // positions came from the resource that owns each kind.
-    const fooA = dup!.find((d) => d.message.includes("'Foo.A'"));
-    const barB = dup!.find((d) => d.message.includes("'Bar.B'"));
-    expect(fooA, "Foo.A diagnostic should be present").toBeTruthy();
-    expect(barB, "Bar.B diagnostic should be present").toBeTruthy();
-    expect(
-      fooA!.range.start.line,
-      `Foo.A range should point to line 5 (its own location), not line 9`,
-    ).toBe(5);
-    expect(
-      barB!.range.start.line,
-      `Bar.B range should point to line 9 (its own location), not line 5`,
-    ).toBe(9);
-  });
-});
-
-describe("analyzeWorkspace — YAML parse failures", () => {
-  it("surfaces the parse error and suppresses the analyze cascade on the broken file", async () => {
-    // The unquoted description contains `: ` inside backticks, which the
-    // spec-compliant parser reads as a nested mapping. The mangled `toJSON()`
-    // would otherwise drive spurious schema violations that bury the real error.
-    const files: Record<string, string> = {
-      "/ws/telo.yaml": [
-        "kind: Telo.Application",
-        "metadata:",
-        "  name: app",
-        "  version: 1.0.0",
-        "outputType:",
-        "  schema:",
-        "    properties:",
-        "      content:",
-        "        description: File contents — base64 when `encoding: base64`.",
-      ].join("\n"),
-    };
-    const adapter = inMemoryAdapter(files);
-    const workspace = await loadWorkspace("/ws", adapter, adapter, []);
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values())
-      for (const list of fileMap.values()) for (const d of list) all.push(d);
-    for (const list of diagnostics.byFile.values()) for (const d of list) all.push(d);
-
-    expect(
-      all.some((d) => d.code === "MANIFEST_PARSE_FAILED"),
-      "the real parse error must surface",
-    ).toBe(true);
-    // The analyze-derived cascade from the mangled tree (e.g. the disallowed
-    // `outputType` on an Application) is dropped for the parse-failed file.
-    expect(
-      all.filter((d) => d.code !== "MANIFEST_PARSE_FAILED"),
-      `expected no analyze diagnostics on the broken file, got: ${JSON.stringify(all, null, 2)}`,
-    ).toHaveLength(0);
+    // Each app's resources resolve against its own closure registry, holding
+    // the version that app imports.
+    const a = analysis.registryByFile.get("/ws/app-a/telo.yaml");
+    const b = analysis.registryByFile.get("/ws/app-b/telo.yaml");
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    expect(a).not.toBe(b);
+    expect(a?.resolveDefinition("Widget.Box")?.schema?.required).toEqual(["size"]);
+    expect(b?.resolveDefinition("Widget.Box")?.schema?.required).toEqual(["label"]);
   });
 });
 
@@ -1061,21 +683,14 @@ describe("analyzeWorkspace — oci:// imports via the manifest cache", () => {
     const s3Import = appManifest!.imports.find((i) => i.name === "S3");
     expect(s3Import?.importKind).toBe("oci");
 
-    const diagnostics = await analyzeWorkspace(workspace, adapter, []);
-
-    const all: Array<{ code?: string; message: string }> = [];
-    for (const fileMap of diagnostics.byResource.values())
-      for (const list of fileMap.values()) for (const d of list) all.push(d);
-    for (const list of diagnostics.byFile.values()) for (const d of list) all.push(d);
+    const analysis = await analyzeWorkspace(workspace, adapter, []);
 
     expect(
       fetched.some((u) => u === "https://manifests.telo.sh/oci/ghcr.io/aws/telo-s3/1.2.0/telo.yaml"),
       `the import should resolve against the manifest cache, fetched: ${JSON.stringify(fetched)}`,
     ).toBe(true);
-    const undefinedKind = all.filter((d) => d.code === "UNDEFINED_KIND");
-    expect(
-      undefinedKind,
-      `expected no UNDEFINED_KIND diagnostics, got: ${JSON.stringify(undefinedKind, null, 2)}`,
-    ).toHaveLength(0);
+    expect(analysis.registryByFile.get("/ws/app/telo.yaml")?.resolveDefinition("S3.Bucket")?.metadata.name).toBe(
+      "Bucket",
+    );
   });
 });
