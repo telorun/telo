@@ -1,6 +1,7 @@
 import {
   type ControllerContext,
   type Invocable,
+  type InvokeContext,
   type ResourceContext,
 } from "@telorun/sdk";
 
@@ -37,9 +38,13 @@ export class McpToolsList {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(_inputs: Record<string, never>): Promise<ToolsListResult> {
+  async invoke(
+    _inputs: Record<string, never>,
+    invokeCtx?: InvokeContext,
+  ): Promise<ToolsListResult> {
     const client = this.resolveClient();
-    const raw = await client.invoke({ method: "tools/list", params: {} });
+    // Called directly, so the invocation's context is handed on explicitly.
+    const raw = await client.invoke({ method: "tools/list", params: {} }, invokeCtx);
     if (!Array.isArray(raw.tools)) {
       throw protocolError(
         "Mcp.ToolsList: server response missing or malformed tools array",

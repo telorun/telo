@@ -46,7 +46,7 @@ Creates the key with this header and an empty log, stamping the store clock. Ret
 
 ### `compareAndSet`
 
-Replaces the header if the key is still at `version`, and **stamps the store clock**, so its age restarts. Returns the new version, or `null`. Rewriting the same value is how a writer's heartbeat works.
+Replaces the header if the key is still at `version`, and **stamps the store clock**, so its age restarts. Returns the new version, or `null`. Rewriting the same value is how a writer's heartbeat works. The log is untouched: the next append after it takes the next id, which is what lets a resumed key continue without a gap.
 
 ### `compareAndAppend`
 
@@ -90,6 +90,8 @@ For a backend author, what the journal does with these primitives:
 | Append a record | `compareAndAppend` |
 | Finish, or fail with the error's code, message and data | `compareAndSet` to a terminal header |
 | Fail a key whose writer's heartbeat is older than **the timeout the writer recorded** | `compareAndSet` at the version that was read — a live writer's heartbeat or append changes the version, so a live writer is never failed |
+| Resume a failed key: take it over for a new writer, keeping its log | `compareAndSet` of an open header at the version that was read; later appends continue from the log's last id |
+| Resume an open key whose writer went stale | fail it as above, then take it over at the version that write returned |
 | Remove a key, leaving a marker | `compareAndTruncate`, retried on contention |
 | Expiry: fail dead writers, turn ended keys past retention into markers, delete markers past retention | `scan`, then the writes above and `compareAndDelete` |
 | A reader tails a live key | `read`, then `wait` for up to the time left before the writer could go stale |

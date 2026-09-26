@@ -3,6 +3,10 @@
 # non-positive writer timeout or negative retention both at the declaration and,
 # from a consumer whose entry-scoped check is silent, by the controller. And a
 # reader's `catches:` is checked against what the call raises, not its stream.
+# Declaring the deprecated completion handler warns and names its successor, and
+# a handler's `outcome` typed by the shared shape is checked below it. An
+# EndHandler's `inputs:` map is checked against its handler's contract, and its
+# `outcome` binding is typed by the shared shape, from a consumer module.
 kind: Telo.Application
 metadata:
   name: RecordStreamStaticRefusalsTest
@@ -18,6 +22,14 @@ targets:
   - !ref retentionNotNegativeAtRuntime
   - !ref sourceCatchesRemovedOnly
   - !ref sourceCatchesStreamCode
+  - !ref onCompleteDeprecated
+  - !ref outcomeFieldMisspelled
+  - !ref outcomeFieldsTyped
+  - !ref handlerInputMissing
+  - !ref handlerInputRejected
+  - !ref outcomeBindingMisspelled
+  - !ref outcomeErrorUnguarded
+  - !ref handlerInputsRequired
 ---
 kind: Assert.Manifest
 metadata: { name: journalNeedsStoreAndRetention }
@@ -74,3 +86,66 @@ expect:
   errors:
     - code: UNDECLARED_THROW_CODE
       message: ERR_JOURNAL_WRITER_LOST
+---
+kind: Assert.Manifest
+metadata: { name: onCompleteDeprecated }
+source: ./__fixtures__/on-complete-deprecated.yaml
+expect:
+  errors: []
+  warnings:
+    - code: DEPRECATED_KIND
+      message: "Use 'RecordStream.EndHandler' instead"
+---
+kind: Assert.Manifest
+metadata: { name: outcomeFieldMisspelled }
+source: ./__fixtures__/end-handler-outcome/typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.outcome.stat' is not defined"
+---
+kind: Assert.Manifest
+metadata: { name: outcomeFieldsTyped }
+source: ./__fixtures__/end-handler-outcome/typed.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: handlerInputMissing }
+source: ./__fixtures__/end-handler-inputs/missing-key.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "is missing required property 'records'"
+---
+kind: Assert.Manifest
+metadata: { name: handlerInputRejected }
+source: ./__fixtures__/end-handler-inputs/rejected-key.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'records' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: outcomeBindingMisspelled }
+source: ./__fixtures__/end-handler-inputs/outcome-typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'outcome.stat' is not defined"
+---
+kind: Assert.Manifest
+metadata: { name: outcomeErrorUnguarded }
+source: ./__fixtures__/end-handler-inputs/unguarded-error.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "'outcome.error' may be null"
+---
+kind: Assert.Manifest
+metadata: { name: handlerInputsRequired }
+source: ./__fixtures__/end-handler-inputs/no-inputs.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'inputs'"

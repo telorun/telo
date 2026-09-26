@@ -14,6 +14,9 @@ export const SYNC_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
   // deletes. Deleting them is a prompt rule, not an enforcement, so a failed
   // turn leaves one behind — excluded here it stays out of the user's files.
   ".probes",
+  // The agent's own state (its database). Pulled in, it would be edited as
+  // project files; pushed back, the editor's stale copy would overwrite it.
+  ".telo-agent",
 ]);
 
 function included(workspace: AgentWorkspace, path: string): boolean {

@@ -19,6 +19,12 @@ entire HTTP transport lifecycle:
   or 410, or JSON-RPC `-32001` / `-32002`), the cached session is dropped, a
   fresh handshake runs, and the failed request is retried once. A second
   rejection surfaces as `ERR_MCP_SESSION_INVALID`.
+- **Cancellation.** A cancelled invocation aborts its POST, then POSTs
+  `notifications/cancelled` for that request id on the same session (a dropped
+  connection alone does not cancel under Streamable HTTP), and rejects with
+  `ERR_INVOKE_CANCELLED`. A failure to deliver the notification is logged at
+  `warn`. A cancelled invocation still waiting on the shared handshake stops
+  waiting; the handshake completes for the other callers.
 - **Best-effort DELETE on teardown.** The session is registered as `init()`'s
   effect, so unwinding sends a session-terminate DELETE per the Streamable HTTP
   spec (self-handshake mode only).

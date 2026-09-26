@@ -115,7 +115,7 @@ code: |
     const body = Buffer.concat(chunks).toString("utf8");
     const events = body.split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l));
     const first = events[0];
-    const second = events[1];
+    const second = events.find((e) => e.type === "tool-result");
     const last = events[events.length - 1];
     const textDeltas = events.filter((e) => e.type === "text-delta");
     return {

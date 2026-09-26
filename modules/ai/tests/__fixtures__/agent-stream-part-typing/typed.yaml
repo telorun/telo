@@ -1,0 +1,24 @@
+# A handler reading the records of an agent stream, typed by the exported part
+# shape: its declared fields check clean.
+kind: Telo.Application
+metadata:
+  name: AgentStreamPartTyped
+  version: 1.0.0
+imports:
+  Ai: ../../../
+  Run: ../../../../run
+---
+kind: Run.Sequence
+metadata: { name: persistTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [records]
+    properties:
+      records:
+        type: array
+        items: !ref Ai.AgentStreamPart
+steps:
+  - name: firstUsage
+    value: !cel "inputs.records[0].usage"

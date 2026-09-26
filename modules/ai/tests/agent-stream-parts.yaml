@@ -1,0 +1,110 @@
+kind: Telo.Application
+metadata:
+  name: AgentStreamPartsTest
+  version: 1.0.0
+  description: |
+    The parts Ai.AgentStream emits, collected whole: a two-call tool loop closes
+    each call with a step-finish carrying that call's usage and ends with one
+    finish carrying their sum; provider state is forwarded in order, replayed to
+    the next call, and the run's providerState input reaches the first call.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref partOrder
+  - !ref providerStateFlow
+---
+kind: Run.Value
+metadata: { name: multiplier }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: integer }
+      b: { type: integer }
+value:
+  product: !cel "inputs.a * inputs.b"
+---
+kind: Ai.Tools
+metadata: { name: localTools }
+tools:
+  - tool: !ref multiplier
+    name: multiply
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [ a, b ]
+      properties:
+        a: { type: integer }
+        b: { type: integer }
+    result: !cel "string(result.product)"
+---
+kind: Stream.Collect
+metadata: { name: collect }
+---
+kind: Run.Sequence
+metadata: { name: partOrder }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCall: { name: multiply, arguments: { a: 6, b: 7 } }
+        usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 }
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: "multiply 6 and 7" }
+  - name: parts
+    invoke: !ref collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items"
+      expected:
+        - type: tool-call
+          toolCall: { id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
+          finishReason: tool-calls
+        - type: tool-result
+          toolResult: { toolCallId: echo-call-1, name: multiply, content: "42" }
+        - { type: text-delta, delta: "4" }
+        - { type: text-delta, delta: "2" }
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
+          finishReason: stop
+        - type: finish
+          usage: { promptTokens: 20, completionTokens: 4, totalTokens: 24, unit: tokens, total: 24 }
+          finishReason: stop
+---
+# Each call opens with a provider-state part naming the state it was given: the
+# first the run's input, the second the state the first emitted.
+kind: Run.Sequence
+metadata: { name: providerStateFlow }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        echoProviderState: true
+        emitToolCall: { name: multiply, arguments: { a: 2, b: 3 } }
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: "multiply 2 and 3", providerState: { resume: token-1 } }
+  - name: parts
+    invoke: !ref collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items.filter(p, p.type == 'provider-state').map(p, p.providerState)"
+      expected:
+        - received: { resume: token-1 }
+        - received: { received: { resume: token-1 } }

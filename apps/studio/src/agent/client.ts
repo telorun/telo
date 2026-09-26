@@ -9,9 +9,10 @@ function delay(ms: number): Promise<void> {
 /**
  * Fetch that rides out a proxy warm-up: a fronting proxy (Caddy) returns 503
  * until it has detected the freshly-launched per-session upstream, and a network
- * error means it isn't reachable yet. In both cases the request never reached
- * the agent, so retrying is safe (idempotent) — including POST /chat. Retries a
- * few times with a capped backoff (~10s total), then surfaces the last result.
+ * error means it isn't reachable yet. Retries a few times with a capped backoff
+ * (~10s total), then surfaces the last result. Every attempt sends the same
+ * `init`, so a POST /chat whose first attempt did land is recognised by its
+ * `Idempotency-Key` rather than starting a second turn.
  */
 async function fetchRetrying(url: string, init?: RequestInit, retries = 6): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -33,15 +34,20 @@ export interface StartTurnResult {
   kind: "started";
   turnId: string;
 }
-export interface StartTurnConflict {
-  kind: "conflict";
-  activeTurnId?: string;
-}
-export interface StartTurnDenied {
-  kind: "denied";
+/** A non-200 answer, by the `code` its body carries (`ERR_AT_CAPACITY`,
+ *  `ERR_RATE_LIMITED`, `ERR_TURN_IN_PROGRESS`, `ERR_IDEMPOTENCY_KEY_REUSED`, …). */
+export interface StartTurnRefused {
+  kind: "refused";
+  status: number;
+  code: string | undefined;
+  message: string;
   retryAfter?: number;
 }
-export type StartTurnOutcome = StartTurnResult | StartTurnConflict | StartTurnDenied;
+export type StartTurnOutcome = StartTurnResult | StartTurnRefused;
+
+/** The agent is still admitting an earlier attempt carrying the same key. */
+const ERR_IDEMPOTENCY_KEY_IN_FLIGHT = "ERR_IDEMPOTENCY_KEY_IN_FLIGHT";
+const IN_FLIGHT_RETRIES = 10;
 
 /** Thin client for the authoring-agent's HTTP contract. `baseUrl` is the running
  *  agent service (a local `telo` run today; the active runner's advertised URL later). */
@@ -52,30 +58,50 @@ export class AgentClient {
     return `${this.baseUrl.replace(/\/$/, "")}${path}`;
   }
 
-  /** POST /chat → 200 { turnId } | 409 { activeTurnId } | 429 { retryAfter }. */
+  /**
+   * POST /chat → 200 { turnId }, or a coded refusal.
+   *
+   * One call is one send ATTEMPT, and it mints one `Idempotency-Key` that every
+   * retry inside it repeats — a proxy 503, a network error, and an
+   * `ERR_IDEMPOTENCY_KEY_IN_FLIGHT` answer (the agent is still admitting an
+   * earlier copy of this very request). A resend after a failed turn is a new
+   * call, so a new attempt with a key of its own.
+   */
   async startTurn(conversationId: string, message: string): Promise<StartTurnOutcome> {
-    const res = await fetchRetrying(this.url("/chat"), {
+    const init: RequestInit = {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ conversationId, message }),
-    });
-    let body: Record<string, unknown>;
-    try {
-      body = await res.json();
-    } catch (err) {
-      throw new Error(
-        `POST /chat returned an unreadable body (HTTP ${res.status}): ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if (res.status === 200) {
-      if (typeof body.turnId !== "string" && typeof body.turnId !== "number") {
-        throw new Error("POST /chat succeeded but returned no turnId.");
+    };
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetchRetrying(this.url("/chat"), init);
+      let body: Record<string, unknown>;
+      try {
+        body = await res.json();
+      } catch (err) {
+        throw new Error(
+          `POST /chat returned an unreadable body (HTTP ${res.status}): ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-      return { kind: "started", turnId: String(body.turnId) };
+      if (res.status === 200) {
+        if (typeof body.turnId !== "string" && typeof body.turnId !== "number") {
+          throw new Error("POST /chat succeeded but returned no turnId.");
+        }
+        return { kind: "started", turnId: String(body.turnId) };
+      }
+      const code = typeof body.code === "string" ? body.code : undefined;
+      if (code === ERR_IDEMPOTENCY_KEY_IN_FLIGHT && attempt < IN_FLIGHT_RETRIES) {
+        await delay(Math.min(200 * (attempt + 1), 1000));
+        continue;
+      }
+      return {
+        kind: "refused",
+        status: res.status,
+        code,
+        message: typeof body.error === "string" ? body.error : `POST /chat failed (${res.status})`,
+        retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined,
+      };
     }
-    if (res.status === 409) return { kind: "conflict", activeTurnId: body.activeTurnId != null ? String(body.activeTurnId) : undefined };
-    if (res.status === 429) return { kind: "denied", retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined };
-    throw new Error(typeof body.error === "string" ? body.error : `POST /chat failed (${res.status})`);
   }
 
   /** POST /chat/{turnId}/abort → cancel the running turn. `supported: false`

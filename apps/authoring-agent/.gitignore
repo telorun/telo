@@ -2,5 +2,8 @@
 workspace/*
 !workspace/.gitkeep
 
-# SQLite conversation store and other run artifacts.
+# The agent's state before AGENT_STATE_DIR existed; left in place, never read.
 tmp/
+
+# Workspaces the chat tests boot the agent on.
+chat/tests/.scratch/

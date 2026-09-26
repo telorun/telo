@@ -21,15 +21,17 @@ exports:
     - ToolProvider
 ---
 # AiMcp.ToolProvider — wraps any Mcp.Client as an Ai.ToolProvider. listTools() maps to
-# `tools/list`, callTool() to `tools/call`. The discovered tool set and schemas are
+# `tools/list`, callTool() to `tools/call`, run under the agent turn's context: handed
+# to the client, and abandoned with ERR_INVOKE_CANCELLED when that turn is cancelled. The discovered tool set and schemas are
 # known only at run time (statically opaque), validated at the MCP server boundary.
 kind: Telo.Definition
 metadata:
   name: ToolProvider
   description: >-
     Turns a connected MCP server into a tool source for an agent: lists the tools the
-    server advertises and dispatches a model-requested call over the same connection.
-    The tool set and its schemas are resolved at run time, not statically.
+    server advertises and dispatches a model-requested call over the same connection,
+    abandoning it when the agent's turn is cancelled. The tool set and its schemas are
+    resolved at run time, not statically.
 capability: Telo.Mount
 extends: Ai.ToolProvider
 controllers:

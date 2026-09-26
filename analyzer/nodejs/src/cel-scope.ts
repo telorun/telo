@@ -45,6 +45,7 @@ import {
   type KernelGlobalsIndex,
 } from "./kernel-globals.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
+import { inlineNamedShapes } from "./schema-compat.js";
 import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-index.js";
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
@@ -768,13 +769,23 @@ export class CelScopeResolver {
       aliasesByModule: scopes?.aliasesByModule,
       allManifests: allManifests as Record<string, any>[],
     });
-    if (parameterScope) return withBindingNames(resolved, rootManifest);
-    return mergeKernelGlobalsIntoContext(
-      withBindingNames(resolved, rootManifest),
-      // Typed in the module that DECLARED this resource — for a manifest
-      // forwarded from an imported library, that is its `moduleGlobals` stamp,
-      // not the consuming application's block.
-      kernelGlobals.forResource(m),
+    // A named shape nested anywhere in the context — a contract's
+    // `outputType: { properties: { x: !ref Money } }`, an input declared as
+    // `!ref Shape` — is a `$ref` the member walk cannot see through, so it is
+    // expanded here, once, for every binding the site reads. Contract
+    // resolution keeps the reference: the kernel shares it and keys its
+    // validators on the schema's identity.
+    const expand = (schema: Record<string, any>) =>
+      inlineNamedShapes(schema, (id) => defs.schemaForId(id));
+    if (parameterScope) return expand(withBindingNames(resolved, rootManifest));
+    return expand(
+      mergeKernelGlobalsIntoContext(
+        withBindingNames(resolved, rootManifest),
+        // Typed in the module that DECLARED this resource — for a manifest
+        // forwarded from an imported library, that is its `moduleGlobals` stamp,
+        // not the consuming application's block.
+        kernelGlobals.forResource(m),
+      ),
     );
   }
 }

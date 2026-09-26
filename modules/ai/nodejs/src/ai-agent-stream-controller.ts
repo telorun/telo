@@ -7,7 +7,7 @@ import {
   buildInitialMessages,
   dispatchToolCall,
   mergeAgentOptions,
-  normalizeToolCalls,
+  normalizeToolCall,
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
@@ -28,7 +28,7 @@ import type {
  *
  * Tool assembly and dispatch are shared with Ai.Agent via `agent-tools.ts`, so the two
  * agents cannot drift on tool semantics. The loop runs lazily inside the returned
- * Stream — see `run()` for the per-turn finish handling and cancellation contract.
+ * Stream — see `runLoop()` for the part order and the cancellation contract.
  */
 interface AiAgentStreamResource {
   metadata: { name: string; module?: string };
@@ -46,6 +46,9 @@ interface AiAgentStreamInputs {
   messages?: Message[];
   system?: string;
   options?: Record<string, unknown>;
+  /** Opaque state a previous run's `provider-state` part carried, handed to the
+   *  first model call so a conversation's reasoning continues across turns. */
+  providerState?: unknown;
 }
 
 interface AiAgentStreamOutput {
@@ -83,26 +86,35 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
       this.assembled = await assembleTools(this.resource.toolProviders, label);
     }
 
-    return { output: new Stream(this.runLoop(messages, mergedOptions, this.assembled, ctx)) };
+    return {
+      output: new Stream(
+        this.runLoop(messages, mergedOptions, this.assembled, inputs.providerState, ctx),
+      ),
+    };
   }
 
   /**
    * The multi-turn loop, run lazily as the Stream is consumed.
    *
-   * Per-turn finish is consumed, not forwarded: each `model.stream()` turn yields its
-   * own `finish`, whose `usage` accumulates and whose `finishReason` decides
-   * continuation, but only one synthesized terminal `finish` is emitted. `text-delta`
-   * and `tool-call` parts forward through; each executed tool emits a `tool-result`.
+   * Each model call's own `finish` becomes a `step-finish` carrying that call's
+   * usage and finish reason, emitted when the call's stream ends and before its
+   * tools run; the one terminal `finish` carries the usage of every call summed.
+   * `text-delta`, `reasoning-delta`, `content-part` and `provider-state` parts
+   * forward verbatim, a `tool-call` forwards with the id it keeps for the rest of
+   * the run, and each executed tool emits a `tool-result`. Provider state is also
+   * kept and replayed to the next call.
    *
-   * Cancellation is active, not capture-once: because tools have real side effects and
-   * run lazily as the consumer pulls, the signal is re-checked between turns and before
-   * each dispatch, and forwarded to every `model.stream()`. An abandoned connection
-   * stops the loop before the next model turn or tool execution.
+   * Cancellation is re-checked after every part, between calls and before each
+   * tool, and the invocation's context reaches every model call and every tool —
+   * so a cancelled turn ends with `ERR_INVOKE_CANCELLED`. A call interrupted
+   * before its `finish` reports no `step-finish`; one whose `finish` arrived still
+   * reports it, even when the cancellation lands before that part is handled.
    */
   private async *runLoop(
     messages: Message[],
     options: Record<string, unknown>,
     tools: AssembledTools,
+    initialProviderState: unknown,
     ctx?: InvokeContext,
   ): AsyncGenerator<AgentStreamPart> {
     const name = this.resource.metadata.name;
@@ -114,14 +126,15 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
     const usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let finishReason: FinishReason = "stop";
-    // Carried across turns, opaque throughout.
-    let providerState: unknown;
+    // Carried across calls, opaque throughout.
+    let providerState: unknown = initialProviderState;
 
     for (let step = 0; step < maxSteps; step++) {
       ctx?.cancellation.throwIfCancelled();
 
       const turnCalls: ToolCall[] = [];
       let turnText = "";
+      let turnFinish: { usage: Usage; finishReason: FinishReason } | undefined;
       const turn = await model.invoke(
         {
           messages,
@@ -132,25 +145,25 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         ctx,
       );
       for await (const part of turn.output) {
+        // A `finish` is recorded whatever the cancellation state: the call it
+        // closes completed and was billed, so its usage must still be reported.
+        if (part.type === "finish") {
+          turnFinish = { usage: tokenCounts(part.usage), finishReason: part.finishReason };
+          continue;
+        }
+        ctx?.cancellation.throwIfCancelled();
         if (part.type === "text-delta") {
           turnText += part.delta;
           yield part;
         } else if (part.type === "tool-call") {
-          turnCalls.push(part.toolCall);
-          yield part;
+          const call = normalizeToolCall(part.toolCall);
+          turnCalls.push(call);
+          yield { type: "tool-call", toolCall: call };
         } else if (part.type === "provider-state") {
-          // Kept for the next turn rather than forwarded: it is the model's
-          // bookkeeping, not the agent's output, and replaying it is what lets
-          // reasoning survive the loop.
+          // Forwarded so a caller can keep it for its next run, and kept for the
+          // next call, which is what lets reasoning survive the loop.
           providerState = part.providerState;
-        } else if (part.type === "finish") {
-          // Each TURN's finish is consumed; exactly one synthesized terminal
-          // finish is emitted for the whole run, below.
-          finishReason = part.finishReason;
-          const turnUsage = tokenCounts(part.usage);
-          usage.promptTokens += turnUsage.promptTokens;
-          usage.completionTokens += turnUsage.completionTokens;
-          usage.totalTokens += turnUsage.totalTokens;
+          yield part;
         } else {
           // Anything else the vocabulary carries — reasoning deltas, completed
           // content parts — is the model's output and is forwarded verbatim.
@@ -159,13 +172,31 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           yield part;
         }
       }
+      if (!turnFinish) {
+        // Interrupted before its finish: the call reports no step-finish.
+        ctx?.cancellation.throwIfCancelled();
+        throw new InvokeError(
+          "ERR_CONTRACT_VIOLATION",
+          `${label}: the model's stream ended without a 'finish' part, which every Ai.ModelStream call must end with.`,
+        );
+      }
 
-      // No tools requested this turn — the model has answered. Emit the single
-      // synthesized terminal finish with accumulated usage.
+      finishReason = turnFinish.finishReason;
+      usage.promptTokens += turnFinish.usage.promptTokens;
+      usage.completionTokens += turnFinish.usage.completionTokens;
+      usage.totalTokens += turnFinish.usage.totalTokens;
+      yield {
+        type: "step-finish",
+        usage: withTokenQuantity(turnFinish.usage),
+        finishReason: turnFinish.finishReason,
+      };
+      ctx?.cancellation.throwIfCancelled();
+
+      // No tools requested this call — the model has answered.
       if (turnCalls.length === 0) {
         const total = withTokenQuantity(usage);
         // Reported on the same terms as the buffered agent: the aggregate across
-        // every turn, since a per-turn figure understates a run that looped.
+        // every call, since a per-call figure understates a run that looped.
         logCompletion(this.ctx.log, "Agent stream finished", total, finishReason, {
           "ai.agent.steps": step,
         });
@@ -173,19 +204,14 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         return;
       }
 
-      const normalized = normalizeToolCalls(turnCalls, step);
-      messages.push({ role: "assistant", content: turnText, toolCalls: normalized });
+      messages.push({ role: "assistant", content: turnText, toolCalls: turnCalls });
 
-      for (const call of normalized) {
+      for (const call of turnCalls) {
         ctx?.cancellation.throwIfCancelled();
         // With onToolError: "throw", dispatch throws — and the throw PROPAGATES,
-        // rejecting the iteration. It used to be converted into a terminal
-        // `error` frame here, to keep the wire's one-terminal-frame contract;
-        // that contract is now met by the encoder, which catches the rejection
-        // and frames it. Rejecting is what makes this reachable from a manifest
-        // at all: `catches:`, a throws union and a `try:` step all see a thrown
-        // error, and none of them can see a data part.
-        const record = await dispatchToolCall(call, tools.dispatch, onToolError, label);
+        // rejecting the iteration, so `catches:`, a throws union and a `try:`
+        // step all see it; none of them could see a data part.
+        const record = await dispatchToolCall(call, tools.dispatch, onToolError, label, ctx);
         yield { type: "tool-result", toolResult: record };
         messages.push({ role: "tool", content: record.content, toolCallId: call.id });
       }

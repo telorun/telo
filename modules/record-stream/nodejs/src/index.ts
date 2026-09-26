@@ -1,7 +1,8 @@
 /**
  * record-stream — generic stream operations on structured records.
- * ExtractText (records → strings), Tee (fan-out), OnComplete (end-of-stream
- * side effect), and the Journal family for resumable, offset-addressable replay
+ * ExtractText (records → strings), Tee (fan-out), EndHandler (a handler run once
+ * on every ending of a stream; OnComplete is its deprecated completion-only
+ * predecessor), and the Journal family for resumable, offset-addressable replay
  * of a detached stream over a pluggable store.
  *
  * Also the `@telorun/record-stream` module library: the store contract a
@@ -30,6 +31,7 @@ export type { JournalEntry, JournalSettings } from "./journal.js";
 // Controller entry points. Each kind's `controllers:` candidate selects one of
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
+export * as EndHandlerController from "./end-handler-controller.js";
 export * as ExtractTextController from "./extract-text-controller.js";
 export * as JournalController from "./journal-controller.js";
 export * as JournalExpiryController from "./journal-expiry-controller.js";

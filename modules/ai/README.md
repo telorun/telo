@@ -21,7 +21,7 @@ Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts e
 | `Ai.Text` | Buffered single-turn call over any `Ai.Model`. |
 | `Ai.TextStream` | Streaming counterpart over any `Ai.ModelStream`; returns `{ output: Stream<StreamPart> }`. |
 | `Ai.Agent` | Tool-use loop over any `Ai.Model` — calls tools, replays results, loops to a final answer. |
-| `Ai.AgentStream` | The same loop, streaming its parts as it goes. |
+| `Ai.AgentStream` | The same loop, streaming its parts as it goes — each model call's usage, every tool call under a stable id, and provider state. |
 | `Ai.ToolProvider` | Abstract contract every agent tool source implements (`listTools` + `callTool`). |
 | `Ai.Tools` | Built-in `Ai.ToolProvider`: a static list of tools, each wrapping any `Telo.Invocable`. |
 | `Ai.ImageModel` | Abstract contract every image provider implements (`invoke`, declared in the manifest). |
@@ -102,7 +102,7 @@ type StreamPart =
   | { type: "provider-state"; providerState: unknown };
 ```
 
-`Ai.Text` and `Ai.Agent` hold an `Ai.Model`; `Ai.TextStream` and `Ai.AgentStream` hold an `Ai.ModelStream`, whose `invoke()` returns `{ output: Stream<StreamPart> }`. Both entry points are bound and contract-checked by the kernel, so a consumer validates nothing by hand.
+`Ai.Text` and `Ai.Agent` hold an `Ai.Model`; `Ai.TextStream` and `Ai.AgentStream` hold an `Ai.ModelStream`, whose `invoke()` returns `{ output: Stream<StreamPart> }`. `Ai.AgentStream`'s own output is a `Stream` of `Ai.AgentStreamPart` — the model's parts plus `step-finish` per model call and `tool-result` per tool — exported as a `Telo.JsonSchema` so a consumer types what it reads (`items: !ref Ai.AgentStreamPart`); see [`Ai.AgentStream`](./docs/ai-agent-stream.md). Both entry points are bound and contract-checked by the kernel, so a consumer validates nothing by hand.
 
 `Ai.Buffered` adapts the second to the first: give it an `Ai.ModelStream` and it drives the stream, collects the parts and folds them into one completed answer. That is what makes a provider which only streams usable by `Ai.Text` and `Ai.Agent`. Use a provider's own buffered kind where it has one — collecting a stream to hand back a single answer pays a stream's latency for a buffer's result.
 

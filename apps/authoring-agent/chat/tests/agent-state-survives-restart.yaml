@@ -1,0 +1,124 @@
+kind: Telo.Application
+metadata:
+  name: ChatAgentStateSurvivesRestart
+  version: 1.0.0
+  description: |
+    The agent keeps its state on the workspace volume, so a restart on the same
+    WORKSPACE_DIR keeps its conversations. Boots the agent application, writes a
+    conversation through the history-seeding route (no model involved), stops it,
+    boots a fresh instance on the same workspace and reads the conversation back.
+    Also pins what lands on disk: `.telo-agent/agent.sqlite` and nothing else —
+    no attachment or checkpoint directories before a feature creates them.
+    Key-free and offline: nothing here starts a model turn.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspace, emptied before each run. Resolved against the
+  # working directory, like every host path an Application reads.
+  workspace:
+    env: CHAT_TEST_RESTART_WORKSPACE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/agent-state-survives-restart
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Created first so the removal always has something to remove: a previous run
+  # may or may not have left a workspace behind.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.workspace)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.workspace)"
+      recursive: true
+  - name: firstBoot
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18431 }
+          variables:
+            workspaceDir: !cel "variables.workspace"
+          secrets:
+            openaiApiKey: dummy-key-never-used
+      targets: [ !ref agent ]
+      steps:
+        - name: seed
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18431/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/messages
+            method: POST
+          inputs:
+            body:
+              messages:
+                - { id: m1, role: user, content: build me a todo app, createdAt: "2026-09-26 10:00:00" }
+                - { id: m2, role: assistant, content: which database?, createdAt: "2026-09-26 10:00:05" }
+        - name: seeded
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.seed.result.status"
+            expected: 200
+  - name: secondBoot
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18432 }
+          variables:
+            workspaceDir: !cel "variables.workspace"
+          secrets:
+            openaiApiKey: dummy-key-never-used
+      targets: [ !ref agent ]
+      steps:
+        - name: read
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18432/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7
+            method: GET
+        - name: kept
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              status: !cel "steps.read.result.status"
+              ids: !cel "steps.read.result.body.messages.map(m, m.id)"
+            expected:
+              status: 200
+              ids: [m1, m2]
+        # The state directory is not workspace content: the agent's own tree
+        # listing never shows it.
+        - name: tree
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18432/workspace
+            method: GET
+        - name: hidden
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: !cel "steps.tree.result.body.files"
+            expected: []
+  - name: onDisk
+    invoke:
+      kind: Fs.DirectoryListing
+      cwd: !cel "variables.workspace"
+    inputs:
+      recursive: true
+  - name: onlyTheDatabase
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.onDisk.result.entries.map(e, e.path)"
+      expected: [.telo-agent, .telo-agent/agent.sqlite]

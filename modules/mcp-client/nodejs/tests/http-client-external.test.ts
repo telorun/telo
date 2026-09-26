@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isInvokeError, type ResourceContext } from "@telorun/sdk";
+import { createCancellationSource, isInvokeError, type ResourceContext } from "@telorun/sdk";
 import { McpHttpClient } from "../src/http-client-controller.js";
 
 const URL = "http://mcp.example.com/mcp";
@@ -282,5 +282,47 @@ describe("McpHttpClient (self-handshake mode)", () => {
     const [, deleteInit] = fetchMock.mock.calls[3];
     expect(deleteInit.method).toBe("DELETE");
     expect(deleteInit.headers["Mcp-Session-Id"]).toBe("to-delete");
+  });
+});
+
+describe("McpHttpClient (cancellation)", () => {
+  it("aborts the in-flight request, sends notifications/cancelled for it, and rejects ERR_INVOKE_CANCELLED", async () => {
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      if (JSON.parse(init.body as string).method !== "tools/call") {
+        return new Response(null, { status: 202 });
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal!.addEventListener("abort", () => reject(init.signal!.reason));
+      });
+    });
+
+    const client = new McpHttpClient(
+      {
+        metadata: { name: "Mcp" },
+        url: URL,
+        sessionProvider: { name: "S", provide: async () => ({ sessionId: "sess" }) },
+      },
+      makeCtx(),
+    );
+    await initClient(client);
+    const source = createCancellationSource();
+    const pending = client.invoke(
+      { method: "tools/call", params: { name: "slow" } },
+      source.context,
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    source.cancel("turn cancelled");
+
+    await expect(pending).rejects.toMatchObject({ code: "ERR_INVOKE_CANCELLED" });
+    const [, callInit] = fetchMock.mock.calls[0];
+    expect(callInit.signal.aborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, noteInit] = fetchMock.mock.calls[1];
+    expect(noteInit.headers["Mcp-Session-Id"]).toBe("sess");
+    expect(JSON.parse(noteInit.body)).toEqual({
+      jsonrpc: "2.0",
+      method: "notifications/cancelled",
+      params: { requestId: JSON.parse(callInit.body).id, reason: "turn cancelled" },
+    });
   });
 });

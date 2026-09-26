@@ -93,6 +93,17 @@ describe("seedDelta", () => {
     expect(workspace.applied).toEqual([]);
   });
 
+  it("never touches the agent's own state directory", async () => {
+    // `.telo-agent` holds the agent's database on the shared volume: pushing
+    // the editor's view would delete it, pulling it would make it a project file.
+    const workspace = fakeWorkspace({ "telo.yaml": "a", ".telo-agent/agent.sqlite": "db" });
+    await seedDelta(workspace, fakeBridge({ "telo.yaml": "a" }));
+    expect(workspace.applied).toEqual([]);
+    const bridge = fakeBridge({ "telo.yaml": "a" });
+    await reconcile(workspace, bridge);
+    expect(bridge.applied).toEqual([]);
+  });
+
   it("ignores vendor directories in both directions", async () => {
     const workspace = fakeWorkspace({ "telo.yaml": "a", ".telo/analysis/x.json": "cache" });
     await seedDelta(workspace, fakeBridge({ "telo.yaml": "a", "node_modules/p/i.js": "dep" }));

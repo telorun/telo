@@ -6,9 +6,10 @@ metadata:
     AI manifest-authoring agent. Thin HTTP/SSE root over the `chat` library, which
     owns the chat backend (OpenAI-backed Ai.AgentStream + fs/shell tools + SQLite
     history + ChatHandler). This root exposes the library's ChatHandler over a
-    declared port and starts the conversation store. Each POST /chat streams the
-    assistant response and tool calls back as Server-Sent Events. Requires
-    OPENAI_API_KEY.
+    declared port and starts the conversation store, kept in `agent.sqlite` under
+    AGENT_STATE_DIR (default `<WORKSPACE_DIR>/.telo-agent`). POST /chat admits a
+    turn — at most once per Idempotency-Key — and its reply streams from
+    GET /chat/{turnId}/events as Server-Sent Events. Requires OPENAI_API_KEY.
 imports:
   Chat:
     source: ./chat
@@ -16,6 +17,7 @@ imports:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
       workspaceDir: !cel "variables.workspaceDir"
+      stateDir: !cel "variables.stateDir == '' ? variables.workspaceDir.joinPath('.telo-agent') : variables.stateDir"
       budgetLimit: !cel "variables.budgetLimit"
       allowManifestRuns: !cel "variables.allowManifestRuns"
       reasoningEffort: !cel "variables.reasoningEffort"
@@ -33,7 +35,20 @@ variables:
   workspaceDir:
     env: WORKSPACE_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: ./workspace
+  # Where the agent keeps its own state (`agent.sqlite`). Unset, it is
+  # `.telo-agent` inside the workspace: on a co-resident agent that is the
+  # session volume, so conversations survive a container restart. Excluded from
+  # every workspace listing and from Studio's sync.
+  stateDir:
+    env: AGENT_STATE_DIR
+    type: string
+    # Empty stands for "unset": an Application entry with no default is required.
+    anyOf:
+      - const: ""
+      - x-telo-type: Telo.HostPath
+    default: ""
   budgetLimit:
     env: BUDGET_LIMIT
     type: integer
@@ -81,6 +96,18 @@ routes:
       path: /chat
       method: POST
       schema:
+        headers:
+          type: object
+          properties:
+            idempotency-key:
+              type: string
+              minLength: 1
+              maxLength: 255
+              description: >-
+                Optional. The same key on a retried POST returns the original
+                turnId instead of starting a second turn; scoped to the
+                conversation and remembered for 24 hours.
+              examples: [ "0b8e6c4e-3f5a-4b1e-9a57-4d7cf1f0a2b1" ]
         body:
           type: object
           required: [conversationId, message]
@@ -99,36 +126,66 @@ routes:
       conversationId: !cel "request.body.conversationId"
       message: !cel "request.body.message"
       clientIp: !cel "request.ip"
+      idempotencyKey: !cel "'idempotency-key' in request.headers ? request.headers['idempotency-key'] : ''"
     returns:
       - status: 200
-        when: !cel "result.acquired"
         content:
           application/json:
             body:
               turnId: !cel "result.turnId"
-      # Operator spend ceiling reached — no turn started.
-      - status: 429
-        when: !cel "!result.allowed"
-        content:
-          application/json:
-            body:
-              error: at capacity
-              retryAfter: !cel "result.retryAfter"
-      # A turn is already in flight for this conversation — reject the overlap so
-      # two AI turns can never write the shared workspace at once.
-      - status: 409
-        when: !cel "result.allowed && !result.acquired"
-        content:
-          application/json:
-            body:
-              error: turn already in progress
-              activeTurnId: !cel "result.activeTurnId"
+    # Every refusal is a coded error, so a client reads `code` from any non-200
+    # body rather than inferring the reason from the status.
     catches:
+      # Per-IP throttle — no turn started.
+      - when: !cel "error.code == 'ERR_RATE_LIMITED'"
+        status: 429
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_RATE_LIMITED
+              retryAfter: !cel "error.data.retryAfter"
+      # Operator spend ceiling reached — no turn started.
+      - when: !cel "error.code == 'ERR_AT_CAPACITY'"
+        status: 429
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_AT_CAPACITY
+              retryAfter: !cel "error.data.retryAfter"
+      # A turn is already in flight for this conversation — two AI turns never
+      # write the shared workspace at once.
+      - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_IN_PROGRESS
+              activeTurnId: !cel "error.data.activeTurnId"
+      # The same Idempotency-Key is still being admitted — retry with that key.
+      - when: !cel "error.code == 'ERR_IDEMPOTENCY_KEY_IN_FLIGHT'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT
+      # The key was used for a different message in this conversation.
+      - when: !cel "error.code == 'ERR_IDEMPOTENCY_KEY_REUSED'"
+        status: 422
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_IDEMPOTENCY_KEY_REUSED
       - status: 500
         content:
           application/json:
             body:
               error: !cel "error.message"
+              code: !cel "error.code"
   # Resumable event stream for a turn. Replays the journal from the client's last
   # seen id (?lastEventId=) and then tails live, so a reload re-attaches to an
   # in-flight turn. Each frame is a { id, data } envelope; the client checkpoints
@@ -170,7 +227,9 @@ routes:
       method: GET
     handler: !ref Chat.treeSnapshot
     inputs:
-      exclude: [node_modules, .telo, .git, dist]
+      # `.telo-agent` is the agent's own state directory — never workspace
+      # content, so no client syncs it in either direction.
+      exclude: [node_modules, .telo, .git, dist, .telo-agent]
     returns:
       - status: 200
         content:
@@ -331,7 +390,7 @@ trustProxy: 1
 cors:
   origin: "*"
   methods: [GET, POST, OPTIONS]
-  allowedHeaders: [content-type]
+  allowedHeaders: [content-type, idempotency-key]
 mounts:
   - path: /
     mount: !ref api

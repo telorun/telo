@@ -24,6 +24,7 @@ variables:
 targets:
   - !ref Seeded.lostWriter
   - !ref Seeded.orphanedKey
+  - !ref Seeded.resumeStaleWriter
 ---
 kind: Postgres.Connection
 metadata: { name: db }

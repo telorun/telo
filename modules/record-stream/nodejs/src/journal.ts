@@ -16,6 +16,7 @@ import {
   withoutAbsentMembers,
 } from "@telorun/sdk";
 import type { JournalHeader, JournalPage, JournalStore, JournalStoreEntry } from "./journal-store-contract.js";
+import { type RecordedError, recordedError } from "./recorded-error.js";
 
 export const ERR_JOURNAL_KEY_BUSY = "ERR_JOURNAL_KEY_BUSY";
 export const ERR_JOURNAL_KEY_REMOVED = "ERR_JOURNAL_KEY_REMOVED";
@@ -32,12 +33,6 @@ export interface JournalEntry {
   data: unknown;
 }
 
-interface RecordedError {
-  code?: string;
-  message: string;
-  data?: unknown;
-}
-
 /** The header the protocol keeps per key, typed-frame encoded in the store. */
 type KeyState =
   | { state: "open"; holder: string; timeoutMs: number }
@@ -51,16 +46,6 @@ function encodeState(state: KeyState): string {
 
 function decodeState(header: JournalHeader): KeyState {
   return decodeTypedFrame(header.value) as KeyState;
-}
-
-function recordedError(err: unknown): RecordedError {
-  const message = err instanceof Error ? err.message : String(err);
-  const { code, data } = (err ?? {}) as { code?: unknown; data?: unknown };
-  return {
-    ...(typeof code === "string" ? { code } : {}),
-    message,
-    ...(data !== undefined ? { data: withoutAbsentMembers(data) } : {}),
-  };
 }
 
 /** The recorded error as a reader receives it: coded when it was recorded with a
@@ -104,9 +89,14 @@ export abstract class Journal {
     return (await this.store.read(key, 0, 0)).header;
   }
 
-  /** Claim `key` for one writer. Refused as removed for a marker, busy for any
-   *  other existing key. */
-  async claim(key: string): Promise<JournalWriter> {
+  /**
+   * Claim `key` for one writer. An existing key is refused — removed for a
+   * marker, busy otherwise — unless `resume` is set: then a failed key, or an
+   * open one whose writer went stale (failed as lost first, at the version that
+   * was read), is taken over. A takeover keeps the log, so appends continue from
+   * its last id; a live writer's key and a finished key stay busy.
+   */
+  async claim(key: string, options: { resume?: boolean } = {}): Promise<JournalWriter> {
     const holder = randomUUID();
     const open = encodeState({ state: "open", holder, timeoutMs: this.settings.writerTimeoutMs });
     while (true) {
@@ -115,8 +105,31 @@ export abstract class Journal {
       const header = await this.header(key);
       // Deleted between the two calls: the key is free again.
       if (!header) continue;
-      throw decodeState(header).state === "removed" ? removed(key) : busy(key);
+      const state = decodeState(header);
+      if (state.state === "removed") throw removed(key);
+      if (!options.resume || state.state === "finished") throw busy(key);
+      let failedAt: string | null = header.version;
+      if (state.state === "open") {
+        if (header.ageMs <= state.timeoutMs) throw busy(key);
+        failedAt = await this.failLost(key, header.version, state.holder);
+        // The writer moved in the meantime: judge the key again.
+        if (failedAt === null) continue;
+      }
+      const taken = await this.store.compareAndSet(key, failedAt, open);
+      if (taken !== null) return new JournalWriter(this.store, key, holder, open, taken);
     }
+  }
+
+  /** Fail an open key as abandoned by `holder`, at `version`. Null when the key
+   *  moved since that version was read. */
+  private failLost(key: string, version: string, holder: string): Promise<string | null> {
+    const failed: KeyState = {
+      state: "failed",
+      holder,
+      error: { code: ERR_JOURNAL_WRITER_LOST, message: lost(key).message, data: { key } },
+      writerLost: true,
+    };
+    return this.store.compareAndSet(key, version, encodeState(failed));
   }
 
   /**
@@ -128,13 +141,7 @@ export abstract class Journal {
   private async checkStale(key: string, header: JournalHeader, state: KeyState): Promise<number> {
     if (state.state !== "open") return 0;
     if (header.ageMs <= state.timeoutMs) return state.timeoutMs - header.ageMs;
-    const failed: KeyState = {
-      state: "failed",
-      holder: state.holder,
-      error: { code: ERR_JOURNAL_WRITER_LOST, message: lost(key).message, data: { key } },
-      writerLost: true,
-    };
-    await this.store.compareAndSet(key, header.version, encodeState(failed));
+    await this.failLost(key, header.version, state.holder);
     return 0;
   }
 

@@ -1,0 +1,26 @@
+# `outcome.error` is null unless the stream failed or was cancelled, so reading
+# a field of it unguarded is refused.
+kind: Telo.Application
+metadata:
+  name: EndHandlerInputsUnguardedError
+  version: 1.0.0
+imports:
+  RecordStream: ../../../
+  Run: ../../../../run
+---
+kind: RecordStream.EndHandler
+metadata: { name: ending }
+inputs:
+  code: !cel "outcome.error.code"
+handler:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+  steps:
+    - name: code
+      value: !cel "inputs.code"

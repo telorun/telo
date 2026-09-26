@@ -1,6 +1,9 @@
 # The journal's behaviour suite, written once against whatever store the importer
 # hands in, so every store runs the same proof. Each exported sequence is one
 # behaviour; `expiry` must run first, while the store holds only its own keys.
+# Taking over a key whose writer went stale needs a stale header, which no store
+# can be made to hold without editing it, so the SQL store's seeded suite proves
+# that case.
 kind: Telo.Library
 metadata:
   name: JournalSuite
@@ -29,6 +32,9 @@ exports:
     - pausedWriterStaysLive
     - removedAcrossPages
     - cancelledRead
+    - resumeContinuesFailed
+    - resumeKeyStates
+    - resumeLiveWriterBusy
 ---
 kind: RecordStream.Journal
 metadata: { name: journal }
@@ -422,3 +428,157 @@ steps:
       - name: timedOut
         invoke: !ref Assert.equals
         inputs: { actual: !cel "error.code", expected: ERR_STEP_TIMEOUT }
+---
+# A failed key is continued with `resume`: the log is kept and ids follow the
+# last one, so a reader that hit the failure after id 1 reconnects from there and
+# receives the continuation, then the new ending.
+kind: Run.Sequence
+metadata: { name: resumeContinuesFailed }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, fail: true }] }
+  - name: failing
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.fail)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: boom
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed" }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: resume-failed, input: !cel "steps.failing.result.output" }
+    catch:
+      - name: drainFailed
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: read
+    invoke: !ref source
+    inputs: { key: resume-failed }
+  - name: firstRead
+    try:
+      - name: all
+        invoke: !ref collect
+        inputs: { input: !cel "steps.read.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a failed key read as finished" }
+    catch:
+      - name: readerHitFailure
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: more
+    invoke: !ref items
+    inputs: { items: [{ n: 3 }, { n: 4 }] }
+  - name: resume
+    invoke: !ref sink
+    inputs: { key: resume-failed, input: !cel "steps.more.result.output", resume: true }
+  - name: reconnect
+    invoke: !ref source
+    inputs: { key: resume-failed, fromId: 1 }
+  - name: continuation
+    invoke: !ref collect
+    inputs: { input: !cel "steps.reconnect.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { resumed: !cel "steps.resume.result", continuation: !cel "steps.continuation.result.items" }
+      expected:
+        resumed: { key: resume-failed, count: 2 }
+        continuation: [{ id: 2, data: { n: 3 } }, { id: 3, data: { n: 4 } }]
+---
+# `resume` claims a key never written like any claim, and still refuses a
+# finished key as busy and a removed one as removed.
+kind: Run.Sequence
+metadata: { name: resumeKeyStates }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: fresh
+    invoke: !ref sink
+    inputs: { key: resume-states, input: !cel "steps.turn.result.output", resume: true }
+  - name: freshClaimed
+    invoke: !ref Assert.equals
+    inputs: { actual: !cel "steps.fresh.result", expected: { key: resume-states, count: 1 } }
+  - name: again
+    invoke: !ref items
+    inputs: { items: [y] }
+  - name: finished
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: resume-states, input: !cel "steps.again.result.output", resume: true }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a finished key was resumed" }
+    catch:
+      - name: finishedBusy
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: resume-states }
+  - name: last
+    invoke: !ref items
+    inputs: { items: [z] }
+  - name: removed
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: resume-states, input: !cel "steps.last.result.output", resume: true }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a removed key was resumed" }
+    catch:
+      - name: removedRefused
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
+---
+# A key whose writer is alive is not taken over: a resume attempted while the
+# writer is paused inside its own input is refused as busy, and the writer then
+# finishes undisturbed.
+kind: Run.Sequence
+metadata: { name: resumeLiveWriterBusy }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, contend: true }] }
+  - name: contended
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.contend)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: rival
+            invoke: !ref items
+            inputs: { items: [rival] }
+          - name: takeOver
+            try:
+              - name: drain
+                invoke: !ref sink
+                inputs: { key: resume-live, input: !cel "steps.rival.result.output", resume: true }
+              - name: unreachable
+                throw: { code: ERR_TEST_UNREACHABLE, message: "a live writer's key was taken over" }
+            catch:
+              - name: liveBusy
+                invoke: !ref Assert.equals
+                inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: resume-live, input: !cel "steps.contended.result.output" }
+  - name: read
+    invoke: !ref source
+    inputs: { key: resume-live }
+  - name: all
+    invoke: !ref collect
+    inputs: { input: !cel "steps.read.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { written: !cel "steps.write.result.count", read: !cel "steps.all.result.items.map(e, e.data.n)" }
+      expected: { written: 2, read: [1, 2] }

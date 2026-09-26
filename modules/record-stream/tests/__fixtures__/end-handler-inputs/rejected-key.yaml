@@ -1,0 +1,27 @@
+# The map passes `records` to a handler whose closed contract takes only `outcome`.
+kind: Telo.Application
+metadata:
+  name: EndHandlerInputsRejectedKey
+  version: 1.0.0
+imports:
+  RecordStream: ../../../
+  Run: ../../../../run
+---
+kind: RecordStream.EndHandler
+metadata: { name: ending }
+inputs:
+  outcome: !cel "outcome"
+  records: !cel "records"
+handler:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [outcome]
+      additionalProperties: false
+      properties:
+        outcome: !ref RecordStream.StreamOutcome
+  steps:
+    - name: state
+      value: !cel "inputs.outcome.state"

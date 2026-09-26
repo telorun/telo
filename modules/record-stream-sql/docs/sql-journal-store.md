@@ -33,7 +33,7 @@ Primary key `(journal_key, id)`.
 
 An index `<table>_keys_written_at` on `<table>_keys (written_at, journal_key)` serves expiry's scan, which reads keys by age, oldest first. With `createTable: false`, create it too.
 
-`table:` is an identifier, not a bind parameter: it must match `^[A-Za-z_][A-Za-z0-9_]*$` and is double-quoted wherever it is used. Journals sharing one database take distinct tables.
+`table:` is an identifier, not a bind parameter: it must match `^[A-Za-z_][A-Za-z0-9_]*$` and is quoted through the connection's dialect wherever it is used. Journals sharing one database take distinct tables.
 
 ## Atomicity
 

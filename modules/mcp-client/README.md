@@ -76,6 +76,10 @@ Both `Mcp.ToolsCall` and `Mcp.ToolsList` surface a closed error union via `Invok
 
 A response with `isError: true` is converted to `ERR_MCP_TOOL_ERROR` so the success path never observes it — the `outputType` of `Mcp.ToolsCall` does not include an `isError` field.
 
+## Cancellation
+
+Every request honours its invocation's cancellation — a step `timeout:`, a cancelled run, an agent turn that is stopped. `Mcp.ToolsCall` and `Mcp.ToolsList` hand the invocation on to their client, and a cancelled request is aborted, the server is sent `notifications/cancelled` naming its request id, and the call rejects with `ERR_INVOKE_CANCELLED` (reported as `ERR_STEP_TIMEOUT` when a step's bound is what elapsed). Both transports behave the same way; a response the server sends after the cancellation is ignored.
+
 ## What is logged
 
 `Mcp.StdioClient` logs its connection at `info` and **bridges the child server's stderr into records**, one per line — a stdio server owns a stream nothing can inject a logger into, so replacement is impossible and bridging is the sanctioned fallback.

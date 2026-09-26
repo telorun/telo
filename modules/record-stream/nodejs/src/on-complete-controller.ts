@@ -2,8 +2,12 @@ import type { ControllerContext, ResourceContext, ResourceInstance } from "@telo
 import { InvokeError, Stream } from "@telorun/sdk";
 
 /**
- * RecordStream.OnComplete — a stream passthrough that fires a side effect once the
- * input has been fully consumed. Every item forwards to `output` in order as it
+ * RecordStream.OnComplete — deprecated in favour of RecordStream.EndHandler, which
+ * runs its handler on every ending, not only completion. Kept unchanged for the
+ * manifests that still declare it.
+ *
+ * A stream passthrough that fires a side effect once the input has been fully
+ * consumed. Every item forwards to `output` in order as it
  * arrives (the downstream consumer streams live); the items are also retained, and
  * when the input completes normally the injected `handler` Invocable is called once
  * with `{ records, context }` — `records` is the full list observed, `context` is the

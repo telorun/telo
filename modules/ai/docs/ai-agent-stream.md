@@ -1,5 +1,5 @@
 ---
-description: "Ai.AgentStream: a streaming tool-use loop over any Ai.Model. Same config as Ai.Agent, but emits a Stream of text-delta / tool-call / tool-result / finish events for live SSE."
+description: "Ai.AgentStream: a streaming tool-use loop over any Ai.ModelStream. Same config as Ai.Agent, but emits a Stream of Ai.AgentStreamPart records — deltas, tool calls with stable ids, per-call usage, tool results, provider state and a terminal finish — for live SSE."
 sidebar_label: Ai.AgentStream
 ---
 
@@ -13,19 +13,35 @@ Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxStep
 
 ## The event stream
 
-`result.output` carries a discriminated union of records (`AgentStreamPart`):
+`result.output` is a `Stream` of **`Ai.AgentStreamPart`** records — an exported `Telo.JsonSchema`, flat like `Ai.StreamPart`, discriminated by `type`:
 
-| `type`        | Fields                                                    | Meaning                                                        |
-| ------------- | -------------------------------------------------------- | ------------------------------------------------------------- |
-| `text-delta`  | `delta`                                                  | A chunk of assistant text.                                    |
-| `tool-call`   | `toolCall: { id, name, arguments }`                      | The model requested a tool.                                   |
-| `tool-result` | `toolResult: { toolCallId, name, content, error? }`      | A tool the agent executed. `error: true` on a failed call.    |
-| `finish`      | `usage`, `finishReason`                                  | Terminal — accumulated usage across all turns.                |
-| `error`       | `error: { message, code? }`                              | Terminal — a model-side error or an aborted run.              |
+| `type`            | Fields                                              | Meaning                                                                 |
+| ----------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| `text-delta`      | `delta`                                             | A chunk of assistant text.                                              |
+| `reasoning-delta` | `delta`                                             | A chunk of the model's reasoning, when the provider exposes it.         |
+| `content-part`    | `part`                                              | A completed content part (an image, a citation, …).                    |
+| `tool-call`       | `toolCall: { id, name, arguments }`                 | The model requested a tool. The id is fixed for the rest of the run.   |
+| `provider-state`  | `providerState`                                     | Opaque provider state, forwarded as produced (see below).              |
+| `step-finish`     | `usage`, `finishReason`                             | One model call ended: that call's usage and finish reason.             |
+| `tool-result`     | `toolResult: { toolCallId, name, content, error? }` | A tool the agent executed. `error: true` on a failed call.             |
+| `finish`          | `usage`, `finishReason`                             | Terminal — the usage of every call summed.                              |
 
-The stream emits **exactly one** terminal frame (`finish` or `error`). Each model turn internally finishes, but those per-turn finishes are consumed to accumulate `usage` and decide continuation — they are never forwarded, so a downstream consumer never sees a premature terminal.
+For a run that calls one tool and then answers, the order is:
 
-The `tool-result` shape matches `Ai.Agent`'s `steps[].toolResults` record exactly, so a streaming consumer is never a poorer signal than the buffered trace.
+```
+tool-call(id) · step-finish(u1) · tool-result(id) · text-delta… · step-finish(u2) · finish(u1+u2)
+```
+
+- **`step-finish`** closes each model call when its stream ends and **before** that call's tools run, so a consumer can account for spend call by call — including a run that is cancelled or fails later. A call interrupted by a cancellation before its provider's `finish` reports none; one whose `finish` arrived reports it even when the cancellation lands first.
+- **`finish`** is the only terminator, and its `usage` is the sum of the `step-finish` usages.
+- **Tool call ids** are fixed where the call is first seen: the `tool-call` part, the assistant message replayed to the next model call, and the `tool-result`'s `toolCallId` all carry the same one. A model that supplies none gets a generated `call_<uuid>`, unique across calls, runs and processes, so a stored transcript never has two calls under one id.
+- The `tool-result` shape matches `Ai.Agent`'s `steps[].toolResults` record exactly, so a streaming consumer is never a poorer signal than the buffered trace.
+
+A consumer that stores the parts types them by reference — `items: !ref Ai.AgentStreamPart` — and `telo check` then reports a misspelled field (`inputs.records[0].usge`) as `CEL_UNKNOWN_FIELD`.
+
+### Provider state
+
+A provider that keeps its reasoning server-side reports it as `provider-state` parts. The agent **forwards** each one in order and also **replays** the latest to the next model call, so reasoning survives the tool loop. To continue a conversation's reasoning across runs, keep the last `providerState` a run emitted and pass it back as the next run's `providerState` input: it reaches the first model call unchanged. The value is opaque — nothing in `ai` looks inside it.
 
 ## Serving over SSE
 
@@ -74,6 +90,9 @@ Wire output for a turn that writes one file, then replies:
 event: tool-call
 data: {"toolCall":{"id":"call_0","name":"write_file","arguments":{"path":"health.yaml","content":"..."}}}
 
+event: step-finish
+data: {"usage":{"promptTokens":180,"completionTokens":40,"totalTokens":220,"unit":"tokens","total":220},"finishReason":"tool-calls"}
+
 event: tool-result
 data: {"toolResult":{"toolCallId":"call_0","name":"write_file","content":"{\"bytesWritten\":142}"}}
 
@@ -83,22 +102,34 @@ data: {"delta":"Added "}
 event: text-delta
 data: {"delta":"a health endpoint."}
 
+event: step-finish
+data: {"usage":{"promptTokens":220,"completionTokens":8,"totalTokens":228,"unit":"tokens","total":228},"finishReason":"stop"}
+
 event: finish
-data: {"usage":{"promptTokens":220,"completionTokens":48,"totalTokens":268},"finishReason":"stop"}
+data: {"usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit":"tokens","total":448},"finishReason":"stop"}
 ```
+
+## Invocation inputs
+
+`prompt` xor `messages`, `system` and `options`, as for [`Ai.Agent`](./ai-agent.md#invocation-inputs), plus:
+
+| Field           | Type | Purpose                                                                             |
+| --------------- | ---- | ----------------------------------------------------------------------------------- |
+| `providerState` | any  | State a previous run's `provider-state` part carried; handed to the first model call. |
 
 ## Cancellation
 
-The loop runs lazily as the consumer pulls the stream, and each tool call is a real side effect. The invoke's cancellation signal is re-checked between turns and before each tool dispatch, and forwarded to every model call — so an abandoned connection stops the loop before the next model turn or tool execution rather than running to completion.
+The loop runs lazily as the consumer pulls the stream, and each tool call is a real side effect. The invocation's context is handed to every model call **and to every tool** (a provider passes it on — `Ai.Tools` into the tool's invocation, `AiMcp.ToolProvider` into its `tools/call`), and cancellation is re-checked after every part, between calls and before each tool. A cancelled turn therefore stops the running model call or tool and rejects the stream with `ERR_INVOKE_CANCELLED` — whatever `onToolError` says, since a cancellation is not a tool failure. A durable suspension (`ERR_DURABLE_SUSPENDED`) passes through the same way.
 
 ## Terminal & error semantics
 
-These mirror [`Ai.Agent`](./ai-agent.md#maxsteps-and-error-handling), re-expressed as events:
+These mirror [`Ai.Agent`](./ai-agent.md#maxsteps-and-error-handling). A failure never becomes a record: it **rejects** the iteration, so `catches:`, a throws union and a `try:` step see it. Parts already emitted still reach the consumer, and an encoder frames the rejection for the wire.
 
 - **`onToolError: feedback`** (default) — a failed tool emits a `tool-result` with `error: true`; the loop continues so the model can react.
-- **`onToolError: throw`** — emit a terminal `error` part (the tool error's code, or `ERR_AGENT_TOOL_ERROR`) and end the stream. The exception is converted to an in-band terminal frame rather than escaping, so the one-terminal-frame guarantee holds on the wire.
-- **`onMaxSteps: return`** — emit a terminal `finish` with the last turn's `finishReason`.
-- **`onMaxSteps: throw`** (default) — emit a terminal `error` part with code `ERR_AGENT_MAX_STEPS`.
+- **`onToolError: throw`** — the tool's error rejects the iteration.
+- **`onMaxSteps: return`** — a terminal `finish` with the last call's `finishReason`.
+- **`onMaxSteps: throw`** (default) — rejects with `ERR_AGENT_MAX_STEPS`.
+- A model stream that ends without a `finish` part rejects with `ERR_CONTRACT_VIOLATION`.
 
 ## Multimodal tool results
 

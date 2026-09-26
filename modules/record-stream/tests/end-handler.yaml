@@ -1,0 +1,288 @@
+kind: Telo.Application
+metadata:
+  name: RecordStreamEndHandlerTest
+  version: 1.0.0
+  description: |
+    RecordStream.EndHandler through the kernel: on each of the four endings the
+    handler receives what its `inputs:` map made of `records`, `context` and
+    `outcome`, and writes it — completed, failed by its input, cancelled by its
+    invocation (the handler still reaches the database), and stopped by its
+    consumer. A caller passing no `context` hands the map `{}`, so a handler
+    requiring an object completes.
+imports:
+  RecordStream: ../
+  Stream: ../../stream
+  Timer: ../../timer
+  Run: ../../run
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Assert: ../../assert
+targets:
+  - !ref initSchema
+  - !ref completed
+  - !ref cancelledByInvocation
+  - !ref failedByInput
+  - !ref stoppedByConsumer
+  - !ref contextDefaulted
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: initSchema }
+connection: !ref db
+version: !cel "module.version"
+migrations:
+  create_endings:
+    statement: |
+      CREATE TABLE endings (
+        tag TEXT NOT NULL,
+        state TEXT NOT NULL,
+        code TEXT,
+        content TEXT NOT NULL
+      )
+---
+kind: Stream.Of
+metadata: { name: items }
+---
+kind: Stream.Collect
+metadata: { name: collect }
+---
+# The handler: one row per ending, with the text the stream carried up to it.
+kind: Run.Sequence
+metadata: { name: recordEnding }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [records, context, outcome]
+    properties:
+      records: { type: array, items: { type: string } }
+      context:
+        type: object
+        required: [tag]
+        properties: { tag: { type: string } }
+      outcome: !ref RecordStream.StreamOutcome
+steps:
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO endings (tag, state, code, content) VALUES (?, ?, ?, ?)"
+      bindings:
+        - !cel "inputs.context.tag"
+        - !cel "inputs.outcome.state"
+        - !cel "inputs.outcome.error != null && has(inputs.outcome.error.code) ? inputs.outcome.error.code : null"
+        - !cel "inputs.records.join('')"
+---
+kind: RecordStream.EndHandler
+metadata: { name: ending }
+handler: !ref recordEnding
+inputs:
+  records: !cel "records"
+  context: !cel "context"
+  outcome: !cel "outcome"
+---
+kind: Sql.Query
+metadata: { name: endingOf }
+connection: !ref db
+---
+kind: Run.Sequence
+metadata: { name: completed }
+steps:
+  - name: source
+    invoke: !ref items
+    inputs: { items: [he, llo] }
+  - name: observed
+    invoke: !ref ending
+    inputs:
+      input: !cel "steps.source.result.output"
+      context: { tag: done }
+  - name: drain
+    invoke: !ref collect
+    inputs: { input: !cel "steps.observed.result.output" }
+  - name: row
+    invoke: !ref endingOf
+    inputs: { sql: "SELECT state, code, content FROM endings WHERE tag = ?", bindings: [done] }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { forwarded: !cel "steps.drain.result.items", rows: !cel "steps.row.result.rows" }
+      expected:
+        forwarded: [he, llo]
+        rows: [{ state: completed, code: null, content: hello }]
+---
+# The input stalls after its first item; the step's bound cancels the read. The
+# handler runs on a context without that cancellation, so its insert lands.
+kind: Run.Sequence
+metadata: { name: cancelledByInvocation }
+steps:
+  - name: bounded
+    try:
+      - name: read
+        timeout: 300
+        invoke:
+          kind: Run.Sequence
+          steps:
+            - name: source
+              invoke: !ref items
+              inputs: { items: [he, llo] }
+            - name: stalled
+              invoke:
+                kind: Stream.Tap
+                when: !cel "item == 'llo'"
+                invoke: { kind: Timer.Delay }
+                inputs: { duration: "1h" }
+              inputs: { input: !cel "steps.source.result.output" }
+            - name: observed
+              invoke: !ref ending
+              inputs:
+                input: !cel "steps.stalled.result.output"
+                context: { tag: cancelled }
+            - name: drain
+              invoke: !ref collect
+              inputs: { input: !cel "steps.observed.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a stalled stream ended by itself" }
+    catch:
+      - name: timedOut
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_STEP_TIMEOUT }
+  - name: row
+    invoke: !ref endingOf
+    inputs: { sql: "SELECT state, code, content FROM endings WHERE tag = ?", bindings: [cancelled] }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ state: cancelled, code: ERR_INVOKE_CANCELLED, content: he }]
+---
+# The input raises after its first item.
+kind: Run.Sequence
+metadata: { name: failedByInput }
+steps:
+  - name: bounded
+    try:
+      - name: source
+        invoke: !ref items
+        inputs: { items: [he, llo] }
+      - name: failing
+        invoke:
+          kind: Stream.Tap
+          when: !cel "item == 'llo'"
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: boom
+                throw: { code: ERR_TEST_BOOM, message: the producer failed }
+        inputs: { input: !cel "steps.source.result.output" }
+      - name: observed
+        invoke: !ref ending
+        inputs:
+          input: !cel "steps.failing.result.output"
+          context: { tag: failed }
+      - name: drain
+        invoke: !ref collect
+        inputs: { input: !cel "steps.observed.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a failing stream completed" }
+    catch:
+      - name: raised
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: row
+    invoke: !ref endingOf
+    inputs: { sql: "SELECT state, code, content FROM endings WHERE tag = ?", bindings: [failed] }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ state: failed, code: ERR_TEST_BOOM, content: he }]
+---
+# The consumer fails on the first item and stops reading.
+kind: Run.Sequence
+metadata: { name: stoppedByConsumer }
+steps:
+  - name: bounded
+    try:
+      - name: source
+        invoke: !ref items
+        inputs: { items: [he, llo] }
+      - name: observed
+        invoke: !ref ending
+        inputs:
+          input: !cel "steps.source.result.output"
+          context: { tag: stopped }
+      - name: refusing
+        invoke:
+          kind: Stream.Tap
+          when: !cel "item == 'he'"
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: refuse
+                throw: { code: ERR_TEST_STOPPED, message: the consumer gave up }
+        inputs: { input: !cel "steps.observed.result.output" }
+      - name: drain
+        invoke: !ref collect
+        inputs: { input: !cel "steps.refusing.result.output" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a refusing consumer read to the end" }
+    catch:
+      - name: raised
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_STOPPED }
+  - name: row
+    invoke: !ref endingOf
+    inputs: { sql: "SELECT state, code, content FROM endings WHERE tag = ?", bindings: [stopped] }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ state: cancelled, code: null, content: he }]
+---
+# A handler requiring `context` to be an object, behind a caller that passes none.
+kind: Run.Sequence
+metadata: { name: recordContext }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [context]
+    properties:
+      context: { type: object }
+steps:
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO endings (tag, state, code, content) VALUES ('defaulted', 'completed', NULL, ?)"
+      bindings:
+        - !cel "string(size(inputs.context))"
+---
+kind: RecordStream.EndHandler
+metadata: { name: contextEnding }
+handler: !ref recordContext
+inputs:
+  context: !cel "context"
+---
+kind: Run.Sequence
+metadata: { name: contextDefaulted }
+steps:
+  - name: source
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: observed
+    invoke: !ref contextEnding
+    inputs:
+      input: !cel "steps.source.result.output"
+  - name: drain
+    invoke: !ref collect
+    inputs: { input: !cel "steps.observed.result.output" }
+  - name: row
+    invoke: !ref endingOf
+    inputs: { sql: "SELECT content FROM endings WHERE tag = ?", bindings: [defaulted] }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.row.result.rows"
+      expected: [{ content: "0" }]

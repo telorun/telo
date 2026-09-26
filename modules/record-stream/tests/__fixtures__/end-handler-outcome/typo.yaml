@@ -1,0 +1,26 @@
+# A handler typing its `outcome` against the shared shape: a misspelled field
+# under it is a static error.
+kind: Telo.Application
+metadata:
+  name: EndHandlerOutcomeTypo
+  version: 1.0.0
+imports:
+  RecordStream: ../../../
+  Run: ../../../../run
+---
+kind: RecordStream.EndHandler
+metadata: { name: ending }
+inputs:
+  outcome: !cel "outcome"
+handler:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: !ref RecordStream.StreamOutcome
+  steps:
+    - name: state
+      value: !cel "inputs.outcome.stat"

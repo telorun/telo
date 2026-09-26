@@ -1,4 +1,6 @@
-import { InvokeError, writePlainJson } from "@telorun/sdk";
+import { randomUUID } from "node:crypto";
+import type { InvokeContext } from "@telorun/sdk";
+import { InvokeError, isCancellationError, isSuspension, writePlainJson } from "@telorun/sdk";
 import { isContentPart, isContentParts, type MessageContent } from "./content.js";
 import type {
   AiToolProviderInstance,
@@ -89,14 +91,17 @@ export function mergeAgentOptions(
   return { ...(config.options ?? {}), ...(inputs.options ?? {}) };
 }
 
-/** Give every model-requested call a stable id (threaded into the tool-result message
- *  so the model can correlate result→call) and default missing arguments to `{}`. */
-export function normalizeToolCalls(calls: ToolCall[], step: number): ToolCall[] {
-  return calls.map((c, i) => ({
-    id: c.id || `call_${step}_${i}`,
-    name: c.name,
-    arguments: c.arguments ?? {},
-  }));
+/** Give a model-requested call its one id, fixed where the call is first seen and
+ *  carried by the assistant message that replays it and by its tool result. A model
+ *  that supplies none gets a fresh one — unique across turns, runs and processes,
+ *  since a transcript outlives the process that wrote it. Missing arguments default
+ *  to `{}`. */
+export function normalizeToolCall(call: ToolCall): ToolCall {
+  return {
+    id: call.id || `call_${randomUUID()}`,
+    name: call.name,
+    arguments: call.arguments ?? {},
+  };
 }
 
 /** Normalize a tool's return value into message content. A string passes through;
@@ -154,12 +159,16 @@ export async function assembleTools(
 /** Execute one model-requested tool call and return a neutral result record. On
  *  `onToolError: "feedback"` a failure (unknown tool or a throw from the tool)
  *  becomes an `error: true` record whose `content` is the error string fed back to
- *  the model; on `"throw"` the error propagates and aborts the invoke. */
+ *  the model; on `"throw"` the error propagates and aborts the invoke. The turn's
+ *  cancellation and a durable suspension are not tool failures: they propagate
+ *  whatever `onToolError` says. `ctx` — the agent invocation's context — is handed
+ *  to the provider, so cancelling the turn reaches the running tool. */
 export async function dispatchToolCall(
   call: ToolCall,
   dispatch: Map<string, Dispatch>,
   onToolError: "feedback" | "throw",
   label: string,
+  ctx: InvokeContext | undefined,
 ): Promise<ToolResultRecord> {
   const target = dispatch.get(call.name);
   if (!target) {
@@ -177,10 +186,10 @@ export async function dispatchToolCall(
     };
   }
   try {
-    const output = await target.provider.callTool(target.bareName, call.arguments);
+    const output = await target.provider.callTool(target.bareName, call.arguments, ctx);
     return { toolCallId: call.id, name: call.name, content: toToolContent(output) };
   } catch (err) {
-    if (onToolError === "throw") throw err;
+    if (onToolError === "throw" || isCancellationError(err) || isSuspension(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     return { toolCallId: call.id, name: call.name, content: `Error: ${message}`, error: true };
   }

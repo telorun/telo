@@ -1,6 +1,7 @@
-import { networkCauseCode, writePlainJson } from "@telorun/sdk";
+import { networkCauseCode, writePlainJson, type CancellationToken } from "@telorun/sdk";
 
 import {
+  cancelledError,
   jsonRpcError,
   protocolError,
   sessionInvalidError,
@@ -49,23 +50,39 @@ async function rawPost(
   url: string,
   headers: Record<string, string>,
   body: string,
+  token: CancellationToken | undefined,
 ): Promise<HttpPostResult> {
-  let resp: Response;
+  // A per-request controller linked to the token, so a long-lived token's
+  // signal does not collect one abort listener per request.
+  const abort = new AbortController();
+  const unlink = token?.onCancelled((reason) => abort.abort(reason));
   try {
-    resp = await fetch(url, { method: "POST", headers, body });
-  } catch (err) {
-    // `(err as Error).message` is the literal "fetch failed" for DNS, refusal,
-    // and TLS alike — the actionable detail is the cause chain's code.
-    const code = networkCauseCode(err);
-    throw transportError(
-      `MCP POST to ${url} failed at the network layer: ${code ?? (err as Error).message}`,
-      { url, cause: code ?? (err as Error).message },
-    );
+    let resp: Response;
+    try {
+      resp = await fetch(url, { method: "POST", headers, body, signal: abort.signal });
+    } catch (err) {
+      if (token?.isCancelled) throw cancelledError(`MCP POST to ${url}`, token);
+      // `(err as Error).message` is the literal "fetch failed" for DNS, refusal,
+      // and TLS alike — the actionable detail is the cause chain's code.
+      const code = networkCauseCode(err);
+      throw transportError(
+        `MCP POST to ${url} failed at the network layer: ${code ?? (err as Error).message}`,
+        { url, cause: code ?? (err as Error).message },
+      );
+    }
+    const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+    const responseSessionId = resp.headers.get("mcp-session-id");
+    let text: string;
+    try {
+      text = await resp.text();
+    } catch (err) {
+      if (token?.isCancelled) throw cancelledError(`MCP POST to ${url}`, token);
+      throw err;
+    }
+    return { status: resp.status, contentType, body: text, responseSessionId };
+  } finally {
+    unlink?.();
   }
-  const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
-  const responseSessionId = resp.headers.get("mcp-session-id");
-  const text = await resp.text();
-  return { status: resp.status, contentType, body: text, responseSessionId };
 }
 
 /**
@@ -143,7 +160,8 @@ interface PostJsonRpcResult {
  * Send a single JSON-RPC POST to an MCP Streamable HTTP endpoint. Returns the
  * parsed `result` payload plus any Mcp-Session-Id the server included in the
  * response headers. Protocol / transport / session errors throw the matching
- * ERR_MCP_*. Unlike the SDK's StreamableHTTPClientTransport, this never opens
+ * ERR_MCP_*; a cancelled `token` aborts the POST with ERR_INVOKE_CANCELLED
+ * (the caller sends the server `notifications/cancelled`). Unlike the SDK's StreamableHTTPClientTransport, this never opens
  * a server-pushed SSE GET stream, so teardown is deterministic and the
  * caller's Http.Server fastify close() can drain immediately.
  *
@@ -158,6 +176,7 @@ export async function postJsonRpc(
   baseHeaders: Record<string, string>,
   sessionId: string | null,
   request: JsonRpcRequest | JsonRpcNotification,
+  token?: CancellationToken,
 ): Promise<PostJsonRpcResult> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -172,6 +191,7 @@ export async function postJsonRpc(
     url,
     headers,
     writePlainJson(request),
+    token,
   );
 
   if (status === 404 || status === 410) {

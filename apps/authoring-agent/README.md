@@ -39,6 +39,22 @@ Nothing in the image distinguishes the two. The agent is one writer on a
 directory; whether anything else watches that directory is the runner's
 arrangement, and setting `WORKSPACE_DIR` is the whole of it.
 
+### The agent's own state
+
+The agent keeps its state in `AGENT_STATE_DIR`, which defaults to `.telo-agent`
+inside the workspace. Today that directory holds one file, `agent.sqlite`: the
+conversation history (`GET /conversations/{id}`) and the admission records an
+`Idempotency-Key` replays from. Nothing else is created there until a feature
+needs it.
+
+It lives on the workspace volume because the container is the ephemeral part. A
+co-resident agent's workspace is the session volume, which outlives the
+container, so restarting the agent on the same `WORKSPACE_DIR` keeps its
+conversations. `.telo-agent` is not workspace content: `GET /workspace`, the
+per-turn `WORKSPACE STATE:` listing and the `list_dir` tool all leave it out,
+Studio never syncs it in either direction, and the system prompt tells the agent
+never to read, write or delete it.
+
 ## Asking before building
 
 A request to build something new usually leaves decisions unmade — what the
@@ -221,7 +237,7 @@ back into a question, never quietly replaced with a guess.
 
 | Route | Purpose |
 | --- | --- |
-| `POST /chat` | Start a turn. `200 {turnId}`; `409 {activeTurnId}` when one is already running for the conversation; `429 {retryAfter}` at the operator's spend ceiling |
+| `POST /chat` | Start a turn. `200 {turnId}`, or a coded refusal (below). Takes an optional `Idempotency-Key` header |
 | `GET /chat/{turnId}/events` | The turn's stream, as `{ id, data }` SSE frames. Replays from `?lastEventId=` and then tails live, so a reload re-attaches to a turn in flight |
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
 | `POST /workspace` | Apply an explicit write/delete change set |
@@ -229,15 +245,41 @@ back into a question, never quietly replaced with a guess.
 | `GET /conversations/{id}` | The persisted message rows — the model's own view of the thread |
 | `POST /conversations/{id}/messages` | Seed those rows into a fresh instance, idempotent by row id |
 
-One turn at a time per conversation: the 409 is what stops two model turns
-writing the same workspace at once. There is deliberately no single-file write
-route — a change set of one is the same thing without a second set of
-concurrency rules.
+Every non-200 answer from `POST /chat` is `{ error, code, … }`, and the `code`
+is what a client branches on:
 
-The conversation store is per container. A client that expects a thread to
-outlive one instance keeps the rows itself and posts them back before the next
-turn; that is what `POST /conversations/{id}/messages` is for, and it is how the
-editor survives an agent being replaced mid-conversation.
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| 429 | `ERR_RATE_LIMITED` | Too many turns from this client address. Carries `retryAfter` (seconds) |
+| 429 | `ERR_AT_CAPACITY` | The operator's spend ceiling is reached. Carries `retryAfter` (seconds) |
+| 409 | `ERR_TURN_IN_PROGRESS` | A turn is already running for the conversation. Carries `activeTurnId` |
+| 409 | `ERR_IDEMPOTENCY_KEY_IN_FLIGHT` | A request with the same key is still being admitted; retry with the same key |
+| 422 | `ERR_IDEMPOTENCY_KEY_REUSED` | The key was already used for a different message in this conversation |
+| 500 | the failure's own code | Anything else |
+
+A refused start writes nothing: the user's message is recorded by the admitted
+turn's first step, so no refusal leaves a user row behind.
+
+**`Idempotency-Key`** (optional, 1–255 characters) makes a retried POST safe.
+The admission runs at most once per `<conversationId>:<key>`: a repeat returns
+the original `200 { turnId }` instead of starting a second turn, and exactly one
+user row exists. The same key with a different message (compared by SHA-256) is
+`ERR_IDEMPOTENCY_KEY_REUSED`. The record lives in `agent.sqlite` for 24 hours,
+so it survives a restart. A refusal releases the key, so retrying after a 429
+is a fresh attempt rather than a replay of the refusal. Without the header
+nothing is deduplicated. Send one key per message, and the same key on every
+retry of that message.
+
+One turn at a time per conversation: `ERR_TURN_IN_PROGRESS` is what stops two
+model turns writing the same workspace at once. That lock is held in memory.
+There is deliberately no single-file write route — a change set of one is the
+same thing without a second set of concurrency rules.
+
+The conversation store is in `AGENT_STATE_DIR`, so it lasts as long as that
+directory does. A client that expects a thread to outlive the directory — a
+standalone agent's container is replaced, and its workspace with it — keeps the
+rows itself and posts them back before the next turn; that is what
+`POST /conversations/{id}/messages` is for.
 
 There is **no abort route**. Studio asks for one and treats a 404 as "this agent
 predates it", so a stopped turn runs to its natural end server-side.
@@ -256,12 +298,13 @@ Variables:
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
+| `AGENT_STATE_DIR` | `<WORKSPACE_DIR>/.telo-agent` | Where the agent keeps its own state — `agent.sqlite` (see above) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 
 The library takes several more that the root does not surface as env
-(`model`, `dbFile`, the budget window, the per-IP throttle, and the two `telo`
+(`model`, the budget window, the per-IP throttle, and the two `telo`
 CLI settings below); change them at the import in `telo.yaml`.
 
 ## What the agent is allowed to do
@@ -333,6 +376,16 @@ still says nothing about which sheet, which columns, or how the sides match.
 suite, a test beside it, the agent running that suite, and the suite passing when
 this test runs it independently. `run-manifest-tool.yaml` and `telo-cli-tool.yaml`
 need no model or key: they assert the two execution gates directly.
+
+`agent-state-survives-restart.yaml` and `chat-start-idempotency.yaml` boot the
+application itself (`App.Instance`, a dummy key, a workspace of their own under
+`chat/tests/.scratch/`) and need no model either: the first restarts the agent on
+the same workspace and reads a conversation back, the second pins
+`Idempotency-Key` replay, key reuse, a key still being admitted (a claim seeded
+straight into the instance's `agent.sqlite`), and that a refused start writes
+nothing. An
+admitted turn fails in the background at its first model call; that failure is
+logged and is not what they assert on.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

@@ -1,4 +1,4 @@
-import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ControllerContext, InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
 
@@ -6,10 +6,11 @@ import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
  * Ai.Tools — the built-in Ai.ToolProvider implementation: a static list of tools, each
  * wrapping any Telo.Invocable. `listTools()` returns the declared descriptors;
  * `callTool()` dispatches to the matching invocable, applying optional `inputs:`/`result:`
- * CEL mappings (evaluated per call via `ctx.expandValue`).
+ * CEL mappings (evaluated per call via `ctx.expandValue`). The agent invocation's
+ * context rides into the tool's invocation, so cancelling the turn stops the tool.
  */
 interface InvocableInstance {
-  invoke(input: unknown): Promise<unknown>;
+  invoke(input: unknown, ctx?: InvokeContext): Promise<unknown>;
 }
 
 interface ToolEntry {
@@ -64,7 +65,11 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
     });
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<unknown> {
     const index = this.resource.tools.findIndex((entry, i) => this.toolName(entry, i) === name);
     if (index === -1) {
       throw new InvokeError(
@@ -82,7 +87,7 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
     }
     const invokeInput =
       entry.inputs !== undefined ? this.ctx.expandValue(entry.inputs, { arguments: args }) : args;
-    const output = await tool.invoke(invokeInput);
+    const output = await tool.invoke(invokeInput, invokeCtx);
     return entry.result !== undefined ? this.ctx.expandValue(entry.result, { result: output }) : output;
   }
 

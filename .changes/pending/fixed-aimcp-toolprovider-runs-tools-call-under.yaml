@@ -1,0 +1,5 @@
+modules:
+  modules/ai-mcp: Fixed
+body: AiMcp.ToolProvider runs tools/call under the agent turn's context and abandons the
+  call with ERR_INVOKE_CANCELLED when that turn is cancelled, instead of leaving the
+  agent waiting on a tool nobody wants any more.

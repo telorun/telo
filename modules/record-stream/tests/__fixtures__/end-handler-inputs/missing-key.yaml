@@ -1,0 +1,26 @@
+# The map omits `records`, which the handler requires.
+kind: Telo.Application
+metadata:
+  name: EndHandlerInputsMissingKey
+  version: 1.0.0
+imports:
+  RecordStream: ../../../
+  Run: ../../../../run
+---
+kind: RecordStream.EndHandler
+metadata: { name: ending }
+inputs:
+  outcome: !cel "outcome"
+handler:
+  kind: Run.Sequence
+  inputType:
+    kind: Telo.JsonSchema
+    schema:
+      type: object
+      required: [records, outcome]
+      properties:
+        records: { type: array }
+        outcome: !ref RecordStream.StreamOutcome
+  steps:
+    - name: state
+      value: !cel "inputs.outcome.state"

@@ -48,7 +48,15 @@ variables:
   workspaceDir:
     env: BUILDS_WORKSPACE_DIR
     type: string
+    x-telo-type: Telo.HostPath
     default: ./workspace/builds-with-tests
+  # The agent's state is a file that outlives the run, so each run opens a
+  # conversation of its own — a reused one would replay the last run's history.
+  stateDir:
+    env: BUILDS_STATE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/builds-with-tests
 imports:
   Chat:
     source: ../
@@ -56,7 +64,7 @@ imports:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      dbFile: ":memory:"
+      stateDir: !cel "variables.stateDir"
       # No `model:` — inherited from the library, so this exercises what ships.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
       allowManifestRuns: true
@@ -69,6 +77,7 @@ targets:
   - !ref cleanWorkspace
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
+  - !ref resetState
   - !ref testBuilds
 ---
 kind: Shell.LocalHost
@@ -78,6 +87,21 @@ kind: Shell.Command
 metadata: { name: shell }
 host: !ref repoHost
 ---
+# The agent's state is reset with the workspace. Its database is opened at boot,
+# before any target runs, so it is emptied in place rather than deleted: this run
+# starts with no conversation history and no admission records.
+kind: Run.Sequence
+metadata: { name: resetState }
+steps:
+  - name: messages
+    invoke: !ref Chat.historyQuery
+    inputs:
+      sql: "DELETE FROM messages RETURNING id"
+  - name: admissions
+    invoke: !ref Chat.historyQuery
+    inputs:
+      sql: "DELETE FROM turn_admissions RETURNING store_key"
+---
 kind: Run.Sequence
 metadata: { name: cleanWorkspace }
 steps:
@@ -85,11 +109,10 @@ steps:
     try:
       - name: remove
         inputs:
-          path: !cel "variables.workspaceDir"
+          path: !cel "string(variables.workspaceDir)"
           recursive: true
-        invoke:
-          kind: Fs.FileRemoval
-          cwd: "."
+        # The path is absolute (a host-path variable), so no `cwd` is needed.
+        invoke: { kind: Fs.FileRemoval }
     catch:
       # A first run, and every fresh checkout, has no directory to remove.
       - name: absent
@@ -106,7 +129,8 @@ steps:
       - name: chat
         invoke: !ref Chat.chatStart
         inputs:
-          conversationId: builds-1
+          conversationId: !cel "'builds-' + uuidv4()"
+          idempotencyKey: ""
           clientIp: test-runner
           message: |
             Build an app called `notes` that stores notes (title, body) in a
@@ -160,7 +184,7 @@ steps:
       # and the only one that says the behaviour is really there.
       - name: runSuite
         inputs:
-          command: !cel "'bun ./cli/nodejs/bin/telo.ts run ' + variables.workspaceDir + '/apps/notes/tests/telo.yaml'"
+          command: !cel "'bun ./cli/nodejs/bin/telo.ts run ' + string(variables.workspaceDir) + '/apps/notes/tests/telo.yaml'"
         invoke: !ref shell
       - name: assertSuitePasses
         inputs:

@@ -1,4 +1,4 @@
-import { InvokeError } from "@telorun/sdk";
+import { ERR_INVOKE_CANCELLED, InvokeError, type CancellationToken } from "@telorun/sdk";
 
 export type McpErrorCode =
   | "ERR_MCP_TRANSPORT"
@@ -32,6 +32,14 @@ export function toolError(content: unknown): InvokeError {
     "ERR_MCP_TOOL_ERROR",
     "MCP tool call returned isError: true",
     { content },
+  );
+}
+
+/** The request was aborted because the invocation carrying it was cancelled. */
+export function cancelledError(what: string, token: CancellationToken): InvokeError {
+  return new InvokeError(
+    ERR_INVOKE_CANCELLED,
+    `${what} was cancelled (${token.reason ?? "no reason given"})`,
   );
 }
 
