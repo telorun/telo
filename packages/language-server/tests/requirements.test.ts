@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { FIXTURES, HarnessHost, uri } from "./harness.js";
+import { FIXTURES, HarnessHost, canonical } from "./harness.js";
 
 // A host routes an owner's documents to one engine and picks that engine's
 // version from these intervals, comparing plain versions only — so the owner,
@@ -16,16 +16,16 @@ it("emits telo/requirements for an analysed owner", async () => {
   );
   const params = host.notifications.find((n) => n.method === "telo/requirements")!.params;
   expect(params).toEqual({
-    owner: uri(owner),
-    documents: [uri(owner), uri(join(FIXTURES, "billing", "handlers.yaml"))],
+    owner: canonical(owner),
+    documents: [canonical(owner), canonical(join(FIXTURES, "billing", "handlers.yaml"))],
     ranges: [
       {
-        module: uri(owner),
+        module: canonical(owner),
         text: ">=0.100.0",
         interval: { min: { version: "0.100.0", inclusive: true } },
       },
       {
-        module: uri(join(FIXTURES, "ledger", "telo.yaml")),
+        module: canonical(join(FIXTURES, "ledger", "telo.yaml")),
         text: ">=0.90.0 <99.0.0",
         interval: {
           min: { version: "0.90.0", inclusive: true },

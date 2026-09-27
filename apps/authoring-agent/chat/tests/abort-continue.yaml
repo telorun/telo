@@ -1,0 +1,488 @@
+kind: Telo.Application
+metadata:
+  name: ChatAbortContinue
+  version: 1.0.0
+  description: |
+    Abort and continue, driven offline against the provider stub. Abort: a
+    running turn is cancelled — its event stream ends with an
+    ERR_INVOKE_CANCELLED frame, the records route reports it `aborted`, it
+    cannot be continued, and the conversation takes its next message at once;
+    a finished turn answers `cancelled: false` and keeps no abort mark, an
+    unknown one 404, a removed one 410. A turn read from the records route
+    while it runs is `running`, and its event stream from that page's last id
+    delivers the rest (not the race of a turn ending between the route's two
+    reads, which this cannot construct). Continue: a turn the provider refused
+    is continued inside the same turn, dropping any abort mark an earlier
+    attempt left — 200 with the last record id, the next record its `turn-continued`
+    note naming the recorded error, the model's request carrying that note, and
+    one turn in the records route that now finished; a finished turn and a turn
+    followed by a later one are refused with their reason, a removed one 410.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  # By path, as the agent imports them, until they are published.
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspace, emptied before each run.
+  scratch:
+    env: CHAT_TEST_ABORT_CONTINUE_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/abort-continue
+targets:
+  - !ref test
+---
+# One turn's event stream, every frame decoded: a record frame's id and data,
+# or an error frame's code and message.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId, fromId]
+    properties:
+      turnId: { type: string }
+      fromId: { type: integer }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18481/chat/${{ inputs.turnId }}/events?lastEventId=${{ inputs.fromId }}"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  frames: !cel >-
+    steps.all.result.items.map(r, r.event == 'error'
+      ? {'event': 'error', 'error': parseJson(r.data)}
+      : {'event': r.event, 'id': int(r.id), 'data': parseJson(r.data).data})
+  # Record types, with an error frame read as its code.
+  kinds: !cel >-
+    steps.all.result.items.map(r, r.event == 'error' ? parseJson(r.data).code : parseJson(r.data).data.type)
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18481/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  status: !cel "steps.post.result.status"
+  turnId: !cel "steps.post.result.body.turnId"
+---
+# POST /chat/{turnId}/<action>, no body.
+kind: Run.Sequence
+metadata: { name: turnAction }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId, action]
+    properties:
+      turnId: { type: string }
+      action: { type: string, enum: [abort, continue] }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18481/chat/${{ inputs.turnId }}/${{ inputs.action }}"
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+  body: !cel "steps.post.result.body"
+---
+# Fails until the stub has received a model request carrying `text` — retried
+# by the caller, so a release is sent only once the request it lets go is held.
+kind: Run.Sequence
+metadata: { name: stubReceived }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: sent
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18480/requests
+  - name: notYet
+    if: !cel "!steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text))"
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub has not received a request carrying ' + inputs.text + ' yet.'"
+---
+kind: Run.Sequence
+metadata: { name: records }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18481/conversations/${{ inputs.conversationId }}/records"
+outputs:
+  turns: !cel "steps.get.result.body.turns"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18480 }
+targets: [ !ref stub ]
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18481 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18480/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        # ── abort ────────────────────────────────────────────────────────────
+        # The stub holds its answer until released — never, here — so the turn
+        # is running until it is aborted.
+        - name: slow
+          invoke: !ref startTurn
+          inputs: { conversationId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a, message: STUB_SLOW take your time }
+        - name: abortRunning
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.slow.result.turnId", action: abort }
+        - name: slowEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.slow.result.turnId", fromId: 0 }
+        - name: slowRecords
+          invoke: !ref records
+          inputs: { conversationId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a }
+        - name: continueAborted
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.slow.result.turnId", action: continue }
+        - name: next
+          invoke: !ref startTurn
+          inputs: { conversationId: 9d0e1f2a-3b4c-4d5e-8f6a-7b8c9d0e1f2a, message: hello again }
+        # Its model request carries the aborted turn's message as history, so
+        # the stub holds it too: let go once it has arrived.
+        - name: nextHeld
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: hello again }
+        - name: releaseNext
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18480/release
+            method: POST
+        - name: nextEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.next.result.turnId", fromId: 0 }
+        - name: abortFinished
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.next.result.turnId", action: abort }
+        - name: abortUnknown
+          invoke: !ref turnAction
+          inputs: { turnId: 01a0deb2-0000-7000-8000-000000000000, action: abort }
+        # The abort's own mark, read from the agent's database: kept on the turn
+        # it cancelled, cleared again on the finished turn it did not.
+        - name: marks
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: markDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Query
+                metadata: { name: readMarks }
+                connection: !ref markDb
+            steps:
+              - name: read
+                invoke: !ref readMarks
+                inputs:
+                  sql: "SELECT aborted_at IS NOT NULL AS marked FROM turns WHERE turn_id IN (?, ?) ORDER BY turn_id"
+                  bindings:
+                    - !cel "inputs.aborted"
+                    - !cel "inputs.finished"
+            outputs:
+              marked: !cel "steps.read.result.rows.map(r, r.marked)"
+          inputs:
+            aborted: !cel "steps.slow.result.turnId"
+            finished: !cel "steps.next.result.turnId"
+        - name: aborted
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              marked: !cel "steps.marks.result.marked"
+              running: [ !cel "steps.abortRunning.result.status", !cel "steps.abortRunning.result.body" ]
+              events: !cel "steps.slowEvents.result.kinds"
+              status: !cel "steps.slowRecords.result.turns.map(t, t.status)"
+              continued: [ !cel "steps.continueAborted.result.status", !cel "steps.continueAborted.result.body.reason" ]
+              nextAccepted: !cel "steps.next.result.status"
+              nextEnded: !cel "steps.nextEvents.result.kinds[size(steps.nextEvents.result.kinds) - 1]"
+              finished: [ !cel "steps.abortFinished.result.status", !cel "steps.abortFinished.result.body" ]
+              unknown: [ !cel "steps.abortUnknown.result.status", !cel "steps.abortUnknown.result.body.code" ]
+            expected:
+              marked: [1, 0]
+              running: [200, { cancelled: true }]
+              events: [user-message, ERR_INVOKE_CANCELLED]
+              status: [aborted]
+              continued: [409, aborted]
+              nextAccepted: 200
+              nextEnded: finish
+              finished: [200, { cancelled: false }]
+              unknown: [404, ERR_TURN_NOT_FOUND]
+        # ── records of a running turn ────────────────────────────────────────
+        # A turn read while it runs is `running` with the records it has, and
+        # attaching from the page's last id delivers the rest once the stub lets
+        # its model call go. This does not construct the race of a turn ending
+        # between the route's two reads — both reads here see it open.
+        - name: held
+          invoke: !ref startTurn
+          inputs: { conversationId: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c, message: STUB_SLOW hold me }
+        # Read once its model call is held — its message is journaled by then.
+        - name: heldAtStub
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: STUB_SLOW hold me }
+        - name: whileRunning
+          invoke: !ref records
+          inputs: { conversationId: 6f7a8b9c-0d1e-4f2a-8b3c-4d5e6f7a8b9c }
+        - name: release
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18480/release
+            method: POST
+        - name: rest
+          invoke: !ref readEvents
+          inputs:
+            turnId: !cel "steps.held.result.turnId"
+            fromId: !cel "int(steps.whileRunning.result.turns[0].records[size(steps.whileRunning.result.turns[0].records) - 1].id)"
+        - name: attachesFromPage
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              status: !cel "steps.whileRunning.result.turns[0].status"
+              records: !cel "steps.whileRunning.result.turns[0].records.map(r, r.data.type)"
+              next: !cel "steps.rest.result.frames[0].id"
+              ended: !cel "steps.rest.result.kinds[size(steps.rest.result.kinds) - 1]"
+            expected:
+              status: running
+              records: [user-message]
+              next: 2
+              ended: finish
+        # ── continue ─────────────────────────────────────────────────────────
+        # Refused by the provider on its first attempt only.
+        - name: refused
+          invoke: !ref startTurn
+          inputs: { conversationId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e, message: STUB_FAIL_ONCE build it }
+        - name: refusedEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.refused.result.turnId", fromId: 0 }
+        # A mark an abort left on an attempt that then ended another way: the
+        # continued attempt must not inherit it.
+        - name: staleMark
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: agentDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Query
+                metadata: { name: agentQuery }
+                connection: !ref agentDb
+            steps:
+              - name: run
+                invoke: !ref agentQuery
+                inputs:
+                  sql: "UPDATE turns SET aborted_at = '2026-01-01T00:00:00.000Z' WHERE turn_id = ? RETURNING turn_id"
+                  bindings: [ !cel "inputs.turnId" ]
+            outputs:
+              rows: !cel "steps.run.result.rows"
+          inputs:
+            turnId: !cel "steps.refused.result.turnId"
+        - name: continued
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.refused.result.turnId", action: continue }
+        - name: continuedEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.refused.result.turnId", fromId: !cel "steps.continued.result.body.fromId" }
+        - name: markCleared
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: agentDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Query
+                metadata: { name: agentQuery }
+                connection: !ref agentDb
+            steps:
+              - name: run
+                invoke: !ref agentQuery
+                inputs:
+                  sql: "SELECT aborted_at IS NULL AS cleared FROM turns WHERE turn_id = ?"
+                  bindings: [ !cel "inputs.turnId" ]
+            outputs:
+              rows: !cel "steps.run.result.rows"
+          inputs:
+            turnId: !cel "steps.refused.result.turnId"
+        - name: continuedRecords
+          invoke: !ref records
+          inputs: { conversationId: 2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e }
+        - name: continueFinished
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.refused.result.turnId", action: continue }
+        - name: sameTurn
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              firstAttempt: !cel "steps.refusedEvents.result.kinds"
+              continued: !cel "steps.continued.result.status"
+              turnId: !cel "steps.continued.result.body.turnId"
+              fromId: !cel "steps.continued.result.body.fromId"
+              nextRecord: [ !cel "steps.continuedEvents.result.frames[0].id", !cel "steps.continuedEvents.result.frames[0].data.type" ]
+              note: !cel "steps.continuedEvents.result.frames[0].data.note.startsWith('TURN CONTINUED: the previous attempt at this turn was interrupted by ERR_OPENAI_REQUEST_FAILED')"
+              ended: !cel "steps.continuedEvents.result.kinds[size(steps.continuedEvents.result.kinds) - 1]"
+              turns: !cel "steps.continuedRecords.result.turns.map(t, [t.turnId, t.status])"
+              markCleared: !cel "steps.markCleared.result.rows[0].cleared"
+              again: [ !cel "steps.continueFinished.result.status", !cel "steps.continueFinished.result.body.reason" ]
+            expected:
+              firstAttempt: [user-message, ERR_OPENAI_REQUEST_FAILED]
+              continued: 200
+              turnId: !cel "steps.refused.result.turnId"
+              fromId: !cel "steps.refusedEvents.result.frames[0].id"
+              nextRecord: [ !cel "steps.refusedEvents.result.frames[0].id + 1", turn-continued ]
+              note: true
+              ended: finish
+              turns: [ [ !cel "steps.refused.result.turnId", finished ] ]
+              markCleared: 1
+              again: [409, finished]
+        # A failed turn with a later turn after it is superseded.
+        - name: failed
+          invoke: !ref startTurn
+          inputs: { conversationId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a, message: STUB_FAIL please }
+        - name: failedEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.failed.result.turnId", fromId: 0 }
+        - name: later
+          invoke: !ref startTurn
+          inputs: { conversationId: 4d5e6f7a-8b9c-4d0e-9f1a-2b3c4d5e6f7a, message: hello }
+        - name: laterEvents
+          invoke: !ref readEvents
+          inputs: { turnId: !cel "steps.later.result.turnId", fromId: 0 }
+        - name: continueSuperseded
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.failed.result.turnId", action: continue }
+        # Removed through the same journal, from outside the agent.
+        - name: remove
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: agentDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: RecordStream.JournalRemoval
+                metadata: { name: removal }
+                journal:
+                  kind: RecordStream.Journal
+                  store:
+                    kind: RecordStreamSql.JournalStore
+                    connection: !ref agentDb
+                    table: turn_journal
+                  markerRetention: 1h
+            steps:
+              - name: removeFailed
+                invoke: !ref removal
+                inputs:
+                  key: !cel "inputs.turnId"
+          inputs:
+            turnId: !cel "steps.failed.result.turnId"
+        - name: continueRemoved
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.failed.result.turnId", action: continue }
+        - name: abortRemoved
+          invoke: !ref turnAction
+          inputs: { turnId: !cel "steps.failed.result.turnId", action: abort }
+        - name: refusals
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              superseded: [ !cel "steps.continueSuperseded.result.status", !cel "steps.continueSuperseded.result.body.reason" ]
+              continueRemoved: [ !cel "steps.continueRemoved.result.status", !cel "steps.continueRemoved.result.body.code" ]
+              abortRemoved: [ !cel "steps.abortRemoved.result.status", !cel "steps.abortRemoved.result.body.code" ]
+            expected:
+              superseded: [409, superseded]
+              continueRemoved: [410, ERR_JOURNAL_KEY_REMOVED]
+              abortRemoved: [410, ERR_JOURNAL_KEY_REMOVED]
+  # What the model was sent: the continued attempt's request carries the note.
+  - name: sent
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18480/requests
+  - name: noteSentToModel
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.sent.result.body.requests.exists(r,
+          json(r).contains('STUB_FAIL_ONCE') && json(r).contains('TURN CONTINUED: the previous attempt at this turn was interrupted by ERR_OPENAI_REQUEST_FAILED'))
+      expected: true

@@ -13,6 +13,17 @@ imports:
   Channel: ../../../modules/channel
   Run: ../../../modules/run
   Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's history file goes in, anchored at the working
+  # directory: a value supplied to the app by name must already be an absolute
+  # host path. Named after the key it feeds because `telo check` reads
+  # `variables` inside an App.Instance's own `variables:` map as that map, so a
+  # differently named variable is reported missing there.
+  historyFile:
+    env: AGENT_CONSOLE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
 targets:
   - !ref app
   - !ref test
@@ -26,7 +37,7 @@ variables:
   # A conversation the example persists outlives the test, and a run that resumes
   # one left half-finished behaves differently from a fresh one — so each run gets
   # its own history.
-  historyFile: !cel "'./.telo/agent-console-test-' + uuidv4() + '.sqlite'"
+  historyFile: !cel "variables.historyFile.joinPath('agent-console-test-' + uuidv4() + '.sqlite')"
 ---
 kind: Channel.ReadUntil
 metadata: { name: read }

@@ -20,9 +20,9 @@ metadata:
     To watch it tick without waiting for 03:00:
         JOB_CRON='*/10 * * * * *' telo .
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.32.0#sha256-BCghrZHLFCpZUhbYn9MBbRM2hsLssW3KD9IqqhxEwzU
+  Http: oci://ghcr.io/telorun/http-server@0.33.0#sha256-KuqDkp68S_hOl7nZ4WJLOyNAn2M3kmPSMwEaeBJbgSw
   Schedule: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
-  Fs: oci://ghcr.io/telorun/fs@0.10.1#sha256-pj5pToa-5CERdxQQpeRNYEJmtNWsNYIGKqehjamHXUo
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
 targets:
@@ -41,6 +41,7 @@ variables:
   scanPath:
     env: SCAN_PATH
     type: string
+    x-telo-type: Telo.HostPath
     default: "."
 ---
 # The job itself: one Telo.Runnable, so nothing in it knows which trigger
@@ -57,7 +58,7 @@ steps:
     invoke: !ref Console.writeLine
     inputs:
       output: !cel >-
-        '{green ✔} scanned ' + variables.scanPath + ' — ' +
+        '{green ✔} scanned ' + string(variables.scanPath) + ' — ' +
         string(size(steps.list.result.entries.filter(e, e.type == 'file'))) + ' files, ' +
         string(sum(steps.list.result.entries.map(e, e.size))) + ' bytes'
 outputs:

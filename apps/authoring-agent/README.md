@@ -7,7 +7,7 @@ rate limits are all declared resources, not code.
 
 The root manifest is a thin transport over `chat/`, a `Telo.Library` that owns
 the whole chat backend: an OpenAI-backed `Ai.AgentStream`, the filesystem and
-shell tools, the SQLite conversation store, the turn journal, and the handler
+shell tools, the turn journal and its projections in SQLite, and the handler
 that ties them together. The split exists so the library's own tests drive the
 same handler the HTTP routes do.
 
@@ -42,10 +42,19 @@ arrangement, and setting `WORKSPACE_DIR` is the whole of it.
 ### The agent's own state
 
 The agent keeps its state in `AGENT_STATE_DIR`, which defaults to `.telo-agent`
-inside the workspace. Today that directory holds one file, `agent.sqlite`: the
-conversation history (`GET /conversations/{id}`) and the admission records an
-`Idempotency-Key` replays from. Nothing else is created there until a feature
-needs it.
+inside the workspace. Today that directory holds one file, `agent.sqlite`:
+
+- **the turn journal** (`turn_journal`, `turn_journal_keys`) — every record of
+  every turn, under the turn's id. It is the one source of truth: the event
+  stream, the records route and the model's history are all read from it;
+- **`turns`** — which turns belong to which conversation, in order, when each
+  was started or last continued, and when a user aborted it. Metadata about
+  journal keys: a turn's status is read from its key;
+- **`messages` and `turn_projections`** — the model's history, projected from the
+  journal (below). Disposable: dropped, they are rebuilt from the journal;
+- **`turn_admissions`** — the records an `Idempotency-Key` replays from.
+
+Nothing else is created there until a feature needs it.
 
 It lives on the workspace volume because the container is the ephemeral part. A
 co-resident agent's workspace is the session volume, which outlives the
@@ -238,12 +247,13 @@ back into a question, never quietly replaced with a guess.
 | Route | Purpose |
 | --- | --- |
 | `POST /chat` | Start a turn. `200 {turnId}`, or a coded refusal (below). Takes an optional `Idempotency-Key` header |
-| `GET /chat/{turnId}/events` | The turn's stream, as `{ id, data }` SSE frames. Replays from `?lastEventId=` and then tails live, so a reload re-attaches to a turn in flight |
+| `GET /chat/{turnId}/events` | The turn's records as SSE frames, replayed and then tailed (below) |
+| `POST /chat/{turnId}/abort` | Cancel the turn's running attempt. No body. `200 {cancelled}` (below) |
+| `POST /chat/{turnId}/continue` | Continue an interrupted turn inside the same turn. No body. `200 {turnId, fromId}` (below) |
+| `GET /conversations/{id}/records` | The conversation's turns and their records, paged (below) |
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
 | `POST /workspace` | Apply an explicit write/delete change set |
 | `GET /workspace/file?path=` | One file's contents |
-| `GET /conversations/{id}` | The persisted message rows — the model's own view of the thread |
-| `POST /conversations/{id}/messages` | Seed those rows into a fresh instance, idempotent by row id |
 
 Every non-200 answer from `POST /chat` is `{ error, code, … }`, and the `code`
 is what a client branches on:
@@ -257,32 +267,142 @@ is what a client branches on:
 | 422 | `ERR_IDEMPOTENCY_KEY_REUSED` | The key was already used for a different message in this conversation |
 | 500 | the failure's own code | Anything else |
 
-A refused start writes nothing: the user's message is recorded by the admitted
-turn's first step, so no refusal leaves a user row behind.
+A refused start leaves nothing behind: the throttle and the budget refuse
+before anything is written, and a start refused because another turn is running
+— or failing after its reservation, at the claim, the `turns` row or the lease —
+takes back its reservation and whatever of its journal key and `turns` row it
+wrote. A failure is answered with its own code.
 
 **`Idempotency-Key`** (optional, 1–255 characters) makes a retried POST safe.
 The admission runs at most once per `<conversationId>:<key>`: a repeat returns
-the original `200 { turnId }` instead of starting a second turn, and exactly one
-user row exists. The same key with a different message (compared by SHA-256) is
-`ERR_IDEMPOTENCY_KEY_REUSED`. The record lives in `agent.sqlite` for 24 hours,
-so it survives a restart. A refusal releases the key, so retrying after a 429
-is a fresh attempt rather than a replay of the refusal. Without the header
-nothing is deduplicated. Send one key per message, and the same key on every
-retry of that message.
+the original `200 { turnId }` instead of starting a second turn. The same key
+with a different message (compared by SHA-256) is `ERR_IDEMPOTENCY_KEY_REUSED`.
+The record lives in `agent.sqlite` for 24 hours, so it survives a restart. A
+refusal releases the key, so retrying after a 429 is a fresh attempt rather than
+a replay of the refusal. Without the header nothing is deduplicated. Send one key
+per message, and the same key on every retry of that message.
 
 One turn at a time per conversation: `ERR_TURN_IN_PROGRESS` is what stops two
 model turns writing the same workspace at once. That lock is held in memory.
 There is deliberately no single-file write route — a change set of one is the
 same thing without a second set of concurrency rules.
 
-The conversation store is in `AGENT_STATE_DIR`, so it lasts as long as that
-directory does. A client that expects a thread to outlive the directory — a
-standalone agent's container is replaced, and its workspace with it — keeps the
-rows itself and posts them back before the next turn; that is what
-`POST /conversations/{id}/messages` is for.
+**`POST /chat/{turnId}/abort`** cancels the turn's running attempt through the
+conversation's lease: the model call and the running tool see the cancellation
+at once, so the workspace stops changing; the journal fails the key with
+`ERR_INVOKE_CANCELLED`, which is the event stream's last frame; the reservation
+is settled to what the completed model calls cost; and the conversation takes
+its next `POST /chat` immediately. It answers `{ cancelled: true }`, or
+`{ cancelled: false }` when nothing was running for the turn. An unknown turn is
+404 `ERR_TURN_NOT_FOUND`, a removed one 410 `ERR_JOURNAL_KEY_REMOVED`. The
+cancellation is process-local, like the lease: it reaches a turn this process
+runs.
 
-There is **no abort route**. Studio asks for one and treats a 404 as "this agent
-predates it", so a stopped turn runs to its natural end server-side.
+**`POST /chat/{turnId}/continue`** picks an interrupted turn back up — one that
+failed, or whose process died — as another attempt at the **same** turn: same
+id, same records, same event stream. The model is given the turn's recorded
+history in full — every tool call and result the interrupted attempt recorded —
+followed by a note naming what interrupted it and every tool call it started
+with no recorded result ("effect unknown — check before repeating"), so it goes
+on from where it stopped instead of starting over. It answers
+`200 { turnId, fromId }`: `fromId` is the turn's last record before the new
+attempt, whose `turn-continued` record comes next, so a client re-attaches to
+the event stream from the last id it saw. Refusals, checked in this order:
+
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed |
+| 404 | `ERR_TURN_NOT_FOUND` | No such turn on this agent |
+| 409 | `ERR_TURN_IN_PROGRESS` | A turn of the conversation is still running — this one (its stream was lost, not its work) or a later one. Carries `activeTurnId` |
+| 409 | `ERR_TURN_NOT_CONTINUABLE` | Carries `reason`: `finished`, `aborted` (a user's abort is a chosen ending), or `superseded` (a later turn exists; only the last turn continues) |
+| 429 | `ERR_RATE_LIMITED` / `ERR_AT_CAPACITY` | As for `POST /chat`, with `retryAfter` |
+
+Each attempt reserves against the budget and settles on its own; a continue that
+fails before its attempt starts refunds its reservation and answers with the
+failure's own code. A continue
+that finds the turn already taken over by another continue's attempt answers
+409 `ERR_TURN_IN_PROGRESS` naming the turn itself.
+
+### A turn's records
+
+`POST /chat` claims the turn's journal key before it answers, so the turn exists
+the moment its id does. The turn then records, in order:
+
+| Record `type` | What it is |
+| --- | --- |
+| `user-message` | Always first: `{ content, model }` — what was asked, and the model answering it |
+| `turn-continued` | Opens each attempt after the first: `{ note, model }` — what the model was told about the interruption, and the model answering |
+| `text-delta`, `reasoning-delta` | The reply and the model's summary of its thinking, as they stream |
+| `tool-call`, `tool-result` | A tool the model called, and what came back (`toolCall.id` = `toolResult.toolCallId`) |
+| `provider-state` | The model's own replay material (encrypted reasoning); nothing to render |
+| `step-finish` | The end of one model call, with its usage |
+| `finish` | The end of the turn, with the usage of every call summed |
+
+A turn that fails records no terminal record of its own: the journal marks the
+key failed with the error's code, message and data, and every reader is told.
+Its status is `running` while its key is open, `finished` once the key finished,
+`failed` once the key failed — including a turn whose process died, which the
+journal fails as `ERR_JOURNAL_WRITER_LOST` once its writer has been silent for 30
+seconds — and `aborted` when a user's abort failed it with
+`ERR_INVOKE_CANCELLED`. A shutdown cancels a turn the same way, and that turn
+stays `failed`, so it can be continued.
+
+**`GET /chat/{turnId}/events`** streams them as SSE frames: each record is a
+`message` event whose `id:` line is the record's id and whose data is
+`{ id, data }`. A running turn replays and then tails; a finished one replays and
+ends; a failed one replays and ends with an `event: error` frame carrying
+`{ code, message }` — and so does a turn removed while it is read
+(`ERR_JOURNAL_KEY_REMOVED`). Resume after the last id seen with the
+`Last-Event-ID` header (a browser's `EventSource` sends it by itself) or
+`?lastEventId=`; the header wins, and a value that is not digits is 400. A turn
+nobody started is 404 `ERR_TURN_NOT_FOUND`; a removed one is 410
+`ERR_JOURNAL_KEY_REMOVED` for `RETENTION_DAYS` after its removal.
+
+**`GET /conversations/{id}/records?fromTurn=&fromId=&limit=`** returns
+`{ turns: [{ turnId, status, error, startedAt, records: [{ id, data }] }], next }`
+— `limit` records per page (default 2000, at most 10000). Each turn's status and
+error come from the same snapshot its page was planned from, so a turn that ends
+while the page is read is reported `running` with the records up to that point,
+and a client attaching to its event stream from the last of them receives the
+rest. `next` is `{ fromTurn, fromId }` for the following page, or
+null on the last. An unknown conversation is an empty page; a `fromTurn` that is
+not one of its turns is 404 `ERR_TURN_NOT_FOUND`. The records of a turn are
+exactly the frames its event stream delivers, so a client renders a conversation
+it opens and a turn it follows with the same fold.
+
+### The model's history
+
+The model does not read the journal record by record: each turn is **projected**
+into `messages` — the user's message, then per model call an assistant row (its
+text and the tool calls that got a result) followed by the `tool` rows answering
+them — and `turn_projections` records how far each turn was projected, the
+provider state it ended with and the model that produced it. A turn is projected
+when it ends, however it ends — after its reservation is settled, so a failed
+projection still ends the turn with its error but never leaves the reservation
+held — and before any history read every turn whose
+journal holds records its projection has not seen is caught up. A tool call with
+no recorded result is left out, since the provider refuses a call with no
+answer. A `turn-continued` record closes the interrupted model call like the end
+of a call does and adds its note as a user message, so a continued turn replays
+every attempt in order. The last recorded provider state is replayed only to an
+attempt running on the model that produced it. `rebuildProjection` (exported by
+the chat library) projects a conversation again from its journal.
+
+### Retention
+
+Retention deletes **whole conversations**: one with no turn started or continued
+for `RETENTION_DAYS` loses every turn's journal key, then its `messages`,
+`turn_projections` and `turns` rows — nothing of a conversation outlives its
+source. A removed turn's event stream answers 410 for another `RETENTION_DAYS`
+(the journal's removal marker), then 404. The sweep runs at boot and hourly; it
+is exported as `retentionSweep { idleBefore }`, and every step of it is safe to
+repeat, so a sweep a crash cut short is finished by the next one.
+
+Breaking against earlier releases: `GET /conversations/{id}` and
+`POST /conversations/{id}/messages` are gone — the records route replaces the
+first, and a client no longer seeds history, because the agent keeps it. The
+old `messages` table held joined text only and is replaced; conversations from
+before this release keep no history.
 
 ## Configuration
 
@@ -290,7 +410,7 @@ Secrets:
 
 | Env var | Purpose |
 | --- | --- |
-| `OPENAI_API_KEY` | Required. The model credential |
+| `OPENAI_API_KEY` | Required. The model credential; any value when `MODEL_ENDPOINT` is a keyless endpoint |
 
 Variables:
 
@@ -299,13 +419,16 @@ Variables:
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
 | `AGENT_STATE_DIR` | `<WORKSPACE_DIR>/.telo-agent` | Where the agent keeps its own state — `agent.sqlite` (see above) |
+| `MODEL` | `gpt-5.2` | The model every turn runs on. Changing it drops the recorded reasoning on the next turn |
+| `MODEL_ENDPOINT` | `https://api.openai.com/v1` | The OpenAI-compatible endpoint the model is called through — a gateway, or the local stub the tests use |
+| `RETENTION_DAYS` | `30` | Days a conversation may sit idle before it is deleted whole, and how long its removed turns then answer 410 rather than 404 (at least 1) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 
-The library takes several more that the root does not surface as env
-(`model`, the budget window, the per-IP throttle, and the two `telo`
-CLI settings below); change them at the import in `telo.yaml`.
+The library takes several more that the root does not surface as env (the
+budget window, the per-IP throttle, and the two `telo` CLI settings below);
+change them at the import in `telo.yaml`.
 
 ## What the agent is allowed to do
 
@@ -361,7 +484,11 @@ must declare.
 `test-suite-e2e.yaml` is separate from the repo suite: it drives a real model
 against the live hub and imports the standard library at pinned published
 versions, so it also fails while a change has landed here but is not yet
-released and re-pinned. Cases skip themselves when `OPENAI_API_KEY` is unset.
+released and re-pinned. Live cases skip themselves when `OPENAI_API_KEY` is
+unset.
+
+The offline cases run whole turns against `chat/tests/__fixtures__/provider-stub`,
+a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.
 
 `authors-manifest.yaml` and `asks-before-building.yaml` are a pair, and the pair
 is the assertion: a fully specified request writes a valid file in the first
@@ -377,15 +504,30 @@ suite, a test beside it, the agent running that suite, and the suite passing whe
 this test runs it independently. `run-manifest-tool.yaml` and `telo-cli-tool.yaml`
 need no model or key: they assert the two execution gates directly.
 
-`agent-state-survives-restart.yaml` and `chat-start-idempotency.yaml` boot the
-application itself (`App.Instance`, a dummy key, a workspace of their own under
-`chat/tests/.scratch/`) and need no model either: the first restarts the agent on
-the same workspace and reads a conversation back, the second pins
-`Idempotency-Key` replay, key reuse, a key still being admitted (a claim seeded
-straight into the instance's `agent.sqlite`), and that a refused start writes
-nothing. An
-admitted turn fails in the background at its first model call; that failure is
-logged and is not what they assert on.
+`agent-state-survives-restart.yaml`, `chat-start-idempotency.yaml` and
+`journal-history.yaml` boot the application itself (`App.Instance`, the stub or a
+dummy key, a workspace of their own under `chat/tests/.scratch/`) and need no
+model: the first restarts the agent on the same workspace and reads the same
+records page back; the second pins `Idempotency-Key` replay, key reuse, a key
+still being admitted, and that a start refused for capacity or for a running
+turn leaves nothing behind; the third drives the event stream and the records
+route — a failed turn's error frame, 404, 410, paging, `Last-Event-ID` — and
+that recorded reasoning reaches only the model that produced it.
+`abort-continue.yaml` boots it the same way: aborting a running turn ends its
+stream with `ERR_INVOKE_CANCELLED`, reads as `aborted` and frees the
+conversation; a refused turn is continued inside the same turn with the note the
+model then receives; and every refusal of both routes answers its code.
+`reservation-settlement.yaml` boots it the same way and pins that a reservation is always given back or settled: an admission that fails after reserving answers with its own error, leaves its key removed and refunds; a turn whose projection fails at its ending is still settled; a continue that fails after reserving refunds.
+`projection-rebuild.yaml` imports the chat library and rebuilds the projection
+from the journal; `retention-sweep.yaml` imports it too and deletes an idle
+conversation whole while an active one with old turns is untouched, including
+after a sweep a crash cut short. `restart-live.yaml` is live: a restart
+mid-build ends the turn's stream with an error frame, and after a restart a
+question about the last change is answered from history rather than by
+re-reading the workspace. `abort-continue-live.yaml` is live too: an abort after
+the first write ends the stream within a second and the workspace stays still;
+a build whose agent was stopped is continued by the next agent in the same turn
+without rewriting or re-reading what it had already written.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

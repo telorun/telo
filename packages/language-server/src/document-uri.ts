@@ -85,9 +85,10 @@ function normalizePath(path: string): string {
 function splitSource(source: string): { prefix: string; path: string } {
   const match = SCHEME.exec(source);
   if (match) return { prefix: `${match[1]}://${match[2]}`, path: match[3] || "/" };
-  // A UNC share: its `//host` is not a path segment to normalize away.
-  const unc = /^(\/\/[^/]+)(.*)$/.exec(source);
-  if (unc) return { prefix: unc[1]!, path: unc[2] || "/" };
+  // A UNC share's `//host` and a Windows drive's `/c:` are roots, not path
+  // segments to normalize away or walk above.
+  const root = /^(\/\/[^/]+|\/[A-Za-z]:(?=\/|$))(.*)$/.exec(source);
+  if (root) return { prefix: root[1]!, path: root[2] || "/" };
   return { prefix: "", path: source };
 }
 

@@ -1,0 +1,253 @@
+kind: Telo.Application
+metadata:
+  name: ChatRestartLive
+  version: 1.0.0
+  description: |
+    Live against the real model: what survives an agent restart. (1) A restart
+    in the middle of a build leaves a turn nobody is writing; the next agent's
+    event stream for it replays what was recorded and then ENDS with an error
+    frame — within the journal's writer timeout — instead of tailing forever.
+    (2) The model's history is the journal's projection: after a turn that
+    writes two files and a restart, asking what was just changed is answered
+    from history, with no read_file, list_dir or telo_check call. Skips silently
+    when OPENAI_API_KEY is unset.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  scratch:
+    env: CHAT_TEST_RESTART_LIVE_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/restart-live
+targets:
+  - !ref test
+---
+# One turn's event stream, every frame decoded.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [url]
+    properties:
+      url: { type: string }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "inputs.url"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  frames: !cel >-
+    steps.all.result.items.map(r, r.event == 'error'
+      ? {'event': 'error', 'error': parseJson(r.data)}
+      : {'event': r.event, 'data': parseJson(r.data).data})
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, conversationId, message]
+    properties:
+      port: { type: integer }
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/chat"
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  turnId: !cel "steps.post.result.body.turnId"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: prepare
+        invoke: { kind: Fs.DirectoryCreation }
+        inputs:
+          path: !cel "string(variables.scratch)"
+          createParents: true
+      - name: reset
+        invoke: { kind: Fs.FileRemoval }
+        inputs:
+          path: !cel "string(variables.scratch)"
+          recursive: true
+      - name: restartMidBuild
+        invoke: !ref restartMidBuild
+      - name: historySurvives
+        invoke: !ref historySurvives
+---
+kind: Run.Sequence
+metadata: { name: restartMidBuild }
+steps:
+  - name: before
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18470 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('mid-build')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        - name: start
+          invoke: !ref startTurn
+          inputs:
+            port: 18470
+            conversationId: 3a4b5c6d-7e8f-4a0b-9c1d-2e3f4a5b6c7d
+            message: |
+              Build an app called `library` that tracks books and loans in a
+              SQLite database at `:memory:`, with a feature library per domain
+              and a test per behaviour. Just build it, using your recommended
+              answer wherever you would otherwise ask.
+        # Watch the build for a while, then stop reading: the agent is stopped
+        # with the turn still running.
+        - name: watch
+          try:
+            - name: read
+              timeout: 25000
+              invoke: !ref readEvents
+              inputs:
+                url: !interpolate "http://127.0.0.1:18470/chat/${{ steps.start.result.turnId }}/events"
+          catch:
+            - name: stillRunning
+              value: true
+      outputs:
+        turnId: !cel "steps.start.result.turnId"
+  - name: after
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18471 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('mid-build')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        # Bounded by the writer timeout plus room: a turn nobody writes must
+        # end, never tail.
+        - name: read
+          timeout: 45000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18471/chat/${{ inputs.turnId }}/events"
+      outputs:
+        frames: !cel "steps.read.result.frames"
+    inputs:
+      turnId: !cel "steps.before.result.turnId"
+  - name: endsWithError
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.after.result.frames[0].data.type"
+        last: !cel "steps.after.result.frames[size(steps.after.result.frames) - 1].event"
+      expected: { first: user-message, last: error }
+---
+kind: Run.Sequence
+metadata: { name: historySurvives }
+steps:
+  - name: write
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18472 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('history')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        - name: start
+          invoke: !ref startTurn
+          inputs:
+            port: 18472
+            conversationId: 4b5c6d7e-8f9a-4b1c-8d2e-3f4a5b6c7d8e
+            message: |
+              Create two files: `shapes/telo.yaml`, a Telo.Library named Shapes
+              (version 1.0.0) with no resources, and `colors/telo.yaml`, a
+              Telo.Library named Colors (version 1.0.0) with no resources. Make
+              sure both check clean. Do not ask anything.
+        - name: read
+          timeout: 300000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18472/chat/${{ steps.start.result.turnId }}/events"
+  - name: ask
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18473 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('history')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        - name: start
+          invoke: !ref startTurn
+          inputs:
+            port: 18473
+            conversationId: 4b5c6d7e-8f9a-4b1c-8d2e-3f4a5b6c7d8e
+            message: What did you just change, and did it check clean?
+        - name: read
+          timeout: 300000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18473/chat/${{ steps.start.result.turnId }}/events"
+      outputs:
+        frames: !cel "steps.read.result.frames"
+  - name: answeredFromHistory
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        finished: !cel "steps.ask.result.frames[size(steps.ask.result.frames) - 1].data.type"
+        rereads: !cel >-
+          steps.ask.result.frames.filter(f, f.event != 'error' && f.data.type == 'tool-call'
+            && f.data.toolCall.name in ['read_file', 'list_dir', 'telo_check']).map(f, f.data.toolCall.name)
+      expected: { finished: finish, rereads: [] }

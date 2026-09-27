@@ -7,7 +7,7 @@ metadata:
     kernel, a few at a time. A test is an ordinary application, so nothing here
     is a test framework — the suite is a resource like any other.
 imports:
-  Test: oci://ghcr.io/telorun/test@0.10.3#sha256-8Wk8KfbBKIfujicodL8mDTWTbcL3AjTRp-vNFMuld28
+  Test: oci://ghcr.io/telorun/test@0.11.0#sha256-52HSuSu8rmKoKmhXi_gKJuoYGNrUiDzRJZHxTZe1Rxc
 targets:
   - !ref runAll
 ---

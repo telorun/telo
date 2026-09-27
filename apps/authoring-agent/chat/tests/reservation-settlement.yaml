@@ -1,0 +1,320 @@
+kind: Telo.Application
+metadata:
+  name: ChatReservationSettlement
+  version: 1.0.0
+  description: |
+    A turn's spend reservation is always given back or settled. An admission
+    that fails after reserving — here the `turns` row is refused by a trigger
+    seeded into the instance's `agent.sqlite` — answers with the original error,
+    leaves the turn's journal key removed, and refunds the reservation: with room
+    for exactly one reservation, the next start is admitted. A turn whose
+    projection fails at its ending — a trigger refusing the assistant's row —
+    ends its event stream with that failure and is still settled to what it
+    spent: with room for one reservation and a little more, the next start is
+    admitted rather than refused for capacity. A continue that fails after
+    reserving — a trigger refusing the turn's `active_at` touch — answers with
+    the original error and refunds its reservation, so the next start is
+    admitted. Offline, against the provider stub.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  # By path, as the agent imports them, until they are published.
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspaces, emptied before each run.
+  scratch:
+    env: CHAT_TEST_RESERVATION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/reservation-settlement
+targets:
+  - !ref test
+---
+# One turn's event stream, every frame read as its record type, an error frame
+# as its code and message.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [url]
+    properties:
+      url: { type: string }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "inputs.url"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  frames: !cel >-
+    steps.all.result.items.map(r, r.event == 'error'
+      ? {'type': 'error', 'code': parseJson(r.data).code, 'message': parseJson(r.data).message}
+      : {'type': parseJson(r.data).data.type})
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: admissionFails
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18495 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('admission')"
+            # Nothing listens here: the admitted turn fails at its model call,
+            # which is not what is under test.
+            modelEndpoint: http://127.0.0.1:9/v1
+            # Exactly one turn's reservation.
+            budgetLimit: 40000
+          secrets:
+            openaiApiKey: stub-key
+        # The instance's own database, reached from outside it.
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('admission').joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Command
+          metadata: { name: seed }
+          connection: !ref agentDb
+        - kind: Sql.Query
+          metadata: { name: keys }
+          connection: !ref agentDb
+        - kind: RecordStream.JournalRead
+          metadata: { name: readKey }
+          journal:
+            kind: RecordStream.Journal
+            store:
+              kind: RecordStreamSql.JournalStore
+              connection: !ref agentDb
+              table: turn_journal
+            markerRetention: 1h
+      targets: [ !ref agent ]
+      steps:
+        # Every `turns` row of one conversation is refused — a failure after
+        # the key is claimed.
+        - name: refuseTurns
+          invoke: !ref seed
+          inputs:
+            sql: |
+              CREATE TRIGGER refuse_turns BEFORE INSERT ON turns
+              WHEN NEW.conversation_id = '7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d'
+              BEGIN SELECT RAISE(ABORT, 'turn refused by the test'); END
+        - name: refused
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18495/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+              message: add a health endpoint
+        - name: claimed
+          invoke: !ref keys
+          inputs:
+            sql: "SELECT journal_key FROM turn_journal_keys"
+        - name: key
+          invoke: !ref readKey
+          inputs:
+            key: !cel "steps.claimed.result.rows[0].journal_key"
+            limit: 0
+        - name: next
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18495/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 8b9c0d1e-2f3a-4b4c-9d5e-6f7a8b9c0d1e
+              message: add a health endpoint
+        - name: refundedAndRemoved
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              refused: !cel "steps.refused.result.status"
+              original: !cel "steps.refused.result.body.error.contains('turn refused by the test')"
+              keys: !cel "size(steps.claimed.result.rows)"
+              key: !cel "steps.key.result.state"
+              next: !cel "steps.next.result.status"
+            expected:
+              refused: 500
+              original: true
+              keys: 1
+              key: removed
+              next: 200
+  - name: projectionFails
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: stub }
+          source: ./__fixtures__/provider-stub/telo.yaml
+          ports: { http: 18494 }
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18496 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('projection')"
+            modelEndpoint: http://127.0.0.1:18494/v1
+            # One turn's reservation and a little more: a second start fits only
+            # once the first turn is settled to what it spent.
+            budgetLimit: 60000
+          secrets:
+            openaiApiKey: stub-key
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('projection').joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Command
+          metadata: { name: seed }
+          connection: !ref agentDb
+      targets: [ !ref stub, !ref agent ]
+      steps:
+        # The user's row projects; the assistant's reply does not.
+        - name: refuseAnswers
+          invoke: !ref seed
+          inputs:
+            sql: |
+              CREATE TRIGGER refuse_answers BEFORE INSERT ON messages
+              WHEN NEW.role = 'assistant'
+              BEGIN SELECT RAISE(ABORT, 'projection refused by the test'); END
+        - name: first
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18496/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+              message: hello
+        - name: firstEvents
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18496/chat/${{ steps.first.result.body.turnId }}/events"
+        - name: second
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18496/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 0d1e2f3a-4b5c-4d6e-9f7a-8b9c0d1e2f3a
+              message: hello
+        - name: settledDespiteProjection
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              completed: !cel "steps.firstEvents.result.frames.exists(f, f.type == 'finish')"
+              ended: !cel >-
+                cel.bind(last, steps.firstEvents.result.frames[size(steps.firstEvents.result.frames) - 1],
+                  last.type == 'error' && last.message.contains('projection refused by the test'))
+              second: !cel "steps.second.result.status"
+            expected:
+              completed: true
+              ended: true
+              second: 200
+  - name: continueFails
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18497 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('continue')"
+            # Nothing listens here: every turn fails at its model call.
+            modelEndpoint: http://127.0.0.1:9/v1
+            # Two reservations: the failed turn is charged its own, which leaves
+            # exactly one — the continue's, or the next start's once refunded.
+            budgetLimit: 80000
+          secrets:
+            openaiApiKey: stub-key
+        - kind: SQLite.Connection
+          metadata: { name: agentDb }
+          file: !cel "variables.scratch.joinPath('continue').joinPath('.telo-agent').joinPath('agent.sqlite')"
+        - kind: Sql.Command
+          metadata: { name: seed }
+          connection: !ref agentDb
+      targets: [ !ref agent ]
+      steps:
+        - name: failing
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18497/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 1e2f3a4b-5c6d-4e7f-8a9b-0c1d2e3f4a5b
+              message: hello
+        - name: failingEvents
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18497/chat/${{ steps.failing.result.body.turnId }}/events"
+        # A continue fails after reserving — at the touch of `active_at`.
+        - name: refuseTouch
+          invoke: !ref seed
+          inputs:
+            sql: |
+              CREATE TRIGGER refuse_touch BEFORE UPDATE OF active_at ON turns
+              BEGIN SELECT RAISE(ABORT, 'touch refused by the test'); END
+        - name: continued
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18497/chat/${{ steps.failing.result.body.turnId }}/continue"
+            method: POST
+        - name: next
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18497/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 2f3a4b5c-6d7e-4f8a-9b0c-1d2e3f4a5b6c
+              message: hello
+        - name: refunded
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              failed: !cel "steps.failingEvents.result.frames[size(steps.failingEvents.result.frames) - 1].type"
+              continued: !cel "steps.continued.result.status"
+              original: !cel "steps.continued.result.body.error.contains('touch refused by the test')"
+              next: !cel "steps.next.result.status"
+            expected:
+              failed: error
+              continued: 500
+              original: true
+              next: 200

@@ -1,8 +1,9 @@
+import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 // @ts-expect-error — a plain ESM script with no declarations.
 import { verifyInlines } from "../../../scripts/check-changeset-status.mjs";
 
-const PACKAGE = new URL("..", import.meta.url).pathname;
+const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 
 // The build holds `teloInlines` to exactly the workspace packages the bundle's
 // metafile attributes inputs to: third-party code and the package's own sources

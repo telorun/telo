@@ -4,12 +4,11 @@ metadata:
   version: 1.0.0
   description: |
     The agent keeps its state on the workspace volume, so a restart on the same
-    WORKSPACE_DIR keeps its conversations. Boots the agent application, writes a
-    conversation through the history-seeding route (no model involved), stops it,
-    boots a fresh instance on the same workspace and reads the conversation back.
-    Also pins what lands on disk: `.telo-agent/agent.sqlite` and nothing else —
-    no attachment or checkpoint directories before a feature creates them.
-    Key-free and offline: nothing here starts a model turn.
+    WORKSPACE_DIR keeps its conversations. Boots the agent against the provider
+    stub, runs one turn with a tool call to its end, reads the conversation's
+    records, stops it, boots a fresh instance on the same workspace and reads
+    the same page back, identical. Also pins what lands on disk:
+    `.telo-agent/agent.sqlite` and nothing else. Offline and key-free.
 imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
@@ -29,6 +28,12 @@ targets:
 ---
 kind: Run.Sequence
 metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18430 }
+targets: [ !ref stub ]
 steps:
   # Created first so the removal always has something to remove: a previous run
   # may or may not have left a workspace behind.
@@ -52,25 +57,34 @@ steps:
           ports: { http: 18431 }
           variables:
             workspaceDir: !cel "variables.workspace"
+            modelEndpoint: http://127.0.0.1:18430/v1
           secrets:
-            openaiApiKey: dummy-key-never-used
+            openaiApiKey: stub-key
       targets: [ !ref agent ]
       steps:
-        - name: seed
+        - name: start
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18431/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/messages
+            url: http://127.0.0.1:18431/chat
             method: POST
           inputs:
             body:
-              messages:
-                - { id: m1, role: user, content: build me a todo app, createdAt: "2026-09-26 10:00:00" }
-                - { id: m2, role: assistant, content: which database?, createdAt: "2026-09-26 10:00:05" }
-        - name: seeded
-          invoke: { kind: Assert.Equals }
+              conversationId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+              message: STUB_TOOL what is in the workspace?
+        # Drained to its end, so the turn is finished before the restart.
+        - name: events
+          timeout: 30000
+          invoke: { kind: HttpClient.Request }
           inputs:
-            actual: !cel "steps.seed.result.status"
-            expected: 200
+            url: !interpolate "http://127.0.0.1:18431/chat/${{ steps.start.result.body.turnId }}/events"
+            responseType: text
+        - name: page
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18431/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/records
+      outputs:
+        turnId: !cel "steps.start.result.body.turnId"
+        page: !cel "steps.page.result.body"
   - name: secondBoot
     invoke:
       kind: Run.Sequence
@@ -81,24 +95,15 @@ steps:
           ports: { http: 18432 }
           variables:
             workspaceDir: !cel "variables.workspace"
+            modelEndpoint: http://127.0.0.1:18430/v1
           secrets:
-            openaiApiKey: dummy-key-never-used
+            openaiApiKey: stub-key
       targets: [ !ref agent ]
       steps:
-        - name: read
+        - name: page
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18432/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7
-            method: GET
-        - name: kept
-          invoke: { kind: Assert.Equals }
-          inputs:
-            actual:
-              status: !cel "steps.read.result.status"
-              ids: !cel "steps.read.result.body.messages.map(m, m.id)"
-            expected:
-              status: 200
-              ids: [m1, m2]
+            url: http://127.0.0.1:18432/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/records
         # The state directory is not workspace content: the agent's own tree
         # listing never shows it.
         - name: tree
@@ -106,11 +111,20 @@ steps:
             kind: HttpClient.Request
             url: http://127.0.0.1:18432/workspace
             method: GET
-        - name: hidden
-          invoke: { kind: Assert.Equals }
-          inputs:
-            actual: !cel "steps.tree.result.body.files"
-            expected: []
+      outputs:
+        page: !cel "steps.page.result.body"
+        files: !cel "steps.tree.result.body.files"
+  - name: kept
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        turns: !cel "steps.firstBoot.result.page.turns.map(t, [t.turnId, t.status])"
+        samePage: !cel "steps.secondBoot.result.page == steps.firstBoot.result.page"
+        files: !cel "steps.secondBoot.result.files"
+      expected:
+        turns: [ [ !cel "steps.firstBoot.result.turnId", finished ] ]
+        samePage: true
+        files: []
   - name: onDisk
     invoke:
       kind: Fs.DirectoryListing

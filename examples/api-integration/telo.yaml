@@ -36,11 +36,11 @@ metadata:
     that client id, or the app has device flow switched off — it answers 404
     rather than naming either.
 imports:
-  OAuth: oci://ghcr.io/telorun/oauth-client@0.8.2#sha256-33ao_4XfG3fb94LmVempWLi3O4fY83vYVs7iWH_Y6as
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.10.0#sha256-KYVWku7I0Er3AMKNwxSBaoGktrByiruLsoxvr-yVl_k
-  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.5.1#sha256-EwMIFmqcg8lg56OCcySKg5NgZ4iNP7hX-no8pEfjV6c
+  OAuth: oci://ghcr.io/telorun/oauth-client@0.8.3#sha256-n2qnrLGLgocqoBw7S6fUGPJLQZk9UJl6a6FWm7cr2OQ
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.11.0#sha256-uL3TNWg-Pn3W3VIgrGhbdVUIE5U-mamF3h0LglLKGaM
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
 targets:
@@ -68,6 +68,7 @@ variables:
   grantsFile:
     env: GRANTS_FILE
     type: string
+    x-telo-type: Telo.HostPath
     default: ./grants.db
 ---
 # Where the grant lives between runs. A memory store would work and would make

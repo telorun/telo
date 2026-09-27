@@ -13,11 +13,11 @@ import {
   type ManifestSource,
 } from "@telorun/analyzer";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 class DiskSource implements ManifestSource {
   supports(url: string): boolean {
-    return url.startsWith("/");
+    return isAbsolute(url);
   }
   async read(url: string) {
     const path = statSync(url).isDirectory() ? join(url, "telo.yaml") : url;
