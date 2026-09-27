@@ -73,6 +73,7 @@ how to read a failure, and the debugging flags — see
 | `X_TELO_REF_MISSING_KIND` | A structured `x-telo-ref` declares no `kind`, so the slot constrains nothing and the editor has nothing to pick against. |
 | `X_TELO_REF_USE_CONFLICT` | `anyOf` branches of one slot declare disagreeing `use`s. `use` is a property of the slot — declare the acceptable kinds as one `kind:` list with one `use`. |
 | `X_TELO_REF_DYNAMIC_SELECTOR` | A `use` case map's selector field is written in CEL, so which `use` holds cannot be resolved statically. Write the mode as a literal (or rely on the schema default), or split the wiring into one resource per mode. |
+| `X_TELO_REF_INVALID_OUTPUT_TYPE` | A structured `x-telo-ref` declares an `outputType` that is not a JSON Schema object, so it would read as absent and the slot would accept a target returning anything. |
 | `MOUNT_ON_NON_MOUNT` / `MOUNT_DISPATCHER_CONFLICT` | `mount:` used on a non-Mount definition, or alongside another dispatcher (`invoke:` / `provide:` / `run:`). |
 | `PROVIDE_ON_NON_PROVIDER` / `PROVIDE_DISPATCHER_CONFLICT` | `provide:` on a definition that is not a `Telo.Provider`, or beside another dispatcher. |
 
@@ -140,6 +141,7 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | Code | What it means and what to do |
 | --- | --- |
 | `CONTRACT_INPUTS_MISMATCH` | The `inputs:` at a call site do not satisfy the target's declared `inputType`. |
+| `REFERENCE_OUTPUT_MISMATCH` | A reference slot declares, through `x-telo-ref` `outputType:`, what its target must return, and the referenced resource's output contract definitely cannot be that shape — a required field missing from a closed contract, or a field of another type. Point the slot at a target returning that shape, or declare the target's `outputType` / `outputs:` to produce it. |
 | `CONTRACT_MISSING_MAPPING` | A child that inherits a controller declared its own `inputType`/`outputType` but no `inputs:`/`result:` bridge, so the inherited controller would never see the mapped shape. |
 | `CONTRACT_INPUTS_SCHEMA_FORM` | `inputs:` was written as a JSON-Schema property map. `inputs`/`outputs` are always **values**; `inputType`/`outputType` are always **schemas**. |
 | `CONTRACT_TYPE_NOT_FOUND` | A `!ref` names a type that does not resolve — in a kind's or resource's `inputType` / `outputType`, or in a signature's `params[].schema` / `returns.schema`, at the root or nested. |

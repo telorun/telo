@@ -1,9 +1,10 @@
 import { Fragment, useMemo, useState } from "react";
-import { Brain, ChevronDown, RotateCw } from "lucide-react";
-import { splitAgentText } from "@/agent";
+import { Brain, ChevronDown, CircleStop, RotateCw } from "lucide-react";
+import { describeTurnError, splitAgentText } from "@/agent";
 import type { AssistantMessage, ChatMessage, ToolCallView, UserMessage } from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
 import {
@@ -38,24 +39,7 @@ function UserMessageBlock({ message }: { message: UserMessage }) {
   return (
     <Message from="user">
       <MessageContent>
-        {message.resumedRequest !== undefined ? (
-          // A resume message repeats the request and adds a report of what the
-          // interrupted turn's tools already did. The request is what the user
-          // wrote and stays in plain view; the report is collapsed, because it
-          // is generated and long — but reachable, since it is what the agent
-          // was actually sent.
-          <Collapsible>
-            <div className="whitespace-pre-wrap">{message.resumedRequest}</div>
-            <CollapsibleTrigger className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
-              Resumed after an interruption — show what the agent was told
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-              {message.text}
-            </CollapsibleContent>
-          </Collapsible>
-        ) : (
-          <div className="whitespace-pre-wrap">{message.text}</div>
-        )}
+        <div className="whitespace-pre-wrap">{message.text}</div>
       </MessageContent>
     </Message>
   );
@@ -98,6 +82,7 @@ function AssistantMessageBlock({
             );
           }
           if (part.kind === "tool") return <ToolCallCard key={`tool-${i}`} tool={part.tool} />;
+          if (part.kind === "continued") return <ContinuedDivider key={`continued-${i}`} />;
           if (i !== lastText || !segments) {
             return <MessageResponse key={`text-${i}`}>{part.text}</MessageResponse>;
           }
@@ -121,9 +106,15 @@ function AssistantMessageBlock({
           );
         })}
         {message.pending && parts.length === 0 && <Loader size={16} className="text-muted-foreground" />}
+        {message.stopped && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CircleStop className="size-3" />
+            Stopped
+          </div>
+        )}
         {message.error && (
           <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
-            <span>{message.error}</span>
+            <span>{describeTurnError({ code: message.errorCode, message: message.error })}</span>
             {onRetry && (
               <Button variant="outline" size="xs" onClick={onRetry}>
                 <RotateCw className="size-3" />
@@ -134,6 +125,20 @@ function AssistantMessageBlock({
         )}
       </MessageContent>
     </Message>
+  );
+}
+
+/** Where an interrupted turn was continued: the same turn goes on below. */
+function ContinuedDivider() {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Separator className="flex-1" />
+      <span className="flex shrink-0 items-center gap-1.5">
+        <RotateCw className="size-3" />
+        Continued after an interruption
+      </span>
+      <Separator className="flex-1" />
+    </div>
   );
 }
 

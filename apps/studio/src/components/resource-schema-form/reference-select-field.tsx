@@ -5,6 +5,7 @@ import {
   inlineResourceKind,
   parseRefValue,
   pendingRefCreate,
+  refSlotOf,
   resolveRefCandidates,
   toRefString,
   toRefValue,
@@ -64,7 +65,7 @@ export function ReferenceSelectField({
 
   const inlineKind = inlineResourceKind(value);
 
-  const options = resolveRefCandidates(refTargets, resolvedResources, registry);
+  const options = resolveRefCandidates(refTargets, resolvedResources, registry, refSlotOf(prop));
   // Kinds that could FILL this slot but have no instance yet. Without them a
   // module that declares none of them is a dead end: the select reads "(no
   // candidates)" and there is nowhere to go. Same source the canvas rail uses

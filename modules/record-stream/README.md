@@ -24,7 +24,9 @@ Stream operations on structured records. Format-neutral transformers, sources, a
 | `RecordStream.MemoryJournalStore` | A journal store in the process's memory. |
 | `RecordStream.Journal` | A keyed, offset-addressable replay journal over a store (Provider). |
 | `RecordStream.JournalSink` | Claim a key and drain a stream into it, with a writer heartbeat. |
+| `RecordStream.JournalClaim` | Claim a key for a named writer without draining anything, so readers can attach before the work starts. |
 | `RecordStream.JournalSource` | Read a key from any id: replay, then tail live until it ends. |
+| `RecordStream.JournalRead` | Read a key's state and records in one snapshot, without waiting. |
 | `RecordStream.JournalRemoval` | Remove one key; readers are told it was removed. |
 | `RecordStream.JournalExpiry` | Apply the journal's retention; run it on a schedule. |
 
@@ -202,13 +204,15 @@ A journal names where its records live with a **required** `store:`:
   records that survive restarts and are shared between processes.
 
 The journal protocol is written once, above the store; a backend implements eight
-storage primitives and nothing else. See [the store contract](docs/store-contract.md).
+storage primitives and nothing else, and reports in every header the id of the key's
+last record (`lastId`, `0` for an empty log) — what a claim and a snapshot read report. See [the store contract](docs/store-contract.md).
 
 ```yaml
 kind: RecordStream.Journal
 metadata: { name: turns }
 store: { kind: RecordStream.MemoryJournalStore }
-retention: 24h          # how long an ended key is kept
+retention: 24h          # how long an ended key is kept; omitted, until it is removed
+markerRetention: 168h   # optional; how long a removal answers "removed" — `retention` when omitted
 writerTimeout: 30s      # optional; 30s when omitted
 ---
 kind: RecordStream.JournalSink
@@ -222,12 +226,21 @@ journal: !ref turns
 # GET  route: invoke source { key: turnId, fromId: <Last-Event-ID> } → SSE-encode { id, data }.
 ```
 
+At least one of `retention` and `markerRetention` is required
+(`RECORD_STREAM_RETENTION_MISSING`), and neither may be negative
+(`RECORD_STREAM_RETENTION_NEGATIVE` / `RECORD_STREAM_MARKER_RETENTION_NEGATIVE`) —
+reported by `telo check` at the declaration and by the journal when it is created.
+Omitting `retention` keeps every ended key until the application removes it, which is
+how an application that owns its own retention rule (removing whole conversations, say)
+keeps the journal from expiring keys underneath it; `markerRetention` then says how long
+a removed key keeps answering "removed" before it reads as never written.
+
 Records are written as typed values, so an int64 past 2^53 or a bytes field
 replays with its type and value on every store.
 
 ### Writing — `RecordStream.JournalSink`
 
-`{ key, input, resume? }` → `{ key, count }`. The sink **claims** the key before it pulls
+`{ key, input, resume?, writer? }` → `{ key, count }`. The sink **claims** the key before it pulls
 the first record, then appends each record with the next id (1-based,
 gap-free). On normal completion the key is **finished**; on an input error it is
 **failed** — the error's code, message and data are recorded for readers — and
@@ -243,11 +256,21 @@ The sink raises:
 
 | Code | When |
 | --- | --- |
-| `ERR_JOURNAL_KEY_BUSY` | The key already exists and belongs to another writer — live, finished or, without `resume`, failed. Raised at the claim, before any record is pulled, or later if another writer took the key. |
+| `ERR_JOURNAL_KEY_BUSY` | The key already exists and is not this drain's to take — held live by another writer or drain, finished, or, without `resume`, failed or abandoned. Raised at the claim, before any record is pulled, or later if another writer took the key. |
 | `ERR_JOURNAL_KEY_REMOVED` | The key was removed, before the claim or while the drain ran. |
 | `ERR_JOURNAL_WRITER_LOST` | This writer's key was failed as abandoned; its next write is refused. |
 
 On any of these the sink stops the drain and cancels its input.
+
+With `writer`, the sink claims under that token instead of one of its own, and a key a
+`JournalClaim` left **open under the same token** — heartbeat within its timeout, not yet
+adopted — is **adopted** rather than refused. Adoption is exclusive: the sink records its
+own drain identity (minted per drain, never written in a manifest) in the key's header,
+at the version it read, as its first heartbeat — recording its own journal's
+`writerTimeout` — so of two sinks under one `writer`, exactly one adopts the key and the
+other is refused with `ERR_JOURNAL_KEY_BUSY` at the claim, before it pulls a record. The
+adopting sink heartbeats the key from then on and appends after its last id. One claim,
+one drain.
 
 #### Continuing a key — `resume: true`
 
@@ -273,6 +296,32 @@ The sink also re-raises its input stream's own error unchanged — whatever the
 producer raised. That error is not in the kind's `throws:`, since no literal list
 can name it: a `catches:` entry naming its code is `UNDECLARED_THROW_CODE` at
 `telo check`, and a trace records the failed drain as `InvokeRejected.Undeclared`.
+
+### Claiming ahead — `RecordStream.JournalClaim`
+
+`{ key, writer, resume? }` → `{ key, lastId }`. Claims the key for the named `writer`
+**without draining anything**, so the key exists — and a reader tails it instead of
+waiting for it — before the work that fills it starts. That is what lets a route answer
+"started" only once the key is there, and a reader it hands the key to never waits on a
+key nobody has written. A `JournalSink` given the same `writer` then adopts it.
+
+| The key | JournalClaim |
+| --- | --- |
+| never written | claimed; `lastId` 0 |
+| open under the same `writer`, heartbeat within its timeout | returned unchanged, with its `lastId` — whether or not a sink has adopted it; nothing is written |
+| finished, failed, or open with a stale heartbeat, by a sink under the same `writer` | returned unchanged, with its `lastId`, `resume` or not — that attempt is over (a stale one is failed as `ERR_JOURNAL_WRITER_LOST` first), and its ending (a failure's recorded error included) stays |
+| open with a heartbeat within its timeout, or finished, under another writer | `ERR_JOURNAL_KEY_BUSY` |
+| failed otherwise, or open with a stale heartbeat | `ERR_JOURNAL_KEY_BUSY`; with `resume: true`, taken over exactly as the sink's `resume` does, its records kept |
+| removed | `ERR_JOURNAL_KEY_REMOVED` |
+
+`lastId` is the id of the key's last record at the claim, so the next record the
+adopting sink appends is `lastId + 1`. After a claim that takes a key over, the key is open again at
+once: a reader opened before the sink starts tails it and receives the continuation,
+rather than raising the old failure.
+
+**Nothing heartbeats a claim until a sink adopts it.** A claim no sink ever drains goes
+stale after the journal's `writerTimeout` and is failed as `ERR_JOURNAL_WRITER_LOST` by
+the next reader, snapshot read or expiry pass — exactly like a writer that died.
 
 ### Reading — `RecordStream.JournalSource`
 
@@ -300,6 +349,25 @@ raises `ERR_INVOKE_CANCELLED` when the invocation that opened it is cancelled (a
 step's `timeout:` elapsing, a cancelled run). Either way it makes no further
 store call.
 
+### Snapshot reads — `RecordStream.JournalRead`
+
+`{ key, fromId?, limit? }` → `{ state, error, lastId, entries }`. One consistent
+snapshot of the key, **never waiting and never raising for its state** — a store
+failure still raises. Where `JournalSource` follows a key, this answers what it holds
+right now: listing a history, a status page, deciding whether a key may be continued.
+
+| Field | Meaning |
+| --- | --- |
+| `state` | `unknown` (never written, or forgotten after removal), `open` (a writer holds it), `finished`, `failed`, `removed` |
+| `error` | a failed key's recorded error `{ code?, message, data? }`; null otherwise |
+| `lastId` | the id of the key's last record; 0 when it has none |
+| `entries` | `{ id, data }` with id greater than `fromId` (default 0), at most `limit`; every one when `limit` is omitted, none at `limit: 0` |
+
+An open key whose writer's heartbeat is older than its timeout reads as `failed` with
+`ERR_JOURNAL_WRITER_LOST`, and is failed at the version that was read — as a reader
+fails it — so a writer that is alive after all wins, and the key is read again. Records
+decode from their typed frames exactly as a reader's do.
+
 ### Removal and expiry
 
 - **`RecordStream.JournalRemoval`** — `{ key }` → `{ outcome }`: `removed` (also
@@ -307,10 +375,10 @@ store call.
   kept, so readers are told the key was removed rather than left waiting; a
   writer still draining it is refused.
 - **`RecordStream.JournalExpiry`** — no inputs → `{ count }`. Removes the records
-  of every finished or failed key older than the journal's `retention:`, forgets
-  markers older than it, fails keys whose writer stopped heartbeating, and returns
-  how many keys it removed. A journal owns no timer, so trigger it from a
-  schedule:
+  of every finished or failed key older than the journal's `retention:` (none,
+  when it sets no `retention`), forgets markers older than its `markerRetention:`,
+  fails keys whose writer stopped heartbeating, and returns how many keys it
+  removed. A journal owns no timer, so trigger it from a schedule:
 
 ```yaml
 kind: Scheduler.Interval

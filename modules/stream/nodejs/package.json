@@ -5,12 +5,14 @@
   "description": "Build-only package for the std/stream module's bundled controllers. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@telorun/sdk": "workspace:*",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   }
 }

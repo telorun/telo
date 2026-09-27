@@ -202,8 +202,8 @@ export function AgentPanel({ className }: { className?: string }) {
               // earlier has been answered, or the user moved on without doing so.
               answerable={i === agent.messages.length - 1 && !agent.locked}
               onAnswer={agent.send}
-              // Likewise for resuming: a retry rewrites the tail of the
-              // transcript, so only the turn that ended it can offer one.
+              // Likewise for resuming: only the conversation's last turn can be
+              // continued.
               onRetry={i === agent.messages.length - 1 && agent.canRetry ? agent.retry : undefined}
             />
           ))}
@@ -232,7 +232,9 @@ export function AgentPanel({ className }: { className?: string }) {
                 ? "Launching agent…"
                 : agent.status === "seeding"
                   ? "Syncing workspace…"
-                  : "AI working…"}{" "}
+                  : agent.status === "stopping"
+                    ? "Stopping…"
+                    : "AI working…"}{" "}
               Editing is paused.
             </span>
           </div>
@@ -248,7 +250,13 @@ export function AgentPanel({ className }: { className?: string }) {
             className="max-h-40 resize-none"
           />
           {agent.locked ? (
-            <Button variant="destructive" size="icon" onClick={agent.stop} title="Stop">
+            <Button
+              variant="destructive"
+              size="icon"
+              onClick={agent.stop}
+              disabled={agent.status === "stopping"}
+              title="Stop"
+            >
               <Square className="size-4" />
             </Button>
           ) : (

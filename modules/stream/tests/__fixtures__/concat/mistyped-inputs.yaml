@@ -1,0 +1,12 @@
+# A source's `inputs:` naming a key its contract refuses.
+kind: Telo.Application
+metadata:
+  name: ConcatMistypedInputs
+imports:
+  Stream: ../../..
+---
+kind: Stream.Concat
+metadata: { name: joined }
+sources:
+  - invoke: { kind: Stream.Of }
+    inputs: { itemz: [a] }

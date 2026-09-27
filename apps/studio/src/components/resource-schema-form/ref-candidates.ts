@@ -1,4 +1,4 @@
-import { readRefSlot } from "@telorun/analyzer";
+import { readRefSlot, type RefSlot } from "@telorun/analyzer";
 import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../lib/utils";
 import type { ResolvedResourceOption } from "./types";
@@ -43,6 +43,12 @@ export interface RefResolver {
    *  host that supplies only the resolution slice still type-checks; without it
    *  the picker offers existing resources and no create action. */
   userFacingKindsForRef?(refTarget: string): string[] | undefined;
+  /** Why a candidate cannot fill a slot by what it RETURNS — the slot's
+   *  `x-telo-ref` `outputType` against the candidate's output contract, the
+   *  verdict `telo check` reports as `REFERENCE_OUTPUT_MISMATCH`. Empty when it
+   *  can. Optional so a host with only the resolution slice still type-checks;
+   *  without it no candidate is withheld for its output. */
+  outputRefusal?(slot: RefSlot, candidate: { kind: string; config?: Record<string, unknown> }): string[];
 }
 
 /**
@@ -141,6 +147,10 @@ export function resolveRefCandidates(
   refTargets: string[],
   resolvedResources: ResolvedResourceOption[],
   registry?: RefResolver | null,
+  /** The slot the candidates are for, when the caller holds it: a slot that
+   *  constrains its target's output withholds a candidate `telo check` would
+   *  refuse there. */
+  slot?: RefSlot,
 ): ResolvedResourceOption[] {
   const seen = new Set<string>();
   const candidates: ResolvedResourceOption[] = [];
@@ -169,6 +179,12 @@ export function resolveRefCandidates(
     for (const match of matches) {
       const key = `${match.kind}/${match.name}`;
       if (seen.has(key)) continue;
+      if (
+        slot?.outputType &&
+        (registry?.outputRefusal?.(slot, { kind: match.kind, config: match.config })?.length ?? 0) > 0
+      ) {
+        continue;
+      }
       seen.add(key);
       candidates.push(match);
     }
@@ -231,4 +247,10 @@ export function toRefValue(option: { kind: string; name: string }): TaggedSentin
  *  the editor is not a surface that has to be remembered when it changes. */
 export function collectRefTargets(prop: Record<string, unknown>): string[] {
   return readRefSlot(prop)?.kinds ?? [];
+}
+
+/** The whole reference slot a property declares, for a caller that passes it to
+ *  {@link resolveRefCandidates}. Read through the analyzer's accessor. */
+export function refSlotOf(prop: Record<string, unknown>): RefSlot | undefined {
+  return readRefSlot(prop);
 }

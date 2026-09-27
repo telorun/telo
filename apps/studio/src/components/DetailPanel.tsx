@@ -158,6 +158,7 @@ export function DetailPanel({
         kind: r.kind,
         name: r.name,
         capability: viewData?.kinds.get(r.kind)?.capability || undefined,
+        config: r.fields,
       })),
     [viewData],
   );

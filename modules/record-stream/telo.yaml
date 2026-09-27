@@ -10,8 +10,8 @@ metadata:
     record stream down to plain text, fan one stream out to two consumers, run a
     handler exactly once however a stream ends, and record a stream into a keyed,
     durable replay journal so a reader that disconnects, or outlives a restart, resumes
-    from where it left off and tails live, with removal, retention, writer liveness and
-    continuing a failed or abandoned recording.
+    from where it left off and tails live, or reads its state in one snapshot, with
+    removal, retention, writer liveness and continuing a failed or abandoned recording.
 exports:
   kinds:
     - ExtractText
@@ -22,7 +22,9 @@ exports:
     - MemoryJournalStore
     - Journal
     - JournalSink
+    - JournalClaim
     - JournalSource
+    - JournalRead
     - JournalRemoval
     - JournalExpiry
   resources:
@@ -415,7 +417,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [store, retention]
+  required: [store]
   properties:
     store:
       title: Store
@@ -429,7 +431,14 @@ schema:
       title: Retention
       description: >-
         How long a finished or failed key is kept after it ended before an expiry
-        pass removes it — and how long the removal marker is then kept.
+        pass removes it. Omitted, an ended key is kept until it is removed.
+      x-telo-type: Telo.Duration
+    markerRetention:
+      title: Marker retention
+      description: >-
+        How long a removed key keeps answering "removed" before an expiry pass
+        forgets it, after which it reads as never written. `retention` when
+        omitted; at least one of the two is required.
       x-telo-type: Telo.Duration
     # No `default:` — the kernel fills defaults without decoding them into an
     # instance type, so a written `30s` default fails validation at boot.
@@ -448,11 +457,21 @@ schema:
     - condition: !cel "!has(self.retention) || duration(self.retention) >= duration('0s')"
       code: RECORD_STREAM_RETENTION_NEGATIVE
       message: sets a negative `retention`; a key cannot be kept for less than no time.
+    - condition: !cel "!has(self.markerRetention) || duration(self.markerRetention) >= duration('0s')"
+      code: RECORD_STREAM_MARKER_RETENTION_NEGATIVE
+      message: sets a negative `markerRetention`; a marker cannot be kept for less than no time.
+    - condition: !cel "has(self.retention) || has(self.markerRetention)"
+      code: RECORD_STREAM_RETENTION_MISSING
+      message: >-
+        sets neither `retention` nor `markerRetention`; a removal marker would be kept
+        forever. Set `markerRetention` to keep ended keys until they are removed.
 ---
 # Claim a key in a Journal, then drain a stream into it. The claim happens before
 # the first record is pulled. With `resume: true` an existing key is continued
 # rather than refused when its last writer failed or stopped heartbeating: the log
-# is kept and ids continue from its last one. A heartbeat runs every third of the
+# is kept and ids continue from its last one. With `writer`, a key a JournalClaim
+# left open under that writer is adopted by exactly one drain: the adoption is
+# its first heartbeat, recording this drain, and ids continue. A heartbeat runs every third of the
 # journal's writer timeout for as long as the drain does, records or not. On normal
 # completion the key is finished; on an input error it is failed (the error's
 # code, message and data recorded for readers) and the error rethrown. A refused
@@ -481,9 +500,10 @@ throws:
       description: "`input` did not resolve to a stream."
     ERR_JOURNAL_KEY_BUSY:
       description: >-
-        The key already exists and belongs to another writer — live, finished or,
-        without `resume`, failed. Raised when claiming it, before any record is
-        pulled, or later if another writer took it.
+        The key already exists and is not this drain's to take — held live by
+        another writer or drain, finished, or, without `resume`, failed or
+        abandoned. Raised when claiming, before any record is pulled; raised
+        later only if another writer took it over.
     ERR_JOURNAL_KEY_REMOVED:
       description: The key was removed, before the claim or while the drain ran.
     ERR_JOURNAL_WRITER_LOST:
@@ -513,6 +533,15 @@ inputType:
           first). The records already there are kept and new ids follow the last
           one. A key with a live writer, a finished key and a removed key are still
           refused.
+      writer:
+        type: string
+        minLength: 1
+        description: >-
+          Writer token. A key JournalClaim left open under this same token, heartbeat
+          within its timeout and not yet adopted, is adopted instead of refused —
+          by one drain only: records continue after its last id and this sink
+          heartbeats it from then on. Omitted, the sink claims under a token of its
+          own.
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -532,6 +561,84 @@ schema:
     journal:
       title: Journal
       description: The journal to write into.
+      x-telo-ref:
+        kind: Self.Journal
+        use: dependency
+---
+# Claim a key for a named writer without draining anything into it, so the key
+# exists — and readers tail it rather than wait for it — before the work that
+# fills it starts. One JournalSink given the same `writer` adopts it; a second
+# is refused. `resume` takes a failed or abandoned key over exactly as the sink's
+# `resume` does. A key already open under the same writer is returned unchanged,
+# adopted or not, and nothing is written; so is a key a sink under the same writer
+# already finished or failed, or left open with a stale heartbeat (failed as lost
+# first), whose ending stays. Nothing heartbeats a
+# claim until a sink adopts it, so one never drained goes stale and is failed as
+# ERR_JOURNAL_WRITER_LOST by the next reader or expiry pass.
+kind: Telo.Definition
+metadata:
+  name: JournalClaim
+  description: >-
+    Reserves a recorded stream's key for a named writer before any record exists,
+    so readers can attach at once and a later writer with the same name continues
+    it. Can take over a recording whose writer failed or died, keeping its records.
+    Reports the id of the last record already there.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalClaimController
+throws:
+  codes:
+    ERR_JOURNAL_KEY_BUSY:
+      description: >-
+        The key already exists under another writer — live, finished or, without
+        `resume`, failed — or, without `resume`, this writer's claim went stale
+        before a sink adopted it.
+    ERR_JOURNAL_KEY_REMOVED:
+      description: The key was removed.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, writer]
+    properties:
+      key:
+        type: string
+        minLength: 1
+        description: Key to claim.
+      writer:
+        type: string
+        minLength: 1
+        description: >-
+          Writer token the key is claimed under; a JournalSink given the same token
+          adopts the key.
+      resume:
+        type: boolean
+        default: false
+        description: >-
+          Take the key over when its last writer failed, or stopped heartbeating
+          (that key is failed as lost first) — unless that writer is this one and
+          its sink already adopted the key, whose ending is returned unchanged.
+          Its records are kept and the next record continues after `lastId`.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key, lastId]
+    properties:
+      key: { type: string }
+      lastId:
+        type: integer
+        description: Id of the key's last record at the claim; 0 when it has none.
+schema:
+  type: object
+  additionalProperties: false
+  required: [journal]
+  properties:
+    journal:
+      title: Journal
+      description: The journal to claim the key in.
       x-telo-ref:
         kind: Self.Journal
         use: dependency
@@ -608,6 +715,94 @@ schema:
         kind: Self.Journal
         use: dependency
 ---
+# One snapshot of a key: its state, the recorded error of a failed key, the id of
+# its last record and the entries after `fromId`. Never waits and never raises
+# for the key's state — a store failure still raises. An open key whose writer's
+# heartbeat is older than its timeout reads as failed with ERR_JOURNAL_WRITER_LOST
+# and is failed at the version that was read, as a JournalSource reader fails it.
+kind: Telo.Definition
+metadata:
+  name: JournalRead
+  description: >-
+    Reads a recorded stream's current state and records in one consistent snapshot,
+    without waiting: whether it is live, finished, failed with its recorded error,
+    removed or never written, the id of its last record, and a page of records from
+    a given offset. Suits listing history or checking status.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalReadController
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key:
+        type: string
+        minLength: 1
+        description: Key to read.
+      fromId:
+        type: integer
+        minimum: 0
+        default: 0
+        description: Return entries with id greater than this (0 = from the start).
+      limit:
+        type: integer
+        minimum: 0
+        description: >-
+          Most entries to return; 0 reads the state alone. Omitted, every entry
+          after `fromId` is returned.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [state, error, lastId, entries]
+    properties:
+      state:
+        type: string
+        enum: [unknown, open, finished, failed, removed]
+        description: >-
+          `unknown` — never written (or forgotten after removal); `open` — a writer
+          holds it; `finished` / `failed` — it ended; `removed` — its records were
+          removed.
+      error:
+        description: >-
+          A failed key's recorded error — ERR_JOURNAL_WRITER_LOST when its writer
+          stopped heartbeating — and null in every other state.
+        type: [object, "null"]
+        additionalProperties: false
+        required: [message]
+        properties:
+          code: { type: string }
+          message: { type: string }
+          data: {}
+      lastId:
+        type: integer
+        description: Id of the key's last record; 0 when it has none.
+      entries:
+        type: array
+        description: The entries after `fromId`, in id order, at most `limit`.
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, data]
+          properties:
+            id: { type: integer }
+            data: {}
+schema:
+  type: object
+  additionalProperties: false
+  required: [journal]
+  properties:
+    journal:
+      title: Journal
+      description: The journal to read from.
+      x-telo-ref:
+        kind: Self.Journal
+        use: dependency
+---
 kind: Telo.Definition
 metadata:
   name: JournalRemoval
@@ -659,9 +854,9 @@ metadata:
   name: JournalExpiry
   description: >-
     Applies a replay journal's retention: deletes the records of every stream that
-    finished or failed longer ago than the retention window, fails streams whose
-    writer stopped sending heartbeats, and returns how many streams it removed. Run
-    it on a schedule.
+    finished or failed longer ago than the retention window, forgets removed streams
+    once their removal is old enough, fails streams whose writer stopped sending
+    heartbeats, and returns how many streams it removed. Run it on a schedule.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalExpiryController
@@ -679,7 +874,9 @@ outputType:
     properties:
       count:
         type: integer
-        description: Number of finished or failed keys whose records this pass removed.
+        description: >-
+          Number of finished or failed keys whose records this pass removed; always
+          0 when the journal sets no `retention`.
 schema:
   type: object
   additionalProperties: false

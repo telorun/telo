@@ -18,6 +18,7 @@ interface JournalSinkInputs {
   key: string;
   input: AsyncIterable<unknown>;
   resume?: boolean;
+  writer?: string;
 }
 
 interface JournalSinkOutputs {
@@ -39,7 +40,9 @@ function isRefusal(err: unknown): boolean {
 /**
  * RecordStream.JournalSink — claim a key, then drain a stream into it. The claim
  * comes before the first record is pulled (with `resume`, a failed or abandoned
- * key is taken over and its ids continue), and a heartbeat runs every third of
+ * key is taken over and its ids continue; with `writer`, a key a `JournalClaim`
+ * left open under that writer is adopted by exactly one drain, its identity
+ * recorded as the first heartbeat), and a heartbeat runs every third of
  * the journal's writer timeout for as long as the drain does, records or not.
  * The writer's store operations run one at a time, so a heartbeat never races an
  * append for the version. A refused write stops the drain, cancels the input and
@@ -54,7 +57,7 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
 
   async invoke(inputs: JournalSinkInputs): Promise<JournalSinkOutputs> {
     const name = this.resource.metadata.name;
-    const { key, input, resume } = inputs;
+    const { key, input, resume, writer: holder } = inputs;
     if (!input || typeof (input as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
       throw new InvokeError("ERR_INVALID_INPUT", `RecordStream.JournalSink "${name}": 'input' must be a stream.`);
     }
@@ -64,7 +67,7 @@ class JournalSink implements ResourceInstance<JournalSinkInputs, JournalSinkOutp
       () => `RecordStream.JournalSink "${name}": 'journal'`,
       "Self.Journal",
     );
-    const writer = await journal.claim(key, { resume: resume === true });
+    const writer = await journal.claim(key, { resume: resume === true, writer: holder });
     return this.drain(writer, input, journal.settings.writerTimeoutMs / 3);
   }
 

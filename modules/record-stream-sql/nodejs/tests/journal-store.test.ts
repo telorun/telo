@@ -1,5 +1,6 @@
 import { createCancellationSource } from "@telorun/sdk";
 import type { ResourceContext } from "@telorun/sdk";
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { create } from "../src/journal-store.js";
 
@@ -71,5 +72,61 @@ describe("RecordStreamSql.JournalStore", () => {
 
     expect(statements.length).toBe(before);
     expect((store as unknown as { waiters: Map<string, unknown> }).waiters.size).toBe(0);
+  });
+});
+
+/** The connection slice the store uses, over an in-memory SQLite database. The
+ *  clock expression is the SQLite backend's own. */
+interface SqliteDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): { all(...params: unknown[]): unknown[]; run(...params: unknown[]): { changes: number | bigint } };
+}
+
+function sqliteConnection() {
+  // Loaded through require: vite's resolver does not know the `node:sqlite` built-in.
+  const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
+    DatabaseSync: new (path: string) => SqliteDatabase;
+  };
+  const db = new DatabaseSync(":memory:");
+  const run = async (sql: string, params: unknown[] = []) => {
+    const statement = db.prepare(sql);
+    const values = params;
+    if (/^\s*SELECT/i.test(sql)) return { rows: statement.all(...values) as never[] };
+    return { rows: [], numAffectedRows: statement.run(...values).changes };
+  };
+  return {
+    dialect: {
+      placeholderStyle: "qmark" as const,
+      quoteIdentifier: (name: string) => `"${name}"`,
+      renderCurrentTimeMillis: () => "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)",
+    },
+    execute: run,
+    executeUncommitted: run,
+    async runInTransaction<T>(body: (bind: () => void) => Promise<T>): Promise<T> {
+      db.exec("BEGIN");
+      try {
+        const result = await body(() => undefined);
+        db.exec("COMMIT");
+        return result;
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+    },
+    toRowCount: (result: { numAffectedRows?: unknown }) => Number(result.numAffectedRows ?? 0),
+  };
+}
+
+describe("RecordStreamSql.JournalStore lastId", () => {
+  it("is reported the same by scan as by read for the same key", async () => {
+    const store = await create({ metadata: { name: "store" }, connection: sqliteConnection(), createTable: true }, ctx);
+    await store.init(ctx);
+    let version = (await store.putIfAbsent("k", "header"))!;
+    for (const record of ["a", "b", "c"]) version = (await store.compareAndAppend("k", version, record))!.version;
+
+    const read = (await store.read("k", 0, 0)).header!;
+    const scanned = (await store.scan(0, null, 10)).headers.find((header) => header.key === "k")!;
+    expect(read.lastId).toBe(3);
+    expect(scanned.lastId).toBe(read.lastId);
   });
 });

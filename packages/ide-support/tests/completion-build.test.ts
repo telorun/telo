@@ -128,6 +128,64 @@ describe("buildCompletions — ref-filtered kind suggestions", () => {
   });
 });
 
+describe("buildCompletions — a slot that constrains its target's output", () => {
+  it("offers no kind whose declared output the slot refuses", async () => {
+    const registry = new AnalysisRegistry();
+    registry.registerModuleIdentity("std", "join-module");
+    registry.registerImport("Join", "join-module", ["Joiner", "Streams", "Lists"]);
+    const producer = (name: string, output: Record<string, unknown>) =>
+      ({
+        kind: "Telo.Definition",
+        metadata: { name, module: "join-module" },
+        capability: "Telo.Invocable",
+        outputType: { kind: "Telo.JsonSchema", schema: output },
+        schema: { type: "object" },
+      }) as unknown as ResourceDefinition;
+    registry.registerDefinition(
+      producer("Streams", {
+        type: "object",
+        required: ["output"],
+        properties: { output: { "x-telo-type": "Telo.Stream" } },
+      }),
+    );
+    registry.registerDefinition(
+      producer("Lists", {
+        type: "object",
+        additionalProperties: false,
+        required: ["items"],
+        properties: { items: { type: "array" } },
+      }),
+    );
+    registry.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "Joiner", module: "join-module" },
+      capability: "Telo.Invocable",
+      schema: {
+        type: "object",
+        properties: {
+          source: {
+            "x-telo-ref": {
+              kind: "Telo.Invocable",
+              use: "trigger.consumer",
+              outputType: {
+                type: "object",
+                required: ["output"],
+                properties: { output: { "x-telo-type": "Telo.Stream" } },
+              },
+            },
+          },
+        },
+      },
+    } as unknown as ResourceDefinition);
+
+    const text = ["kind: Join.Joiner", "metadata:", "  name: joined", "source:", "  kind: "].join("\n");
+    const results = await buildCompletions(text, 4, "  kind: ".length, registry);
+    const labels = results.map((r) => r.label);
+    expect(labels).toContain("Join.Streams");
+    expect(labels).not.toContain("Join.Lists");
+  });
+});
+
 describe("buildCompletions — cursor on existing property name", () => {
   // Telo.Application's schema is auto-seeded via KERNEL_BUILTINS, so a fresh
   // registry suffices for these tests. metadata is a Telo.Application property

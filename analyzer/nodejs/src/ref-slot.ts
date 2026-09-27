@@ -22,6 +22,7 @@
  *     kind: [Telo.Invocable, Telo.Runnable]
  *     use: call
  *     inputs: /inputs
+ *     outputType: { … }                         # optional: what the target must return
  */
 
 /** How control reaches a slot's target, relative to the declaring resource's own
@@ -109,6 +110,14 @@ export interface RefSlot {
    *  through it, and it is the same fact its runtime establishes by rethrowing —
    *  so the annotation and the behaviour cannot disagree. */
   throwsThrough?: boolean;
+  /** A JSON Schema the target's OUTPUT contract must be assignable to,
+   *  covariantly — what the declaring resource reads off whatever the slot
+   *  dispatches. A kind constraint says what the target IS; this says what it
+   *  RETURNS, which no kind can: `Telo.Executable` admits every sequence, and
+   *  only its declared result says whether it yields the shape the holder
+   *  consumes. Same vocabulary as a kind-schema node (`x-telo-type`, named
+   *  shapes). Absent: the slot asks nothing of the result. */
+  outputType?: Record<string, any>;
   /** `x-telo-inline: true` on the slot or any `anyOf` branch — accepts an inline
    *  `{kind, ...config}` definition, not only a `!ref`. */
   inline: boolean;
@@ -244,6 +253,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   let useCases: RefUseCases | undefined;
   let inputs: string | undefined;
   let throwsThrough = false;
+  let outputType: Record<string, any> | undefined;
 
   for (const carrier of nodes) {
     const annotation = carrier["x-telo-ref"];
@@ -256,6 +266,7 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
     useCases ??= readUseCases(obj.use);
     if (typeof obj.inputs === "string") inputs ??= obj.inputs;
     if (obj.throwsThrough === true) throwsThrough = true;
+    if (isSchemaObject(obj.outputType)) outputType ??= obj.outputType;
   }
 
   const slot: RefSlot = {
@@ -267,7 +278,12 @@ export function readRefSlot(node: Record<string, any> | undefined): RefSlot | un
   if (useCases) slot.useCases = useCases;
   if (inputs !== undefined) slot.inputs = inputs;
   if (throwsThrough) slot.throwsThrough = true;
+  if (outputType) slot.outputType = outputType;
   return slot;
+}
+
+function isSchemaObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** True when the node declares a reference slot in any accepted shape. The
@@ -293,6 +309,7 @@ export function refSlotAnnotation(slot: RefSlot): Record<string, unknown> {
   else if (slot.uses.length > 1) annotation.use = slot.uses;
   if (slot.inputs !== undefined) annotation.inputs = slot.inputs;
   if (slot.throwsThrough) annotation.throwsThrough = true;
+  if (slot.outputType) annotation.outputType = slot.outputType;
   return annotation;
 }
 

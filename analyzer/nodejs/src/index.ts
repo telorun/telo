@@ -418,6 +418,7 @@ export {
 } from "./resolve-zone-containment.js";
 export type { ZoneSlotIssue } from "./validate-zone-slots.js";
 export { validateDynamicSelectors, validateRefSlotDeclarations } from "./validate-ref-slots.js";
+export { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 export type { RefSlotIssue } from "./validate-ref-slots.js";
 export { validateValueTypeSlots } from "./validate-value-type-slots.js";
 export type { ValueTypeSlotIssue } from "./validate-value-type-slots.js";

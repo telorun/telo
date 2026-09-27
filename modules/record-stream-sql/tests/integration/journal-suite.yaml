@@ -24,6 +24,7 @@ variables:
 targets:
   - !ref clear
   - !ref Suite.expiry
+  - !ref Suite.markerRetention
   - !ref Suite.roundTrip
   - !ref Suite.typedValues
   - !ref Suite.failedReplaysCode
@@ -36,6 +37,14 @@ targets:
   - !ref Suite.resumeContinuesFailed
   - !ref Suite.resumeKeyStates
   - !ref Suite.resumeLiveWriterBusy
+  - !ref Suite.readSnapshot
+  - !ref Suite.readStates
+  - !ref Suite.claimAdopted
+  - !ref Suite.claimOneDrain
+  - !ref Suite.claimRefusals
+  - !ref Suite.claimResumeTakesOver
+  - !ref Suite.claimSameWriterEnded
+  - !ref Suite.claimGoesStale
 ---
 kind: Postgres.Connection
 metadata: { name: db }

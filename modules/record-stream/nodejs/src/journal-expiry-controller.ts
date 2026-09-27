@@ -9,8 +9,9 @@ interface JournalExpiryResource {
 /**
  * RecordStream.JournalExpiry — one expiry pass over a journal's store: keys of
  * writers that stopped heartbeating are failed, finished and failed keys older
- * than the journal's retention are removed (counted), and removal markers older
- * than it are forgotten. Triggered by the application's scheduler.
+ * than the journal's retention are removed (counted; none when it sets no
+ * retention), and removal markers older than its marker retention are
+ * forgotten. Triggered by the application's scheduler.
  */
 class JournalExpiry implements ResourceInstance<Record<string, never>, { count: number }> {
   constructor(

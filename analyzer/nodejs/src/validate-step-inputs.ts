@@ -28,7 +28,7 @@ export interface StepInputIssue {
 }
 
 /** The per-declaring-module alias tables and the entry's own modules. */
-type CallScopes = ModuleScopes & { aliasesByModule: Map<string, AliasResolver> };
+export type CallScopes = ModuleScopes & { aliasesByModule: Map<string, AliasResolver> };
 
 /** True when an issue reports a property that is absent — its path points at a
  *  node the manifest does not contain. */
@@ -64,7 +64,7 @@ function byNameOf(allManifests: Record<string, any>[]): Map<string, ResourceMani
 /** The reader's context for these checks: a call target resolves in the scope of
  *  the module `manifest` belongs to — a bare name same module first, an alias
  *  through that module's import — as the kernel resolves it at dispatch. */
-function callSiteContext(
+export function callSiteContext(
   manifest: Record<string, any>,
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,

@@ -4,13 +4,14 @@ import {
   type AstDocument,
   type AstMap,
   type ManifestAnalysis,
+  type RefSlot,
 } from "@telorun/analyzer";
 import type { CompletionResult, IdeEnvironmentAdapter } from "../types.js";
 import type { ReplaceRange } from "./detect-context.js";
 import { callInputsAt } from "./call-inputs.js";
 import { celCompletions } from "./cel-completions.js";
 import { docIdentity } from "../doc-identity.js";
-import { detectContext, lookupRefConstraints, navigateSchema } from "./detect-context.js";
+import { detectContext, lookupRefSlot, navigateSchema } from "./detect-context.js";
 import { importSourceCompletions } from "./import-source.js";
 import { moduleFileCompletions } from "./module-file-completions.js";
 import { valueTagCompletions } from "./value-tag-completions.js";
@@ -44,11 +45,13 @@ function extractInFileResources(docs: AstDocument[]): ResourceRecord[] {
 function refNameCompletions(
   docs: AstDocument[],
   refKind: string | undefined,
-  refConstraints: string[],
+  slot: RefSlot | undefined,
   registry: AnalysisRegistry | undefined,
+  analysis: ManifestAnalysis | undefined,
   replaceRange: ReplaceRange,
 ): CompletionResult[] {
   const resources = extractInFileResources(docs);
+  const refConstraints = slot?.kinds ?? [];
   let acceptable: Set<string> | undefined;
 
   if (refKind) {
@@ -67,6 +70,10 @@ function refNameCompletions(
   const out: CompletionResult[] = [];
   for (const r of resources) {
     if (acceptable && !acceptable.has(r.kind)) continue;
+    // A target `telo check` refuses for what it returns is not a candidate. The
+    // analysis resolves the instance's own contract; without one the kind's
+    // decides.
+    if (slot && outputRefused(slot, r, registry, analysis)) continue;
     if (seen.has(r.name)) continue;
     seen.add(r.name);
     out.push({
@@ -81,6 +88,19 @@ function refNameCompletions(
   return out;
 }
 
+function outputRefused(
+  slot: RefSlot,
+  candidate: { kind: string; name?: string },
+  registry: AnalysisRegistry | undefined,
+  analysis: ManifestAnalysis | undefined,
+): boolean {
+  if (!slot.outputType) return false;
+  const refusal = analysis
+    ? analysis.outputRefusal(slot, { kind: candidate.kind, name: candidate.name })
+    : (registry?.outputRefusal(slot, { kind: candidate.kind }) ?? []);
+  return refusal.length > 0;
+}
+
 /** Resolve the kinds that satisfy the `x-telo-ref` slot at `parentDocKind` +
  *  `parentYamlPath`. Returns `undefined` (caller falls back to the full list)
  *  when there's no constraint, the path doesn't resolve, or the ref can't
@@ -92,15 +112,19 @@ function refConstrainedKinds(
 ): string[] | undefined {
   const definition = registry.resolveDefinition(parentDocKind);
   if (!definition?.schema) return undefined;
-  const constraints = lookupRefConstraints(
+  const slot = lookupRefSlot(
     definition.schema as Record<string, any>,
     parentYamlPath,
     (from) => registry.resolveSchemaFrom(from, parentDocKind),
   );
-  if (constraints.length === 0) return undefined;
-  const resolved = constraints.map((c) => registry.userFacingKindsForRef(c));
+  if (!slot || slot.kinds.length === 0) return undefined;
+  const resolved = slot.kinds.map((c) => registry.userFacingKindsForRef(c));
   if (!resolved.some(Boolean)) return undefined;
-  return [...new Set(resolved.flatMap((kinds) => kinds ?? []))];
+  // An inline declaration of a kind whose output the slot refuses would be
+  // refused by `telo check` the moment it is written.
+  return [...new Set(resolved.flatMap((kinds) => kinds ?? []))].filter(
+    (kind) => !outputRefused(slot, { kind }, registry, undefined),
+  );
 }
 
 function kindCompletions(
@@ -213,13 +237,13 @@ export async function buildCompletions(
   }
   if (ctx.type === "ref-name") {
     const definition = registry?.resolveDefinition(ctx.docKind);
-    const refConstraints =
+    const slot =
       registry && definition?.schema
-        ? lookupRefConstraints(definition.schema as Record<string, any>, ctx.yamlPath, (from) =>
+        ? lookupRefSlot(definition.schema as Record<string, any>, ctx.yamlPath, (from) =>
             registry.resolveSchemaFrom(from, ctx.docKind),
           )
-        : [];
-    return refNameCompletions(astDocs, ctx.refKind, refConstraints, registry, ctx.replaceRange);
+        : undefined;
+    return refNameCompletions(astDocs, ctx.refKind, slot, registry, analysis, ctx.replaceRange);
   }
   if (ctx.type === "field-value") {
     if (ctx.field === "import-source") {

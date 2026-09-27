@@ -50,6 +50,7 @@ import {
 } from "../../../ui/dropdown-menu";
 import {
   collectRefTargets,
+  refSlotOf,
   resolveRefCandidates,
   toRefValue,
 } from "../../../resource-schema-form/ref-candidates";
@@ -216,7 +217,7 @@ export function StepsView({
       if (!isRecord(slot)) continue;
       byVariant.set(
         variant,
-        resolveRefCandidates(collectRefTargets(slot), resolvedResources, refResolver),
+        resolveRefCandidates(collectRefTargets(slot), resolvedResources, refResolver, refSlotOf(slot)),
       );
     }
     return byVariant;

@@ -20,6 +20,8 @@ export interface JournalHeader {
   version: string;
   /** Milliseconds since the header was last written, on the store's clock. */
   ageMs: number;
+  /** Id of the log's last entry at this snapshot; 0 when the log is empty. */
+  lastId: number;
 }
 
 /** One record of a key's log: its 1-based, gap-free id and its opaque body. */

@@ -53,7 +53,12 @@ class MemoryJournalStore implements JournalStore, ResourceInstance {
     if (!cell) return { header: null, entries: [] };
     // Ids are gap-free and 1-based, so an id maps straight to an index.
     return {
-      header: { value: cell.value, version: cell.version, ageMs: Date.now() - cell.writtenAt },
+      header: {
+        value: cell.value,
+        version: cell.version,
+        ageMs: Date.now() - cell.writtenAt,
+        lastId: cell.entries.length,
+      },
       entries: cell.entries.slice(fromId, fromId + limit),
     };
   }
@@ -102,7 +107,10 @@ class MemoryJournalStore implements JournalStore, ResourceInstance {
       const ageMs = now - cell.writtenAt;
       if (ageMs < minAgeMs) continue;
       if (after && (cell.writtenAt < after[0] || (cell.writtenAt === after[0] && key <= after[1]))) continue;
-      eligible.push({ header: { key, value: cell.value, version: cell.version, ageMs }, writtenAt: cell.writtenAt });
+      eligible.push({
+        header: { key, value: cell.value, version: cell.version, ageMs, lastId: cell.entries.length },
+        writtenAt: cell.writtenAt,
+      });
     }
     eligible.sort(
       (a, b) =>

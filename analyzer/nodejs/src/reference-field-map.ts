@@ -42,6 +42,8 @@ export interface RefFieldEntry {
   inline?: boolean;
   /** See {@link RefSlot.throwsThrough}. */
   throwsThrough?: boolean;
+  /** See {@link RefSlot.outputType}. */
+  outputType?: Record<string, any>;
 }
 
 /** The slot an entry records, as `readRefSlot` read it. */
@@ -55,6 +57,7 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
   if (entry.useCases) slot.useCases = entry.useCases;
   if (entry.inputs !== undefined) slot.inputs = entry.inputs;
   if (entry.throwsThrough) slot.throwsThrough = true;
+  if (entry.outputType) slot.outputType = entry.outputType;
   return slot;
 }
 
@@ -496,6 +499,7 @@ function traverseNode(
     if (node["x-telo-context"]) entry.context = node["x-telo-context"] as Record<string, any>;
     if (slot.inline) entry.inline = true;
     if (slot.throwsThrough) entry.throwsThrough = true;
+    if (slot.outputType) entry.outputType = slot.outputType;
     sink.ref(path, entry, node);
     // A node can mix item-level ref branches (a bare string / `{kind, name}`)
     // with object branches that carry their OWN nested refs — e.g. Application

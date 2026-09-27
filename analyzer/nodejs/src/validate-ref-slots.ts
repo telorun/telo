@@ -42,7 +42,8 @@ export interface RefSlotIssue {
     | "X_TELO_REF_USE_CONFLICT"
     | "X_TELO_REF_DYNAMIC_SELECTOR"
     | "X_TELO_REF_UNKNOWN_KEY"
-    | "X_TELO_REF_INVALID_THROWS_THROUGH";
+    | "X_TELO_REF_INVALID_THROWS_THROUGH"
+    | "X_TELO_REF_INVALID_OUTPUT_TYPE";
   /** The definition (schema issues) or resource (selector issues) at fault. */
   manifest: ResourceManifest;
   /** Schema path of the slot (schema issues) or concrete value path of the
@@ -162,6 +163,25 @@ function checkAnnotation(
     });
   }
 
+  // Read only as a schema object, so anything else is silently absent — the
+  // slot would then accept a target returning whatever it likes, which is the
+  // mismatch the key was written to rule out.
+  if (
+    obj.outputType !== undefined &&
+    (!obj.outputType || typeof obj.outputType !== "object" || Array.isArray(obj.outputType))
+  ) {
+    issues.push({
+      code: "X_TELO_REF_INVALID_OUTPUT_TYPE",
+      manifest,
+      path,
+      message:
+        `x-telo-ref at '${path}' declares 'outputType: ${JSON.stringify(obj.outputType)}', which ` +
+        `is not a JSON Schema object. It names the shape the target's output must have ` +
+        `(e.g. '{ type: object, required: [output] }'); anything else reads as absent, so the ` +
+        `slot would accept a target returning anything.`,
+    });
+  }
+
   // Closed, for the reason the token sets are: a misspelled key is indexed by
   // nothing and read by nothing, so it validates, ships, and does exactly what
   // omitting it would.
@@ -183,7 +203,7 @@ function checkAnnotation(
 
 /** Every key the structured `x-telo-ref` form accepts — the write side of
  *  `readRefSlot`'s read side. Adding one belongs in both. */
-const REF_ANNOTATION_KEYS = new Set(["kind", "use", "inputs", "throwsThrough"]);
+const REF_ANNOTATION_KEYS = new Set(["kind", "use", "inputs", "throwsThrough", "outputType"]);
 
 /** True when a node is a reference slot: it carries `x-telo-ref` directly or on
  *  an `anyOf`/`oneOf` branch. */

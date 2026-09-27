@@ -1,6 +1,7 @@
 import { inferType } from "./field-control";
 import {
   collectRefTargets,
+  refSlotOf,
   resolveRefCandidates,
   toRefValue,
   type RefResolver,
@@ -22,7 +23,7 @@ export function buildEditorDefaultValue(
   // ref too or the widget opens on a value its own control cannot produce.
   const refTargets = collectRefTargets(prop);
   if (refTargets.length > 0) {
-    const options = resolveRefCandidates(refTargets, resolvedResources, registry);
+    const options = resolveRefCandidates(refTargets, resolvedResources, registry, refSlotOf(prop));
     if (options.length === 0) return undefined;
     return toRefValue(options[0]);
   }

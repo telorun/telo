@@ -180,7 +180,12 @@ export function ResourceCanvas({
   }
 
   function renderArrayOfRefsBinding(descriptor: BindingDescriptor) {
-    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
+    const candidates = resolveRefCandidates(
+      descriptor.refCapabilities,
+      resolvedResources,
+      registry,
+      descriptor.refSlot,
+    );
     const createKinds = createKindsFor(descriptor.refCapabilities);
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
@@ -270,7 +275,12 @@ export function ResourceCanvas({
   function renderArrayOfObjectsBinding(descriptor: BindingDescriptor) {
     const refFieldName = descriptor.refFieldName;
     if (!refFieldName) return null;
-    const candidates = resolveRefCandidates(descriptor.refCapabilities, resolvedResources, registry);
+    const candidates = resolveRefCandidates(
+      descriptor.refCapabilities,
+      resolvedResources,
+      registry,
+      descriptor.refSlot,
+    );
     const current = getByPath(fields, descriptor.fieldPath);
     const entries = Array.isArray(current) ? current : [];
     const keyFieldName = descriptor.keyFieldName;

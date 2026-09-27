@@ -215,6 +215,7 @@ import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
 import { collectRefInputIssues, collectStepInputIssues } from "./validate-step-inputs.js";
+import { collectReferenceOutputIssues } from "./validate-reference-output.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
 import { kindSatisfies, validateReferences } from "./validate-references.js";
@@ -2637,10 +2638,32 @@ export class StaticAnalyzer {
             // the step grammar, and a reference slot's found through the
             // `x-telo-ref` `inputs:` pointer. A call site the editor can
             // complete is a call site `telo check` validates.
+            const expandedFieldMap = defs.expandedFieldMapForResource(m, aliases, aliasesByModule);
+            // What a slot's target must RETURN, beside what it must be given.
+            for (const issue of collectReferenceOutputIssues(
+              m as Record<string, any>,
+              expandedFieldMap,
+              allManifests as Record<string, any>[],
+              defs,
+              aliases,
+              { aliasesByModule, rootModules },
+            )) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "REFERENCE_OUTPUT_MISMATCH",
+                source: SOURCE,
+                message: `${m.kind}/${stepName}: at '${issue.path}', ${issue.message}`,
+                data: {
+                  resource: { kind: m.kind, name: stepName ?? "" },
+                  filePath: stepFile,
+                  path: issue.path,
+                },
+              });
+            }
             const inputIssues = [
               ...collectRefInputIssues(
                 m as Record<string, any>,
-                defs.expandedFieldMapForResource(m, aliases, aliasesByModule),
+                expandedFieldMap,
                 allManifests as Record<string, any>[],
                 defs,
                 aliases,

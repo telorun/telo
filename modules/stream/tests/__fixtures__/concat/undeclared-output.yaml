@@ -1,0 +1,26 @@
+# A source declaring no output contract passes `telo check`, which has nothing to
+# compare; it returns no `output` stream, so the join refuses it as it is drained.
+kind: Telo.Application
+metadata:
+  name: ConcatUndeclaredOutput
+imports:
+  Stream: ../../..
+  Run: ../../../../run
+targets:
+  - !ref drain
+---
+kind: Run.Sequence
+metadata: { name: drain }
+steps:
+  - name: joined
+    invoke:
+      kind: Stream.Concat
+      sources:
+        - invoke:
+            kind: Run.Sequence
+            steps:
+              - name: nothing
+                value: !cel "0"
+  - name: collected
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.joined.result.output" }

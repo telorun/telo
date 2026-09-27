@@ -15,3 +15,16 @@ describe("MemoryJournalStore.wait", () => {
     expect(waiters(store).size).toBe(0);
   });
 });
+
+describe("MemoryJournalStore.lastId", () => {
+  it("is reported the same by scan as by read for the same key", async () => {
+    const store = await create();
+    let version = (await store.putIfAbsent("k", "header"))!;
+    for (const record of ["a", "b", "c"]) version = (await store.compareAndAppend("k", version, record))!.version;
+
+    const read = (await store.read("k", 0, 0)).header!;
+    const scanned = (await store.scan(0, null, 10)).headers.find((header) => header.key === "k")!;
+    expect(read.lastId).toBe(3);
+    expect(scanned.lastId).toBe(read.lastId);
+  });
+});

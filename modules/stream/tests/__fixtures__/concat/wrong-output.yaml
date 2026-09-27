@@ -1,0 +1,11 @@
+# A source whose declared output is a collected list, not `{ output: <stream> }`.
+kind: Telo.Application
+metadata:
+  name: ConcatWrongOutput
+imports:
+  Stream: ../../..
+---
+kind: Stream.Concat
+metadata: { name: joined }
+sources:
+  - invoke: { kind: Stream.Collect }

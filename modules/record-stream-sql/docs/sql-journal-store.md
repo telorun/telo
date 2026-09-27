@@ -19,7 +19,7 @@ Two tables per store, named by `table:` (default `record_stream_journal`). With 
 | `header` | `TEXT NOT NULL` | The journal's header, an opaque typed frame. |
 | `version` | `TEXT NOT NULL` | Opaque revision token; a new one on every write to the key. |
 | `written_at` | `BIGINT NOT NULL` | When the header was last written, epoch milliseconds on the database clock. |
-| `last_id` | `BIGINT NOT NULL` | The id of the last record appended (0 for none). |
+| `last_id` | `BIGINT NOT NULL` | The id of the last record appended (0 for none); `read` and `scan` report it as the header's `lastId`. |
 
 `<table>` — one row per record:
 

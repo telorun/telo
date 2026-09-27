@@ -261,6 +261,7 @@ export function TemplateCanvas({
         kind: entry.kind,
         name: entry.name,
         capability: viewData.kinds.get(entry.kind)?.capability || undefined,
+        config: entry.fields,
       })),
     [body, viewData],
   );

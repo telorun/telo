@@ -37,6 +37,10 @@ export interface ResolvedResourceOption {
   kind: string;
   name: string;
   capability?: string;
+  /** The resource's own configuration, when the host holds it — what an
+   *  instance-level output contract (its `outputType:`, its `outputs:` map) is
+   *  read from when a slot constrains what its target returns. */
+  config?: Record<string, unknown>;
 }
 
 /** An importable `Telo.Type` kind the user can instantiate inline (e.g.

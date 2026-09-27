@@ -1,12 +1,4 @@
 import { LOCAL_KEYS, LOCAL_PREFIXES } from "../storage-keys";
-import type {
-  AgentHistoryRow,
-  AssistantMessage,
-  AssistantPart,
-  ChatMessage,
-  ToolCallView,
-  UserMessage,
-} from "./types";
 
 /** The panel's width before anyone drags it (Tailwind's `w-96`, which it was
  *  fixed at) and the narrowest it can be dragged — below this the composer and
@@ -33,23 +25,6 @@ export interface AgentSettings {
    *  same block is shown as text and answered by typing — a render choice only,
    *  so it applies to messages already received and the agent is not told. */
   questionCards: boolean;
-}
-
-/** The client-side display transcript + resume pointers, persisted per conversation. */
-export interface PersistedChat {
-  messages: ChatMessage[];
-  /** The in-flight turn to re-attach to on reload, if any. */
-  activeTurnId: string | null;
-  /** Last SSE id seen for the active turn (resume cursor). */
-  lastEventId: number;
-  /** The agent session `activeTurnId` runs on. Re-attach is only valid against
-   *  the same session — a different (re-launched) container has no journal for
-   *  the turn and its event stream would tail forever. */
-  agentSession?: string | null;
-  /** The agent-persisted history rows (the model's view), snapshotted after
-   *  each turn. Seeded into a fresh per-session instance before its first turn
-   *  so the model sees the same conversation the panel shows. */
-  history?: AgentHistoryRow[];
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -88,65 +63,20 @@ export function saveAgentSettings(settings: AgentSettings): void {
   writeJson(SETTINGS_KEY, settings);
 }
 
-export function loadChat(conversationId: string): PersistedChat {
-  const data = readJson<Partial<Omit<PersistedChat, "messages">> & { messages?: StoredMessage[] }>(
-    CHAT_PREFIX + conversationId,
-    {},
-  );
-  return {
-    messages: Array.isArray(data.messages) ? data.messages.map(fromStored) : [],
-    activeTurnId: typeof data.activeTurnId === "string" ? data.activeTurnId : null,
-    lastEventId: typeof data.lastEventId === "number" ? data.lastEventId : 0,
-    agentSession: typeof data.agentSession === "string" ? data.agentSession : null,
-    history: Array.isArray(data.history) ? data.history : [],
-  };
-}
-
-export function saveChat(conversationId: string, chat: PersistedChat): void {
-  writeJson(CHAT_PREFIX + conversationId, { ...chat, messages: chat.messages.map(withoutThinking) });
-}
-
-/** A transcript saved before parts existed: an assistant turn as three
- *  buckets — its tool calls and its text, thinking never having been saved — and
- *  a user message carrying an always-empty tool list. */
-type ThreeBucketAssistant = Omit<AssistantMessage, "parts"> & { text: string; tools: ToolCallView[] };
-type StoredMessage = ChatMessage | ThreeBucketAssistant | (UserMessage & { tools?: ToolCallView[] });
-
-/** A three-bucket turn loads in the fixed order it rendered in, tools then
- *  text — the only order it recorded. */
-function fromStored(message: StoredMessage): ChatMessage {
-  if (message.role === "user") {
-    const { tools, ...user } = message as UserMessage & { tools?: ToolCallView[] };
-    return user;
-  }
-  if ("parts" in message) return message;
-  const { text, tools, ...rest } = message;
-  const parts: AssistantPart[] = tools.map((tool) => ({ kind: "tool", tool }));
-  if (text) parts.push({ kind: "text", text });
-  return { ...rest, parts };
-}
-
 /**
- * Thinking is DISPLAY-ONLY and is dropped before persisting.
- *
- * It is never sent back to the agent (the encrypted reasoning that actually
- * matters rides `providerState` on the server side) and never read by resume,
- * so persisting it buys nothing — and at `medium` or `high` effort it is
- * several KB per turn against a ~5MB quota shared with the whole transcript.
- * Reaching that quota does not degrade gracefully: the write throws, the catch
- * in `writeJson` discards it, and `activeTurnId` / `lastEventId` silently stop
- * being recorded, so a reload loses the thread and cannot re-attach to an
- * in-flight turn. Keeping the volatile, valueless half out of the payload keeps
- * the cliff far away.
+ * Delete every transcript an earlier Studio kept in browser storage. The agent's
+ * journal is the transcript now — read back from the records route — so a
+ * stored copy is quota spent on something nothing reads, and would go stale the
+ * moment another client continued the conversation.
  */
-function withoutThinking(message: ChatMessage): ChatMessage {
-  if (message.role !== "assistant") return message;
-  return { ...message, parts: message.parts.filter((part) => part.kind !== "thinking") };
-}
-
-export function clearChat(conversationId: string): void {
+export function purgeStoredTranscripts(): void {
   try {
-    localStorage.removeItem(CHAT_PREFIX + conversationId);
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(CHAT_PREFIX)) stale.push(key);
+    }
+    for (const key of stale) localStorage.removeItem(key);
   } catch {
     /* private mode — best effort */
   }
@@ -154,7 +84,7 @@ export function clearChat(conversationId: string): void {
 
 /**
  * The current conversation id (a UUID) for a workspace, or null if none exists
- * yet. The agent keys its SQLite history by this id, so it must be a plain UUID
+ * yet. The agent keys its conversation by this id, so it must be a plain UUID
  * — never the workspace path. "Start over" mints a fresh one; a reload restores
  * it so the client transcript and the agent's server-side history stay aligned.
  */

@@ -26,15 +26,17 @@ export {
   JournalWriter,
   isJournal,
 } from "./journal.js";
-export type { JournalEntry, JournalSettings } from "./journal.js";
+export type { JournalEntry, JournalKeyState, JournalSettings, JournalSnapshot } from "./journal.js";
 
 // Controller entry points. Each kind's `controllers:` candidate selects one of
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
 export * as EndHandlerController from "./end-handler-controller.js";
 export * as ExtractTextController from "./extract-text-controller.js";
+export * as JournalClaimController from "./journal-claim-controller.js";
 export * as JournalController from "./journal-controller.js";
 export * as JournalExpiryController from "./journal-expiry-controller.js";
+export * as JournalReadController from "./journal-read-controller.js";
 export * as JournalRemovalController from "./journal-removal-controller.js";
 export * as JournalSinkController from "./journal-sink-controller.js";
 export * as JournalSourceController from "./journal-source-controller.js";
