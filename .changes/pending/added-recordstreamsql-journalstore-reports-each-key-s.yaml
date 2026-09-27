@@ -1,5 +1,0 @@
-modules:
-  modules/record-stream-sql: Added
-body: RecordStreamSql.JournalStore reports each key's last record id as the header's
-  lastId from read and scan, as the journal store contract now requires; the tables are
-  unchanged.
