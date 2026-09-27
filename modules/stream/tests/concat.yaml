@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: StreamConcatTest
+  version: 1.0.0
+  description: |
+    Stream.Concat joins its sources' streams in order, each source's `inputs:` map
+    evaluated over the caller's `context`; a source's `inputs:` map is checked
+    against that source's contract; a source's codes count in the Concat's throw
+    union; a source whose declared output is not `{ output: <stream> }` is
+    refused by `telo check`, and one declaring no output contract is refused by
+    the join as it is drained.
+imports:
+  Stream: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref joinsInOrder
+  - !ref sourceInputsChecked
+  - !ref sourceCodesInherited
+  - !ref sourceOutputChecked
+  - !ref undeclaredOutputRefusedAtRun
+---
+kind: Run.Sequence
+metadata: { name: joinsInOrder }
+steps:
+  - name: joined
+    invoke:
+      kind: Stream.Concat
+      sources:
+        - invoke: { kind: Stream.Of }
+          inputs: { items: !cel "[context.first]" }
+        - invoke: { kind: Stream.Of, items: [b, c] }
+    inputs: { context: { first: a } }
+  - name: collected
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.joined.result.output" }
+  - name: assertJoined
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.collected.result.items"
+      expected: [a, b, c]
+---
+kind: Assert.Manifest
+metadata: { name: sourceInputsChecked }
+source: ./__fixtures__/concat/mistyped-inputs.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'itemz' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: sourceCodesInherited }
+source: ./__fixtures__/concat/source-code-caught.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: sourceOutputChecked }
+source: ./__fixtures__/concat/wrong-output.yaml
+expect:
+  errors:
+    - code: REFERENCE_OUTPUT_MISMATCH
+      message: "/output: required by this slot but missing from the target's output"
+---
+kind: Assert.Manifest
+metadata: { name: undeclaredOutputRefusedAtRun }
+source: ./__fixtures__/concat/undeclared-output.yaml
+expect:
+  # The controller's ERR_INVALID_VALUE, matched by its message.
+  runFails: "returned no 'output' stream"

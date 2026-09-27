@@ -40,6 +40,8 @@ export const LOCAL_PREFIXES = {
   workspace: "telo-studio:workspace:",
   /** Undo/redo stack, one entry per workspace root. */
   history: "telo-studio:history:v1:",
+  /** Transcripts an earlier Studio stored per conversation. Nothing writes them
+   *  now — the agent's journal is the transcript — and they are deleted on load. */
   agentChat: "telo-studio:agent:chat:",
   agentConv: "telo-studio:agent:conv:",
   /** The `telo.version` setting, one per workspace root. */

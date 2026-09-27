@@ -1,3 +1,5 @@
+import { AnalysisRegistry, readRefSlot } from "@telorun/analyzer";
+import type { ResourceDefinition } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import {
@@ -47,6 +49,41 @@ describe("resolveRefCandidates without a registry", () => {
 
   it("yields nothing for a target with no separator", () => {
     expect(resolveRefCandidates(["Invocable"], resources)).toEqual([]);
+  });
+});
+
+describe("resolveRefCandidates at a slot that constrains its target's output", () => {
+  it("withholds a candidate whose own outputs cannot be the required shape", () => {
+    const registry = new AnalysisRegistry();
+    registry.registerModuleIdentity("std", "flow");
+    registry.registerImport("Flow", "flow", ["Seq"]);
+    registry.registerDefinition({
+      kind: "Telo.Definition",
+      metadata: { name: "Seq", module: "flow" },
+      capability: "Telo.Invocable",
+      schema: {
+        type: "object",
+        properties: { outputs: { type: "object", "x-telo-value-schema-from": "outputType" } },
+      },
+    } as unknown as ResourceDefinition);
+    const slot = readRefSlot({
+      "x-telo-ref": {
+        kind: "Telo.Invocable",
+        use: "trigger.consumer",
+        outputType: {
+          type: "object",
+          required: ["output"],
+          properties: { output: { "x-telo-type": "Telo.Stream" } },
+        },
+      },
+    });
+    const candidates: ResolvedResourceOption[] = [
+      { kind: "Flow.Seq", name: "streams", config: { outputs: { output: "x" } } },
+      { kind: "Flow.Seq", name: "lists", config: { outputs: { items: "x" } } },
+    ];
+    expect(
+      resolveRefCandidates(["Telo.Invocable"], candidates, registry, slot).map((r) => r.name),
+    ).toEqual(["streams"]);
   });
 });
 

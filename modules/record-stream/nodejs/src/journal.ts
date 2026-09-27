@@ -22,7 +22,7 @@ export const ERR_JOURNAL_KEY_BUSY = "ERR_JOURNAL_KEY_BUSY";
 export const ERR_JOURNAL_KEY_REMOVED = "ERR_JOURNAL_KEY_REMOVED";
 export const ERR_JOURNAL_WRITER_LOST = "ERR_JOURNAL_WRITER_LOST";
 
-/** Entries fetched per store read. */
+/** Entries fetched per store read by a reader. */
 const PAGE_SIZE = 256;
 /** Headers fetched per expiry scan call. */
 const SCAN_SIZE = 256;
@@ -33,12 +33,36 @@ export interface JournalEntry {
   data: unknown;
 }
 
-/** The header the protocol keeps per key, typed-frame encoded in the store. */
+/** A key's state as a snapshot read reports it. */
+export type JournalKeyState = "unknown" | "open" | "finished" | "failed" | "removed";
+
+/** One snapshot of a key: its state, the recorded error of a failed key, the id
+ *  of its last record, and the entries the read asked for. */
+export interface JournalSnapshot {
+  state: JournalKeyState;
+  error: RecordedError | null;
+  lastId: number;
+  entries: JournalEntry[];
+}
+
+/**
+ * The header the protocol keeps per key, typed-frame encoded in the store.
+ * `holder` is the writer token (a caller's `writer`, or one minted per claim);
+ * `drain` is the identity of the one drain writing under it, minted per drain
+ * and never named in a manifest — absent on a key claimed ahead by
+ * `JournalClaim` until a drain adopts it.
+ */
 type KeyState =
-  | { state: "open"; holder: string; timeoutMs: number }
-  | { state: "finished"; holder: string }
-  | { state: "failed"; holder: string; error: RecordedError; writerLost: boolean }
+  | { state: "open"; holder: string; drain?: string; timeoutMs: number }
+  | { state: "finished"; holder: string; drain?: string }
+  | { state: "failed"; holder: string; drain?: string; error: RecordedError; writerLost: boolean }
   | { state: "removed" };
+
+/** Where a claim leaves a key: its version and the id of its log's last entry. */
+interface Claimed {
+  version: string;
+  lastId: number;
+}
 
 function encodeState(state: KeyState): string {
   return encodeTypedFrame(state);
@@ -46,6 +70,10 @@ function encodeState(state: KeyState): string {
 
 function decodeState(header: JournalHeader): KeyState {
   return decodeTypedFrame(header.value) as KeyState;
+}
+
+function decodeEntry(entry: JournalStoreEntry): JournalEntry {
+  return { id: entry.id, data: decodeTypedFrame(entry.record) };
 }
 
 /** The recorded error as a reader receives it: coded when it was recorded with a
@@ -66,16 +94,24 @@ function removed(key: string): InvokeError {
   return new InvokeError(ERR_JOURNAL_KEY_REMOVED, `RecordStream.Journal: key '${key}' was removed.`, { key });
 }
 
+/** The failure a key abandoned by its writer records. */
+function lostError(key: string): RecordedError {
+  return { code: ERR_JOURNAL_WRITER_LOST, message: lost(key).message, data: { key } };
+}
+
 function busy(key: string): InvokeError {
   return new InvokeError(
     ERR_JOURNAL_KEY_BUSY,
-    `RecordStream.Journal: key '${key}' is already written by another writer.`,
+    `RecordStream.Journal: key '${key}' is already held by another writer or drain.`,
     { key },
   );
 }
 
 export interface JournalSettings {
-  retentionMs: number;
+  /** How long an ended key is kept; absent, it is kept until removed. */
+  retentionMs?: number;
+  /** How long a removal marker is kept. */
+  markerRetentionMs: number;
   writerTimeoutMs: number;
 }
 
@@ -90,43 +126,95 @@ export abstract class Journal {
   }
 
   /**
-   * Claim `key` for one writer. An existing key is refused — removed for a
-   * marker, busy otherwise — unless `resume` is set: then a failed key, or an
+   * Claim `key` ahead of any drain, for the named `writer`: the key is open
+   * under that writer with no drain recorded, and nothing heartbeats it until a
+   * drain adopts it. A key already open under the same writer, heartbeat within
+   * its timeout, is returned as it is — adopted or not — and nothing is written;
+   * so is a key a drain under the same writer already finished or failed, whose
+   * ending (and recorded error) stays, `resume` or not, and one that drain left
+   * open with a stale heartbeat, which is failed as lost first. Otherwise as
+   * {@link claim}.
+   */
+  async reserve(key: string, options: { resume?: boolean; writer: string }): Promise<Claimed> {
+    const open = encodeState({ state: "open", holder: options.writer, timeoutMs: this.settings.writerTimeoutMs });
+    return this.acquire(key, open, options.writer, undefined, options.resume === true);
+  }
+
+  /**
+   * Claim `key` for one drain, under `writer` (a fresh token when omitted). An
+   * existing key is refused — removed for a marker, busy otherwise — with two
+   * exceptions. A key open under the same `writer`, heartbeat within its
+   * timeout and no drain recorded (a reserved key) is adopted: this drain's
+   * identity is recorded at the version that was read, which is also its first
+   * heartbeat, so exactly one drain adopts it. With `resume`, a failed key, or an
    * open one whose writer went stale (failed as lost first, at the version that
    * was read), is taken over. A takeover keeps the log, so appends continue from
    * its last id; a live writer's key and a finished key stay busy.
    */
-  async claim(key: string, options: { resume?: boolean } = {}): Promise<JournalWriter> {
-    const holder = randomUUID();
-    const open = encodeState({ state: "open", holder, timeoutMs: this.settings.writerTimeoutMs });
+  async claim(key: string, options: { resume?: boolean; writer?: string } = {}): Promise<JournalWriter> {
+    const holder = options.writer ?? randomUUID();
+    const drain = randomUUID();
+    const open = encodeState({ state: "open", holder, drain, timeoutMs: this.settings.writerTimeoutMs });
+    const claimed = await this.acquire(key, open, holder, drain, options.resume === true);
+    return new JournalWriter(this.store, key, holder, drain, open, claimed.version, claimed.lastId);
+  }
+
+  /** The claim protocol, for a drain (`drain` set) or a reservation (unset);
+   *  `open` is the header it writes. */
+  private async acquire(
+    key: string,
+    open: string,
+    holder: string,
+    drain: string | undefined,
+    resume: boolean,
+  ): Promise<Claimed> {
     while (true) {
       const version = await this.store.putIfAbsent(key, open);
-      if (version !== null) return new JournalWriter(this.store, key, holder, open, version);
+      if (version !== null) return { version, lastId: 0 };
       const header = await this.header(key);
       // Deleted between the two calls: the key is free again.
       if (!header) continue;
       const state = decodeState(header);
       if (state.state === "removed") throw removed(key);
-      if (!options.resume || state.state === "finished") throw busy(key);
+      const live = state.state === "open" && header.ageMs <= state.timeoutMs;
+      // A reservation whose writer's drain already ran to an ending — or died,
+      // which is failed as lost first: that attempt is over, and taking it over
+      // again would overwrite how it ended.
+      if (drain === undefined && state.holder === holder && state.drain !== undefined && !live) {
+        if (state.state !== "open") return { version: header.version, lastId: header.lastId };
+        const failedAt = await this.failLost(key, header.version, state);
+        // The writer moved in the meantime: judge the key again.
+        if (failedAt === null) continue;
+        return { version: failedAt, lastId: header.lastId };
+      }
+      if (live && state.holder === holder) {
+        if (drain === undefined) return { version: header.version, lastId: header.lastId };
+        if (state.drain !== undefined) throw busy(key);
+        const adopted = await this.store.compareAndSet(key, header.version, open);
+        // The key moved since it was read: judge it again.
+        if (adopted === null) continue;
+        return { version: adopted, lastId: header.lastId };
+      }
+      if (!resume || state.state === "finished" || live) throw busy(key);
       let failedAt: string | null = header.version;
       if (state.state === "open") {
-        if (header.ageMs <= state.timeoutMs) throw busy(key);
-        failedAt = await this.failLost(key, header.version, state.holder);
+        failedAt = await this.failLost(key, header.version, state);
         // The writer moved in the meantime: judge the key again.
         if (failedAt === null) continue;
       }
       const taken = await this.store.compareAndSet(key, failedAt, open);
-      if (taken !== null) return new JournalWriter(this.store, key, holder, open, taken);
+      if (taken !== null) return { version: taken, lastId: header.lastId };
     }
   }
 
-  /** Fail an open key as abandoned by `holder`, at `version`. Null when the key
-   *  moved since that version was read. */
-  private failLost(key: string, version: string, holder: string): Promise<string | null> {
+  /** Fail an open key as abandoned by its writer and drain, at `version`. Null
+   *  when the key moved since that version was read. */
+  private failLost(key: string, version: string, open: { holder: string; drain?: string }): Promise<string | null> {
     const failed: KeyState = {
       state: "failed",
-      holder,
-      error: { code: ERR_JOURNAL_WRITER_LOST, message: lost(key).message, data: { key } },
+      holder: open.holder,
+      ...(open.drain === undefined ? {} : { drain: open.drain }),
+      error: lostError(key),
       writerLost: true,
     };
     return this.store.compareAndSet(key, version, encodeState(failed));
@@ -141,7 +229,7 @@ export abstract class Journal {
   private async checkStale(key: string, header: JournalHeader, state: KeyState): Promise<number> {
     if (state.state !== "open") return 0;
     if (header.ageMs <= state.timeoutMs) return state.timeoutMs - header.ageMs;
-    await this.failLost(key, header.version, state.holder);
+    await this.failLost(key, header.version, state);
     return 0;
   }
 
@@ -167,6 +255,44 @@ export abstract class Journal {
     );
   }
 
+  /**
+   * One snapshot of `key`: its state and the entries after `fromId`, at most
+   * `limit` of them (all of them when omitted; 0 reads the state alone). Never
+   * waits and never raises for the key's state. An open key whose writer's
+   * heartbeat is older than its timeout reads as failed with
+   * `ERR_JOURNAL_WRITER_LOST`, and is failed at the version that was read — so
+   * a live writer's touch in the meantime makes that write lose, and the key is
+   * read again.
+   */
+  async read(key: string, fromId: number, limit?: number): Promise<JournalSnapshot> {
+    const count = limit ?? Number.MAX_SAFE_INTEGER - fromId;
+    while (true) {
+      const page = await this.store.read(key, fromId, count);
+      const header = page.header;
+      if (!header) return { state: "unknown", error: null, lastId: 0, entries: [] };
+      const state = decodeState(header);
+      const snapshot = (reported: JournalKeyState, error: RecordedError | null): JournalSnapshot => ({
+        state: reported,
+        error,
+        lastId: header.lastId,
+        entries: page.entries.map(decodeEntry),
+      });
+      switch (state.state) {
+        case "removed":
+          return { state: "removed", error: null, lastId: header.lastId, entries: [] };
+        case "finished":
+          return snapshot("finished", null);
+        case "failed":
+          return snapshot("failed", state.error);
+        case "open":
+          if (header.ageMs <= state.timeoutMs) return snapshot("open", null);
+          if ((await this.failLost(key, header.version, state)) !== null) {
+            return snapshot("failed", lostError(key));
+          }
+      }
+    }
+  }
+
   /** Remove `key`: its records are dropped and a marker left, so it reads as
    *  removed rather than unknown. */
   async remove(key: string): Promise<"removed" | "unknown"> {
@@ -183,26 +309,26 @@ export abstract class Journal {
 
   /**
    * One expiry pass: dead writers' keys are failed, finished and failed keys
-   * past retention become markers, and markers past retention are deleted.
-   * Returns how many terminal keys had their records removed.
+   * past retention become markers (never, when the journal sets no retention),
+   * and markers past the marker retention are deleted. Returns how many
+   * terminal keys had their records removed.
    */
   async expire(): Promise<number> {
-    const { retentionMs, writerTimeoutMs } = this.settings;
+    const { retentionMs, markerRetentionMs, writerTimeoutMs } = this.settings;
     const marker = encodeState({ state: "removed" });
+    const minAgeMs = Math.min(retentionMs ?? Number.POSITIVE_INFINITY, markerRetentionMs, writerTimeoutMs);
     let count = 0;
     let cursor: string | null = null;
     do {
-      const scan = await this.store.scan(Math.min(retentionMs, writerTimeoutMs), cursor, SCAN_SIZE);
+      const scan = await this.store.scan(minAgeMs, cursor, SCAN_SIZE);
       for (const header of scan.headers) {
         const state = decodeState(header);
         if (state.state === "open") {
           await this.checkStale(header.key, header, state);
-        } else if (header.ageMs < retentionMs) {
-          continue;
         } else if (state.state === "removed") {
-          await this.store.compareAndDelete(header.key, header.version);
-        } else if ((await this.store.compareAndTruncate(header.key, header.version, marker)) !== null) {
-          count++;
+          if (header.ageMs >= markerRetentionMs) await this.store.compareAndDelete(header.key, header.version);
+        } else if (retentionMs !== undefined && header.ageMs >= retentionMs) {
+          if ((await this.store.compareAndTruncate(header.key, header.version, marker)) !== null) count++;
         }
       }
       cursor = scan.cursor;
@@ -220,17 +346,20 @@ export class JournalWriter {
     private readonly store: JournalStore,
     readonly key: string,
     private readonly holder: string,
+    private readonly drain: string,
     private readonly openValue: string,
     private version: string,
+    /** Id of the log's last entry when the key was claimed. */
+    readonly lastId: number,
   ) {}
 
-  /** Why a write at our version was refused. */
+  /** Why a write at our version was refused: the key's holder and drain against ours. */
   private async refusal(): Promise<Error> {
     const header = (await this.store.read(this.key, 0, 0)).header;
     if (!header) return removed(this.key);
     const state = decodeState(header);
     if (state.state === "removed") return removed(this.key);
-    if (state.holder !== this.holder) return busy(this.key);
+    if (state.holder !== this.holder || state.drain !== this.drain) return busy(this.key);
     if (state.state === "failed" && state.writerLost) return lost(this.key);
     return new Error(
       `RecordStream.Journal: the store refused a write to key '${this.key}' by its own holder while the key is ${state.state}; the store reported a conflict no other writer caused.`,
@@ -253,7 +382,7 @@ export class JournalWriter {
   }
 
   async finish(): Promise<void> {
-    await this.settle({ state: "finished", holder: this.holder });
+    await this.settle({ state: "finished", holder: this.holder, drain: this.drain });
   }
 
   /**
@@ -266,6 +395,7 @@ export class JournalWriter {
     const failed = (recorded: RecordedError): KeyState => ({
       state: "failed",
       holder: this.holder,
+      drain: this.drain,
       error: recorded,
       writerLost: false,
     });
@@ -388,7 +518,7 @@ export class JournalReader implements AsyncIterableIterator<JournalEntry> {
         const entry = this.buffered.shift();
         if (entry) {
           this.cursor = entry.id;
-          return { value: { id: entry.id, data: decodeTypedFrame(entry.record) }, done: false };
+          return { value: decodeEntry(entry), done: false };
         }
         const after = this.after;
         if (after.kind === "end") {
@@ -442,6 +572,8 @@ export function isJournal(value: unknown): value is Journal {
   const j = value as Partial<Journal> | undefined;
   return (
     typeof j?.claim === "function" &&
+    typeof j.reserve === "function" &&
+    typeof j.read === "function" &&
     typeof j.open === "function" &&
     typeof j.remove === "function" &&
     typeof j.expire === "function"

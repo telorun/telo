@@ -1,4 +1,5 @@
-import type { AgentHistoryRow, AgentStreamPart, TreeFile } from "./types";
+import type { RecordsPage } from "./records";
+import type { JournalRecord, TreeFile, TurnError } from "./types";
 
 export type { TreeFile };
 
@@ -35,15 +36,50 @@ export interface StartTurnResult {
   turnId: string;
 }
 /** A non-200 answer, by the `code` its body carries (`ERR_AT_CAPACITY`,
- *  `ERR_RATE_LIMITED`, `ERR_TURN_IN_PROGRESS`, `ERR_IDEMPOTENCY_KEY_REUSED`, …). */
-export interface StartTurnRefused {
+ *  `ERR_RATE_LIMITED`, `ERR_TURN_IN_PROGRESS`, `ERR_TURN_NOT_CONTINUABLE`,
+ *  `ERR_IDEMPOTENCY_KEY_REUSED`, …), with the fields a code carries. */
+export interface TurnRefused {
   kind: "refused";
   status: number;
   code: string | undefined;
   message: string;
   retryAfter?: number;
+  /** `ERR_TURN_IN_PROGRESS`: the turn that is running. */
+  activeTurnId?: string;
+  /** `ERR_TURN_NOT_CONTINUABLE`: `finished`, `aborted` or `superseded`. */
+  reason?: string;
 }
-export type StartTurnOutcome = StartTurnResult | StartTurnRefused;
+export type StartTurnOutcome = StartTurnResult | TurnRefused;
+
+export interface ContinueTurnResult {
+  kind: "continued";
+  turnId: string;
+  /** The last record before the new attempt; its `turn-continued` record is next. */
+  fromId: number;
+}
+export type ContinueTurnOutcome = ContinueTurnResult | TurnRefused;
+
+async function readBody(res: Response, what: string): Promise<Record<string, unknown>> {
+  try {
+    return (await res.json()) as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `${what} returned an unreadable body (HTTP ${res.status}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function refusal(res: Response, body: Record<string, unknown>, what: string): TurnRefused {
+  return {
+    kind: "refused",
+    status: res.status,
+    code: typeof body.code === "string" ? body.code : undefined,
+    message: typeof body.error === "string" ? body.error : `${what} failed (${res.status})`,
+    retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined,
+    activeTurnId: typeof body.activeTurnId === "string" ? body.activeTurnId : undefined,
+    reason: typeof body.reason === "string" ? body.reason : undefined,
+  };
+}
 
 /** The agent is still admitting an earlier attempt carrying the same key. */
 const ERR_IDEMPOTENCY_KEY_IN_FLIGHT = "ERR_IDEMPOTENCY_KEY_IN_FLIGHT";
@@ -75,51 +111,44 @@ export class AgentClient {
     };
     for (let attempt = 0; ; attempt++) {
       const res = await fetchRetrying(this.url("/chat"), init);
-      let body: Record<string, unknown>;
-      try {
-        body = await res.json();
-      } catch (err) {
-        throw new Error(
-          `POST /chat returned an unreadable body (HTTP ${res.status}): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      const body = await readBody(res, "POST /chat");
       if (res.status === 200) {
         if (typeof body.turnId !== "string" && typeof body.turnId !== "number") {
           throw new Error("POST /chat succeeded but returned no turnId.");
         }
         return { kind: "started", turnId: String(body.turnId) };
       }
-      const code = typeof body.code === "string" ? body.code : undefined;
-      if (code === ERR_IDEMPOTENCY_KEY_IN_FLIGHT && attempt < IN_FLIGHT_RETRIES) {
+      if (body.code === ERR_IDEMPOTENCY_KEY_IN_FLIGHT && attempt < IN_FLIGHT_RETRIES) {
         await delay(Math.min(200 * (attempt + 1), 1000));
         continue;
       }
-      return {
-        kind: "refused",
-        status: res.status,
-        code,
-        message: typeof body.error === "string" ? body.error : `POST /chat failed (${res.status})`,
-        retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined,
-      };
+      return refusal(res, body, "POST /chat");
     }
   }
 
-  /** POST /chat/{turnId}/abort → cancel the running turn. `supported: false`
-   *  means the agent predates the abort endpoint (404) — the turn then runs to
-   *  its natural end server-side. */
-  async abortTurn(
-    conversationId: string,
-    turnId: string,
-  ): Promise<{ supported: boolean; cancelled: boolean }> {
-    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/abort`), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ conversationId }),
-    });
-    if (res.status === 404) return { supported: false, cancelled: false };
-    if (!res.ok) throw new Error(`POST /chat/${turnId}/abort failed (${res.status})`);
-    const body = (await res.json()) as { cancelled?: unknown };
-    return { supported: true, cancelled: body.cancelled === true };
+  /** POST /chat/{turnId}/abort, no body → whether a running attempt was
+   *  cancelled. `cancelled: false` means nothing was running for the turn. Any
+   *  other answer (404 unknown, 410 removed, …) throws with its code. */
+  async abortTurn(turnId: string): Promise<{ cancelled: boolean }> {
+    const what = `POST /chat/${turnId}/abort`;
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/abort`), { method: "POST" });
+    const body = await readBody(res, what);
+    if (!res.ok) {
+      const refused = refusal(res, body, what);
+      throw new Error(`${refused.message}${refused.code ? ` (${refused.code})` : ""}`);
+    }
+    return { cancelled: body.cancelled === true };
+  }
+
+  /** POST /chat/{turnId}/continue, no body → another attempt at an interrupted
+   *  turn, inside the same turn, or a coded refusal. */
+  async continueTurn(turnId: string): Promise<ContinueTurnOutcome> {
+    const what = `POST /chat/${turnId}/continue`;
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/continue`), { method: "POST" });
+    const body = await readBody(res, what);
+    if (res.status !== 200) return refusal(res, body, what);
+    if (typeof body.fromId !== "number") throw new Error(`${what} succeeded but returned no fromId.`);
+    return { kind: "continued", turnId: String(body.turnId ?? turnId), fromId: body.fromId };
   }
 
   /** GET /workspace → the agent's content-hash tree. */
@@ -148,39 +177,21 @@ export class AgentClient {
     return typeof body.content === "string" ? body.content : "";
   }
 
-  /** GET /conversations/{id} → the agent-persisted history rows: the model's
-   *  view of the conversation. Snapshotted after each turn so a later session
-   *  can be seeded with exactly what the agent itself recorded. */
-  async conversation(conversationId: string): Promise<AgentHistoryRow[]> {
-    const res = await fetchRetrying(this.url(`/conversations/${encodeURIComponent(conversationId)}`));
-    if (!res.ok) throw new Error(`GET /conversations failed (${res.status})`);
-    const body = await res.json();
-    const rows: unknown[] = Array.isArray(body.messages) ? body.messages : [];
-    return rows.map((raw) => {
-      const r = raw as Record<string, unknown>;
-      return {
-        id: String(r.id),
-        role: String(r.role),
-        content: String(r.content),
-        createdAt: String(r.created_at ?? ""),
-      };
-    });
-  }
-
-  /** POST /conversations/{id}/messages — seed a fresh per-session instance's DB
-   *  with the rows a previous session persisted (idempotent by row id). */
-  async importMessages(conversationId: string, messages: AgentHistoryRow[]): Promise<void> {
-    const res = await fetchRetrying(
-      this.url(`/conversations/${encodeURIComponent(conversationId)}/messages`),
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages }),
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`POST /conversations/${conversationId}/messages failed (${res.status})`);
+  /** GET /conversations/{id}/records → one page of the conversation's turns and
+   *  their records, from `cursor` (the previous page's `next`). */
+  async records(
+    conversationId: string,
+    cursor: { fromTurn: string; fromId: number } | null,
+  ): Promise<RecordsPage> {
+    const url = new URL(this.url(`/conversations/${encodeURIComponent(conversationId)}/records`), window.location.href);
+    if (cursor) {
+      url.searchParams.set("fromTurn", cursor.fromTurn);
+      url.searchParams.set("fromId", String(cursor.fromId));
     }
+    const res = await fetchRetrying(url.toString());
+    if (!res.ok) throw new Error(`GET /conversations/${conversationId}/records failed (${res.status})`);
+    const body = (await res.json()) as Partial<RecordsPage>;
+    return { turns: Array.isArray(body.turns) ? body.turns : [], next: body.next ?? null };
   }
 }
 
@@ -188,18 +199,29 @@ export interface AgentStreamHandle {
   close(): void;
 }
 
+/** Why an agent stream ended without its turn finishing: the turn's own error,
+ *  by `code`, when the server sent one; a lost connection otherwise. */
+export class AgentStreamError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
+
 /**
  * Consume `GET /chat/{turnId}/events` — a resumable SSE stream of `{ id, data }`
- * envelopes. Replays from `fromId` (the client's last seen id) then tails live;
- * closes on a terminal `finish`/`error` part. Mirrors the run adapter's SSE
- * shape but with an agent-part parser (each frame's data is `{ data: <part> }`).
+ * journal records. Replays after `fromId` (the client's last seen id) then tails
+ * live; ends after the turn's `finish` record, or with an `event: error` frame
+ * carrying the turn's error `{ code, message }`.
  */
 export function openAgentStream(opts: {
   baseUrl: string;
   turnId: string;
   fromId: number;
-  onPart: (part: AgentStreamPart, id: number) => void;
-  onError: (err: Error) => void;
+  onRecord: (record: JournalRecord) => void;
+  onError: (err: AgentStreamError) => void;
   onEnd: () => void;
 }): AgentStreamHandle {
   const url = new URL(`${opts.baseUrl.replace(/\/$/, "")}/chat/${opts.turnId}/events`, window.location.href);
@@ -213,7 +235,7 @@ export function openAgentStream(opts: {
   };
 
   source.onmessage = (e: MessageEvent) => {
-    let envelope: { data?: AgentStreamPart };
+    let envelope: Partial<JournalRecord>;
     try {
       envelope = JSON.parse(e.data);
     } catch {
@@ -221,9 +243,9 @@ export function openAgentStream(opts: {
     }
     const part = envelope?.data;
     if (!part || typeof part.type !== "string") return;
-    const id = Number(e.lastEventId) || 0;
-    opts.onPart(part, id);
-    if (part.type === "finish" || part.type === "error") {
+    const id = typeof envelope.id === "number" ? envelope.id : Number(e.lastEventId) || 0;
+    opts.onRecord({ id, data: part });
+    if (part.type === "finish") {
       close();
       opts.onEnd();
     }
@@ -240,18 +262,21 @@ export function openAgentStream(opts: {
       opts.onEnd();
     } else if (source.readyState === EventSource.CLOSED) {
       close();
-      opts.onError(new Error("agent stream connection lost"));
+      opts.onError(new AgentStreamError("agent stream connection lost"));
     }
   });
 
   return { close };
 }
 
-function parseErrorFrame(data: string): Error {
+function parseErrorFrame(data: string): AgentStreamError {
   try {
-    const parsed = JSON.parse(data);
-    return new Error(typeof parsed.message === "string" ? parsed.message : "agent stream error");
+    const parsed = JSON.parse(data) as Partial<TurnError>;
+    return new AgentStreamError(
+      typeof parsed.message === "string" ? parsed.message : "agent stream error",
+      typeof parsed.code === "string" ? parsed.code : undefined,
+    );
   } catch {
-    return new Error("agent stream error");
+    return new AgentStreamError("agent stream error");
   }
 }

@@ -9,6 +9,7 @@ interface JournalResource {
   metadata: { name: string; module?: string };
   store?: JournalStore | KindRef<JournalStore>;
   retention?: unknown;
+  markerRetention?: unknown;
   writerTimeout?: unknown;
 }
 
@@ -17,6 +18,14 @@ function milliseconds(value: unknown, field: string, label: string): number {
     throw new InvokeError("ERR_INVALID_VALUE", `${label}: '${field}' must be a duration.`);
   }
   return Number(value.getMilliseconds());
+}
+
+/** A retention field in milliseconds; undefined when omitted. */
+function retentionMilliseconds(value: unknown, field: string, code: string, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  const ms = milliseconds(value, field, label);
+  if (ms < 0) throw new InvokeError(code, `${code}: ${label} sets a negative '${field}'.`);
+  return ms;
 }
 
 /**
@@ -49,9 +58,11 @@ class JournalProvider extends Journal implements ResourceInstance {
   }
 
   snapshot(): Record<string, unknown> {
+    const { retentionMs, markerRetentionMs, writerTimeoutMs } = this.settings;
     return {
-      retention: Duration.fromMilliseconds(this.settings.retentionMs),
-      writerTimeout: Duration.fromMilliseconds(this.settings.writerTimeoutMs),
+      ...(retentionMs === undefined ? {} : { retention: Duration.fromMilliseconds(retentionMs) }),
+      markerRetention: Duration.fromMilliseconds(markerRetentionMs),
+      writerTimeout: Duration.fromMilliseconds(writerTimeoutMs),
     };
   }
 }
@@ -60,11 +71,18 @@ export function register(): void {}
 
 export async function create(resource: JournalResource): Promise<JournalProvider> {
   const label = `RecordStream.Journal "${resource.metadata.name}"`;
-  const retentionMs = milliseconds(resource.retention, "retention", label);
-  if (retentionMs < 0) {
+  const retentionMs = retentionMilliseconds(resource.retention, "retention", "RECORD_STREAM_RETENTION_NEGATIVE", label);
+  const markerRetentionMs =
+    retentionMilliseconds(
+      resource.markerRetention,
+      "markerRetention",
+      "RECORD_STREAM_MARKER_RETENTION_NEGATIVE",
+      label,
+    ) ?? retentionMs;
+  if (markerRetentionMs === undefined) {
     throw new InvokeError(
-      "RECORD_STREAM_RETENTION_NEGATIVE",
-      `RECORD_STREAM_RETENTION_NEGATIVE: ${label} sets a negative 'retention'.`,
+      "RECORD_STREAM_RETENTION_MISSING",
+      `RECORD_STREAM_RETENTION_MISSING: ${label} sets neither 'retention' nor 'markerRetention', so a removal marker would be kept forever.`,
     );
   }
   const writerTimeoutMs =
@@ -77,5 +95,5 @@ export async function create(resource: JournalResource): Promise<JournalProvider
       `RECORD_STREAM_WRITER_TIMEOUT_NOT_POSITIVE: ${label} sets 'writerTimeout' to zero or less.`,
     );
   }
-  return new JournalProvider(resource, label, { retentionMs, writerTimeoutMs });
+  return new JournalProvider(resource, label, { retentionMs, markerRetentionMs, writerTimeoutMs });
 }

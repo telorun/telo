@@ -65,6 +65,14 @@ function bunExecutable(): string {
   return join(dirname(manifest), JSON.parse(readFileSync(manifest, "utf8")).bin.bun);
 }
 
+/** A drive letter's case is not identity: the engine publishes a partial under
+ *  VS Code's canonical lowercase `c:`, `telo check` reports the path as found.
+ *  Visible when the temp directory is on another drive than the repo, where
+ *  `relative` returns the absolute path. */
+function driveCase(file: string): string {
+  return file.replace(/^[a-z]:/, (drive) => drive.toUpperCase());
+}
+
 function teloCheck(entry: string): string[] {
   const run = spawnSync(
     bunExecutable(),
@@ -75,7 +83,7 @@ function teloCheck(entry: string): string[] {
   if (!run.stdout) throw new Error(`telo check produced no payload: ${run.stderr}`);
   return JSON.parse(run.stdout).diagnostics.map(
     (d: { file: string; line: number; column: number; severity: string; code?: string }) =>
-      `${d.file}:${d.line}:${d.column} ${d.severity} ${d.code ?? ""}`,
+      `${driveCase(d.file)}:${d.line}:${d.column} ${d.severity} ${d.code ?? ""}`,
   );
 }
 
@@ -120,7 +128,7 @@ it.each(ENTRIES)("the bundled engine reports what telo check reports for %s", as
   const rows = [...published].flatMap(([file, list]) =>
     list.map(
       (d) =>
-        `${relative(REPO, file)}:${d.range.start.line + 1}:${d.range.start.character + 1} ` +
+        `${driveCase(relative(REPO, file))}:${d.range.start.line + 1}:${d.range.start.character + 1} ` +
         `${d.severity === 1 ? "error" : "warning"} ${d.code ?? ""}`,
     ),
   );

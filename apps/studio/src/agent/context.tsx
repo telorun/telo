@@ -1,28 +1,40 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { AgentClient, openAgentStream, type AgentStreamHandle, type StartTurnRefused } from "./client";
+import {
+  AgentClient,
+  openAgentStream,
+  type AgentStreamError,
+  type AgentStreamHandle,
+  type TurnRefused,
+} from "./client";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { TermsRequiredError, type RunnerTerms } from "../run/types";
 import { reconcile, seedDelta, pullFile } from "./sync";
-import { formatResumeRequest, resumePoint } from "./transcript";
-import { appendDelta, appendToolCall, settleToolCall } from "./assistant-parts";
 import {
-  clearChat,
+  applyRecord,
+  applyTurnError,
+  applyTurnStopped,
+  describeTurnError,
+  interruptedTurn,
+  parseToolContent,
+  readConversation,
+  transcriptFromTurns,
+  userMessageId,
+} from "./records";
+import {
   loadAgentSettings,
-  loadChat,
   loadConversationId,
+  purgeStoredTranscripts,
   saveAgentSettings,
-  saveChat,
   saveConversationId,
 } from "./storage";
 import type {
-  AgentHistoryRow,
   AgentStatus,
-  AgentStreamPart,
   AgentWorkspace,
   AssistantMessage,
   ChatMessage,
   CoResidentAgent,
+  JournalRecord,
   ToolResult,
   WorkspaceBridge,
 } from "./types";
@@ -52,11 +64,14 @@ interface AgentContextValue {
   error: string | null;
 
   send: (message: string) => void;
+  /** Abort the running turn: its stream stays open until the cancellation ends
+   *  it, and the turn then reads as stopped. */
   stop: () => void;
-  /** Pick a failed turn back up — re-attaching to it when it is still running,
-   *  otherwise sending the last request again. */
+  /** Pick an interrupted turn back up: resend a message that never started a
+   *  turn, otherwise continue the turn on the agent — inside the same turn, and
+   *  re-attached to its stream if it is in fact still running. */
   retry: () => void;
-  /** True when there is a failed turn `retry()` would act on. */
+  /** True when there is something `retry()` would act on. */
   canRetry: boolean;
   /** Discard the current thread and start a fresh conversation for this
    *  workspace — clears the panel and gives the agent an empty history. */
@@ -83,21 +98,6 @@ interface AgentContextValue {
   registerTermsGate: (handler: ((terms: RunnerTerms) => void) | null) => void;
 }
 
-/** Recover a tool result's structured fields from its `content`. Tool outputs
- *  are `MessageContent` (a string); object outputs like write_file's
- *  `{ path, checkExitCode, checkOutput }` arrive JSON-stringified. */
-function parseToolContent(
-  content: unknown,
-): { path?: string; checkExitCode?: number; checkOutput?: string } | undefined {
-  if (typeof content !== "string") return undefined;
-  try {
-    const obj = JSON.parse(content);
-    return obj && typeof obj === "object" ? obj : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Heuristic for "the per-session container is gone": a network-level fetch
  *  failure, or a gateway error from the proxy fronting a dead upstream. Used to
  *  decide when a cached launch should be dropped and re-created. */
@@ -107,11 +107,12 @@ function isUpstreamGone(err: unknown): boolean {
   return /\((502|503|504)\)/.test(message);
 }
 
-/** What the user reads for a refused turn start, by the refusal's `code`. A turn
- *  already running for this conversation is an error, not something to attach
- *  to: this client's own retries are recognised by their `Idempotency-Key`, so
- *  a running turn it did not start belongs to someone else. */
-function refusalMessage(refusal: StartTurnRefused): string {
+/** What the user reads for a refused turn start or continue, by the refusal's
+ *  `code`. A turn already running for this conversation is an error, not
+ *  something to attach to: this client's own retries are recognised by their
+ *  `Idempotency-Key`, and a continue of a turn that is still running attaches
+ *  to it before this is reached, so a running turn named here is another one. */
+function refusalMessage(refusal: TurnRefused): string {
   const retryIn = refusal.retryAfter ? ` in ${refusal.retryAfter}s` : "";
   switch (refusal.code) {
     case "ERR_AT_CAPACITY":
@@ -120,10 +121,22 @@ function refusalMessage(refusal: StartTurnRefused): string {
       return `Too many turns started — try again${retryIn}.`;
     case "ERR_TURN_IN_PROGRESS":
       return "A turn is already running for this conversation.";
+    case "ERR_TURN_NOT_CONTINUABLE":
+      return refusal.reason === "finished"
+        ? "This turn already finished — there is nothing to resume."
+        : refusal.reason === "aborted"
+          ? "This turn was stopped, so it cannot be resumed — send a new message instead."
+          : "A later turn followed this one; only the last turn can be resumed.";
+    case "ERR_TURN_NOT_FOUND":
+    case "ERR_JOURNAL_KEY_REMOVED":
+      return "The agent no longer has this turn — send your message again.";
     default:
       return refusal.message;
   }
 }
+
+/** How a turn's stream ends when its running attempt was cancelled. */
+const ERR_INVOKE_CANCELLED = "ERR_INVOKE_CANCELLED";
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
@@ -134,7 +147,13 @@ export function useAgent(): AgentContextValue {
 }
 
 export function AgentProvider({ children }: { children: ReactNode }) {
-  const initialSettings = useRef(loadAgentSettings());
+  // The transcript is the agent's journal, read back from the records route —
+  // any copy an earlier Studio kept in browser storage goes on first load.
+  const initialSettings = useRef<ReturnType<typeof loadAgentSettings> | null>(null);
+  if (initialSettings.current === null) {
+    purgeStoredTranscripts();
+    initialSettings.current = loadAgentSettings();
+  }
   const [panelOpen, setPanelOpen] = useState(initialSettings.current.panelOpen);
   const [overrideUrl, setOverrideUrlState] = useState(initialSettings.current.overrideUrl);
   const [questionCards, setQuestionCards] = useState(initialSettings.current.questionCards);
@@ -145,16 +164,18 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [turnId, setTurnId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The agent-persisted history rows (the MODEL's view of the conversation),
-  // snapshotted after each turn. A fresh per-session container starts with an
-  // empty DB, so these rows are seeded back before its first turn — without
-  // this the panel shows continuity while the model has amnesia.
-  const [history, setHistory] = useState<AgentHistoryRow[]>([]);
+  // A message whose send failed before the agent admitted it: there is no turn
+  // to continue, so a retry sends it again.
+  const [unsent, setUnsent] = useState<{ text: string; userId: string; assistantId: string } | null>(null);
+  const unsentRef = useRef(unsent);
+  unsentRef.current = unsent;
 
   const bridgeRef = useRef<WorkspaceBridge | null>(null);
   const streamRef = useRef<AgentStreamHandle | null>(null);
   const assistantIdRef = useRef<string | null>(null);
-  const lastEventIdRef = useRef<number>(0);
+  // Set while an accepted abort waits for the turn's cancellation to end its
+  // stream: the ERR_INVOKE_CANCELLED frame then reads as Stopped, not as an error.
+  const stoppingRef = useRef(false);
   const conversationIdRef = useRef<string | null>(null);
   conversationIdRef.current = conversationId;
   const turnIdRef = useRef<string | null>(null);
@@ -183,17 +204,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // agent's own directory otherwise. Resolved together with the base URL, so
   // the two can never disagree about which agent is being talked to.
   const workspaceRef = useRef<AgentWorkspace | null>(null);
-  const historyRef = useRef<AgentHistoryRow[]>([]);
-  historyRef.current = history;
   // Read by retry(), through a ref so the callback stays stable across every
   // streamed delta.
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
-  // `<sessionKey>:<conversationId>` pairs already seeded with history — one
-  // import per session is enough (and the import is idempotent regardless).
-  const historySeededRef = useRef<Set<string>>(new Set());
 
-  const locked = status === "launching" || status === "seeding" || status === "streaming";
+  const locked = status === "launching" || status === "seeding" || status === "streaming" || status === "stopping";
 
   const client = useCallback(() => new AgentClient(agentUrlRef.current), []);
 
@@ -218,9 +234,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // already cached, and the cached one is torn down. It is not a preference:
   // only the co-resident agent writes the volume the running applications
   // watch, so only its edits reload the app the user is looking at. Switching
-  // costs nothing the panel cannot recover — the conversation's history is
-  // ferried into whichever instance is used next, which is what makes any
-  // instance replaceable.
+  // instances loses what the previous one journaled: the transcript and the
+  // model's history live in the agent that ran the turns, and nothing is
+  // ferried to another instance.
   //
   // Resolved at the start of a send, so an agent that appears mid-turn is
   // picked up on the next one rather than halfway through this one.
@@ -261,29 +277,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     saveAgentSettings({ overrideUrl, panelOpen, questionCards, panelWidth });
   }, [overrideUrl, panelOpen, panelWidth, questionCards]);
 
-  // Identity of the agent session the current turn runs on — a persisted turn
-  // may only be re-attached against the same session (see PersistedChat).
-  const agentSessionKey = useCallback(
-    () =>
-      overrideRef.current
-        ? `override:${overrideRef.current}`
-        : coResidentRef.current
-          ? `session:${coResidentRef.current.runId}`
-          : (launchedRef.current?.sessionId ?? null),
-    [],
-  );
-
-  useEffect(() => {
-    if (!conversationId) return;
-    saveChat(conversationId, {
-      messages,
-      activeTurnId: turnId,
-      lastEventId: lastEventIdRef.current,
-      agentSession: turnId ? agentSessionKey() : null,
-      history,
-    });
-  }, [agentSessionKey, conversationId, history, messages, turnId]);
-
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
   const setOverrideUrl = useCallback((url: string) => setOverrideUrlState(url), []);
   const registerWorkspace = useCallback((bridge: WorkspaceBridge | null) => {
@@ -292,8 +285,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const setRunner = useCallback((base: string | null) => {
     runnerBaseRef.current = base;
   }, []);
+  // Assigned below, once the transcript loader exists: a co-resident agent that
+  // appears after a conversation was opened is where that conversation's
+  // records are.
+  const onCoResidentRef = useRef<() => void>(() => undefined);
   const setCoResidentAgent = useCallback((agent: CoResidentAgent | null) => {
+    const appeared = agent !== null && coResidentRef.current?.baseUrl !== agent.baseUrl;
     coResidentRef.current = agent;
+    if (appeared) onCoResidentRef.current();
   }, []);
   const setRunnerAcceptedTerms = useCallback((version: string | null) => {
     runnerTermsRef.current = version;
@@ -306,93 +305,30 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setMessages((prev) => prev.map((m) => (m.id === id && m.role === "assistant" ? fn(m) : m)));
   }, []);
 
-  // ── stream part → transcript ────────────────────────────────────────────────
-  const applyPart = useCallback(
-    (part: AgentStreamPart, id: number) => {
-      lastEventIdRef.current = id;
-      const assistantId = assistantIdRef.current;
-      if (!assistantId) return;
-
-      switch (part.type) {
-        case "text-delta": {
-          const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
-          updateAssistant(assistantId, (m) => ({ ...m, parts: appendDelta(m.parts, "text", delta) }));
-          break;
-        }
-        case "reasoning-delta": {
-          const delta = typeof (part as { delta?: unknown }).delta === "string" ? (part as { delta: string }).delta : "";
-          updateAssistant(assistantId, (m) => ({ ...m, parts: appendDelta(m.parts, "thinking", delta) }));
-          break;
-        }
-        case "tool-call": {
-          // Ai.AgentStream tool-call shape: { toolCall: { id, name, arguments } }.
-          const call = (part as { toolCall?: { id?: string; name?: string; arguments?: unknown } }).toolCall ?? {};
-          const toolCallId = call.id ?? `${call.name ?? "tool"}-${Math.floor(id)}`;
-          updateAssistant(assistantId, (m) => ({
-            ...m,
-            parts: appendToolCall(m.parts, {
-              toolCallId,
-              name: call.name ?? "tool",
-              args: call.arguments,
-              state: "running",
-            }),
-          }));
-          break;
-        }
-        case "tool-result": {
-          // Ai.AgentStream tool-result shape: { toolResult: { toolCallId, name,
-          // content, error? } }. `content` is a string; structured tool outputs
-          // (write_file / edit_file) are JSON-stringified, so parse to recover the
-          // path and the auto-`telo check` verdict.
-          const raw = (part as { toolResult?: ToolResult }).toolResult;
-          if (!raw) break;
-          const failed = raw.error === true;
-          const parsed = parseToolContent(raw.content);
-          const checkExitCode = parsed?.checkExitCode;
-          const checkOutput = parsed?.checkOutput;
-          updateAssistant(assistantId, (m) => ({
-            ...m,
-            parts: settleToolCall(m.parts, raw, (t) => ({
-              ...t,
-              state: failed ? "error" : "done",
-              output: raw.content,
-              checkExitCode,
-              checkOutput,
-            })),
-          }));
-          // Eager reflection: pull the one file the agent just wrote.
-          const path = parsed?.path;
-          const bridge = bridgeRef.current;
-          const workspace = workspaceRef.current;
-          if (path && bridge && workspace && (raw.name === "write_file" || raw.name === "edit_file")) {
-            void pullFile(workspace, bridge, path).catch((err) => {
-              // Mid-turn reflection is redone by the end-of-turn reconcile —
-              // log so the failure isn't invisible in the meantime.
-              console.error(`Failed to pull '${path}' from the agent workspace`, err);
-            });
-          }
-          break;
-        }
-        case "error": {
-          const message =
-            typeof (part as { message?: unknown }).message === "string"
-              ? (part as { message: string }).message
-              : "agent error";
-          updateAssistant(assistantId, (m) => ({ ...m, error: message, pending: false }));
-          break;
-        }
-        case "finish": {
-          updateAssistant(assistantId, (m) => ({ ...m, pending: false, completed: true }));
-          break;
-        }
-      }
-    },
-    [updateAssistant],
-  );
+  // ── journal record → transcript ─────────────────────────────────────────────
+  // The same reducer the records route is folded with, so a live turn renders
+  // exactly as it will after a reload.
+  const applyStreamRecord = useCallback((turn: string, record: JournalRecord) => {
+    setMessages((prev) => applyRecord(prev, turn, record));
+    // Eager reflection: pull the one file the agent just wrote.
+    if (record.data.type !== "tool-result") return;
+    const raw = (record.data as { toolResult?: ToolResult }).toolResult;
+    const path = parseToolContent(raw?.content)?.path;
+    const bridge = bridgeRef.current;
+    const workspace = workspaceRef.current;
+    if (raw && path && bridge && workspace && (raw.name === "write_file" || raw.name === "edit_file")) {
+      void pullFile(workspace, bridge, path).catch((err) => {
+        // Mid-turn reflection is redone by the end-of-turn reconcile — log so
+        // the failure isn't invisible in the meantime.
+        console.error(`Failed to pull '${path}' from the agent workspace`, err);
+      });
+    }
+  }, []);
 
   const endTurn = useCallback(async () => {
     const bridge = bridgeRef.current;
     const workspace = workspaceRef.current;
+    stoppingRef.current = false;
     setStatus("idle");
     setTurnId(null);
     if (bridge && workspace) {
@@ -406,17 +342,35 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-    // Snapshot the agent-persisted history rows — the durable copy a later
-    // session gets seeded with (the container itself is ephemeral).
+  }, []);
+
+  // A cancellation this client did not ask for — another client's Stop, or the
+  // agent shutting down — is told apart by the turn's status as the records
+  // route reports it, so the live view ends the turn exactly as a reload shows
+  // it: Stopped when a user aborted it, the cancellation as its error otherwise.
+  const settleUnrequestedCancel = useCallback(async (turn: string, cancel: AgentStreamError) => {
     const convId = conversationIdRef.current;
-    if (convId && agentUrlRef.current) {
-      try {
-        setHistory(await client().conversation(convId));
-      } catch (err) {
-        setError(
-          `Failed to snapshot the conversation history from the agent: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    const reply = messagesRef.current.find((m): m is AssistantMessage => m.id === turn && m.role === "assistant");
+    const showCancelled = (note?: string) => {
+      const ending = { code: cancel.code, message: cancel.message };
+      setError(note === undefined ? describeTurnError(ending) : `${describeTurnError(ending)} ${note}`);
+      setMessages((prev) => applyTurnError(prev, turn, ending));
+    };
+    if (!convId) {
+      showCancelled();
+      return;
+    }
+    try {
+      const page = await client().records(convId, { fromTurn: turn, fromId: reply?.lastRecordId ?? 0 });
+      if (conversationIdRef.current !== convId) return;
+      if (page.turns.find((t) => t.turnId === turn)?.status === "aborted") {
+        setMessages((prev) => applyTurnStopped(prev, turn));
+        return;
       }
+      showCancelled();
+    } catch (err) {
+      if (conversationIdRef.current !== convId) return;
+      showCancelled(`Its status could not be read from the agent: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [client]);
 
@@ -427,15 +381,28 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         baseUrl: agentUrlRef.current,
         turnId: activeTurnId,
         fromId,
-        onPart: applyPart,
-        onError: (err) => {
+        onRecord: (record) => applyStreamRecord(activeTurnId, record),
+        onError: (err: AgentStreamError) => {
+          if (err.code === ERR_INVOKE_CANCELLED && stoppingRef.current) {
+            // The abort this client asked for: an ending, not a failure.
+            setMessages((prev) => applyTurnStopped(prev, activeTurnId));
+            return;
+          }
+          if (err.code === ERR_INVOKE_CANCELLED) {
+            void settleUnrequestedCancel(activeTurnId, err);
+            return;
+          }
+          setError(describeTurnError({ code: err.code, message: err.message }));
+          setStatus("error");
+          if (err.code !== undefined) {
+            // The turn's own ending, recorded in its journal: shown on the
+            // reply by code, as a reload would show it.
+            setMessages((prev) => applyTurnError(prev, activeTurnId, { code: err.code, message: err.message }));
+            return;
+          }
           // A lost connection usually means the per-session container is gone —
           // drop it so the next send re-launches instead of failing forever.
-          if (err.message === "agent stream connection lost") {
-            invalidateLaunched("event stream connection lost");
-          }
-          setError(err.message);
-          setStatus("error");
+          invalidateLaunched("event stream connection lost");
           const assistantId = assistantIdRef.current;
           if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
         },
@@ -444,8 +411,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [applyPart, endTurn, invalidateLaunched, updateAssistant],
+    [applyStreamRecord, endTurn, invalidateLaunched, settleUnrequestedCancel, updateAssistant],
   );
+
+  // Abort a turn this client started but will not follow — a Stop that landed
+  // while the agent was admitting it. Nothing shows it, so a failure to abort is
+  // reported rather than left as a turn running unseen.
+  const abortUnattached = useCallback((c: AgentClient, turn: string) => {
+    c.abortTurn(turn).catch((err: unknown) => {
+      setError(`Failed to stop the turn: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }, []);
 
   // ── send ────────────────────────────────────────────────────────────────────
   // The turn itself: reach an agent, seed the history and the workspace, start
@@ -454,11 +430,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // each caller, since only they know whether a bubble is being appended or
   // replaced.
   const dispatchTurn = useCallback(
-    (text: string, assistantId: string) => {
+    (text: string, userId: string, assistantId: string) => {
       const convId = conversationIdRef.current;
       const bridge = bridgeRef.current;
       if (!convId || !bridge) return;
-      lastEventIdRef.current = 0;
+      setUnsent({ text, userId, assistantId });
 
       // A Stop click bumps the generation; the pipeline re-checks it after
       // every await so a superseded send can't resurrect the turn.
@@ -471,22 +447,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (superseded()) return;
           const c = client();
           setStatus("seeding");
-          // Seed conversation history once per (session, conversation): a fresh
-          // per-session container has an empty DB, so without this the model
-          // would see none of the conversation the panel shows. Idempotent
-          // server-side (INSERT OR IGNORE by row id).
-          const seedKey = `${agentSessionKey()}:${convId}`;
-          if (historyRef.current.length > 0 && !historySeededRef.current.has(seedKey)) {
-            await c.importMessages(convId, historyRef.current);
-            historySeededRef.current.add(seedKey);
-          }
-          if (superseded()) return;
           const workspace = workspaceRef.current;
           if (!workspace) throw new Error("No agent workspace is reachable.");
           await seedDelta(workspace, bridge);
           if (superseded()) return;
           const outcome = await c.startTurn(convId, text);
-          if (superseded()) return;
+          if (superseded()) {
+            // Stopped while the agent was admitting it: the turn exists now,
+            // so it is aborted rather than left running unseen.
+            if (outcome.kind === "started") abortUnattached(c, outcome.turnId);
+            return;
+          }
           if (outcome.kind === "refused") {
             if (outcome.status >= 502 && outcome.status <= 504) {
               invalidateLaunched(`POST /chat answered ${outcome.status}`);
@@ -496,9 +467,20 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
             return;
           }
-          setTurnId(outcome.turnId);
+          // The bubbles take the turn's own ids, which the journal's records
+          // are folded under — so its `user-message` record lands on the bubble
+          // already shown rather than adding a second one.
+          const turn = outcome.turnId;
+          setUnsent(null);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === userId ? { ...m, id: userMessageId(turn) } : m.id === assistantId ? { ...m, id: turn } : m,
+            ),
+          );
+          assistantIdRef.current = turn;
+          setTurnId(turn);
           setStatus("streaming");
-          attachStream(outcome.turnId, 0);
+          attachStream(turn, 0);
         } catch (err) {
           if (superseded()) return;
           if (isUpstreamGone(err)) {
@@ -519,7 +501,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [agentSessionKey, client, ensureAgent, attachStream, invalidateLaunched, updateAssistant],
+    [client, ensureAgent, attachStream, invalidateLaunched, updateAssistant, abortUnattached],
   );
 
   const send = useCallback(
@@ -532,129 +514,191 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       assistantIdRef.current = assistantId;
       const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", parts: [], pending: true };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
-      dispatchTurn(text, assistantId);
+      dispatchTurn(text, userMsg.id, assistantId);
     },
     [dispatchTurn, locked],
   );
 
+  // ── resume ──────────────────────────────────────────────────────────────────
+  // The agent to read a conversation's records from — and to continue its turn
+  // on — right now, without launching one: a launched per-session instance is
+  // new, so it holds none.
+  const reachableAgent = useCallback((): { url: string; workspace: AgentWorkspace } | null => {
+    if (overrideRef.current) {
+      return { url: overrideRef.current, workspace: ownWorkspace(new AgentClient(overrideRef.current)) };
+    }
+    const coResident = coResidentRef.current;
+    if (coResident) return { url: coResident.baseUrl, workspace: coResident.workspace };
+    const launched = launchedRef.current;
+    if (launched) return { url: launched.agentUrl, workspace: ownWorkspace(new AgentClient(launched.agentUrl)) };
+    return null;
+  }, []);
+
+  // Continue an interrupted turn on the agent that holds it, inside the same
+  // turn: the stream re-attaches from the last record this client folded, so
+  // what the agent records next — the `turn-continued` divider, then the new
+  // attempt — lands on the same reply. A turn still running (its stream was
+  // lost, not its work) is attached to as it is.
+  const continueTurn = useCallback(
+    (turn: AssistantMessage) => {
+      const bridge = bridgeRef.current;
+      const agent = reachableAgent();
+      if (!bridge) return;
+      if (!agent) {
+        setError("No agent holds this conversation any more — send your message again.");
+        return;
+      }
+      const gen = ++sendGenRef.current;
+      const superseded = () => sendGenRef.current !== gen;
+      agentUrlRef.current = agent.url;
+      workspaceRef.current = agent.workspace;
+      const c = new AgentClient(agent.url);
+
+      void (async () => {
+        try {
+          setStatus("seeding");
+          await seedDelta(agent.workspace, bridge);
+          if (superseded()) {
+            setStatus("idle");
+            return;
+          }
+          const outcome = await c.continueTurn(turn.id);
+          const running =
+            outcome.kind === "continued" ||
+            (outcome.code === "ERR_TURN_IN_PROGRESS" && outcome.activeTurnId === turn.id);
+          if (superseded()) {
+            if (running) abortUnattached(c, turn.id);
+            return;
+          }
+          if (outcome.kind === "refused" && !running) {
+            if (outcome.status >= 502 && outcome.status <= 504) {
+              invalidateLaunched(`POST /chat/${turn.id}/continue answered ${outcome.status}`);
+            }
+            setError(refusalMessage(outcome));
+            setStatus("error");
+            return;
+          }
+          assistantIdRef.current = turn.id;
+          updateAssistant(turn.id, (m) => ({ ...m, pending: true, error: undefined, errorCode: undefined }));
+          setTurnId(turn.id);
+          setStatus("streaming");
+          attachStream(turn.id, turn.lastRecordId ?? 0);
+        } catch (err) {
+          if (superseded()) return;
+          if (isUpstreamGone(err)) invalidateLaunched(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err.message : String(err));
+          setStatus("error");
+        }
+      })();
+    },
+    [abortUnattached, attachStream, invalidateLaunched, reachableAgent, updateAssistant],
+  );
+
   /**
-   * Pick a failed turn back up.
-   *
-   * A turn whose STREAM was lost is usually still running on a reachable agent,
-   * so the first move is to re-attach from the last event seen: the work
-   * continues where the transcript stopped, and nothing is paid for twice. Only
-   * when there is no turn to re-attach to — the agent session ended, which is
-   * what "Interrupted" means — is the last request sent again, against a fresh
-   * agent seeded with this conversation's history.
+   * Pick an interrupted turn back up. A message the agent never admitted is sent
+   * again as it was; a turn the agent holds is continued there, never re-sent —
+   * the agent has its every record, so the model resumes from exactly where it
+   * stopped instead of from a summary of itself.
    */
   const retry = useCallback(() => {
     if (locked || !conversationIdRef.current || !bridgeRef.current) return;
     setError(null);
-
-    const activeTurn = turnIdRef.current;
-    if (activeTurn && agentUrlRef.current) {
-      const assistantId = assistantIdRef.current;
-      if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, error: undefined, pending: true }));
-      setStatus("streaming");
-      attachStream(activeTurn, lastEventIdRef.current);
+    const pendingSend = unsentRef.current;
+    if (pendingSend) {
+      assistantIdRef.current = pendingSend.assistantId;
+      updateAssistant(pendingSend.assistantId, (m) => ({ ...m, pending: true, error: undefined, errorCode: undefined }));
+      dispatchTurn(pendingSend.text, pendingSend.userId, pendingSend.assistantId);
       return;
     }
+    const turn = interruptedTurn(messagesRef.current);
+    if (turn) continueTurn(turn);
+  }, [continueTurn, dispatchTurn, locked, updateAssistant]);
 
-    const resume = resumePoint(messagesRef.current);
-    if (!resume) return;
-    // The failed turn STAYS in the transcript, tool cards and all: it is the
-    // record of work that really happened, and the files it wrote are on disk.
-    // Replacing it would tell the user their agent had done nothing.
-    const text = formatResumeRequest(resume);
-    const assistantId = crypto.randomUUID();
-    assistantIdRef.current = assistantId;
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), role: "user", text, resumedRequest: resume.request },
-      { id: assistantId, role: "assistant", parts: [], pending: true },
-    ]);
-    dispatchTurn(text, assistantId);
-  }, [attachStream, dispatchTurn, locked, updateAssistant]);
-
-  // Stop: cancel any in-flight send pipeline, close the stream, abort the turn
-  // on the agent (so the server-side model loop actually ends and the workspace
-  // stops changing), then run the normal end-of-turn convergence.
+  // Stop: abort the running turn on the agent, so its model call and its tool
+  // end and the workspace stops changing. The stream stays open: the turn's own
+  // ERR_INVOKE_CANCELLED frame ends it, as Stopped, and the normal end-of-turn
+  // convergence follows. Before the agent has admitted anything, the pipeline
+  // starting it is superseded instead, and aborts the turn if it lands anyway.
   const stop = useCallback(() => {
     sendGenRef.current++;
-    streamRef.current?.close();
-    streamRef.current = null;
-    const assistantId = assistantIdRef.current;
-    if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false, stopped: true }));
-    const convId = conversationIdRef.current;
     const activeTurn = turnIdRef.current;
-    void (async () => {
-      if (convId && activeTurn && agentUrlRef.current) {
-        try {
-          const outcome = await client().abortTurn(convId, activeTurn);
-          if (!outcome.supported) {
-            console.warn(
-              "This agent predates the abort endpoint — the stopped turn keeps running server-side until it finishes.",
-            );
-          }
-        } catch (err) {
-          setError(
-            `Failed to abort the running turn: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+    if (!activeTurn) {
+      const pendingSend = unsentRef.current;
+      if (pendingSend) {
+        updateAssistant(pendingSend.assistantId, (m) => ({ ...m, pending: false, stopped: true }));
+        setUnsent(null);
       }
-      await endTurn();
-    })();
-  }, [client, endTurn, updateAssistant]);
+      setStatus("idle");
+      return;
+    }
+    stoppingRef.current = true;
+    setStatus("stopping");
+    client()
+      .abortTurn(activeTurn)
+      .then(
+        (outcome) => {
+          // Nothing was running any more: the turn reached its own ending, which
+          // its stream delivers.
+          if (!outcome.cancelled && stoppingRef.current) {
+            stoppingRef.current = false;
+            setStatus("streaming");
+          }
+        },
+        (err: unknown) => {
+          setError(`Failed to stop the turn: ${err instanceof Error ? err.message : String(err)}`);
+          if (!stoppingRef.current) return;
+          stoppingRef.current = false;
+          setStatus("streaming");
+        },
+      );
+  }, [client, updateAssistant]);
 
-  // ── conversation switch (workspace load / reload) ────────────────────────────
-  // Load the persisted thread for an effective conversationId and re-attach to
-  // any in-flight turn. Shared by workspace-open and start-over.
+  // ── conversation switch (workspace load / reload) ──────────────────────────
+  // Read the open conversation back from the agent's records, and re-attach to
+  // its last turn when that one is still running — from the last record read.
+  const loadTranscript = useCallback(async () => {
+    const convId = conversationIdRef.current;
+    const agent = reachableAgent();
+    if (!convId || !agent || turnIdRef.current) return;
+    const agentClient = new AgentClient(agent.url);
+    try {
+      const turns = await readConversation((cursor) => agentClient.records(convId, cursor));
+      if (conversationIdRef.current !== convId || turnIdRef.current) return;
+      setMessages(transcriptFromTurns(turns));
+      const last = turns[turns.length - 1];
+      if (last?.status !== "running") return;
+      agentUrlRef.current = agent.url;
+      workspaceRef.current = agent.workspace;
+      assistantIdRef.current = last.turnId;
+      setTurnId(last.turnId);
+      setStatus("streaming");
+      attachStream(last.turnId, last.records[last.records.length - 1]?.id ?? 0);
+    } catch (err) {
+      if (conversationIdRef.current !== convId) return;
+      setError(`Failed to read the conversation from the agent: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [attachStream, reachableAgent]);
+  onCoResidentRef.current = () => {
+    void loadTranscript();
+  };
+
   const openConversation = useCallback(
     (effectiveId: string) => {
       streamRef.current?.close();
       streamRef.current = null;
+      conversationIdRef.current = effectiveId;
       setConversationId(effectiveId);
       setError(null);
-      const chat = loadChat(effectiveId);
-      lastEventIdRef.current = chat.lastEventId;
-      setHistory(chat.history ?? []);
-      // Re-attach only against the SAME agent session the turn was started on
-      // (a workspace switch back, or the dev override across reloads). Anything
-      // else is stale — a fresh page load has no container, and a re-launched
-      // container has no journal for the turn (its stream would tail forever) —
-      // so mark the pending bubble interrupted instead.
-      if (overrideRef.current) agentUrlRef.current = overrideRef.current;
-      const reachable =
-        Boolean(agentUrlRef.current) &&
-        chat.agentSession != null &&
-        chat.agentSession === agentSessionKey();
-      if (chat.activeTurnId && reachable) {
-        // Re-attach to an in-flight turn: continue the last pending assistant.
-        const pending = [...chat.messages].reverse().find((m) => m.role === "assistant" && m.pending);
-        assistantIdRef.current = pending?.id ?? null;
-        setMessages(chat.messages);
-        setTurnId(chat.activeTurnId);
-        setStatus("streaming");
-        attachStream(chat.activeTurnId, chat.lastEventId);
-        return;
-      }
-      if (chat.activeTurnId) {
-        const pendingId = [...chat.messages].reverse().find((m) => m.role === "assistant" && m.pending)?.id;
-        setMessages(
-          chat.messages.map((m) =>
-            m.id === pendingId && m.role === "assistant"
-              ? { ...m, pending: false, error: "Interrupted — the agent session ended before this turn completed." }
-              : m,
-          ),
-        );
-      } else {
-        setMessages(chat.messages);
-      }
+      setMessages([]);
       assistantIdRef.current = null;
+      turnIdRef.current = null;
       setTurnId(null);
       setStatus("idle");
+      stoppingRef.current = false;
+      setUnsent(null);
+      void loadTranscript();
     },
-    [agentSessionKey, attachStream],
+    [loadTranscript],
   );
 
   const setConversation = useCallback(
@@ -665,7 +709,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         streamRef.current = null;
         setConversationId(null);
         setMessages([]);
-        setHistory([]);
         setTurnId(null);
         setStatus("idle");
         setError(null);
@@ -692,13 +735,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     streamRef.current?.close();
     streamRef.current = null;
     assistantIdRef.current = null;
-    // Drop the current thread's persisted transcript, then mint a fresh UUID —
-    // a new conversation the agent has no history for.
-    const current = loadConversationId(key);
-    if (current) clearChat(current);
+    // Mint a fresh UUID — a new conversation the agent has no records for.
     const next = crypto.randomUUID();
     saveConversationId(key, next);
-    lastEventIdRef.current = 0;
     openConversation(next);
   }, [openConversation]);
 
@@ -741,7 +780,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     send,
     stop,
     retry,
-    canRetry: !locked && (turnId !== null || resumePoint(messages) !== null),
+    canRetry: !locked && (unsent !== null || interruptedTurn(messages) !== null),
     clearConversation,
     setConversation,
     registerWorkspace,

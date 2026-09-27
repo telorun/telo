@@ -1,9 +1,11 @@
 # The journal's behaviour suite, written once against whatever store the importer
 # hands in, so every store runs the same proof. Each exported sequence is one
-# behaviour; `expiry` must run first, while the store holds only its own keys.
-# Taking over a key whose writer went stale needs a stale header, which no store
-# can be made to hold without editing it, so the SQL store's seeded suite proves
-# that case.
+# behaviour; `expiry` must run first, while the store holds only its own keys,
+# and `markerRetention` second.
+# A stale DRAINED key cannot be staged here — a live sink heartbeats it — so its
+# takeover is proven by the SQL store's seeded suite and
+# nodejs/tests/journal-reserve.test.ts; an undrained claim goes stale on its own
+# (claimGoesStale).
 kind: Telo.Library
 metadata:
   name: JournalSuite
@@ -23,6 +25,7 @@ resources:
 exports:
   resources:
     - expiry
+    - markerRetention
     - roundTrip
     - typedValues
     - failedReplaysCode
@@ -35,6 +38,14 @@ exports:
     - resumeContinuesFailed
     - resumeKeyStates
     - resumeLiveWriterBusy
+    - readSnapshot
+    - readStates
+    - claimAdopted
+    - claimOneDrain
+    - claimRefusals
+    - claimResumeTakesOver
+    - claimSameWriterEnded
+    - claimGoesStale
 ---
 kind: RecordStream.Journal
 metadata: { name: journal }
@@ -51,6 +62,14 @@ journal: !ref journal
 ---
 kind: RecordStream.JournalRemoval
 metadata: { name: removal0 }
+journal: !ref journal
+---
+kind: RecordStream.JournalRead
+metadata: { name: read }
+journal: !ref journal
+---
+kind: RecordStream.JournalClaim
+metadata: { name: claim }
 journal: !ref journal
 ---
 kind: Stream.Collect
@@ -116,6 +135,51 @@ steps:
       actual: { count: !cel "steps.expireMarkers.result.count", outcome: !cel "steps.forget.result.outcome" }
       expected: { count: 0, outcome: unknown }
 ---
+# A journal with no `retention` keeps ended keys until they are removed, while
+# its `markerRetention` still bounds how long a removal answers "removed".
+kind: Run.Sequence
+metadata: { name: markerRetention }
+steps:
+  - name: kept
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: writeKept
+    invoke: !ref sink
+    inputs: { key: marker-kept, input: !cel "steps.kept.result.output" }
+  - name: gone
+    invoke: !ref items
+    inputs: { items: [y] }
+  - name: writeGone
+    invoke: !ref sink
+    inputs: { key: marker-gone, input: !cel "steps.gone.result.output" }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: marker-gone }
+  - name: age
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "20ms" }
+  - name: expire
+    invoke:
+      kind: RecordStream.JournalExpiry
+      journal:
+        kind: RecordStream.Journal
+        store: !ref store
+        markerRetention: "1ms"
+  - name: readKept
+    invoke: !ref read
+    inputs: { key: marker-kept, limit: 0 }
+  - name: readGone
+    invoke: !ref read
+    inputs: { key: marker-gone, limit: 0 }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        count: !cel "steps.expire.result.count"
+        kept: !cel "steps.readKept.result.state"
+        gone: !cel "steps.readGone.result.state"
+      expected: { count: 0, kept: finished, gone: unknown }
+---
 # Replay from the start and from an offset: ids are 1-based and gap-free.
 kind: Run.Sequence
 metadata: { name: roundTrip }
@@ -174,16 +238,22 @@ steps:
   - name: replayed
     invoke: !ref collect
     inputs: { input: !cel "steps.read.result.output" }
+  - name: snapshot
+    invoke: !ref read
+    inputs: { key: typed }
   - name: check
     invoke: !ref Assert.equals
     inputs:
       # Compared in CEL: a YAML number cannot hold 2^53 + 1, and the deep-equality
-      # assertion compares only plain JSON shapes, not bytes.
+      # assertion compares only plain JSON shapes, not bytes. A snapshot read
+      # decodes a record exactly as a reader does.
       actual:
         bigExact: !cel "steps.replayed.result.items[0].data.big == 9007199254740993"
         bigIsInt: !cel "type(steps.replayed.result.items[0].data.big) == int"
         rawIntact: !cel "steps.replayed.result.items[0].data.raw == b'\\x00\\xff'"
-      expected: { bigExact: true, bigIsInt: true, rawIntact: true }
+        readBigExact: !cel "steps.snapshot.result.entries[0].data.big == 9007199254740993"
+        readRawIntact: !cel "steps.snapshot.result.entries[0].data.raw == b'\\x00\\xff'"
+      expected: { bigExact: true, bigIsInt: true, rawIntact: true, readBigExact: true, readRawIntact: true }
 ---
 # A drain that fails records its error; a reader replays the records, then
 # raises the same code, message and data.
@@ -331,9 +401,11 @@ steps:
         invoke: !ref Assert.equals
         inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
 ---
-# A writer whose input goes quiet for several timeouts keeps heartbeating, so a
-# reader tailing it sees every record and a normal end. The timeout leaves each
-# heartbeat four seconds of slack, so a loaded machine's stall cannot fail it.
+# A writer whose input goes quiet for longer than its timeout keeps heartbeating,
+# so a reader tailing it sees every record and a normal end. The timeout leaves
+# each heartbeat ten seconds of slack, so a loaded machine's stall of several
+# seconds cannot fail it; the heartbeat's own cadence is proven with fake timers
+# in the module's unit tests.
 kind: Run.Sequence
 metadata: { name: pausedWriterStaysLive }
 steps:
@@ -345,7 +417,7 @@ steps:
       kind: Stream.Tap
       when: !cel "item == 2"
       invoke: { kind: Timer.Delay }
-      inputs: { duration: "13s" }
+      inputs: { duration: "16s" }
     inputs: { input: !cel "steps.turn.result.output" }
   - name: startWriter
     invoke:
@@ -356,7 +428,7 @@ steps:
           kind: RecordStream.Journal
           store: !ref store
           retention: "1h"
-          writerTimeout: "6s"
+          writerTimeout: "15s"
     inputs: { key: paused, input: !cel "steps.paused.result.output" }
   - name: read
     invoke: !ref source
@@ -582,3 +654,389 @@ steps:
     inputs:
       actual: { written: !cel "steps.write.result.count", read: !cel "steps.all.result.items.map(e, e.data.n)" }
       expected: { written: 2, read: [1, 2] }
+---
+# A snapshot read of a finished key: every entry, a page from an offset capped by
+# `limit`, and the state alone at `limit: 0` — each with the key's last id.
+kind: Run.Sequence
+metadata: { name: readSnapshot }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [a, b, c] }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: read-finished, input: !cel "steps.turn.result.output" }
+  - name: all
+    invoke: !ref read
+    inputs: { key: read-finished }
+  - name: page
+    invoke: !ref read
+    inputs: { key: read-finished, fromId: 1, limit: 1 }
+  - name: header
+    invoke: !ref read
+    inputs: { key: read-finished, limit: 0 }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        all: !cel "steps.all.result"
+        page: !cel "steps.page.result"
+        header: !cel "steps.header.result"
+      expected:
+        all:
+          state: finished
+          error: null
+          lastId: 3
+          entries: [{ id: 1, data: a }, { id: 2, data: b }, { id: 3, data: c }]
+        page: { state: finished, error: null, lastId: 3, entries: [{ id: 2, data: b }] }
+        header: { state: finished, error: null, lastId: 3, entries: [] }
+---
+# A snapshot read reports every state without waiting or raising: a key never
+# written, a claimed key nothing has written to yet, a failed key with its
+# recorded error, and a removed key.
+kind: Run.Sequence
+metadata: { name: readStates }
+steps:
+  - name: unknown
+    invoke: !ref read
+    inputs: { key: read-never-written }
+  - name: claimed
+    invoke: !ref claim
+    inputs: { key: read-open, writer: read-writer }
+  - name: open
+    invoke: !ref read
+    inputs: { key: read-open }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, fail: true }] }
+  - name: failing
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.fail)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: boom
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: read-failed, input: !cel "steps.failing.result.output" }
+    catch:
+      - name: drainFailed
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: failed
+    invoke: !ref read
+    inputs: { key: read-failed }
+  - name: kept
+    invoke: !ref items
+    inputs: { items: [x] }
+  - name: writeRemoved
+    invoke: !ref sink
+    inputs: { key: read-removed, input: !cel "steps.kept.result.output" }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: read-removed }
+  - name: removed
+    invoke: !ref read
+    inputs: { key: read-removed }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        unknown: !cel "steps.unknown.result"
+        open: !cel "steps.open.result"
+        failed: !cel "steps.failed.result"
+        removed: !cel "steps.removed.result"
+      expected:
+        unknown: { state: unknown, error: null, lastId: 0, entries: [] }
+        open: { state: open, error: null, lastId: 0, entries: [] }
+        failed:
+          state: failed
+          error: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+          lastId: 1
+          entries: [{ id: 1, data: { n: 1 } }]
+        removed: { state: removed, error: null, lastId: 0, entries: [] }
+---
+# A claim by a named writer creates the key with nothing drained; claiming it
+# again under the same writer succeeds unchanged, and a sink given that writer
+# adopts the key and finishes it.
+kind: Run.Sequence
+metadata: { name: claimAdopted }
+steps:
+  - name: first
+    invoke: !ref claim
+    inputs: { key: claim-adopted, writer: writer-1 }
+  - name: again
+    invoke: !ref claim
+    inputs: { key: claim-adopted, writer: writer-1 }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [a, b] }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: claim-adopted, input: !cel "steps.turn.result.output", writer: writer-1 }
+  - name: after
+    invoke: !ref read
+    inputs: { key: claim-adopted }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        first: !cel "steps.first.result"
+        again: !cel "steps.again.result"
+        written: !cel "steps.write.result"
+        after: !cel "steps.after.result"
+      expected:
+        first: { key: claim-adopted, lastId: 0 }
+        again: { key: claim-adopted, lastId: 0 }
+        written: { key: claim-adopted, count: 2 }
+        after:
+          state: finished
+          error: null
+          lastId: 2
+          entries: [{ id: 1, data: a }, { id: 2, data: b }]
+---
+# A claim is refused for a key another writer holds, and for a removed key.
+kind: Run.Sequence
+metadata: { name: claimRefusals }
+steps:
+  - name: held
+    invoke: !ref claim
+    inputs: { key: claim-held, writer: writer-1 }
+  - name: rival
+    try:
+      - name: claimHeld
+        invoke: !ref claim
+        inputs: { key: claim-held, writer: writer-2 }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "another writer's key was claimed" }
+    catch:
+      - name: busy
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
+  - name: remove
+    invoke: !ref removal0
+    inputs: { key: claim-held }
+  - name: afterRemoval
+    try:
+      - name: claimRemoved
+        invoke: !ref claim
+        inputs: { key: claim-held, writer: writer-1, resume: true }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a removed key was claimed" }
+    catch:
+      - name: removed
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
+---
+# A resuming claim takes a failed key over at once: a reader opened before any
+# sink runs tails the key instead of raising the old failure, and receives what
+# the adopting sink appends after the claimed last id.
+kind: Run.Sequence
+metadata: { name: claimResumeTakesOver }
+steps:
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, fail: true }] }
+  - name: failing
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.fail)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: boom
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed" }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: claim-resumed, input: !cel "steps.failing.result.output" }
+    catch:
+      - name: drainFailed
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: takeOver
+    invoke: !ref claim
+    inputs: { key: claim-resumed, writer: writer-2, resume: true }
+  - name: reader
+    invoke: !ref source
+    inputs: { key: claim-resumed, fromId: !cel "steps.takeOver.result.lastId" }
+  - name: more
+    invoke: !ref items
+    inputs: { items: [{ n: 3 }] }
+  - name: startSink
+    invoke: { kind: Run.Detach, invoke: !ref sink }
+    inputs: { key: claim-resumed, input: !cel "steps.more.result.output", writer: writer-2 }
+  - name: continuation
+    invoke: !ref collect
+    inputs: { input: !cel "steps.reader.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { claimed: !cel "steps.takeOver.result", continuation: !cel "steps.continuation.result.items" }
+      expected:
+        claimed: { key: claim-resumed, lastId: 1 }
+        continuation: [{ id: 2, data: { n: 3 } }]
+---
+# A resuming claim under the writer whose own sink already ended the key leaves
+# that ending alone: a finished key stays finished, and a failed one keeps the
+# error its sink recorded, rather than being refused or taken over again.
+kind: Run.Sequence
+metadata: { name: claimSameWriterEnded }
+steps:
+  - name: claimFinished
+    invoke: !ref claim
+    inputs: { key: claim-ended-finished, writer: writer-1 }
+  - name: done
+    invoke: !ref items
+    inputs: { items: [a] }
+  - name: finish
+    invoke: !ref sink
+    inputs: { key: claim-ended-finished, input: !cel "steps.done.result.output", writer: writer-1 }
+  - name: reclaimFinished
+    invoke: !ref claim
+    inputs: { key: claim-ended-finished, writer: writer-1, resume: true }
+  - name: finished
+    invoke: !ref read
+    inputs: { key: claim-ended-finished }
+  - name: claimFailed
+    invoke: !ref claim
+    inputs: { key: claim-ended-failed, writer: writer-1 }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1 }, { n: 2, fail: true }] }
+  - name: failing
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.fail)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: boom
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: fail
+    try:
+      - name: drain
+        invoke: !ref sink
+        inputs: { key: claim-ended-failed, input: !cel "steps.failing.result.output", writer: writer-1 }
+    catch:
+      - name: drainFailed
+        invoke: !ref Assert.equals
+        inputs: { actual: !cel "error.code", expected: ERR_TEST_BOOM }
+  - name: reclaimFailed
+    invoke: !ref claim
+    inputs: { key: claim-ended-failed, writer: writer-1, resume: true }
+  - name: failed
+    invoke: !ref read
+    inputs: { key: claim-ended-failed }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        reclaimFinished: !cel "steps.reclaimFinished.result"
+        finished: !cel "steps.finished.result"
+        reclaimFailed: !cel "steps.reclaimFailed.result"
+        failed: !cel "steps.failed.result"
+      expected:
+        reclaimFinished: { key: claim-ended-finished, lastId: 1 }
+        finished: { state: finished, error: null, lastId: 1, entries: [{ id: 1, data: a }] }
+        reclaimFailed: { key: claim-ended-failed, lastId: 1 }
+        failed:
+          state: failed
+          error: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
+          lastId: 1
+          entries: [{ id: 1, data: { n: 1 } }]
+---
+# Nothing heartbeats a claim no sink adopts: once its writer's timeout has
+# passed, a snapshot read reports it failed as abandoned.
+kind: Run.Sequence
+metadata: { name: claimGoesStale }
+steps:
+  - name: claimed
+    invoke:
+      kind: RecordStream.JournalClaim
+      journal:
+        kind: RecordStream.Journal
+        store: !ref store
+        retention: "1h"
+        writerTimeout: "100ms"
+    inputs: { key: claim-stale, writer: writer-1 }
+  - name: pastTimeout
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "300ms" }
+  - name: stale
+    invoke: !ref read
+    inputs: { key: claim-stale }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.stale.result"
+      expected:
+        state: failed
+        error:
+          code: ERR_JOURNAL_WRITER_LOST
+          message: "RecordStream.Journal: the writer of key 'claim-stale' stopped sending heartbeats within its timeout, so the key was failed."
+          data: { key: claim-stale }
+        lastId: 0
+        entries: []
+---
+# One claim, one drain: of two sinks under the writer a claim named, the second
+# is started from inside the first's input — after the first adopted the key,
+# which it does before pulling anything — so the order is the data's, not a
+# timer's. The second is refused before it appends, and the log holds only the
+# first's records.
+kind: Run.Sequence
+metadata: { name: claimOneDrain }
+steps:
+  - name: claimed
+    invoke: !ref claim
+    inputs: { key: claim-one-drain, writer: writer-1 }
+  - name: turn
+    invoke: !ref items
+    inputs: { items: [{ n: 1, contend: true }, { n: 2 }] }
+  - name: contended
+    invoke:
+      kind: Stream.Tap
+      when: !cel "has(item.contend)"
+      invoke:
+        kind: Run.Sequence
+        steps:
+          - name: rival
+            invoke: !ref items
+            inputs: { items: [{ n: 99 }] }
+          - name: secondDrain
+            try:
+              - name: drain
+                invoke: !ref sink
+                inputs: { key: claim-one-drain, input: !cel "steps.rival.result.output", writer: writer-1 }
+              - name: unreachable
+                throw: { code: ERR_TEST_UNREACHABLE, message: "a second drain adopted a claimed key" }
+            catch:
+              - name: refused
+                invoke: !ref Assert.equals
+                inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_BUSY }
+    inputs: { input: !cel "steps.turn.result.output" }
+  - name: write
+    invoke: !ref sink
+    inputs: { key: claim-one-drain, input: !cel "steps.contended.result.output", writer: writer-1 }
+  - name: after
+    invoke: !ref read
+    inputs: { key: claim-one-drain }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { written: !cel "steps.write.result.count", after: !cel "steps.after.result" }
+      expected:
+        written: 2
+        after:
+          state: finished
+          error: null
+          lastId: 2
+          entries: [{ id: 1, data: { n: 1, contend: true } }, { id: 2, data: { n: 2 } }]

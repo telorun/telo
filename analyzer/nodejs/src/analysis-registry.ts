@@ -20,6 +20,8 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
+import type { RefSlot } from "./ref-slot.js";
+import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 
 const TELO_BUILTIN_MODULE = "Telo";
 
@@ -300,6 +302,33 @@ export class AnalysisRegistry {
       resolveDefinition: this.scopedDefResolver(),
       typeManifestsFor: () => [],
     })?.schema;
+  }
+
+  /**
+   * Why a resource of `candidate.kind` — configured as `candidate.config`, when
+   * the caller holds its configuration — cannot fill `slot`, by what it RETURNS:
+   * one line per definite mismatch against the slot's `x-telo-ref`
+   * `outputType`, empty when it can. The same derivation and comparator
+   * `telo check`'s `REFERENCE_OUTPUT_MISMATCH` runs, for a host that has a kind
+   * (and perhaps its fields) but not the analyzed manifest set. A named shape an
+   * instance's own `outputType` points at resolves through no manifest here, so
+   * that layer gives no verdict and the kind's contract decides.
+   */
+  outputRefusal(slot: RefSlot, candidate: { kind: string; config?: Record<string, unknown> }): string[] {
+    if (!slot.outputType) return [];
+    const definition = this.resolveDefinition(candidate.kind);
+    if (!definition) return [];
+    const target = candidate.config ? { kind: candidate.kind, ...candidate.config } : undefined;
+    return referenceOutputRefusal(
+      slot,
+      producedOutputContract(
+        target,
+        definition,
+        { resolveDefinition: this.scopedDefResolver(), typeManifestsFor: () => [] },
+        this.defs,
+      ),
+      this.defs,
+    );
   }
 
   /** A resolver that re-scopes at every hop of an `extends` chain: each kind is

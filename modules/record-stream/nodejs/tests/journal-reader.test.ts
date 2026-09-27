@@ -22,7 +22,7 @@ function counting(store: JournalStore): { store: JournalStore; calls: () => numb
 
 class TestJournal extends Journal {
   constructor(private readonly backing: JournalStore) {
-    super({ retentionMs: 60_000, writerTimeoutMs: 60_000 });
+    super({ retentionMs: 60_000, markerRetentionMs: 60_000, writerTimeoutMs: 60_000 });
   }
 
   protected get store(): JournalStore {

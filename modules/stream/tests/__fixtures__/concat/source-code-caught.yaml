@@ -1,0 +1,48 @@
+# A source's code counts in the Concat's throw union, so a `catches:` entry
+# naming it over the Concat's dispatch catches a code the dispatch can throw.
+kind: Telo.Library
+metadata:
+  name: ConcatSourceCodeCaught
+  version: 1.0.0
+imports:
+  Stream: ../../..
+  Http: ../../../../http-server
+---
+kind: Telo.Definition
+metadata:
+  name: Failing
+capability: Telo.Invocable
+throws:
+  codes:
+    SOURCE_FAILED:
+      description: The source failed.
+schema:
+  type: object
+  properties: {}
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /joined
+      method: GET
+    handler:
+      kind: Stream.Concat
+      sources:
+        - invoke: { kind: Self.Failing }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches:
+      - when: !cel "error.code == 'SOURCE_FAILED'"
+        status: 502
+        content:
+          application/json:
+            body: { error: !cel "error.message" }
+      - when: !cel "error.code == 'ERR_INVALID_VALUE'"
+        status: 500
+        content:
+          application/json:
+            body: { error: !cel "error.message" }

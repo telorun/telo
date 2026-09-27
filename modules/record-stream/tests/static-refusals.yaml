@@ -1,7 +1,8 @@
 # A journal configuration the controller refuses at creation is refused by
-# `telo check` too: a missing store or retention at the resource, and a
-# non-positive writer timeout or negative retention both at the declaration and,
-# from a consumer whose entry-scoped check is silent, by the controller. And a
+# `telo check` too: a missing store at the resource, and a journal setting
+# neither retention, a non-positive writer timeout, or a negative retention or
+# marker retention both at the declaration and, from a consumer whose
+# entry-scoped check is silent, by the controller. And a
 # reader's `catches:` is checked against what the call raises, not its stream.
 # Declaring the deprecated completion handler warns and names its successor, and
 # a handler's `outcome` typed by the shared shape is checked below it. An
@@ -20,6 +21,10 @@ targets:
   - !ref writerTimeoutPositiveAtRuntime
   - !ref retentionNotNegative
   - !ref retentionNotNegativeAtRuntime
+  - !ref retentionRequired
+  - !ref retentionRequiredAtRuntime
+  - !ref markerRetentionNotNegative
+  - !ref markerRetentionNotNegativeAtRuntime
   - !ref sourceCatchesRemovedOnly
   - !ref sourceCatchesStreamCode
   - !ref onCompleteDeprecated
@@ -38,8 +43,8 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "is missing required property 'store'"
-    - code: SCHEMA_VIOLATION
-      message: "is missing required property 'retention'"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets neither `retention` nor `markerRetention`"
 ---
 kind: Assert.Manifest
 metadata: { name: writerTimeoutPositive }
@@ -70,6 +75,36 @@ source: ./__fixtures__/retention-negative-app.yaml
 expect:
   errors: []
   runFails: "RECORD_STREAM_RETENTION_NEGATIVE"
+---
+kind: Assert.Manifest
+metadata: { name: retentionRequired }
+source: ./__fixtures__/retention-missing/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets neither `retention` nor `markerRetention`"
+---
+kind: Assert.Manifest
+metadata: { name: retentionRequiredAtRuntime }
+source: ./__fixtures__/retention-missing-app.yaml
+expect:
+  errors: []
+  runFails: "RECORD_STREAM_RETENTION_MISSING"
+---
+kind: Assert.Manifest
+metadata: { name: markerRetentionNotNegative }
+source: ./__fixtures__/marker-retention-negative/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets a negative `markerRetention`"
+---
+kind: Assert.Manifest
+metadata: { name: markerRetentionNotNegativeAtRuntime }
+source: ./__fixtures__/marker-retention-negative-app.yaml
+expect:
+  errors: []
+  runFails: "RECORD_STREAM_MARKER_RETENTION_NEGATIVE"
 ---
 # The only code a read raises from the call is a removal at open, so catching it
 # alone leaves nothing uncovered.

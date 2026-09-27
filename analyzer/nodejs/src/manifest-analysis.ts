@@ -38,6 +38,8 @@ import {
   type ModuleGraphDeps,
 } from "./module-graph.js";
 import { isModuleKind } from "./module-kinds.js";
+import type { RefSlot } from "./ref-slot.js";
+import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 
 /**
  * A reference as the loader leaves it — the internal `{kind, name, alias?}`
@@ -139,6 +141,31 @@ export class ManifestAnalysis {
         this.manifests as Record<string, any>[],
       ),
     )?.schema;
+  }
+
+  /**
+   * Why the resource `ref` names cannot fill `slot`, by what it RETURNS — one
+   * line per definite mismatch against the slot's `x-telo-ref` `outputType`,
+   * empty when it can. The verdict `telo check` reports as
+   * `REFERENCE_OUTPUT_MISMATCH`, so an editor never offers a target the checker
+   * then refuses.
+   */
+  outputRefusal(slot: RefSlot, ref: ManifestRef): string[] {
+    if (!slot.outputType) return [];
+    const target = this.resolveRef(ref);
+    const definition = ref.kind ? this.definitionFor(ref.kind) : undefined;
+    if (!target && !definition) return [];
+    const scope = analyzerContractScope(
+      this.ctx.defs,
+      this.ctx.aliases,
+      this.scopes,
+      this.manifests as Record<string, any>[],
+    );
+    return referenceOutputRefusal(
+      slot,
+      producedOutputContract(target as Record<string, any> | undefined, definition, scope, this.ctx.defs),
+      this.ctx.defs,
+    );
   }
 
   /**

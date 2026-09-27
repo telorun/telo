@@ -2,11 +2,17 @@ import type { AssistantPart, ToolCallView } from "./types";
 
 /** Extend the last part when it is a segment of the same kind, otherwise open a
  *  new one — so a thought resumed after a tool call is its own segment, in the
- *  place it happened. */
-export function appendDelta(parts: AssistantPart[], kind: "thinking" | "text", delta: string): AssistantPart[] {
+ *  place it happened. `fresh` opens a new segment regardless: the delta belongs
+ *  to a model call after the one that wrote the last part. */
+export function appendDelta(
+  parts: AssistantPart[],
+  kind: "thinking" | "text",
+  delta: string,
+  fresh = false,
+): AssistantPart[] {
   if (!delta) return parts;
   const last = parts[parts.length - 1];
-  if (last && last.kind === kind) {
+  if (!fresh && last && last.kind === kind) {
     return [...parts.slice(0, -1), { kind, text: last.text + delta }];
   }
   return [...parts, { kind, text: delta }];
@@ -30,8 +36,4 @@ export function settleToolCall(
       ? { kind: "tool", tool: settle(part.tool) }
       : part,
   );
-}
-
-export function toolCalls(parts: AssistantPart[]): ToolCallView[] {
-  return parts.flatMap((part) => (part.kind === "tool" ? [part.tool] : []));
 }

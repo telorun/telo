@@ -70,4 +70,17 @@ describe("MessageBlock", () => {
     expect(screen.getByRole("button", { name: /Beta/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Alpha/ })).toBeNull();
   });
+
+  it("reads a failed turn's error by its code", () => {
+    const shown = (errorCode: string) => {
+      const { container } = renderTurn([], { error: "raw message", errorCode });
+      const text = container.textContent;
+      cleanup();
+      return text;
+    };
+
+    expect(shown("ERR_JOURNAL_WRITER_LOST")).toBe("The agent restarted during this turn.");
+    expect(shown("ERR_JOURNAL_KEY_REMOVED")).toBe("This turn was deleted.");
+    expect(shown("ERR_OPENAI_REQUEST_FAILED")).toBe("raw message");
+  });
 });

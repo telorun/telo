@@ -1,7 +1,12 @@
-// The agent's streamed record shapes (from apps/authoring-agent — Ai.AgentStream
-// parts, journaled and delivered over SSE as { id, data: <part> }). Kept loose
-// where the wire shape is provider-defined; only the fields the panel reads are typed.
+// The agent's journal records (from apps/authoring-agent): a turn's
+// `user-message` lead record, then every Ai.AgentStreamPart — and, where the
+// turn was continued, a `turn-continued` record opening each further attempt —
+// each delivered as
+// { id, data: <part> } — over SSE from GET /chat/{turnId}/events and in pages
+// from GET /conversations/{id}/records. Kept loose where the wire shape is
+// provider-defined; only the fields the panel reads are typed.
 export type AgentStreamPart =
+  | { type: "user-message"; content: string; model?: string }
   | { type: "text-delta"; delta: string }
   // The model's own summary of its thinking, streamed ahead of the answer. Only
   // ever a PRÉCIS: the reasoning itself comes back encrypted and is replayed
@@ -10,15 +15,40 @@ export type AgentStreamPart =
   | { type: "reasoning-delta"; delta: string }
   | { type: "tool-call"; toolCall: ToolCall }
   | { type: "tool-result"; toolResult: ToolResult }
+  // Closes one model call; the next text starts a segment of its own.
+  | { type: "step-finish"; usage?: Usage; finishReason?: string }
   | { type: "finish"; usage?: Usage; finishReason?: string }
-  | { type: "error"; error?: unknown; message?: string }
+  // Opens another attempt at an interrupted turn; `note` is what its model was
+  // told about the interruption.
+  | { type: "turn-continued"; note: string; model?: string }
   | { type: string; [k: string]: unknown };
 
+/** One journaled record: its id within the turn and the part it carries. */
+export interface JournalRecord {
+  id: number;
+  data: AgentStreamPart;
+}
+
+/** How a turn ended with an error — an `event: error` frame, or a failed turn's
+ *  `error` in the records route. Rendered by `code`. */
+export interface TurnError {
+  code?: string;
+  message: string;
+}
+
+/** One turn as GET /conversations/{id}/records reports it. */
+export interface TurnRecords {
+  turnId: string;
+  status: "running" | "finished" | "failed" | "aborted";
+  error: TurnError | null;
+  startedAt?: string;
+  records: JournalRecord[];
+}
+
 export interface ToolCall {
-  toolCallId?: string;
+  id?: string;
   name: string;
-  args?: unknown;
-  input?: unknown;
+  arguments?: unknown;
 }
 
 export interface ToolResult {
@@ -35,18 +65,6 @@ export interface Usage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
-}
-
-/** One agent-persisted conversation row (the MODEL's history, as opposed to the
- *  editor's richer display transcript). Snapshotted from `GET /conversations/{id}`
- *  after each turn and seeded into a fresh per-session instance via
- *  `POST /conversations/{id}/messages` before its first turn — per-session
- *  containers start with an empty DB even though the conversation continues. */
-export interface AgentHistoryRow {
-  id: string;
-  role: string;
-  content: string;
-  createdAt: string;
 }
 
 // ── Editor-side transcript model ────────────────────────────────────────────
@@ -66,38 +84,42 @@ export interface ToolCallView {
 
 /**
  * One run of an assistant turn, in the order it streamed. A thinking segment is
- * the model's summary of its own thinking — not the answer: it is not persisted,
- * a resume never quotes it, and a client is free not to show it.
+ * the model's summary of its own thinking — not the answer: a resume never
+ * quotes it, and a client is free not to show it. It is journaled like every
+ * other part, so it survives a reload.
  */
 export type AssistantPart =
   | { kind: "thinking"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "tool"; tool: ToolCallView };
+  | { kind: "tool"; tool: ToolCallView }
+  // Where an interrupted turn was continued: the next attempt's parts follow.
+  | { kind: "continued" };
 
 export interface UserMessage {
   id: string;
   role: "user";
   text: string;
-  /** On a message the Resume button generated: the request it is resuming. The
-   *  message TEXT also reports what the interrupted turn's tools had already
-   *  done, so this is what keeps a second resume quoting the original request
-   *  rather than the first resume's own report of it. */
-  resumedRequest?: string;
 }
 
 export interface AssistantMessage {
   id: string;
   role: "assistant";
-  /** The turn's parts in stream order — the one shape the live stream renders
-   *  into. Plain data, so it persists and replays as is. */
+  /** The turn's parts in stream order — the one shape both the live stream and
+   *  the records route fold into. */
   parts: AssistantPart[];
   error?: string;
+  /** The code of the error the turn ended with, when it carried one. */
+  errorCode?: string;
+  /** Set by a model call's `step-finish`: the next text opens a segment of its
+   *  own rather than extending the previous call's. */
+  callBoundary?: boolean;
   /** True while the assistant turn is still streaming. */
   pending?: boolean;
-  /** Set when the user cancelled this turn. An ending that is not `finish` is
-   *  still an ending, and a CHOSEN one is not resumable work — without this a
-   *  Stop whose abort request failed leaves an error banner offering to re-send
-   *  the very request that was just cancelled. */
+  /** The id of the last journal record folded into this turn — where a
+   *  re-attach resumes the turn's event stream. */
+  lastRecordId?: number;
+  /** Set when the user's abort ended this turn. A chosen ending is not
+   *  interrupted work, so the turn offers no Resume. */
   stopped?: boolean;
   /** Set when the turn's own `finish` record arrived. `pending` is cleared by
    *  every ending, a failure included, so this is the one thing that separates
@@ -109,7 +131,9 @@ export interface AssistantMessage {
 
 export type ChatMessage = UserMessage | AssistantMessage;
 
-export type AgentStatus = "idle" | "launching" | "seeding" | "streaming" | "error";
+/** `stopping`: the abort was accepted and the turn's stream is still open,
+ *  waiting for the cancellation to end it. */
+export type AgentStatus = "idle" | "launching" | "seeding" | "streaming" | "stopping" | "error";
 
 /** One file of a workspace snapshot: its path and the sha256 of its bytes.
  *  Both surfaces that can hold the shared workspace report this shape — the

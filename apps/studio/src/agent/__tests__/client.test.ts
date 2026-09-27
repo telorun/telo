@@ -83,6 +83,7 @@ describe("AgentClient.startTurn", () => {
       code: "ERR_TURN_IN_PROGRESS",
       message: "busy",
       retryAfter: undefined,
+      activeTurnId: "other",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

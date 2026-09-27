@@ -57,6 +57,15 @@ export interface CompatibilityResult {
   issues: string[];
 }
 
+/** How an issue names the two sides — the value produced, and the slot it must
+ *  fill — so a caller reports a mismatch in its own reader's terms. */
+export interface CompatibilityRoles {
+  source: string;
+  target: string;
+}
+
+const DEFAULT_ROLES: CompatibilityRoles = { source: "source", target: "target" };
+
 /** The alternatives a union node declares, or undefined when it is not one.
  *  `anyOf` and `oneOf` are one question here — which branches could accept this
  *  value — and their difference (exactly-one vs at-least-one) is a validation
@@ -93,9 +102,10 @@ export function checkSchemaCompatibility(
   source: Record<string, any>,
   target: Record<string, any>,
   resolveRef?: (ref: string) => Record<string, any> | undefined,
+  roles: CompatibilityRoles = DEFAULT_ROLES,
 ): CompatibilityResult {
   const issues: string[] = [];
-  compare(source, target, "", issues, resolveRef, new Set());
+  compare(source, target, "", issues, resolveRef, new Set(), roles);
   return { compatible: issues.length === 0, issues };
 }
 
@@ -113,6 +123,7 @@ function compare(
   issues: string[],
   resolveRef: RefResolver,
   seen: Set<string>,
+  roles: CompatibilityRoles,
 ): void {
   if (!rawSource || !rawTarget || typeof rawSource !== "object" || typeof rawTarget !== "object") {
     return;
@@ -155,7 +166,7 @@ function compare(
         const probe: string[] = [];
         // A fresh `seen` per probe: a pair rejected on one branch must not mark
         // a reference pair visited for the next, which would silently pass it.
-        compare(left, right, path, probe, resolveRef, new Set(seen));
+        compare(left, right, path, probe, resolveRef, new Set(seen), roles);
         if (probe.length === 0) return;
         reasons.push(...probe);
       }
@@ -174,7 +185,7 @@ function compare(
   if (sourceType && targetType) {
     if (sourceType.name !== targetType.name) {
       issues.push(
-        `${path || "/"}: value type mismatch — source is '${sourceType.name}', target expects '${targetType.name}'`,
+        `${path || "/"}: value type mismatch — ${roles.source} is '${sourceType.name}', ${roles.target} expects '${targetType.name}'`,
       );
       return;
     }
@@ -191,6 +202,7 @@ function compare(
         issues,
         resolveRef,
         seen,
+        roles,
       );
     }
     return;
@@ -212,7 +224,7 @@ function compare(
       (source.type !== undefined || source.const !== undefined || source.enum !== undefined)
     ) {
       issues.push(
-        `${path || "/"}: value type mismatch — target expects '${targetType.name}', source is a plain value`,
+        `${path || "/"}: value type mismatch — ${roles.target} expects '${targetType.name}', ${roles.source} is a plain value`,
       );
       return;
     }
@@ -222,8 +234,8 @@ function compare(
       if (asJson !== other.type) {
         issues.push(
           `${path || "/"}: value type mismatch — ${
-            sourceType ? "source is" : "target expects"
-          } '${declared.name}', ${sourceType ? "target expects" : "source is"} '${other.type}'`,
+            sourceType ? `${roles.source} is` : `${roles.target} expects`
+          } '${declared.name}', ${sourceType ? `${roles.target} expects` : `${roles.source} is`} '${other.type}'`,
         );
         return;
       }
@@ -238,7 +250,7 @@ function compare(
     source.type !== target.type
   ) {
     issues.push(
-      `${path || "/"}: type mismatch — source is '${source.type}', target expects '${target.type}'`,
+      `${path || "/"}: type mismatch — ${roles.source} is '${source.type}', ${roles.target} expects '${target.type}'`,
     );
     return;
   }
@@ -253,6 +265,7 @@ function compare(
       issues,
       resolveRef,
       seen,
+      roles,
     );
   }
 
@@ -264,13 +277,13 @@ function compare(
       // Only when the source describes an object at all: a schema with no
       // `properties` is saying nothing about its shape, not saying it is empty.
       if (source.properties === undefined) continue;
-      issues.push(`${path}/${field}: required by target but missing from source`);
+      issues.push(`${path}/${field}: required by ${roles.target} but missing from ${roles.source}`);
       continue;
     }
     const srcProp = sourceProps[field];
     const tgtProp = targetProps[field];
     if (tgtProp && srcProp) {
-      compare(srcProp, tgtProp, `${path}/${field}`, issues, resolveRef, seen);
+      compare(srcProp, tgtProp, `${path}/${field}`, issues, resolveRef, seen, roles);
     }
   }
 }

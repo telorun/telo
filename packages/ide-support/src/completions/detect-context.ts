@@ -4,6 +4,7 @@ import {
   refSlotAnnotation,
   type AstDocument,
   type CelSegment,
+  type RefSlot,
 } from "@telorun/analyzer";
 import type { ReplaceRange } from "../types.js";
 import { valueTag } from "../value-tags/offered-value-tags.js";
@@ -366,9 +367,18 @@ export function lookupRefConstraints(
   yamlPath: string[],
   schemaFrom?: SchemaFromResolver,
 ): string[] {
+  return lookupRefSlot(definitionSchema, yamlPath, schemaFrom)?.kinds ?? [];
+}
+
+/** The whole `x-telo-ref` slot at `yamlPath` — its kinds and what it asks of a
+ *  target's output — or undefined when the path declares none. */
+export function lookupRefSlot(
+  definitionSchema: Record<string, any>,
+  yamlPath: string[],
+  schemaFrom?: SchemaFromResolver,
+): RefSlot | undefined {
   const node = navigateSchema(definitionSchema, yamlPath, schemaFrom);
-  if (!node) return [];
-  return readRefSlot(node)?.kinds ?? [];
+  return node ? readRefSlot(node) : undefined;
 }
 
 /** Derive a `CompletionCtx` from the AST-resolved cursor (Approach B). The

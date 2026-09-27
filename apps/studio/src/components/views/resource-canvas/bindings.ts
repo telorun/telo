@@ -1,4 +1,5 @@
-import { collectRefTargets } from "../../resource-schema-form/ref-candidates";
+import type { RefSlot } from "@telorun/analyzer";
+import { collectRefTargets, refSlotOf } from "../../resource-schema-form/ref-candidates";
 import { isRecord } from "../../../lib/utils";
 
 /** A top-level ref-bearing array on a resource schema, surfaced as a "rack"
@@ -27,6 +28,9 @@ export interface BindingDescriptor {
    *  oneOf/anyOf alternatives). Fed to `resolveRefCandidates` to populate the
    *  target picker. */
   refCapabilities: string[];
+  /** The ref slot itself, so the picker can withhold a candidate whose output
+   *  the slot refuses. */
+  refSlot?: RefSlot;
   /** Name of the item property that holds the ref — array-of-objects only. */
   refFieldName?: string;
   /** Name of the item's string-typed sibling used as the slot's key label —
@@ -53,14 +57,14 @@ function getString(record: Record<string, unknown>, key: string): string | undef
  *  null if zero or more than one ref-bearing properties exist. */
 function findSoleRefChild(
   properties: Record<string, unknown>,
-): { name: string; refs: string[] } | null {
-  let found: { name: string; refs: string[] } | null = null;
+): { name: string; refs: string[]; slot?: RefSlot } | null {
+  let found: { name: string; refs: string[]; slot?: RefSlot } | null = null;
   for (const [name, childProp] of Object.entries(properties)) {
     if (!isRecord(childProp)) continue;
     const refs = collectRefTargets(childProp);
     if (refs.length === 0) continue;
     if (found) return null; // more than one ref child → skip
-    found = { name, refs };
+    found = { name, refs, slot: refSlotOf(childProp) };
   }
   return found;
 }
@@ -113,6 +117,7 @@ export function discoverBindings(schema: Record<string, unknown>): BindingDescri
         description,
         shape: "array-of-refs",
         refCapabilities: itemRefs,
+        refSlot: refSlotOf(items),
         complete: true,
       });
       continue;
@@ -131,6 +136,7 @@ export function discoverBindings(schema: Record<string, unknown>): BindingDescri
         description,
         shape: "array-of-objects",
         refCapabilities: refChild.refs,
+        refSlot: refChild.slot,
         refFieldName: refChild.name,
         keyFieldName,
         complete: itemSiblingCount === expectedSiblingCount,

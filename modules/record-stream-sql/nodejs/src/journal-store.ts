@@ -78,6 +78,7 @@ interface HeaderRow {
   header: string;
   version: string;
   age_ms: unknown;
+  last_id: unknown;
 }
 
 interface ReadRow extends HeaderRow {
@@ -219,7 +220,7 @@ class SqlJournalStore implements JournalStore, ResourceInstance {
     // One statement, so the header and the entries are one snapshot.
     const result = await this.statement<ReadRow>(
       `SELECT k.header AS header, k.version AS version, ${this.now} - k.written_at AS age_ms,
-              e.id AS id, e.record AS record
+              k.last_id AS last_id, e.id AS id, e.record AS record
          FROM ${this.keys} k
          LEFT JOIN ${this.entries} e
            ON e.journal_key = k.journal_key AND e.id > ${from} AND e.id <= ${to}
@@ -234,7 +235,12 @@ class SqlJournalStore implements JournalStore, ResourceInstance {
       if (row.record !== null && row.id !== null) entries.push({ id: integer(row.id), record: row.record });
     }
     return {
-      header: { value: first.header, version: first.version, ageMs: integer(first.age_ms) },
+      header: {
+        value: first.header,
+        version: first.version,
+        ageMs: integer(first.age_ms),
+        lastId: integer(first.last_id),
+      },
       entries,
     };
   }
@@ -349,7 +355,7 @@ class SqlJournalStore implements JournalStore, ResourceInstance {
       ? `AND (written_at > ${bind(after[0])} OR (written_at = ${bind(after[0])} AND journal_key > ${bind(after[1])}))`
       : "";
     const rows = await this.statement<HeaderRow & { journal_key: string; written_at: unknown }>(
-      `SELECT journal_key, header, version, written_at, ${this.now} - written_at AS age_ms
+      `SELECT journal_key, header, version, written_at, ${this.now} - written_at AS age_ms, last_id
          FROM ${this.keys}
         WHERE ${age} ${resume}
         ORDER BY written_at, journal_key
@@ -364,6 +370,7 @@ class SqlJournalStore implements JournalStore, ResourceInstance {
         value: row.header,
         version: row.version,
         ageMs: integer(row.age_ms),
+        lastId: integer(row.last_id),
       })),
       cursor: rows.rows.length > limit && last ? JSON.stringify([integer(last.written_at), last.journal_key]) : null,
     };

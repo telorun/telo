@@ -8,13 +8,15 @@ metadata:
   description: |
     The ends and the middle of a stream pipeline: turn a list of values into a stream,
     drain a stream back into a list, re-frame bytes into fixed-size chunks, transform,
-    accumulate or expand values as they are pulled, and observe each value as it
-    passes without holding it. Values may be anything — text, records, numbers — so
-    the same set serves any streaming pipeline.
+    accumulate or expand values as they are pulled, observe each value as it passes
+    without holding it, and join several producers into one stream, starting each
+    only when the previous one ends. Values may be anything — text, records,
+    numbers — so the same set serves any streaming pipeline.
 requires:
-  # `throws: { inherit: true }` over a reference slot rather than a step body is
-  # read from this release on; an older analyzer refuses the Tap definition.
-  telo: ">=0.90.0"
+  # `x-telo-ref` `outputType:` (Concat's sources) is read from this release on;
+  # an older analyzer refuses it as an unknown key. Forward-declared: the
+  # release carrying it is pending.
+  telo: ">=0.103.0"
 exports:
   kinds:
     - Of
@@ -24,6 +26,7 @@ exports:
     - Scan
     - FlatMap
     - Tap
+    - Concat
 ---
 # Emit a list of items as a stream, in order — declared statically or supplied
 # at invoke time.
@@ -519,3 +522,111 @@ schema:
         properties:
           item: {}
           index: { type: integer }
+---
+# Stream.Concat — several producers read as one stream, lazily.
+#
+# Nothing is invoked by the call: the first source is invoked on the first pull,
+# and each next one only when the previous source's stream has ended, so work a
+# later source does (a model call, a query) starts only once everything before it
+# was delivered. Every source is invoked under the Concat's OWN invocation
+# context, captured at invoke() as Stream.Tap does, and must return
+# `{ output: <stream> }`. The slot is `trigger.consumer`: control reaches a source
+# when someone drains the returned stream. `throws: { inherit: true }` carries a
+# source's codes into this kind's throw union, as Stream.Tap does, because they
+# surface wherever the returned stream is drained — a route rendering it.
+kind: Telo.Definition
+metadata:
+  name: Concat
+  description: >-
+    Joins the streams of several producers into one, in order, starting each producer
+    only when the previous one's stream has ended. A failure ends the joined stream
+    with that error and nothing after it runs; a reader stopping early or a
+    cancellation stops the current producer and starts no further one.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ConcatController
+throws:
+  inherit: true
+  codes:
+    ERR_INVALID_VALUE:
+      description: >-
+        A source returned no `output` stream. Raised as the stream is drained, when
+        that source is reached.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      context:
+        description: >-
+          Caller data each source's `inputs:` map reads as `context`; `{}` when the
+          caller passes none.
+        type: object
+        additionalProperties: true
+        default: {}
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        x-telo-type: Telo.Stream
+        description: >-
+          Every value of each source's `output` stream, source after source. Raised
+          as it is drained: a source's own error (from its invocation or its
+          stream) with its original code; ERR_INVALID_VALUE when a source returns no
+          `output` stream; ERR_INVOKE_CANCELLED when the invocation is cancelled.
+          Ends when its consumer stops.
+schema:
+  type: object
+  additionalProperties: false
+  required: [sources]
+  properties:
+    sources:
+      title: Sources
+      description: >-
+        The producers, in the order their streams are joined. Each is invoked with
+        its `inputs:` when the stream before it has ended.
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required: [invoke]
+        properties:
+          invoke:
+            title: Invoke
+            description: >-
+              Invocable or Runnable (e.g. a Run.Sequence) returning `{ output: <stream> }`.
+            x-telo-ref:
+              kind: Telo.Executable
+              use: trigger.consumer
+              inputs: /inputs
+              # `telo check` refuses a source whose declared output cannot be
+              # this; one declaring none is refused as it is drained
+              # (ERR_INVALID_VALUE).
+              outputType:
+                type: object
+                required: [output]
+                properties:
+                  output: { x-telo-type: Telo.Stream }
+          inputs:
+            title: Inputs
+            description: >-
+              The source's arguments, evaluated when it is invoked. CEL here reads
+              `context` (the caller's `context` input). Checked against the source's
+              `inputType`. Omitted, the source is called with no arguments.
+            type: object
+            additionalProperties: true
+            x-telo-context:
+              type: object
+              additionalProperties: false
+              required: [context]
+              properties:
+                context:
+                  type: object
+                  additionalProperties: true
+                  description: The caller's `context` input.

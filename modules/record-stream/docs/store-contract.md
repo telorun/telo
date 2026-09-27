@@ -19,6 +19,7 @@ A key's ownership and its log change together, in one write, in one store. That 
   - `value`: an opaque string the journal owns (a typed frame). Never parse it.
   - `version`: an opaque, store-generated token naming one revision of the KEY — header and log together. It advances on every write to the key, appends included. Never parse it, never order by it.
   - `ageMs`: milliseconds since the header was last written, measured on the **store's** clock.
+  - `lastId`: **owed by every backend** — the id of the log's last entry, read in the same snapshot as `version`; `0` for an empty log and after `compareAndTruncate`. `read` and `scan` both return it. A claim reports it, and a snapshot read returns it even when it asks for no entries.
 - **Log** — per key, records with ids `1, 2, 3, …`: 1-based and gap-free. A record is an opaque string (a typed frame).
 
 There is no TTL and no eviction. A key exists until it is deleted.
@@ -26,13 +27,13 @@ There is no TTL and no eviction. A key exists until it is deleted.
 ## Operations
 
 ```
-read(key, fromId, limit)                → { header | null, entries: [{ id, record }] }
+read(key, fromId, limit)                → { header: { value, version, ageMs, lastId } | null, entries: [{ id, record }] }
 putIfAbsent(key, value)                 → version | null
 compareAndSet(key, version, value)      → version | null
 compareAndAppend(key, version, record)  → { id, version } | null
 compareAndTruncate(key, version, value) → version | null
 compareAndDelete(key, version)          → boolean
-scan(minAgeMs, cursor, limit)           → { headers: [{ key, value, version, ageMs }], cursor | null }
+scan(minAgeMs, cursor, limit)           → { headers: [{ key, value, version, ageMs, lastId }], cursor | null }
 wait(key, version | null, timeoutMs, cancellation) → void
 ```
 
@@ -78,6 +79,7 @@ Once cancelled, a wait releases everything it holds — its timer, its waiter en
 4. **One clock.** `ageMs` is measured against timestamps the store itself wrote, on one clock — the database's, where there is one — never each process's. A reader in one process judges a writer in another by it.
 5. **Opaque values.** Header values and records are stored and returned byte for byte. The journal writes them as SDK typed frames, so an int64 past 2^53 and a bytes field come back with their type and value on every backend — only if the backend does not reinterpret them.
 6. **No eviction.** A key, its header and its log survive until `compareAndTruncate` or `compareAndDelete` removes them.
+7. **`lastId` in every header.** `read` and `scan` return each header's `lastId` — the log's last id in the same snapshot as its `version`, `0` for an empty log and after `compareAndTruncate`. A backend that omits it breaks every claim's and snapshot read's report of where a log ends.
 
 ## The protocol above it
 
@@ -85,7 +87,10 @@ For a backend author, what the journal does with these primitives:
 
 | Step | Primitive |
 | --- | --- |
-| A writer claims a key, recording its holder token and its timeout | `putIfAbsent` |
+| A drain claims a key, recording its holder token (its own, or the `writer` a caller named), its drain identity and its timeout; a `JournalClaim` records the named writer and no drain | `putIfAbsent` |
+| A drain adopts a key open under its named writer with no drain recorded | `compareAndSet` of its own open header, recording its drain, at the version that was read — its first heartbeat; a second drain reads the recorded drain and is refused |
+| A `JournalClaim` under a writer whose key is already open under it within its timeout, or already finished or failed by that writer's drain | the header `read` alone; nothing is written |
+| A `JournalClaim` under a writer whose drain left the key open with a stale heartbeat | fail it as lost at the version that was read (read again when that write loses); the failed key is returned as it is |
 | Heartbeat, every third of the writer's timeout | `compareAndSet` of the same value |
 | Append a record | `compareAndAppend` |
 | Finish, or fail with the error's code, message and data | `compareAndSet` to a terminal header |
@@ -93,11 +98,12 @@ For a backend author, what the journal does with these primitives:
 | Resume a failed key: take it over for a new writer, keeping its log | `compareAndSet` of an open header at the version that was read; later appends continue from the log's last id |
 | Resume an open key whose writer went stale | fail it as above, then take it over at the version that write returned |
 | Remove a key, leaving a marker | `compareAndTruncate`, retried on contention |
-| Expiry: fail dead writers, turn ended keys past retention into markers, delete markers past retention | `scan`, then the writes above and `compareAndDelete` |
+| Expiry: fail dead writers, turn ended keys past `retention` into markers (none when the journal sets no retention), delete markers past `markerRetention` | `scan`, then the writes above and `compareAndDelete` |
 | A reader tails a live key | `read`, then `wait` for up to the time left before the writer could go stale |
+| A snapshot read | one `read`; a stale writer's key is failed as above and read again when that write loses |
 
-A refused append or heartbeat is explained by re-reading the header: a marker (or no key) is `ERR_JOURNAL_KEY_REMOVED`, the writer's own key failed as abandoned is `ERR_JOURNAL_WRITER_LOST`, any other holder is `ERR_JOURNAL_KEY_BUSY`.
+A refused append or heartbeat is explained by re-reading the header and comparing its holder and drain with the writer's own: a marker (or no key) is `ERR_JOURNAL_KEY_REMOVED`; the key failed as abandoned under this holder and drain is `ERR_JOURNAL_WRITER_LOST`; any other holder, or this holder with another drain or none, is `ERR_JOURNAL_KEY_BUSY`.
 
 ## Implementing one
 
-A backend is a `Telo.Definition` with `extends: RecordStream.JournalStore` whose controller's instance satisfies the `JournalStore` interface exported by `@telorun/record-stream` (declare the module in your library's `imports:` so the specifier resolves to its code). Prove it with the shared behaviour suite: the library at `modules/record-stream/tests/__fixtures__/journal-suite` takes the store as a `resources:` input and exports one sequence per behaviour; run them all, `expiry` first, against a store that starts empty.
+A backend is a `Telo.Definition` with `extends: RecordStream.JournalStore` whose controller's instance satisfies the `JournalStore` interface exported by `@telorun/record-stream` (declare the module in your library's `imports:` so the specifier resolves to its code). Prove it with the shared behaviour suite: the library at `modules/record-stream/tests/__fixtures__/journal-suite` takes the store as a `resources:` input and exports one sequence per behaviour; run them all, `expiry` first and `markerRetention` second, against a store that starts empty.
