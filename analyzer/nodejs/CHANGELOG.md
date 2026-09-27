@@ -1,5 +1,11 @@
 # @telorun/analyzer
 
+## 0.103.2
+
+### Patch Changes
+
+- @telorun/templating@0.103.2
+
 ## 0.103.1
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/language-server",
-  "version": "0.103.1",
+  "version": "0.103.2",
   "description": "The telo language-server engine: every Telo diagnostic and editor feature of one telo version as a single self-contained, I/O-free ES module speaking LSP over a message port.",
   "keywords": [
     "telo",
