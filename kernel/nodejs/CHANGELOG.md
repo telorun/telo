@@ -1,5 +1,13 @@
 # @telorun/kernel
 
+## 0.103.0
+
+### Patch Changes
+
+- Updated dependencies [8f53492]
+  - @telorun/analyzer@0.103.0
+  - @telorun/templating@0.103.0
+
 ## 0.102.0
 
 ### Minor Changes
