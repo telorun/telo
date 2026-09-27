@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-09-27
+### Added
+* Stream.Concat joins the output streams of several sources into one, in order, invoking each source lazily only when the previous stream has ended, under the Concat's own invocation context; each source's inputs map reads the caller's context and is checked against the source's inputType. telo check also verifies that each source returns { output: <stream> } (REFERENCE_OUTPUT_MISMATCH at the slot) against its declared output contract, leaving ERR_INVALID_VALUE as the runtime refusal for a source that declares none. A source's failure ends the output with its error and no later source runs; the consumer stopping or the invocation being cancelled stops the current source and invokes no further one. It declares throws inherit, so a source's codes count in its throw union. The module now requires telo >=0.103.0.
+
 ## 0.12.0 - 2026-09-13
 ### Added
 * Stream.Tap passes every value of a stream through unchanged and in order, handing each to a handler — any invocable or run-only resource, optionally gated by a `when` condition — before delivering it, so a command's output can be printed live while a later stage still consumes the same stream, with nothing buffered. The handler runs under the tap's own invocation; its failure rejects the drain with the handler's own error and the failing value is not delivered, and `telo check` counts the handler's codes in the tap's throw union.
