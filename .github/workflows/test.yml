@@ -643,15 +643,6 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
-      # GitHub's Windows runners ship `core.autocrlf=true`, which rewrites every
-      # checked-out LF to CRLF. `!include-text` embeds a file's bytes verbatim, so
-      # the fixture assertions in tests/manifest-file-includes.yaml would fail on
-      # the line endings rather than on anything about Windows. Turned off here
-      # rather than repo-wide because a `.gitattributes` is a separate decision;
-      # that is the real fix, and this keeps the signal honest until it lands.
-      - name: Check out with LF preserved
-        run: git config --global core.autocrlf false
-
       - name: Checkout code
         uses: actions/checkout@v4
 
