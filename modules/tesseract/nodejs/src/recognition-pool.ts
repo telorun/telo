@@ -145,7 +145,8 @@ export class RecognitionPool<TJob, TResult> {
       return;
     }
     this.busy.set(engine, call);
-    const timer = setTimeout(() => {
+    const startedAt = performance.now();
+    const exceed = () => {
       this.settle(call, () =>
         call.reject(
           this.options.fail(
@@ -155,20 +156,28 @@ export class RecognitionPool<TJob, TResult> {
         ),
       );
       this.retire(engine, "a recognition exceeded the time limit");
-    }, this.options.maxRunMs);
+    };
+    const timer = setTimeout(exceed, this.options.maxRunMs);
     call.unsubscribe = call.token.onCancelled(() => {
       this.settle(call, () => call.reject(cancellationError(call.token, this.options.fail)));
       this.retire(engine, "a running call was cancelled");
     });
-    const finish = () => clearTimeout(timer);
+    // The engine's reply can be delivered before the overdue timer runs, so the
+    // limit is also checked when the reply arrives. True when it was exceeded.
+    const finish = () => {
+      clearTimeout(timer);
+      if (performance.now() - startedAt < this.options.maxRunMs) return false;
+      exceed();
+      return true;
+    };
     engine.run(call.job).then(
       (result) => {
-        finish();
+        if (finish()) return;
         if (!this.settle(call, () => call.resolve(result))) return;
         this.release(engine);
       },
       (error: unknown) => {
-        finish();
+        if (finish()) return;
         if (error instanceof EngineLostError) {
           this.settle(call, () =>
             call.reject(

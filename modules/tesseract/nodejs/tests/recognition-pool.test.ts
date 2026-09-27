@@ -138,6 +138,21 @@ describe("RecognitionPool", () => {
     expect(engines).toHaveLength(2);
   });
 
+  it("fails a recognition whose reply arrives past maxRunMs before the timer runs", async () => {
+    // Only the clock moves: the limit's timer stays pending, as when the reply outruns it.
+    vi.useFakeTimers({ toFake: ["performance"] });
+    const { pool: p, engines } = pool({ size: 1, maxRunMs: 100 });
+    await p.start();
+    const call = code(p.submit("a", NEVER_CANCELLED));
+
+    vi.advanceTimersByTime(150);
+    engines[0]!.jobs[0]!.finish("done");
+    expect(await call).toBe("ERR_OCR_LIMIT_EXCEEDED");
+    expect(engines[0]!.terminated).toBe(true);
+    await tick();
+    expect(engines).toHaveLength(2);
+  });
+
   it("fails the call of an engine that crashes and replaces it", async () => {
     const { pool: p, engines } = pool({ size: 1 });
     await p.start();

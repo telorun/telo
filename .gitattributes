@@ -1,0 +1,3 @@
+# LF in every checkout, whatever `core.autocrlf` says: `!include-text` embeds a
+# file's bytes verbatim, and the repo's scripts parse text line by line.
+* text=auto eol=lf

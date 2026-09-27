@@ -59,7 +59,8 @@ export function versionLineMembers() {
  *  patterns are literal segments and `*`, expanded by hand so this costs no
  *  pnpm spawn on every install. */
 export function workspacePackages() {
-  const text = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8");
+  // A Windows checkout with `core.autocrlf` writes CRLF, which `.` does not cross.
+  const text = readFileSync(join(ROOT, "pnpm-workspace.yaml"), "utf8").replace(/\r\n/g, "\n");
   const block = /^packages:\s*\n((?:[ \t]*(?:-.*|#.*)?\n)*)/m.exec(text);
   const patterns = (block?.[1] ?? "")
     .split("\n")

@@ -126,6 +126,7 @@
   },
   "devDependencies": {
     "@telorun/language-server": "workspace:*",
+    "@telorun/sdk": "workspace:*",
     "@types/node": "^24.0.0",
     "@types/vscode": "~1.91.0",
     "@vscode/vsce": "^3.9.2",
@@ -134,5 +135,8 @@
     "typescript": "^5.9.3",
     "vitest": "^2.1.8",
     "vscode-languageserver-protocol": "3.18.4"
+  },
+  "peerDependencies": {
+    "@telorun/sdk": "*"
   }
 }
