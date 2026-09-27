@@ -11,13 +11,13 @@ metadata:
     Set your OpenAI key in a sibling `.env.local`:
         OPENAI_API_KEY=sk-...
 imports:
-  OpenAI: oci://ghcr.io/telorun/openai@0.5.1#sha256-weAhBYyV-sZXjSNiIMnAqLLuDGvCFduRImF3P1KmXbU
-  Ai: oci://ghcr.io/telorun/ai@0.20.1#sha256-Ys9inTxTXKIdAIEqG8elivkWEngImXsMsmNol8rxa3w
-  Http: oci://ghcr.io/telorun/http-client@0.22.2#sha256-MgBP2BIWuM3-PEv7j3IHCH0Pfrr6jW0Ao-YR7Dr7bCk
+  OpenAI: oci://ghcr.io/telorun/openai@0.7.0#sha256-01EFC7E_2pNVDqweIr4iJWFJ5Os1KS4DCX8JOYox2RM
+  Ai: oci://ghcr.io/telorun/ai@0.22.0#sha256-q3zHlWW5Cg82Wdv3AxMEYnTVXkb81KfRAbjFjax4EbE
+  Http: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Console: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Sql: oci://ghcr.io/telorun/sql@0.24.0#sha256-g0Bw5AjrBOGmgGbmsKFb7q833AYlutxV1fDWka47t2I
-  SQLite: oci://ghcr.io/telorun/sqlite@0.5.1#sha256-EwMIFmqcg8lg56OCcySKg5NgZ4iNP7hX-no8pEfjV6c
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
 targets:
   - !ref initSchema
   - !ref chatLoop

@@ -1,0 +1,168 @@
+kind: Telo.Application
+metadata:
+  name: ChatProjectionRebuild
+  version: 1.0.0
+  description: |
+    The model's history is a projection of the journal, never a second record.
+    Two turns run offline against the provider stub — one with a tool call, one
+    plain — and each ends with its rows projected: the user's message, the
+    assistant's tool call, the tool's result, the assistant's reply. Dropping
+    every projected row and running rebuildProjection writes the same rows back,
+    byte for byte, from the journal alone.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18460/v1
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  # By path, as the chat library imports it, until it is published.
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # The agent's state is a file that outlives the run; each run gets a fresh one.
+  scratch:
+    env: CHAT_TEST_PROJECTION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/projection-rebuild
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref reset
+  - !ref test
+---
+# This run starts with an empty conversation. The database is opened at boot,
+# so its rows are emptied rather than the file removed.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: turns
+    invoke: !ref stateCommand
+    inputs:
+      sql: "DELETE FROM turns WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+  - name: messages
+    invoke: !ref stateCommand
+    inputs:
+      sql: "DELETE FROM messages WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+  - name: projections
+    invoke: !ref stateCommand
+    inputs:
+      sql: "DELETE FROM turn_projections WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+---
+kind: SQLite.Connection
+metadata: { name: stateDb }
+file: !cel "variables.scratch.joinPath('state').joinPath('agent.sqlite')"
+---
+kind: Sql.Command
+metadata: { name: stateCommand }
+connection: !ref stateDb
+---
+kind: Sql.Query
+metadata: { name: stateQuery }
+connection: !ref stateDb
+---
+# One turn to its end: started, then its journal drained.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message]
+    properties:
+      message: { type: string }
+steps:
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: 0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "inputs.message"
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+---
+# Every projected row of the conversation, in order.
+kind: Run.Sequence
+metadata: { name: projectedRows }
+steps:
+  - name: messages
+    invoke: !ref stateQuery
+    inputs:
+      sql: >-
+        SELECT turn_id, seq, role, content, tool_calls, tool_call_id FROM messages
+        WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0' ORDER BY turn_id, seq
+  - name: projections
+    invoke: !ref stateQuery
+    inputs:
+      sql: >-
+        SELECT turn_id, through_id, provider_state, provider_model FROM turn_projections
+        WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0' ORDER BY turn_id
+outputs:
+  messages: !cel "steps.messages.result.rows"
+  projections: !cel "steps.projections.result.rows"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18460 }
+targets: [ !ref stub ]
+steps:
+  - name: withTool
+    invoke: !ref turn
+    inputs: { message: STUB_TOOL what is here? }
+  - name: plain
+    invoke: !ref turn
+    inputs: { message: thanks }
+  - name: projected
+    invoke: !ref projectedRows
+  - name: foldedPerTurn
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.projected.result.messages.map(m, [m.role, m.tool_calls != null, m.tool_call_id != null])"
+      expected:
+        - [user, false, false]
+        - [assistant, true, false]
+        - [tool, false, true]
+        - [assistant, false, false]
+        - [user, false, false]
+        - [assistant, false, false]
+  - name: dropMessages
+    invoke: !ref stateCommand
+    inputs:
+      sql: "DELETE FROM messages WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+  - name: dropProjections
+    invoke: !ref stateCommand
+    inputs:
+      sql: "DELETE FROM turn_projections WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+  - name: rebuild
+    invoke: !ref Chat.rebuildProjection
+    inputs:
+      conversationId: 0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0
+  - name: rebuilt
+    invoke: !ref projectedRows
+  - name: identical
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.rebuilt.result"
+      expected: !cel "steps.projected.result"

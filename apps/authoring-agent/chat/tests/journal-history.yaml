@@ -1,0 +1,326 @@
+kind: Telo.Application
+metadata:
+  name: ChatJournalHistory
+  version: 1.0.0
+  description: |
+    The journal is the one source of truth, driven offline against the provider
+    stub. Three turns — a plain reply, one tool call, and one the stub refuses —
+    each read back through GET /chat/{turnId}/events: the refused turn ends with
+    an `event: error` frame carrying the provider's code instead of hanging, and
+    GET /conversations/{id}/records returns exactly the records the event streams
+    delivered, each turn with its status. A `Last-Event-ID` header outranks the
+    query cursor; a malformed cursor is 400; an unknown turn and an unknown page
+    cursor are 404; a removed turn is 410. A turn's recorded reasoning is replayed
+    to the same model on the next turn, and not to another one — read off what
+    the stub was sent.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  # By path, as the agent imports them, until they are published.
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspace, emptied before each run.
+  scratch:
+    env: CHAT_TEST_JOURNAL_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/journal-history
+targets:
+  - !ref test
+---
+# One turn's event stream, every frame decoded: a record frame's id and data,
+# or an error frame's code and message.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [url]
+    properties:
+      url: { type: string }
+      headers: { type: object, additionalProperties: { type: string } }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "inputs.url"
+      headers: !cel "has(inputs.headers) ? inputs.headers : {}"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  frames: !cel >-
+    steps.all.result.items.map(r, r.event == 'error'
+      ? {'event': 'error', 'error': parseJson(r.data)}
+      : {'event': r.event, 'id': int(r.id), 'data': parseJson(r.data).data})
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, conversationId, message]
+    properties:
+      port: { type: integer }
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/chat"
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  turnId: !cel "steps.post.result.body.turnId"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18450 }
+targets: [ !ref stub ]
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: sameModel
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18451 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18450/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: plain
+          invoke: !ref startTurn
+          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: hello }
+        - name: plainEvents
+          timeout: 30000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events"
+        - name: tool
+          invoke: !ref startTurn
+          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: STUB_TOOL list the workspace }
+        - name: toolEvents
+          timeout: 30000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.tool.result.turnId }}/events"
+        - name: refused
+          invoke: !ref startTurn
+          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: STUB_FAIL please }
+        # Bounded: a failed turn must END its stream, never tail it.
+        - name: refusedEvents
+          timeout: 30000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.refused.result.turnId }}/events"
+        - name: streamsEnd
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              plain: !cel "steps.plainEvents.result.frames.map(f, f.event == 'error' ? 'error' : f.data.type)"
+              toolLast: !cel "steps.toolEvents.result.frames[size(steps.toolEvents.result.frames) - 1].data.type"
+              refused: !cel >-
+                steps.refusedEvents.result.frames.map(f, f.event == 'error' ? f.error.code : f.data.type)
+            expected:
+              plain: [user-message, text-delta, text-delta, provider-state, step-finish, finish]
+              toolLast: finish
+              refused: [user-message, ERR_OPENAI_REQUEST_FAILED]
+        - name: records
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records
+        - name: recordsMatchEvents
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              status: !cel "steps.records.result.status"
+              turns: !cel "steps.records.result.body.turns.map(t, t.turnId)"
+              statuses: !cel "steps.records.result.body.turns.map(t, t.status)"
+              refusedError: !cel "steps.records.result.body.turns[2].error.code"
+              plain: !cel "steps.records.result.body.turns[0].records"
+              tool: !cel "steps.records.result.body.turns[1].records"
+              refused: !cel "steps.records.result.body.turns[2].records"
+              next: !cel "steps.records.result.body.next"
+            expected:
+              status: 200
+              turns:
+                - !cel "steps.plain.result.turnId"
+                - !cel "steps.tool.result.turnId"
+                - !cel "steps.refused.result.turnId"
+              statuses: [finished, finished, failed]
+              refusedError: ERR_OPENAI_REQUEST_FAILED
+              plain: !cel "steps.plainEvents.result.frames.map(f, {'id': f.id, 'data': f.data})"
+              tool: !cel "steps.toolEvents.result.frames.map(f, {'id': f.id, 'data': f.data})"
+              refused: !cel "steps.refusedEvents.result.frames.filter(f, f.event != 'error').map(f, {'id': f.id, 'data': f.data})"
+              next: null
+        # A page is cut by `limit`, and its cursor names where the next begins.
+        - name: firstPage
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?limit=4
+        - name: nextPage
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate >-
+              http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?limit=4&fromTurn=${{ steps.firstPage.result.body.next.fromTurn }}&fromId=${{ steps.firstPage.result.body.next.fromId }}
+        - name: paged
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              first: !cel "steps.firstPage.result.body.turns.map(t, t.records.map(r, r.id))"
+              cursor: !cel "steps.firstPage.result.body.next"
+              second: !cel "steps.nextPage.result.body.turns.map(t, [t.turnId, t.records.map(r, r.id)])"
+            expected:
+              first: [[1, 2, 3, 4]]
+              cursor: { fromTurn: !cel "steps.plain.result.turnId", fromId: 4 }
+              second:
+                - [ !cel "steps.plain.result.turnId", [5, 6] ]
+                - [ !cel "steps.tool.result.turnId", [1, 2] ]
+        # The header a reconnecting EventSource sends wins over the query.
+        - name: resumed
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events?lastEventId=0"
+            headers: { last-event-id: "4" }
+        - name: badCursor
+          invoke:
+            kind: HttpClient.Request
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events?lastEventId=abc"
+        - name: unknownTurn
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18451/chat/01a0deb2-0000-7000-8000-000000000000/events
+        - name: unknownPage
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?fromTurn=not-a-turn
+        - name: refusals
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              resumedIds: !cel "steps.resumed.result.frames.map(f, f.id)"
+              badCursor: !cel "steps.badCursor.result.status"
+              unknownTurn: [ !cel "steps.unknownTurn.result.status", !cel "steps.unknownTurn.result.body.code" ]
+              unknownPage: [ !cel "steps.unknownPage.result.status", !cel "steps.unknownPage.result.body.code" ]
+            expected:
+              resumedIds: [5, 6]
+              badCursor: 400
+              unknownTurn: [404, ERR_TURN_NOT_FOUND]
+              unknownPage: [404, ERR_TURN_NOT_FOUND]
+        # Removed through the same journal, from outside the agent.
+        - name: remove
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: agentDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: RecordStream.JournalRemoval
+                metadata: { name: removal }
+                journal:
+                  kind: RecordStream.Journal
+                  store:
+                    kind: RecordStreamSql.JournalStore
+                    connection: !ref agentDb
+                    table: turn_journal
+                  markerRetention: 1h
+            steps:
+              - name: removeRefused
+                invoke: !ref removal
+                inputs:
+                  key: !cel "inputs.turnId"
+          inputs:
+            turnId: !cel "steps.refused.result.turnId"
+        - name: removedEvents
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.refused.result.turnId }}/events"
+        - name: gone
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: [ !cel "steps.removedEvents.result.status", !cel "steps.removedEvents.result.body.code" ]
+            expected: [410, ERR_JOURNAL_KEY_REMOVED]
+  # The same workspace on another model: its turn is sent no reasoning recorded
+  # under the first one.
+  - name: otherModel
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18452 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18450/v1
+            model: another-model
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: switched
+          invoke: !ref startTurn
+          inputs: { port: 18452, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: and now? }
+        - name: switchedEvents
+          timeout: 30000
+          invoke: !ref readEvents
+          inputs:
+            url: !interpolate "http://127.0.0.1:18452/chat/${{ steps.switched.result.turnId }}/events"
+  - name: sent
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:18450/requests
+  # Requests in order: the plain turn, the tool turn's two model calls, the
+  # refused turn, the switched turn.
+  - name: reasoningReplayedToItsModelOnly
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        models: !cel "steps.sent.result.body.requests.map(r, r.model)"
+        carriesReasoning: !cel >-
+          steps.sent.result.body.requests.map(r,
+            r.input.exists(i, 'type' in i && i.type == 'reasoning'))
+      expected:
+        models: [gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, another-model]
+        carriesReasoning: [false, true, true, true, false]

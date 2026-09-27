@@ -1,0 +1,185 @@
+kind: Telo.Application
+metadata:
+  name: ProviderStub
+  version: 1.0.0
+  description: |
+    Test fixture: a local stand-in for the OpenAI responses endpoint, so the
+    agent's tests run whole turns offline and key-free. POST /v1/responses
+    answers with a streamed response chosen by the request's text:
+      - a message containing STUB_FAIL is refused with 400 — with
+        STUB_FAIL_ONCE, only until a request carries a continued turn's note
+        (`TURN CONTINUED: the previous attempt`; the system prompt names the
+        marker alone), so a continued turn completes;
+      - a message containing STUB_SLOW is held until a test calls POST
+        /release (which releases every request received so far) or the agent
+        abandons the request, so a test can act while a turn is running — and
+        so is a later request carrying that message as history;
+      - a message containing STUB_TOOL asks for one `list_dir` call, and the
+        request that carries its result gets a text reply;
+      - anything else gets a text reply.
+    Every reply carries a reasoning item, so the agent records provider state.
+    Every request body is kept, in order, and GET /requests returns them — what
+    a test reads to see what the agent sent.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.33.0#sha256-KuqDkp68S_hOl7nZ4WJLOyNAn2M3kmPSMwEaeBJbgSw
+  PlainText: oci://ghcr.io/telorun/plain-text-codec@0.10.4#sha256-Z1My-TDPdE13s63NSi5rT0Qg0CZf-7tAXbJBRcBGCOQ
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+ports:
+  http:
+    env: PORT
+    default: 18440
+targets:
+  - !ref schema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+migrations:
+  create_requests:
+    statement: "CREATE TABLE requests (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL)"
+  # Each POST /release: every request up to `through_id` is let go.
+  create_releases:
+    statement: "CREATE TABLE releases (through_id INTEGER NOT NULL)"
+---
+kind: Run.Sequence
+metadata: { name: respond }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [body]
+    properties:
+      body: { type: object, additionalProperties: true }
+steps:
+  - name: record
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO requests (body) VALUES (?) RETURNING id"
+      bindings: [ !cel "json(inputs.body)" ]
+  - name: request
+    value: !cel "json(inputs.body)"
+  - name: refused
+    if: !cel >-
+      steps.request.result.contains('STUB_FAIL')
+        && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt'))
+    then:
+      - name: refuse
+        throw:
+          code: ERR_STUB_REFUSED
+          message: The stub refuses this request.
+  # Held until released. An agent that abandons the request (an aborted turn)
+  # disconnects, which cancels this handler and ends the hold with it.
+  - name: slow
+    if: !cel "steps.request.result.contains('STUB_SLOW')"
+    then:
+      - name: released
+        invoke: !ref releasedCount
+        inputs:
+          sql: "SELECT COUNT(*) AS n FROM releases WHERE through_id >= ?"
+          bindings: [ !cel "steps.record.result.rows[0].id" ]
+      - name: hold
+        while: !cel "steps.released.result.rows[0].n == 0"
+        do:
+          - name: poll
+            invoke: { kind: Timer.Delay }
+            inputs: { duration: "50ms" }
+          - name: released
+            invoke: !ref releasedCount
+            inputs:
+              sql: "SELECT COUNT(*) AS n FROM releases WHERE through_id >= ?"
+              bindings: [ !cel "steps.record.result.rows[0].id" ]
+  - name: events
+    value: !cel >-
+      [{'type': 'response.output_item.done',
+        'item': {'type': 'reasoning', 'id': 'rs_stub', 'encrypted_content': 'stub-reasoning', 'summary': []}}]
+      + (steps.request.result.contains('STUB_TOOL') && !steps.request.result.contains('function_call_output')
+          ? [{'type': 'response.output_item.done',
+              'item': {'type': 'function_call', 'id': 'fc_stub', 'call_id': 'call_' + uuidv4(),
+                       'name': 'list_dir', 'arguments': '{}'}}]
+          : [{'type': 'response.output_text.delta', 'delta': 'stub '},
+             {'type': 'response.output_text.delta', 'delta': 'reply'}])
+      + [{'type': 'response.completed',
+          'response': {'status': 'completed', 'output': [],
+                       'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}]
+  - name: frames
+    invoke: { kind: Stream.Of }
+    inputs:
+      items: !cel "steps.events.result.map(e, 'data: ' + json(e) + '\\n\\n')"
+outputs:
+  output: !cel "steps.frames.result.output"
+---
+kind: Sql.Query
+metadata: { name: releasedCount }
+connection: !ref db
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /v1/responses
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler: !ref respond
+    inputs:
+      body: !cel "request.body"
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          text/event-stream:
+            encoder: { kind: PlainText.Encoder }
+    catches:
+      - when: !cel "error.code == 'ERR_STUB_REFUSED'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error:
+                message: !cel "error.message"
+  # Lets go of every STUB_SLOW request received so far.
+  - request:
+      path: /release
+      method: POST
+    handler:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: "INSERT INTO releases (through_id) SELECT COALESCE(MAX(id), 0) FROM requests"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              released: true
+  - request:
+      path: /requests
+      method: GET
+    handler:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT body FROM requests ORDER BY id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              requests: !cel "result.rows.map(r, parseJson(r.body))"
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api

@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it } from "vitest";
-import { FIXTURES, HarnessHost, uri } from "./harness.js";
+import { FIXTURES, HarnessHost, canonical, uri } from "./harness.js";
 
 const workspace = mkdtempSync(join(tmpdir(), "telo-engine-uris-"));
 const project = join(workspace, "My Project (copy)");
@@ -22,6 +22,6 @@ it("emits every file: URI canonically, whatever spelling the host used", async (
   host.open(owner);
   await host.until(() => host.notifications.some((n) => n.method === "telo/requirements"), "telo/requirements");
   const requirements = host.notifications.find((n) => n.method === "telo/requirements")!.params;
-  expect(requirements.owner).toBe(uri(owner).replace("(copy)", "%28copy%29"));
+  expect(requirements.owner).toBe(canonical(owner));
   expect(requirements.documents.every((d: string) => d.includes("%28copy%29"))).toBe(true);
 });

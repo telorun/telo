@@ -1,0 +1,11 @@
+modules:
+  apps/authoring-agent: Added
+body: "POST /chat/{turnId}/abort cancels a turn's running attempt (no body; { cancelled
+  }), ending its event stream with ERR_INVOKE_CANCELLED and reporting it aborted in the
+  records route. POST /chat/{turnId}/continue resumes an interrupted turn as another
+  attempt inside the same turn ({ turnId, fromId }; the next record is turn-continued
+  with the note the model reads), refusing with 410/404, 409 ERR_TURN_IN_PROGRESS, 409
+  ERR_TURN_NOT_CONTINUABLE (finished | aborted | superseded) or 429. Conversations idle
+  for RETENTION_DAYS are now deleted whole, at boot and hourly (exported
+  retentionSweep). Breaking: the abort route takes no body, and RETENTION_DAYS now also
+  bounds how long an idle conversation is kept."

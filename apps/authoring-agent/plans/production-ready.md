@@ -2,15 +2,11 @@
 
 ## Problem
 
-The agent works end to end for a happy-path turn and is not yet something a user can depend on. Six things are structurally missing, and everything else in this plan follows from them:
+The agent works end to end: every turn is journaled durably in its state directory and served back to every client, the model's history is projected from that journal in full, a turn can be aborted and an interrupted one continued inside the same turn, and idle conversations are deleted whole. It is not yet something a user can depend on in an open deployment. Three things are structurally missing, and everything else in this plan follows from them:
 
-1. **The turn record is not durable.** The stream of parts a turn produces lives in an in-memory replay buffer for the life of the process, and the only thing written to SQLite is the concatenated assistant *text*. Tool calls, tool results, reasoning and usage are never persisted anywhere.
-2. **The model's history is a lossy projection of that.** History is replayed as `{role, content}` rows, so on any new container the model sees final prose and none of the loop that produced it: which files it wrote, which check failed, what a probe returned. This is exactly why a resume restarts from the last prompt.
-3. **The conversation store is ephemeral.** It defaults to a path inside the container (`./tmp/authoring-agent.sqlite`), so a co-resident agent restarting inside a live session loses every conversation; the editor's localStorage copy is the only survivor, and it drops reasoning and is capped by a ~5MB browser quota.
-4. **Stop is a lie.** The editor posts `POST /chat/{turnId}/abort`; no such route exists, so the request 404s and the turn keeps running — still writing the workspace the user believes they stopped.
-5. **There is no boundary around the agent.** Every route is unauthenticated with `cors.origin: "*"`, so anything that can reach the container can read every conversation and write the workspace. The file tools resolve a path with ordinary path resolution against the workspace root, so `../` or an absolute path leaves it — the README's claim that a path cannot reach the rest of the container is not true today.
-6. **Only the operator can pay.** The model credential is bound once at load from the operator's environment, so a user cannot bring their own key and an operator cannot run a deployment that holds no key at all.
-7. **The agent cannot see or touch anything outside its own filesystem.** It writes a manifest and cannot run the app, read its log, see a diagnostic the editor is already showing, or point the user at the line it just changed.
+1. **There is no boundary around the agent.** Every route is unauthenticated with `cors.origin: "*"`, so anything that can reach the container can read every conversation and write the workspace. The file tools resolve a path with ordinary path resolution against the workspace root, so `../` or an absolute path leaves it — the README's claim that a path cannot reach the rest of the container is not true today.
+2. **Only the operator can pay.** The model credential is bound once at load from the operator's environment, so a user cannot bring their own key and an operator cannot run a deployment that holds no key at all.
+3. **The agent cannot see or touch anything outside its own filesystem.** It writes a manifest and cannot run the app, read its log, see a diagnostic the editor is already showing, or point the user at the line it just changed.
 
 Everything below is one deliverable: the agent and Studio's chat share one contract, and half of these items are a route on one side and an affordance on the other.
 
@@ -25,40 +21,14 @@ Each item states what happens today, what should happen instead, and how you wou
 Nothing else in this plan is safe to build before these.
 
 **A1 — Capability negotiation.**
-*Before:* the editor learns what an agent supports by calling and interpreting a 404 (this is how abort support is detected). Every feature added here would need its own sniff.
+*Before:* the editor learns what an agent supports only by calling a route and interpreting how it fails. Every feature added here would need its own sniff.
 *After:* `GET /capabilities` returns one document: `{ agent: { name, version }, prompt: { id }, auth: "none" | "bearer", features: [...], model: { credential: "required" | "optional" | "none", defaultId, ids: [...], endpoint: { configurable, allowed: [...] } }, effortLevels: [...], editorTools: [...], limits: { maxAttachmentBytes, maxContextTokens, runTimeoutMs, clientToolTimeoutMs }, manifestRuns: true|false }`. Every value in `model` is derived from the deployment's own variables and secrets rather than written by hand, so it cannot drift from what the agent will actually accept (see H). The editor fetches it once per agent instance and drives every conditional surface from it. `features` is a flat list of strings, so an older editor against a newer agent ignores what it does not know.
 *Verify:* point the editor at an agent with `manifestRuns: false` and the panel says the agent cannot run tests, without a failed call; drop `editorTools` from the document and the editor stops declaring client tools, with no errors in the console.
-
-**A2 — The turn journal is the one source of truth.**
-*Before:* the live parts go to `RecordStream.Journal`, a stdlib kind held in memory for the life of the process; SQLite gets the joined text.
-*After:* the journal itself becomes durable. `RecordStream.Journal` takes a required store and `retention:`, reports a removed key as `ERR_JOURNAL_KEY_REMOVED` (the event route maps it to 410), and reports a turn whose writer stopped heartbeating — its process died — as `ERR_JOURNAL_WRITER_LOST` rather than tailing it forever. The agent's journal uses a `RecordStreamSql.JournalStore` over its existing SQLite connection in its state directory (A7), so every part of every turn — text and reasoning deltas, tool calls and results, usage — is appended there, one record per part, under the turn's key. No tee, and no second store: `GET /chat/{turnId}/events?lastEventId=` is the journal's own replay-then-tail, whether the turn is live, finished, or from before a restart. A new `GET /conversations/{id}/records?fromId=` returns the records of the conversation's turns in order — the display transcript, server-side, for every client. The agent keeps only a `turns` index of which keys belong to which conversation, in what order, with their status. That is metadata about records, not a copy of them.
-*Why every delta is a record rather than coalesced segments:* an exact replay is the feature. Retention (A13) bounds the store; lossy writes would not.
-*Verify:* start a turn, kill the container mid-stream, restart it, and re-open the event stream with the client's last id. The transcript replays up to the last record written. The turn then ends with the journal's writer-lost error within its writer timeout, instead of tailing forever, and B1's Resume continues it. Open a second browser on the same conversation and it renders the identical transcript, tool cards included, with an empty localStorage. No table in the agent's database holds a stream part.
-
-**A3 — Full-fidelity model history, derived from the journal.**
-*Before:* `messages` holds `role IN ('system','user','assistant')` and a text `content`, written as a second record of the turn. Assistant turns that ended in tool calls persist as an empty string.
-*After:* `messages` becomes a **projection**: written once per turn from that turn's terminal record, rebuildable from the journal at any time, and never written by anything else. It holds the model's view in full — content as parts, an assistant row's tool calls, `tool` rows with their `toolCallId` (the role CHECK widens, so the migration rebuilds the table) — so history replay reconstructs the real message list without folding thousands of delta records on every turn. Every operation that changes history — truncation (E1), compaction (A9), retention (A13) — acts on the journal and then rebuilds the projection for the turns it touched. The projection is never edited directly, so it cannot disagree with the journal for longer than one rebuild. The turn's `providerState` (the provider's encrypted reasoning chain) is itself a journal record on the turn's key, so it is replayed on the next turn and thinking survives a container restart, not only a tool loop. It is dropped whenever the conversation's model or key changes (H), because it is meaningless to another model and bound to the account that obtained it.
-*Verify:* ask the agent to write two files, restart the container, then ask "what did you just change and did it check clean?" — it answers from history rather than re-reading the disk. Drop the `messages` table and it is rebuilt identically from the journal.
-
-**A4 — Abort.**
-*Before:* Stop closes the client's stream and 404s; the turn runs on.
-*After:* `POST /chat/{turnId}/abort` cancels the running turn, releases the conversation lease, settles the budget reservation to actual usage, appends a terminal `aborted` record to the turn, and answers `{ cancelled: true }`. A turn already finished answers `{ cancelled: false }` rather than an error. The cancellation reaches the running model call and the running tool — `Ai.Tools` passes it into the tool's invocation, `AiMcp.ToolProvider` into its `tools/call` — and ends the turn with `ERR_INVOKE_CANCELLED`. Actual usage is the sum of the turn's `step-finish` records, one per model call that completed; a call the abort interrupted reports none.
-*Verify:* start a long build, press Stop, and the workspace stops changing within a second; the transcript's last record is `aborted`; `POST /chat` for the same conversation is accepted immediately afterwards (no 409 from a stranded lease).
-
-**A5 — Idempotent turn start.**
-*Before:* the client retries `POST /chat` on a network failure — including one where the request landed. The conversation lease catches the overlapping case, but a retry that arrives after a very short turn finished starts a second turn.
-*After:* `POST /chat` takes an `Idempotency-Key` header; a repeat within the conversation returns the original `{ turnId }` instead of starting anything.
-*Verify:* send the same key twice and exactly one user row and one turn exist.
 
 **A6 — Authentication and origin control.**
 *Before:* unauthenticated, `origin: "*"`.
 *After:* `AGENT_TOKEN`, when set, makes every route require `Authorization: Bearer <token>`; the runner mints one per session and hands it to the editor with the agent endpoint. `ALLOWED_ORIGINS` is a comma-separated allowlist (default `*`). With no token the agent logs one startup line naming what is exposed and reports `auth: "none"` in `GET /capabilities`, which the editor shows as a badge on the panel — a local dev agent stays frictionless and an operator can see, from the client, that a deployment is open.
 *Verify:* with a token set, every route answers 401 without it and the editor works with it; a request from an origin outside the allowlist is refused by the agent, not merely left without a CORS header.
-
-**A7 — Agent state lives on the session volume.**
-*Before:* the SQLite file sits in the container.
-*After:* `AGENT_STATE_DIR` defaults to `<WORKSPACE_DIR>/.telo-agent` and holds `agent.sqlite`; attachments and checkpoints are created there by the features that need them. The directory is excluded from the editor↔workspace sync in both directions, exactly as the runner-seeded workspace marker is. A co-resident agent therefore keeps its conversations across a container restart, because the volume outlives the container.
-*Verify:* restart the agent container in a live watch session; the conversation list, the transcripts and the checkpoints are all still there. The editor's file tree never shows `.telo-agent`, and a turn that changes nothing pushes no writes.
 
 **A8 — Conversations as first-class objects.**
 *Before:* one conversation per workspace, minted client-side; "start over" abandons the old one with no way back.
@@ -85,19 +55,9 @@ Nothing else in this plan is safe to build before these.
 *After:* one trace per turn with a span per model call and per tool call (name, duration, outcome, and for writes the check exit code); counters for turns started/finished/aborted/failed, tool calls by name and outcome, `telo check` failures, tokens by conversation; a histogram of turn duration and of steps per turn. Exported over OTLP when `OTLP_ENDPOINT` is set, and structured logs otherwise. No prompt or file content is exported — names, codes, counts and durations only.
 *Verify:* run one build with a collector attached and the trace shows the full tool sequence; the tool-error counter moves when a check fails.
 
-**A13 — Retention.**
-*Before:* nothing is ever deleted.
-*After:* retention works on **whole conversations**. `RETENTION_DAYS` (default 30) deletes every conversation with no activity inside the window: its journal keys, its projection rows, its attachments and its checkpoints, together. Nothing outlives its source, so no part of a conversation can survive as the only copy. A user who wants a conversation longer exports it (E4). `CHECKPOINT_LIMIT` (default 50 per conversation) separately bounds the checkpoint store, oldest first. A deleted turn's event stream answers 410 rather than an empty replay while the journal keeps the removal marker (its `retention:`), because the journal reports a removed key distinctly from one it never held.
-*Verify:* with the window set to a day, yesterday's idle conversation is gone from the list, from the journal and from disk; an active conversation with old turns is untouched; the event stream of a deleted turn answers 410 while the journal keeps its removal marker.
-
 ---
 
-### B. Resume, checkpoints and undo
-
-**B1 — Resume at the exact point of failure.**
-*Before:* the editor synthesizes a prose message ("you were cut off… you had already run write_file x — telo check passed") and sends it as a new turn. The model starts over from a summary of itself, re-reads files and re-does work.
-*After:* with the durable record (A2) and full-fidelity history (A3), resume is server-side: `POST /chat/{turnId}/continue` re-enters the *same* turn's model loop with the exact message list it had — every assistant tool call, every tool result — plus one appended note stating that the previous attempt was interrupted after the last recorded result. The turn keeps its id, its transcript, and its budget accounting; the client re-attaches to the same event stream. The client-side resume prose is deleted, not kept as a fallback: an agent that cannot continue a turn reports it, and the user re-sends.
-*Verify:* kill the container mid-build, press Resume, and the agent's next tool call is the *next* file rather than a re-read of the previous one; the transcript stays one turn rather than growing a synthetic user bubble.
+### B. Checkpoints and undo
 
 **B2 — Per-turn checkpoint, diff and revert.**
 *Before:* the agent's writes land live in the editor and on the watch volume; there is no way back other than the user's own version control, which a Studio workspace may not have.
@@ -121,7 +81,7 @@ Nothing else in this plan is safe to build before these.
 
 **C1 — Files and images in the chat.**
 *Before:* `POST /chat` takes `{ conversationId, message }`, both strings.
-*After:* `POST /attachments` accepts a multipart upload, stores the bytes under `.telo-agent/attachments/<id>`, and returns `{ id, name, mediaType, size }`. `POST /chat` takes `attachments: [id]`; the user message is persisted as content *parts* (A3) — text plus image/file parts — and images ride into the model as image parts. `GET /attachments/{id}` serves them back for the transcript. `MAX_ATTACHMENT_BYTES` (default 10MB) and a media-type allowlist bound it; a rejected upload says which limit it hit.
+*After:* `POST /attachments` accepts a multipart upload, stores the bytes under `.telo-agent/attachments/<id>`, and returns `{ id, name, mediaType, size }`. `POST /chat` takes `attachments: [id]`; the user message is journaled as content *parts* — text plus image/file parts — and images ride into the model as image parts. `GET /attachments/{id}` serves them back for the transcript. `MAX_ATTACHMENT_BYTES` (default 10MB) and a media-type allowlist bound it; a rejected upload says which limit it hit.
 *Verify:* paste a screenshot of a failing run into the composer and the agent describes what is in it; reload the page and the thumbnail is still in the transcript, served from the agent rather than from browser memory.
 
 **C2 — Text-only attachments become workspace files.**
@@ -148,7 +108,7 @@ Nothing else in this plan is safe to build before these.
 - **Wake-up is event-driven**, not polled, so a client tool call costs the round trip and nothing more.
 - **The meeting is symmetric.** A result that arrives before its handler is waiting is held and handed over when the handler opens. That is normal here: every tool call of a step is announced before the first is dispatched.
 - **The await has a deadline** (`CLIENT_TOOL_TIMEOUT_MS`, default 60s). The handler turns `ERR_RENDEZVOUS_TIMEOUT` into the tool error `ERR_EDITOR_TIMEOUT`.
-- **The await honours the invocation's cancellation**, so aborting the turn (A4) releases a waiting handler at once rather than at the deadline.
+- **The await honours the invocation's cancellation**, so aborting the turn releases a waiting handler at once rather than at the deadline.
 - **Deliver reports its outcome as data.** The route maps `settled` (a late or duplicate result) to 409 `ERR_TOOL_RESULT_LATE`, and `ERR_RENDEZVOUS_PAYLOAD_INVALID` to 400.
 - **The agent is single-instance.** It uses the in-memory store, as its lease and budget stores already are. A multi-instance deployment swaps the backend, as it would swap those.
 
@@ -306,7 +266,7 @@ Failures remain tool errors whose message says what went wrong. A text rendering
 
 **G1 — Configuration.** New variables, all defaulted so a bare `telo run` still works: `AGENT_STATE_DIR`, `AGENT_TOKEN`, `ALLOWED_ORIGINS`, `MODELS`, `MODEL_FALLBACK`, `ACCEPT_CALLER_KEY`, `ALLOWED_MODEL_ENDPOINTS`, `MAX_ATTACHMENT_BYTES`, `MAX_TOOL_RESULT_BYTES`, `MAX_CONTEXT_TOKENS`, `CLIENT_TOOL_TIMEOUT_MS`, `CHECKPOINT_LIMIT`, `RETENTION_DAYS`, `OTLP_ENDPOINT`. Existing ones keep their meanings, with one change: `OPENAI_API_KEY` stops being required, because a BYO-only deployment has none.
 
-**G2 — Deployment.** Both modes stay as they are; the runner additionally passes the session's agent token and the editor's origin. A co-resident agent's state directory lands on the session volume by default (A7), so suspension and resume of a watch session keep the conversation.
+**G2 — Deployment.** Both modes stay as they are; the runner additionally passes the session's agent token and the editor's origin. A co-resident agent's state directory lands on the session volume by default, so suspension and resume of a watch session keep the conversation.
 
 **G3 — What is stored, and how to remove it.** Conversations, messages, per-part records, attachments and checkpoints, all under the state directory; `DELETE /conversations/{id}` removes every trace of one, retention removes the rest on a schedule, and the README states this plainly for an operator who must answer the question.
 
@@ -319,7 +279,7 @@ A user supplies their own OpenAI key and their own endpoint, and the operator pa
 **H1 — The mechanism: the turn declares its own model stack.**
 *Before:* the model credential is bound once at load from the operator's `OPENAI_API_KEY`, and the whole stack — bearer token, HTTP client, request, model, agent stream — is a set of module-level resources shared by every conversation. A key can therefore only ever be the operator's.
 *After:* the turn body declares that stack in its `with:` block, so its lifetime is one turn, and the credential's `token` is an expression over the invocation that opened the scope. The tool providers, the workspace tools and the hub connection stay at module level and are referenced from inside the scope — only what varies per caller is scoped.
-*What this requires:* three language features, specified with their diagnostics, typing, lifetime and agreement-suite rows in their own analyzer plan (per-invocation scope configuration). Stage 4 of this plan depends on that plan landing.
+*What this requires:* three language features, specified with their diagnostics, typing, lifetime and agreement-suite rows in their own analyzer plan (per-invocation scope configuration). Stage 3 of this plan depends on that plan landing.
 - **A scope can read its opening invocation's `inputs`.** A resource whose lifetime is one invocation cannot currently be configured from that invocation: scope declarations expand against module scope alone, while a step body already sees `inputs`.
 - **A static refusal, with a runtime twin, for a stream produced by a scoped resource that leaves its scope.** A scoped model stack makes this reachable; without the refusal it would be a disposed-resource failure at runtime.
 - **Sensitivity marks survive a forwarding slot** (H7).
@@ -382,11 +342,6 @@ Stated once each; the body does not repeat them.
 - **Editor tools are always advertised and degrade to an error result** when no client declared them, because a tool provider's list is fixed at load and a per-turn tool set would mean a resource per client shape.
 - **Effectful editor tools are gated by an approval mode in the client**, not by an operator switch: the operator's switch (`ALLOW_MANIFEST_RUNS`) decides whether code may run at all, while approval decides whether *this* action happens now.
 - **Writes land live; revert is the undo.** A review queue would break the one thing a co-resident agent exists for — a write reloading the running app.
-- **The journal is made durable in the stdlib, not beside it in the agent.** Every detached stream in Telo has the same restart problem. An agent-owned table next to the in-memory journal would make two stores whose ids must agree, and would solve the problem for one app. The journal records one entry per stream part: exact replay is the feature, and retention bounds the store.
-- **`messages` is a projection of the journal, never a second record.** It is written from a turn's terminal record, rebuilt after anything that changes history, and never edited directly. It exists because folding every delta on every turn would cost more than one projection write per turn, and it remains disposable.
-- **Resume continues the same turn server-side.** The client-authored resume prose is removed rather than kept as a fallback, because two resume paths would drift and only one can be exact.
-- **Retention deletes whole conversations**, so no part of one survives as the only copy of something its source no longer holds.
-- **Agent state lives on the workspace volume**, not in the container and not in the browser: the container is the ephemeral part, and the browser copy is quota-bound and per-device.
 - **Attachments live under the agent's state directory**, not in the user's file tree; a file the user wants in the project is added explicitly (C2).
 - **Path confinement is enforced in the tool layer**, leaving `fs`'s documented "not a security boundary" stance intact.
 - **Secret scanning refuses the write** rather than warning after it: a warning on a file already written is a secret already on disk.
@@ -408,34 +363,29 @@ Three alternatives were rejected:
 
 Each stage is usable on its own and unblocks the next.
 
-The durable journal store — `RecordStream.JournalStore`, `RecordStream.MemoryJournalStore`, `RecordStreamSql.JournalStore`, removal, expiry and writer liveness — is in the repo, and so are stage 1's other stdlib prerequisites: `RecordStream.EndHandler` with `RecordStream.StreamOutcome`, `RecordStream.JournalSink`'s `resume`, and in `ai` the per-call `step-finish` usage, forwarded provider state and the `providerState` input, stable tool-call ids, and cancellation reaching tools (`ai-mcp` included). They ship in this publish round together with A7 and A5. The agent imports every module by published pin, so A2, A3, A4, A13 and B1 follow once that round is published.
-
 Two stdlib and language prerequisites are designed in plans of their own, in the packages they change, and gate the stages that need them:
 
-- **Per-invocation scope configuration** (scope inputs, the scoped-stream refusal, sensitivity through forwarding slots). It gates stage 4.
-- **Rendezvous** (the new `rendezvous` module). It gates stage 6, together with `ai`'s binding of the call's id and name in a tool's `inputs:` mapping.
+- **Per-invocation scope configuration** (scope inputs, the scoped-stream refusal, sensitivity through forwarding slots). It gates stage 3.
+- **Rendezvous** (the new `rendezvous` module). It gates stage 5, together with `ai`'s binding of the call's id and name in a tool's `inputs:` mapping.
 
-1. **Durability and control** — A2, A3, A7, A4, A5, A13, plus B1. This is the "one source of truth" and "resume exactly" core; everything else assumes it.
-2. **Boundary** — A6, A10, F5, A11, A12. The agent becomes safe to expose.
-3. **Conversations and negotiation** — A1, A8, A9, E1, E4. Multi-conversation Studio, editable history, bounded context.
-4. **Bring your own key** — H1–H8, once the per-invocation scope configuration plan has shipped, along with the tool-listing cache H1 needs in the MCP tool provider. Independent of everything before it except A1's capability document, so it can run in parallel with stage 3.
-5. **Checkpoints** — B2, B3, B4, E3. Undo, diffs, and a transcript that reads.
-6. **Editor tools** — D0 first, then D1–D3, then D4, D5, D7; E9 lands with D0.
-7. **Attachments** — C1–C4.
-8. **Context and composer** — D6, E2, E5–E8, E10, E11.
-9. **Agent capability** — F1–F4, F6–F9.
+1. **Boundary** — A6, A10, F5, A11, A12. The agent becomes safe to expose.
+2. **Conversations and negotiation** — A1, A8, A9, E1, E4. Multi-conversation Studio, editable history, bounded context.
+3. **Bring your own key** — H1–H8, once the per-invocation scope configuration plan has shipped, along with the tool-listing cache H1 needs in the MCP tool provider. Independent of everything before it except A1's capability document, so it can run in parallel with stage 2.
+4. **Checkpoints** — B2, B3, B4, E3. Undo, diffs, and a transcript that reads.
+5. **Editor tools** — D0 first, then D1–D3, then D4, D5, D7; E9 lands with D0.
+6. **Attachments** — C1–C4.
+7. **Context and composer** — D6, E2, E5–E8, E10, E11.
+8. **Agent capability** — F1–F4, F6–F9.
 
 F10 is independent of every stage. Its `ai` record field and Studio's switch to `output` must land before the `result:` mappings, because the mappings alone would break Studio's mid-turn pull. It should land early.
 
 ## Correctness and edge cases
 
 - **Two clients on one conversation** — both read the same journal; an edit that truncates history (E1) is seen by both on their next read, and the lease still admits one turn at a time.
-- **A projection rebuilt while a turn is appending** — a turn's projection rows are written from its terminal record only, so a rebuild covers finished turns and never races the live one.
 - **A waiting editor tool and an aborted turn** — the rendezvous await honours the invocation's cancellation, so abort releases the handler immediately. The model loop is never held past the abort, and never waits out the deadline.
 - **A client that answers a tool after the timeout** — deliver reports `settled`, and the route answers 409 `ERR_TOOL_RESULT_LATE`; the turn already has its `ERR_EDITOR_TIMEOUT` result.
 - **A client that answers a tool before its handler waits** — the value is held and handed over when the handler opens. It is not an error, and the client needs no retry.
 - **Two concurrent turns whose provider gave no call ids** — fallback ids are globally unique, so neither turn's editor result can reach the other's handler.
-- **A turn that died with its stream open** — the journal marks the key failed with its writer-lost code once the heartbeat is stale. The transcript ends there, B1 continues it, and no reader tails a dead turn forever.
 - **Revert against files the user edited after the turn** — revert restores only the paths that turn changed; a file the user has since edited is reported as skipped with its path, never silently overwritten.
 - **A checkpoint on a large workspace** — content-addressed blobs are shared across checkpoints, so a second turn costs only what it changed; `CHECKPOINT_LIMIT` and retention bound the rest.
 - **Compaction and export disagreeing** — compaction appends a summary record to the journal and never deletes; the export and the transcript always show the raw turns.

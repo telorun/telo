@@ -16,7 +16,7 @@ import {
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FIXTURES, HarnessHost, pathOf, uri } from "./harness.js";
+import { FIXTURES, HarnessHost, REPO, canonical, pathOf, uri } from "./harness.js";
 import { analyseInProcess } from "./in-process.js";
 
 const OWNER = join(FIXTURES, "billing", "telo.yaml");
@@ -145,7 +145,7 @@ describe("language features answer as ide-support does in-process", () => {
       context: { diagnostics: [diagnostic] },
     });
     expect(actions).toHaveLength(1);
-    const [edit] = actions[0].edit.changes[uri(PARTIAL)];
+    const [edit] = actions[0].edit.changes[canonical(PARTIAL)];
     const lines = typo.split("\n");
     const line = lines[edit.range.start.line]!;
     lines[edit.range.start.line] =
@@ -185,7 +185,7 @@ describe("language features answer as ide-support does in-process", () => {
       arguments: upgrade.command.arguments,
     });
     expect(host.appliedEdits).toHaveLength(1);
-    expect(host.appliedEdits[0].edit.changes[uri(consumer)]).toEqual(
+    expect(host.appliedEdits[0].edit.changes[canonical(consumer)]).toEqual(
       expected.upgrades[0]!.edits.map((e) => ({ range: e.range, newText: e.newText })),
     );
   });
@@ -200,7 +200,9 @@ describe("telo-workspace.yaml", () => {
     match: lastMatchIndex,
     directories: () => ["apps", "apps/one"],
     moduleDirectories: () => ["apps/one"],
-    enclosingMarkers: () => [join(FIXTURES, "..", "..", "..", "..")],
+    // The repository root, spelled as the engine's source for it: the path of
+    // the URI the marker was opened under (`/D:/…` on Windows).
+    enclosingMarkers: () => [decodeURIComponent(new URL(uri(REPO)).pathname)],
     recordedRegistries: () => [],
   };
 

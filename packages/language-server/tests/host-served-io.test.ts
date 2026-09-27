@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { FIXTURES, HarnessHost, uri } from "./harness.js";
+import { FIXTURES, HarnessHost, canonical } from "./harness.js";
 
 const REMOTE = "oci://registry.example.test/telo/remote@1.0.0";
 
@@ -21,7 +21,7 @@ it("reads every module through the host", async () => {
   expect(host.diagnostics().get(consumer)).toEqual([]);
   const read = host.requests.filter((r) => r.method === "telo/read").map((r) => r.params.uri);
   expect(read).toContain(REMOTE);
-  expect(read).toContain(uri(join(FIXTURES, "ledger")));
+  expect(read).toContain(canonical(join(FIXTURES, "ledger")));
   expect(new Set(host.requests.map((r) => r.method))).toEqual(new Set(["telo/read"]));
 });
 

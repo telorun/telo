@@ -16,6 +16,7 @@ import { existsSync, readdirSync, readFileSync, statSync, type Dirent } from "no
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { inject } from "vitest";
+import { canonicalUri } from "../../language-host/src/canonical-uri.js";
 import { closedProjection } from "./closed-schema.js";
 
 const schema = closedProjection(
@@ -33,8 +34,13 @@ const methods = schema["x-telo-methods"] as Record<string, { params: string; res
 export const REPO = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 export const FIXTURES = fileURLToPath(new URL("./__fixtures__/", import.meta.url));
 
+/** The URI a host opens `path` under — not necessarily the canonical one. */
 export const uri = (path: string) => pathToFileURL(path).href;
-export const pathOf = (u: string) => fileURLToPath(u);
+/** The canonical URI of `path`, the spelling the engine emits. */
+export const canonical = (path: string) => canonicalUri(uri(path));
+/** The path a URI names, its Windows drive uppercased as Node spells the paths
+ *  tests build — the canonical form lowercases it. */
+export const pathOf = (u: string) => fileURLToPath(u).replace(/^[a-z]:/, (drive) => drive.toUpperCase());
 
 /** `@telorun/editor-protocol` § URIs: no query or fragment; an empty authority
  *  for a local file, or a UNC share's lowercased host (never `localhost`); only

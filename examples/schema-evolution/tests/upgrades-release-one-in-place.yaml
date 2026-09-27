@@ -14,6 +14,14 @@ imports:
   Run: ../../../modules/run
   Timer: ../../../modules/timer
   Assert: ../../../modules/assert
+variables:
+  # Anchored at the working directory, as the example's own `dbFile` is: a value
+  # supplied by name must already be an absolute host path.
+  dbFile:
+    env: SCHEMA_EVOLUTION_TEST_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/schema-evolution-test.db
 targets:
   - !ref releaseOne
   - !ref releaseTwo
@@ -24,19 +32,19 @@ kind: App.Instance
 metadata: { name: releaseOne }
 source: ../v1.yaml
 variables:
-  dbFile: ./.telo/schema-evolution-test.db
+  dbFile: !cel "variables.dbFile"
 ---
 kind: App.Instance
 metadata: { name: releaseTwo }
 source: ../telo.yaml
 variables:
-  dbFile: ./.telo/schema-evolution-test.db
+  dbFile: !cel "variables.dbFile"
 ---
 kind: App.Instance
 metadata: { name: releaseTwoAgain }
 source: ../telo.yaml
 variables:
-  dbFile: ./.telo/schema-evolution-test.db
+  dbFile: !cel "variables.dbFile"
 ---
 kind: Run.Loop
 metadata: { name: awaitReleases }

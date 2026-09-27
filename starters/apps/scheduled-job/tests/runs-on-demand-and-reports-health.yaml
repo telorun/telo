@@ -12,6 +12,14 @@ imports:
   Run: ../../../../modules/run
   HttpClient: ../../../../modules/http-client
   Assert: ../../../../modules/assert
+variables:
+  # Anchored at the working directory, as the starter's own `scanPath` is: a
+  # value supplied by name must already be an absolute host path.
+  scanPath:
+    env: SCHEDULED_JOB_TEST_SCAN_PATH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./starters/apps/scheduled-job
 targets:
   - !ref test
 ---
@@ -27,7 +35,7 @@ with:
       # A cron that will not fire during the test, so what the job route reports
       # is this test's own trigger and nothing else.
       jobCron: "0 3 1 1 *"
-      scanPath: ./starters/apps/scheduled-job
+      scanPath: !cel "variables.scanPath"
 targets:
   - !ref app
 steps:

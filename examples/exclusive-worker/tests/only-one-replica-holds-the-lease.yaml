@@ -20,6 +20,14 @@ imports:
   Timer: ../../../modules/timer
   HttpClient: ../../../modules/http-client
   Assert: ../../../modules/assert
+variables:
+  # Anchored at the working directory, as the example's own `dbFile` is: a value
+  # supplied by name must already be an absolute host path.
+  dbFile:
+    env: EXCLUSIVE_WORKER_TEST_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo/exclusive-worker-test.db
 targets:
   - !ref test
 ---
@@ -29,7 +37,7 @@ with:
   - kind: App.Instance
     metadata: { name: workerA }
     source: ../telo.yaml
-    variables: { instanceId: a, dbFile: ./.telo/exclusive-worker-test.db }
+    variables: { instanceId: a, dbFile: !cel "variables.dbFile" }
     ports: { http: 8051 }
 targets:
   - !ref workerA
@@ -47,7 +55,7 @@ with:
   - kind: App.Instance
     metadata: { name: workerB }
     source: ../telo.yaml
-    variables: { instanceId: b, dbFile: ./.telo/exclusive-worker-test.db }
+    variables: { instanceId: b, dbFile: !cel "variables.dbFile" }
     ports: { http: 8052 }
 targets:
   - !ref workerB
@@ -65,7 +73,7 @@ with:
   - kind: App.Instance
     metadata: { name: workerC }
     source: ../telo.yaml
-    variables: { instanceId: c, dbFile: ./.telo/exclusive-worker-test.db }
+    variables: { instanceId: c, dbFile: !cel "variables.dbFile" }
     ports: { http: 8053 }
 targets:
   - !ref workerC

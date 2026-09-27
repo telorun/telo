@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Added
+body: The system prompt teaches RecordStream.JournalRead snapshot reads,
+  RecordStream.JournalClaim with JournalSink's writer input (one drain per claim), the
+  journal's optional retention and new markerRetention, and Stream.Concat, whose
+  sources' codes count in its throw union.

@@ -4,18 +4,24 @@ metadata:
   version: 1.0.0
   description: |
     POST /chat with an Idempotency-Key admits a turn at most once: a repeat
-    returns the original turnId and exactly one user row exists; the same key
+    returns the original turnId and the conversation holds exactly one turn,
+    whose first record is the message; the same key
     with a different message is refused with ERR_IDEMPOTENCY_KEY_REUSED. A refused
     start writes nothing: an agent whose spend ceiling is already reached answers
     429 ERR_AT_CAPACITY, leaves the conversation empty, and refuses a retry under
     the same key again rather than replaying the refusal. A key whose admission is
     still claimed by another request answers 409 ERR_IDEMPOTENCY_KEY_IN_FLIGHT —
     the claim is seeded straight into the instance's `agent.sqlite`, so the
-    overlap is a fact rather than a race — and starts nothing.
+    overlap is a fact rather than a race — and starts nothing. A start refused
+    because another turn of the conversation is running answers 409
+    ERR_TURN_IN_PROGRESS naming that turn, leaves only that turn in the
+    conversation, and refunds its reservation: with room for exactly two
+    reservations, a second refused start is refused the same way rather than
+    for capacity.
 
     Key-free: the admitted turn fails in the background at its first model call
-    (a dummy key, or no network), which is not what is under test — the user row
-    is written by the turn's first step, before the model is reached.
+    (a dummy key, or no network), which is not what is under test — the message
+    is the turn's first record, journaled before the model is reached.
 imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
@@ -107,7 +113,7 @@ steps:
               sameTurn: true
               reused: 422
               reusedCode: ERR_IDEMPOTENCY_KEY_REUSED
-        # The admitted turn records the message as its first step, off the
+        # The admitted turn journals the message as its first record, off the
         # request path — so wait for it to appear, then count.
         - name: history
           retry: { attempts: 40, initialDelay: 100, factor: 1, jitter: none }
@@ -117,25 +123,26 @@ steps:
               - name: read
                 invoke:
                   kind: HttpClient.Request
-                  url: http://127.0.0.1:18433/conversations/3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+                  url: http://127.0.0.1:18433/conversations/3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b/records
                   method: GET
               - name: notYet
-                if: !cel "size(steps.read.result.body.messages) == 0"
+                if: !cel "size(steps.read.result.body.turns) == 0 || size(steps.read.result.body.turns[0].records) == 0"
                 then:
                   - name: waiting
                     throw:
-                      code: ERR_TEST_NO_USER_ROW_YET
+                      code: ERR_TEST_NO_USER_RECORD_YET
                       message: The admitted turn has not recorded the user message yet.
             outputs:
-              messages: !cel "steps.read.result.body.messages"
-        - name: oneUserRow
+              turns: !cel "steps.read.result.body.turns"
+        - name: oneTurn
           invoke: { kind: Assert.Equals }
           inputs:
-            actual: !cel "steps.history.result.messages.map(m, {'id': m.id, 'role': m.role, 'content': m.content})"
+            actual:
+              turns: !cel "steps.history.result.turns.map(t, t.turnId)"
+              first: !cel "steps.history.result.turns[0].records[0].data"
             expected:
-              - id: !cel "steps.first.result.body.turnId"
-                role: user
-                content: add a health endpoint
+              turns: [ !cel "steps.first.result.body.turnId" ]
+              first: { type: user-message, content: add a health endpoint, model: gpt-5.2 }
   - name: atCapacity
     invoke:
       kind: Run.Sequence
@@ -177,7 +184,7 @@ steps:
         - name: read
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18434/conversations/5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+            url: http://127.0.0.1:18434/conversations/5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d/records
             method: GET
         - name: nothingWritten
           invoke: { kind: Assert.Equals }
@@ -187,13 +194,13 @@ steps:
               code: !cel "steps.refused.result.body.code"
               hasRetryAfter: !cel "'retryAfter' in steps.refused.result.body"
               retriedCode: !cel "steps.retried.result.body.code"
-              messages: !cel "steps.read.result.body.messages"
+              turns: !cel "steps.read.result.body.turns"
             expected:
               status: 429
               code: ERR_AT_CAPACITY
               hasRetryAfter: true
               retriedCode: ERR_AT_CAPACITY
-              messages: []
+              turns: []
   - name: inFlight
     invoke:
       kind: Run.Sequence
@@ -240,7 +247,7 @@ steps:
         - name: read
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18435/conversations/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+            url: http://127.0.0.1:18435/conversations/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/records
             method: GET
         - name: refusedInFlight
           invoke: { kind: Assert.Equals }
@@ -248,8 +255,76 @@ steps:
             actual:
               status: !cel "steps.overlapping.result.status"
               code: !cel "steps.overlapping.result.body.code"
-              messages: !cel "steps.read.result.body.messages"
+              turns: !cel "steps.read.result.body.turns"
             expected:
               status: 409
               code: ERR_IDEMPOTENCY_KEY_IN_FLIGHT
-              messages: []
+              turns: []
+  - name: leaseRefused
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: stub }
+          source: ./__fixtures__/provider-stub/telo.yaml
+          ports: { http: 18437 }
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18436 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('lease-refused')"
+            modelEndpoint: http://127.0.0.1:18437/v1
+            # Two turns' reservations, and no more.
+            budgetLimit: 80000
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref stub, !ref agent ]
+      steps:
+        # The stub holds its model call until released — never, here — so the
+        # turn is still running when the next two starts arrive.
+        - name: running
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18436/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              message: STUB_SLOW build it
+        - name: overlapping
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18436/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              message: and another thing
+        - name: again
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18436/chat
+            method: POST
+          inputs:
+            body:
+              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              message: and another thing
+        - name: read
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18436/conversations/2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f/records
+            method: GET
+        - name: refusedAndTakenBack
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              overlapping: [ !cel "steps.overlapping.result.status", !cel "steps.overlapping.result.body.code" ]
+              activeTurn: !cel "steps.overlapping.result.body.activeTurnId == steps.running.result.body.turnId"
+              again: [ !cel "steps.again.result.status", !cel "steps.again.result.body.code" ]
+              turns: !cel "steps.read.result.body.turns.map(t, t.turnId)"
+            expected:
+              overlapping: [409, ERR_TURN_IN_PROGRESS]
+              activeTurn: true
+              again: [409, ERR_TURN_IN_PROGRESS]
+              turns: [ !cel "steps.running.result.body.turnId" ]

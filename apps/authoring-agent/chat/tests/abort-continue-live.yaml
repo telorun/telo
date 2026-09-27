@@ -1,0 +1,339 @@
+kind: Telo.Application
+metadata:
+  name: ChatAbortContinueLive
+  version: 1.0.0
+  description: |
+    Live against the real model. (1) Abort stops the work: aborting a build once
+    its first write_file has a result ends the turn's event stream with an
+    ERR_INVOKE_CANCELLED frame within a second, the workspace does not change in
+    the two seconds after, and the conversation takes its next message at once.
+    (2) Continue resumes exactly: a build whose agent is stopped mid-way is
+    continued by the next agent inside the same turn — one user message, one
+    turn in the records route — and the continued attempt neither re-reads nor
+    rewrites a file whose write was recorded, then finishes. Skips silently when
+    OPENAI_API_KEY is unset.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+secrets:
+  openaiApiKey:
+    env: OPENAI_API_KEY
+    type: string
+    default: ""
+variables:
+  scratch:
+    env: CHAT_TEST_ABORT_CONTINUE_LIVE_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/abort-continue-live
+targets:
+  - !ref test
+---
+# One turn's event stream from `fromId`, every frame decoded.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, turnId, fromId]
+    properties:
+      port: { type: integer }
+      turnId: { type: string }
+      fromId: { type: integer }
+steps:
+  - name: get
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/chat/${{ inputs.turnId }}/events?lastEventId=${{ inputs.fromId }}"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  frames: !cel >-
+    steps.all.result.items.map(r, r.event == 'error'
+      ? {'event': 'error', 'error': parseJson(r.data)}
+      : {'event': r.event, 'id': int(r.id), 'data': parseJson(r.data).data})
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, conversationId, message]
+    properties:
+      port: { type: integer }
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/chat"
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  status: !cel "steps.post.result.status"
+  turnId: !cel "steps.post.result.body.turnId"
+---
+# The records of a conversation's only turn, polled until `writes` of its
+# write_file calls have a result (at most two minutes).
+kind: Run.Sequence
+metadata: { name: awaitWrites }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port, conversationId, writes]
+    properties:
+      port: { type: integer }
+      conversationId: { type: string }
+      writes: { type: integer }
+steps:
+  - name: polls
+    value: !cel "0"
+  - name: seen
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/conversations/${{ inputs.conversationId }}/records"
+  - name: poll
+    while: !cel >-
+      steps.polls.result < 400 && (size(steps.seen.result.body.turns) == 0
+        || size(steps.seen.result.body.turns[0].records.filter(r, r.data.type == 'tool-result'
+             && r.data.toolResult.name == 'write_file')) < inputs.writes)
+    do:
+      - name: pause
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: "300ms" }
+      - name: seen
+        invoke: { kind: HttpClient.Request }
+        inputs:
+          url: !interpolate "http://127.0.0.1:${{ inputs.port }}/conversations/${{ inputs.conversationId }}/records"
+      - name: polls
+        value: !cel "steps.polls.result + 1"
+outputs:
+  records: !cel "size(steps.seen.result.body.turns) == 0 ? [] : steps.seen.result.body.turns[0].records"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.openaiApiKey != ''"
+    then:
+      - name: prepare
+        invoke: { kind: Fs.DirectoryCreation }
+        inputs:
+          path: !cel "string(variables.scratch)"
+          createParents: true
+      - name: reset
+        invoke: { kind: Fs.FileRemoval }
+        inputs:
+          path: !cel "string(variables.scratch)"
+          recursive: true
+      - name: abortStopsWork
+        invoke: !ref abortStopsWork
+      - name: continueResumes
+        invoke: !ref continueResumes
+---
+kind: Run.Sequence
+metadata: { name: abortStopsWork }
+with:
+  - kind: App.Instance
+    metadata: { name: agent }
+    source: ../../telo.yaml
+    ports: { http: 18490 }
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('abort')"
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+  - kind: Fs.TreeSnapshot
+    metadata: { name: tree }
+    cwd: !cel "variables.scratch.joinPath('abort')"
+targets: [ !ref agent ]
+steps:
+  - name: start
+    invoke: !ref startTurn
+    inputs:
+      port: 18490
+      conversationId: 5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f
+      message: |
+        Build an app called `library` that tracks books and loans in a SQLite
+        database at `:memory:`, with a feature library per domain and a test per
+        behaviour. Just build it, using your recommended answer wherever you
+        would otherwise ask.
+  - name: firstWrite
+    invoke: !ref awaitWrites
+    inputs: { port: 18490, conversationId: 5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f, writes: 1 }
+  - name: abort
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18490/chat/${{ steps.start.result.turnId }}/abort"
+      method: POST
+  # Bounded at one second: the cancellation must reach the running model call
+  # or tool, not wait for it.
+  - name: ended
+    timeout: 1000
+    invoke: !ref readEvents
+    inputs:
+      port: 18490
+      turnId: !cel "steps.start.result.turnId"
+      fromId: !cel "steps.firstWrite.result.records[size(steps.firstWrite.result.records) - 1].id"
+  - name: before
+    invoke: !ref tree
+    inputs: { exclude: [".telo-agent", ".telo"] }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "2s" }
+  - name: after
+    invoke: !ref tree
+    inputs: { exclude: [".telo-agent", ".telo"] }
+  - name: next
+    invoke: !ref startTurn
+    inputs:
+      port: 18490
+      conversationId: 5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f
+      message: Say only "ok".
+  - name: abortNext
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18490/chat/${{ steps.next.result.turnId }}/abort"
+      method: POST
+  - name: stopped
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        cancelled: !cel "steps.abort.result.body"
+        lastFrame: !cel >-
+          cel.bind(last, steps.ended.result.frames[size(steps.ended.result.frames) - 1],
+            last.event == 'error' ? last.error.code : last.data.type)
+        workspaceUnchanged: !cel "steps.before.result.files == steps.after.result.files"
+        nextAccepted: !cel "steps.next.result.status"
+      expected:
+        cancelled: { cancelled: true }
+        lastFrame: ERR_INVOKE_CANCELLED
+        workspaceUnchanged: true
+        nextAccepted: 200
+---
+kind: Run.Sequence
+metadata: { name: continueResumes }
+steps:
+  - name: before
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18491 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('continue')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        - name: start
+          invoke: !ref startTurn
+          inputs:
+            port: 18491
+            conversationId: 6d7e8f9a-0b1c-4d2e-9f3a-4b5c6d7e8f9a
+            message: |
+              Build an app called `library` that tracks books and loans in a
+              SQLite database at `:memory:`, with a feature library per domain
+              and a test per behaviour. Just build it, using your recommended
+              answer wherever you would otherwise ask.
+        # Two recorded writes, then the agent is stopped with the turn running.
+        - name: writes
+          invoke: !ref awaitWrites
+          inputs: { port: 18491, conversationId: 6d7e8f9a-0b1c-4d2e-9f3a-4b5c6d7e8f9a, writes: 2 }
+      outputs:
+        turnId: !cel "steps.start.result.turnId"
+  - name: after
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18492 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('continue')"
+          secrets:
+            openaiApiKey: !cel "secrets.openaiApiKey"
+      targets: [ !ref agent ]
+      steps:
+        # The interrupted attempt ends once its writer is judged dead.
+        - name: interrupted
+          timeout: 45000
+          invoke: !ref readEvents
+          inputs: { port: 18492, turnId: !cel "inputs.turnId", fromId: 0 }
+        - name: continue
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18492/chat/${{ inputs.turnId }}/continue"
+            method: POST
+        - name: continued
+          timeout: 600000
+          invoke: !ref readEvents
+          inputs: { port: 18492, turnId: !cel "inputs.turnId", fromId: !cel "steps.continue.result.body.fromId" }
+        - name: records
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18492/conversations/6d7e8f9a-0b1c-4d2e-9f3a-4b5c6d7e8f9a/records
+      outputs:
+        interrupted: !cel "steps.interrupted.result.frames"
+        continueStatus: !cel "steps.continue.result.status"
+        continued: !cel "steps.continued.result.frames"
+        turns: !cel "steps.records.result.body.turns"
+    inputs:
+      turnId: !cel "steps.before.result.turnId"
+  # Paths the interrupted attempt wrote and got a result for.
+  - name: recorded
+    value: !cel >-
+      cel.bind(results, steps.after.result.interrupted.filter(f, f.event != 'error'
+          && f.data.type == 'tool-result').map(f, f.data.toolResult.toolCallId),
+        steps.after.result.interrupted.filter(f, f.event != 'error' && f.data.type == 'tool-call'
+          && f.data.toolCall.name in ['write_file', 'edit_file'] && f.data.toolCall.id in results)
+          .map(f, f.data.toolCall.arguments.path))
+  - name: resumedExactly
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        continued: !cel "steps.after.result.continueStatus"
+        first: !cel "steps.after.result.continued[0].data.type"
+        last: !cel "steps.after.result.continued[size(steps.after.result.continued) - 1].data.type"
+        redone: !cel >-
+          steps.after.result.continued.filter(f, f.event != 'error' && f.data.type == 'tool-call'
+            && f.data.toolCall.name in ['read_file', 'write_file']
+            && 'path' in f.data.toolCall.arguments
+            && f.data.toolCall.arguments.path in steps.recorded.result)
+            .map(f, f.data.toolCall.name + ' ' + f.data.toolCall.arguments.path)
+        turns: !cel "size(steps.after.result.turns)"
+        userMessages: !cel >-
+          size(steps.after.result.turns[0].records.filter(r, r.data.type == 'user-message'))
+        status: !cel "steps.after.result.turns[0].status"
+      expected:
+        continued: 200
+        first: turn-continued
+        last: finish
+        redone: []
+        turns: 1
+        userMessages: 1
+        status: finished

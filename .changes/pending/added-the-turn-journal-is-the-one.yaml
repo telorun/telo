@@ -1,0 +1,17 @@
+modules:
+  apps/authoring-agent: Added
+body: "The turn journal is the one source of truth: every record of every turn — the
+  user's message as its first record, then every agent stream part — is journaled in
+  agent.sqlite (turn_journal) by a durable SQL journal store, POST /chat claims the
+  turn's key before answering, and GET /chat/{turnId}/events replays and tails it
+  (Last-Event-ID or ?lastEventId=, a malformed cursor 400, unknown 404
+  ERR_TURN_NOT_FOUND, removed 410 ERR_JOURNAL_KEY_REMOVED, a failed turn ending with an
+  error frame carrying its code). New GET /conversations/{id}/records pages a
+  conversation's turns with their status and records. The model's history is a
+  projection of the journal: messages (with tool calls and tool rows) and
+  turn_projections, rebuilt by the exported rebuildProjection; recorded reasoning is
+  replayed only to the model that produced it. New MODEL, MODEL_ENDPOINT and
+  RETENTION_DAYS variables. Breaking: GET /conversations/{id} and POST
+  /conversations/{id}/messages and the chat library's historyQuery and importMessages
+  exports are removed, and the old messages table is replaced, so conversations from
+  earlier releases keep no history."
