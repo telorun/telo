@@ -47,7 +47,8 @@
 // It also gates the Rust twins of the telo version line: every crate beneath
 // `<x>/rust/` whose Node twin is on the line carries that twin's version, with
 // `telorun-abi` the only exception (`version-line.mjs`), and a disagreement
-// between the two halves of one artifact fails here.
+// between the two halves of one artifact, or a governing `Cargo.lock` that
+// cannot be moved with the crate, fails here.
 //
 // It also gates the `ignore` list itself, because that list is hand-maintained
 // and changesets validates it as a WHOLE: an ignored package's dependent must be
@@ -396,7 +397,7 @@ async function checkInlined(changed) {
   return bad;
 }
 
-/** Rust twins that disagree with their Node twin. */
+/** Rust twins that disagree with their Node twin, or whose lockfile cannot move with them. */
 function checkRustTwins() {
   const mismatches = rustTwinMismatches(workspacePackages());
   for (const message of mismatches) console.error(`::error::${message}`);
