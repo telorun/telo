@@ -75,14 +75,6 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-`modules/type` is the one standard-library module the registry exclusion reaches.
-Its deprecated kinds register schemas and type rules into the kernel's own
-registry, which names no message here, so they cannot be hosted out of process
-and a kernel that hosts controllers only across this boundary MUST refuse them as
-above. That module is deprecated: **`Telo.JsonSchema` is the kernel built-in that
-replaced it**, and a kind declaring `inputType` / `outputType` against a
-`Telo.JsonSchema` resource needs nothing this protocol lacks.
-
 ### 0.3 Generation `telo-4`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
@@ -424,16 +416,26 @@ message's schema rejects, a `Channel.Data` whose `byteLength` disagrees with the
 frame, an id or a session that names nothing — is **terminal for that carrier
 instance**.
 
-- On the **framed** carrier, the reader MUST close the connection. Every in-flight
-  call on it fails with `ERR_CONTROLLER_HOST_EXITED`, and the host is **never
-  restarted silently**: a kernel that restarts it would hand back a controller
-  with none of the state the failed calls assumed.
-- On the **ABI** carrier there is no connection and no host to exit. The refusal
-  is still terminal: the controller is marked unusable, every in-flight call
-  fails, and no further call is made into it. **The carrier-neutral code naming
-  that refusal is owed by the step that implements the ABI carrier** — both codes
-  this specification defines name a host, and the ABI carrier has neither, so
-  this generation ships no spelling for it rather than inventing one here.
+A terminal carrier instance records its cause **once**: every call in flight on
+it, and every later call into it, MUST fail with that cause's code. The cause is
+decided by which end refused and what the kernel observed:
+
+- **The kernel refuses** a frame or message, on either carrier: the cause is
+  `ERR_CONTROLLER_PROTOCOL_VIOLATION`. On the **framed** carrier the kernel MUST
+  close the connection and end the host, and the host is **never restarted
+  silently** — a kernel that restarts it would hand back a controller with none
+  of the state the failed calls assumed. On the **ABI** carrier the kernel MUST
+  mark the controller unusable and MUST NOT make any further call into it.
+- **A controller on the ABI carrier refuses** a message: there is no process to
+  exit, so the refusal MUST return to the kernel as the error of the call that
+  carried the refused message, with `ERR_CONTROLLER_PROTOCOL_VIOLATION`, and the
+  kernel then treats the instance as terminal as above.
+- **A controller host on the framed carrier refuses** a frame: the host MUST close
+  the connection. The kernel observes only the host disappearing, so the cause is
+  `ERR_CONTROLLER_HOST_EXITED`; the host's own account of why reaches the
+  kernel's stderr through its forwarded output (§3.6). Naming the real cause
+  would need a refusal message, which is a generation change, and the kernel
+  reports what it observed.
 
 A runtime MUST NOT attempt to resynchronise a stream after a refused frame. The
 length prefix makes the next frame's boundary computable, which is precisely what
@@ -930,7 +932,8 @@ codes cross unchanged and are not listed here.
 | code | raised when | carried by |
 | --- | --- | --- |
 | `ERR_CONTROLLER_HOST_INCOMPATIBLE` | the two ends report different protocol generations, or a controller requires an operation this generation does not name, or an artifact declares a generation the kernel does not implement | `Session.Hello`, `Session.Open`, `Controller.Create` |
-| `ERR_CONTROLLER_HOST_EXITED` | the controller host died, or a refused frame closed the connection; every in-flight call fails with it | any request in flight |
+| `ERR_CONTROLLER_HOST_EXITED` | the controller host exited or closed its connection without the kernel having refused a frame | any request in flight, and any later call into the terminal carrier instance |
+| `ERR_CONTROLLER_PROTOCOL_VIOLATION` | a peer sent a frame or message this protocol does not permit and the kernel refused it, or a controller on the ABI carrier refused one | any request in flight, and any later call into the terminal carrier instance |
 | `ERR_INPUT_INVALID` | a value did not satisfy the schema it was promised against | `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Schema.Validate`, `Schema.Check`, `Value.Decode` |
 | `ERR_OUTPUT_INVALID` | a result did not satisfy the resolved `outputType` | `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Controller.Provide` |
 | `ERR_CONTRACT_UNRESOLVABLE` | a declared contract resolved to no schema at all | `Controller.Create`, `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Schema.Resolve` |
@@ -955,10 +958,9 @@ Both ends MUST re-raise them out of any construct that catches — a `try` step,
 `catches:` block, a retry policy — and a runtime MUST NOT count either toward a
 kind's declared `throws:`.
 
-There is deliberately no code for "a peer sent something this protocol does not
-permit". On the framed carrier that refusal closes the connection and the
-in-flight calls fail with `ERR_CONTROLLER_HOST_EXITED` (§3.5); on the ABI carrier
-its name is owed by the step that implements that carrier.
+`ERR_CONTROLLER_HOST_EXITED` and `ERR_CONTROLLER_PROTOCOL_VIOLATION` are carrier
+codes, in no message's `errors` list: a terminal carrier instance records one of
+them as its cause, once, and every call into it fails with that code (§3.5).
 
 ## 11. Conformance
 
@@ -986,8 +988,11 @@ A conforming runtime:
    by parity, and sends no response for a notification (§3.2);
 6. reads without blocking on dispatch, so a reentrant request is served while a
    synchronous one is outstanding (§3.4, §6.7);
-7. treats a refused frame as terminal for the carrier instance, never
-   resynchronising and never restarting a host silently (§3.5);
+7. treats a refused frame as terminal for the carrier instance, recorded as
+   `ERR_CONTROLLER_PROTOCOL_VIOLATION` when the kernel refused it or a controller
+   on the ABI carrier did, and as `ERR_CONTROLLER_HOST_EXITED` when a framed host
+   closed its connection — never resynchronising and never restarting a host
+   silently (§3.5);
 8. keeps the carrier process's own output separate from a controller's standard
    streams, and never carries the protocol over the process's own streams (§3.6);
 9. drives an effect chain as §5.4 states — lazy, stepwise, inverses registered as
