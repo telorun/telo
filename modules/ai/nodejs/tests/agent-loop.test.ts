@@ -3,6 +3,7 @@ import {
   ERR_DURABLE_SUSPENDED,
   ERR_INVOKE_CANCELLED,
   InvokeError,
+  UNCANCELLABLE_CONTEXT,
   createCancellationSource,
 } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
@@ -21,8 +22,22 @@ import type {
 
 const USAGE = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 
+/** The context with tracing off, as the kernel's is by default: a span is a
+ *  pass-through of the context it is opened on, and a resolved dispatch calls the
+ *  instance with the context it is given. */
 const ctx = {
   log: { info: () => undefined, warn: () => undefined, debug: () => undefined, error: () => undefined },
+  openSpan: async (base: InvokeContext | undefined) => ({
+    context: base ?? UNCANCELLABLE_CONTEXT,
+    settle: async () => undefined,
+  }),
+  invokeResolved: (
+    _kind: string,
+    _name: string,
+    instance: { invoke(input: unknown, invokeCtx?: InvokeContext): Promise<unknown> },
+    inputs: unknown,
+    invokeCtx?: InvokeContext,
+  ) => instance.invoke(inputs, invokeCtx),
 } as unknown as ResourceContext;
 
 /** One model call's plan: request tools (by name, with or without ids) or answer. */
@@ -292,6 +307,31 @@ describe("the agent loop", () => {
     const expected = { name: "work", content: "Error: disk full", error: true };
     expect(buffered.result!.steps[0]!.toolResults[0]).toMatchObject(expected);
     expect(streamed.parts.find((p) => p.type === "tool-result")).toMatchObject({ toolResult: expected });
+  });
+
+  it("carries what a provider's tool returned as the stream part's output, and none on an error", async () => {
+    // A provider with only `callTool` (an MCP provider is one) has one value for
+    // both what the model sees and what the tool returned.
+    const returned = { path: "a.yaml", checkExitCode: 0 };
+    const ok = await runBoth(toolThenAnswer, provider(async () => returned));
+    const failed = await runBoth(
+      toolThenAnswer,
+      provider(async () => {
+        throw new Error("disk full");
+      }),
+    );
+    const resultOf = (parts: AgentStreamPart[]) =>
+      parts.find((p): p is Extract<AgentStreamPart, { type: "tool-result" }> => p.type === "tool-result")!
+        .toolResult;
+    expect(resultOf(ok.streamed.parts)).toEqual({
+      toolCallId: expect.stringMatching(/^call_/),
+      name: "work",
+      content: JSON.stringify(returned),
+      output: returned,
+    });
+    expect(resultOf(failed.streamed.parts)).not.toHaveProperty("output");
+    // The buffered trace keeps the record the model saw.
+    expect(ok.buffered.result!.steps[0]!.toolResults[0]).not.toHaveProperty("output");
   });
 });
 

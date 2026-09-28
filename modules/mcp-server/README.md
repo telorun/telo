@@ -79,4 +79,4 @@ code: |
 - Streaming tool content / progress notifications.
 - Streamable HTTP idle-session GC and max-sessions cap (sessions live until `Http.Server` shuts down).
 - Server-initiated `sampling`, `roots`, OAuth.
-- A polymorphic `Telo.Mount` dispatch protocol — `Mcp.HttpEndpoint` duck-types `register(app, prefix)` to satisfy `Http.Server`'s mount loop today.
+- A polymorphic `Telo.Mount` dispatch protocol — `Mcp.HttpEndpoint` duck-types `register(app, prefix, requestScope)` to satisfy `Http.Server`'s mount loop today.

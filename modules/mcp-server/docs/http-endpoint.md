@@ -69,10 +69,15 @@ mounts:
   - { path: /mcp, type: <App>.McpHttp } # the MCP endpoint
 ```
 
-`Mcp.HttpEndpoint` duck-types the `register(app, prefix)` signature that
-`Http.Server`'s mount loop already calls on `Http.Api`, so it integrates with
-zero changes to the host server. A REST API and an MCP endpoint can share the
-same port without either being aware of the other.
+`Mcp.HttpEndpoint` duck-types the `register(app, prefix, requestScope)` signature
+that `Http.Server`'s mount loop already calls on `Http.Api`, so it integrates
+with zero changes to the host server. A REST API and an MCP endpoint can share
+the same port without either being aware of the other.
+
+Each tool call runs on the context of the HTTP request that carried it, so its
+span sits under that request's span and a client that disconnects cancels it;
+mounted with no request scope, the endpoint refuses every request
+(`ERR_MCP_REQUEST_SCOPE_MISSING`) rather than root a separate trace.
 
 ## Session model
 

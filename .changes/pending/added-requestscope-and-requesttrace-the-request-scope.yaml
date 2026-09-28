@@ -1,0 +1,5 @@
+modules:
+  modules/http-dispatch: Added
+body: "RequestScope and RequestTrace: the request scope an HTTP transport hands every
+  mount as the third argument of register(app, prefix, requestScope), giving each
+  request's span context and a way to report the error that decided the response."

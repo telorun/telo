@@ -504,16 +504,17 @@ export function createTemplateController(definition: {
         }),
 
         ...(mountTarget && {
-          // `register(app, prefix)` is the Telo.Mount contract a consuming
-          // Http.Server calls. It is not on the base ResourceInstance type, so
-          // the persistent mount child is accessed structurally.
-          register: (app: any, prefix?: string) => {
+          // `register(...)` is the Telo.Mount contract a consuming transport
+          // calls (`Http.Server`: `app, prefix, requestScope`). It is not on the
+          // base ResourceInstance type, so the persistent mount child is accessed
+          // structurally, and every argument is forwarded as the transport gave it.
+          register: (...args: unknown[]) => {
             const entry = dispatchEntry(mountTarget, "mount");
-            const mountable = entry.instance as { register?: (app: any, prefix?: string) => unknown };
+            const mountable = entry.instance as { register?: (...args: unknown[]) => unknown };
             if (typeof mountable.register !== "function") {
               throw capabilityError(entry, mountTarget, "mount", "Telo.Mount");
             }
-            return mountable.register(app, prefix);
+            return mountable.register(...args);
           },
         }),
 

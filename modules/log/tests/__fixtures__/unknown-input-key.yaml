@@ -1,0 +1,17 @@
+kind: Telo.Library
+metadata:
+  name: UnknownInputKeyFixture
+  version: 1.0.0
+imports:
+  Log: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: announce }
+steps:
+  - name: emit
+    invoke: !ref Log.emit
+    inputs:
+      level: info
+      message: started
+      attrs: { port: 8080 }

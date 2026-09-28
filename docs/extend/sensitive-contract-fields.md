@@ -37,11 +37,14 @@ value that was never produced.
 
 ## Where it is read from
 
-**Only `inputType` and `outputType`.** It is the one annotation read from a *data*
-schema rather than from a kind's own `schema:`, because a contract is what the kernel
-binds and validates at dispatch.
+**Only where a contract reaches it** — a node `inputType` / `outputType` reaches
+through `properties`, `items`, `additionalProperties` / `patternProperties` or a union
+branch, following `$ref` into a `$defs` entry or a named shape. It is read from a
+*data* schema rather than from a kind's own `schema:`, because a contract is what the
+kernel binds and validates at dispatch.
 
-Written on a kind's configuration it is an unknown keyword in an open schema: it
+Written where no contract reaches it — a kind's configuration, a `$defs` entry
+nothing references, a named shape no contract uses — it is an unknown keyword in an open schema: it
 validates, it ships, and it does nothing. For a security control that is the worst
 available failure — an author marks a token, sees no error, and puts it on the wire
 anyway — so a misplacement is an error (`SENSITIVE_ANNOTATION_MISPLACED`) rather than

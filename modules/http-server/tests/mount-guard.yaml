@@ -1,0 +1,172 @@
+kind: Telo.Application
+metadata:
+  name: MountGuardTest
+  version: 1.0.0
+  description: |
+    A mount's `guard` runs for every request matching one of that mount's
+    routes, before the body is read: a normal return lets the request through,
+    a throw is rendered by `guard.catches`, and a throw nothing claims is the
+    built-in 500 envelope. CORS preflight, a sibling mount without a guard and a
+    request matching no route never reach it.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: guardedApi }
+routes:
+  - request: { path: /who, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+  - request:
+      path: /echo
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            text: { type: string }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+kind: Http.Api
+metadata: { name: openApi }
+routes:
+  - request: { path: /ping, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8966
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8966
+    cors:
+      origin: "*"
+      methods: [ GET, POST, OPTIONS ]
+      allowedHeaders: [ authorization, content-type ]
+    mounts:
+      - path: /api
+        mount: !ref guardedApi
+        guard:
+          invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ authorization ]
+                properties:
+                  # An oversized value fails this contract at dispatch, which
+                  # is the throw no catch entry claims.
+                  authorization: { type: string, maxLength: 64 }
+            steps:
+              - name: check
+                if: !cel "inputs.authorization != 'Bearer good'"
+                then:
+                  - name: refuse
+                    throw: { code: ERR_UNAUTHENTICATED, message: "a bearer token is required" }
+          inputs:
+            authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+          catches:
+            - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+              status: 401
+              headers:
+                WWW-Authenticate: Bearer
+              content:
+                application/json:
+                  body: { code: !cel "error.code", path: !cel "request.path" }
+      - path: /open
+        mount: !ref openApi
+targets:
+  - !ref server
+steps:
+  # Unauthenticated, with a body that is not JSON: the guard answers before the
+  # body is parsed, so this is the guard's 401 rather than a 400.
+  - name: refused
+    invoke: !ref call
+    inputs:
+      url: /api/echo
+      method: POST
+      headers: { content-type: application/json }
+      body: "{not json"
+  - name: admitted
+    invoke: !ref call
+    inputs:
+      url: /api/who
+      headers: { authorization: Bearer good }
+  - name: unclaimed
+    invoke: !ref call
+    inputs:
+      url: /api/who
+      headers:
+        authorization: Bearer xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  - name: preflight
+    invoke: !ref call
+    inputs:
+      url: /api/who
+      method: OPTIONS
+      headers:
+        origin: http://studio.example
+        access-control-request-method: GET
+        access-control-request-headers: authorization
+  - name: sibling
+    invoke: !ref call
+    inputs: { url: /open/ping }
+  - name: unmatched
+    invoke: !ref call
+    inputs: { url: /api/missing }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        refused:
+          status: !cel "steps.refused.result.status"
+          wwwAuthenticate: !cel "steps.refused.result.headers['www-authenticate']"
+          body: !cel "steps.refused.result.body"
+        admitted:
+          status: !cel "steps.admitted.result.status"
+          body: !cel "steps.admitted.result.body"
+        unclaimed:
+          status: !cel "steps.unclaimed.result.status"
+          code: !cel "steps.unclaimed.result.body.error.code"
+        preflightStatus: !cel "steps.preflight.result.status"
+        sibling:
+          status: !cel "steps.sibling.result.status"
+          body: !cel "steps.sibling.result.body"
+        unmatchedStatus: !cel "steps.unmatched.result.status"
+      expected:
+        refused:
+          status: 401
+          wwwAuthenticate: Bearer
+          body: { code: ERR_UNAUTHENTICATED, path: /api/echo }
+        admitted:
+          status: 200
+          body: { ok: true }
+        unclaimed:
+          status: 500
+          code: ERR_INPUT_INVALID
+        preflightStatus: 204
+        sibling:
+          status: 200
+          body: { ok: true }
+        unmatchedStatus: 404

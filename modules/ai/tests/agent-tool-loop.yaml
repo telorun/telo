@@ -99,3 +99,18 @@ steps:
             type: string
             const: '{"product":42}'
         required: [ toolName, toolResult ]
+  # A step is one model call: the tool-calling call, then the answering call,
+  # whose entry carries no tool calls.
+  - name: assertSteps
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.invoke.result.steps"
+      expected:
+        - text: ""
+          toolCalls:
+            - { id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }
+          toolResults:
+            - { toolCallId: echo-call-1, name: multiply, content: '{"product":42}' }
+        - text: '{"product":42}'
+          toolCalls: []
+          toolResults: []

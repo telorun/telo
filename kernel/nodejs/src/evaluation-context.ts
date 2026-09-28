@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { formatSpanCounter } from "./logging/span-id.js";
+import { parseTraceParent } from "./logging/trace-parent.js";
 import {
   deriveContext,
   getRefIdentity,
@@ -27,9 +28,10 @@ import {
   type RuntimeDiagnostic,
   type ScopeContext,
   type ScopeHandle,
-  type Tracer,
+  type SpanSettleDetail,
+  nowUnixNano,
 } from "@telorun/sdk";
-import { RuntimeError } from "@telorun/sdk";
+import { errorTypeOf, RuntimeError } from "@telorun/sdk";
 import { celResourceReads, concreteEvalPaths, evalPathCovers } from "@telorun/analyzer";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
@@ -45,6 +47,9 @@ import {
   redactSensitive,
   sensitivePathsOfInstance,
 } from "./instance-sensitive-paths.js";
+import { spanAttributesOf } from "./instance-span-attributes.js";
+import { spanRecordOf, type FinishedSpan } from "./span-export.js";
+import type { KernelTracer } from "./tracing.js";
 import {
   classifyInitFailures,
   isDeferral,
@@ -739,9 +744,10 @@ export class EvaluationContext implements IEvaluationContext {
 
   /**
    * Per-kernel invocation tracer. Set by the kernel on the root context and
-   * propagated through spawnChild(); gates invocation-id minting in runInvoke().
+   * propagated through spawnChild(); gates invocation-id minting in runInvoke()
+   * and receives every finished span for the attached trace sinks.
    */
-  tracer?: Tracer;
+  tracer?: KernelTracer;
 
   /**
    * The resource that owns this context's resources — stamped by a template
@@ -1996,7 +2002,7 @@ export class EvaluationContext implements IEvaluationContext {
     kind: string,
     name: string,
     spanId: number | undefined,
-    parentSpanId: number | undefined,
+    parentSpanId: number | string | undefined,
     traceId: string | undefined,
     capability: "invoke" | "run" | "provide" | "request",
     phase: "start" | "end",
@@ -2010,7 +2016,13 @@ export class EvaluationContext implements IEvaluationContext {
       // spans actually being emitted (§7.1 forbids formatting eagerly at span
       // creation). The salt keeps ids unique across processes in one trace.
       spanId: spanId === undefined ? undefined : formatSpanCounter(spanId),
-      parentSpanId: parentSpanId === undefined ? undefined : formatSpanCounter(parentSpanId),
+      // A string is an upstream span's id, already in its emitted form.
+      parentSpanId:
+        typeof parentSpanId === "string"
+          ? parentSpanId
+          : parentSpanId === undefined
+            ? undefined
+            : formatSpanCounter(parentSpanId),
       capability,
       phase,
       ...(outcome !== undefined ? { outcome } : {}),
@@ -2018,6 +2030,19 @@ export class EvaluationContext implements IEvaluationContext {
       ...(this.owner ? { owner: this.owner } : {}),
       ...detail,
     };
+  }
+
+  /** Hand a finished span to the attached trace sinks, when there are any. */
+  protected exportSpan(span: FinishedSpan): void {
+    const tracer = this.tracer;
+    if (!tracer?.exporting) return;
+    const record = spanRecordOf(span);
+    if (record) tracer.finish(record);
+  }
+
+  /** The attributes the runtime puts on every dispatch span. */
+  private dispatchSpanAttributes(kind: string, name: string): Record<string, unknown> {
+    return { "telo.resource.kind": kind, "telo.resource.name": name };
   }
 
   private async runInvoke<TInputs>(
@@ -2052,6 +2077,32 @@ export class EvaluationContext implements IEvaluationContext {
       : undefined;
     // Capture the root CEL scope once, on the trace's root span's terminal event.
     const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
+    const startTime = tracing ? nowUnixNano() : undefined;
+    // The exported half of the span: identity, timing, outcome and attributes —
+    // never inputs, outputs or scope. Declared attributes are read off the
+    // values at the contract's marked properties.
+    const finish = (
+      outcome: SpanOutcome,
+      extra: { outputs?: unknown; errorType?: string; cancellationReason?: string } = {},
+    ) => {
+      if (!tracing || !this.tracer?.exporting) return;
+      this.exportSpan({
+        name: `invoke ${name}`,
+        traceId,
+        spanId: invocationId,
+        parentSpanId: parentInvocationId,
+        startTime,
+        endTime: nowUnixNano(),
+        outcome,
+        attributes: {
+          ...this.dispatchSpanAttributes(kind, name),
+          ...spanAttributesOf(instance, "inputType", inputs),
+          ...(outcome === "ok" ? spanAttributesOf(instance, "outputType", extra.outputs) : {}),
+          "error.type": extra.errorType,
+          "telo.cancellation.reason": extra.cancellationReason,
+        },
+      });
+    };
     // What a payload may say about this call. A credential is a dispatched
     // invocable, so its material is an invoke OUTPUT — and inputs and outputs
     // ride the debug wire on every call under `--inspect`, i.e. every watch
@@ -2105,6 +2156,7 @@ export class EvaluationContext implements IEvaluationContext {
     // refused without ever touching the controller.
     if (token.isCancelled) {
       await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason: token.reason }));
+      finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
         `Invoke ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
@@ -2136,6 +2188,7 @@ export class EvaluationContext implements IEvaluationContext {
         : cancellationStore.run(invokeCtx, call));
       if (typeof instance.invoke !== "function") completedInstances.add(instance);
       await this.emit(`${name}.Invoked`, span("end", "ok", { inputs, outputs }));
+      finish("ok", { outputs });
       return outputs;
     } catch (err) {
       // Cooperative mid-flight cancellation (`throwIfCancelled`) joins the same
@@ -2143,6 +2196,7 @@ export class EvaluationContext implements IEvaluationContext {
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
         await this.emit(`${name}.InvokeCancelled`, span("end", "cancelled", { inputs, reason }));
+        finish("cancelled", { cancellationReason: reason });
         throw err;
       }
       // A SUSPENSION passes through untouched, exactly as a cancellation does,
@@ -2162,6 +2216,7 @@ export class EvaluationContext implements IEvaluationContext {
           `${name}.InvokeParked`,
           span("end", "parked", { inputs, path: err.path, resource: err.resource }),
         );
+        finish("parked");
         throw err;
       }
       if (isInvokeError(err)) {
@@ -2171,6 +2226,7 @@ export class EvaluationContext implements IEvaluationContext {
         if (declaredCodes && !declaredCodes.has(err.code)) {
           await this.emit(`${name}.InvokeRejected.Undeclared`, span("end", "rejected", detail));
         }
+        finish("rejected", { errorType: err.code });
         throw err;
       }
       if (err instanceof Error) {
@@ -2184,6 +2240,7 @@ export class EvaluationContext implements IEvaluationContext {
           span("end", "failed", { inputs, name: "UnknownError", message: String(err) }),
         );
       }
+      finish("failed", { errorType: errorTypeOf(err) });
       // Already enriched at an inner invoke: keep the innermost (most
       // specific) resource as the failure location.
       if (err instanceof RuntimeError && err.diagnostics?.length) throw err;
@@ -2278,10 +2335,18 @@ export class EvaluationContext implements IEvaluationContext {
   }
 
   /**
-   * Open a trace span for an inbound boundary (an HTTP request). Mints a span
-   * that roots a fresh trace (or continues `opts.inbound`), emits its `start`,
-   * and returns a child context to thread into `invokeResolved` so the handler
-   * nests under it. A no-op pass-through when tracing is off.
+   * Open a trace span a controller owns: an inbound boundary (an HTTP request),
+   * or a unit of work inside a dispatch (an agent's model call). Mints a span,
+   * emits its `start`, and returns a child context to thread into
+   * `invokeResolved` so work dispatched under it nests beneath it.
+   *
+   * The parent is the upstream span of a valid `opts.inbound` `traceparent`
+   * (logging spec §7.4: an invalid or all-zero one is ignored in full), else the
+   * span `base` carries — so a span opened inside a dispatch is its child — else
+   * none, and the span roots a fresh trace. An upstream parent id is exported
+   * verbatim, never salted: it is another process's id. An inbound registrant
+   * passes `rootContext()`, which carries no span. A no-op pass-through when
+   * tracing is off.
    */
   async openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {
     const ctx = base ?? UNCANCELLABLE_CONTEXT;
@@ -2289,10 +2354,16 @@ export class EvaluationContext implements IEvaluationContext {
       return { context: ctx, settle: async () => {} };
     }
     const spanId = this.tracer.next();
-    const traceId = opts.inbound?.traceId ?? this.tracer.newTraceId();
-    const parentSpanId = opts.inbound?.parentSpanId;
-    // A root request span (not continuing an upstream trace) carries the root scope.
-    const rootScope = parentSpanId === undefined ? this.traceRootScope() : undefined;
+    const upstream = opts.inbound
+      ? parseTraceParent(opts.inbound.traceparent, opts.inbound.tracestate)
+      : undefined;
+    const underBase = opts.inbound === undefined && ctx.traceId !== undefined;
+    const traceId = upstream?.traceId ?? (underBase ? ctx.traceId! : this.tracer.newTraceId());
+    const localParentSpanId = underBase ? ctx.invocationId : undefined;
+    const parentSpanId: number | string | undefined = upstream?.parentSpanId ?? localParentSpanId;
+    const startTime = nowUnixNano();
+    // A local root (no parent in this process) carries the root scope.
+    const rootScope = localParentSpanId === undefined ? this.traceRootScope() : undefined;
     const detail = {
       ...(opts.label !== undefined ? { label: opts.label } : {}),
       ...(opts.attributes !== undefined ? { attributes: opts.attributes } : {}),
@@ -2320,19 +2391,34 @@ export class EvaluationContext implements IEvaluationContext {
     // must not change what propagates.
     const context: InvokeContext = deriveContext(ctx, {
       invocationId: spanId,
-      parentInvocationId: parentSpanId,
+      parentInvocationId: localParentSpanId,
       traceId,
     });
     let settled = false;
     return {
       context,
-      settle: async (outcome, extra) => {
+      settle: async (outcome, extra?: SpanSettleDetail) => {
         if (settled) return;
         settled = true;
+        const attributes: Record<string, unknown> = { ...opts.attributes, ...extra?.attributes };
+        if (outcome === "cancelled" && attributes["telo.cancellation.reason"] === undefined) {
+          attributes["telo.cancellation.reason"] = ctx.cancellation.reason ?? "cancelled";
+        }
+        const end = { ...extra, ...(Object.keys(attributes).length > 0 ? { attributes } : {}) };
         await this.emit(
           `${opts.ref.name}.Request`,
-          payload("end", outcome, rootScope ? { ...extra, context: rootScope } : extra),
+          payload("end", outcome, rootScope ? { ...end, context: rootScope } : end),
         );
+        this.exportSpan({
+          name: opts.label ?? opts.ref.name,
+          traceId,
+          spanId,
+          parentSpanId,
+          startTime,
+          endTime: nowUnixNano(),
+          outcome,
+          attributes,
+        });
       },
     };
   }
@@ -2369,6 +2455,27 @@ export class EvaluationContext implements IEvaluationContext {
       ? (ctx?.traceId ?? ambient?.traceId ?? this.tracer!.newTraceId())
       : undefined;
     const rootScope = tracing && parentInvocationId === undefined ? this.traceRootScope() : undefined;
+    const startTime = tracing ? nowUnixNano() : undefined;
+    const finish = (
+      outcome: "ok" | "failed" | "cancelled",
+      extra: { errorType?: string; cancellationReason?: string } = {},
+    ) => {
+      if (!tracing) return;
+      this.exportSpan({
+        name: `run ${name}`,
+        traceId,
+        spanId: invocationId,
+        parentSpanId: parentInvocationId,
+        startTime,
+        endTime: nowUnixNano(),
+        outcome,
+        attributes: {
+          ...this.dispatchSpanAttributes(kind, name),
+          "error.type": extra.errorType,
+          "telo.cancellation.reason": extra.cancellationReason,
+        },
+      });
+    };
     const span = (
       phase: "start" | "end",
       outcome: "ok" | "failed" | "cancelled" | undefined,
@@ -2392,6 +2499,7 @@ export class EvaluationContext implements IEvaluationContext {
     // Refuse a target reached after the boot run was cancelled.
     if (token.isCancelled) {
       await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason: token.reason }));
+      finish("cancelled", { cancellationReason: token.reason ?? "cancelled" });
       throw new RuntimeError(
         "ERR_INVOKE_CANCELLED",
         `Run ${kind}.${name} was cancelled${token.reason ? `: ${token.reason}` : ""}`,
@@ -2433,6 +2541,7 @@ export class EvaluationContext implements IEvaluationContext {
       completedInstances.add(instance);
       await this.publishSnapshot(name);
       await this.emit(`${name}.Run`, span("end", "ok", {}));
+      finish("ok");
     } catch (err) {
       // A run that did not complete leaves nothing of its own behind: its frame
       // unwinds here, so a `listen()` that threw releases the hold it took a
@@ -2451,6 +2560,7 @@ export class EvaluationContext implements IEvaluationContext {
       if (isCancellationError(err)) {
         const reason = err instanceof Error ? err.message : String(err);
         await this.emit(`${name}.RunCancelled`, span("end", "cancelled", { reason, ...recovery }));
+        finish("cancelled", { cancellationReason: reason });
         throw err;
       }
       const detail =
@@ -2458,6 +2568,7 @@ export class EvaluationContext implements IEvaluationContext {
           ? { name: err.name, message: err.message }
           : { name: "UnknownError", message: String(err) };
       await this.emit(`${name}.RunFailed`, span("end", "failed", { ...detail, ...recovery }));
+      finish("failed", { errorType: errorTypeOf(err) });
       throw err;
     }
   }

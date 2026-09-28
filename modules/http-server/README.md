@@ -10,6 +10,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
 - **OpenAPI operation metadata** — a route may declare `operationId`, `summary`, `description`, and `tags`; they are rendered into the generated OpenAPI document.
 - **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
+- **Inbound guards** — a mount's `guard:` runs one invocable for every request to that mount's routes, before the body is read, so authentication or an origin check is declared once and a refusal renders through `catches:`.
 - **Browsable API docs** — `Http.Reference` renders the generated OpenAPI document as an interactive page under a prefix you choose, and a mount's `when:` leaves it out of a production deployment.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
@@ -82,9 +83,11 @@ code: |
 ## Reference
 
 - [`Http.Server` / `Http.Api` returns & catches](docs/returns-and-catches.md) — outcome lists, MIME negotiation, stream mode.
+- [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
 - [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
+- [Tracing](docs/tracing.md) — the one span each request is, its name, attributes and outcome, what runs beneath it, and continuing a caller's `traceparent`.
 
 ## Implementation Contract
 

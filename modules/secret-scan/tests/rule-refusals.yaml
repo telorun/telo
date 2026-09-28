@@ -1,0 +1,68 @@
+# A rule set that can never match as written is refused twice: by `telo check`
+# at the library declaring it (the kind's resource rules), and by the controller
+# at creation from a consumer whose entry-scoped check is silent (`runFails:`).
+kind: Telo.Application
+metadata:
+  name: SecretScanRuleRefusalsTest
+  version: 1.0.0
+  description: Each detector resource rule and its controller twin refuse the same rule set.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref prefixesEmpty
+  - !ref prefixesEmptyAtRuntime
+  - !ref lengthRangeEmpty
+  - !ref lengthRangeEmptyAtRuntime
+  - !ref entropyUnreachable
+  - !ref entropyUnreachableAtRuntime
+---
+# A token rule with no prefixes…
+kind: Assert.Manifest
+metadata: { name: prefixesEmpty }
+source: ./__fixtures__/prefixes-empty/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'rules[0]': is a token rule with no prefixes"
+---
+# …and by the controller at creation.
+kind: Assert.Manifest
+metadata: { name: prefixesEmptyAtRuntime }
+source: ./__fixtures__/prefixes-empty-app.yaml
+expect:
+  errors: []
+  runFails: "SECRET_SCAN_PREFIXES_EMPTY: rules[0] ('vendorKey') lists no prefixes"
+---
+# A token rule whose length window is empty…
+kind: Assert.Manifest
+metadata: { name: lengthRangeEmpty }
+source: ./__fixtures__/length-range-empty/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'rules[0]': sets `maxLength` below `minLength`"
+---
+# …and by the controller at creation.
+kind: Assert.Manifest
+metadata: { name: lengthRangeEmptyAtRuntime }
+source: ./__fixtures__/length-range-empty-app.yaml
+expect:
+  errors: []
+  runFails: "SECRET_SCAN_LENGTH_RANGE_EMPTY: rules[0] ('vendorKey') sets maxLength 16 below minLength 32"
+---
+# An entropy rule asking for more bits than its charset carries…
+kind: Assert.Manifest
+metadata: { name: entropyUnreachable }
+source: ./__fixtures__/entropy-unreachable/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "at 'rules[0]': asks for more bits per character than its charset can carry"
+---
+# …and by the controller at creation.
+kind: Assert.Manifest
+metadata: { name: entropyUnreachableAtRuntime }
+source: ./__fixtures__/entropy-unreachable-app.yaml
+expect:
+  errors: []
+  runFails: "SECRET_SCAN_ENTROPY_UNREACHABLE: rules[0] ('randomHex') asks for 4.5 bits per character"

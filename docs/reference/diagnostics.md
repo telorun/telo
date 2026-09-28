@@ -153,6 +153,8 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `UNBOUNDED_UNION_NEEDS_CATCHALL` / `CATCHALL_NOT_LAST` | The throw union could not be enumerated, so `catches:` needs a catch-all; and a catch-all must come last. |
 | `INHERIT_WITHOUT_STEP_CONTEXT` | A definition declares `throws: { inherit: true }` but dispatches nothing a failure can come back through: its schema has no step body and no reference slot whose `use` includes `call` or `trigger.consumer` (for a use case map, in any case; a slot declaring no use counts as `call`). `detached` and `trigger.inbound` targets run where no caller awaits them, and `dependency` / `schema` slots dispatch nothing. Add such a slot, or drop `inherit` and declare `throws.codes`. |
 | `LIVE_VALUE_RETRIED` | A step passes a live value (a `Telo.Stream`) into a target, and either the step or the target declares a retry. A stream is consumed once; a re-attempt would pass an exhausted one. Drop the retry, or collect the stream into a plain value first. |
+| `SPAN_ATTRIBUTE_INVALID` | An `x-telo-span-attribute` value is not an attribute name — write dot-separated lowercase segments of letters, digits and underscores (`telo.check.exit_code`) — or names one the runtime sets on every span itself (`error.type`, `telo.cancellation.reason`, `telo.resource.kind`, `telo.resource.name`). Reported at the mark. See [Tracing](/build/tracing). |
+| `SPAN_ATTRIBUTE_MISPLACED` | An `x-telo-span-attribute` mark the runtime cannot read. The kernel reads a mark wherever a contract (`inputType` / `outputType`) reaches it through `properties`, following `$ref` into `$defs` entries and named shapes. At the mark: the marked node is not a scalar, or sits beside `x-telo-sensitive: true`. At the property that reaches it: the contract reaches the mark through an array item or a map value, which holds any number of values per dispatch (at the contract itself when the mark is on its root). At the mark again: no contract reaches it at all — a kind's `schema:` / `status:`, a `$defs` entry nothing references, a named shape no contract uses and its library does not export. |
 
 ### Execution zones and durable regions
 
@@ -230,7 +232,7 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `DEFAULT_INVALID` | A `variables:` / `secrets:` entry's `default:` does not satisfy the entry's own declaration (its `type:`, its value type's encoding, its other keywords). The kernel refuses the same default at boot with `ERR_MANIFEST_VALIDATION_FAILED`. A relative `Telo.HostPath` default on an Application binding is fine — it is resolved against the working directory. |
 | `SCHEMA_PROJECTION_INVALID` | A kind's `x-telo-schema-projection` / `x-telo-schema-map` is malformed, carries a key the annotation does not declare, names a `nested` field that is not a collection of the same entries, or is written under `schema:` instead of beside it — a module-authoring bug. See [Schema projections](/extend/schema-projections). |
 | `SCHEMA_PROJECTION_FROM_UNRESOLVED` | A slot declares `x-telo-schema-projection-from`, but the referenced declaration cannot be projected — the reference does not resolve, matches several resources, its target declares no projection, or an entry contains itself through `nested`. Fails at runtime as `ERR_SCHEMA_PROJECTION_UNRESOLVED`. |
-| `SENSITIVE_ANNOTATION_MISPLACED` | `x-telo-sensitive` was written somewhere other than a declared contract (`inputType` / `outputType`) — a function's signature included, whose arguments ride no trace payload — where nothing reads it — so the value would ride the debug wire in clear. See [Marking a contract field sensitive](/extend/sensitive-contract-fields). |
+| `SENSITIVE_ANNOTATION_MISPLACED` | `x-telo-sensitive` was written where no declared contract (`inputType` / `outputType`) reaches it — the kernel reads it wherever a contract does, following `$ref` into `$defs` entries and named shapes — so nothing reads it (a function's signature included, whose arguments ride no trace payload) and the value would ride the debug wire in clear. See [Marking a contract field sensitive](/extend/sensitive-contract-fields). |
 | `SENSITIVE_ANNOTATION_INVALID` | `x-telo-sensitive` must be exactly `true`. It is a marker, not a level. |
 
 ### Observed state
@@ -255,6 +257,7 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `INVALID_LAYER_INDEX` | The published `layers:` index is malformed. |
 | `INVALID_REDACTION_PATH` | A `logging.redact.paths` entry does not parse. Bad paths are caught here rather than silently failing to redact at runtime. |
 | `LOG_SINK_ON_FULL_UNSUPPORTED` | The sink does not support the requested `on_full:` policy. |
+| `SINK_UNATTACHED` | A **warning**: a resource whose kind is a sink (capability `Telo.Sink`) that nothing references and its module does not export. The runtime attaches only the sinks the root Application lists in `logging.sinks` / `tracing.sinks`, so this one receives nothing. List it (`- !ref <name>`), or remove it. |
 
 ### Releasing modules (`telo release`)
 
@@ -336,6 +339,8 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_RESOURCE_NOT_INVOKABLE` / `ERR_RESOURCE_NOT_RUNNABLE` | The target exists but has no `invoke`/`run`. Check the kind's capability against the slot. |
 | `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` | The values passed to, or produced by, a call do not satisfy the declared `inputType`/`outputType` — or a native function's `params` / `returns`, or an HTTP request's text at a slot whose value type's encoding does not read it. Raised as structured errors, so they can be caught — but never declared by a kind. |
 | `ERR_CONTRACT_UNRESOLVABLE` | A declared contract could not be resolved to a schema. |
+| `ERR_PREDICATE_NOT_BOOLEAN` | A predicate — a step's `when`, `if`, `elseif[].if` or `while`, or a boot target's `when` — produced something other than a boolean. `data` carries `site` (where the predicate is written) and `produced` (the type it produced). A predicate is never read by truthiness: compare explicitly (`variables.flag == 'true'`). Ambient: `try:` and `catches:` can name it, no kind declares it, and a retry policy does not re-attempt it. Statically, `CEL_TYPE_ERROR` at the predicate when its expression is typed. |
+| `ERR_SPAN_ATTRIBUTE_INVALID` | The runtime half of `SPAN_ATTRIBUTE_INVALID` / `SPAN_ATTRIBUTE_MISPLACED`: a contract whose reached `x-telo-span-attribute` marks break a rule is refused when it is first dispatched, naming each problem. `telo check` reports the same problems, but only for the entry's own modules, so a dependency's contract is reported here. |
 | `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | An `!interpolate` hole evaluated to null, a list or a map, which CEL's `string()` cannot turn into text. The message names the hole and the type found. Declare `outputType` on the resource producing the value so `telo check` sees its type, or guard it inside the hole. |
 | `ERR_INVOKE_CANCELLED` | The invoke was cancelled — a shutdown signal, a disconnected client, or an elapsed deadline. |
 | `ERR_EXECUTION_FAILED` | A dispatch failed; the underlying error is attached as its cause. |
@@ -401,6 +406,7 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_MODULE_LAYER_EXTRACT_FAILED` | Rust kernel: a verified layer could not be written into the module's cache directory (permissions, disk, a path already occupied by a directory). The message names the entry; fix the directory, or remove it and run again. |
 | `ERR_DIRECTORY_LOCK_FAILED` | Rust kernel: the cache directory lock (`<dir>/.lock`, shared with the Node kernel) could not be created, reclaimed or waited for. The message names the lock file; remove it if no other Telo process is running. |
 | `ERR_LOG_SINK_ON_FULL_UNSUPPORTED` | The runtime half of `LOG_SINK_ON_FULL_UNSUPPORTED`: a sink was configured with an `on_full:` policy it cannot honour (`block` on a sink that cannot block). Use `drop_new` or `drop_old`. |
+| `ERR_SINK_CONTRACT_MISSING` | An entry of `logging.sinks` / `tracing.sinks` (named in the message, e.g. `logging.sinks[0]`) lists an instance that does not expose the sink contract — `sinkId`, `write`, `flush`, `flushSync`, `close`. A listed sink must be a kind with capability `Telo.Sink` whose instance is the sink itself. |
 
 ### Shutdown
 

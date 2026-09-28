@@ -287,7 +287,7 @@ outcome than a URL that silently reaches the wrong app.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent`. App sessions run the catalog image directly as a pod |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name (chart: inline `apps.catalog`, or `apps.catalogSecret` referencing a Secret holding the JSON — use the Secret whenever entries embed secrets in `env`); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent` and the `tokenEnv` under which the runner injects a per-session workload token it reports as `token` on that workload's endpoints (kept across suspend/resume, new after a runner restart). App sessions run the catalog image directly as a pod |
 | `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling for predefined-app pods (separate from the anonymous-session ceiling) |
 | `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling for predefined-app pods |
 | `RUNNER_APP_MAX_TTL_SECONDS` | `21600` | Wall-clock TTL for predefined-app pods (agent sessions are long-lived) |

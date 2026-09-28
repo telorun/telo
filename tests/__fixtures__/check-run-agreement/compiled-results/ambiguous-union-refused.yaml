@@ -1,0 +1,34 @@
+# An expression under a union its written value does not decide: typed as
+# neither branch's `x`.
+kind: Telo.Application
+metadata:
+  name: AmbiguousUnion
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - invoke: !ref holder
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    cfg:
+      x-telo-eval: compile
+      anyOf:
+        - type: object
+          properties: { x: { type: boolean } }
+        - type: object
+          properties: { x: { type: integer } }
+resources:
+  - kind: Run.Value
+    metadata: { name: out }
+    value: !cel "self.cfg"
+invoke: !ref out
+---
+kind: Self.Holder
+metadata: { name: holder }
+cfg:
+  x: !cel "'s'"

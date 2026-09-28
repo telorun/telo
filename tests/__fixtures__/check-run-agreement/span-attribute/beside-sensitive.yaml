@@ -1,0 +1,10 @@
+# Dispatches the instance whose contract marks an auth-material property.
+kind: Telo.Application
+metadata:
+  name: SpanAttributeBesideSensitive
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.besideSensitive
+    inputs: { token: secret }

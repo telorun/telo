@@ -2,25 +2,18 @@ import { NOOP_LOGGER, type LogRecord, type LoggingHost, type ResourceContext } f
 import { describe, expect, it, vi } from "vitest";
 import { create } from "../src/otlp-sink-controller.js";
 
-function stubContext(): ResourceContext & { attached: unknown[] } {
-  const attached: unknown[] = [];
+function stubContext(): ResourceContext {
   const logging: LoggingHost = {
-    attach: (sink) => void attached.push(sink),
-    detach: () => {},
     levelFor: () => 9,
     recordDrop: () => {},
   };
-  return { logging, log: NOOP_LOGGER, attached } as unknown as ResourceContext & {
-    attached: unknown[];
-  };
+  return { logging, log: NOOP_LOGGER } as unknown as ResourceContext;
 }
 
 /** A stub context whose `recordDrop` accumulates the reported count. */
 function countingContext(): { ctx: ResourceContext; dropped(): number } {
   let dropped = 0;
   const logging: LoggingHost = {
-    attach: () => {},
-    detach: () => {},
     levelFor: () => 9,
     recordDrop: (_sinkId, _cause, count = 1) => {
       dropped += count;
@@ -54,19 +47,20 @@ describe("Otlp.Sink", () => {
     ).rejects.toThrow(/"audit"/);
   });
 
-  it("attaches itself and declares that it cannot be synchronously flushed", async () => {
-    const ctx = stubContext();
-    const instance = (await create(
+  it("is the sink itself, and declares that it cannot be synchronously flushed", async () => {
+    // The kernel attaches the instance `logging.sinks` lists, so the instance
+    // must expose the sink contract directly.
+    const sink = (await create(
       { endpoint: "https://collector.invalid/v1/logs", metadata: { name: "shipped" } },
-      ctx,
-    )) as unknown as { sink: { syncFlushable: boolean; sinkId: string; flushSync(): void } };
+      stubContext(),
+    )) as unknown as { syncFlushable: boolean; sinkId: string; flushSync(): void; close(): Promise<void> };
 
-    expect(ctx.attached).toHaveLength(1);
     // Delivery is a network round-trip; blocking a producer on it would be a
     // deadlock on an event loop, not durability (§10.5).
-    expect(instance.sink.syncFlushable).toBe(false);
-    expect(instance.sink.sinkId).toBe("shipped");
-    expect(() => instance.sink.flushSync()).not.toThrow();
+    expect(sink.syncFlushable).toBe(false);
+    expect(sink.sinkId).toBe("shipped");
+    expect(() => sink.flushSync()).not.toThrow();
+    await sink.close();
   });
 
   it("batches records and POSTs OTLP/JSON on flush", async () => {
@@ -76,15 +70,15 @@ describe("Otlp.Sink", () => {
     const instance = (await create(
       { endpoint: "https://collector.invalid/v1/logs", metadata: { name: "shipped" } },
       stubContext(),
-    )) as unknown as { sink: { write(r: LogRecord): void; flush(): Promise<void> } };
+    )) as unknown as { write(r: LogRecord): void; flush(): Promise<void> };
 
-    instance.sink.write({
+    instance.write({
       timestamp: 1_770_000_000_123_456_000n,
       severityNumber: 9,
       severityText: "INFO",
       message: "listening",
     });
-    await instance.sink.flush();
+    await instance.flush();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit).body as string) as {
@@ -116,17 +110,17 @@ describe("Otlp.Sink", () => {
     const instance = (await create(
       { endpoint: "https://collector.invalid/v1/logs", metadata: { name: "shipped" } },
       ctx,
-    )) as unknown as { sink: { write(r: LogRecord): void; flush(): Promise<void> } };
+    )) as unknown as { write(r: LogRecord): void; flush(): Promise<void> };
 
     for (let i = 0; i < 7; i += 1) {
-      instance.sink.write({
+      instance.write({
         timestamp: 1n,
         severityNumber: 9,
         severityText: "INFO",
         message: `r${i}`,
       });
     }
-    await instance.sink.flush();
+    await instance.flush();
 
     expect(dropped()).toBe(7);
     // The reason is surfaced on the fallback stream, not swallowed.

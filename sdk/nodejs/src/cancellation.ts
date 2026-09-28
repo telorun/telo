@@ -60,8 +60,8 @@ export interface ZoneEntry {
 export interface InvokeContext {
   readonly cancellation: CancellationToken;
   /** Monotonic id minted by the kernel for this invocation — present only while
-   *  tracing is active (a debug consumer is attached). Lets controllers correlate
-   *  their work with the debug stream. */
+   *  tracing is active (a debug consumer is attached, or a trace sink is). Lets
+   *  controllers correlate their work with the trace. */
   readonly invocationId?: number;
   /** The {@link invocationId} of the invocation that dispatched this one, or
    *  `undefined` at a trace root. Reconstructs the call tree on the consumer. */
@@ -130,7 +130,6 @@ export function deriveContext(base: InvokeContext, overrides: Partial<InvokeCont
   return { ...base, ...overrides };
 }
 
-/** Terminal status of a span — maps to OpenTelemetry span status. */
 /** How an invocation ended.
  *
  *  `parked` is its own outcome and not a flavour of failure: a suspended
@@ -141,23 +140,36 @@ export type SpanOutcome = "ok" | "failed" | "rejected" | "cancelled" | "parked";
 /** Options for {@link ResourceContext.openSpan}. */
 export interface OpenSpanOptions {
   /** The resource the span is attributed to (an inbound transport's listener,
-   *  e.g. the `Http.Api`). Becomes the span's `ref`. */
+   *  e.g. the `Http.Server`). Becomes the span's `ref`. */
   ref: { kind: string; name: string };
-  /** Human label for the span (e.g. `"POST /feedback"`). */
+  /** The span's name (e.g. `"POST /feedback"`, `"chat gpt-4o"`). Defaults to the
+   *  resource's name. */
   label?: string;
   /** Structured attributes (e.g. `{ method, path }`). Map to OTel span attributes. */
   attributes?: Record<string, unknown>;
-  /** Continue an upstream distributed trace instead of rooting a new one — e.g.
-   *  seeded from a W3C `traceparent` header. */
-  inbound?: { traceId: string; parentSpanId?: number };
+  /** Continue an upstream distributed trace instead of rooting a new one: the W3C
+   *  Trace Context headers exactly as they arrived. A valid `traceparent` makes the
+   *  span a child of the upstream span, in the upstream trace, and wins over the
+   *  base context's span; an invalid or all-zero one is ignored in full and the
+   *  span roots a new trace. */
+  inbound?: { traceparent: string; tracestate?: string };
+}
+
+/** What {@link OpenSpan.settle} may add to the span it closes. */
+export interface SpanSettleDetail {
+  /** Attributes learned while the span was open (token counts, an error's
+   *  `error.type`). Merged over the attributes the span was opened with. */
+  attributes?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 /** Handle returned by {@link ResourceContext.openSpan}. */
 export interface OpenSpan {
   /** Thread into `invokeResolved` so the handler nests under the span. */
   readonly context: InvokeContext;
-  /** Close the span with an outcome (emits the span's `end` event). */
-  settle(outcome: SpanOutcome, detail?: Record<string, unknown>): Promise<void>;
+  /** Close the span with an outcome (emits the span's `end` event, and hands the
+   *  finished span to every attached trace sink). Idempotent. */
+  settle(outcome: SpanOutcome, detail?: SpanSettleDetail): Promise<void>;
 }
 
 export interface CancellationSource {

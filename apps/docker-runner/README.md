@@ -37,7 +37,7 @@ Optional, with defaults:
 | `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
 | `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended record is retained before eviction — bounds accumulation, and is not a workload deadline |
 | `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on; it is what the runner publishes when the entry is used as a session's co-resident `agent`, and there is no default, because the runner knows nothing about any specific app. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "sk-..."}, "pullPolicy": "always", "port": 8080}}` |
+| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "tokenEnv"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on; it is what the runner publishes when the entry is used as a session's co-resident `agent`, and there is no default, because the runner knows nothing about any specific app. `tokenEnv` names an env var under which the runner injects a token it mints per session and reports as `token` on that workload's endpoints (see [Workload tokens](#workload-tokens)); naming a key the entry's own `env` also sets is a startup error. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "<key>"}, "pullPolicy": "always", "port": 8080, "tokenEnv": "AGENT_TOKEN"}}` |
 
 ## Standalone
 
@@ -89,7 +89,7 @@ On success: `201 { sessionId, streamUrl, createdAt }`. Start is all-or-nothing u
 
 ### `POST /v1/apps/:name/sessions`
 
-Creation door for operator-predefined applications (`RUNNER_APPS`). Body: `{ env?, ports?, inspect? }` — no bundle, no config; the runner resolves the image and injects the app's operator env from the catalog (client-supplied values for those keys are dropped). On success: `201 { sessionId, streamUrl, createdAt }` — the session lives in the same collection as bundle sessions (status / DELETE / events / io under `/v1/sessions/:id`). `404 unknown_app` when the catalog doesn't offer the name; the same terms gate (`428`) applies.
+Creation door for operator-predefined applications (`RUNNER_APPS`). Body: `{ env?, ports?, inspect? }` — no bundle, no config; the runner resolves the image and injects the app's operator env from the catalog, plus the session's minted token when the entry declares `tokenEnv` (client-supplied values for those keys are dropped). On success: `201 { sessionId, streamUrl, createdAt }` — the session lives in the same collection as bundle sessions (status / DELETE / events / io under `/v1/sessions/:id`). `404 unknown_app` when the catalog doesn't offer the name; the same terms gate (`428`) applies.
 
 ### `GET /v1/sessions/:id`
 
@@ -159,8 +159,26 @@ to the host like an app's, and the client fills in the hostname it reached the
 runner on.
 
 The agent is the only container that receives the operator env, and it is
-reachable without auth for as long as the session lives — the same exposure an
-app session of the same image already has.
+reachable by anyone who can reach its host for as long as the session lives —
+the same exposure an app session of the same image already has — unless the
+image itself checks a credential, which is what a workload token is for.
+
+### Workload tokens
+
+A catalog entry that declares `tokenEnv` gets a token per session: the runner
+mints 32 random base32 characters (the session-id generator at a credential's
+length, 160 bits), injects them into that workload's env under `tokenEnv` —
+through the operator-env channel, so an agent's token reaches the agent
+container and no application container — and reports the same value as `token`
+on every endpoint of that workload: `status.agent` for a co-resident agent,
+every `status.endpoints[]` entry for an app session. A client presents it to the
+workload — typically as `Authorization: Bearer <token>` to an image that
+compares it with the env var; what it guards is the image's business, the
+runner only hands out the two matching halves.
+
+The token is part of the session: a suspended session resumes with the same one,
+and a runner restart — which forgets every session — means a new session and so
+a new token. A client-supplied env var of the same name is dropped.
 **Nothing verifies that the agent listens where `port` says.** `port` tells the
 runner where to route; what the image actually binds is configured separately
 (the authoring agent reads `PORT`, defaulting to 8080). If the two disagree the

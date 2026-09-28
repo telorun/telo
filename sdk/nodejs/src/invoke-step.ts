@@ -8,6 +8,7 @@ import {
   deriveContext,
   isCancellationError,
 } from "./cancellation.js";
+import type { CompiledValue } from "./compiled-value.js";
 import { isAmbientContractErrorCode } from "./contract-errors.js";
 import {
   durableHandleOf,
@@ -26,6 +27,7 @@ import {
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
 import { InvokeError } from "./invoke-error.js";
+import { predicateResult } from "./step-predicate.js";
 import type { KindRef, ScopeContext } from "./ref.js";
 import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
 
@@ -87,7 +89,7 @@ export interface InvokeStepRetry {
  */
 export interface InvokeStep {
   name: string;
-  when?: string;
+  when?: boolean | CompiledValue;
   invoke: KindRef<Invocable> | Invocable;
   inputs?: Record<string, unknown>;
   retry?: InvokeStepRetry;
@@ -124,7 +126,7 @@ export interface InvokeStep {
  *  so too. Control flow (`if`/`while`/`switch`/`try`) is still Run's. */
 export interface InlineInvokeTarget {
   name?: string;
-  when?: string;
+  when?: boolean | CompiledValue;
   invoke: KindRef<Invocable> | Invocable;
   inputs?: Record<string, unknown>;
   retry?: InvokeStepRetry;
@@ -137,7 +139,7 @@ export interface InlineInvokeTarget {
 export type BootTarget =
   | string
   | { kind: string; name: string }
-  | { ref: string | { kind: string; name: string }; when?: string }
+  | { ref: string | { kind: string; name: string }; when?: boolean | CompiledValue }
   | InlineInvokeTarget;
 
 /**
@@ -212,6 +214,9 @@ export interface InvokeStepState {
    * fan-out element), and the leaf sees one step.
    */
   journalPath?: string;
+  /** Where the step is written, as a predicate refusal names it — the boot
+   *  runner's `targets[<i>]`. Defaults to the journal path, else the name. */
+  site?: string;
 }
 
 /**
@@ -243,11 +248,11 @@ export async function executeInvokeStep(
   // reserved segment, since the body this step dispatches hangs its own steps
   // directly under `path` and one of them may be named `when`.
   if (step.when !== undefined) {
+    const site = `${state.site ?? path}.when`;
+    const guard = () => predicateResult(ctx.expandValue(step.when, cel), site);
     const proceed = handle
-      ? await handle.decide(stepPath(path, GUARD_DECISION_SEGMENT), "predicate", () =>
-          ctx.expandValue(step.when, cel),
-        )
-      : ctx.expandValue(step.when, cel);
+      ? await handle.decide(stepPath(path, GUARD_DECISION_SEGMENT), "predicate", guard)
+      : guard();
     if (!proceed) return;
   }
 

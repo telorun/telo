@@ -1,0 +1,15 @@
+# A rule set that can never match as written: refused by `telo check` at the
+# declaration, and by the controller when the resource is created.
+kind: Telo.Library
+metadata:
+  name: PrefixesEmpty
+imports:
+  SecretScan: ../../..
+exports:
+  resources: [detector]
+---
+kind: SecretScan.Detector
+metadata: { name: detector }
+rules:
+  - name: vendorKey
+    token: { prefixes: [], charset: alphanumeric, minLength: 20 }

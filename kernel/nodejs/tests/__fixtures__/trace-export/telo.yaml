@@ -1,0 +1,98 @@
+# Trace export through the built-in log trace sink: every finished span becomes
+# one JSON record on stdout. `EXPORT_SPANS=false` leaves the sink unattached.
+kind: Telo.Application
+metadata:
+  name: TraceExportApp
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+variables:
+  exportSpans:
+    env: EXPORT_SPANS
+    type: boolean
+    default: true
+logging:
+  sinks:
+    - kind: Telo.ConsoleSink
+      destination: stdout
+      encoding: json
+tracing:
+  sinks:
+    - sink:
+        kind: Telo.LogTraceSink
+      when: !cel "variables.exportSpans"
+---
+# One turn: a call whose contract marks span attributes, then a call that is
+# refused and caught.
+kind: Run.Sequence
+metadata:
+  name: turn
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId, note]
+    properties:
+      turnId: { type: string }
+      note: { type: string }
+steps:
+  - name: measure
+    invoke: !ref measure
+    inputs:
+      turnId: !cel "inputs.turnId"
+      note: !cel "inputs.note"
+      context: { id: ctx-1 }
+      step: { id: step-1 }
+  - name: refused
+    try:
+      - name: refuse
+        invoke: !ref refuse
+    catch:
+      - name: handled
+        value: handled
+---
+# A mark in a named shape, reached through a property that references it.
+kind: Telo.JsonSchema
+metadata:
+  name: Step
+schema:
+  type: object
+  properties:
+    id: { type: string, x-telo-span-attribute: app.step.id }
+---
+kind: Run.Value
+metadata:
+  name: measure
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId, note]
+    properties:
+      turnId: { type: string, x-telo-span-attribute: telo.agent.turn.id }
+      note: { type: string }
+      context: { $ref: "#/$defs/Context" }
+      step: !ref Step
+    $defs:
+      Context:
+        type: object
+        properties:
+          id: { type: string, x-telo-span-attribute: app.context.id }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [length]
+    properties:
+      length: { type: integer, x-telo-span-attribute: app.note.length }
+value:
+  length: !cel "size(inputs.note)"
+---
+kind: Run.Sequence
+metadata:
+  name: refuse
+steps:
+  - name: fail
+    throw:
+      code: ERR_REFUSED
+      message: refused

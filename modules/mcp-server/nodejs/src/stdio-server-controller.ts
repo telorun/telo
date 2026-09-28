@@ -52,6 +52,9 @@ export class McpStdioServer {
         instructions: this.resource.instructions,
         toolsBundles,
         sessionResolver: () => this.session,
+        // rootContext: an inbound registrant dispatches with a context inheriting
+        // nothing ambient (kernel/specs/execution-zones.md §7), never `undefined`.
+        dispatchContext: () => this.ctx.rootContext(),
         ctx: this.ctx,
         moduleContext: this.ctx.moduleContext,
       });

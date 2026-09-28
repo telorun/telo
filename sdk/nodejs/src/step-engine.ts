@@ -23,10 +23,12 @@
 
 import type { Invocable } from "./capabilities/invokable.js";
 import type { InvokeContext } from "./cancellation.js";
+import type { CompiledValue } from "./compiled-value.js";
 import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
+import { predicateResult } from "./step-predicate.js";
 import type { KindRef, ScopeContext } from "./ref.js";
 
 /**
@@ -44,10 +46,10 @@ export interface StepEngineContext extends InvokeStepContext {
 
 export interface IfStep {
   name: string;
-  if: string;
+  if: boolean | CompiledValue;
   then: Step[];
   elseif?: Array<{
-    if: string;
+    if: boolean | CompiledValue;
     then: Step[];
   }>;
   else?: Step[];
@@ -55,7 +57,7 @@ export interface IfStep {
 
 export interface WhileStep {
   name: string;
-  while: string;
+  while: boolean | CompiledValue;
   do: Step[];
 }
 
@@ -68,7 +70,8 @@ export interface SwitchStep {
 
 export interface TryStep {
   name: string;
-  when?: string;
+  /** A predicate: a boolean, or the compiled `!cel` expression evaluating to one. */
+  when?: boolean | CompiledValue;
   try: Step[];
   catch?: Step[];
   finally?: Step[];
@@ -325,7 +328,7 @@ export class StepEngine {
     // Each predicate is journaled under its own key, so replay takes the branch
     // the RUN took rather than the branch the predicate would evaluate to now.
     if (await this.decide(invokeCtx, stepPath(path, "if"), "predicate", () =>
-      this.ctx.expandValue(step.if, { steps, ...extraCtx }),
+      predicateResult(this.ctx.expandValue(step.if, { steps, ...extraCtx }), stepPath(path, "if")),
     )) {
       await this.executeSteps(step.then, steps, scope, extraCtx, invokeCtx, stepPath(path, "then"));
       return;
@@ -334,7 +337,10 @@ export class StepEngine {
     if (step.elseif) {
       for (const [index, branch] of step.elseif.entries()) {
         if (await this.decide(invokeCtx, stepPath(path, "elseif", index), "predicate", () =>
-          this.ctx.expandValue(branch.if, { steps, ...extraCtx }),
+          predicateResult(
+            this.ctx.expandValue(branch.if, { steps, ...extraCtx }),
+            stepPath(path, "elseif", index, "if"),
+          ),
         )) {
           await this.executeSteps(
             branch.then,
@@ -367,7 +373,7 @@ export class StepEngine {
     // it stopped in rather than restarting the loop.
     for (let turn = 0; ; turn++) {
       const go = await this.decide(invokeCtx, stepPath(path, "while", turn), "condition", () =>
-        this.ctx.expandValue(step.while, { steps, ...extraCtx }),
+        predicateResult(this.ctx.expandValue(step.while, { steps, ...extraCtx }), stepPath(path, "while")),
       );
       if (!go) return;
       await this.executeSteps(
@@ -492,7 +498,7 @@ export class StepEngine {
     if (
       step.when !== undefined &&
       !(await this.decide(invokeCtx, stepPath(path, "when"), "predicate", () =>
-        this.ctx.expandValue(step.when, { steps, ...extraCtx }),
+        predicateResult(this.ctx.expandValue(step.when, { steps, ...extraCtx }), stepPath(path, "when")),
       ))
     ) {
       return;

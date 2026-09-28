@@ -1,6 +1,15 @@
-import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { InvokeContext, OpenSpan, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import { tokenCounts, withTokenQuantity } from "./usage.js";
+import {
+  chatAttributes,
+  modelNameOf,
+  openAgentSpan,
+  openChatSpan,
+  settleFailure,
+  usageAttributes,
+  type AgentSpanIdentity,
+} from "./agent-spans.js";
 import { InvokeError, Stream } from "@telorun/sdk";
 import {
   assembleTools,
@@ -54,6 +63,9 @@ interface AiAgentStreamInputs {
 interface AiAgentStreamOutput {
   output: Stream<AgentStreamPart>;
 }
+
+/** Why a span ends when the stream's consumer stops reading before the run does. */
+const ABANDONED = "the stream's consumer stopped reading";
 
 class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStreamOutput> {
   private assembled?: AssembledTools;
@@ -109,6 +121,10 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
    * so a cancelled turn ends with `ERR_INVOKE_CANCELLED`. A call interrupted
    * before its `finish` reports no `step-finish`; one whose `finish` arrived still
    * reports it, even when the cancellation lands before that part is handled.
+   *
+   * The run is one `invoke_agent` span; each model call a `chat` span, open until
+   * its stream ends; each tool call an `execute_tool` span. A consumer that stops
+   * reading ends every open span as cancelled.
    */
   private async *runLoop(
     messages: Message[],
@@ -118,46 +134,159 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     ctx?: InvokeContext,
   ): AsyncGenerator<AgentStreamPart> {
     const name = this.resource.metadata.name;
-    const model = this.resource.model;
     const label = `Ai.AgentStream "${name}"`;
     const maxSteps = this.resource.maxSteps ?? 8;
     const onMaxSteps = this.resource.onMaxSteps ?? "throw";
     const onToolError = this.resource.onToolError ?? "feedback";
+    const agent: AgentSpanIdentity = { kind: "Ai.AgentStream", name };
+    const modelName = modelNameOf(this.resource.model);
 
     const usage: Usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     let finishReason: FinishReason = "stop";
     // Carried across calls, opaque throughout.
     let providerState: unknown = initialProviderState;
+    let calls = 0;
+    const runAttributes = () => ({ "ai.agent.steps": calls, ...usageAttributes(usage) });
 
-    for (let step = 0; step < maxSteps; step++) {
-      ctx?.cancellation.throwIfCancelled();
+    const agentSpan = await openAgentSpan(this.ctx, ctx, agent);
+    try {
+      for (let step = 0; step < maxSteps; step++) {
+        ctx?.cancellation.throwIfCancelled();
 
-      const turnCalls: ToolCall[] = [];
-      let turnText = "";
-      let turnFinish: { usage: Usage; finishReason: FinishReason } | undefined;
-      const turn = await model.invoke(
+        calls += 1;
+        const turn = yield* this.modelCall(
+          { messages, options, tools, providerState },
+          { agentSpan, agent, modelName, label },
+          ctx,
+        );
+        if (turn.providerState !== undefined) providerState = turn.providerState;
+
+        finishReason = turn.finish.finishReason;
+        usage.promptTokens += turn.finish.usage.promptTokens;
+        usage.completionTokens += turn.finish.usage.completionTokens;
+        usage.totalTokens += turn.finish.usage.totalTokens;
+        yield {
+          type: "step-finish",
+          usage: withTokenQuantity(turn.finish.usage),
+          finishReason: turn.finish.finishReason,
+        };
+        ctx?.cancellation.throwIfCancelled();
+
+        // No tools requested this call — the model has answered.
+        if (turn.toolCalls.length === 0) {
+          const total = withTokenQuantity(usage);
+          // Reported on the same terms as the buffered agent: the aggregate across
+          // every call, since a per-call figure understates a run that looped.
+          logCompletion(this.ctx.log, "Agent stream finished", total, finishReason, {
+            "ai.agent.steps": calls,
+          });
+          await agentSpan.settle("ok", { attributes: runAttributes() });
+          yield { type: "finish", usage: total, finishReason };
+          return;
+        }
+
+        messages.push({ role: "assistant", content: turn.text, toolCalls: turn.toolCalls });
+
+        for (const call of turn.toolCalls) {
+          ctx?.cancellation.throwIfCancelled();
+          // With onToolError: "throw", dispatch throws — and the throw PROPAGATES,
+          // rejecting the iteration, so `catches:`, a throws union and a `try:`
+          // step all see it; none of them could see a data part.
+          const record = await dispatchToolCall(
+            call,
+            tools.dispatch,
+            onToolError,
+            label,
+            this.ctx,
+            agent,
+            agentSpan.context,
+          );
+          yield { type: "tool-result", toolResult: record };
+          messages.push({ role: "tool", content: record.content, toolCallId: call.id });
+        }
+      }
+
+      // maxSteps exhausted without the model converging. Thrown rather than
+      // yielded, for the same reason a tool error is.
+      if (onMaxSteps === "throw") {
+        throw new InvokeError(
+          "ERR_AGENT_MAX_STEPS",
+          `${label}: did not converge within maxSteps=${maxSteps}.`,
+        );
+      }
+      // `onMaxSteps: "return"` — handed back as an ordinary terminal finish, so
+      // nothing in the stream marks that the agent ran out of steps rather than
+      // converging. The buffered agent warns here for the same reason.
+      const total = withTokenQuantity(usage);
+      this.ctx.log.warn("Agent stream stopped at maxSteps without converging", {
+        "ai.agent.max_steps": maxSteps,
+        "gen_ai.usage.input_tokens": total.promptTokens,
+        "gen_ai.usage.output_tokens": total.completionTokens,
+      });
+      await agentSpan.settle("ok", { attributes: runAttributes() });
+      yield { type: "finish", usage: total, finishReason };
+    } catch (err) {
+      await settleFailure(agentSpan, err, runAttributes());
+      throw err;
+    } finally {
+      // Reached unsettled only when the consumer stopped reading mid-run.
+      await agentSpan.settle("cancelled", {
+        attributes: { ...runAttributes(), "telo.cancellation.reason": ABANDONED },
+      });
+    }
+  }
+
+  /**
+   * One model call, under its `chat` span: forwards the call's parts and returns
+   * what the loop needs of it. The span stays open until the call's stream ends.
+   */
+  private async *modelCall(
+    request: {
+      messages: Message[];
+      options: Record<string, unknown>;
+      tools: AssembledTools;
+      providerState: unknown;
+    },
+    spans: { agentSpan: OpenSpan; agent: AgentSpanIdentity; modelName: string; label: string },
+    ctx?: InvokeContext,
+  ): AsyncGenerator<
+    AgentStreamPart,
+    {
+      toolCalls: ToolCall[];
+      text: string;
+      finish: { usage: Usage; finishReason: FinishReason };
+      providerState: unknown;
+    }
+  > {
+    const chatSpan = await openChatSpan(this.ctx, spans.agentSpan, spans.agent, spans.modelName);
+    const toolCalls: ToolCall[] = [];
+    let text = "";
+    let finish: { usage: Usage; finishReason: FinishReason } | undefined;
+    let providerState: unknown;
+    try {
+      const turn = await this.resource.model.invoke(
         {
-          messages,
-          options,
-          ...(tools.toolDefs.length > 0 ? { tools: tools.toolDefs } : {}),
-          ...(providerState === undefined ? {} : { providerState }),
+          messages: request.messages,
+          options: request.options,
+          ...(request.tools.toolDefs.length > 0 ? { tools: request.tools.toolDefs } : {}),
+          ...(request.providerState === undefined ? {} : { providerState: request.providerState }),
         },
-        ctx,
+        chatSpan.context,
       );
       for await (const part of turn.output) {
         // A `finish` is recorded whatever the cancellation state: the call it
         // closes completed and was billed, so its usage must still be reported.
         if (part.type === "finish") {
-          turnFinish = { usage: tokenCounts(part.usage), finishReason: part.finishReason };
+          finish = { usage: tokenCounts(part.usage), finishReason: part.finishReason };
           continue;
         }
         ctx?.cancellation.throwIfCancelled();
         if (part.type === "text-delta") {
-          turnText += part.delta;
+          text += part.delta;
           yield part;
         } else if (part.type === "tool-call") {
           const call = normalizeToolCall(part.toolCall);
-          turnCalls.push(call);
+          toolCalls.push(call);
           yield { type: "tool-call", toolCall: call };
         } else if (part.type === "provider-state") {
           // Forwarded so a caller can keep it for its next run, and kept for the
@@ -172,69 +301,25 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           yield part;
         }
       }
-      if (!turnFinish) {
+      if (!finish) {
         // Interrupted before its finish: the call reports no step-finish.
         ctx?.cancellation.throwIfCancelled();
         throw new InvokeError(
           "ERR_CONTRACT_VIOLATION",
-          `${label}: the model's stream ended without a 'finish' part, which every Ai.ModelStream call must end with.`,
+          `${spans.label}: the model's stream ended without a 'finish' part, which every Ai.ModelStream call must end with.`,
         );
       }
-
-      finishReason = turnFinish.finishReason;
-      usage.promptTokens += turnFinish.usage.promptTokens;
-      usage.completionTokens += turnFinish.usage.completionTokens;
-      usage.totalTokens += turnFinish.usage.totalTokens;
-      yield {
-        type: "step-finish",
-        usage: withTokenQuantity(turnFinish.usage),
-        finishReason: turnFinish.finishReason,
-      };
-      ctx?.cancellation.throwIfCancelled();
-
-      // No tools requested this call — the model has answered.
-      if (turnCalls.length === 0) {
-        const total = withTokenQuantity(usage);
-        // Reported on the same terms as the buffered agent: the aggregate across
-        // every call, since a per-call figure understates a run that looped.
-        logCompletion(this.ctx.log, "Agent stream finished", total, finishReason, {
-          "ai.agent.steps": step,
-        });
-        yield { type: "finish", usage: total, finishReason };
-        return;
-      }
-
-      messages.push({ role: "assistant", content: turnText, toolCalls: turnCalls });
-
-      for (const call of turnCalls) {
-        ctx?.cancellation.throwIfCancelled();
-        // With onToolError: "throw", dispatch throws — and the throw PROPAGATES,
-        // rejecting the iteration, so `catches:`, a throws union and a `try:`
-        // step all see it; none of them could see a data part.
-        const record = await dispatchToolCall(call, tools.dispatch, onToolError, label, ctx);
-        yield { type: "tool-result", toolResult: record };
-        messages.push({ role: "tool", content: record.content, toolCallId: call.id });
-      }
+      await chatSpan.settle("ok", {
+        attributes: chatAttributes(finish.usage, finish.finishReason),
+      });
+      return { toolCalls, text, finish, providerState };
+    } catch (err) {
+      await settleFailure(chatSpan, err);
+      throw err;
+    } finally {
+      // Reached unsettled only when the consumer stopped reading mid-call.
+      await chatSpan.settle("cancelled", { attributes: { "telo.cancellation.reason": ABANDONED } });
     }
-
-    // maxSteps exhausted without the model converging. Thrown rather than
-    // yielded, for the same reason a tool error is.
-    if (onMaxSteps === "throw") {
-      throw new InvokeError(
-        "ERR_AGENT_MAX_STEPS",
-        `${label}: did not converge within maxSteps=${maxSteps}.`,
-      );
-    }
-    // `onMaxSteps: "return"` — handed back as an ordinary terminal finish, so
-    // nothing in the stream marks that the agent ran out of steps rather than
-    // converging. The buffered agent warns here for the same reason.
-    const total = withTokenQuantity(usage);
-    this.ctx.log.warn("Agent stream stopped at maxSteps without converging", {
-      "ai.agent.max_steps": maxSteps,
-      "gen_ai.usage.input_tokens": total.promptTokens,
-      "gen_ai.usage.output_tokens": total.completionTokens,
-    });
-    yield { type: "finish", usage: total, finishReason };
   }
 
   snapshot(): Record<string, unknown> {

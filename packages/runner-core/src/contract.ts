@@ -150,6 +150,12 @@ export interface RunnerEndpoint {
   protocol: PortProtocol;
   /** Fully-qualified URL when the endpoint is fronted by a proxy/ingress. */
   url?: string;
+  /** The per-session workload token, present when the catalog entry behind this
+   *  endpoint declares `tokenEnv`: the value the runner minted for this session
+   *  and injected into the workload's env under that name. A client presents it
+   *  to the workload (e.g. as a bearer token); the workload decides what it
+   *  guards. */
+  token?: string;
 }
 
 /**

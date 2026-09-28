@@ -9,6 +9,7 @@ Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts e
 - **Text and images** — `Ai.Image` turns a prompt into picture bytes, or reworks pictures you supply, through the same provider you already configured.
 - **Composable encoding** — pipe a stream through any `Codec.Encoder` (NDJSON, SSE, plain text, raw bytes) without bespoke serialization.
 - **Open for extension** — both model abstracts are `Telo.Abstract`s; any module declaring `extends` is a drop-in provider.
+- **Traced** — with tracing on, an agent run is an `invoke_agent` span with a `chat` span per model call and an `execute_tool` span per tool call, carrying token usage and finish reasons but never message content; each tool's own dispatch nests beneath its call.
 - **Typed contract** — provider input and output are validated by JSON Schema. `Ai.ImageModel` declares its call shape in the manifest, so the kernel enforces it at dispatch and a provider in any language has a contract to implement.
 
 ## Kinds
@@ -21,7 +22,7 @@ Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts e
 | `Ai.Text` | Buffered single-turn call over any `Ai.Model`. |
 | `Ai.TextStream` | Streaming counterpart over any `Ai.ModelStream`; returns `{ output: Stream<StreamPart> }`. |
 | `Ai.Agent` | Tool-use loop over any `Ai.Model` — calls tools, replays results, loops to a final answer. |
-| `Ai.AgentStream` | The same loop, streaming its parts as it goes — each model call's usage, every tool call under a stable id, and provider state. |
+| `Ai.AgentStream` | The same loop, streaming its parts as it goes — each model call's usage, every tool call under a stable id, each tool's result beside what the model was told, and provider state. |
 | `Ai.ToolProvider` | Abstract contract every agent tool source implements (`listTools` + `callTool`). |
 | `Ai.Tools` | Built-in `Ai.ToolProvider`: a static list of tools, each wrapping any `Telo.Invocable`. |
 | `Ai.ImageModel` | Abstract contract every image provider implements (`invoke`, declared in the manifest). |
@@ -71,6 +72,7 @@ system: "Summarize concisely."
 - [`Ai.Text`](docs/ai-text.md) — buffered single-turn call.
 - [`Ai.TextStream`](docs/ai-text-stream.md) — streaming consumer.
 - [`Ai.Agent`](docs/ai-agent.md) — tool-use loop.
+- [`Ai.AgentStream`](docs/ai-agent-stream.md) — the streaming loop: its parts, tool results and spans.
 - [`Ai.ToolProvider` / `Ai.Tools`](docs/ai-tool-provider.md) — the tool contract and the static-list provider.
 - [`Ai.ImageModel`](docs/ai-image-model.md) — image provider contract and implementation walkthrough.
 - [`Ai.Image`](docs/ai-image.md) — buffered generation and editing, intents, refusals.
@@ -122,7 +124,7 @@ Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it ad
 
 Every completion kind — `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` — logs **token usage and finish reason at `info`**, carrying `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `gen_ai.response.finish_reasons`. Usage is the metered quantity: what a run cost, and why a bill moved. Tracing carries the call's shape but is off unless asked for, and the returned `usage` object is only as visible as whatever the caller does with it.
 
-Both agents report the **aggregate across every turn** plus `ai.agent.steps`, since a per-turn figure would understate an agent that looped eight times. An agent that hits `maxSteps` with `onMaxSteps: return` logs at `warn`: the truncated answer is handed back as an ordinary result — a value, or a terminal `finish` frame — so nothing else marks that it never converged.
+Both agents report the **aggregate across every turn** plus `ai.agent.steps` — the model calls the run made, the answering call included — since a per-turn figure would understate an agent that looped eight times. An agent that hits `maxSteps` with `onMaxSteps: return` logs at `warn`: the truncated answer is handed back as an ordinary result — a value, or a terminal `finish` frame — so nothing else marks that it never converged.
 
 A streamed run reports when its terminal part is reached, so a consumer that abandons the stream produces no record — correctly, since no usage was ever reported. One `info` per completion means a 1,000-completion batch is 1,000 records; that is the intended trade for usage being visible by default, and `logging.sampling` bounds it if you need it to.
 

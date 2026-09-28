@@ -1,0 +1,6 @@
+modules:
+  modules/mcp-server: Added
+body: "Mcp.HttpEndpoint dispatches each tool call on the context of the HTTP request
+  that carried it, so the call nests under the request's span and a client disconnect
+  cancels it. Breaking: mounted without a request scope it refuses every request with
+  ERR_MCP_REQUEST_SCOPE_MISSING rather than rooting a separate trace."

@@ -12,9 +12,14 @@ const SESSION_ID_LENGTH = 12;
 
 /** Generates a short, DNS- and Kubernetes-safe session id. */
 export function generateSessionId(): string {
-  const bytes = randomBytes(SESSION_ID_LENGTH);
+  return randomBase32(SESSION_ID_LENGTH);
+}
+
+/** `length` characters of the alphabet above, each from one random byte. */
+export function randomBase32(length: number): string {
+  const bytes = randomBytes(length);
   let id = "";
   // 256 is a multiple of 32, so `byte % 32` indexes the alphabet without bias.
-  for (let i = 0; i < SESSION_ID_LENGTH; i++) id += ALPHABET[bytes[i] % 32];
+  for (let i = 0; i < length; i++) id += ALPHABET[bytes[i] % 32];
   return id;
 }

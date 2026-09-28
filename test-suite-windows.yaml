@@ -23,6 +23,8 @@ variables:
     description: Glob pattern excluding test manifests, relative to this file.
     default:
     - "**/__fixtures__/**"
+    # Agent worktrees are whole checkouts of this repo — same as the root suite.
+    - ".claude/**"
     # An app's tests are the app's, not the standard library's. They pin PUBLISHED
     # module versions, so they fail whenever a kernel or module change has landed
     # here but not yet been released and re-pinned — a real signal, but one about

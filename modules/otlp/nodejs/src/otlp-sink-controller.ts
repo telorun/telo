@@ -1,10 +1,14 @@
 import { toOtlpPayload } from "./encode-otlp.js";
 import {
-  DEFAULT_BUFFER_POLICY,
+  bufferPolicyOf,
+  DEFAULT_TIMEOUT_MS,
+  postOtlp,
+  type OtlpExportConfig,
+} from "./otlp-exporter.js";
+import {
   parseDurationMs,
   parseLevelName,
   RecordBuffer,
-  RuntimeError,
   SEVERITY,
   TEARDOWN_LAST,
   type ControllerContext,
@@ -36,15 +40,8 @@ import {
  */
 export function register(_ctx: ControllerContext): void {}
 
-interface OtlpSinkConfig {
-  endpoint: string;
-  headers?: Record<string, string>;
+interface OtlpSinkConfig extends OtlpExportConfig {
   level?: string;
-  buffer?: number;
-  on_full?: string;
-  flush_interval?: string;
-  timeout?: string;
-  resourceAttributes?: Record<string, unknown>;
 }
 
 class OtlpSink implements LogSinkInstance {
@@ -52,7 +49,7 @@ class OtlpSink implements LogSinkInstance {
   readonly level: number;
   readonly syncFlushable = false;
 
-  readonly #buffer: RecordBuffer;
+  readonly #buffer: RecordBuffer<LogRecord>;
   readonly #endpoint: string;
   readonly #headers: Record<string, string>;
   readonly #timeoutMs: number;
@@ -66,7 +63,9 @@ class OtlpSink implements LogSinkInstance {
     this.level = config.level ? (parseLevelName(config.level) ?? SEVERITY.info) : SEVERITY.info;
     this.#endpoint = config.endpoint;
     this.#headers = config.headers ?? {};
-    this.#timeoutMs = config.timeout ? parseDurationMs(config.timeout, 10_000) : 10_000;
+    this.#timeoutMs = config.timeout
+      ? parseDurationMs(config.timeout, DEFAULT_TIMEOUT_MS)
+      : DEFAULT_TIMEOUT_MS;
     this.#resourceAttributes = config.resourceAttributes ?? {};
     this.#ctx = ctx;
     this.#buffer = new RecordBuffer(policy, () => ctx.logging.recordDrop(sinkId, "buffer_full"));
@@ -85,28 +84,12 @@ class OtlpSink implements LogSinkInstance {
     if (records.length === 0) return;
 
     const payload = toOtlpPayload(records, { resourceAttributes: this.#resourceAttributes as never });
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
-
-    try {
-      const response = await fetch(this.#endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...this.#headers },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        // A failed export loses the whole batch, so count every record, not one
-        // per batch — a shutdown report that says "1" when a buffer of 8192 was
-        // lost is the silent-loss §10.4 forbids. The reason is surfaced too, so
-        // an operator can tell *why* exports fail rather than only that they do.
-        this.#drop(records.length, `HTTP ${response.status} ${response.statusText}`);
-      }
-    } catch (err) {
-      this.#drop(records.length, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
-    } finally {
-      clearTimeout(timer);
-    }
+    const failure = await postOtlp(this.#endpoint, this.#headers, this.#timeoutMs, payload);
+    // A failed export loses the whole batch, so count every record, not one per
+    // batch — a shutdown report that says "1" when a buffer of 8192 was lost is
+    // the silent-loss §10.4 forbids. The reason is surfaced too, so an operator
+    // can tell *why* exports fail rather than only that they do.
+    if (failure !== undefined) this.#drop(records.length, failure);
   }
 
   #drop(count: number, reason: string): void {
@@ -139,46 +122,11 @@ export async function create(
   ctx: ResourceContext,
 ): Promise<ResourceInstance> {
   const sinkId = resource.metadata?.name ?? resource.kind ?? "Otlp.Sink";
-
-  if (resource.on_full === "block") {
-    throw new RuntimeError(
-      "ERR_LOG_SINK_ON_FULL_UNSUPPORTED",
-      `Sink "${sinkId}": on_full: block is not supported by this runtime ` +
-        `(single-threaded event loop — blocking the producer would stall the writer). ` +
-        `Use \`drop_new\` or \`drop_old\`, or move this sink to a worker thread.`,
-    );
-  }
-
-  const policy: SinkBufferPolicy = {
-    buffer: resource.buffer ?? DEFAULT_BUFFER_POLICY.buffer,
-    onFull: (resource.on_full ?? DEFAULT_BUFFER_POLICY.onFull) as SinkBufferPolicy["onFull"],
-    flushIntervalMs: resource.flush_interval
-      ? parseDurationMs(resource.flush_interval, DEFAULT_BUFFER_POLICY.flushIntervalMs)
-      : DEFAULT_BUFFER_POLICY.flushIntervalMs,
-  };
+  const policy = bufferPolicyOf(resource, sinkId);
 
   const sink = new OtlpSink(sinkId, resource, policy, ctx);
 
-  // Attach and its inverse as one pair, performed here rather than returned from
-  // `init()`: a sink must receive records from construction on, or everything
-  // logged while the rest of the graph initializes reaches no destination. The
-  // flush is what makes a clean shutdown export what is still buffered.
-  await ctx
-    .effect("log sink", async () => {
-      ctx.logging.attach(sink);
-      return {
-        result: sink,
-        inverse: async () => {
-          await sink.flush();
-          ctx.logging.detach(sink);
-          await sink.close();
-        },
-      };
-    })
-    .perform();
-
-  return {
-    sink,
-    teardownPriority: TEARDOWN_LAST,
-  } as unknown as ResourceInstance;
+  // The instance IS the sink: the kernel attaches it when `logging.sinks` lists
+  // it, and its undo flushes what is still buffered before closing.
+  return Object.assign(sink, { teardownPriority: TEARDOWN_LAST }) as unknown as ResourceInstance;
 }

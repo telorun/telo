@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: LogEmitChecks
+  version: 1.0.0
+  description: |
+    The input contract is checked statically: a level outside the six names and
+    a key the contract does not declare are both refused by `telo check`.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref testUnknownLevel
+  - !ref testUnknownInputKey
+---
+kind: Assert.Manifest
+metadata: { name: testUnknownLevel }
+source: ./__fixtures__/unknown-level.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/level must be equal to one of the allowed values"
+---
+kind: Assert.Manifest
+metadata: { name: testUnknownInputKey }
+source: ./__fixtures__/unknown-input-key.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'attrs' is not allowed"

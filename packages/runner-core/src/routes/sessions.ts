@@ -14,6 +14,7 @@ import {
 } from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
 import type { SessionEntry, SessionRegistry } from "../session/registry.js";
+import { generateWorkloadToken } from "../session/workload-token.js";
 import { enforceTerms, launchWorkload, portsSchema, startWorkloadSession } from "./session-start.js";
 import { streamSessionEvents } from "../sse/channel.js";
 
@@ -700,6 +701,15 @@ async function startSession(
     }
   }
 
+  // The agent's token rides its operator env — the one channel that reaches the
+  // agent container and nothing else — on this session's copy of the entry, so
+  // the retained launch carries it through suspend and resume.
+  let agentToken: string | undefined;
+  if (agent?.tokenEnv !== undefined) {
+    agentToken = generateWorkloadToken();
+    agent = { ...agent, env: { ...agent.env, [agent.tokenEnv]: agentToken } };
+  }
+
   return startWorkloadSession(
     app,
     deps,
@@ -715,6 +725,7 @@ async function startSession(
       mode,
       apps: resolved.apps,
       agent,
+      ...(agentToken !== undefined ? { tokens: { agent: agentToken } } : {}),
     },
     reply,
     agentNotice ? [agentNotice] : undefined,

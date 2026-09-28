@@ -142,6 +142,11 @@ for v1.1 it is exactly:
 | a park's wake time, token, or retry attempt | `value` |
 | a collection a composer iterates | `collection` |
 
+A `predicate` or `condition` decision is a **boolean**: the value recorded is the
+boolean the expression produced, and an expression producing anything else is
+refused before anything is recorded (`ERR_PREDICATE_NOT_BOOLEAN`, naming where the
+predicate is written and what it produced) — never read by truthiness.
+
 **The last two rows are the composer's own, not the step engine's.** A kind that
 DRIVES a body — an iteration, a projection, a loop of its own — evaluates the
 collection it will walk and the condition it tests per turn *before* it hands a

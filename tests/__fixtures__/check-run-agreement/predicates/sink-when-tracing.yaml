@@ -1,0 +1,14 @@
+# A trace sink's `when` that produces a string, not a boolean.
+kind: Telo.Application
+metadata:
+  name: SinkWhenTracing
+  version: 1.0.0
+variables:
+  flag:
+    env: FLAG
+    type: string
+    default: "false"
+tracing:
+  sinks:
+    - sink: { kind: Telo.LogTraceSink }
+      when: !cel "variables.flag"

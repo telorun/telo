@@ -53,6 +53,14 @@ reaches completion and hover but never the validator. One grammar for every body
 is the point — a step body means the same thing in a sequence, a transaction and
 a workflow.
 
+**A predicate is a boolean.** A step's `when`, `if`, `elseif[].if` and `while`
+must evaluate to `true` or `false`: `telo check` reports an expression typed as
+anything else (`CEL_TYPE_ERROR` at the predicate), and the engine refuses a
+result that is not a boolean with `ERR_PREDICATE_NOT_BOOLEAN`, naming where the
+predicate is written and what it produced. Nothing is read by truthiness — a
+string `"false"` is not false — so compare explicitly
+(`!cel "variables.flag == 'true'"`).
+
 ## Running it
 
 Execution lives in `@telorun/sdk` beside the grammar, so a controller runs a body

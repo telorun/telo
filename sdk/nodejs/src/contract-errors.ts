@@ -43,12 +43,21 @@ export const ERR_SCHEMA_PROJECTION_UNRESOLVED = "ERR_SCHEMA_PROJECTION_UNRESOLVE
  *  thrown `message`, and its `code` when it had one. */
 export const ERR_FUNCTION_FAILED = "ERR_FUNCTION_FAILED";
 
+/** A predicate — a step's `when` / `if` / `elseif[].if` / `while`, a boot
+ *  target's `when` — produced something other than a boolean. Ambient because
+ *  the runtime evaluates every predicate alike, whatever kind holds it; never
+ *  retried, since re-evaluating the same expression cannot change its type.
+ *  `data` carries `site` (where the predicate is written) and `produced` (the
+ *  type it produced). */
+export const ERR_PREDICATE_NOT_BOOLEAN = "ERR_PREDICATE_NOT_BOOLEAN";
+
 export const AMBIENT_CONTRACT_ERROR_CODES = [
   ERR_INPUT_INVALID,
   ERR_OUTPUT_INVALID,
   ERR_CONTRACT_UNRESOLVABLE,
   ERR_SCHEMA_PROJECTION_UNRESOLVED,
   ERR_FUNCTION_FAILED,
+  ERR_PREDICATE_NOT_BOOLEAN,
 ] as const;
 
 export type AmbientContractErrorCode = (typeof AMBIENT_CONTRACT_ERROR_CODES)[number];

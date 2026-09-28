@@ -44,17 +44,6 @@ export interface LoggingContextNode {
   getLoggingConfig?(): ScopeConfig | undefined;
 }
 
-/** How many sinks the root Application declared. Zero means the runtime behaves
- *  exactly as if a single `Telo.ConsoleSink` were declared (§12.1), which is why
- *  the bootstrap writer is replaced by a threshold-aware one rather than left as
- *  the fixed-`info` writer. */
-function declaredSinkCount(manifests: readonly { kind?: string }[]): number {
-  const root = manifests.find((m) => m.kind === "Telo.Application") as
-    | { logging?: { sinks?: unknown[] } }
-    | undefined;
-  return root?.logging?.sinks?.length ?? 0;
-}
-
 export class KernelLogging {
   readonly pipeline: LoggingPipeline;
   readonly host: LoggingHost;
@@ -137,8 +126,9 @@ export class KernelLogging {
    * window, and a consumer connecting later (the debug wire) wants the live
    * stream rather than the whole process history.
    *
-   * When the manifest declares no sinks at all, the runtime behaves exactly as
-   * if a single `Telo.ConsoleSink` were declared — "pretty logs on stderr in a
+   * When the manifest attaches no sinks at all — none listed, or every listed
+   * one gated off by `when: false` — the runtime behaves exactly as if a single
+   * `Telo.ConsoleSink` were declared — "pretty logs on stderr in a
    * terminal, JSON when piped", with no imports.
    *
    * That equivalence is why the bootstrap writer is *replaced* here rather than
@@ -149,7 +139,7 @@ export class KernelLogging {
    * a `warn` never raises it). The fresh sink is built at the resolved threshold,
    * so `logging: { level: debug }` with no `sinks:` behaves as documented.
    */
-  sealBootstrap(manifests: readonly { kind?: string }[]): void {
+  sealBootstrap(attachedSinkCount: number): void {
     if (this.#sealed) return;
     this.#sealed = true;
 
@@ -161,7 +151,7 @@ export class KernelLogging {
     // records the bootstrap writer already wrote live are not replayed into it.
     this.pipeline.sealBootstrap();
 
-    if (declaredSinkCount(manifests) === 0) {
+    if (attachedSinkCount === 0) {
       this.pipeline.attach(
         new ConsoleSink({
           sinkId: BOOTSTRAP_SINK_ID,

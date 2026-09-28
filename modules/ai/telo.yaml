@@ -11,6 +11,10 @@ metadata:
     that calls the model, runs the tools it asks for, and replays their results until
     it settles. Tools wrap ordinary resources, exposed as a static list or discovered
     at runtime.
+# The controller bundle imports `errorTypeOf` from the kernel's `@telorun/sdk`,
+# which no kernel before 0.104.0 provides.
+requires:
+  telo: ">=0.104.0"
 imports:
   Run: ../run
   Stream: ../stream
@@ -213,7 +217,9 @@ schema:
 # cancellation interrupts before its `finish` reports none. `tool-result` reports a tool the agent ran.
 # `finish` is the one terminator, carrying the usage of every call summed. A
 # `tool-call` keeps its id for the whole run: the assistant message that replays it
-# and the `tool-result` answering it carry the same one. Exported so a consumer
+# and the `tool-result` answering it carry the same one. A `tool-result` carries
+# both what the model saw (`content`) and what the tool returned (`output`), so a
+# consumer never parses the rendering back. Exported so a consumer
 # (a handler persisting a transcript) types the records it reads by `!ref`.
 kind: Telo.JsonSchema
 metadata:
@@ -277,6 +283,14 @@ schema:
             - type: array
               items:
                 $ref: "telo://Self/ContentPart"
+        output:
+          description: >-
+            The tool's own result, before any `result:` mapping shaped what the model
+            was told — for a consumer that reads what the tool returned (a pulled file
+            path, a check's exit code) rather than its rendering. Plain JSON; for an MCP
+            tool, its structured content when it has one, otherwise its content parts.
+            Present whenever `error` is not true, absent when it is. Never sent to the
+            model.
         error:
           type: boolean
           description: True when the call failed and `content` is the error fed back.

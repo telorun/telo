@@ -1,0 +1,23 @@
+# A step `if:` that produces a string, not a boolean. The value is `dyn`, so only the runtime can refuse it.
+kind: Telo.Application
+metadata:
+  name: StepPredicateDyn
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  settings:
+    env: SETTINGS
+    type: object
+    default: { flag: "false" }
+targets:
+  - !ref pick
+---
+kind: Run.Sequence
+metadata: { name: pick }
+steps:
+  - name: branch
+    if: !cel "variables.settings.flag"
+    then:
+      - name: taken
+        value: true

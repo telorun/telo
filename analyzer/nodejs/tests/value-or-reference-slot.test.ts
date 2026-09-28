@@ -165,6 +165,14 @@ describe("what the reference-form rule still guards", () => {
     expect(fixOf("Pg.Enum.messageRole")?.fix).toBeUndefined();
   });
 
+  it("reports a `{ sink }` object at a slot that declares no such form", () => {
+    const diags = analyze(
+      dispatcherDef,
+      ({ kind: "pg.Dispatcher", metadata: { name: "main" }, handler: { sink: "messageRole" } }) as unknown as ResourceManifest,
+    );
+    expect(diags.find((d) => d.code === "INVALID_REFERENCE")).toBeDefined();
+  });
+
   it("rejects the removed `{kind, name}` object at a union slot", () => {
     const diags = analyze(table({ kind: "pg.Enum", name: "messageRole" }));
     expect(diags.find((d) => d.code === "INVALID_REFERENCE_FORM")).toBeDefined();

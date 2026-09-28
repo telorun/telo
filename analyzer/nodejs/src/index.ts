@@ -145,6 +145,19 @@ export {
 export type { CallableKindIssue } from "./validate-callable-kinds.js";
 export { validateSensitiveSlots } from "./validate-sensitive-slots.js";
 export type { SensitiveSlotIssue } from "./validate-sensitive-slots.js";
+export { validateSpanAttributes } from "./validate-span-attributes.js";
+export type { SpanAttributeIssue } from "./validate-span-attributes.js";
+export {
+  describeSpanAttributeProblem,
+  RUNTIME_SPAN_ATTRIBUTES,
+  spanAttributePaths,
+  X_TELO_SPAN_ATTRIBUTE,
+} from "./span-attribute.js";
+export type {
+  SpanAttributePath,
+  SpanAttributeProblem,
+  SpanAttributeReading,
+} from "./span-attribute.js";
 export {
   defaultBearingPaths,
   declaredScalarPaths,
@@ -507,6 +520,11 @@ export {
   type TextLeafMapper,
 } from "./plain-literal-decoding.js";
 export { holdsHostPath, hostAnchorFor } from "./host-path-slot.js";
+export {
+  compiledResultSlots,
+  formatSlotPath,
+  type CompiledResultSlot,
+} from "./compiled-result-slots.js";
 export type { DerivedSlot, DerivedSlotContext } from "./derived-slots.js";
 export {
     buildDocumentPositions,

@@ -1,13 +1,17 @@
 import type { ControllerContext, InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError } from "@telorun/sdk";
+import { getRefIdentity, InvokeError } from "@telorun/sdk";
 import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
 
 /**
  * Ai.Tools — the built-in Ai.ToolProvider implementation: a static list of tools, each
  * wrapping any Telo.Invocable. `listTools()` returns the declared descriptors;
  * `callTool()` dispatches to the matching invocable, applying optional `inputs:`/`result:`
- * CEL mappings (evaluated per call via `ctx.expandValue`). The agent invocation's
- * context rides into the tool's invocation, so cancelling the turn stops the tool.
+ * CEL mappings (evaluated per call via `ctx.expandValue`).
+ *
+ * Each call goes through the kernel's traced dispatch, as a route handler does, so
+ * the tool resource's own span, its `<name>.Invoked` events and its declared span
+ * attributes exist — nested under the agent's `execute_tool` span, whose context
+ * rides in, so cancelling the turn stops the tool too.
  */
 interface InvocableInstance {
   invoke(input: unknown, ctx?: InvokeContext): Promise<unknown>;
@@ -32,24 +36,27 @@ interface AiToolsResource {
 }
 
 class AiTools implements ResourceInstance, AiToolProviderInstance {
-  /** Each tool's referenced resource name, captured before injection so `name` can
-   *  default to it. */
-  private readonly refNames: Array<string | undefined>;
+  /** Each tool's referenced resource, captured before injection so `name` can
+   *  default to it and the dispatch can name its target. */
+  private readonly refs: Array<{ kind?: string; name?: string }>;
 
   constructor(
     private readonly resource: AiToolsResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.refNames = resource.tools.map((t) => {
+    this.refs = resource.tools.map((t) => {
       const ref = t.tool as unknown;
-      return ref && typeof ref === "object" && typeof (ref as { name?: unknown }).name === "string"
-        ? ((ref as { name: string }).name)
-        : undefined;
+      if (!ref || typeof ref !== "object") return {};
+      const { kind, name } = ref as { kind?: unknown; name?: unknown };
+      return {
+        kind: typeof kind === "string" ? kind : undefined,
+        name: typeof name === "string" ? name : undefined,
+      };
     });
   }
 
   private toolName(entry: ToolEntry, index: number): string | undefined {
-    return entry.name ?? this.refNames[index];
+    return entry.name ?? this.refs[index]?.name;
   }
 
   listTools(): ToolDescriptor[] {
@@ -70,6 +77,14 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
     args: Record<string, unknown>,
     invokeCtx?: InvokeContext,
   ): Promise<unknown> {
+    return (await this.callToolWithOutput(name, args, invokeCtx)).result;
+  }
+
+  async callToolWithOutput(
+    name: string,
+    args: Record<string, unknown>,
+    invokeCtx?: InvokeContext,
+  ): Promise<{ output: unknown; result: unknown }> {
     const index = this.resource.tools.findIndex((entry, i) => this.toolName(entry, i) === name);
     if (index === -1) {
       throw new InvokeError(
@@ -85,10 +100,23 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
         `Ai.Tools "${this.resource.metadata.name}": tool "${name}" did not resolve to a live invocable instance — check Phase 5 injection.`,
       );
     }
+    // The identity the kernel stamped at injection names the dispatch; the ref
+    // captured before injection is the fallback for a slot injection did not reach.
+    const identity = getRefIdentity(tool as object);
+    const kind = identity?.kind ?? this.refs[index]?.kind ?? "";
+    const target = identity?.name ?? this.refs[index]?.name ?? name;
     const invokeInput =
       entry.inputs !== undefined ? this.ctx.expandValue(entry.inputs, { arguments: args }) : args;
-    const output = await tool.invoke(invokeInput, invokeCtx);
-    return entry.result !== undefined ? this.ctx.expandValue(entry.result, { result: output }) : output;
+    const output = await this.ctx.invokeResolved(
+      kind,
+      target,
+      tool as unknown as ResourceInstance,
+      invokeInput,
+      invokeCtx,
+    );
+    const result =
+      entry.result !== undefined ? this.ctx.expandValue(entry.result, { result: output }) : output;
+    return { output, result };
   }
 
   snapshot(): Record<string, unknown> {

@@ -1,0 +1,90 @@
+kind: Telo.Application
+metadata:
+  name: RequestTraceApp
+  version: 1.0.0
+  description: |
+    Test fixture: a server with a guarded mount (`/api`, which refuses a request
+    without `Bearer good`) and an unguarded one (`/probes`), exporting every span
+    to the OTLP/JSON collector at OTLP_ENDPOINT.
+imports:
+  Http: ../../../
+  Run: ../../../../run
+  Otlp: ../../../../otlp
+ports:
+  http:
+    env: PORT
+    default: 18520
+variables:
+  otlpEndpoint:
+    env: OTLP_ENDPOINT
+    type: string
+    default: http://127.0.0.1:18521
+tracing:
+  sinks:
+    - kind: Otlp.TraceSink
+      endpoint: !interpolate "${{ variables.otlpEndpoint }}/v1/traces"
+      flush_interval: 50ms
+targets:
+  - !ref server
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /items, method: GET }
+    handler:
+      kind: Run.Sequence
+      steps:
+        - name: items
+          value: []
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+kind: Http.Api
+metadata: { name: probes }
+routes:
+  - request: { path: /ready, method: GET }
+    handler:
+      kind: Run.Sequence
+      steps:
+        - name: ready
+          value: true
+    returns:
+      - status: 200
+        content: { application/json: { body: { ready: true } } }
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /api
+    mount: !ref api
+    guard:
+      invoke:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [ authorization ]
+            properties:
+              authorization: { type: string }
+        steps:
+          - name: presented
+            value: !cel "inputs.authorization"
+          - name: check
+            if: !cel "steps.presented.result != 'Bearer good'"
+            then:
+              - name: refuse
+                throw: { code: ERR_UNAUTHENTICATED, message: "a bearer token is required" }
+      inputs:
+        authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+          status: 401
+          headers:
+            WWW-Authenticate: Bearer
+  - path: /probes
+    mount: !ref probes

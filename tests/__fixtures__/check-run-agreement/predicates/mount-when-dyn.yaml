@@ -1,0 +1,28 @@
+# A compile-eval field whose expression is `dyn` and produces a string where the
+# slot declares a boolean: refused when the resource is created, right after its
+# compile-eval fields are expanded.
+kind: Telo.Application
+metadata:
+  name: MountWhenDyn
+  version: 1.0.0
+imports:
+  Http: ../../../../modules/http-server
+variables:
+  settings:
+    env: SETTINGS
+    type: object
+    default: { flag: "false" }
+targets:
+  - !ref server
+---
+kind: Http.Api
+metadata: { name: api }
+routes: []
+---
+kind: Http.Server
+metadata: { name: server }
+port: 18611
+mounts:
+  - path: /
+    mount: !ref api
+    when: !cel "variables.settings.flag"

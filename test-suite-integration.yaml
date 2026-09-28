@@ -36,6 +36,8 @@ variables:
     description: Glob pattern excluding test manifests, relative to this file.
     default:
     - "**/__fixtures__/**"
+    # Agent worktrees are whole checkouts of this repo — same as the root suite.
+    - ".claude/**"
     - "apps/**"
   filter:
     type: string

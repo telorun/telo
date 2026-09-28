@@ -1,0 +1,12 @@
+# Dispatches the instance whose contract marks a malformed attribute name. This
+# consumer's entry-scoped check is silent about the library's contract, so the
+# kernel's refusal is what reports it.
+kind: Telo.Application
+metadata:
+  name: SpanAttributeBadName
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.badName
+    inputs: { turnId: t1 }

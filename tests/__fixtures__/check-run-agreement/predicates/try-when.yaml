@@ -1,0 +1,23 @@
+# A try step's `when:` that produces a string, not a boolean.
+kind: Telo.Application
+metadata:
+  name: TryWhen
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  flag:
+    env: FLAG
+    type: string
+    default: "false"
+targets:
+  - !ref pick
+---
+kind: Run.Sequence
+metadata: { name: pick }
+steps:
+  - name: guarded
+    when: !cel "variables.flag"
+    try:
+      - name: inner
+        value: 1

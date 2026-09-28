@@ -1,0 +1,38 @@
+# Marks the contract reaches through a `$ref`: one in a `$defs` entry, one in a
+# named shape. Both are read, so `telo check` is clean and the kernel runs it.
+kind: Telo.Library
+metadata:
+  name: SpanAttributeReachedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose contract reaches its span attribute marks through a
+    $defs entry and a named shape.
+imports:
+  Run: ../../../../../../modules/run
+exports:
+  resources: [reached]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Step
+schema:
+  type: object
+  properties:
+    id: { type: string, x-telo-span-attribute: app.step.id }
+---
+kind: Run.Value
+metadata:
+  name: reached
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      turn: { $ref: "#/$defs/Turn" }
+      step: !ref Step
+    $defs:
+      Turn:
+        type: object
+        properties:
+          id: { type: string, x-telo-span-attribute: app.turn.id }
+value: { ok: true }

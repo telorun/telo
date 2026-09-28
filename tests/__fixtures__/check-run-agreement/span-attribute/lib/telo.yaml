@@ -1,0 +1,56 @@
+# Contracts marking a property as a span attribute the runtime cannot read: one
+# under a malformed name, one on a property holding an object, one on a property
+# marked as auth material. This library's own
+# `telo check` reports both; the kernel refuses each contract when its instance
+# is first dispatched.
+kind: Telo.Library
+metadata:
+  name: SpanAttributeLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose contracts mark span attributes the runtime cannot
+    read.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [badName, nonScalar, besideSensitive]
+---
+kind: Run.Value
+metadata:
+  name: badName
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      turnId:
+        type: string
+        x-telo-span-attribute: Turn-Id
+value: { ok: true }
+---
+kind: Run.Value
+metadata:
+  name: nonScalar
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      report:
+        type: object
+        x-telo-span-attribute: telo.check.report
+value: { ok: true }
+---
+kind: Run.Value
+metadata:
+  name: besideSensitive
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      token:
+        type: string
+        x-telo-sensitive: true
+        x-telo-span-attribute: app.token
+value: { ok: true }

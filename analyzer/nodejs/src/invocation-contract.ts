@@ -16,6 +16,7 @@ import {
   type DefResolver,
   effectiveContractField,
 } from "./extends-resolution.js";
+import { resolveRefIn } from "./schema-compat.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import {
   manifestListScope,
@@ -365,19 +366,39 @@ export function defaultBearingPaths(
 export function sensitivePaths(
   schema: Record<string, any>,
   resolveRef?: (ref: string) => Record<string, any> | undefined,
+  /** Collects every schema node, as written, whose own mark the walk reached —
+   *  how `telo check` tells a mark a contract reads from one nothing does. */
+  reached?: Set<object>,
 ): string[][] {
   const out: string[][] = [];
 
-  const walk = (node: unknown, path: string[], chain: readonly object[]): void => {
+  // A `$ref` is followed wherever it leads — a document-local `$defs` entry
+  // against the document the reference sits in, a named shape through
+  // `resolveRef` — so a mark is read wherever the contract reaches it.
+  const walk = (
+    node: unknown,
+    path: string[],
+    root: Record<string, any>,
+    chain: readonly object[],
+  ): void => {
     if (!node || typeof node !== "object") return;
+    if (chain.includes(node)) return;
+    const written: object[] = [node];
     let s = node as Record<string, any>;
-    if (chain.includes(s)) return;
-    if (resolveRef && typeof s.$ref === "string") {
-      const target = resolveRef(s.$ref);
-      if (!target || chain.includes(target)) return;
-      s = { ...target, ...s, $ref: undefined };
+    let document = root;
+    while (typeof s.$ref === "string") {
+      const { schema: target, root: targetRoot } = resolveRefIn(s, document, resolveRef);
+      if (target === s || written.includes(target) || chain.includes(target)) break;
+      written.push(target);
+      const siblings: Record<string, any> = { ...s };
+      delete siblings.$ref;
+      s = { ...target, ...siblings };
+      document = targetRoot;
     }
-    const here = [...chain, node as object];
+    // A live value is never walked into, stripped or not, so a schema read
+    // before and after `withLiveValuesSkipped` reaches the same marks.
+    if (isLiveSlot(s)) return;
+    const here = [...chain, ...written];
 
     // A marked node is redacted WHOLE, so there is nothing below it to mark:
     // descending would emit paths into a value that is already gone. The EMPTY
@@ -385,13 +406,16 @@ export function sensitivePaths(
     // is the secret is the simplest shape there is, and refusing it silently
     // (which `path.length > 0` did) left exactly that case unredacted.
     if (s["x-telo-sensitive"] === true) {
+      if (reached) for (const o of written) if ((o as any)["x-telo-sensitive"] === true) reached.add(o);
       out.push(path);
       return;
     }
 
     const properties = s.properties as Record<string, any> | undefined;
     if (properties) {
-      for (const [key, child] of Object.entries(properties)) walk(child, [...path, key], here);
+      for (const [key, child] of Object.entries(properties)) {
+        walk(child, [...path, key], document, here);
+      }
     }
     // A map whose VALUES are secrets — `additionalProperties: {x-telo-sensitive}`
     // — is the shape a headers or query bag takes, and it carries no property
@@ -400,17 +424,17 @@ export function sensitivePaths(
     for (const key of ["additionalProperties", "patternProperties"] as const) {
       const node = s[key];
       if (!node || typeof node !== "object") continue;
-      if (key === "additionalProperties") walk(node, [...path, "{}"], here);
-      else for (const child of Object.values(node)) walk(child, [...path, "{}"], here);
+      if (key === "additionalProperties") walk(node, [...path, "{}"], document, here);
+      else for (const child of Object.values(node)) walk(child, [...path, "{}"], document, here);
     }
     for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
       const list = s[branch];
-      if (Array.isArray(list)) for (const child of list) walk(child, path, here);
+      if (Array.isArray(list)) for (const child of list) walk(child, path, document, here);
     }
-    if (s.items) walk(s.items, [...path, "[]"], here);
+    if (s.items) walk(s.items, [...path, "[]"], document, here);
   };
 
-  walk(schema, [], []);
+  walk(schema, [], schema, []);
   return out;
 }
 

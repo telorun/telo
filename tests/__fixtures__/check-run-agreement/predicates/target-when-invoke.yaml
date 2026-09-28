@@ -1,0 +1,21 @@
+# An inline invoke target's `when` that produces a string, not a boolean.
+kind: Telo.Application
+metadata:
+  name: TargetWhenInvoke
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  flag:
+    env: FLAG
+    type: string
+    default: "false"
+targets:
+  - invoke: !ref noop
+    when: !cel "variables.flag"
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: done
+    value: true

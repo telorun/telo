@@ -121,7 +121,7 @@ function typeCapableNames(allManifests: Record<string, any>[]): Set<string> {
   return names;
 }
 
-function isTypeKind(kind: unknown, allManifests: Record<string, any>[]): boolean {
+export function isTypeKind(kind: unknown, allManifests: Record<string, any>[]): boolean {
   if (typeof kind !== "string") return false;
   const suffix = kind.slice(kind.lastIndexOf(".") + 1);
   return typeCapableNames(allManifests).has(suffix);

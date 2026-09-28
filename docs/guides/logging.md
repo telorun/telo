@@ -75,6 +75,25 @@ logging:
 
 `Telo.ConsoleSink` and `Telo.FileSink` are kernel built-ins — no import needed.
 
+To attach a sink only under a condition, write the entry as `{ sink, when }`. The
+condition is resolved once at startup, with `variables`, `secrets` and `ports`
+in scope; `false` leaves the sink unattached:
+
+```yaml
+logging:
+  sinks:
+    - kind: Telo.ConsoleSink
+    - sink:
+        kind: Telo.FileSink
+        destination: /var/log/my-app-audit.jsonl
+      when: !cel "variables.audit"
+```
+
+Only the sinks the list names receive records. A sink declared anywhere else — on
+its own at the top level, or inside an imported library — receives nothing, and
+`telo check` warns `SINK_UNATTACHED` at it. When no listed sink is attached, the
+runtime falls back to the single console sink, as if `sinks:` were omitted.
+
 A sink's `level` filters at fan-out, after the record exists. The level that
 decides whether a record is *created* is the most verbose level across all
 enabled sinks, so "everything to the audit file, warnings only to the console"

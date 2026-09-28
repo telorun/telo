@@ -605,6 +605,27 @@ describe("POST /v1/apps/:name/sessions (predefined applications)", () => {
     }
   });
 
+  it("hands the container the token it reports on the app's endpoint", async () => {
+    vi.stubEnv("RUNNER_APPS", '{"tool":{"image":"acme/tool:1","tokenEnv":"TOOL_TOKEN"}}');
+    const h = await buildHarness();
+    try {
+      const res = await h.app.inject({
+        method: "POST",
+        url: "/v1/apps/tool/sessions",
+        payload: { ports: [{ port: 4444, protocol: "tcp" }] },
+      });
+      const { sessionId } = res.json() as { sessionId: string };
+      await waitFor(() => h.registry.get(sessionId)?.status.kind === "running", "running");
+      const status = h.registry.get(sessionId)!.status;
+      if (status.kind !== "running") throw new Error("expected running status");
+      const token = status.endpoints![0]!.token;
+      expect(token).toMatch(/^[a-z2-7]{32}$/);
+      expect(h.docker._lastCreateOpts!.Env).toContain(`TOOL_TOKEN=${token}`);
+    } finally {
+      await teardownHarness(h);
+    }
+  });
+
   it("keeps bundle + config strictly required on POST /v1/sessions", async () => {
     const h = await buildHarness();
     try {

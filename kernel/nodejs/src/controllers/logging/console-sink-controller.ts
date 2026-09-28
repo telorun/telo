@@ -29,28 +29,8 @@ export async function create(
     stderr: ctx.stderr,
   });
 
-  // Attaching is the effect, and detaching-and-closing is its inverse — as one
-  // pair, performed HERE rather than returned from `init()`, because a sink must
-  // be receiving records from the moment it is constructed: everything logged
-  // while the rest of the graph creates and initializes would otherwise reach no
-  // destination. Sinks are pinned to unwind after every other resource, so
-  // anything logged during its own shutdown still reaches a live sink.
-  await ctx
-    .effect("log sink", async () => {
-      ctx.logging.attach(sink);
-      return {
-        result: sink,
-        inverse: async () => {
-          await sink.flush();
-          ctx.logging.detach(sink);
-          await sink.close();
-        },
-      };
-    })
-    .perform();
-
-  return {
-    sink,
-    teardownPriority: TEARDOWN_LAST,
-  } as unknown as ResourceInstance;
+  // The instance IS the sink: the kernel attaches it when the root Application's
+  // `logging.sinks` lists it, and unwinds it after every other resource so
+  // anything logged during their shutdown still reaches it.
+  return Object.assign(sink, { teardownPriority: TEARDOWN_LAST }) as unknown as ResourceInstance;
 }

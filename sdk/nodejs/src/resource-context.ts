@@ -444,11 +444,10 @@ export interface ResourceContext extends ControllerContext {
    */
   readonly log: Logger;
   /**
-   * Sink attach/detach and drop accounting — the surface a `Telo.Sink`
-   * controller needs and nothing else. §10.2 keeps the sink set open to the
-   * ecosystem, so a third-party sink module reaches the pipeline through this
-   * rather than through a kernel-internal import. Ordinary controllers use
-   * {@link log}.
+   * Level resolution and drop accounting — what a `Telo.Sink` controller needs
+   * and nothing else. A sink never attaches itself: the kernel attaches the
+   * instances the root Application's `logging.sinks` / `tracing.sinks` list.
+   * Ordinary controllers use {@link log}.
    */
   readonly logging: LoggingHost;
   /**

@@ -5,7 +5,8 @@ metadata:
   description: |
     The parts Ai.AgentStream emits, collected whole: a two-call tool loop closes
     each call with a step-finish carrying that call's usage and ends with one
-    finish carrying their sum; provider state is forwarded in order, replayed to
+    finish carrying their sum, and a tool-result carries the tool's own output
+    beside the mapped content; provider state is forwarded in order, replayed to
     the next call, and the run's providerState input reaches the first call.
 imports:
   Ai: ../
@@ -72,8 +73,14 @@ steps:
         - type: step-finish
           usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
           finishReason: tool-calls
+        # `content` is what the tool's `result:` mapping told the model; `output`
+        # is what the tool itself returned.
         - type: tool-result
-          toolResult: { toolCallId: echo-call-1, name: multiply, content: "42" }
+          toolResult:
+            toolCallId: echo-call-1
+            name: multiply
+            content: "42"
+            output: { product: 42 }
         - { type: text-delta, delta: "4" }
         - { type: text-delta, delta: "2" }
         - type: step-finish
