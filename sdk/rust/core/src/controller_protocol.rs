@@ -17,13 +17,13 @@ mod tests {
 
     use crate::typed_frame::{decode_typed_frame, encode_typed_frame, CelValue};
 
-    const FRAMING: &str = include_str!("../../controller-protocol/vectors/framing.json");
-    const MESSAGES: &str = include_str!("../../controller-protocol/vectors/messages.json");
-    const SEQUENCES: &str = include_str!("../../controller-protocol/vectors/sequences.json");
+    const FRAMING: &str = include_str!("../../../controller-protocol/vectors/framing.json");
+    const MESSAGES: &str = include_str!("../../../controller-protocol/vectors/messages.json");
+    const SEQUENCES: &str = include_str!("../../../controller-protocol/vectors/sequences.json");
     const CARRIER_EQUIVALENCE: &str =
-        include_str!("../../controller-protocol/vectors/carrier-equivalence.json");
+        include_str!("../../../controller-protocol/vectors/carrier-equivalence.json");
 
-    const MESSAGE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../controller-protocol/messages");
+    const MESSAGE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../controller-protocol/messages");
 
     // -------------------------------------------------------------- framing
     // §3.1, §3.3. Nothing here is `pub`.

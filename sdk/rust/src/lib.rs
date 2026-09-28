@@ -30,34 +30,18 @@
 //! from the outside is only possible as a dependency feature, since
 //! `--no-default-features` on the build would apply to the controller crate
 //! rather than to this dependency.
+//!
+//! Everything but the backends and the bridge macros lives in
+//! `telorun-sdk-core` (`sdk/rust/core`) — the `sdk` package's value domain,
+//! split out as a Rust packaging boundary so a runtime can hold it without a
+//! backend — and is re-exported here unchanged, at the same paths. This root,
+//! the bridge macros and `backend/*` have no Node twin: a Node controller runs
+//! in the kernel's own process and needs no FFI backend.
 
-pub use serde_json::Value;
+pub use telorun_sdk_core::*;
 pub use telorun_sdk_macros::{controller, function};
 
 pub mod backend;
-
-mod cel_value_identity;
-mod controller_protocol;
-mod error;
-pub mod function_controller;
-mod invoke_context;
-pub mod logging;
-pub mod plain_encoding;
-mod traits;
-pub mod typed_frame;
-pub mod value_type;
-
-pub use cel_value_identity::{Bytes, Duration, Timestamp, Uint64};
-pub use function_controller::{Function, FunctionContext};
-
-pub use error::ControllerError;
-pub use logging::{
-    format_span_counter, format_span_id, format_trace_id, salt_span_id, severity, severity_floor,
-    severity_text, ErrorValue, LogOptions, LogRecord, LogSink, Logger, ResourceRef, SeverityNumber,
-    ThresholdCache,
-};
-pub use invoke_context::{CancellationToken, InvokeContext};
-pub use traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 
 // Re-exports used by `#[controller]`-generated code. Stable paths so
 // downstream controllers don't need a direct napi-rs or ABI dep.

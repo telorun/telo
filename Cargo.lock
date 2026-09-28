@@ -1237,10 +1237,19 @@ dependencies = [
  "libloading",
  "napi",
  "napi-derive",
- "serde",
  "serde_json",
  "telorun-abi",
+ "telorun-sdk-core",
  "telorun-sdk-macros",
+]
+
+[[package]]
+name = "telorun-sdk-core"
+version = "0.104.0"
+dependencies = [
+ "jsonschema",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

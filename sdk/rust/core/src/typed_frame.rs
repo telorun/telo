@@ -589,7 +589,7 @@ mod tests {
     use super::*;
     use serde_json::Value as Json;
 
-    const VECTORS: &str = include_str!("../../../kernel/specs/durable-execution-typed-frame-vectors.json");
+    const VECTORS: &str = include_str!("../../../../kernel/specs/durable-execution-typed-frame-vectors.json");
 
     /// A value in the notation §6.6 defines.
     fn notation(node: &Json) -> CelValue {

@@ -125,14 +125,14 @@ fn cel_types_beyond_base(base: &str) -> &'static [&'static str] {
 // the Node half generates its barrel from the same directory listing, and a file
 // missing from either is a type that is simply not in the vocabulary.
 const ENTRY_FILES: &[(&str, &str)] = &[
-    ("telo-bytes.json", include_str!("../../value-types/telo-bytes.json")),
-    ("telo-duration.json", include_str!("../../value-types/telo-duration.json")),
-    ("telo-host-path.json", include_str!("../../value-types/telo-host-path.json")),
-    ("telo-stream.json", include_str!("../../value-types/telo-stream.json")),
-    ("telo-tcp-port.json", include_str!("../../value-types/telo-tcp-port.json")),
-    ("telo-timestamp.json", include_str!("../../value-types/telo-timestamp.json")),
-    ("telo-udp-port.json", include_str!("../../value-types/telo-udp-port.json")),
-    ("telo-uint64.json", include_str!("../../value-types/telo-uint64.json")),
+    ("telo-bytes.json", include_str!("../../../value-types/telo-bytes.json")),
+    ("telo-duration.json", include_str!("../../../value-types/telo-duration.json")),
+    ("telo-host-path.json", include_str!("../../../value-types/telo-host-path.json")),
+    ("telo-stream.json", include_str!("../../../value-types/telo-stream.json")),
+    ("telo-tcp-port.json", include_str!("../../../value-types/telo-tcp-port.json")),
+    ("telo-timestamp.json", include_str!("../../../value-types/telo-timestamp.json")),
+    ("telo-udp-port.json", include_str!("../../../value-types/telo-udp-port.json")),
+    ("telo-uint64.json", include_str!("../../../value-types/telo-uint64.json")),
 ];
 
 /// The closed key vocabulary an entry is written in. Mirrors the Node reader's
