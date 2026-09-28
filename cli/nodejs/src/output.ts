@@ -240,6 +240,20 @@ function serialize(payload: unknown): string {
   return `${writePlainJson(payload, 2)}\n`;
 }
 
+/** A reader that closed its end (`telo … | head`) has taken everything it
+ *  wants, and the next write raises `EPIPE`. That ends the pipeline rather than
+ *  failing the command, so the process exits — with the code the command has
+ *  already set, else 0. Any other stream error is rethrown. */
+export function exitOnClosedPipe(
+  stream: NodeJS.EventEmitter,
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  stream.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") throw error;
+    exit(typeof process.exitCode === "number" ? process.exitCode : 0);
+  });
+}
+
 /** Configured once from argv by a yargs middleware, before any handler runs, so
  *  call sites far from the handler reach the same decision without threading it
  *  through every signature. Tests construct an `Output` directly instead. */

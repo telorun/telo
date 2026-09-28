@@ -330,7 +330,9 @@ export function Editor() {
     const live = coResidentAgent();
     const workspace = live ? sessionWorkspace(live.session) : null;
     setCoResidentAgent(
-      live && workspace ? { runId: live.runId, baseUrl: live.baseUrl, workspace } : null,
+      live && workspace
+        ? { runId: live.runId, baseUrl: live.baseUrl, token: live.token, workspace }
+        : null,
     );
   }, [coResidentAgent, setCoResidentAgent]);
 

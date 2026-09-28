@@ -47,7 +47,9 @@ imports:
     variables:
       workspaceDir: !cel "variables.workspaceDir"
       stateDir: !cel "variables.stateDir"
-      # No `model:` — inherited from the library, so this exercises what ships.
+      # No `model:` — inherited from the library. `low` effort: the case pins
+      # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
+      reasoningEffort: low
       # Resolved from the agent's cwd, which IS the workspace directory above —
       # two levels below the repo root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]

@@ -71,6 +71,35 @@ describe("MessageBlock", () => {
     expect(screen.queryByRole("button", { name: /Alpha/ })).toBeNull();
   });
 
+  it("shows a write whose check failed as an error listing its diagnostics", () => {
+    renderTurn(
+      [
+        {
+          kind: "tool",
+          tool: {
+            toolCallId: "w",
+            name: "write_file",
+            state: "done",
+            output: "wrote app/telo.yaml\napp/telo.yaml:3:5 SCHEMA_VIOLATION bad field",
+            checkExitCode: 1,
+            diagnostics: [
+              { file: "app/telo.yaml", line: 3, column: 5, severity: "error", code: "SCHEMA_VIOLATION", message: "bad field" },
+              { file: "app/telo.yaml", line: 9, column: 1, severity: "error", message: "no code" },
+            ],
+          },
+        },
+      ],
+      { completed: true },
+    );
+
+    expect(screen.getByText("Error", { selector: "h4" })).toBeTruthy();
+    expect(screen.getByText("telo check exited with 1")).toBeTruthy();
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "app/telo.yaml:3:5 SCHEMA_VIOLATION bad field",
+      "app/telo.yaml:9:1 no code",
+    ]);
+  });
+
   it("reads a failed turn's error by its code", () => {
     const shown = (errorCode: string) => {
       const { container } = renderTurn([], { error: "raw message", errorCode });

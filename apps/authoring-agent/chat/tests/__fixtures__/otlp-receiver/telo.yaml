@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: OtlpReceiver
+  version: 1.0.0
+  description: |
+    Test fixture: an in-test OpenTelemetry collector. It accepts OTLP/JSON on
+    POST /v1/logs and POST /v1/traces, keeps every body, and answers GET /logs
+    with every log record received and GET /spans with every span received, in
+    arrival order, so a test reads what the agent exported.
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+ports:
+  http:
+    env: PORT
+    default: 18510
+targets:
+  - !ref schema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+migrations:
+  create_payloads:
+    statement: "CREATE TABLE payloads (id INTEGER PRIMARY KEY AUTOINCREMENT, signal TEXT NOT NULL, body TEXT NOT NULL)"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /v1/logs
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO payloads (signal, body) VALUES ('logs', ?)"
+      bindings: [ !cel "json(request.body)" ]
+    returns:
+      - status: 200
+        content: { application/json: { body: {} } }
+  - request:
+      path: /v1/traces
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO payloads (signal, body) VALUES ('traces', ?)"
+      bindings: [ !cel "json(request.body)" ]
+    returns:
+      - status: 200
+        content: { application/json: { body: {} } }
+  - request:
+      path: /logs
+      method: GET
+    handler: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT body FROM payloads WHERE signal = 'logs' ORDER BY id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              records: !cel >-
+                flatten(flatten(result.rows.map(r, parseJson(r.body).resourceLogs
+                  .map(rl, flatten(rl.scopeLogs.map(sl, sl.logRecords))))))
+  - request:
+      path: /spans
+      method: GET
+    handler: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT body FROM payloads WHERE signal = 'traces' ORDER BY id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              spans: !cel >-
+                flatten(flatten(result.rows.map(r, parseJson(r.body).resourceSpans
+                  .map(rs, flatten(rs.scopeSpans.map(ss, ss.spans))))))
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api

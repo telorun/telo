@@ -1,5 +1,5 @@
 import { LOCAL_KEYS } from "../storage-keys";
-import type { RunStatus } from "./types";
+import type { RunnerEndpoint, RunStatus } from "./types";
 
 const KEY = LOCAL_KEYS.runIndex;
 
@@ -15,7 +15,9 @@ export interface PersistedRunEntry {
   hasTerminal: boolean;
   startedAt: number;
   /** Last-known status, shown in the list until the session is opened and its
-   *  status reconciled against the runner. */
+   *  status reconciled against the runner. Persisted WITHOUT the runner-minted
+   *  endpoint tokens: a token is a live credential, and the one a re-attached
+   *  session needs arrives again on the runner's status stream. */
   status: RunStatus;
   /** The adapter config used to start the run — the address (e.g. runner
    *  `baseUrl` / docker host) needed to re-attach.
@@ -72,10 +74,26 @@ export function loadRunIndex(): PersistedRunEntry[] {
   }
 }
 
+function withoutToken(endpoint: RunnerEndpoint): RunnerEndpoint {
+  const { token, ...rest } = endpoint;
+  return rest;
+}
+
+/** The status as it may be stored: every endpoint's `token` removed. */
+function persistableStatus(status: RunStatus): RunStatus {
+  if (status.kind !== "running") return status;
+  return {
+    ...status,
+    ...(status.endpoints ? { endpoints: status.endpoints.map(withoutToken) } : {}),
+    ...(status.agent ? { agent: withoutToken(status.agent) } : {}),
+  };
+}
+
 export function saveRunIndex(entries: PersistedRunEntry[]): void {
   if (typeof window === "undefined") return;
+  const stored = entries.map((entry) => ({ ...entry, status: persistableStatus(entry.status) }));
   try {
-    window.localStorage.setItem(KEY, JSON.stringify(entries));
+    window.localStorage.setItem(KEY, JSON.stringify(stored));
   } catch {
     // localStorage may be full or unavailable — resume simply won't work next
     // reload, which is the same as the pre-feature behaviour.

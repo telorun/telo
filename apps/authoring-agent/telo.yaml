@@ -15,6 +15,17 @@ metadata:
     GET /conversations/{id}/records pages a conversation's records. Conversations
     idle for RETENTION_DAYS are deleted whole, at boot and hourly. Requires
     OPENAI_API_KEY (any value when MODEL_ENDPOINT names a keyless endpoint).
+
+    Every route of the `api` router passes one guard: an Origin outside
+    ALLOWED_ORIGINS is refused 403, and when AGENT_TOKEN is set a request without
+    `Authorization: Bearer <token>` is refused 401. GET /health and GET /ready
+    are unguarded; GET /capabilities reports the agent's identity, prompt id and
+    auth mode. OTLP_ENDPOINT exports traces and logs to a collector; unset,
+    spans are written as log records.
+# `tracing:`, `x-telo-span-attribute` and `{ sink, when }` sink entries are read
+# from 0.104.0 on; an older runtime rejects this file.
+requires:
+  telo: ">=0.104.0"
 imports:
   Chat:
     source: ./chat
@@ -29,9 +40,13 @@ imports:
       model: !cel "variables.model"
       modelEndpoint: !cel "variables.modelEndpoint"
       retentionDays: !cel "variables.retentionDays"
-  Http: oci://ghcr.io/telorun/http-server@0.33.0#sha256-KuqDkp68S_hOl7nZ4WJLOyNAn2M3kmPSMwEaeBJbgSw
+      teloProgram: !cel "variables.teloProgram"
+  Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
   Scheduler: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Log: oci://ghcr.io/telorun/log@0.2.0#sha256-tw2JEt1nLGFT0Y5eynRc-iTPp1aUQ-PE6LZIjQmNYNY
+  Otlp: oci://ghcr.io/telorun/otlp@0.6.0#sha256-TnSUhRDbEfwX1voYnvpZl9Tjvrh4TB-H34dG9tv-zZQ
 ports:
   http:
     env: PORT
@@ -106,10 +121,65 @@ variables:
     env: ALLOW_MANIFEST_RUNS
     type: boolean
     default: false
+  # How the agent invokes the `telo` CLI — the program and any leading
+  # arguments, as a JSON array — for its check loop and its `telo` tool alike.
+  # The image installs `telo`; a checkout points it at its own CLI.
+  teloProgram:
+    env: TELO_PROGRAM
+    type: array
+    items: { type: string }
+    default: [ telo ]
+  # Origins a browser may call the guarded routes from: comma-separated, `*`
+  # for any. An Origin outside the list is refused 403 — CORS alone only stops a
+  # browser from READING the answer, not the request from running. A request
+  # with no Origin (a CLI, a server) passes to the token check. `null` (a
+  # sandboxed or file page) is refused unless listed, even under `*`.
+  allowedOrigins:
+    env: ALLOWED_ORIGINS
+    type: string
+    default: "*"
+  # An OpenTelemetry collector's base URL. Set, traces go to `<url>/v1/traces`
+  # and log records to `<url>/v1/logs`; empty, every finished span is written
+  # as a log record to the console instead.
+  otlpEndpoint:
+    env: OTLP_ENDPOINT
+    type: string
+    default: ""
 secrets:
   openaiApiKey:
     env: OPENAI_API_KEY
     type: string
+  # The bearer token every guarded route requires. Empty leaves them open, and
+  # the agent says so in one warning at boot. A runner that mints a per-session
+  # token injects it here (its catalog entry's `tokenEnv: AGENT_TOKEN`).
+  agentToken:
+    env: AGENT_TOKEN
+    type: string
+    default: ""
+logging:
+  sinks:
+    - kind: Telo.ConsoleSink
+    - sink:
+        kind: Otlp.Sink
+        endpoint: !interpolate "${{ variables.otlpEndpoint }}/v1/logs"
+        resourceAttributes:
+          service.name: authoring-agent
+          service.version: !cel "module.version"
+      when: !cel "variables.otlpEndpoint != ''"
+tracing:
+  sinks:
+    - sink:
+        kind: Otlp.TraceSink
+        endpoint: !interpolate "${{ variables.otlpEndpoint }}/v1/traces"
+        resourceAttributes:
+          service.name: authoring-agent
+          service.version: !cel "module.version"
+      when: !cel "variables.otlpEndpoint != ''"
+    # `debug`: a record per span would bury the agent's own output at `info`.
+    - sink:
+        kind: Telo.LogTraceSink
+        level: debug
+      when: !cel "variables.otlpEndpoint == ''"
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
@@ -121,6 +191,22 @@ targets:
     inputs:
       idleBefore: !cel "now() - duration(string(int(variables.retentionDays) * 24) + 'h')"
   - !ref retention
+  # Said once, at boot, where an operator reads it: with no token every route
+  # answers anyone who reaches the port. Never carries a secret.
+  - name: exposure
+    when: !cel "secrets.agentToken == ''"
+    invoke: !ref Log.emit
+    inputs:
+      level: warn
+      message: !cel >-
+        'AGENT_TOKEN is not set: every agent route answers without authentication — '
+          + 'chat, conversations, workspace read and write'
+          + (variables.allowManifestRuns ? ', and running manifests' : '')
+          + '. Set AGENT_TOKEN to require a bearer token.'
+      attributes:
+        port: !cel "ports.http"
+        allowedOrigins: !cel "variables.allowedOrigins"
+        manifestRuns: !cel "variables.allowManifestRuns"
   - !ref server
 ---
 # Retention hourly: every conversation idle for `RETENTION_DAYS` is deleted.
@@ -502,7 +588,9 @@ routes:
             delete:
               type: array
               items: { type: string }
-    handler: !ref Chat.treeSync
+    # Every path is judged before anything is applied: one outside the
+    # workspace refuses the whole change set.
+    handler: !ref Chat.syncWorkspace
     inputs:
       write: !cel "has(request.body.write) ? request.body.write : []"
       delete: !cel "has(request.body.delete) ? request.body.delete : []"
@@ -514,6 +602,13 @@ routes:
               written: !cel "result.written"
               deleted: !cel "result.deleted"
     catches:
+      - when: !cel "error.code == 'ERR_PATH_OUTSIDE_WORKSPACE'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_PATH_OUTSIDE_WORKSPACE
       - status: 500
         content:
           application/json:
@@ -528,7 +623,7 @@ routes:
           required: [path]
           properties:
             path: { type: string }
-    handler: !ref Chat.readFile
+    handler: !ref Chat.readWorkspaceFile
     inputs:
       path: !cel "request.query.path"
     returns:
@@ -539,11 +634,69 @@ routes:
               content: !cel "result.content"
               size: !cel "result.size"
     catches:
+      - when: !cel "error.code == 'ERR_PATH_OUTSIDE_WORKSPACE'"
+        status: 400
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_PATH_OUTSIDE_WORKSPACE
       - status: 500
         content:
           application/json:
             body:
               error: !cel "error.message"
+  # Who this agent is: the application's name and version, the prompt it runs
+  # with (the SHA-256 of its primer) and whether it requires a token. Guarded
+  # like every `api` route.
+  - request:
+      path: /capabilities
+      method: GET
+    handler: !ref Chat.promptIdentity
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              agent:
+                name: !cel "module.name"
+                version: !cel "module.version"
+              prompt:
+                id: !cel "result.id"
+              auth: !cel "secrets.agentToken == '' ? 'none' : 'bearer'"
+---
+# Liveness and readiness, for an orchestrator's probes: never guarded, since a
+# probe carries no credential.
+kind: Http.Api
+metadata: { name: probes }
+routes:
+  - request:
+      path: /health
+      method: GET
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              status: up
+  - request:
+      path: /ready
+      method: GET
+    handler: !ref Chat.readiness
+    returns:
+      - status: 200
+        when: !cel "size(result.reasons) == 0"
+        content:
+          application/json:
+            body:
+              ready: true
+              reasons: []
+      - status: 503
+        content:
+          application/json:
+            body:
+              ready: false
+              reasons: !cel "result.reasons"
 ---
 kind: Http.Server
 metadata: { name: server }
@@ -555,10 +708,79 @@ trustProxy: 1
 # Studio is a browser/desktop client on a different origin; allow it to call
 # the chat + workspace routes cross-origin. Tighten `origin` to the deployed
 # studio origin (`https://studio.telo.run`) in production.
+#
+# The origin allowlist itself is the guard's: CORS only decides whether a
+# browser may READ an answer, so it stays open and the guard refuses.
 cors:
   origin: "*"
   methods: [GET, POST, OPTIONS]
-  allowedHeaders: [content-type, idempotency-key, last-event-id]
+  allowedHeaders: [content-type, idempotency-key, last-event-id, authorization]
 mounts:
   - path: /
     mount: !ref api
+    guard:
+      invoke:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [origin, authorization]
+            properties:
+              # Empty when the request carries no such header.
+              origin: { type: string }
+              authorization: { type: string, x-telo-sensitive: true }
+        steps:
+          - name: allowed
+            value: !cel "variables.allowedOrigins.split(',').map(o, o.trim()).filter(o, o != '')"
+          - name: origin
+            if: !cel >-
+              inputs.origin != ''
+                && !(inputs.origin in steps.allowed.result)
+                && !(inputs.origin != 'null' && '*' in steps.allowed.result)
+            then:
+              - name: refuseOrigin
+                throw:
+                  code: ERR_ORIGIN_NOT_ALLOWED
+                  message: !cel "'Origin ' + inputs.origin + ' is not allowed to call this agent.'"
+          # Compared as HMACs keyed by the token, so the comparison's timing
+          # says nothing about how much of a guess was right. The scheme is
+          # case-insensitive, as RFC 9110 has it.
+          - name: token
+            if: !cel >-
+              secrets.agentToken != ''
+                && hmac('sha256', secrets.agentToken,
+                     inputs.authorization.lowerAscii().startsWith('bearer ')
+                       ? 'Bearer ' + inputs.authorization.substring(7) : inputs.authorization)
+                   != hmac('sha256', secrets.agentToken, 'Bearer ' + secrets.agentToken)
+            then:
+              - name: refuseToken
+                throw:
+                  code: ERR_UNAUTHENTICATED
+                  message: "This agent requires a bearer token: send Authorization: Bearer <token>."
+      inputs:
+        origin: !cel "'origin' in request.headers ? string(request.headers['origin']) : ''"
+        authorization: !cel "'authorization' in request.headers ? string(request.headers['authorization']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_ORIGIN_NOT_ALLOWED'"
+          status: 403
+          content:
+            application/json:
+              body:
+                error: !cel "error.message"
+                code: ERR_ORIGIN_NOT_ALLOWED
+        - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+          status: 401
+          headers:
+            WWW-Authenticate: Bearer
+          content:
+            application/json:
+              body:
+                error: !cel "error.message"
+                code: ERR_UNAUTHENTICATED
+  # Mount-level `logging: { level: warn }` is deliberately absent: http-server
+  # matches a mount's log floor by URL prefix, and a router mounted at the root
+  # would quieten every route of the server, not only its own.
+  - path: /
+    mount: !ref probes

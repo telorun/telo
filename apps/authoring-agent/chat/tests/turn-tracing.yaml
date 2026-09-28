@@ -1,0 +1,217 @@
+kind: Telo.Application
+metadata:
+  name: ChatTurnTracing
+  version: 1.0.0
+  description: |
+    The agent's traces, offline. With OTLP_ENDPOINT set, one build turn — the
+    provider stub asks for one write whose check fails — reaches an in-test
+    OTLP/JSON collector as exactly one trace, rooted at the detached turn body
+    and carrying the turn and conversation ids: the agent run, each model call
+    and the tool call in order, the write's span with its non-zero
+    `telo.check.exit_code`, the turn's token usage on the span that settles it,
+    and no prompt or file text anywhere. With OTLP_ENDPOINT empty, finished
+    spans are `debug` log records, so the agent boots to its startup warning
+    at the default level without writing one.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_TURN_TRACING_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-tracing
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Shell.LocalHost
+metadata: { name: repo }
+---
+# Every exported span as { name, trace, span, parent, attrs }, attributes
+# flattened to their string form — once the turn's own spans are in.
+kind: Run.Sequence
+metadata: { name: exported }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18512/spans }
+  - name: spans
+    value: !cel >-
+      steps.get.result.body.spans.map(s, {
+        'name': s.name,
+        'trace': s.traceId,
+        'span': s.spanId,
+        'parent': has(s.parentSpanId) ? s.parentSpanId : '',
+        'start': s.startTimeUnixNano,
+        'attrs': s.attributes.map(a, a.key + '=' + (has(a.value.stringValue) ? a.value.stringValue
+          : has(a.value.intValue) ? a.value.intValue : has(a.value.boolValue) ? string(a.value.boolValue)
+          : json(a.value)))
+      })
+  # The turn is over once the span that settles it is exported.
+  - name: notYet
+    if: !cel >-
+      !steps.spans.result.exists(s, s.attrs.exists(a, a.startsWith('gen_ai.usage.output_tokens='))
+        && steps.spans.result.exists(t, t.trace == s.trace && t.attrs.exists(a, a == 'telo.agent.turn.id=' + inputs.turnId)))
+    then:
+      - name: waiting
+        throw: { code: ERR_TEST_NOT_EXPORTED_YET, message: The turn's spans have not all been exported yet. }
+outputs:
+  spans: !cel "steps.spans.result"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: collector }
+    source: ./__fixtures__/otlp-receiver/telo.yaml
+    ports: { http: 18512 }
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18513 }
+targets: [ !ref collector, !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: traced
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18514 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+            modelEndpoint: http://127.0.0.1:18513/v1
+            otlpEndpoint: http://127.0.0.1:18512
+            # The repo's own CLI, relative to the workspace the check runs in.
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: start
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18514/chat
+            method: POST
+            body:
+              conversationId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+              message: !cel >-
+                'build it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments':
+                  {'path': 'apps/demo/telo.yaml', 'content': 'kind: Telo.Library\nmetadata:\n  name: 7demo\n'}}]))
+        - name: spans
+          retry: { attempts: 80, initialDelay: 250, factor: 1, jitter: none }
+          invoke: !ref exported
+          inputs: { turnId: !cel "steps.start.result.body.turnId" }
+      outputs:
+        turnId: !cel "steps.start.result.body.turnId"
+        spans: !cel "steps.spans.result.spans"
+  # Standalone, with no endpoint: the boot's own spans are written to stderr as
+  # log records. The process is stopped as soon as one is seen.
+  - name: console
+    try:
+      - name: launch
+        invoke: { kind: Shell.CommandStream, host: !ref repo }
+        inputs:
+          args: [ bun, ./cli/nodejs/bin/telo.ts, run, apps/authoring-agent/telo.yaml ]
+          timeoutMs: 60000
+          env:
+            PORT: "18515"
+            WORKSPACE_DIR: !cel "string(variables.scratch.joinPath('console'))"
+            MODEL_ENDPOINT: http://127.0.0.1:18513/v1
+            OPENAI_API_KEY: stub-key
+            OTLP_ENDPOINT: ""
+            AGENT_TOKEN: ""
+      - name: scan
+        invoke:
+          kind: Run.Iteration
+          collection: !cel "inputs.records"
+          steps:
+            - name: spanRecord
+              if: !cel "item.type == 'stderr' && item.chunk.contains('\"event_name\":\"telo.span\"')"
+              then:
+                - name: seen
+                  throw: { code: ERR_TEST_SPAN_RECORD_SEEN, message: A span was written as a log record. }
+            - name: booted
+              if: !cel "item.type == 'stderr' && item.chunk.contains('AGENT_TOKEN is not set')"
+              then:
+                - name: warned
+                  throw: { code: ERR_TEST_BOOTED_WITHOUT_SPANS, message: The startup warning arrived with no span record before it. }
+        inputs:
+          records: !cel "steps.launch.result.output"
+    catch:
+      - name: consoleOutcome
+        value: !cel "error.code"
+  # `genAi` lists the agent's spans in the order they started — start times are
+  # equal-width decimal strings, so they sort as text.
+  - name: facts
+    value: !cel >-
+      cel.bind(spans, steps.traced.result.spans,
+      cel.bind(root, spans.filter(s, s.attrs.exists(a, a == 'telo.agent.turn.id=' + steps.traced.result.turnId))[0],
+      cel.bind(trace, spans.filter(s, s.trace == root.trace), {
+        'turnTraces': distinct(spans.filter(s, s.name.startsWith('invoke_agent ') || s.name.startsWith('chat ')
+            || s.name.startsWith('execute_tool ')).map(s, s.trace)),
+        'rootTrace': root.trace,
+        'rootIsRoot': root.parent == '',
+        'rootConversation': root.attrs.exists(a, a == 'gen_ai.conversation.id=5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b'),
+        'genAi': sort(trace.filter(s, s.name.startsWith('invoke_agent ') || s.name.startsWith('chat ')
+            || s.name.startsWith('execute_tool ')).map(s, s.start + '|' + s.name)).map(k, k.substring(k.indexOf('|') + 1)),
+        'writeExit': trace.filter(s, s.attrs.exists(a, a.startsWith('telo.check.exit_code='))).map(s,
+            s.attrs.filter(a, a.startsWith('telo.check.exit_code='))[0]),
+        'usage': trace.filter(s, s.attrs.exists(a, a.startsWith('gen_ai.usage.input_tokens=')) && !s.name.startsWith('invoke_agent ') && !s.name.startsWith('chat ')).map(s,
+            s.attrs.filter(a, a.startsWith('gen_ai.usage.'))),
+        'textLeaked': spans.exists(s, s.attrs.exists(a, a.contains('7demo') || a.contains('STUB_CALLS') || a.contains('Telo manifest-authoring agent')))
+      })))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        turnTraces: !cel "size(steps.facts.result.turnTraces)"
+        sameTrace: !cel "steps.facts.result.turnTraces[0] == steps.facts.result.rootTrace"
+        rootIsRoot: !cel "steps.facts.result.rootIsRoot"
+        rootConversation: !cel "steps.facts.result.rootConversation"
+        genAi: !cel "steps.facts.result.genAi"
+        writeFailed: !cel "size(steps.facts.result.writeExit) == 1 && steps.facts.result.writeExit[0] != 'telo.check.exit_code=0'"
+        usage: !cel "steps.facts.result.usage"
+        textLeaked: !cel "steps.facts.result.textLeaked"
+        console: !cel "steps.consoleOutcome.result"
+      expected:
+        turnTraces: 1
+        sameTrace: true
+        rootIsRoot: true
+        rootConversation: true
+        genAi: [ "invoke_agent author", "chat gpt-5.2", "execute_tool write_file", "chat gpt-5.2" ]
+        writeFailed: true
+        usage: [ [ gen_ai.usage.input_tokens=20, gen_ai.usage.output_tokens=10 ] ]
+        textLeaked: false
+        console: ERR_TEST_BOOTED_WITHOUT_SPANS

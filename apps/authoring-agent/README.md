@@ -13,10 +13,20 @@ same handler the HTTP routes do.
 
 ## The workspace
 
-**Everything the agent reads or writes is rooted at `WORKSPACE_DIR`.** Every
-filesystem tool and every spawned command resolves against it, so the agent
-cannot reach the rest of the container by editing a path. It defaults to
-`./workspace`.
+**Every path a tool call or a client names is rooted at `WORKSPACE_DIR`.**
+Every filesystem tool and every spawned command resolves a relative path
+against it, and every path the agent or a client supplies is judged before it
+is used: one that is absolute, holds a backslash, starts with a drive letter or
+has a `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by
+`write_file`, `edit_file`, `read_file`, `list_dir`, `delete_file`, `telo_check`
+and `run_manifest`, for every argument of the `telo` tool, and by the
+`/workspace` routes (400, nothing applied). The rule is lexical: it judges the
+text of a path argument — not where a symbolic link inside the workspace
+points, and not what a file the agent wrote goes on to reference: `telo check`
+follows a manifest's `imports:` wherever they lead and quotes what it cannot
+parse, and a manifest run under `ALLOW_MANIFEST_RUNS` reads anything the
+container can. It confines what a tool call can NAME, not what the operating
+system or the CLI then resolves. It defaults to `./workspace`.
 
 There are two deployments, and they differ only in what that directory is.
 
@@ -254,6 +264,30 @@ back into a question, never quietly replaced with a guess.
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
 | `POST /workspace` | Apply an explicit write/delete change set |
 | `GET /workspace/file?path=` | One file's contents |
+| `GET /capabilities` | `{ agent: { name, version }, prompt: { id }, auth }` — who this agent is: the application's name and version, `prompt.id` the lowercase hex SHA-256 of `chat/primer.md` (the system prompt it runs with), `auth` `none` or `bearer` |
+| `GET /health` | `200 { status: "up" }` — liveness. Unguarded |
+| `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`OPENAI_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo-agent/ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
+
+Every route but `/health` and `/ready` passes one guard, before the request
+body is read:
+
+- **Origin.** A request whose `Origin` is not in `ALLOWED_ORIGINS` is refused
+  `403 { error, code: "ERR_ORIGIN_NOT_ALLOWED" }` — CORS alone only stops a
+  browser from reading the answer, not the request from running. A request
+  with no `Origin` (a CLI, a server) goes on to the token check. `*` admits
+  every origin except `null` (a sandboxed or file page), which must be listed.
+  Narrowing it, list the Studio origins you use: `https://studio.telo.run` for
+  the web editor, and the desktop app's `tauri://localhost` (macOS, Linux),
+  `http://tauri.localhost` and `https://tauri.localhost` (Windows).
+- **Token.** When `AGENT_TOKEN` is set, a request without
+  `Authorization: Bearer <token>` (scheme case-insensitive) is refused
+  `401 { error, code: "ERR_UNAUTHENTICATED" }` with `WWW-Authenticate: Bearer`.
+  The comparison is of HMACs keyed by the token, so its timing reveals nothing
+  about a guess. Unset, every route is open, and the agent says so once at boot
+  in a `warn` record naming what is exposed.
+
+CORS preflight is answered before the guard, so a browser can ask whether it
+may send `Authorization` before it has a token.
 
 Every non-200 answer from `POST /chat` is `{ error, code, … }`, and the `code`
 is what a client branches on:
@@ -411,6 +445,7 @@ Secrets:
 | Env var | Purpose |
 | --- | --- |
 | `OPENAI_API_KEY` | Required. The model credential; any value when `MODEL_ENDPOINT` is a keyless endpoint |
+| `AGENT_TOKEN` | Default empty. The bearer token every guarded route requires; empty leaves them open (one `warn` at boot says so). A runner that mints a per-session token injects it here — its catalog entry declares `"tokenEnv": "AGENT_TOKEN"` |
 
 Variables:
 
@@ -425,17 +460,58 @@ Variables:
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
+| `ALLOWED_ORIGINS` | `*` | Comma-separated origins a browser may call the guarded routes from (see Routes) |
+| `OTLP_ENDPOINT` | empty | An OpenTelemetry collector's base URL: traces go to `<url>/v1/traces` and log records to `<url>/v1/logs`. Empty, every finished span is written as a `debug` log record instead, which the default `info` level does not print |
+| `TELO_PROGRAM` | `["telo"]` | How the agent invokes the `telo` CLI, as a JSON array — the program and any leading arguments — for its check loop and its `telo` tool alike |
 
 The library takes several more that the root does not surface as env (the
-budget window, the per-IP throttle, and the two `telo` CLI settings below);
-change them at the import in `telo.yaml`.
+budget window, the per-IP throttle, and the `telo` verb list below); change
+them at the import in `telo.yaml`.
+
+## Traces and what to count
+
+With `OTLP_ENDPOINT` set the agent exports spans; there is no separate metrics
+signal. **One turn is one trace**, rooted at the detached turn body (the span
+carrying `telo.agent.turn.id` and `gen_ai.conversation.id`), with the agent run
+(`invoke_agent author`), one `chat <model>` span per model call and one
+`execute_tool <name>` span per tool call beneath it, in call order, and the
+tool's own span under that. The span that settles a turn's budget carries
+`gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens`, and every write,
+edit and check span carries `telo.check.exit_code`. No span carries a prompt,
+a message or a file's content. Every counter and histogram is an aggregation a
+collector computes over those spans:
+
+| Measure | Aggregation |
+| --- | --- |
+| Turns started | count of turn root spans (`telo.agent.turn.id` present, no parent) |
+| Turns finished / aborted / failed | the same, grouped by `telo.span.outcome` (`ok`, `cancelled`, `failed` / `rejected`) |
+| Tool calls by name × outcome | count of `execute_tool` spans grouped by `gen_ai.tool.name` and `telo.span.outcome` (`error.type` on a failure) |
+| Check failures | count of spans with `telo.check.exit_code` ≠ 0 |
+| Tokens by conversation | sum of `gen_ai.usage.input_tokens` + `gen_ai.usage.output_tokens`, grouped by the trace root's `gen_ai.conversation.id` |
+| Turn duration | histogram of the turn root span's end − start |
+| Steps per turn | histogram of `ai.agent.steps` on the `invoke_agent` span |
+
+With `OTLP_ENDPOINT` empty the same spans are written as `debug` log records
+(`event_name: telo.span`), which the default `info` level does not print.
 
 ## What the agent is allowed to do
 
 The tools are the security boundary, and they are declared:
 
 - **File tools** (`write_file`, `edit_file`, `read_file`, `list_dir`,
-  `delete_file`) are rooted at `WORKSPACE_DIR`.
+  `delete_file`) are rooted at `WORKSPACE_DIR`, and a path outside it is
+  refused (see The workspace).
+- **A write or edit whose resulting content holds a credential is refused**
+  with `ERR_SECRET_IN_MANIFEST` before anything is written, naming each line
+  and rule — `secret-scan`'s `credentialFindings`: provider key prefixes, PEM
+  private keys and long high-entropy tokens, with integrity pins exempt. There
+  is no override; the agent is told to declare a `secrets:` entry instead. The
+  editor's own `POST /workspace` is not scanned.
+- **Every tool result is text the model reads**: a write is `wrote <path>`
+  then `check: clean` or one `file:line:col CODE message` line per
+  diagnostic; a read is the file as it is; a listing is one path per line; a
+  command is its output. The structured result still rides the recorded
+  tool-result record as `output` for clients.
 - **`telo check` runs automatically after every write and edit**, and its verdict
   comes back in the tool result — so the agent validates its own output rather
   than being asked to remember to.
@@ -482,8 +558,9 @@ must declare.
 ## Tests
 
 `test-suite-e2e.yaml` is separate from the repo suite: it drives a real model
-against the live hub and imports the standard library at pinned published
-versions, so it also fails while a change has landed here but is not yet
+against the live hub, and imports the standard library at pinned published
+versions once a release is out (by in-repo path while a change to it is being
+built), so it also fails while a change has landed here but is not yet
 released and re-pinned. Live cases skip themselves when `OPENAI_API_KEY` is
 unset.
 
@@ -498,6 +575,16 @@ passing alone would be satisfied by an agent that always does one of the two.
 `asks-about-external-data.yaml` covers the case that reads as a specification
 and is not — a report joining YouTrack to a Google Sheet names three systems and
 still says nothing about which sheet, which columns, or how the sides match.
+
+`boundary-auth.yaml`, `workspace-tools.yaml` and `turn-tracing.yaml` need no
+model either. The first pins the guard — 401 on every guarded route without the
+bearer, 403 for a foreign origin even with it, preflight, `/health`, `/ready`,
+`/capabilities` and the boot warning, read from an in-test OTLP collector
+(`chat/tests/__fixtures__/otlp-receiver`). The second scripts tool calls through
+the stub (`STUB_CALLS:`) and asserts what the model reads back: every text
+rendering, path confinement, secret refusal, and both `/workspace` routes. The
+third runs one build turn against the collector and asserts its one trace, then
+starts the agent with no endpoint and watches a span arrive as a log record.
 
 `builds-with-tests.yaml` asserts the SHAPE of a build — a feature library, a
 suite, a test beside it, the agent running that suite, and the suite passing when
@@ -521,13 +608,7 @@ model then receives; and every refusal of both routes answers its code.
 `projection-rebuild.yaml` imports the chat library and rebuilds the projection
 from the journal; `retention-sweep.yaml` imports it too and deletes an idle
 conversation whole while an active one with old turns is untouched, including
-after a sweep a crash cut short. `restart-live.yaml` is live: a restart
-mid-build ends the turn's stream with an error frame, and after a restart a
-question about the last change is answered from history rather than by
-re-reading the workspace. `abort-continue-live.yaml` is live too: an abort after
-the first write ends the stream within a second and the workspace stays still;
-a build whose agent was stopped is continued by the next agent in the same turn
-without rewriting or re-reading what it had already written.
+after a sweep a crash cut short.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

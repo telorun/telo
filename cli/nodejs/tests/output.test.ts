@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   OUTPUT_FORMATS,
+  exitOnClosedPipe,
   Output,
   type OutputFormat,
   type OutputStream,
@@ -193,5 +195,39 @@ describe("Output", () => {
       // `-o yaml` quietly print text.
       expect(() => parseOutputFormat("yaml")).toThrow(/Unsupported --output format 'yaml'/);
     });
+  });
+});
+
+describe("exitOnClosedPipe", () => {
+  const closed = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  function watched() {
+    const stream = new EventEmitter();
+    const exits: number[] = [];
+    exitOnClosedPipe(stream, (code) => exits.push(code));
+    return { stream, exits };
+  }
+
+  it("exits 0 when the reader has closed the pipe", () => {
+    const { stream, exits } = watched();
+    stream.emit("error", closed);
+    expect(exits).toEqual([0]);
+  });
+
+  it("keeps a failure the command already reported", () => {
+    const { stream, exits } = watched();
+    process.exitCode = 1;
+    stream.emit("error", closed);
+    expect(exits).toEqual([1]);
+  });
+
+  it("rethrows any other stream error", () => {
+    const { stream, exits } = watched();
+    const failure = Object.assign(new Error("write EIO"), { code: "EIO" });
+    expect(() => stream.emit("error", failure)).toThrow("write EIO");
+    expect(exits).toEqual([]);
   });
 });

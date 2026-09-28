@@ -21,7 +21,7 @@ import { searchCommand } from "./commands/search.js";
 import { upgradeCommand } from "./commands/upgrade.js";
 import { cliVersion } from "./distribution-versions.js";
 import { GLOBAL_OPTIONS } from "./global-options.js";
-import { configureOutput, parseOutputFormat } from "./output.js";
+import { configureOutput, exitOnClosedPipe, parseOutputFormat } from "./output.js";
 import { splitRunInvocation } from "./run-invocation.js";
 
 /** Every top-level command, by name — which is also how a run is told from
@@ -48,6 +48,13 @@ const invocation = splitRunInvocation(hideBin(process.argv), new Set(Object.keys
   options: { ...GLOBAL_OPTIONS, ...RUN_OPTIONS },
   optionalValueShapes: RUN_OPTIONAL_VALUE_SHAPES,
 });
+
+// Not for a run: its streams carry the application's output, and exiting there
+// would skip the kernel's teardown.
+if (invocation.applicationArgs === undefined) {
+  exitOnClosedPipe(process.stdout);
+  exitOnClosedPipe(process.stderr);
+}
 
 let cli = yargs(invocation.cliTokens)
   .scriptName("telo")

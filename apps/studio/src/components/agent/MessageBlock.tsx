@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Brain, ChevronDown, CircleStop, RotateCw } from "lucide-react";
 import { describeTurnError, splitAgentText } from "@/agent";
-import type { AssistantMessage, ChatMessage, ToolCallView, UserMessage } from "@/agent";
+import type { AssistantMessage, ChatMessage, CheckDiagnostic, ToolCallView, UserMessage } from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
@@ -169,15 +169,50 @@ function ReasoningCard({ text, streaming }: { text: string; streaming: boolean }
   );
 }
 
+/** A diagnostic as the agent's own rendering spells it. */
+function diagnosticLine(d: CheckDiagnostic): string {
+  return `${d.file}:${d.line}:${d.column}${d.code ? ` ${d.code}` : ""} ${d.message}`;
+}
+
+function CheckVerdict({ diagnostics, seen }: { diagnostics: CheckDiagnostic[]; seen?: string }) {
+  return (
+    <div className="space-y-2 p-2">
+      {diagnostics.length > 0 && (
+        <ul className="font-mono">
+          {diagnostics.map((d, i) => (
+            <li key={i}>{diagnosticLine(d)}</li>
+          ))}
+        </ul>
+      )}
+      {seen && (
+        <div className="space-y-1 text-muted-foreground">
+          <div className="text-[10px] uppercase tracking-wide">What the model saw</div>
+          <pre className="whitespace-pre-wrap font-mono">{seen}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One tool call. The verdict is the structured result's: a write, edit or
+ * check whose `telo check` exited non-zero is an error card listing its
+ * diagnostics. The rendered text the model was given is shown as the result,
+ * except for a tool that failed outright, whose text is its error.
+ */
 function ToolCallCard({ tool }: { tool: ToolCallView }) {
   const checkFailed = tool.checkExitCode != null && tool.checkExitCode !== 0;
-  const errored = tool.state === "error" || checkFailed;
+  const toolFailed = tool.state === "error";
+  const errored = toolFailed || checkFailed;
   const state: ToolUIState =
     tool.state === "running" ? "input-available" : errored ? "output-error" : "output-available";
-  const errorText = errored
-    ? (tool.checkOutput || (typeof tool.output === "string" ? tool.output : undefined))
-    : undefined;
-  const output = errored ? undefined : (tool.checkOutput || tool.output);
+  const seen = typeof tool.output === "string" ? tool.output : undefined;
+  const errorText = toolFailed ? seen : checkFailed ? `telo check exited with ${tool.checkExitCode}` : undefined;
+  const output = toolFailed ? undefined : checkFailed ? (
+    <CheckVerdict diagnostics={tool.diagnostics ?? []} seen={seen} />
+  ) : (
+    tool.output
+  );
 
   return (
     <Tool defaultOpen={errored}>

@@ -1,11 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import {
-  AgentClient,
-  openAgentStream,
-  type AgentStreamError,
-  type AgentStreamHandle,
-  type TurnRefused,
-} from "./client";
+import { AgentClient, ERR_UNAUTHENTICATED, TOKEN_REQUIRED_MESSAGE, type TurnRefused } from "./client";
+import { openAgentStream, type AgentStreamError, type AgentStreamHandle } from "./event-stream";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { TermsRequiredError, type RunnerTerms } from "../run/types";
@@ -16,8 +11,8 @@ import {
   applyTurnStopped,
   describeTurnError,
   interruptedTurn,
-  parseToolContent,
   readConversation,
+  toolOutputFields,
   transcriptFromTurns,
   userMessageId,
 } from "./records";
@@ -29,6 +24,7 @@ import {
   saveConversationId,
 } from "./storage";
 import type {
+  AgentIdentityState,
   AgentStatus,
   AgentWorkspace,
   AssistantMessage,
@@ -46,6 +42,13 @@ interface AgentContextValue {
   /** Dev override URL; empty means launch a per-session agent on the runner. */
   overrideUrl: string;
   setOverrideUrl: (url: string) => void;
+  /** The bearer token for the override URL's agent. Held in memory only: a
+   *  credential is not written to browser storage. */
+  overrideToken: string;
+  setOverrideToken: (token: string) => void;
+  /** What `GET /capabilities` said about the agent the panel talks to — asked
+   *  once per agent instance; null until there is one to ask, or while asking. */
+  identity: AgentIdentityState | null;
   /** Render the agent's question blocks as clickable options (default on). */
   questionCards: boolean;
   setQuestionCards: (enabled: boolean) => void;
@@ -98,6 +101,14 @@ interface AgentContextValue {
   registerTermsGate: (handler: ((terms: RunnerTerms) => void) | null) => void;
 }
 
+/** An agent the panel can talk to: where it answers, its bearer token when it
+ *  has one, and the workspace surface that goes with it. */
+interface ReachableAgent {
+  url: string;
+  token?: string;
+  workspace: AgentWorkspace;
+}
+
 /** Heuristic for "the per-session container is gone": a network-level fetch
  *  failure, or a gateway error from the proxy fronting a dead upstream. Used to
  *  decide when a cached launch should be dropped and re-created. */
@@ -130,6 +141,8 @@ function refusalMessage(refusal: TurnRefused): string {
     case "ERR_TURN_NOT_FOUND":
     case "ERR_JOURNAL_KEY_REMOVED":
       return "The agent no longer has this turn — send your message again.";
+    case ERR_UNAUTHENTICATED:
+      return TOKEN_REQUIRED_MESSAGE;
     default:
       return refusal.message;
   }
@@ -156,6 +169,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }
   const [panelOpen, setPanelOpen] = useState(initialSettings.current.panelOpen);
   const [overrideUrl, setOverrideUrlState] = useState(initialSettings.current.overrideUrl);
+  const [overrideToken, setOverrideTokenState] = useState("");
+  const [identity, setIdentity] = useState<AgentIdentityState | null>(null);
   const [questionCards, setQuestionCards] = useState(initialSettings.current.questionCards);
   const [panelWidth, setPanelWidth] = useState(initialSettings.current.panelWidth);
 
@@ -190,8 +205,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // The effective agent base URL (a launched per-session instance, or the dev
   // override). Read through a ref so the callbacks below stay stable.
   const agentUrlRef = useRef<string>("");
+  // The bearer token of that agent, resolved together with its URL: the
+  // override's token, the runner-minted one of a co-resident or launched agent.
+  const agentTokenRef = useRef<string | undefined>(undefined);
   const overrideRef = useRef(overrideUrl);
   overrideRef.current = overrideUrl;
+  const overrideTokenRef = useRef(overrideToken);
+  overrideTokenRef.current = overrideToken;
   const runnerBaseRef = useRef<string | null>(null);
   const runnerTermsRef = useRef<string | null>(null);
   const termsGateRef = useRef<((terms: RunnerTerms) => void) | null>(null);
@@ -211,7 +231,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const locked = status === "launching" || status === "seeding" || status === "streaming" || status === "stopping";
 
-  const client = useCallback(() => new AgentClient(agentUrlRef.current), []);
+  const client = useCallback(() => new AgentClient(agentUrlRef.current, agentTokenRef.current), []);
 
   // Drop a launched per-session instance whose upstream looks gone (reaped
   // container, dead proxy route): the next send re-launches instead of failing
@@ -222,9 +242,67 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (!launched) return;
     launchedRef.current = null;
     agentUrlRef.current = "";
+    agentTokenRef.current = undefined;
     console.warn(`Dropping agent session '${launched.sessionId}': ${reason}`);
     void launched.stop();
+    refreshIdentityRef.current();
   }, []);
+
+  // The agent to talk to right now, without launching one, in the precedence
+  // below — and the one a conversation's records are read from and its turn
+  // continued on, since a launched per-session instance is new and holds none.
+  const reachableAgent = useCallback((): ReachableAgent | null => {
+    const override = overrideRef.current;
+    if (override) {
+      const token = overrideTokenRef.current || undefined;
+      return { url: override, token, workspace: ownWorkspace(new AgentClient(override, token)) };
+    }
+    const coResident = coResidentRef.current;
+    if (coResident) return { url: coResident.baseUrl, token: coResident.token, workspace: coResident.workspace };
+    const launched = launchedRef.current;
+    if (launched) {
+      return {
+        url: launched.agentUrl,
+        token: launched.token,
+        workspace: ownWorkspace(new AgentClient(launched.agentUrl, launched.token)),
+      };
+    }
+    return null;
+  }, []);
+
+  const selectAgent = useCallback((agent: ReachableAgent) => {
+    agentUrlRef.current = agent.url;
+    agentTokenRef.current = agent.token;
+    workspaceRef.current = agent.workspace;
+  }, []);
+
+  // Ask the agent the panel would talk to who it is — once per instance (URL
+  // and token), since the answer does not change while it runs. A reply for an
+  // agent no longer current is dropped.
+  const identityKeyRef = useRef<string | null>(null);
+  const refreshIdentityRef = useRef<() => void>(() => undefined);
+  refreshIdentityRef.current = () => {
+    const agent = reachableAgent();
+    const key = agent ? `${agent.url}\n${agent.token ?? ""}` : null;
+    if (key === identityKeyRef.current) return;
+    identityKeyRef.current = key;
+    setIdentity(null);
+    if (!agent) return;
+    new AgentClient(agent.url, agent.token).capabilities().then(
+      (state) => {
+        if (identityKeyRef.current === key) setIdentity(state);
+      },
+      (err: unknown) => {
+        if (identityKeyRef.current !== key) return;
+        setIdentity({ state: "failed", message: err instanceof Error ? err.message : String(err) });
+      },
+    );
+  };
+  // The override is typed a character at a time: ask once it settles.
+  useEffect(() => {
+    const timer = setTimeout(() => refreshIdentityRef.current(), 400);
+    return () => clearTimeout(timer);
+  }, [overrideUrl, overrideToken]);
 
   // Ensure an agent instance is reachable, and say which workspace surface goes
   // with it. Precedence: the dev override, then a live watch session's
@@ -241,25 +319,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // Resolved at the start of a send, so an agent that appears mid-turn is
   // picked up on the next one rather than halfway through this one.
   const ensureAgent = useCallback(async () => {
-    if (overrideRef.current) {
-      agentUrlRef.current = overrideRef.current;
-      workspaceRef.current = ownWorkspace(new AgentClient(overrideRef.current));
-      return;
-    }
-    const coResident = coResidentRef.current;
-    if (coResident) {
-      if (launchedRef.current) {
+    const reachable = reachableAgent();
+    if (reachable) {
+      if (!overrideRef.current && coResidentRef.current && launchedRef.current) {
         const stale = launchedRef.current;
         launchedRef.current = null;
         void stale.stop();
       }
-      agentUrlRef.current = coResident.baseUrl;
-      workspaceRef.current = coResident.workspace;
-      return;
-    }
-    if (launchedRef.current) {
-      agentUrlRef.current = launchedRef.current.agentUrl;
-      workspaceRef.current = ownWorkspace(new AgentClient(launchedRef.current.agentUrl));
+      selectAgent(reachable);
       return;
     }
     if (!runnerBaseRef.current) {
@@ -268,9 +335,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setStatus("launching");
     const launched = await launchAgentSession(runnerBaseRef.current, runnerTermsRef.current);
     launchedRef.current = launched;
-    agentUrlRef.current = launched.agentUrl;
-    workspaceRef.current = ownWorkspace(new AgentClient(launched.agentUrl));
-  }, []);
+    selectAgent({
+      url: launched.agentUrl,
+      token: launched.token,
+      workspace: ownWorkspace(new AgentClient(launched.agentUrl, launched.token)),
+    });
+    refreshIdentityRef.current();
+  }, [reachableAgent, selectAgent]);
 
   // ── persistence ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -279,6 +350,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
   const setOverrideUrl = useCallback((url: string) => setOverrideUrlState(url), []);
+  const setOverrideToken = useCallback((token: string) => setOverrideTokenState(token), []);
   const registerWorkspace = useCallback((bridge: WorkspaceBridge | null) => {
     bridgeRef.current = bridge;
   }, []);
@@ -292,6 +364,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const setCoResidentAgent = useCallback((agent: CoResidentAgent | null) => {
     const appeared = agent !== null && coResidentRef.current?.baseUrl !== agent.baseUrl;
     coResidentRef.current = agent;
+    refreshIdentityRef.current();
     if (appeared) onCoResidentRef.current();
   }, []);
   const setRunnerAcceptedTerms = useCallback((version: string | null) => {
@@ -313,7 +386,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     // Eager reflection: pull the one file the agent just wrote.
     if (record.data.type !== "tool-result") return;
     const raw = (record.data as { toolResult?: ToolResult }).toolResult;
-    const path = parseToolContent(raw?.content)?.path;
+    const { path } = toolOutputFields(raw);
     const bridge = bridgeRef.current;
     const workspace = workspaceRef.current;
     if (raw && path && bridge && workspace && (raw.name === "write_file" || raw.name === "edit_file")) {
@@ -379,6 +452,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       streamRef.current?.close();
       streamRef.current = openAgentStream({
         baseUrl: agentUrlRef.current,
+        token: agentTokenRef.current,
         turnId: activeTurnId,
         fromId,
         onRecord: (record) => applyStreamRecord(activeTurnId, record),
@@ -390,6 +464,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           }
           if (err.code === ERR_INVOKE_CANCELLED) {
             void settleUnrequestedCancel(activeTurnId, err);
+            return;
+          }
+          if (err.code === ERR_UNAUTHENTICATED) {
+            // Not the turn's ending — the agent refused to show it. The turn
+            // may well still be running there.
+            setError(err.message);
+            setStatus("error");
+            const assistantId = assistantIdRef.current;
+            if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
             return;
           }
           setError(describeTurnError({ code: err.code, message: err.message }));
@@ -520,19 +603,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   );
 
   // ── resume ──────────────────────────────────────────────────────────────────
-  // The agent to read a conversation's records from — and to continue its turn
-  // on — right now, without launching one: a launched per-session instance is
-  // new, so it holds none.
-  const reachableAgent = useCallback((): { url: string; workspace: AgentWorkspace } | null => {
-    if (overrideRef.current) {
-      return { url: overrideRef.current, workspace: ownWorkspace(new AgentClient(overrideRef.current)) };
-    }
-    const coResident = coResidentRef.current;
-    if (coResident) return { url: coResident.baseUrl, workspace: coResident.workspace };
-    const launched = launchedRef.current;
-    if (launched) return { url: launched.agentUrl, workspace: ownWorkspace(new AgentClient(launched.agentUrl)) };
-    return null;
-  }, []);
 
   // Continue an interrupted turn on the agent that holds it, inside the same
   // turn: the stream re-attaches from the last record this client folded, so
@@ -550,9 +620,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       const gen = ++sendGenRef.current;
       const superseded = () => sendGenRef.current !== gen;
-      agentUrlRef.current = agent.url;
-      workspaceRef.current = agent.workspace;
-      const c = new AgentClient(agent.url);
+      selectAgent(agent);
+      const c = client();
 
       void (async () => {
         try {
@@ -591,7 +660,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [abortUnattached, attachStream, invalidateLaunched, reachableAgent, updateAssistant],
+    [abortUnattached, attachStream, client, invalidateLaunched, reachableAgent, updateAssistant, selectAgent],
   );
 
   /**
@@ -660,15 +729,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     const convId = conversationIdRef.current;
     const agent = reachableAgent();
     if (!convId || !agent || turnIdRef.current) return;
-    const agentClient = new AgentClient(agent.url);
+    const agentClient = new AgentClient(agent.url, agent.token);
     try {
       const turns = await readConversation((cursor) => agentClient.records(convId, cursor));
       if (conversationIdRef.current !== convId || turnIdRef.current) return;
       setMessages(transcriptFromTurns(turns));
       const last = turns[turns.length - 1];
       if (last?.status !== "running") return;
-      agentUrlRef.current = agent.url;
-      workspaceRef.current = agent.workspace;
+      selectAgent(agent);
       assistantIdRef.current = last.turnId;
       setTurnId(last.turnId);
       setStatus("streaming");
@@ -677,7 +745,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       if (conversationIdRef.current !== convId) return;
       setError(`Failed to read the conversation from the agent: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [attachStream, reachableAgent]);
+  }, [attachStream, reachableAgent, selectAgent]);
   onCoResidentRef.current = () => {
     void loadTranscript();
   };
@@ -768,6 +836,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     togglePanel,
     overrideUrl,
     setOverrideUrl,
+    overrideToken,
+    setOverrideToken,
+    identity,
     questionCards,
     setQuestionCards,
     panelWidth,

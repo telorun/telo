@@ -240,6 +240,9 @@ export interface RunnerEndpoint {
   /** Fully-qualified URL when the runner already knows it (proxy / ingress);
    *  preferred over deriving `http://host:port`. */
   url?: string;
+  /** The per-session token the runner minted for this endpoint's workload, when
+   *  its catalog entry declares one; the client presents it as a bearer token. */
+  token?: string;
 }
 
 /** The SESSION's status, as distinct from how any one run inside it ended.

@@ -1,6 +1,6 @@
 ---
 name: rust-parity
-description: Autonomous campaign bringing the Rust half of telo to parity with Node — every manifest test the Node suite passes must pass on the Rust kernel. Each invocation is one tick that reads the campaign's state, advances it (measure, pick a slice, build it, open its PR, keep that PR rebased and green) and exits. Never merges. Driven by cron through tick.sh; never use this skill yourself unless the user asks explicitly.
+description: Autonomous campaign bringing the Rust half of telo to parity with Node — every manifest test the Node suite passes must pass on the Rust kernel. Each invocation is one tick that reads the campaign's state, advances it (measure, pick a slice, build it, open its PR, keep that PR rebased and green) and exits. Never merges. Each tick is started by the user typing /rust-parity; never use this skill yourself unless the user asks explicitly.
 argument-hint: nothing for a normal tick, or `status` to report the campaign's state and change nothing
 ---
 
@@ -13,6 +13,22 @@ You are the `architect` skill (`.claude/skills/architect/SKILL.md`) run without 
 wrapped in a pull-request lifecycle. Read that skill once per tick before building: its
 roles, cards, gates, fix rounds, decisions, artifacts, incidental fixes and final audit all
 apply to a slice unchanged, except where this file says otherwise.
+
+## First: the lock
+
+Before anything else — before reading `STATE.md`, before preflight — run
+`bash <main>/.claude/skills/rust-parity/lock.sh acquire`. Two ticks at once would build, commit
+and write state over each other.
+
+- **Exit 3 (`busy`)**: another tick is running. Print its one line and end the tick. Write
+  nothing anywhere, not even *Last tick*.
+- **`took over the stale lock`**: a tick crashed holding it. Carry on, and put that line in
+  *History*.
+- **Any other failure**: end the tick and report it. Nothing else may run unlocked.
+
+`status` only reads, so it skips the lock. Every way a tick ends — *Record*, a failed preflight,
+`blocked`, `aligned`, `busy` excepted — runs `lock.sh release` as its very last act. A crash
+leaves the lock stale, and the next tick takes it over.
 
 ## The goal and its measure
 
@@ -35,20 +51,20 @@ test per kernel. A test's pass is exit code 0, as in the suite. `--filter <text>
 
 ## Where things live
 
-- **The worktree** — `<main>/.claude/worktrees/rust-parity`. `tick.sh` creates it and starts
-  every tick there. All building, committing and pushing happens here. It is never the user's
+- **The worktree** — `<main>/.claude/worktrees/rust-parity`. Preflight creates it and moves the
+  tick into it. All building, committing and pushing happens here. It is never the user's
   checkout.
-- **The main checkout** — `<main>`, the user's own tree, possibly mid-work in another session.
+- **The main checkout** — `<main>`, the user's own tree, possibly mid-work in another session:
+  the directory above `git rev-parse --path-format=absolute --git-common-dir`, run from this
+  skill's directory, so it is the same wherever the tick was started.
   You never edit, check out, reset or clean anything in it. The one exception is the state
   directory, which lives inside it.
-- **The state directory** — `<main>/.claude/loops/rust-parity/` (git-ignored). `tick.sh` exports
-  it as `RUST_PARITY_STATE`, and `<main>` as `RUST_PARITY_MAIN`. It holds:
+- **The state directory** — `<main>/.claude/loops/rust-parity/` (git-ignored). It holds:
   - `STATE.md` — the campaign's whole memory, created from `state-template.md` on the first
     tick.
   - `sweep.json` and `sweep-previous.json` — the latest two sweeps.
   - `slices/<nn>-<slug>.md` plus `slices/<nn>-<slug>/` — one architect loop file and its
     artifacts per slice, with the architect's layout, plus `pr/` for the PR's life (below).
-  - `ticks/` — the full output of every tick, written by `tick.sh`.
 
 ## What this skill may do that other sessions may not
 
@@ -129,7 +145,10 @@ tick moves to the next entry. You never "fix" a test or Node to make Rust pass.
 
 ## A tick
 
-1. **Preflight.** Confirm the working directory is the worktree, `gh auth status` succeeds,
+1. **Preflight.** When the worktree is missing, create it detached at `origin/main`
+   (`git -C <main> fetch origin main`, then `git -C <main> worktree add --detach <worktree>
+   origin/main`). Then `cd` into the worktree and run every later command there — the tick may
+   have been started in the main checkout. Confirm `gh auth status` succeeds,
    `git config user.name` and `user.email` are set with no `GIT_AUTHOR_*` / `GIT_COMMITTER_*`
    variable overriding them, and `STATE.md` exists (create it from `state-template.md` if not, and create the two labels
    if they are missing). A failed preflight writes the reason under *Blocked on*, sets
@@ -139,7 +158,7 @@ tick moves to the next entry. You never "fix" a test or Node to make Rust pass.
 3. **Dispatch on *Phase***, below. Phases chain within one tick where they say so. A tick never
    opens a second PR while one is open, and never starts a slice after opening a PR.
 4. **Record.** Update *Last tick*. Append a line to *History* only when something happened;
-   idle ticks change only *Last tick*.
+   idle ticks change only *Last tick*. Then release the lock.
 
 ### `pick`
 

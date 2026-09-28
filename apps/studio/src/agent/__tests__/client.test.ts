@@ -87,4 +87,74 @@ describe("AgentClient.startTurn", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("reads a 401 ERR_UNAUTHENTICATED as the agent requiring a token", async () => {
+    fetchMock.mockResolvedValueOnce(json(401, { error: "Unauthenticated.", code: "ERR_UNAUTHENTICATED" }));
+    await expect(new AgentClient("http://agent").startTurn(CONVERSATION, "hi")).resolves.toMatchObject({
+      kind: "refused",
+      status: 401,
+      code: "ERR_UNAUTHENTICATED",
+      message: "This agent requires a token.",
+    });
+  });
+});
+
+describe("AgentClient with a token", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends it as a bearer token on every request", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/chat") ? json(200, { turnId: "t1" }) : json(200, { files: [], content: "" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new AgentClient("http://agent", "tok");
+
+    await client.startTurn(CONVERSATION, "hi");
+    await client.workspaceTree();
+    await client.readWorkspaceFile("a.yaml");
+    await client.syncWorkspace([], []);
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const call of fetchMock.mock.calls as unknown as Array<[string, RequestInit]>) {
+      expect((call[1].headers as Record<string, string>).authorization).toBe("Bearer tok");
+    }
+  });
+});
+
+describe("AgentClient.capabilities", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps an auth mode it does not know as the agent's own word", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        json(200, { agent: { name: "A", version: "1.0.0" }, prompt: { id: "ab12" }, auth: "mtls" }),
+      ),
+    );
+
+    await expect(new AgentClient("http://agent").capabilities()).resolves.toMatchObject({
+      identity: { auth: "mtls" },
+    });
+  });
+
+  it("reads the identity, and an agent without the route as unavailable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        json(200, { agent: { name: "AuthoringAgent", version: "0.9.0" }, prompt: { id: "ab12" }, auth: "none" }),
+      )
+      .mockResolvedValueOnce(json(404, { error: "not found" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new AgentClient("http://agent");
+
+    await expect(client.capabilities()).resolves.toEqual({
+      state: "known",
+      identity: { name: "AuthoringAgent", version: "0.9.0", promptId: "ab12", auth: "none" },
+    });
+    await expect(client.capabilities()).resolves.toEqual({ state: "unavailable" });
+  });
 });

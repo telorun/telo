@@ -3,7 +3,7 @@ import { act, waitFor } from "@testing-library/react";
 
 import type { RecordsPage } from "../records";
 import type { JournalRecord, TurnRecords } from "../types";
-import { AGENT_URL, FakeEventSource, installAgentGlobals, openAgent, stubAgent } from "./agent-harness";
+import { AGENT_URL, FakeEventStream, installAgentGlobals, openAgent, stubAgent } from "./agent-harness";
 
 const loaded: JournalRecord[] = [
   { id: 1, data: { type: "user-message", content: "build it", model: "m" } },
@@ -30,8 +30,8 @@ describe("Stop", () => {
       { "POST /chat/t1/abort": { status: 200, body: { cancelled: true } } },
     );
     const { result } = await openAgent();
-    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
-    const stream = FakeEventSource.opened[0];
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
+    const stream = FakeEventStream.opened[0];
 
     act(() => result.current.stop());
 
@@ -41,7 +41,7 @@ describe("Stop", () => {
     const [, init] = fetchMock.mock.calls.find(([url]) => String(url) === `${AGENT_URL}/chat/t1/abort`)!;
     expect(init).toEqual({ method: "POST" });
     expect(result.current.status).toBe("stopping");
-    expect(stream.readyState).not.toBe(FakeEventSource.CLOSED);
+    expect(stream.closed).toBe(false);
 
     act(() => stream.fail("ERR_INVOKE_CANCELLED", "cancelled by caller"));
 
@@ -56,7 +56,7 @@ describe("Stop", () => {
     const page: RecordsPage = { turns: [{ turnId: "t1", status: "running", error: null, records: loaded }], next: null };
     const fetchMock = stubAgent(page);
     const { result } = await openAgent();
-    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
     // Another client's abort: the agent now reports the turn aborted.
     page.turns[0] = {
       turnId: "t1",
@@ -65,7 +65,7 @@ describe("Stop", () => {
       records: [],
     };
 
-    act(() => FakeEventSource.opened[0].fail("ERR_INVOKE_CANCELLED", "cancelled by caller"));
+    act(() => FakeEventStream.opened[0].fail("ERR_INVOKE_CANCELLED", "cancelled by caller"));
 
     await waitFor(() => expect(result.current.messages[1]).toMatchObject({ id: "t1", stopped: true, pending: false }));
     expect(
@@ -91,10 +91,10 @@ describe("Resume", () => {
 
     act(() => result.current.retry());
 
-    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
     const [, init] = fetchMock.mock.calls.find(([url]) => String(url) === `${AGENT_URL}/chat/t1/continue`)!;
     expect(init).toEqual({ method: "POST" });
-    const stream = FakeEventSource.opened[0];
+    const stream = FakeEventStream.opened[0];
     expect(stream.url).toBe(`${AGENT_URL}/chat/t1/events?lastEventId=2`);
 
     act(() => {
@@ -131,8 +131,8 @@ describe("Resume", () => {
 
     act(() => result.current.retry());
 
-    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
-    expect(FakeEventSource.opened[0].url).toBe(`${AGENT_URL}/chat/t1/events?lastEventId=2`);
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
+    expect(FakeEventStream.opened[0].url).toBe(`${AGENT_URL}/chat/t1/events?lastEventId=2`);
     expect(result.current.status).toBe("streaming");
     expect(result.current.error).toBeNull();
   });
@@ -154,6 +154,6 @@ describe("Resume", () => {
     await waitFor(() =>
       expect(result.current.error).toBe("A later turn followed this one; only the last turn can be resumed."),
     );
-    expect(FakeEventSource.opened).toHaveLength(0);
+    expect(FakeEventStream.opened).toHaveLength(0);
   });
 });

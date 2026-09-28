@@ -22,6 +22,8 @@ const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 export interface LaunchedAgent {
   /** Base URL of this session's agent instance. */
   agentUrl: string;
+  /** The token the runner minted for this session's agent, when it did. */
+  token?: string;
   sessionId: string;
   /** The runner's DELETE URL for this session — used by the pagehide handler
    *  to fire a keepalive teardown when the page is closing. */
@@ -35,6 +37,7 @@ interface RunnerEndpoint {
   port: number;
   protocol: string;
   url?: string;
+  token?: string;
 }
 
 export async function launchAgentSession(
@@ -87,12 +90,13 @@ export async function launchAgentSession(
   const output = new OutputTail();
   const tap = openIoTap(base, sessionId, output);
   try {
-    const agentUrl = await resolveAgentUrl(base, streamUrl, output, () =>
+    const { agentUrl, token } = await resolveAgentUrl(base, streamUrl, output, () =>
       Promise.race([tap.settled, delay(1500)]),
     );
     const deleteUrl = `${base}/v1/sessions/${encodeURIComponent(sessionId)}`;
     return {
       agentUrl,
+      token,
       sessionId,
       deleteUrl,
       async stop() {
@@ -157,7 +161,8 @@ function openIoTap(base: string, sessionId: string, output: OutputTail): IoTap {
 }
 
 /**
- * Consume the session's event stream and resolve the agent's base URL once it is
+ * Consume the session's event stream and resolve the agent's base URL (and the
+ * token the runner minted for it, when it did) once it is
  * actually reachable — not merely when the container reports `running` (which
  * fires the instant the container starts, before the app inside binds its port).
  * The container's own stdout/stderr, a terminal `exited`/`failed`, and the
@@ -173,7 +178,7 @@ function resolveAgentUrl(
   streamUrl: string,
   output: OutputTail,
   flush: () => Promise<void>,
-): Promise<string> {
+): Promise<{ agentUrl: string; token?: string }> {
   return new Promise((resolve, reject) => {
     const source = new EventSource(`${runnerBase}${streamUrl}`);
     let endpoint: RunnerEndpoint | undefined;
@@ -196,7 +201,8 @@ function resolveAgentUrl(
       source.close();
       fn();
     };
-    const succeed = () => done(() => resolve(endpointUrl(runnerBase, endpoint)));
+    const succeed = () =>
+      done(() => resolve({ agentUrl: endpointUrl(runnerBase, endpoint), token: endpoint?.token }));
     const fail = (err: Error) => done(() => reject(err));
     // Give the /io tap a moment to flush the container's buffered output, then
     // append it so the failure carries the boot crash, not just a code.
