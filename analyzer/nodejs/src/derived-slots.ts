@@ -37,6 +37,7 @@ import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 import { dispatchTargetOf } from "./template-body.js";
+import type { LibraryDeclarations } from "./library-declarations.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { resolveScopeValues, valueSchemaSlots } from "./value-schema-slot.js";
@@ -47,6 +48,9 @@ export interface DerivedSlotContext {
   readonly aliases: AliasResolver;
   readonly aliasesByModule: Map<string, AliasResolver>;
   readonly rootModules: ReadonlySet<string>;
+  /** Each imported library's own declarations, which a projected contract's
+   *  hop may reach. */
+  readonly libraries?: LibraryDeclarations;
   /** The manifests a named type resolves against. */
   readonly typeManifests: Record<string, any>[];
   /** The declaration a `{kind, name, alias?}` reference names, or undefined. */
@@ -93,7 +97,7 @@ function contractScopeOf(ctx: DerivedSlotContext) {
   return analyzerContractScope(
     ctx.defs,
     ctx.aliases,
-    { aliasesByModule: ctx.aliasesByModule, rootModules: ctx.rootModules },
+    { aliasesByModule: ctx.aliasesByModule, rootModules: ctx.rootModules, libraries: ctx.libraries },
     ctx.typeManifests,
   );
 }

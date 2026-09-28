@@ -1,0 +1,20 @@
+# A store addresses every table through its schema instance. A schema kind from
+# an engine module that predates table addressing checks clean — nothing in the
+# manifest is wrong — and is refused when the store is created, naming the
+# schema, its kind and the upgrade, never falling back to unqualified names.
+kind: Telo.Application
+metadata:
+  name: GraphSqlUnaddressedSchema
+  version: 1.0.0
+  description: A store over a schema instance without table addressing fails creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/unaddressed-schema-app.yaml
+expect:
+  errors: []
+  runFails: "'schema' references 'appSchema' of kind 'UnaddressedSchema.Schema', whose engine module predates table addressing"

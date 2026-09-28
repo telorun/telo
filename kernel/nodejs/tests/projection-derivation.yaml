@@ -1,0 +1,186 @@
+# A contract derived through references: `Write` types its inputs from the node
+# and the link it references, each of which projects as the shape IT references.
+# LibA and LibB each declare an internal `users` shape and export a `person` node
+# over it, so the second hop only types correctly when it resolves in the
+# library that declared `person`. LibC's `person` projects as the table this
+# application supplies for its resource input; LibD re-exports LibA's `person`.
+# `follows` is declared after the resources typed through it. A literal the
+# contract refuses would fail `telo check`, so every refused value here is
+# computed; `typesLiteralsThroughEveryHop` pins the same refusals statically.
+kind: Telo.Application
+metadata:
+  name: ProjectionDerivationTest
+imports:
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+  Kinds: ./__fixtures__/projection-derivation/kinds
+  LibA: ./__fixtures__/projection-derivation/lib-a
+  LibB: ./__fixtures__/projection-derivation/lib-b
+  LibC:
+    source: ./__fixtures__/projection-derivation/lib-c
+    resources: { table: !ref appUsers }
+  LibD: ./__fixtures__/projection-derivation/lib-d
+targets:
+  - !ref typesThroughEveryHop
+  - !ref refusesTheOtherLibrarysShape
+  - !ref refusesAnOmittedEntry
+  - !ref refusesAColumnTheSuppliedTableLacks
+  - !ref typesLiteralsThroughEveryHop
+---
+kind: Kinds.Write
+metadata:
+  name: writeA
+node: !ref LibA.person
+link: !ref follows
+---
+kind: Kinds.Write
+metadata:
+  name: writeB
+node: !ref LibB.person
+link: !ref follows
+---
+kind: Kinds.Write
+metadata:
+  name: writeC
+node: !ref LibC.person
+link: !ref follows
+---
+kind: Kinds.Write
+metadata:
+  name: writeD
+node: !ref LibD.person
+link: !ref follows
+---
+kind: Kinds.Shape
+metadata:
+  name: appUsers
+fields:
+  code: { type: text }
+  score: { type: number }
+  hidden: { type: text }
+---
+kind: Kinds.Link
+metadata:
+  name: follows
+shape: !ref edges
+source: !ref LibA.person
+---
+kind: Kinds.Shape
+metadata:
+  name: edges
+fields:
+  since: { type: number }
+---
+kind: Run.Sequence
+metadata:
+  name: typesThroughEveryHop
+steps:
+  - name: write
+    invoke: !ref writeA
+    inputs:
+      properties: { age: 3 }
+      key: ann
+      edge: { since: 2020 }
+      source: ann
+  - name: other
+    invoke: !ref writeB
+    inputs:
+      properties: { name: bo }
+      key: 7
+  - name: supplied
+    invoke: !ref writeC
+    inputs:
+      properties: { score: 9 }
+      key: c1
+  - name: reExported
+    invoke: !ref writeD
+    inputs:
+      properties: { age: 4 }
+      key: dee
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.write.result, steps.other.result, steps.supplied.result, steps.reExported.result]"
+      expected:
+        - properties: { age: 3 }
+          key: ann
+          edge: { since: 2020 }
+          source: ann
+        - properties: { name: bo }
+          key: 7
+        - properties: { score: 9 }
+          key: c1
+        - properties: { age: 4 }
+          key: dee
+---
+kind: Run.Sequence
+metadata:
+  name: refusesTheOtherLibrarysShape
+steps:
+  - name: attempt
+    try:
+      - name: write
+        invoke: !ref writeA
+        inputs:
+          properties: !cel "{'name': 'bo'}"
+      - name: unreachable
+        throw: { code: ERR_ACCEPTED, message: "LibB's field reached LibA's contract" }
+    catch:
+      - name: verify
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+---
+kind: Run.Sequence
+metadata:
+  name: refusesAnOmittedEntry
+steps:
+  - name: attempt
+    try:
+      - name: write
+        invoke: !ref writeA
+        inputs:
+          properties: !cel "{'token': 'x'}"
+      - name: unreachable
+        throw: { code: ERR_ACCEPTED, message: "an omitted entry was accepted" }
+    catch:
+      - name: verify
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+---
+kind: Run.Sequence
+metadata:
+  name: refusesAColumnTheSuppliedTableLacks
+steps:
+  - name: attempt
+    try:
+      - name: write
+        invoke: !ref writeC
+        inputs:
+          properties: !cel "{'age': 1}"
+      - name: unreachable
+        throw: { code: ERR_ACCEPTED, message: "a column of LibA's table reached the supplied one" }
+    catch:
+      - name: verify
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+---
+kind: Assert.Manifest
+metadata:
+  name: typesLiteralsThroughEveryHop
+source: ./__fixtures__/projection-derivation/misspelled.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'name' is not allowed"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/source must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "writeC's declared inputType: /properties must NOT have additional properties ('age' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "writeD's declared inputType: /properties must NOT have additional properties ('name' is not allowed)"

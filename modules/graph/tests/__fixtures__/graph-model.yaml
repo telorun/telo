@@ -1,0 +1,93 @@
+# A valid graph each rule fixture includes and builds its one mistake on: people
+# who know people and author documents. `graph` owns no backend, so its rules
+# are exercised through the SQL one. A partial rather than an imported library,
+# so every reference the rules read is a local one.
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Table
+metadata: { name: authoredTable }
+table: authored
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+indexes:
+  authoredPair: { columns: [author, document], unique: true }
+foreignKeys:
+  authoredAuthor:
+    columns: [author]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  authoredDocument:
+    columns: [document]
+    references: { table: !ref documents, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]

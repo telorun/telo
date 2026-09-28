@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: NullKeySeed
+  version: 1.0.0
+  description: |
+    A seed row holding NULL in the primary key. The key column cannot hold NULL,
+    so the row is refused against the table's own columns rather than handed to
+    SQLite, which would generate a rowid for it.
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+targets:
+  - !ref appSchema
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: roles }
+table: roles
+columns:
+  id: { type: integer, primaryKey: true }
+  label: { type: text }
+seeds:
+  key: [id]
+  rows:
+    - { id: null, label: Nobody }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref roles]

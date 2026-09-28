@@ -20,6 +20,8 @@ whatever its ecosystem provides.
 | `SqlConnectionBase` | Abstract class implementing the dialect-neutral half. |
 | `quoteAnsiIdentifier` | ANSI identifier quoting, for dialects that follow it. |
 | `resolveSqlConnection` / `isSqlConnection` | Resolve a `connection` `!ref` slot. |
+| `SqlSchema` / `isSqlSchema` | The contract an engine's `Schema` instance implements for consumers addressing its tables. |
+| `assertListedTable` | The membership check behind `SqlSchema.qualifiedTableName`. |
 
 A backend supplies a `SqlDialect`, extends `SqlConnectionBase`, and overrides
 only what is genuinely its own.
@@ -94,6 +96,25 @@ the member existed must add it.
 `dialect.placeholderStyle` is the single spelling of the bind style — the
 `SqlConnection` interface carries no mirror of it. A consumer that binds its own
 parameters (`kv-store-sql`) reads it from the dialect.
+
+## The schema instance addresses its tables
+
+An engine's `Schema` controller returns an instance implementing `SqlSchema`:
+
+```ts
+interface SqlSchema extends ResourceInstance {
+  /** Required. The qualified, quoted name of a table this schema lists. */
+  qualifiedTableName(table: DeclaredTable): string;
+}
+```
+
+It renders the name from the schema's own namespace and the engine's quoting —
+the same qualification its schema driver writes DDL with — and throws for a table
+the schema does not list (`assertListedTable`). The namespace is configuration,
+so the member answers from the moment the instance is created, before the
+schema's pass has run. A consumer addressing a declared table resolves the
+schema instance and refuses one without the member — an engine module written
+before it existed must add it — rather than falling back to an unqualified name.
 
 ## `kysely` is optional on the interface
 

@@ -1,0 +1,23 @@
+# A hop repeated over a relationship between two different node types, which
+# could never chain onto itself.
+kind: Telo.Library
+metadata:
+  name: HopRepeatMixedTypes
+include:
+  - ../../graph-model.yaml
+imports:
+  Graph: ../../../..
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../../../graph-sql
+exports:
+  resources: [authoredTwice]
+---
+kind: Graph.Traverse
+metadata: { name: authoredTwice }
+store: !ref kb
+from: !ref person
+to: !ref document
+hops:
+  - relationship: !ref authored
+    minHops: 1
+    maxHops: 2

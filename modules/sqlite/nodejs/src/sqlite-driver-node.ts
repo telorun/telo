@@ -10,6 +10,8 @@ export function openDatabase(file: string, addon: string): SqliteDb {
   // the instant the first holds the file. Stated here rather than left to a
   // driver default, because the two drivers do not agree on one.
   db.pragma("busy_timeout = 5000");
+  // Per connection, and ignored inside a transaction, so set at open.
+  db.pragma("foreign_keys = ON");
 
   return {
     prepare(sql: string) {

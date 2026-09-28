@@ -1,3 +1,4 @@
+import type { LibraryDeclarations } from "./library-declarations.js";
 /**
  * **Ask what a CEL site sees, from outside the analysis pass.**
  *
@@ -78,6 +79,8 @@ export interface CelScopeQueryContext {
   defs: DefinitionRegistry;
   aliases: AliasResolver;
   aliasesByModule: Map<string, AliasResolver>;
+  /** The imported libraries' own declarations the analysis indexed. */
+  libraries?: LibraryDeclarations;
 }
 
 /**
@@ -105,12 +108,12 @@ export class CelScopeQuery {
     ctx: CelScopeQueryContext,
     celEnv?: Environment,
   ) {
-    const { defs, aliases, aliasesByModule } = ctx;
+    const { defs, aliases, aliasesByModule, libraries } = ctx;
     const rootModules = new Set<string>();
     for (const m of manifests) {
       if (isModuleKind(m.kind) && m.metadata?.name) rootModules.add(m.metadata.name as string);
     }
-    const scopes: ModuleScopes = { aliasesByModule, rootModules };
+    const scopes: ModuleScopes = { aliasesByModule, rootModules, libraries };
     const observedState = buildObservedStateIndex(manifests, defs, aliases, scopes);
     const reportsObservedState = [...observedState.values()].some((r) => r.status);
     const moduleFunctions = new ModuleFunctionIndex(

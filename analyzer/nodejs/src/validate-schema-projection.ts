@@ -15,19 +15,24 @@
  * with no entry projects to nothing, so a column of that type silently vanishes
  * from every consumer's view of the row.
  *
- * Scoping follows `X_TELO_REF_UNRESOLVED`: reported only for definitions in the
+ * Scoping follows `X_TELO_REF_UNRESOLVED`: reported only for manifests in the
  * entry's own modules — a published dependency's annotation is not the
  * consumer's to fix.
  *
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
+import { isInSchemaRegion } from "./schema-region.js";
 import {
   collectionEntrySchema,
+  compileDefaultCondition,
+  modifierDefaultSites,
   projectionCollectionSchema,
   projectionEntryField,
   projectionKeyMap,
   rawSchemaProjection,
+  readKindDerivation,
+  readProjectionDerivation,
   readSchemaProjection,
   SCHEMA_PROJECTION_KEYS,
   schemaMapBranch,
@@ -48,7 +53,56 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+const PROJECTION_FROM = "x-telo-schema-projection-from";
+
+/** Every manifest's derivations; a kind document's own projection as well. */
 export function validateSchemaProjection(manifest: ResourceManifest): SchemaProjectionIssue[] {
+  const kindDocument = manifest.kind === "Telo.Definition" || manifest.kind === "Telo.Abstract";
+  return kindDocument
+    ? [...derivationIssues(manifest, true), ...projectionIssues(manifest)]
+    : derivationIssues(manifest, false);
+}
+
+/**
+ * The `x-telo-schema-projection-from` annotations a manifest writes: on a kind
+ * document's root, and at every slot inside a schema region — a definition's
+ * contracts, an instance's own `inputType:`, a `Telo.JsonSchema`'s `schema:`. A
+ * malformed one is read as absent by the lenient reader and refused by the
+ * kernel when a contract is bound, so it is reported here, where it is written.
+ * Outside a schema region the key is configuration data, not an annotation.
+ */
+function derivationIssues(manifest: ResourceManifest, kindDocument: boolean): SchemaProjectionIssue[] {
+  const issues: SchemaProjectionIssue[] = [];
+  const doc = manifest as unknown as Record<string, unknown>;
+  const report = (path: string, message: string): void => {
+    issues.push({ code: "SCHEMA_PROJECTION_INVALID", manifest, path, message });
+  };
+  if (kindDocument) {
+    const kind = readKindDerivation(doc);
+    if (kind && "invalid" in kind) report(PROJECTION_FROM, kind.invalid);
+  }
+  const visit = (node: unknown, path: string, segments: (string | number)[]): void => {
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => visit(item, `${path}[${index}]`, [...segments, index]));
+      return;
+    }
+    if (!isObject(node)) return;
+    for (const [key, value] of Object.entries(node)) {
+      const at = path === "" ? key : `${path}.${key}`;
+      if (key === PROJECTION_FROM) {
+        if (!isInSchemaRegion([...segments, key])) continue;
+        const read = readProjectionDerivation(value);
+        if (read && "invalid" in read) report(at, read.invalid);
+        continue;
+      }
+      visit(value, at, [...segments, key]);
+    }
+  };
+  visit(doc, "", []);
+  return issues;
+}
+
+function projectionIssues(manifest: ResourceManifest): SchemaProjectionIssue[] {
   const doc = manifest as unknown as Record<string, unknown>;
   const raw = rawSchemaProjection(doc);
   if (raw === undefined) return [];
@@ -139,6 +193,10 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
   const nestedIssue = nestedProblem(raw.nested, schema, projection);
   if (nestedIssue) issues.push(issue("SCHEMA_PROJECTION_INVALID", `${base}.nested`, nestedIssue));
 
+  for (const [modifier, message] of modifierDefaultProblems(schema, projection)) {
+    issues.push(issue("SCHEMA_PROJECTION_INVALID", `${base}.${modifier}`, message));
+  }
+
   const reference = raw.reference;
   if (reference !== undefined) {
     if (!isObject(reference)) {
@@ -216,6 +274,45 @@ export function validateSchemaProjection(manifest: ResourceManifest): SchemaProj
         `consumer's view of the shape.`,
     ),
   ];
+}
+
+/**
+ * Why a modifier's default cannot be read per entry: it is declared in more than
+ * one place — the field and a conditional, or two conditionals — so which one
+ * applies would be an order nobody wrote down; or a conditional deciding it is
+ * not a JSON Schema that compiles.
+ */
+function modifierDefaultProblems(schema: unknown, projection: SchemaProjection): [string, string][] {
+  const entry = collectionEntrySchema(projectionCollectionSchema(schema, projection.entries), schema);
+  if (!entry) return [];
+  const problems: [string, string][] = [];
+  for (const [modifier, field] of [
+    ["array", projection.array],
+    ["nullable", projection.nullable],
+  ] as const) {
+    if (field === undefined) continue;
+    const sites = modifierDefaultSites(entry, field, schema);
+    if (sites.length > 1) {
+      problems.push([
+        modifier,
+        `the default of '${field}' is declared in ${sites.length} places of the entry schema ` +
+          `(${sites.map((s) => `'${s.path}'`).join(", ")}). An entry that omits '${field}' reads ` +
+          `ONE default — the field's own, or the 'then' / 'else' of one conditional — so declare it once.`,
+      ]);
+      continue;
+    }
+    for (const site of sites) {
+      if (site.kind !== "conditional") continue;
+      const check = compileDefaultCondition(site.condition);
+      if (typeof check === "function") continue;
+      problems.push([
+        modifier,
+        `the conditional at '${site.path}' decides the default of '${field}', but it does not ` +
+          `compile as JSON Schema: ${check.error}`,
+      ]);
+    }
+  }
+  return problems;
 }
 
 function isArrayCollection(collection: Record<string, unknown> | undefined): boolean {

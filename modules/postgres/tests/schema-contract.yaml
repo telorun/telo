@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: PostgresSchemaContract
+  version: 1.0.0
+  description: |
+    What a table declaration contradicts is decidable from the YAML, so `telo
+    check` reports it and no database is needed: a primary key projects
+    non-null, so a seed row holding NULL there is refused on its own line.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref nullKeySeed
+---
+kind: Assert.Manifest
+metadata: { name: nullKeySeed }
+source: ./__fixtures__/schema-contract/null-key-seed.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/seeds/rows/0/id must be string"

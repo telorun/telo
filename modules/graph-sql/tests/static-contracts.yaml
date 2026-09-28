@@ -1,0 +1,49 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlStaticContracts
+  version: 1.0.0
+  description: |
+    An operation's contract is derived from its node type's table, so `telo
+    check` refuses a property the table does not have, a key of the wrong type
+    and a null key as written; and a route catching the code an operation
+    declares is covered. (The computed forms are refused at dispatch — see the
+    suite's `computedInputs` and `integer-key.yaml`.)
+imports:
+  Assert: ../../assert
+targets:
+  - !ref misspelledProperty
+  - !ref wrongKeyType
+  - !ref nullKey
+  - !ref catchesNodeNotFound
+---
+kind: Assert.Manifest
+metadata: { name: misspelledProperty }
+source: ./__fixtures__/contracts/misspelled-property.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'nmae' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: wrongKeyType }
+source: ./__fixtures__/contracts/wrong-key-type.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/key must be string"
+---
+# A primary key projects non-null, so a null key is refused rather than left to
+# SQLite, which would generate one for an INTEGER PRIMARY KEY.
+kind: Assert.Manifest
+metadata: { name: nullKey }
+source: ./__fixtures__/contracts/null-key.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/key must be integer"
+---
+kind: Assert.Manifest
+metadata: { name: catchesNodeNotFound }
+source: ./__fixtures__/contracts/catches-node-not-found.yaml
+expect:
+  errors: []

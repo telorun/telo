@@ -11,6 +11,8 @@ export async function openDatabase(file: string): Promise<SqliteDb> {
   // See the Node driver: wait for a lock instead of failing on it, and say so
   // here because the two drivers' defaults differ.
   db.exec("PRAGMA busy_timeout = 5000");
+  // Off by default under bun:sqlite; see the Node driver.
+  db.exec("PRAGMA foreign_keys = ON");
 
   return {
     prepare(sql: string) {

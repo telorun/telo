@@ -1,0 +1,9 @@
+modules:
+  modules/sqlite: Fixed
+  modules/postgres: Fixed
+body: "A primary-key or identity column now projects non-nullable, as the table creates
+  it: 'nullable' defaults to false on such a column and to true on any other, and
+  'nullable: true' beside 'identity' is refused as it already was beside 'primaryKey'. A
+  null written for a key column — a seed row, a derived contract such as a graph node
+  key — is a 'telo check' error rather than a database error or, on an SQLite INTEGER
+  PRIMARY KEY, a generated rowid."

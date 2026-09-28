@@ -41,6 +41,8 @@
     "@telorun/embedding",
     "@telorun/font",
     "@telorun/fs-build",
+    "@telorun/graph",
+    "@telorun/graph-sql-build",
     "@telorun/gzip-build",
     "@telorun/html-build",
     "@telorun/http-client-build",

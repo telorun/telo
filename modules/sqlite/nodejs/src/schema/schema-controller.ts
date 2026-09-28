@@ -1,10 +1,13 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ResourceContext } from "@telorun/sdk";
 import {
+  assertListedTable,
   resolveSqlConnection,
   runSchemaPass,
   type MigrationMap,
+  type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
+  type SqlSchema,
 } from "@telorun/sql";
 import { SqliteSchemaDriver } from "./sqlite-schema-driver.js";
 import type { SqliteEnumResource } from "./enum-controller.js";
@@ -29,10 +32,11 @@ interface SqliteSchemaManifest {
  * SQLite has exactly one namespace, so unlike the PostgreSQL kind there is no
  * `schema:` field to name and nothing to create.
  */
-class SqliteSchemaResource implements ResourceInstance {
+class SqliteSchemaResource implements SqlSchema {
   constructor(
     private readonly manifest: SqliteSchemaManifest,
     private readonly ctx: ResourceContext,
+    private readonly driver: SqliteSchemaDriver,
   ) {}
 
   /** Configured state is pulled, observed state is pushed — everything this
@@ -43,18 +47,22 @@ class SqliteSchemaResource implements ResourceInstance {
     return {};
   }
 
-  async run(): Promise<void> {
-    const connection = resolveSqlConnection(
-      this.manifest.connection,
-      this.ctx,
-      () => `SQLite.Schema "${this.manifest.metadata.name}": 'connection'`,
-    );
-    if (!connection) {
-      throw new Error(`SQLite.Schema "${this.manifest.metadata.name}": missing connection`);
-    }
+  private get namespace(): string {
+    return "main";
+  }
 
-    const status = await runSchemaPass(new SqliteSchemaDriver(connection), this.ctx, {
-      schema: "main",
+  qualifiedTableName(table: DeclaredTable): string {
+    assertListedTable(
+      `SQLite.Schema "${this.manifest.metadata.name}"`,
+      (this.manifest.tables ?? []).map((listed) => listed.declaration),
+      table,
+    );
+    return this.driver.qualify(this.namespace, table.name);
+  }
+
+  async run(): Promise<void> {
+    const status = await runSchemaPass(this.driver, this.ctx, {
+      schema: this.namespace,
       ledger: this.manifest.ledger,
       version: this.manifest.version,
       tables: (this.manifest.tables ?? []).map((table) => table.declaration),
@@ -79,5 +87,13 @@ export async function create(
   resource: SqliteSchemaManifest,
   ctx: ResourceContext,
 ): Promise<SqliteSchemaResource> {
-  return new SqliteSchemaResource(resource, ctx);
+  const connection = resolveSqlConnection(
+    resource.connection,
+    ctx,
+    () => `SQLite.Schema "${resource.metadata.name}": 'connection'`,
+  );
+  if (!connection) {
+    throw new Error(`SQLite.Schema "${resource.metadata.name}": missing connection`);
+  }
+  return new SqliteSchemaResource(resource, ctx, new SqliteSchemaDriver(connection));
 }

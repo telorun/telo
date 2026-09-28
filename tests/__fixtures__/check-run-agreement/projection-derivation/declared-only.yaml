@@ -1,0 +1,7 @@
+# Imports the library and dispatches nothing from it: an unresolvable projection
+# fails the resource's creation, not its first call.
+kind: Telo.Application
+metadata:
+  name: ProjectionDeclaredOnly
+imports:
+  Lib: ./own-contract

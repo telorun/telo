@@ -1,0 +1,15 @@
+# The application's own slot reaches, through the library's exported `relay`,
+# a node internal to the library that names no shape. The library's documents
+# carry that node, so this check reports the hop the kernel refuses.
+kind: Telo.Application
+metadata:
+  name: ProjectionInternalHop
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref write
+---
+kind: Lib.Write
+metadata:
+  name: write
+node: !ref Lib.relay

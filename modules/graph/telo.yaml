@@ -1,0 +1,1091 @@
+kind: Telo.Library
+metadata:
+  name: Graph
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Storage, Data]
+  description: >-
+    A knowledge graph of typed entities and typed links between them: create,
+    upsert, update, delete and look up nodes and relationships by key, filter
+    them by property, and traverse several hops to find connected entities. The
+    node and relationship types are declared once, so every call is checked
+    against the model before anything runs.
+requires:
+  # The operation contracts use the object form of `x-telo-schema-projection-from`
+  # (`{ from, pick, omit }`) with pointers that cross references (`/node/key`,
+  # `/relationship/source`). 0.104.0 checks this file clean but leaves the
+  # object-form contracts untyped, and its kernel fails the relationship
+  # operations at dispatch with ERR_SCHEMA_PROJECTION_UNRESOLVED. Verified by
+  # execution (`run`) against 0.104.0.
+  telo: ">=0.105.0"
+exports:
+  kinds:
+    - Store
+    - Node
+    - Relationship
+    - CreateNode
+    - MergeNode
+    - UpdateNode
+    - DeleteNode
+    - GetNode
+    - FindNodes
+    - CreateRelationship
+    - MergeRelationship
+    - UpdateRelationship
+    - DeleteRelationship
+    - FindRelationships
+    - Traverse
+  # The entry point a backend's controller bundle resolves `@telorun/graph` to:
+  # the store contract every backend implements, and the membership check every
+  # backend's store runs at creation.
+  code:
+    - specifier: "@telorun/graph"
+      format: js
+      path: ./nodejs/graph.mjs
+      source: ./nodejs/src/index.ts
+---
+# Graph.Store — the abstract every backend's store extends. A configured handle
+# held by the operations, never invoked itself; it lists the node and
+# relationship types it holds, and that list is what every operation's type is
+# checked against. The store-level structural rules are the backend's, since
+# only the backend knows what a type is stored in.
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    A configured graph holding typed entities and the typed links between them. It
+    lists every entity type and link type it stores, so writes, lookups and
+    multi-hop traversals are checked against one declared model, and a type the
+    graph does not hold is refused before anything runs.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [nodes]
+  properties:
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency
+---
+kind: Telo.Abstract
+metadata:
+  name: Node
+  description: >-
+    One type of entity in a knowledge graph — people, documents, concepts — with its
+    properties and the property that identifies each entity of the type. The key is
+    always supplied by whoever writes the entity, never generated, so the same
+    entity is addressed the same way everywhere.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [key]
+  properties:
+    key:
+      title: Key
+      description: >-
+        The name of the property that identifies a node of this type. Every node
+        carries a value for it, supplied by the caller and never generated, and no
+        two nodes of the type share one.
+      type: string
+      minLength: 1
+---
+kind: Telo.Abstract
+metadata:
+  name: Relationship
+  description: >-
+    One type of directed link between entities in a knowledge graph — knows,
+    authored, cites — from a source entity type to a target entity type, which may
+    be the same type. At most one link of a type joins an ordered pair, and a link
+    may carry properties of its own.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [source, target]
+  properties:
+    source:
+      title: Source
+      description: The node type a relationship of this type starts at.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    target:
+      title: Target
+      description: The node type a relationship of this type ends at. May be the source's type.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  # A relationship joins node types, so a store listing it must list both of
+  # them: otherwise a relationship could be written whose endpoints the graph
+  # does not hold. The only referrer rule this kind declares, and backends
+  # declare none, so every backend inherits it.
+  x-telo-referrer-rules:
+    - referrer: Self.Store
+      condition: !cel >-
+        referrer.nodes.exists(n, n.name == self.source.name)
+          && referrer.nodes.exists(n, n.name == self.target.name)
+      code: GRAPH_ENDPOINT_NOT_IN_STORE
+      message: >-
+        lists a relationship type whose source or target node type it does not
+        list in 'nodes:'. Add the endpoint node type to 'nodes:', or remove the
+        relationship type.
+---
+kind: Telo.Definition
+metadata:
+  name: CreateNode
+  description: >-
+    Adds a new entity to a knowledge graph under the key the caller supplies, with
+    its properties, and returns it as stored. Refuses when an entity of that type
+    already holds the key, so an existing one is never silently overwritten.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateNode
+throws:
+  codes:
+    GRAPH_NODE_EXISTS:
+      description: >-
+        A node of this type already holds the key. Use a merge to write whether or
+        not it exists.
+inputType:
+  type: object
+  required: [key]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The new node's key, typed from the node type's key property.
+      x-telo-schema-projection-from: { from: /node, pick: /node/key }
+    properties:
+      title: Properties
+      description: The new node's other properties, typed from the node type.
+      x-telo-schema-projection-from: { from: /node, omit: [/node/key] }
+outputType:
+  type: object
+  required: [node]
+  additionalProperties: false
+  properties:
+    node:
+      title: Node
+      description: The node as stored.
+      type: object
+      required: [key, properties]
+      additionalProperties: false
+      properties:
+        key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+        properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph the node is written to.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type written. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: MergeNode
+  description: >-
+    Writes an entity to a knowledge graph whether or not it exists yet: creates it
+    under the caller's key, or updates the properties given on the one already
+    there, leaving the rest unchanged. Returns the entity as stored.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeNode
+throws:
+  codes: {}
+inputType:
+  type: object
+  required: [key]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The node's key, typed from the node type's key property.
+      x-telo-schema-projection-from: { from: /node, pick: /node/key }
+    properties:
+      title: Properties
+      description: >-
+        The properties to set. Those not given keep their stored value on an
+        existing node, and take their column default on a new one.
+      x-telo-schema-projection-from: { from: /node, omit: [/node/key] }
+outputType:
+  type: object
+  required: [node]
+  additionalProperties: false
+  properties:
+    node:
+      title: Node
+      description: The node as stored.
+      type: object
+      required: [key, properties]
+      additionalProperties: false
+      properties:
+        key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+        properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph the node is written to.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type written. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: UpdateNode
+  description: >-
+    Changes properties of an existing entity in a knowledge graph, found by its
+    key, leaving the properties not given unchanged, and returns it as stored.
+    Refuses when no entity of that type holds the key.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateNode
+throws:
+  codes:
+    GRAPH_NODE_NOT_FOUND:
+      description: No node of this type holds the key.
+inputType:
+  type: object
+  required: [key, properties]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The key of the node to update.
+      x-telo-schema-projection-from: { from: /node, pick: /node/key }
+    properties:
+      title: Properties
+      description: The properties to set; at least one.
+      minProperties: 1
+      x-telo-schema-projection-from: { from: /node, omit: [/node/key] }
+outputType:
+  type: object
+  required: [node]
+  additionalProperties: false
+  properties:
+    node:
+      title: Node
+      description: The node as stored after the update.
+      type: object
+      required: [key, properties]
+      additionalProperties: false
+      properties:
+        key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+        properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the node.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type updated. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: DeleteNode
+  description: >-
+    Removes an entity from a knowledge graph by its key, together with every link
+    that starts or ends at it, and returns the entity as it was last stored.
+    Refuses when no entity of that type holds the key.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteNode
+throws:
+  codes:
+    GRAPH_NODE_NOT_FOUND:
+      description: No node of this type holds the key.
+inputType:
+  type: object
+  required: [key]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The key of the node to delete.
+      x-telo-schema-projection-from: { from: /node, pick: /node/key }
+outputType:
+  type: object
+  required: [node]
+  additionalProperties: false
+  properties:
+    node:
+      title: Node
+      description: The node as it was last stored.
+      type: object
+      required: [key, properties]
+      additionalProperties: false
+      properties:
+        key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+        properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the node.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type deleted from. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: GetNode
+  description: >-
+    Looks up one entity in a knowledge graph by its key and returns it with its
+    properties. Refuses when no entity of that type holds the key, so a missing
+    entity is an error the caller handles rather than an empty value.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#GetNode
+throws:
+  codes:
+    GRAPH_NODE_NOT_FOUND:
+      description: No node of this type holds the key.
+inputType:
+  type: object
+  required: [key]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The key of the node to read.
+      x-telo-schema-projection-from: { from: /node, pick: /node/key }
+outputType:
+  type: object
+  required: [node]
+  additionalProperties: false
+  properties:
+    node:
+      title: Node
+      description: The node as stored.
+      type: object
+      required: [key, properties]
+      additionalProperties: false
+      properties:
+        key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+        properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the node.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type read. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: FindNodes
+  description: >-
+    Lists the entities of one type in a knowledge graph whose properties match a
+    filter — equal, not equal, less or greater than a value — ordered by key and
+    paged with a limit and an offset. An empty filter lists every entity of the
+    type.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindNodes
+throws:
+  codes: {}
+inputType:
+  type: object
+  additionalProperties: false
+  properties:
+    where:
+      title: Where
+      description: >-
+        Operator-first filter: each operator holds a partial property map, and
+        every comparison is ANDed. `eq` of null matches a node without the
+        property and `ne` of null one that has it; no other comparison matches a
+        missing property.
+      type: object
+      additionalProperties: false
+      properties:
+        eq: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        ne: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        lt: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        lte: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        gt: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+        gte: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+    limit:
+      title: Limit
+      description: The most nodes returned.
+      type: integer
+      minimum: 1
+    offset:
+      title: Offset
+      description: How many matching nodes, in key order, to skip first.
+      type: integer
+      minimum: 0
+outputType:
+  type: object
+  required: [nodes]
+  additionalProperties: false
+  properties:
+    nodes:
+      title: Nodes
+      description: The matching nodes, ordered by key.
+      type: array
+      items:
+        type: object
+        required: [key, properties]
+        additionalProperties: false
+        properties:
+          key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+          properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+schema:
+  type: object
+  required: [store, node]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the nodes.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    node:
+      title: Node
+      description: The node type listed. The store must list it in 'nodes:'.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a node type its store does not list in 'nodes:'.
+---
+kind: Telo.Definition
+metadata:
+  name: CreateRelationship
+  description: >-
+    Links two existing entities in a knowledge graph with a new relationship,
+    optionally carrying properties, and returns it as stored. Refuses when the
+    pair is already linked by that type, or when either entity does not exist,
+    naming which end is missing.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateRelationship
+throws:
+  codes:
+    GRAPH_RELATIONSHIP_EXISTS:
+      description: >-
+        A relationship of this type already joins the pair. Use a merge to write
+        whether or not it exists.
+    GRAPH_NODE_NOT_FOUND:
+      description: The source or target node does not exist; `data.endpoint` says which.
+      data:
+        type: object
+        required: [endpoint]
+        properties:
+          endpoint: { type: string, enum: [source, target] }
+inputType:
+  type: object
+  required: [source, target]
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: The source node's key, typed from the source node type's key.
+      x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key }
+    target:
+      title: Target
+      description: The target node's key, typed from the target node type's key.
+      x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key }
+    properties:
+      title: Properties
+      description: The relationship's own properties, typed from the relationship type.
+      x-telo-schema-projection-from: /relationship
+outputType:
+  type: object
+  required: [relationship]
+  additionalProperties: false
+  properties:
+    relationship:
+      title: Relationship
+      description: The relationship as stored.
+      type: object
+      required: [source, target, properties]
+      additionalProperties: false
+      properties:
+        source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
+        target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
+        properties: { x-telo-schema-projection-from: /relationship }
+schema:
+  type: object
+  required: [store, relationship]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph the relationship is written to.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    relationship:
+      title: Relationship
+      description: The relationship type written. The store must list it in 'relationships:'.
+      x-telo-ref:
+        kind: Self.Relationship
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a relationship type its store does not list in 'relationships:'.
+---
+kind: Telo.Definition
+metadata:
+  name: MergeRelationship
+  description: >-
+    Links two existing entities in a knowledge graph whether or not the link exists
+    yet: creates the relationship, or updates the properties given on the one
+    already there. Returns it as stored, and refuses when either entity does not
+    exist.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeRelationship
+throws:
+  codes:
+    GRAPH_NODE_NOT_FOUND:
+      description: The source or target node does not exist.
+inputType:
+  type: object
+  required: [source, target]
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: The source node's key, typed from the source node type's key.
+      x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key }
+    target:
+      title: Target
+      description: The target node's key, typed from the target node type's key.
+      x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key }
+    properties:
+      title: Properties
+      description: >-
+        The properties to set. Those not given keep their stored value on an
+        existing relationship, and take their column default on a new one.
+      x-telo-schema-projection-from: /relationship
+outputType:
+  type: object
+  required: [relationship]
+  additionalProperties: false
+  properties:
+    relationship:
+      title: Relationship
+      description: The relationship as stored.
+      type: object
+      required: [source, target, properties]
+      additionalProperties: false
+      properties:
+        source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
+        target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
+        properties: { x-telo-schema-projection-from: /relationship }
+schema:
+  type: object
+  required: [store, relationship]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph the relationship is written to.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    relationship:
+      title: Relationship
+      description: The relationship type written. The store must list it in 'relationships:'.
+      x-telo-ref:
+        kind: Self.Relationship
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a relationship type its store does not list in 'relationships:'.
+---
+kind: Telo.Definition
+metadata:
+  name: UpdateRelationship
+  description: >-
+    Changes properties of an existing link between two entities in a knowledge
+    graph, found by its source and target keys, leaving the properties not given
+    unchanged, and returns it as stored. Refuses when no such link exists.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateRelationship
+throws:
+  codes:
+    GRAPH_RELATIONSHIP_NOT_FOUND:
+      description: No relationship of this type joins the pair.
+inputType:
+  type: object
+  required: [source, target, properties]
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: The source node's key.
+      x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key }
+    target:
+      title: Target
+      description: The target node's key.
+      x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key }
+    properties:
+      title: Properties
+      description: The properties to set; at least one.
+      minProperties: 1
+      x-telo-schema-projection-from: /relationship
+outputType:
+  type: object
+  required: [relationship]
+  additionalProperties: false
+  properties:
+    relationship:
+      title: Relationship
+      description: The relationship as stored after the update.
+      type: object
+      required: [source, target, properties]
+      additionalProperties: false
+      properties:
+        source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
+        target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
+        properties: { x-telo-schema-projection-from: /relationship }
+schema:
+  type: object
+  required: [store, relationship]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the relationship.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    relationship:
+      title: Relationship
+      description: The relationship type updated. The store must list it in 'relationships:'.
+      x-telo-ref:
+        kind: Self.Relationship
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a relationship type its store does not list in 'relationships:'.
+---
+kind: Telo.Definition
+metadata:
+  name: DeleteRelationship
+  description: >-
+    Removes the link between two entities in a knowledge graph, found by its source
+    and target keys, and returns it as it was last stored. The entities themselves
+    stay. Refuses when no such link exists.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteRelationship
+throws:
+  codes:
+    GRAPH_RELATIONSHIP_NOT_FOUND:
+      description: No relationship of this type joins the pair.
+inputType:
+  type: object
+  required: [source, target]
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: The source node's key.
+      x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key }
+    target:
+      title: Target
+      description: The target node's key.
+      x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key }
+outputType:
+  type: object
+  required: [relationship]
+  additionalProperties: false
+  properties:
+    relationship:
+      title: Relationship
+      description: The relationship as it was last stored.
+      type: object
+      required: [source, target, properties]
+      additionalProperties: false
+      properties:
+        source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
+        target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
+        properties: { x-telo-schema-projection-from: /relationship }
+schema:
+  type: object
+  required: [store, relationship]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the relationship.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    relationship:
+      title: Relationship
+      description: The relationship type deleted from. The store must list it in 'relationships:'.
+      x-telo-ref:
+        kind: Self.Relationship
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a relationship type its store does not list in 'relationships:'.
+---
+kind: Telo.Definition
+metadata:
+  name: FindRelationships
+  description: >-
+    Lists the links of one type in a knowledge graph, optionally only those from a
+    given source or to a given target, filtered by their properties and ordered by
+    source then target, paged with a limit and an offset.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindRelationships
+throws:
+  codes: {}
+inputType:
+  type: object
+  additionalProperties: false
+  properties:
+    source:
+      title: Source
+      description: Only relationships starting at this node.
+      x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key }
+    target:
+      title: Target
+      description: Only relationships ending at this node.
+      x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key }
+    where:
+      title: Where
+      description: >-
+        Operator-first filter over the relationship's own properties: each
+        operator holds a partial property map, and every comparison is ANDed.
+        `eq` of null matches a relationship without the property and `ne` of null
+        one that has it; no other comparison matches a missing property.
+      type: object
+      additionalProperties: false
+      properties:
+        eq: { x-telo-schema-projection-from: /relationship }
+        ne: { x-telo-schema-projection-from: /relationship }
+        lt: { x-telo-schema-projection-from: /relationship }
+        lte: { x-telo-schema-projection-from: /relationship }
+        gt: { x-telo-schema-projection-from: /relationship }
+        gte: { x-telo-schema-projection-from: /relationship }
+    limit:
+      title: Limit
+      description: The most relationships returned.
+      type: integer
+      minimum: 1
+    offset:
+      title: Offset
+      description: How many matching relationships, in (source, target) order, to skip first.
+      type: integer
+      minimum: 0
+outputType:
+  type: object
+  required: [relationships]
+  additionalProperties: false
+  properties:
+    relationships:
+      title: Relationships
+      description: The matching relationships, ordered by source then target.
+      type: array
+      items:
+        type: object
+        required: [source, target, properties]
+        additionalProperties: false
+        properties:
+          source: { x-telo-schema-projection-from: { from: /relationship/source, pick: /relationship/source/key } }
+          target: { x-telo-schema-projection-from: { from: /relationship/target, pick: /relationship/target/key } }
+          properties: { x-telo-schema-projection-from: /relationship }
+schema:
+  type: object
+  required: [store, relationship]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph holding the relationships.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    relationship:
+      title: Relationship
+      description: The relationship type listed. The store must list it in 'relationships:'.
+      x-telo-ref:
+        kind: Self.Relationship
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: names a relationship type its store does not list in 'relationships:'.
+---
+# Graph.Traverse — a path expressed as a list of hops, each over one relationship
+# type in a direction, repeated a bounded number of times. The hops must chain
+# from `from` to `to`, which is checked from the declarations before anything
+# runs; the result is the distinct set of end nodes, never the paths.
+kind: Telo.Definition
+metadata:
+  name: Traverse
+  description: >-
+    Follows links through a knowledge graph from one starting entity, hop by hop
+    along declared link types and directions, each hop repeatable a bounded number
+    of times, and returns the distinct entities reached at the end — friends of
+    friends, documents citing documents — filtered, ordered by key and paged.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#Traverse
+throws:
+  codes:
+    GRAPH_NODE_NOT_FOUND:
+      description: The start node does not exist.
+inputType:
+  type: object
+  required: [key]
+  additionalProperties: false
+  properties:
+    key:
+      title: Key
+      description: The start node's key, typed from the `from` node type's key.
+      x-telo-schema-projection-from: { from: /from, pick: /from/key }
+    where:
+      title: Where
+      description: >-
+        Operator-first filter over the end nodes' properties: each operator holds
+        a partial property map, and every comparison is ANDed. `eq` of null
+        matches a node without the property and `ne` of null one that has it; no
+        other comparison matches a missing property.
+      type: object
+      additionalProperties: false
+      properties:
+        eq: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+        ne: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+        lt: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+        lte: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+        gt: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+        gte: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+    limit:
+      title: Limit
+      description: The most end nodes returned.
+      type: integer
+      minimum: 1
+    offset:
+      title: Offset
+      description: How many end nodes, in key order, to skip first.
+      type: integer
+      minimum: 0
+outputType:
+  type: object
+  required: [nodes]
+  additionalProperties: false
+  properties:
+    nodes:
+      title: Nodes
+      description: The distinct end nodes reached, ordered by key.
+      type: array
+      items:
+        type: object
+        required: [key, properties]
+        additionalProperties: false
+        properties:
+          key: { x-telo-schema-projection-from: { from: /to, pick: /to/key } }
+          properties: { x-telo-schema-projection-from: { from: /to, omit: [/to/key] } }
+schema:
+  type: object
+  required: [store, from, hops, to]
+  additionalProperties: false
+  properties:
+    store:
+      title: Store
+      description: The graph traversed.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    from:
+      title: From
+      description: The node type the traversal starts at.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    to:
+      title: To
+      description: The node type the traversal ends at; the result holds nodes of this type.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    hops:
+      title: Hops
+      description: >-
+        The path, in order. Each hop follows one relationship type in a direction,
+        between `minHops` and `maxHops` times; the hops must chain from `from` to
+        `to`.
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [relationship]
+        additionalProperties: false
+        properties:
+          relationship:
+            title: Relationship
+            description: The relationship type this hop follows.
+            x-telo-ref:
+              kind: Self.Relationship
+              use: dependency
+          direction:
+            title: Direction
+            description: >-
+              `out` follows a relationship from its source to its target, `in` from
+              its target to its source, `both` either way.
+            type: string
+            enum: [out, in, both]
+            default: out
+          minHops:
+            title: Min Hops
+            description: The fewest times this hop is followed.
+            type: integer
+            minimum: 1
+            default: 1
+          maxHops:
+            title: Max Hops
+            description: >-
+              The most times this hop is followed; defaults to `minHops`. A
+              repeated hop stops at this bound whatever cycles the graph holds.
+            type: integer
+            minimum: 1
+  x-telo-resource-rules:
+    - resolve: [/store]
+      condition: !cel >-
+        self.store.nodes.exists(n, n.name == self.from.name)
+          && self.store.nodes.exists(n, n.name == self.to.name)
+          && self.hops.all(h, self.store.?relationships.orValue([]).exists(r, r.name == h.relationship.name))
+      code: GRAPH_TYPE_NOT_IN_STORE
+      message: >-
+        names a node type or relationship type its store does not list in 'nodes:'
+        or 'relationships:'.
+    # The node type each hop enters must be the one the previous hop left, the
+    # first must be `from` and the last must leave at `to`: one list equality.
+    - resolve: [/hops]
+      condition: !cel >-
+        [self.from.name] + self.hops.map(h,
+            h.?direction.orValue('out') == 'in' ? h.relationship.source.name : h.relationship.target.name)
+          == self.hops.map(h,
+            h.?direction.orValue('out') == 'in' ? h.relationship.target.name : h.relationship.source.name)
+            + [self.to.name]
+      code: GRAPH_HOPS_DISCONNECTED
+      message: >-
+        declares hops that do not chain from 'from' to 'to': each hop must start at
+        the node type the previous one ended at (a relationship's source for
+        `out`, its target for `in`), the first at 'from', and the last must end at
+        'to'.
+    - resolve: [/hops]
+      in: /hops
+      condition: !cel >-
+        this.relationship.source.name == this.relationship.target.name
+          || (this.?direction.orValue('out') != 'both'
+            && this.?maxHops.orValue(this.?minHops.orValue(1)) <= 1)
+      code: GRAPH_HOP_REPEAT_MIXED_TYPES
+      message: >-
+        follows a relationship whose source and target are different node types
+        with `direction: both` or more than one repetition, which could not chain
+        onto itself. Only a relationship between nodes of one type repeats.
+    - in: /hops
+      condition: !cel "!('maxHops' in this) || this.maxHops >= this.?minHops.orValue(1)"
+      code: GRAPH_HOP_RANGE_INVALID
+      message: sets maxHops below minHops.

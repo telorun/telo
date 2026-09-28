@@ -1,4 +1,4 @@
-import type { AnalysisRegistry, StaticAnalyzer } from "@telorun/analyzer";
+import type { AnalysisRegistry, ModuleDocuments, StaticAnalyzer } from "@telorun/analyzer";
 import type { ResourceContext, ResourceManifest } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
 
@@ -13,6 +13,10 @@ export interface LibraryAnalysisHost {
   loadTimeManifests: ResourceManifest[];
   /** The root Application's `metadata.name`. */
   entryModule: string | undefined;
+  /** A library's flattened analysis set and the full documents of every
+   *  library it imports — what its analysis resolves a projection hop into
+   *  another library's internals against. */
+  loadLibrary(url: string): Promise<{ manifests: ResourceManifest[]; moduleDocuments: ModuleDocuments[] }>;
 }
 
 /**

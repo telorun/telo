@@ -1,0 +1,6 @@
+# Consumes the library beside it, so booting creates its store.
+kind: Telo.Application
+metadata:
+  name: ConsumesUnaddressedSchema
+imports:
+  Lib: ./unaddressed-schema

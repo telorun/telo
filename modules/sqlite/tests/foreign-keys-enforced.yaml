@@ -1,0 +1,89 @@
+kind: Telo.Application
+metadata:
+  name: SqliteForeignKeysEnforced
+  version: 1.0.0
+  description: |
+    A declared foreign key is enforced by the connection on every host driver: a
+    child row naming a missing parent is refused, and deleting a parent runs the
+    key's `onDelete: cascade`.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: authors }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: posts }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true }
+  authorId: { type: integer, nullable: false }
+foreignKeys:
+  postsAuthor:
+    columns: [authorId]
+    references: { table: !ref authors, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref authors, !ref posts]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: orphanInsert
+    try:
+      - name: attemptOrphan
+        invoke: !ref command
+        inputs:
+          sql: "INSERT INTO posts (id, authorId) VALUES (1, 99)"
+    catch:
+      - name: orphanRefused
+        value: !cel "error.message.contains('FOREIGN KEY constraint failed')"
+  - name: assertOrphanRefused
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.orphanRefused.result"
+      expected: true
+  - name: insertAuthor
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO authors (id) VALUES (1)"
+  - name: insertPost
+    invoke: !ref command
+    inputs:
+      sql: "INSERT INTO posts (id, authorId) VALUES (2, 1)"
+  - name: deleteAuthor
+    invoke: !ref command
+    inputs:
+      sql: "DELETE FROM authors WHERE id = 1"
+  - name: readPosts
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT id FROM posts"
+  - name: assertCascaded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readPosts.result.rows"
+      expected: []
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db

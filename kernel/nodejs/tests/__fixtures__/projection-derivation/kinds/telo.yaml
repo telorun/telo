@@ -1,0 +1,110 @@
+# Kinds exercising a projection that crosses references. `Shape` declares its
+# entries; `Node` and `Link` declare none of their own and derive theirs from the
+# declarations they reference; `Write` types its inputs through all of them.
+kind: Telo.Library
+metadata:
+  name: ProjectionKinds
+imports:
+  Run: ../../../../../../modules/run
+exports:
+  kinds: [Shape, Node, Link, Write]
+---
+kind: Telo.Definition
+metadata:
+  name: Shape
+capability: Telo.Provider
+x-telo-schema-projection:
+  entries: /fields
+  key: type
+  nullable: nullable
+schema:
+  type: object
+  required: [fields]
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        required: [type]
+        properties:
+          type:
+            type: string
+            enum: [text, number]
+            x-telo-schema-map:
+              text: { type: string }
+              number: { type: number }
+          nullable: { type: boolean, default: false }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Node
+capability: Telo.Provider
+x-telo-schema-projection-from: { from: /shape, omit: [/secret] }
+schema:
+  type: object
+  required: [shape, key, secret]
+  properties:
+    shape:
+      x-telo-ref: { kind: Self.Shape, use: schema }
+    key: { type: string }
+    secret: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Link
+capability: Telo.Provider
+x-telo-schema-projection-from: /shape
+schema:
+  type: object
+  required: [shape]
+  properties:
+    shape:
+      x-telo-ref: { kind: Self.Shape, use: schema }
+    source:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Write
+capability: Telo.Invocable
+inputType:
+  type: object
+  additionalProperties: false
+  properties:
+    properties: { x-telo-schema-projection-from: { from: /node, omit: [/node/key] } }
+    key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+    edge: { x-telo-schema-projection-from: /link }
+    source: { x-telo-schema-projection-from: { from: /link/source, pick: /link/source/key } }
+schema:
+  type: object
+  required: [node]
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+    link:
+      x-telo-ref: { kind: Self.Link, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+

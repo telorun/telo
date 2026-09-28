@@ -30,7 +30,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 | `Sql.Selection` | Declarative SELECT builder — columns, filters, ordering, pagination, grouping. |
 | `Sql.Transaction` | Wraps an executable in a database transaction; a nested transaction on the same connection joins the enclosing one. |
 | `Sql.Table` | **Abstract** declared table; each backend supplies its own (`Postgres.Table`, `SQLite.Table`) in its own type vocabulary. |
-| `Sql.Schema` | **Abstract** schema-change contract — the clock (`version:`), the reclamation policy and the observed state it reports. Backends supply `Postgres.Schema` / `SQLite.Schema`. |
+| `Sql.Schema` | **Abstract** schema-change contract — the connection it lives on (`connection:`), the clock (`version:`), the reclamation policy and the observed state it reports. Backends supply `Postgres.Schema` / `SQLite.Schema`. |
 
 ## Example
 

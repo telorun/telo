@@ -90,6 +90,10 @@ export interface BoundContract {
   /** Properties the contract marked `x-telo-span-attribute` — the values its
    *  dispatch span carries. Empty when the contract marks none. */
   spanAttributes(): SpanAttributePath[];
+  /** Resolve the contract's `x-telo-schema-projection-from` slots now, throwing
+   *  `ERR_SCHEMA_PROJECTION_UNRESOLVED` for one that cannot resolve. Compiling
+   *  stays lazy. */
+  resolveProjections(): void;
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -166,9 +170,10 @@ export function resolveBoundContract(
   let scalars: DeclaredScalarPath[] | undefined;
   let sensitive: string[][] | undefined;
   let spanAttributes: SpanAttributePath[] | undefined;
+  let shaped: { schema: Record<string, any>; projected: Record<string, any> } | undefined;
 
-  const resolve = (): { validate(value: unknown): void } => {
-    if (compiled !== undefined) return compiled;
+  const shape = (): { schema: Record<string, any>; projected: Record<string, any> } => {
+    if (shaped !== undefined) return shaped;
     const schema = factory.schemaOf(declared);
     if (!schema) {
       // A declared contract that resolves to nothing is a manifest fault — a
@@ -207,6 +212,13 @@ export function resolveBoundContract(
         );
       }
     }
+    shaped = { schema, projected };
+    return shaped;
+  };
+
+  const resolve = (): { validate(value: unknown): void } => {
+    if (compiled !== undefined) return compiled;
+    const { schema, projected } = shape();
     const stripped = withLiveValuesSkipped(projected, factory.resolveRef);
     paths = defaultBearingPaths(stripped, factory.resolveRef);
     scalars = declaredScalarPaths(stripped, factory.resolveRef);
@@ -265,7 +277,22 @@ export function resolveBoundContract(
       resolve();
       return spanAttributes ?? [];
     },
+    resolveProjections: () => {
+      if (!projections) return;
+      const schema = factory.schemaOf(declared);
+      if (schema && carriesProjection(schema)) shape();
+    },
   };
+}
+
+/** True when a schema writes `x-telo-schema-projection-from` anywhere. */
+function carriesProjection(node: unknown, seen = new Set<object>()): boolean {
+  if (!node || typeof node !== "object" || seen.has(node)) return false;
+  seen.add(node);
+  if (Array.isArray(node)) return node.some((item) => carriesProjection(item, seen));
+  return Object.entries(node).some(
+    ([key, value]) => key === "x-telo-schema-projection-from" || carriesProjection(value, seen),
+  );
 }
 
 /** The key a named contract's rules were registered under — the same key its

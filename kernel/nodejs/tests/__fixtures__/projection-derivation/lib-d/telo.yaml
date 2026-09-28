@@ -1,0 +1,8 @@
+# Re-exports LibA's `person`, so a consumer reaches it two libraries deep.
+kind: Telo.Library
+metadata:
+  name: ProjectionLibD
+imports:
+  LibA: ../lib-a
+exports:
+  resources: [LibA.person]

@@ -1,0 +1,25 @@
+# One of two libraries each declaring an internal `users` shape and exporting a
+# `person` node over it. A projection through `LibA.person` must read LibA's
+# `users`, which a consumer's flattened view does not carry.
+kind: Telo.Library
+metadata:
+  name: ProjectionLibA
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [person]
+---
+kind: Kinds.Node
+metadata:
+  name: person
+shape: !ref users
+key: handle
+secret: token
+---
+kind: Kinds.Shape
+metadata:
+  name: users
+fields:
+  handle: { type: text }
+  age: { type: number }
+  token: { type: text }

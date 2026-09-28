@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionCycle
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.cycle

@@ -45,9 +45,11 @@ import {
   analyzerContractScope,
   type ContractScope,
   PERMISSIVE_CONTRACT,
+  projectionModules,
   resolveContract,
 } from "./invocation-contract.js";
 import { buildCallGraph } from "./call-graph.js";
+import { libraryDeclarations } from "./library-declarations.js";
 import { buildDependencyGraph, formatCycle } from "./dependency-graph.js";
 import {
   buildKernelGlobalsIndex,
@@ -125,6 +127,7 @@ import {
 import { analyzerPeerBinder, analyzerPeersTarget, navigatePath } from "./peer-binding.js";
 import {
   describeProjectionFailure,
+  isReportedAtConsumer,
   manifestListScope,
   resolveSchemaProjections,
   type ProjectionFailure,
@@ -899,6 +902,11 @@ export class StaticAnalyzer {
       }
     }
     const aliasesByModule = ctx?.aliasesByModule ?? new Map<string, AliasResolver>();
+    // Every imported library's own declarations, read by a projection hop into
+    // a library's internals. Shared with the registry so an editor's contract
+    // query resolves the same hops `telo check` does.
+    const libraries = libraryDeclarations(options?.moduleDocuments ?? []);
+    registry?._setLibraries(libraries);
     // Per-module-scope seen aliases for DUPLICATE_IMPORT_ALIAS. Authored
     // Telo.Import docs and synthetic-from-inline-`imports:` share one alias
     // namespace per module, so a repeat — across either form — is an error
@@ -1136,6 +1144,9 @@ export class StaticAnalyzer {
       const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
       if (!declaringModule || rootModules.has(declaringModule)) {
         valueTypeSlotIssues.push(...validateValueTypeSlots(m as unknown as ResourceManifest));
+        // A derivation is written wherever a schema is — an instance's own
+        // contract or a named shape as much as a definition's.
+        projectionIssues.push(...validateSchemaProjection(m as unknown as ResourceManifest));
       }
     }
     for (const m of manifests) {
@@ -1158,7 +1169,6 @@ export class StaticAnalyzer {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
         zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
-        projectionIssues.push(...validateSchemaProjection(m as unknown as ResourceManifest));
         // Checked against the MERGED schema, so an `in:` pointer naming an
         // inherited field resolves — which is what lets a rule shared by every
         // backend be declared once on the abstract they extend.
@@ -1648,7 +1658,7 @@ export class StaticAnalyzer {
           aliases,
           rootModules,
           getCallGraph(),
-          { aliasesByModule, rootModules },
+          { aliasesByModule, rootModules, libraries },
         ),
       );
       // A file embed resolves at resource creation, so one written on a doc that
@@ -1836,7 +1846,7 @@ export class StaticAnalyzer {
     // canonicalized (unlike a definition's `extends`, normalized at registration
     // above), so an exported instance's `kind: Self.X` only resolves in its own
     // library's scope.
-    const moduleScopes = { aliasesByModule, rootModules };
+    const moduleScopes = { aliasesByModule, rootModules, libraries };
 
     const observedState = buildObservedStateIndex(allManifests, defs, aliases, moduleScopes);
     const reportsObservedState = [...observedState.values()].some((r) => r.status);
@@ -1965,7 +1975,7 @@ export class StaticAnalyzer {
       celEnv: this.celEnv,
       defs,
       aliases,
-      scopes: { aliasesByModule, rootModules },
+      scopes: { aliasesByModule, rootModules, libraries },
       allManifests,
       kernelGlobals,
       moduleManifest,
@@ -2015,12 +2025,14 @@ export class StaticAnalyzer {
     // One scope for the whole run: it closes over the manifest list and the
     // registry, neither of which changes per resource, and it is asked once per
     // schema-valued slot that carries a projection.
+    const projectionDefs = moduleScopedDefResolver<Record<string, any>>(defs, aliases, {
+      aliasesByModule,
+      rootModules,
+    });
     const resourceProjectionScope = manifestListScope(
       allManifests as Record<string, any>[],
-      (kind) =>
-        (defs.resolve(kind) ?? defs.resolve(aliases.resolveKind(kind) ?? kind)) as
-          | Record<string, any>
-          | undefined,
+      (kind, declaration) => projectionDefs(kind, declaration),
+      projectionModules(defs, aliases, { aliasesByModule, rootModules, libraries }),
     );
 
     // Validate each non-definition, non-system resource
@@ -2242,7 +2254,7 @@ export class StaticAnalyzer {
             // unanswerable here — the entries belong to the declaration the
             // importer supplies — so it is not a defect in the block that named
             // it. The check runs at the injection site instead.
-            if (failure.reason === "injected") continue;
+            if (!isReportedAtConsumer(failure)) continue;
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
@@ -2508,7 +2520,7 @@ export class StaticAnalyzer {
     const contractScope = analyzerContractScope(
       defs,
       aliases,
-      { aliasesByModule, rootModules },
+      { aliasesByModule, rootModules, libraries },
       allManifests as Record<string, any>[],
     );
 
@@ -2615,6 +2627,7 @@ export class StaticAnalyzer {
         resolveContract(direction, md, definition, contractScope, failures);
       }
       for (const failure of failures) {
+        if (!isReportedAtConsumer(failure)) continue;
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
           code: "SCHEMA_PROJECTION_FROM_UNRESOLVED",
@@ -2698,7 +2711,7 @@ export class StaticAnalyzer {
               allManifests as Record<string, any>[],
               defs,
               aliases,
-              { aliasesByModule, rootModules },
+              { aliasesByModule, rootModules, libraries },
             )) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
@@ -2719,7 +2732,7 @@ export class StaticAnalyzer {
                 allManifests as Record<string, any>[],
                 defs,
                 aliases,
-                { aliasesByModule, rootModules },
+                { aliasesByModule, rootModules, libraries },
               ),
               ...collectStepInputIssues(
               m as Record<string, any>,
@@ -2728,7 +2741,7 @@ export class StaticAnalyzer {
               allManifests as Record<string, any>[],
               defs,
               aliases,
-              { aliasesByModule, rootModules },
+              { aliasesByModule, rootModules, libraries },
               celStepContextSchema,
               ),
             ];

@@ -12,6 +12,7 @@ imports:
 targets:
   - !ref reclaimNeedsVersion
   - !ref columnContradictions
+  - !ref nullKeySeed
 ---
 kind: Assert.Manifest
 metadata: { name: reclaimNeedsVersion }
@@ -21,10 +22,10 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "version"
 ---
-# A primary key declared nullable, and a literal default beside a SQL
-# expression. Both are decidable from the YAML, so the kind's own schema says so
-# and `telo check` reports them — the controller still explains them in full if
-# one is somehow reached at boot.
+# A primary key and an identity column declared nullable, and a literal default
+# beside a SQL expression. All are decidable from the YAML, so the kind's own
+# schema says so and `telo check` reports them — the controller still explains
+# them in full if one is somehow reached at boot.
 kind: Assert.Manifest
 metadata: { name: columnContradictions }
 source: ./__fixtures__/schema-contract/column-contradictions.yaml
@@ -33,4 +34,16 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "/columns/id"
     - code: SCHEMA_VIOLATION
+      message: "/columns/serial"
+    - code: SCHEMA_VIOLATION
       message: "/columns/createdAt"
+---
+# A primary key projects non-null, so a seed row holding NULL there is refused on
+# its own line.
+kind: Assert.Manifest
+metadata: { name: nullKeySeed }
+source: ./__fixtures__/schema-contract/null-key-seed.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/seeds/rows/0/id must be integer"

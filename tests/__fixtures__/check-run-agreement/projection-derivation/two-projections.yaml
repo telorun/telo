@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionTwoProjections
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.twoProjections

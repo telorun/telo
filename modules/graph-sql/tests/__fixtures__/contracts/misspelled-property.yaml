@@ -1,0 +1,25 @@
+# A property the node type does not have, written as a literal.
+kind: Telo.Application
+metadata:
+  name: MisspelledProperty
+include:
+  - ../graph-model.yaml
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphSql: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref write
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: create
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref kb
+      node: !ref person
+    inputs: { key: a, properties: { nmae: Alice } }

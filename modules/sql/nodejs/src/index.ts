@@ -81,4 +81,6 @@ export type {
   TableReferenceResolver,
 } from "./schema/normalize-table.js";
 export { runSchemaPass } from "./schema/schema-run.js";
+export { assertListedTable, isSqlSchema } from "./schema/sql-schema.js";
+export type { SqlSchema } from "./schema/sql-schema.js";
 export type { PendingReclamation, SchemaRunInput, SchemaRunStatus } from "./schema/schema-run.js";

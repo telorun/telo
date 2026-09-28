@@ -33,6 +33,7 @@ import {
 } from "@telorun/sdk";
 import { errorTypeOf, RuntimeError } from "@telorun/sdk";
 import { celResourceReads, concreteEvalPaths, evalPathCovers } from "@telorun/analyzer";
+import { recordDeclarationScope } from "./declaration-scope.js";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
@@ -992,6 +993,7 @@ export class EvaluationContext implements IEvaluationContext {
     }
     this.pendingResources.push(resource);
     this.declaredManifests.set(name, resource);
+    recordDeclarationScope(resource, this);
   }
 
   /**
@@ -1831,7 +1833,9 @@ export class EvaluationContext implements IEvaluationContext {
    *  stamps (`metadata.sourceLine` above all), and a diagnostic anchored on the
    *  stale one points at a pre-edit line. */
   refreshManifest(name: string, resource: ResourceManifest): void {
-    if (this.declaredManifests.has(name)) this.declaredManifests.set(name, resource);
+    if (!this.declaredManifests.has(name)) return;
+    this.declaredManifests.set(name, resource);
+    recordDeclarationScope(resource, this);
   }
 
   /** Re-open an initialized context for another initialization pass.

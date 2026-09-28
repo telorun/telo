@@ -1,0 +1,21 @@
+# A malformed derivation in a resource's OWN contract, not a definition's.
+kind: Telo.Library
+metadata:
+  name: OwnContractLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [ownContract]
+---
+kind: Run.Sequence
+metadata:
+  name: ownContract
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      row: { x-telo-schema-projection-from: { from: "", pikc: /y } }
+steps:
+  - name: echo
+    value: !cel "inputs"

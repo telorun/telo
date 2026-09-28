@@ -27,6 +27,12 @@ tables: [!ref users]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+**Declared foreign keys are enforced.** Every `Sql.Connection` backend enforces
+the foreign keys its `Table` declares, on every host it runs on: a write naming a
+missing parent row is refused, and deleting a parent runs the key's `onDelete`
+action — `cascade` removes the children, `set null` clears the column, and with no
+action declared the delete is refused while a row still references it.
+
 ## Domains — a type refinement, always declared
 
 A column's `type:` holds a storage class **or a reference to a declared enum**.
@@ -251,6 +257,20 @@ boot's declaration, so an object in the namespace that has never appeared in one
 — a legacy table, another application's, one predating adoption — is invisible to
 both the diff and to reclamation. Adopting an existing database is therefore
 safe: nothing you have not declared is ever tombstoned.
+
+## Addressing the tables
+
+A schema resource also **addresses the tables it lists for consumers**. It owns
+the namespace they live in, so a resource that reads or writes those tables —
+rather than running its own SQL text — asks the schema instance for each table's
+qualified, quoted name instead of writing a bare one. A bare name resolves through
+the session's default namespace (on PostgreSQL, the role's `search_path`), which
+is not where a schema with `schema: app` created the table.
+
+`Postgres.Schema` renders `"<schema>"."<table>"` from its own namespace (`public`
+when `schema:` is omitted); `SQLite.Schema`, whose database has one namespace,
+renders the quoted table name. Only a table the schema lists is addressed — asking
+for any other is an error naming the schema and the table.
 
 ## Two schemas over one namespace
 
@@ -496,6 +516,16 @@ declared as data by each backend, so a consumer can type the rows it reads
 without the analyzer learning that `citext` exists. That is what lets
 `SqlRepository.*` type its filters and rows from the table it references — a
 misspelled column is an error at `telo check`, not at the database.
+
+**A column's nullability projects as the table creates it.** A column that omits
+`nullable` is NULL-able, except a primary key or an identity column, which the
+engine makes `NOT NULL` whatever the declaration says — so it projects
+non-nullable, and a `null` written for it (in a seed row, or as a graph node's
+key) is a `telo check` error rather than a database error — or, on an SQLite
+`INTEGER PRIMARY KEY`, a rowid the engine would generate. Each backend
+states this in its column schema as data: `nullable` defaults to `false` when
+`primaryKey: true` or `identity` is present and to `true` otherwise, and
+`nullable: true` beside either is refused.
 
 Types are structured, never spelled into a scalar: `type: varchar` with
 `length: 64`, not `varchar(64)`. Nothing has to parse a type back apart, and the

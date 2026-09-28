@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionDataShaped
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.dataShaped

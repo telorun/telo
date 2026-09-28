@@ -65,7 +65,7 @@ export class ManifestAnalysis {
     for (const m of manifests) {
       if (isModuleKind(m.kind) && m.metadata?.name) rootModules.add(m.metadata.name as string);
     }
-    this.scopes = { aliasesByModule: ctx.aliasesByModule, rootModules };
+    this.scopes = { aliasesByModule: ctx.aliasesByModule, rootModules, libraries: ctx.libraries };
   }
 
   /** What CEL sees, per site. Built on first use — its indices are a function of

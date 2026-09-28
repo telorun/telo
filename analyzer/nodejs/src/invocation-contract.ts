@@ -3,12 +3,15 @@ import {
   celScalarTypeOf,
   isLiveSlot,
   type ResourceDefinition,
+  type ResourceManifest,
   scalarFormOfJsonType,
   type ScalarForm,
   UnsignedInt,
   valueTypeOf,
 } from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
+import { isRefEntry } from "./reference-field-map.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import {
   type ContractDirection,
@@ -22,6 +25,7 @@ import {
   manifestListScope,
   resolveSchemaProjections,
   type ProjectionFailure,
+  type ProjectionModules,
 } from "./schema-projection.js";
 
 export type { ContractDirection };
@@ -43,6 +47,33 @@ export function analyzerContractScope(
     resolveDefinition: resolve,
     resolveIn: resolve.in,
     typeManifestsFor: () => allManifests,
+    projectionModules: projectionModules(defs, aliases, scopes),
+  };
+}
+
+/** How a projection hop reads the flattened set: which module an alias names,
+ *  through the table of the module that wrote it; a declaration's reference
+ *  slots, from the field map Phase-5 injection injects; and each imported
+ *  library's own declarations. */
+export function projectionModules(
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: ModuleScopes,
+): ProjectionModules {
+  const byModule = scopes.aliasesByModule as Map<string, AliasResolver>;
+  return {
+    libraries: scopes.libraries,
+    moduleForAlias(module, alias) {
+      const table = moduleAliasScope({ module }, aliases, scopes.aliasesByModule);
+      return "moduleForAlias" in table && typeof table.moduleForAlias === "function"
+        ? (table as AliasResolver).moduleForAlias(alias)
+        : undefined;
+    },
+    referenceSlots(declaration, module) {
+      const view = { ...declaration, metadata: { ...declaration.metadata, module } };
+      const map = defs.expandedFieldMapForResource(view as ResourceManifest, aliases, byModule);
+      return map && [...map].filter(([, entry]) => isRefEntry(entry)).map(([path]) => path);
+    },
   };
 }
 
@@ -90,6 +121,9 @@ export interface ContractScope {
    * wrong module's type of the same name.
    */
   typeManifestsFor(def: ResourceDefinition | undefined): Record<string, any>[];
+  /** How a projection hop reads the flattened list's module stamps. Absent,
+   *  every reference resolves by name alone. */
+  projectionModules?: ProjectionModules;
 }
 
 /** The fallback for a target that declares no contract: anything goes. Not
@@ -164,7 +198,11 @@ function projectionResolved(
     manifest,
     manifestListScope(
       scope.typeManifestsFor(declarer),
-      (kind) => scope.resolveDefinition(kind) as Record<string, any> | undefined,
+      (kind, declaration) =>
+        scope.resolveDefinition(kind, declaration as ResourceDefinition | undefined) as
+          | Record<string, any>
+          | undefined,
+      scope.projectionModules,
     ),
     failures,
   ) as Record<string, any>;

@@ -1,0 +1,130 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlDeclarationOrder
+  version: 1.0.0
+  description: |
+    Declaration order is never load-bearing: operations declared ABOVE the store,
+    the node and relationship types and the tables they reach still boot in one
+    pass. Every graph slot is a dependency edge, so the init order puts each
+    resource after what it holds and nothing is created early, deferred and
+    retried — which the kernel's own create and init timing events show.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphSql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref test
+  - !ref bootedInOnePass
+---
+# Declared first, so it is listening before anything else is created.
+kind: Assert.Events
+metadata: { name: bootedInOnePass }
+filter:
+  - type: Kernel.ResourceCreateCompleted
+  - type: Kernel.ResourceInitializationCompleted
+expect:
+  - event: Kernel.ResourceCreateCompleted
+    payload: { outcome: skipped }
+    times: 0
+  - event: Kernel.ResourceCreateCompleted
+    payload: { outcome: failed }
+    times: 0
+  - event: Kernel.ResourceInitializationCompleted
+    payload: { outcome: deferred }
+    times: 0
+  - event: Kernel.ResourceInitializationCompleted
+    payload: { outcome: failed }
+    times: 0
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: link
+    invoke: !ref befriend
+    inputs: { source: a, target: b }
+  - name: friendsOfA
+    invoke: !ref friends
+    inputs: { key: a }
+  - name: assertFriends
+    invoke:
+      kind: Assert.Equals
+    inputs:
+      actual: !cel "steps.friendsOfA.result.nodes.map(n, n.key)"
+      expected: [b]
+---
+kind: Graph.CreateRelationship
+metadata: { name: befriend }
+store: !ref kb
+relationship: !ref knows
+---
+kind: Graph.Traverse
+metadata: { name: friends }
+store: !ref kb
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref knowsTable]
+migrations:
+  seedPeople:
+    statement: "INSERT INTO people (id) VALUES ('a'), ('b')"
+---
+# Above the table whose foreign keys name it. Those keys are `use: schema`
+# references, which the kernel still injects, so a table declared above the one
+# it references is deferred for a pass — the engine tables' ordering, not the
+# graph's, and outside what this test pins.
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"

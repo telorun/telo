@@ -78,6 +78,11 @@ import { bindFunction, functionContextOf } from "./function-binding.js";
 import { ResourceContextImpl } from "./resource-context.js";
 import { mintResourceHandle } from "./resource-handle.js";
 import { bindEffectOwner } from "./effect-scope.js";
+import {
+  authoredDeclarationOf,
+  declarationScopeOf,
+  recordDeclarationScope,
+} from "./declaration-scope.js";
 import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
 import { recordSensitivePaths } from "./instance-sensitive-paths.js";
 import { recordSpanAttributes } from "./instance-span-attributes.js";
@@ -409,6 +414,11 @@ export class Kernel implements IKernel {
       registry: this.registry,
       loadTimeManifests: this.loadTimeManifests,
       entryModule: this._appName,
+      loadLibrary: async (url) => {
+        const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
+        if (graph.errors.length > 0) throw graph.errors[0].error;
+        return { manifests: flattenForAnalyzer(graph), moduleDocuments: collectModuleDocuments(graph) };
+      },
     };
   }
 
@@ -2247,6 +2257,7 @@ export class Kernel implements IKernel {
       (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
     );
     recordInstanceDeclaration(instance, processedResource);
+    recordDeclarationScope(processedResource, evalContext, resource);
     // Stamp the DECLARATION SITE here rather than at Phase-5 injection, because
     // this is the only point where the instance and the context that declared it
     // are both in hand: injection sees the consumer's context, not the target's,
@@ -2393,25 +2404,53 @@ export class Kernel implements IKernel {
 
     const resolveDef = this.scopedDefResolver();
 
-    // A DECLARATION-derived slot is resolved against the context that OWNS this
-    // resource, so a bare name means the same thing here as it does to `!ref`
-    // and to CEL — scope-local first, enclosing module as the fallback — and an
-    // alias routes into that import's exported instances.
+    // A DECLARATION-derived slot resolves each reference in the context that
+    // DECLARED the declaration holding it — this resource's own for the first
+    // hop, so a bare name means the same thing here as it does to `!ref` and to
+    // CEL (scope-local first, enclosing module as the fallback), and the
+    // declaring library's past it. An alias routes into that scope's import.
     const projections: ProjectionScope = {
-      resolveDefinition: (kind) =>
-        this.controllers.getDefinition(kind) as unknown as Record<string, any> | undefined,
+      resolveDefinition: (kind, declaration) => {
+        const direct = this.controllers.getDefinition(kind);
+        if (direct) return direct as unknown as Record<string, any>;
+        const canonical = declarationScopeOf(declaration)?.kindResolver?.(kind);
+        return canonical === undefined
+          ? undefined
+          : (this.controllers.getDefinition(canonical) as unknown as Record<string, any> | undefined);
+      },
       // The slot holds the LIVE INSTANCE by now — Phase-5 injection runs before
       // create — so the declaration is recovered by instance identity. The ref
-      // shape is still accepted, because a ref slot on a `with:`-scoped resource
-      // is not an injection site and reaches the controller unresolved.
-      resolveManifest: (value) => {
+      // shape is still accepted: a ref slot on a `with:`-scoped resource is not
+      // an injection site, and a `use: schema` target a declaration names may
+      // not be created yet — declarations are all registered before creation
+      // starts, so neither is ever a deferral.
+      resolveManifest: (value, holder) => {
         const injected = declarationOfInstance(value);
         if (injected) return { manifest: injected as unknown as Record<string, any> };
         const ref = readProjectionRef(value);
         if (!ref) return undefined;
-        const found = impl.resolveDeclaredManifest(ref.name, ref.alias);
+        const scope = declarationScopeOf(holder) ?? impl;
+        const found = scope.resolveDeclaredManifest?.(ref.name, ref.alias);
         return found ? { manifest: found as unknown as Record<string, any> } : undefined;
       },
+      // The field map Phase-5 injection walks is the one that decides where a
+      // reference is, with the kind resolved in the declaring module's scope.
+      referenceSlots: (declaration, scope) => {
+        const module = declaration.metadata?.module ?? scope.metadata?.module;
+        const view = { ...declaration, metadata: { ...declaration.metadata, module } };
+        if (!this.registry.resolveDefinitionIn(String(declaration.kind), module)) return undefined;
+        const slots: string[] = [];
+        this.registry.iterateFieldEntries(
+          view as ResourceManifest,
+          (path) => slots.push(path),
+          () => {},
+        );
+        return slots;
+      },
+      isLiveReference: (value) => declarationOfInstance(value) !== undefined,
+      authored: (declaration) =>
+        (authoredDeclarationOf(declaration) as unknown as Record<string, any> | undefined) ??
+        declaration,
     };
 
     const input = resolveBoundContract(
@@ -2431,6 +2470,15 @@ export class Kernel implements IKernel {
       projections,
     );
     if (!input && !output) return;
+
+    // A projection is resolved when the resource is CREATED, so one that cannot
+    // resolve fails creation rather than the first call — for the directions an
+    // entry point this instance exposes is bound to.
+    const invocable = typeof instance.invoke === "function";
+    if (input && invocable) input.resolveProjections();
+    if (output && (invocable || typeof instance.provide === "function")) {
+      output.resolveProjections();
+    }
 
     // Recorded here because this is the only point holding both the instance and
     // its resolved contract — `bindContract` closes over the contract and drops

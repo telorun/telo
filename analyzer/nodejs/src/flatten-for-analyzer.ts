@@ -441,6 +441,10 @@ export function forwardReExportManifests(
           name: spec.name,
           module: spec.module,
           forwardedExport: true,
+          // The module that DECLARED it, whose scope its own references are
+          // written in — a projection hop through the copy resolves there.
+          declaringModule:
+            (src.metadata as { declaringModule?: string }).declaringModule ?? sourceModule,
         } as ResourceManifest["metadata"],
       };
       result.push(manifest);

@@ -1,0 +1,52 @@
+# A null key, written as a literal, over an INTEGER PRIMARY KEY — the column
+# SQLite would otherwise fill with a generated rowid.
+kind: Telo.Application
+metadata:
+  name: NullKey
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphSql: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref write
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: tickets }
+table: tickets
+columns:
+  id: { type: integer, primaryKey: true }
+  title: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref tickets]
+---
+kind: GraphSql.Node
+metadata: { name: ticket }
+table: !ref tickets
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref ticket]
+relationships: []
+---
+kind: Run.Sequence
+metadata: { name: write }
+steps:
+  - name: create
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref kb
+      node: !ref ticket
+    inputs: { key: null, properties: { title: Unkeyed } }

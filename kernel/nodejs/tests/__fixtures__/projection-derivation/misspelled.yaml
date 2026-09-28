@@ -1,0 +1,64 @@
+# The static twin of the dispatch refusals: literals `telo check` types through
+# the same hops — LibB's field is not LibA's internal table's, a relationship's
+# source key is LibA's `handle`, a string, LibC's `person` is the supplied table
+# and LibD's re-exported `person` is LibA's.
+kind: Telo.Application
+metadata:
+  name: ProjectionDerivationMisspelled
+imports:
+  Kinds: ./kinds
+  LibA: ./lib-a
+  LibB: ./lib-b
+  LibC:
+    source: ./lib-c
+    resources: { table: !ref appUsers }
+  LibD: ./lib-d
+targets:
+  - invoke: !ref writeA
+    inputs:
+      properties: { name: bo }
+      source: 5
+  - invoke: !ref writeC
+    inputs:
+      properties: { age: 1 }
+  - invoke: !ref writeD
+    inputs:
+      properties: { name: bo }
+---
+kind: Kinds.Write
+metadata:
+  name: writeC
+node: !ref LibC.person
+link: !ref follows
+---
+kind: Kinds.Write
+metadata:
+  name: writeD
+node: !ref LibD.person
+link: !ref follows
+---
+kind: Kinds.Shape
+metadata:
+  name: appUsers
+fields:
+  code: { type: text }
+  score: { type: number }
+  hidden: { type: text }
+---
+kind: Kinds.Write
+metadata:
+  name: writeA
+node: !ref LibA.person
+link: !ref follows
+---
+kind: Kinds.Link
+metadata:
+  name: follows
+shape: !ref edges
+source: !ref LibA.person
+---
+kind: Kinds.Shape
+metadata:
+  name: edges
+fields:
+  since: { type: number }

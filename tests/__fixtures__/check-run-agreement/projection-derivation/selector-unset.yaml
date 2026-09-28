@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionSelectorUnset
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.unsetSelector
