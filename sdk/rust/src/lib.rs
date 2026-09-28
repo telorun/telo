@@ -37,6 +37,7 @@ pub use telorun_sdk_macros::{controller, function};
 pub mod backend;
 
 mod cel_value_identity;
+mod controller_protocol;
 mod error;
 pub mod function_controller;
 mod invoke_context;

@@ -347,6 +347,13 @@ The `meta` region is the **typed-frame JSON text**
 - **`payload`** — the message body, validated against that message's `request`
   schema on a request and its `response` schema on a response.
 
+Each member's spelling is fixed, because two runtimes writing one envelope must
+write the same bytes: `id` is a plain JSON number, whole and non-negative;
+`session` is a string or `null`; `type` is a string; `payload` is the body, whose
+own values are typed frames and may therefore be tagged. The meta's members are in
+the typed frame's own canonical order — by key, as `durable-execution.md` §6.2
+states — so nothing about how a runtime holds an envelope reaches the bytes.
+
 `session` rides the envelope rather than being implied by the connection because
 one carrier instance serves every kernel instance in a process. A frame whose
 `session` names no open session is a protocol violation.
