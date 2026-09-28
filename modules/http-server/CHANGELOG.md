@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.34.0 - 2026-09-28
+### Added
+* A mount entry on Http.Server may carry a guard: an invocable run for every request that matches one of that mount's routes, after CORS and before the request body is read. A normal return lets the request through; a throw refuses it, rendered by the guard's own catches: list, then the server's; a throw no entry claims is the built-in 500 envelope, so a failing guard never lets a request through. CORS preflight, sibling mounts without a guard and requests matching no route never reach it. The guard's inputs: are CEL over request.headers, query, path, method and ip, checked against the guard's declared input by telo check, and its throws are owed a rendering like any other dispatch site. A mount's path, when and logging are now evaluated per field at startup instead of through a compile mark on the whole mounts list, which is what leaves a guard's CEL to run per request; nothing that was accepted before changes meaning.
+* Every request is one span opened by Http.Server before CORS, a mount's guard and body parsing, named '<METHOD> <route>' with http.request.method, http.route and http.response.status_code, ending when the response completes (streamed and hijacked replies included) as ok, rejected, failed or cancelled. The guard, content-type parsers, route handlers, the not-found handler and MCP tool calls all run on its context, so a client disconnect cancels the guard as well as the handler. A request carrying a W3C traceparent continues the caller's trace. Breaking: Http.Api no longer opens a span of its own, and the mount contract is register(app, prefix, requestScope); Http.Api refuses a request when registered without a scope (ERR_HTTP_REQUEST_SCOPE_MISSING). Requires telo >=0.104.0.
+
 ## 0.33.0 - 2026-09-22
 ### Added
 * Every declared request location is read through its schema before CEL sees it, so a request field declared `type: integer` arrives in `request.*` as an int rather than a double.

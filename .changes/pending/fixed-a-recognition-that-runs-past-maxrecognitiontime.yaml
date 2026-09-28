@@ -1,5 +1,0 @@
-modules:
-  modules/tesseract: Fixed
-body: A recognition that runs past `maxRecognitionTime` now always fails with
-  `ERR_OCR_LIMIT_EXCEEDED`. Before, a result that reached the recognizer before the late
-  limit timer fired was returned as a success, which happened on macOS.

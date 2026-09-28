@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.0 - 2026-09-28
+### Added
+* Mcp.HttpEndpoint dispatches each tool call on the context of the HTTP request that carried it, so the call nests under the request's span and a client disconnect cancels it. Breaking: mounted without a request scope it refuses every request with ERR_MCP_REQUEST_SCOPE_MISSING rather than rooting a separate trace.
+
 ## 0.16.1 - 2026-09-17
 ### Fixed
 * A tool result, and the data of an error a catches entry renders, write a CEL value in its plain encoding - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes as base64url - where a duration in structuredContent or in error data used to reach the client as an empty object.
