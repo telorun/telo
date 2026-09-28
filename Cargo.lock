@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk-macros"
-version = "0.0.0"
+version = "0.104.0"
 dependencies = [
  "proc-macro2",
  "quote",

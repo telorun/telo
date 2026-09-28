@@ -44,10 +44,10 @@
 // changed inlined package needs the inliner named by a changeset or moving in the
 // planned release.
 //
-// It also gates the Rust twins of the telo version line: a crate at `<x>/rust`
-// whose Node twin is on the line carries that twin's version
-// (`version-line.mjs`), and a disagreement between the two halves of one
-// artifact fails here.
+// It also gates the Rust twins of the telo version line: every crate beneath
+// `<x>/rust/` whose Node twin is on the line carries that twin's version, with
+// `telorun-abi` the only exception (`version-line.mjs`), and a disagreement
+// between the two halves of one artifact fails here.
 //
 // It also gates the `ignore` list itself, because that list is hand-maintained
 // and changesets validates it as a WHOLE: an ignored package's dependent must be
