@@ -84,6 +84,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/cel-functions", label: "CEL Functions" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
+        { type: "doc", id: "docs/extend/controller-protocol", label: "Controller Protocol" },
         {
           type: "doc",
           id: "docs/extend/declaring-runtime-requirements",
@@ -193,6 +194,7 @@ const sidebars: SidebarsConfig = {
               type: "category",
               label: "Specifications",
               items: [
+                { type: "doc", id: "kernel/specs/controller-protocol", label: "Controller Protocol" },
                 { type: "doc", id: "kernel/specs/invocation-contract", label: "Invocation Contract" },
                 { type: "doc", id: "kernel/specs/revertible-effects", label: "Revertible Effects" },
                 { type: "doc", id: "kernel/specs/execution-zones", label: "Execution Zones" },

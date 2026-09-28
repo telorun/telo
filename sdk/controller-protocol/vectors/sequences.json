@@ -1,0 +1,441 @@
+{
+  "$comment": "Conformance vectors for whole exchanges, normative in kernel/specs/controller-protocol.md §11. Every table here is normative. Each row is one exchange on one carrier instance, `open` naming the sessions already open when it begins. A frame's `frame` is its bytes in lowercase hex and MUST decode to its `meta` and `data`. A row asserts: every payload satisfies its message's schema; the kernel end mints even ids and the controller end odd ones (§3.2), so a frame's id alone says whether it is a request or a response; every response answers an outstanding request of the same id, session and type; Session.Hello carries no session and nothing else carries none, and every other frame names a session that is open; a message whose `response` is null draws no response frame; a synchronous request's sender sends nothing but responses while it is outstanding; a channel's chunks sit between its Open and Close with contiguous seq and within the credit granted to it; an error answer names a code its message declares. `reentrancy` names the outer synchronous request and the inner request served while it is outstanding; `signal` names a code raised by one message and re-raised unchanged by another, which is what a signal is.",
+  "sequences": [
+    {
+      "name": "the handshake, then a session",
+      "note": "Session.Hello precedes every session, so its envelope carries a null session. The kernel end mints even ids.",
+      "open": [],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"generation\":4,\"kernel\":{\"runtime\":{\"name\":\"rust\",\"version\":\"1.84.0\"},\"telo\":\"0.103.2\"}},\"session\":null,\"type\":\"Session.Hello\"}",
+          "frame": "0000009701000000927b226964223a302c227061796c6f6164223a7b2267656e65726174696f6e223a342c226b65726e656c223a7b2272756e74696d65223a7b226e616d65223a2272757374222c2276657273696f6e223a22312e38342e30227d2c2274656c6f223a22302e3130332e32227d7d2c2273657373696f6e223a6e756c6c2c2274797065223a2253657373696f6e2e48656c6c6f227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"ok\":{\"controller\":{\"runtime\":{\"name\":\"node\",\"version\":\"24.11.1\"},\"telo\":\"0.103.2\"},\"generation\":4}},\"session\":null,\"type\":\"Session.Hello\"}",
+          "frame": "000000a3010000009e7b226964223a302c227061796c6f6164223a7b226f6b223a7b22636f6e74726f6c6c6572223a7b2272756e74696d65223a7b226e616d65223a226e6f6465222c2276657273696f6e223a2232342e31312e31227d2c2274656c6f223a22302e3130332e32227d2c2267656e65726174696f6e223a347d7d2c2273657373696f6e223a6e756c6c2c2274797065223a2253657373696f6e2e48656c6c6f227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":2,\"payload\":{\"application\":{\"name\":\"Api\"},\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Session.Open\"}",
+          "frame": "0000006a01000000657b226964223a322c227061796c6f6164223a7b226170706c69636174696f6e223a7b226e616d65223a22417069227d2c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a2253657373696f6e2e4f70656e227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":2,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Session.Open\"}",
+          "frame": "0000004601000000417b226964223a322c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a2253657373696f6e2e4f70656e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":4,\"payload\":{\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Session.Close\"}",
+          "frame": "0000004e01000000497b226964223a342c227061796c6f6164223a7b2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a2253657373696f6e2e436c6f7365227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":4,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Session.Close\"}",
+          "frame": "0000004701000000427b226964223a342c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a2253657373696f6e2e436c6f7365227d"
+        }
+      ]
+    },
+    {
+      "name": "an instance built, started and torn down",
+      "note": "The chain is lazy: Controller.Init answers with the steps, the kernel drives them with Effect.Perform, and the inverse is pushed as the body produces it.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"controller\":\"pkg:telo/local/js?path=./nodejs/http-server.mjs#Server\",\"kind\":\"Http.Server\"},\"session\":\"s1\",\"type\":\"Controller.Bind\"}",
+          "frame": "0000009c01000000977b226964223a302c227061796c6f6164223a7b22636f6e74726f6c6c6572223a22706b673a74656c6f2f6c6f63616c2f6a733f706174683d2e2f6e6f64656a732f687474702d7365727665722e6d6a7323536572766572222c226b696e64223a22487474702e536572766572227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e42696e64227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"ok\":{\"controller\":\"ctrl1\",\"entryPoints\":[\"create\",\"init\",\"run\",\"destroy\"]}},\"session\":\"s1\",\"type\":\"Controller.Bind\"}",
+          "frame": "0000008d01000000887b226964223a302c227061796c6f6164223a7b226f6b223a7b22636f6e74726f6c6c6572223a226374726c31222c22656e747279506f696e7473223a5b22637265617465222c22696e6974222c2272756e222c2264657374726f79225d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e42696e64227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":2,\"payload\":{\"controller\":\"ctrl1\",\"instance\":{\"id\":\"h1\",\"ref\":{\"kind\":\"Http.Server\",\"name\":\"api\"}},\"manifest\":{\"kind\":\"Http.Server\",\"port\":8080},\"module\":{\"name\":\"HttpServer\"},\"ownerPrefix\":\"api\"},\"session\":\"s1\",\"type\":\"Controller.Create\"}",
+          "frame": "000000fa01000000f57b226964223a322c227061796c6f6164223a7b22636f6e74726f6c6c6572223a226374726c31222c22696e7374616e6365223a7b226964223a226831222c22726566223a7b226b696e64223a22487474702e536572766572222c226e616d65223a22617069227d7d2c226d616e6966657374223a7b226b696e64223a22487474702e536572766572222c22706f7274223a383038307d2c226d6f64756c65223a7b226e616d65223a2248747470536572766572227d2c226f776e6572507265666978223a22617069227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e437265617465227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":2,\"payload\":{\"ok\":{\"entryPoints\":[\"init\",\"run\",\"destroy\"]}},\"session\":\"s1\",\"type\":\"Controller.Create\"}",
+          "frame": "00000071010000006c7b226964223a322c227061796c6f6164223a7b226f6b223a7b22656e747279506f696e7473223a5b22696e6974222c2272756e222c2264657374726f79225d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e437265617465227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":4,\"payload\":{\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Init\"}",
+          "frame": "00000051010000004c7b226964223a342c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e6974227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":4,\"payload\":{\"ok\":{\"chain\":{\"id\":\"ch1\",\"steps\":[{\"reason\":\"registered the routes\"}]}}},\"session\":\"s1\",\"type\":\"Controller.Init\"}",
+          "frame": "0000008a01000000857b226964223a342c227061796c6f6164223a7b226f6b223a7b22636861696e223a7b226964223a22636831222c227374657073223a5b7b22726561736f6e223a22726567697374657265642074686520726f75746573227d5d7d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e6974227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":6,\"payload\":{\"chain\":\"ch1\",\"instance\":\"h1\",\"step\":0},\"session\":\"s1\",\"type\":\"Effect.Perform\"}",
+          "frame": "0000006701000000627b226964223a362c227061796c6f6164223a7b22636861696e223a22636831222c22696e7374616e6365223a226831222c2273746570223a307d2c2273657373696f6e223a227331222c2274797065223a224566666563742e506572666f726d227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"instance\":\"h1\",\"inverse\":\"inv1\",\"reason\":\"registered the routes\"},\"session\":\"s1\",\"type\":\"Effect.Register\"}",
+          "frame": "00000083010000007e7b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831222c22696e7665727365223a22696e7631222c22726561736f6e223a22726567697374657265642074686520726f75746573227d2c2273657373696f6e223a227331222c2274797065223a224566666563742e5265676973746572227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"effect\":\"e1\"}},\"session\":\"s1\",\"type\":\"Effect.Register\"}",
+          "frame": "0000005601000000517b226964223a312c227061796c6f6164223a7b226f6b223a7b22656666656374223a226531227d7d2c2273657373696f6e223a227331222c2274797065223a224566666563742e5265676973746572227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":6,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Effect.Perform\"}",
+          "frame": "0000004801000000437b226964223a362c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a224566666563742e506572666f726d227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":8,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Run\"}",
+          "frame": "000000b901000000b47b226964223a382c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e52756e227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":3,\"payload\":{\"instance\":\"h1\",\"reason\":\"listening on 8080\"},\"session\":\"s1\",\"type\":\"Hold.Acquire\"}",
+          "frame": "0000006b01000000667b226964223a332c227061796c6f6164223a7b22696e7374616e6365223a226831222c22726561736f6e223a226c697374656e696e67206f6e2038303830227d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e41637175697265227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":3,\"payload\":{\"ok\":{\"hold\":\"hold1\"}},\"session\":\"s1\",\"type\":\"Hold.Acquire\"}",
+          "frame": "00000054010000004f7b226964223a332c227061796c6f6164223a7b226f6b223a7b22686f6c64223a22686f6c6431227d7d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e41637175697265227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":5,\"payload\":{\"instance\":\"h1\",\"status\":{\"port\":8080}},\"session\":\"s1\",\"type\":\"Status.Set\"}",
+          "frame": "00000063010000005e7b226964223a352c227061796c6f6164223a7b22696e7374616e6365223a226831222c22737461747573223a7b22706f7274223a383038307d7d2c2273657373696f6e223a227331222c2274797065223a225374617475732e536574227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":5,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Status.Set\"}",
+          "frame": "00000044010000003f7b226964223a352c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a225374617475732e536574227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":8,\"payload\":{\"ok\":{\"chain\":{\"id\":\"ch2\",\"steps\":[{\"reason\":\"listening on 8080\"}]}}},\"session\":\"s1\",\"type\":\"Controller.Run\"}",
+          "frame": "0000008501000000807b226964223a382c227061796c6f6164223a7b226f6b223a7b22636861696e223a7b226964223a22636832222c227374657073223a5b7b22726561736f6e223a226c697374656e696e67206f6e2038303830227d5d7d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e52756e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":10,\"payload\":{\"effect\":\"e1\",\"instance\":\"h1\",\"inverse\":\"inv1\"},\"session\":\"s1\",\"type\":\"Effect.Revert\"}",
+          "frame": "0000006f010000006a7b226964223a31302c227061796c6f6164223a7b22656666656374223a226531222c22696e7374616e6365223a226831222c22696e7665727365223a22696e7631227d2c2273657373696f6e223a227331222c2274797065223a224566666563742e526576657274227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":10,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Effect.Revert\"}",
+          "frame": "0000004801000000437b226964223a31302c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a224566666563742e526576657274227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":12,\"payload\":{\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Destroy\"}",
+          "frame": "0000005501000000507b226964223a31322c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e44657374726f79227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":12,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Controller.Destroy\"}",
+          "frame": "0000004d01000000487b226964223a31322c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e44657374726f79227d"
+        }
+      ]
+    },
+    {
+      "name": "a dispatch crossing back to the kernel",
+      "note": "A controller holding a live instance never calls its entry point directly: every dispatch crosses back through the kernel's chokepoint.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{\"path\":\"/health\"},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "000000d801000000d37b226964223a302c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b2270617468223a222f6865616c7468227d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{},\"instance\":\"h1\",\"kind\":\"Sql.Query\",\"name\":\"health\"},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "000000e901000000e47b226964223a312c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b7d2c22696e7374616e6365223a226831222c226b696e64223a2253716c2e5175657279222c226e616d65223a226865616c7468227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"result\":{\"rows\":[]}}},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "0000005d01000000587b226964223a312c227061796c6f6164223a7b226f6b223a7b22726573756c74223a7b22726f7773223a5b5d7d7d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"ok\":{\"result\":{\"status\":200}}},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "00000062010000005d7b226964223a302c227061796c6f6164223a7b226f6b223a7b22726573756c74223a7b22737461747573223a3230307d7d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        }
+      ]
+    },
+    {
+      "name": "a reentrant call served while a synchronous request is outstanding",
+      "note": "The controller end blocks on Value.Expand; the expression reaches a module function whose controller is that same blocked end, and it serves Callable.Call rather than deadlocking.",
+      "open": [
+        "s1"
+      ],
+      "reentrancy": {
+        "outer": "Value.Expand",
+        "inner": "Callable.Call"
+      },
+      "frames": [
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"instance\":\"h1\",\"pointer\":\"/handler/body\",\"scope\":{\"request\":{\"path\":\"/health\"}}},\"session\":\"s1\",\"type\":\"Value.Expand\"}",
+          "frame": "0000008f010000008a7b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831222c22706f696e746572223a222f68616e646c65722f626f6479222c2273636f7065223a7b2272657175657374223a7b2270617468223a222f6865616c7468227d7d7d2c2273657373696f6e223a227331222c2274797065223a2256616c75652e457870616e64227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"args\":{\"name\":\"World\"},\"instance\":\"fn1\"},\"session\":\"s1\",\"type\":\"Callable.Call\"}",
+          "frame": "0000006801000000637b226964223a302c227061796c6f6164223a7b2261726773223a7b226e616d65223a22576f726c64227d2c22696e7374616e6365223a22666e31227d2c2273657373696f6e223a227331222c2274797065223a2243616c6c61626c652e43616c6c227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"ok\":{\"result\":\"Hello, World\"}},\"session\":\"s1\",\"type\":\"Callable.Call\"}",
+          "frame": "0000005e01000000597b226964223a302c227061796c6f6164223a7b226f6b223a7b22726573756c74223a2248656c6c6f2c20576f726c64227d7d2c2273657373696f6e223a227331222c2274797065223a2243616c6c61626c652e43616c6c227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"value\":\"Hello, World!\"}},\"session\":\"s1\",\"type\":\"Value.Expand\"}",
+          "frame": "0000005d01000000587b226964223a312c227061796c6f6164223a7b226f6b223a7b2276616c7565223a2248656c6c6f2c20576f726c6421227d7d2c2273657373696f6e223a227331222c2274797065223a2256616c75652e457870616e64227d"
+        }
+      ]
+    },
+    {
+      "name": "a channel from open to close",
+      "note": "Credit is counted in bytes of chunk payload: the framing bytes are not counted, so a receiver's budget is a budget in payload.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"channelId\":\"c1\",\"credit\":16,\"encoding\":\"utf-8\",\"instance\":\"h1\",\"purpose\":\"stdout\",\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Open\"}",
+          "frame": "000000a0010000009b7b226964223a312c227061796c6f6164223a7b226368616e6e656c4964223a226331222c22637265646974223a31362c22656e636f64696e67223a227574662d38222c22696e7374616e6365223a226831222c22707572706f7365223a227374646f7574222c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e4f70656e227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":3,\"payload\":{\"byteLength\":5,\"channelId\":\"c1\",\"seq\":0,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+          "frame": "0000007a02000000707b226964223a332c227061796c6f6164223a7b22627974654c656e677468223a352c226368616e6e656c4964223a226331222c22736571223a302c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d68656c6c6f",
+          "data": "68656c6c6f"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":5,\"payload\":{\"byteLength\":6,\"channelId\":\"c1\",\"seq\":1,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+          "frame": "0000007b02000000707b226964223a352c227061796c6f6164223a7b22627974654c656e677468223a362c226368616e6e656c4964223a226331222c22736571223a312c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d20776f726c64",
+          "data": "20776f726c64"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"bytes\":16,\"channelId\":\"c1\",\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Credit\"}",
+          "frame": "0000006b01000000667b226964223a302c227061796c6f6164223a7b226279746573223a31362c226368616e6e656c4964223a226331222c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e437265646974227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":7,\"payload\":{\"byteLength\":10,\"channelId\":\"c1\",\"seq\":2,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+          "frame": "0000008002000000717b226964223a372c227061796c6f6164223a7b22627974654c656e677468223a31302c226368616e6e656c4964223a226331222c22736571223a322c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d30313233343536373839",
+          "data": "30313233343536373839"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":9,\"payload\":{\"channelId\":\"c1\",\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Close\"}",
+          "frame": "0000005f010000005a7b226964223a392c227061796c6f6164223a7b226368616e6e656c4964223a226331222c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e436c6f7365227d"
+        }
+      ]
+    },
+    {
+      "name": "a channel closed abnormally",
+      "note": "An error member closes the channel abnormally: the reader sees a failure rather than end-of-input, which is what tells a truncated stream from a finished one.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"channelId\":\"c2\",\"credit\":64,\"purpose\":\"stream\",\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Open\"}",
+          "frame": "0000007d01000000787b226964223a302c227061796c6f6164223a7b226368616e6e656c4964223a226332222c22637265646974223a36342c22707572706f7365223a2273747265616d222c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e4f70656e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":2,\"payload\":{\"byteLength\":4,\"channelId\":\"c2\",\"seq\":0,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+          "frame": "0000007902000000707b226964223a322c227061796c6f6164223a7b22627974654c656e677468223a342c226368616e6e656c4964223a226332222c22736571223a302c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d00010203",
+          "data": "00010203"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":4,\"payload\":{\"channelId\":\"c2\",\"error\":{\"code\":\"ERR_CONTROLLER_HOST_EXITED\",\"message\":\"the controller host died mid-stream\"},\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Close\"}",
+          "frame": "000000bd01000000b87b226964223a342c227061796c6f6164223a7b226368616e6e656c4964223a226332222c226572726f72223a7b22636f6465223a224552525f434f4e54524f4c4c45525f484f53545f455849544544222c226d657373616765223a2274686520636f6e74726f6c6c657220686f73742064696564206d69642d73747265616d227d2c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e436c6f7365227d"
+        }
+      ]
+    },
+    {
+      "name": "notifications, for which no response frame is ever sent",
+      "note": "Every frame here belongs to a message whose response is null in the message set.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"instance\":\"h1\",\"session\":\"s1\",\"severity\":9},\"session\":\"s1\",\"type\":\"Log.Threshold\"}",
+          "frame": "0000006b01000000667b226964223a302c227061796c6f6164223a7b22696e7374616e6365223a226831222c2273657373696f6e223a227331222c227365766572697479223a397d2c2273657373696f6e223a227331222c2274797065223a224c6f672e5468726573686f6c64227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"instance\":\"h1\",\"message\":\"listening on 8080\",\"severity\":9},\"session\":\"s1\",\"type\":\"Log.Write\"}",
+          "frame": "0000007601000000717b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831222c226d657373616765223a226c697374656e696e67206f6e2038303830222c227365766572697479223a397d2c2273657373696f6e223a227331222c2274797065223a224c6f672e5772697465227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":3,\"payload\":{\"cause\":\"buffer_full\",\"count\":12,\"instance\":\"h1\",\"sinkId\":\"sink1\"},\"session\":\"s1\",\"type\":\"Log.Drop\"}",
+          "frame": "0000007c01000000777b226964223a332c227061796c6f6164223a7b226361757365223a226275666665725f66756c6c222c22636f756e74223a31322c22696e7374616e6365223a226831222c2273696e6b4964223a2273696e6b31227d2c2273657373696f6e223a227331222c2274797065223a224c6f672e44726f70227d"
+        }
+      ]
+    },
+    {
+      "name": "a refusal, answered with a code the message declares",
+      "note": "Zone.Require and Zone.Find are the same lookup with different failure modes, which is why they are two messages.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"field\":\"transaction\",\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Zone.Require\"}",
+          "frame": "000000cd01000000c87b226964223a312c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c226669656c64223a227472616e73616374696f6e222c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a225a6f6e652e52657175697265227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"error\":{\"code\":\"ERR_ZONE_REQUIRED\",\"message\":\"No 'Sql.Transaction' zone is open at 'transaction'.\"}},\"session\":\"s1\",\"type\":\"Zone.Require\"}",
+          "frame": "000000a3010000009e7b226964223a312c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f5a4f4e455f5245515549524544222c226d657373616765223a224e6f202753716c2e5472616e73616374696f6e27207a6f6e65206973206f70656e20617420277472616e73616374696f6e272e227d7d2c2273657373696f6e223a227331222c2274797065223a225a6f6e652e52657175697265227d"
+        }
+      ]
+    },
+    {
+      "name": "suspension is a signal, not an error",
+      "note": "The dispatch parks and the entry point re-raises the same code rather than converting it: anything that catches rethrows it.",
+      "open": [
+        "s1"
+      ],
+      "signal": {
+        "code": "ERR_DURABLE_SUSPENDED",
+        "raisedBy": "Dispatch.Invoke",
+        "reraisedBy": "Controller.Invoke"
+      },
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{\"orderId\":4},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "000000d301000000ce7b226964223a302c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b226f726465724964223a347d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{\"for\":\"1h\"},\"instance\":\"h1\",\"kind\":\"Durable.Sleep\",\"name\":\"wait\"},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "000000f501000000f07b226964223a312c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b22666f72223a223168227d2c22696e7374616e6365223a226831222c226b696e64223a2244757261626c652e536c656570222c226e616d65223a2277616974227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"error\":{\"code\":\"ERR_DURABLE_SUSPENDED\",\"message\":\"The run parked at '/wait'.\"}},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "00000091010000008c7b226964223a312c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f44555241424c455f53555350454e444544222c226d657373616765223a225468652072756e207061726b656420617420272f77616974272e227d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"error\":{\"code\":\"ERR_DURABLE_SUSPENDED\",\"message\":\"The run parked at '/wait'.\"}},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "00000093010000008e7b226964223a302c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f44555241424c455f53555350454e444544222c226d657373616765223a225468652072756e207061726b656420617420272f77616974272e227d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        }
+      ]
+    },
+    {
+      "name": "cancellation is a signal, not an error",
+      "note": "The kernel pushes the cancellation so a poll stays local, and the same code leaves the entry point unchanged.",
+      "open": [
+        "s1"
+      ],
+      "signal": {
+        "code": "ERR_INVOKE_CANCELLED",
+        "raisedBy": "Dispatch.Invoke",
+        "reraisedBy": "Controller.Invoke"
+      },
+      "frames": [
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{\"path\":\"/slow\"},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "000000d601000000d17b226964223a302c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b2270617468223a222f736c6f77227d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{},\"instance\":\"h1\",\"kind\":\"Sql.Query\",\"name\":\"report\"},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "000000e901000000e47b226964223a312c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b7d2c22696e7374616e6365223a226831222c226b696e64223a2253716c2e5175657279222c226e616d65223a227265706f7274227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":2,\"payload\":{\"reason\":\"the client disconnected\",\"session\":\"s1\",\"source\":\"c1\"},\"session\":\"s1\",\"type\":\"Cancellation.Signal\"}",
+          "frame": "0000008501000000807b226964223a322c227061796c6f6164223a7b22726561736f6e223a2274686520636c69656e7420646973636f6e6e6563746564222c2273657373696f6e223a227331222c22736f75726365223a226331227d2c2273657373696f6e223a227331222c2274797065223a2243616e63656c6c6174696f6e2e5369676e616c227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"error\":{\"code\":\"ERR_INVOKE_CANCELLED\",\"message\":\"The invocation's token was cancelled.\"}},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "0000009b01000000967b226964223a312c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f494e564f4b455f43414e43454c4c4544222c226d657373616765223a2254686520696e766f636174696f6e277320746f6b656e207761732063616e63656c6c65642e227d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":0,\"payload\":{\"error\":{\"code\":\"ERR_INVOKE_CANCELLED\",\"message\":\"The invocation's token was cancelled.\"}},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+          "frame": "0000009d01000000987b226964223a302c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f494e564f4b455f43414e43454c4c4544222c226d657373616765223a2254686520696e766f636174696f6e277320746f6b656e207761732063616e63656c6c65642e227d7d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d"
+        }
+      ]
+    },
+    {
+      "name": "a child manifest, as its own session on the same carrier instance",
+      "note": "The child is a session of its own, served by the same carrier instance; its output flows on channels while the request that started it is still settling.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"env\":{\"TZ\":\"UTC\"},\"instance\":\"h1\",\"source\":\"./child.yaml\"},\"session\":\"s1\",\"type\":\"Runtime.Run\"}",
+          "frame": "0000007801000000737b226964223a312c227061796c6f6164223a7b22656e76223a7b22545a223a22555443227d2c22696e7374616e6365223a226831222c22736f75726365223a222e2f6368696c642e79616d6c227d2c2273657373696f6e223a227331222c2274797065223a2252756e74696d652e52756e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"run\":\"run1\",\"session\":\"s2\",\"stderr\":\"c-err\",\"stdin\":\"c-in\",\"stdout\":\"c-out\"}},\"session\":\"s1\",\"type\":\"Runtime.Run\"}",
+          "frame": "00000091010000008c7b226964223a312c227061796c6f6164223a7b226f6b223a7b2272756e223a2272756e31222c2273657373696f6e223a227332222c22737464657272223a22632d657272222c22737464696e223a22632d696e222c227374646f7574223a22632d6f7574227d7d2c2273657373696f6e223a227331222c2274797065223a2252756e74696d652e52756e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":0,\"payload\":{\"channelId\":\"c-out\",\"credit\":1024,\"encoding\":\"utf-8\",\"purpose\":\"runtime.stdout\",\"session\":\"s2\"},\"session\":\"s2\",\"type\":\"Channel.Open\"}",
+          "frame": "0000009d01000000987b226964223a302c227061796c6f6164223a7b226368616e6e656c4964223a22632d6f7574222c22637265646974223a313032342c22656e636f64696e67223a227574662d38222c22707572706f7365223a2272756e74696d652e7374646f7574222c2273657373696f6e223a227332227d2c2273657373696f6e223a227332222c2274797065223a224368616e6e656c2e4f70656e227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":2,\"payload\":{\"run\":\"run1\",\"session\":\"s2\"},\"session\":\"s2\",\"type\":\"Runtime.Started\"}",
+          "frame": "0000005d01000000587b226964223a322c227061796c6f6164223a7b2272756e223a2272756e31222c2273657373696f6e223a227332227d2c2273657373696f6e223a227332222c2274797065223a2252756e74696d652e53746172746564227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":4,\"payload\":{\"byteLength\":6,\"channelId\":\"c-out\",\"seq\":0,\"session\":\"s2\"},\"session\":\"s2\",\"type\":\"Channel.Data\"}",
+          "frame": "0000007e02000000737b226964223a342c227061796c6f6164223a7b22627974654c656e677468223a362c226368616e6e656c4964223a22632d6f7574222c22736571223a302c2273657373696f6e223a227332227d2c2273657373696f6e223a227332222c2274797065223a224368616e6e656c2e44617461227d72656164790a",
+          "data": "72656164790a"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":6,\"payload\":{\"channelId\":\"c-out\",\"session\":\"s2\"},\"session\":\"s2\",\"type\":\"Channel.Close\"}",
+          "frame": "00000062010000005d7b226964223a362c227061796c6f6164223a7b226368616e6e656c4964223a22632d6f7574222c2273657373696f6e223a227332227d2c2273657373696f6e223a227332222c2274797065223a224368616e6e656c2e436c6f7365227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":8,\"payload\":{\"exitCode\":0,\"run\":\"run1\",\"session\":\"s2\"},\"session\":\"s2\",\"type\":\"Runtime.Exited\"}",
+          "frame": "0000006901000000647b226964223a382c227061796c6f6164223a7b2265786974436f6465223a302c2272756e223a2272756e31222c2273657373696f6e223a227332227d2c2273657373696f6e223a227332222c2274797065223a2252756e74696d652e457869746564227d"
+        }
+      ]
+    }
+  ]
+}

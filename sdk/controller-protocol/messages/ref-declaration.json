@@ -1,0 +1,43 @@
+{
+  "name": "Ref.Declaration",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The manifest a name was declared with, resolved in the context that owns this resource. Readable whether or not the target has been constructed, which is what lets a slot wanting a fact about its target avoid an ordering edge.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "alias": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    },
+    "required": [
+      "instance",
+      "name"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The declaration, or nothing when no such name is in scope.",
+    "type": "object",
+    "properties": {
+      "manifest": {
+        "description": "The declared resource document."
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": true,
+  "reentrant": false
+}

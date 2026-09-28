@@ -1,0 +1,48 @@
+{
+  "name": "Span.Settle",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Close a span with an outcome. Parked is its own outcome and not a flavour of failure.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "span": {
+        "type": "string",
+        "minLength": 1
+      },
+      "outcome": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "failed",
+          "rejected",
+          "cancelled",
+          "parked"
+        ]
+      },
+      "attributes": {
+        "description": "Attributes learned while the span was open, merged over the ones it opened with."
+      }
+    },
+    "required": [
+      "instance",
+      "span",
+      "outcome"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Settled. Idempotent.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

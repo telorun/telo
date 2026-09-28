@@ -1,0 +1,39 @@
+{
+  "name": "Controller.Provide",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Read a Telo.Provider's value.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The provided value, validated against the resolved outputType by the kernel.",
+    "type": "object",
+    "properties": {
+      "value": {
+        "description": "The provided value."
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_OUTPUT_INVALID"
+  ],
+  "synchronous": false,
+  "reentrant": true
+}

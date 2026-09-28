@@ -99,6 +99,13 @@ jobs:
       - name: Check chart versions
         run: pnpm run check:charts
 
+      # The controller protocol's spec and its message set are two halves of one
+      # contract, and either half can be edited without the other. A wrong
+      # inventory row reads as authoritative to whoever implements a second
+      # kernel from it, so the two are checked against each other here.
+      - name: Check the controller protocol
+        run: pnpm run check:controller-protocol
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 

@@ -1,0 +1,260 @@
+{
+  "name": "Zone.Attributes",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "invokeContext": {
+        "description": "The out-of-band second argument of a dispatch. The durable run handle is deliberately absent: it is a live object the kernel carries and never calls.",
+        "type": "object",
+        "required": [
+          "cancellation"
+        ],
+        "properties": {
+          "cancellation": {
+            "type": "object",
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cancelled": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "invocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parentInvocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/zoneEntry"
+            }
+          },
+          "durablePath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "zoneEntry": {
+        "description": "One open execution zone — three identities and nothing else.",
+        "type": "object",
+        "required": [
+          "kind",
+          "provider"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "provider": {
+            "$ref": "#/definitions/resourceHandle"
+          },
+          "key": {
+            "$ref": "#/definitions/resourceHandle"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "Every open zone with what it declares about its contents, innermost first.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "context": {
+        "$ref": "#/definitions/invokeContext"
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "zoneEntry": {
+        "description": "One open execution zone — three identities and nothing else.",
+        "type": "object",
+        "required": [
+          "kind",
+          "provider"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "provider": {
+            "$ref": "#/definitions/resourceHandle"
+          },
+          "key": {
+            "$ref": "#/definitions/resourceHandle"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "One entry per open zone. Each attribute's value is the author's own reason, so a controller refusing on one quotes the manifest rather than inventing a message.",
+    "type": "object",
+    "properties": {
+      "zones": {
+        "type": "array",
+        "items": {
+          "description": "One open zone's declared attributes.",
+          "type": "object",
+          "properties": {
+            "entry": {
+              "$ref": "#/definitions/zoneEntry"
+            },
+            "attributes": {
+              "description": "Keys from the closed vocabulary in sdk/zone-attributes/; each value is the reason.",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "entry",
+            "attributes"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "zones"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": true,
+  "reentrant": false
+}

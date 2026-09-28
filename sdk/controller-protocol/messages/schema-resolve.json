@@ -1,0 +1,44 @@
+{
+  "name": "Schema.Resolve",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Resolve a named type reference to its JSON Schema, in the scope of the module that wrote the name.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "type": {
+        "description": "A bare type name, a reference sentinel, or an inline schema."
+      }
+    },
+    "required": [
+      "instance",
+      "type"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The resolved schema.",
+    "type": "object",
+    "properties": {
+      "schema": {
+        "description": "The JSON Schema."
+      }
+    },
+    "required": [
+      "schema"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_CONTRACT_UNRESOLVABLE",
+    "ERR_SCHEMA_PROJECTION_UNRESOLVED"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

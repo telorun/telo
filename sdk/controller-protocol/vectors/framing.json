@@ -1,0 +1,124 @@
+{
+  "$comment": "Conformance vectors for the framed carrier, normative in kernel/specs/controller-protocol.md §3, whose §11 cites them. Every table here is normative. `frame` is the whole frame in lowercase hex; `meta` is the text of its meta region, which is the typed-frame JSON (durable-execution.md §6) of the envelope; `data` is the data region in hex, empty for a message frame. A reader MUST produce `meta` and `data` from `frame`, and `frame` from them. An `undecodable` row is a frame a reader refuses; `reason` says why, and the row pins the refusal rather than a code name — the carrier-neutral code for it is owed by the step that implements the ABI carrier (§3.5).",
+  "frames": [
+    {
+      "name": "a request before any session exists",
+      "class": "message",
+      "meta": "{\"id\":0,\"payload\":{\"generation\":4,\"kernel\":{\"runtime\":{\"name\":\"rust\",\"version\":\"1.84.0\"},\"telo\":\"0.103.2\"}},\"session\":null,\"type\":\"Session.Hello\"}",
+      "frame": "0000009701000000927b226964223a302c227061796c6f6164223a7b2267656e65726174696f6e223a342c226b65726e656c223a7b2272756e74696d65223a7b226e616d65223a2272757374222c2276657273696f6e223a22312e38342e30227d2c2274656c6f223a22302e3130332e32227d7d2c2273657373696f6e223a6e756c6c2c2274797065223a2253657373696f6e2e48656c6c6f227d",
+      "data": ""
+    },
+    {
+      "name": "a response, carrying the requester's id and the same type",
+      "class": "message",
+      "meta": "{\"id\":0,\"payload\":{\"ok\":{\"controller\":{\"runtime\":{\"name\":\"node\",\"version\":\"24.11.1\"},\"telo\":\"0.103.2\"},\"generation\":4}},\"session\":null,\"type\":\"Session.Hello\"}",
+      "frame": "000000a3010000009e7b226964223a302c227061796c6f6164223a7b226f6b223a7b22636f6e74726f6c6c6572223a7b2272756e74696d65223a7b226e616d65223a226e6f6465222c2276657273696f6e223a2232342e31312e31227d2c2274656c6f223a22302e3130332e32227d2c2267656e65726174696f6e223a347d7d2c2273657373696f6e223a6e756c6c2c2274797065223a2253657373696f6e2e48656c6c6f227d",
+      "data": ""
+    },
+    {
+      "name": "a request the controller end minted, with an odd id",
+      "class": "message",
+      "meta": "{\"id\":1,\"payload\":{\"instance\":\"h1\",\"reason\":\"listening on 8080\"},\"session\":\"s1\",\"type\":\"Hold.Acquire\"}",
+      "frame": "0000006b01000000667b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831222c22726561736f6e223a226c697374656e696e67206f6e2038303830227d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e41637175697265227d",
+      "data": ""
+    },
+    {
+      "name": "an error response",
+      "class": "message",
+      "meta": "{\"id\":3,\"payload\":{\"error\":{\"code\":\"ERR_OBSERVED_STATE_BEFORE_START\",\"message\":\"'api' reported observed state before it started.\"}},\"session\":\"s1\",\"type\":\"Status.Set\"}",
+      "frame": "000000ac01000000a77b226964223a332c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f4f425345525645445f53544154455f4245464f52455f5354415254222c226d657373616765223a222761706927207265706f72746564206f62736572766564207374617465206265666f726520697420737461727465642e227d7d2c2273657373696f6e223a227331222c2274797065223a225374617475732e536574227d",
+      "data": ""
+    },
+    {
+      "name": "an error response carrying structured data",
+      "class": "message",
+      "meta": "{\"id\":5,\"payload\":{\"error\":{\"code\":\"ERR_ZONE_REQUIRED\",\"data\":{\"field\":\"transaction\",\"kind\":\"Sql.Transaction\"},\"message\":\"No 'Sql.Transaction' zone is open.\"}},\"session\":\"s1\",\"type\":\"Zone.Require\"}",
+      "frame": "000000ca01000000c57b226964223a352c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f5a4f4e455f5245515549524544222c2264617461223a7b226669656c64223a227472616e73616374696f6e222c226b696e64223a2253716c2e5472616e73616374696f6e227d2c226d657373616765223a224e6f202753716c2e5472616e73616374696f6e27207a6f6e65206973206f70656e2e227d7d2c2273657373696f6e223a227331222c2274797065223a225a6f6e652e52657175697265227d",
+      "data": ""
+    },
+    {
+      "name": "a notification, for which no response frame is ever sent",
+      "class": "message",
+      "meta": "{\"id\":7,\"payload\":{\"instance\":\"h1\",\"message\":\"listening\",\"severity\":9},\"session\":\"s1\",\"type\":\"Log.Write\"}",
+      "frame": "0000006e01000000697b226964223a372c227061796c6f6164223a7b22696e7374616e6365223a226831222c226d657373616765223a226c697374656e696e67222c227365766572697479223a397d2c2273657373696f6e223a227331222c2274797065223a224c6f672e5772697465227d",
+      "data": ""
+    },
+    {
+      "name": "a payload carrying a tagged value, because the meta is a typed frame",
+      "class": "message",
+      "meta": "{\"id\":2,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c1\"},\"invocationId\":7,\"traceId\":\"0af7651916cd43dd8448eb211c80319c\"},\"inputs\":{\"attempt\":{\"$telo\":\"int\",\"value\":\"7\"}},\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Controller.Invoke\"}",
+      "frame": "000000ed01000000e87b226964223a322c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226331227d2c22696e766f636174696f6e4964223a372c2274726163654964223a223061663736353139313663643433646438343438656232313163383033313963227d2c22696e70757473223a7b22617474656d7074223a7b222474656c6f223a22696e74222c2276616c7565223a2237227d7d2c22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22436f6e74726f6c6c65722e496e766f6b65227d",
+      "data": ""
+    },
+    {
+      "name": "a payload whose text is not ASCII, so metaLength is not its character count",
+      "class": "message",
+      "meta": "{\"id\":9,\"payload\":{\"instance\":\"h1\",\"message\":\"café 😀\",\"severity\":17},\"session\":\"s1\",\"type\":\"Log.Write\"}",
+      "frame": "00000070010000006b7b226964223a392c227061796c6f6164223a7b22696e7374616e6365223a226831222c226d657373616765223a22636166c3a920f09f9880222c227365766572697479223a31377d2c2273657373696f6e223a227331222c2274797065223a224c6f672e5772697465227d",
+      "data": ""
+    },
+    {
+      "name": "a data frame, whose chunk is the frame's trailing bytes",
+      "class": "data",
+      "meta": "{\"id\":11,\"payload\":{\"byteLength\":5,\"channelId\":\"c1\",\"seq\":0,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+      "frame": "0000007b02000000717b226964223a31312c227061796c6f6164223a7b22627974654c656e677468223a352c226368616e6e656c4964223a226331222c22736571223a302c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d68656c6c6f",
+      "data": "68656c6c6f"
+    },
+    {
+      "name": "a data frame whose chunk is empty",
+      "class": "data",
+      "meta": "{\"id\":13,\"payload\":{\"byteLength\":0,\"channelId\":\"c1\",\"seq\":1,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+      "frame": "0000007602000000717b226964223a31332c227061796c6f6164223a7b22627974654c656e677468223a302c226368616e6e656c4964223a226331222c22736571223a312c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d",
+      "data": ""
+    },
+    {
+      "name": "a data frame whose chunk is not text at all",
+      "class": "data",
+      "meta": "{\"id\":15,\"payload\":{\"byteLength\":4,\"channelId\":\"c2\",\"seq\":0,\"session\":\"s1\"},\"session\":\"s1\",\"type\":\"Channel.Data\"}",
+      "frame": "0000007a02000000717b226964223a31352c227061796c6f6164223a7b22627974654c656e677468223a342c226368616e6e656c4964223a226332222c22736571223a302c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d00ff800a",
+      "data": "00ff800a"
+    }
+  ],
+  "undecodable": [
+    {
+      "name": "a truncated length prefix",
+      "frame": "0000",
+      "reason": "the four length bytes are not all there, so no frame has begun"
+    },
+    {
+      "name": "a length below 5",
+      "frame": "0000000401000000",
+      "reason": "no frame is shorter than its class byte and its four metaLength bytes, and a reader that let this through would compute length - 5 as an enormous unsigned bound and slice past the buffer"
+    },
+    {
+      "name": "a length one byte over MAX_FRAME_LENGTH",
+      "frame": "01000001",
+      "reason": "16777217 exceeds MAX_FRAME_LENGTH, and the refusal is made on the length field alone — a reader that allocated first could be exhausted with four bytes"
+    },
+    {
+      "name": "a metaLength exceeding length - 5",
+      "frame": "0000004e010000004a7b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e41637175697265227d",
+      "reason": "the meta region is declared longer than the bytes that follow the class and the metaLength fields"
+    },
+    {
+      "name": "meta that is not well-formed UTF-8",
+      "frame": "0000004e01000000497b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e416371756972ff227d",
+      "reason": "a lone 0xff byte stands where the meta's UTF-8 text should be"
+    },
+    {
+      "name": "a message frame with a non-empty data region",
+      "frame": "0000004f01000000497b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a22486f6c642e41637175697265227d21",
+      "reason": "a message frame's whole content is its envelope; only a data frame carries bytes after the meta"
+    },
+    {
+      "name": "a data frame whose type is not Channel.Data",
+      "frame": "0000007302000000697b226964223a372c227061796c6f6164223a7b22696e7374616e6365223a226831222c226d657373616765223a226c697374656e696e67222c227365766572697479223a397d2c2273657373696f6e223a227331222c2274797065223a224c6f672e5772697465227d68656c6c6f",
+      "reason": "Channel.Data is the only data frame"
+    },
+    {
+      "name": "a Channel.Data whose byteLength disagrees with the frame length",
+      "frame": "0000007a02000000717b226964223a31312c227061796c6f6164223a7b22627974654c656e677468223a352c226368616e6e656c4964223a226331222c22736571223a302c2273657373696f6e223a227331227d2c2273657373696f6e223a227331222c2274797065223a224368616e6e656c2e44617461227d68656c6c",
+      "reason": "the payload declares a five-byte chunk and four bytes follow the meta"
+    }
+  ]
+}

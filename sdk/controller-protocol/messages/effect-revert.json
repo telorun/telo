@@ -1,0 +1,39 @@
+{
+  "name": "Effect.Revert",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Run one registered inverse. The kernel orders these — last-in-first-out within a frame, innermost frame first — and never interprets one.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "effect": {
+        "type": "string",
+        "minLength": 1
+      },
+      "inverse": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "effect",
+      "inverse"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The inverse ran. A refusal is an error response, which the kernel withholds or aggregates per kernel/specs/revertible-effects.md §6.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

@@ -1,0 +1,48 @@
+{
+  "name": "Log.LevelFor",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Resolve a sink's declared level to a severity number, falling back to the effective scope threshold when the sink declares none.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "level": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "severity": {
+        "description": "An OpenTelemetry severity number (kernel/specs/logging.md §5.1).",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 24
+      }
+    },
+    "description": "The severity number.",
+    "type": "object",
+    "properties": {
+      "severity": {
+        "$ref": "#/definitions/severity"
+      }
+    },
+    "required": [
+      "severity"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": true,
+  "reentrant": false
+}

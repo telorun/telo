@@ -2265,6 +2265,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      ajv:
+        specifier: ^8.17.1
+        version: 8.17.1
       typescript:
         specifier: ^5.0.0
         version: 5.9.3

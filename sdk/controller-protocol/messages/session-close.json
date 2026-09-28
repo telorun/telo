@@ -1,0 +1,32 @@
+{
+  "name": "Session.Close",
+  "direction": "kernel-to-controller",
+  "spec": "4. Session",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "End a session. Every instance created in it has already been destroyed; the controller end releases whatever it still holds for it.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "session"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Closed.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

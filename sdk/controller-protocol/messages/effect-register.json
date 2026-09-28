@@ -1,0 +1,49 @@
+{
+  "name": "Effect.Register",
+  "direction": "controller-to-kernel",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Register an inverse on the resource's innermost open frame, at the moment it is produced. `inverse` is the controller end's own handle for the closure; the kernel never looks inside it.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reason": {
+        "type": "string"
+      },
+      "inverse": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "reason",
+      "inverse"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The effect's kernel id, which Effect.Dispose names and Effect.Revert carries back.",
+    "type": "object",
+    "properties": {
+      "effect": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "effect"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_EFFECT_SCOPE_CLOSED"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

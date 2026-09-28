@@ -1,0 +1,49 @@
+{
+  "name": "Effect.Perform",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Execute one step of a chain, given the previous step's result. Each inverse the body produces reaches the kernel through Effect.Register as it is produced, so a body that fails halfway leaves exactly the completed steps' inverses on the frame.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "chain": {
+        "type": "string",
+        "minLength": 1
+      },
+      "step": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "input": {
+        "description": "The previous step's result; absent at the first step."
+      }
+    },
+    "required": [
+      "instance",
+      "chain",
+      "step"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "This step's result, threaded into the next step's body and returned to whoever executed the chain.",
+    "type": "object",
+    "properties": {
+      "result": {
+        "description": "The step's result."
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_EFFECT_SCOPE_CLOSED"
+  ],
+  "synchronous": false,
+  "reentrant": true
+}

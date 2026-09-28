@@ -1,0 +1,40 @@
+{
+  "name": "Cancellation.Cancel",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Cancel a source now, or arm it to trip at an absolute instant. A deadline is not a separate concept.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reason": {
+        "type": "string"
+      },
+      "atEpochMs": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "instance",
+      "source"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Cancelled, or armed.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

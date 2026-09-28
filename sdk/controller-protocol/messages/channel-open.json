@@ -1,0 +1,58 @@
+{
+  "name": "Channel.Open",
+  "direction": "either",
+  "spec": "8. Channels",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Open a one-way byte channel. `purpose` says what it carries; the three well-known values are a controller's own standard streams, which are not the carrier process's stdout and stderr.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "channelId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "purpose": {
+        "type": "string",
+        "enum": [
+          "stdin",
+          "stdout",
+          "stderr",
+          "stream",
+          "runtime.stdin",
+          "runtime.stdout",
+          "runtime.stderr"
+        ]
+      },
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "credit": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "encoding": {
+        "type": "string",
+        "enum": [
+          "bytes",
+          "utf-8"
+        ]
+      }
+    },
+    "required": [
+      "session",
+      "channelId",
+      "purpose",
+      "credit"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

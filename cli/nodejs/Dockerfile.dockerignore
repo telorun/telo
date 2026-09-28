@@ -9,6 +9,7 @@
 !sdk/nodejs
 !sdk/value-types
 !sdk/zone-attributes
+!sdk/controller-protocol
 !scripts
 !packages/ide-support
 !packages/debug-wire

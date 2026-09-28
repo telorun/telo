@@ -1,0 +1,42 @@
+{
+  "name": "Schema.Compile",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Compile a schema once, to validate per invocation. The validator lives as long as the instance that compiled it.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "schema": {
+        "description": "The JSON Schema."
+      }
+    },
+    "required": [
+      "instance",
+      "schema"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The validator's id.",
+    "type": "object",
+    "properties": {
+      "validator": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "validator"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

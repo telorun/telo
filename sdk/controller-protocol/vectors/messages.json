@@ -1,0 +1,1586 @@
+{
+  "$comment": "Conformance vectors for the message bodies, normative in kernel/specs/controller-protocol.md §11. Every table here is normative. A `valid` row's `body` MUST satisfy the `request` or `response` schema of sdk/controller-protocol/messages/<message>, and every message in that directory has a `valid` request row, and a `valid` response row wherever its `response` is not null. An `invalid` row MUST be refused, and `pointer` is the RFC 6901 pointer INTO THE BODY that the refusal names — never a pointer into the schema — so two validators in two languages report the same place. Every body is written with plain JSON nodes, so a payload's decoded value and its frame text coincide; the typed frame's tagged forms are vectored by kernel/specs/durable-execution-typed-frame-vectors.json.",
+  "valid": [
+    {
+      "message": "Callable.Call",
+      "part": "request",
+      "body": {
+        "instance": "fn1",
+        "args": {
+          "name": "World"
+        }
+      }
+    },
+    {
+      "message": "Callable.Call",
+      "part": "response",
+      "body": {
+        "result": "Hello, World"
+      }
+    },
+    {
+      "message": "Cancellation.Cancel",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "source": "c1",
+        "reason": "the client disconnected",
+        "atEpochMs": 1764547200000
+      }
+    },
+    {
+      "message": "Cancellation.Cancel",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Cancellation.Create",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Cancellation.Create",
+      "part": "response",
+      "body": {
+        "source": "c2",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Cancellation.Dispose",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "source": "c2"
+      }
+    },
+    {
+      "message": "Cancellation.Dispose",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Cancellation.Signal",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "source": "c1",
+        "reason": "the client disconnected"
+      }
+    },
+    {
+      "message": "Channel.Close",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "error": {
+          "code": "ERR_STREAM_TRUNCATED",
+          "message": "the peer went away"
+        }
+      }
+    },
+    {
+      "message": "Channel.Credit",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "bytes": 65536
+      }
+    },
+    {
+      "message": "Channel.Data",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "seq": 0,
+        "byteLength": 5
+      }
+    },
+    {
+      "message": "Channel.Open",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "purpose": "stdout",
+        "instance": "h1",
+        "credit": 65536,
+        "encoding": "utf-8"
+      }
+    },
+    {
+      "message": "Controller.Bind",
+      "part": "request",
+      "body": {
+        "controller": "pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#Server",
+        "kind": "Http.Server"
+      }
+    },
+    {
+      "message": "Controller.Bind",
+      "part": "response",
+      "body": {
+        "controller": "ctrl1",
+        "entryPoints": [
+          "create",
+          "init",
+          "run",
+          "destroy"
+        ],
+        "requires": [
+          "Hold.Acquire",
+          "Status.Set"
+        ]
+      }
+    },
+    {
+      "message": "Controller.Create",
+      "part": "request",
+      "body": {
+        "controller": "ctrl1",
+        "instance": {
+          "id": "h1",
+          "ref": {
+            "kind": "Http.Server",
+            "name": "api"
+          }
+        },
+        "manifest": {
+          "kind": "Http.Server",
+          "port": 8080,
+          "handler": {
+            "$teloCompiled": "/handler"
+          }
+        },
+        "ownerPrefix": "api",
+        "module": {
+          "name": "HttpServer",
+          "source": "oci://ghcr.io/telorun/http-server",
+          "controllerModule": "HttpServer"
+        },
+        "entryUrl": "file:///app/modules/http-server/nodejs/http-server.mjs",
+        "inputType": {
+          "type": "object"
+        },
+        "outputType": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "message": "Controller.Create",
+      "part": "response",
+      "body": {
+        "entryPoints": [
+          "init",
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
+        ],
+        "teardownPriority": 10,
+        "sink": {
+          "sinkId": "sink1",
+          "level": 9,
+          "syncFlushable": true
+        }
+      }
+    },
+    {
+      "message": "Controller.Destroy",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Controller.Destroy",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Controller.Init",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Controller.Init",
+      "part": "response",
+      "body": {
+        "chain": {
+          "id": "ch1",
+          "steps": [
+            {
+              "reason": "registered the routes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "message": "Controller.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "inputs": {
+          "path": "/health"
+        },
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Controller.Invoke",
+      "part": "response",
+      "body": {
+        "result": {
+          "status": 200
+        }
+      }
+    },
+    {
+      "message": "Controller.Provide",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Controller.Provide",
+      "part": "response",
+      "body": {
+        "value": {
+          "url": "postgres://db/main"
+        }
+      }
+    },
+    {
+      "message": "Controller.Run",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Controller.Run",
+      "part": "response",
+      "body": {
+        "chain": {
+          "id": "ch1",
+          "steps": [
+            {
+              "reason": "registered the routes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "message": "Controller.SinkClose",
+      "part": "request",
+      "body": {
+        "instance": "sink1"
+      }
+    },
+    {
+      "message": "Controller.SinkClose",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Controller.SinkFlushSync",
+      "part": "request",
+      "body": {
+        "instance": "sink1"
+      }
+    },
+    {
+      "message": "Controller.SinkFlushSync",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Controller.SinkFlush",
+      "part": "request",
+      "body": {
+        "instance": "sink1"
+      }
+    },
+    {
+      "message": "Controller.SinkFlush",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Controller.SinkWrite",
+      "part": "request",
+      "body": {
+        "instance": "sink1",
+        "record": {
+          "severity": 9,
+          "message": "listening"
+        }
+      }
+    },
+    {
+      "message": "Controller.Snapshot",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Controller.Snapshot",
+      "part": "response",
+      "body": {
+        "state": {
+          "port": 8080
+        }
+      }
+    },
+    {
+      "message": "Dispatch.DetachSettle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "task": "t1",
+        "outcome": "failed",
+        "error": {
+          "code": "ERR_TIMEOUT",
+          "message": "the upstream did not answer",
+          "data": {
+            "afterMs": 30000
+          }
+        }
+      }
+    },
+    {
+      "message": "Dispatch.DetachSettle",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Dispatch.Detach",
+      "part": "request",
+      "body": {
+        "instance": "h1"
+      }
+    },
+    {
+      "message": "Dispatch.Detach",
+      "part": "response",
+      "body": {
+        "task": "t1",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.InvokeResolved",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "target": {
+          "id": "h1",
+          "ref": {
+            "kind": "Http.Server",
+            "name": "api"
+          }
+        },
+        "inputs": {
+          "id": 4
+        },
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.InvokeResolved",
+      "part": "response",
+      "body": {
+        "result": {
+          "rows": []
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Sql.Query",
+        "name": "health",
+        "inputs": {},
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Invoke",
+      "part": "response",
+      "body": {
+        "result": {
+          "rows": []
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Run",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Run.Sequence",
+        "name": "boot",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Run",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Effect.Dispose",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "effect": "e1"
+      }
+    },
+    {
+      "message": "Effect.Dispose",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Effect.Perform",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "chain": "ch1",
+        "step": 0,
+        "input": {
+          "socket": 7
+        }
+      }
+    },
+    {
+      "message": "Effect.Perform",
+      "part": "response",
+      "body": {
+        "result": {
+          "socket": 7
+        }
+      }
+    },
+    {
+      "message": "Effect.Register",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "reason": "registered the routes",
+        "inverse": "inv1"
+      }
+    },
+    {
+      "message": "Effect.Register",
+      "part": "response",
+      "body": {
+        "effect": "e1"
+      }
+    },
+    {
+      "message": "Effect.Revert",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "effect": "e1",
+        "inverse": "inv1"
+      }
+    },
+    {
+      "message": "Effect.Revert",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Effect.Run",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "chain": {
+          "id": "ch1",
+          "steps": [
+            {
+              "reason": "registered the routes"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "message": "Effect.Run",
+      "part": "response",
+      "body": {
+        "result": {
+          "socket": 7
+        }
+      }
+    },
+    {
+      "message": "Env.Read",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "name": "DATABASE_URL"
+      }
+    },
+    {
+      "message": "Env.Read",
+      "part": "response",
+      "body": {
+        "value": "postgres://db/main"
+      }
+    },
+    {
+      "message": "Event.Emit",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "event": "resource.started",
+        "payload": {
+          "port": 8080
+        }
+      }
+    },
+    {
+      "message": "Event.Emit",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Hold.Acquire",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "reason": "listening on 8080"
+      }
+    },
+    {
+      "message": "Hold.Acquire",
+      "part": "response",
+      "body": {
+        "hold": "hold1"
+      }
+    },
+    {
+      "message": "Hold.Release",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "hold": "hold1"
+      }
+    },
+    {
+      "message": "Hold.Release",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Log.Drop",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "sinkId": "sink1",
+        "cause": "buffer_full",
+        "count": 12
+      }
+    },
+    {
+      "message": "Log.LevelFor",
+      "part": "request",
+      "body": {
+        "instance": "sink1",
+        "level": "warn"
+      }
+    },
+    {
+      "message": "Log.LevelFor",
+      "part": "response",
+      "body": {
+        "severity": 13
+      }
+    },
+    {
+      "message": "Log.Threshold",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "instance": "h1",
+        "severity": 9
+      }
+    },
+    {
+      "message": "Log.Write",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "severity": 17,
+        "message": "the upstream refused the connection",
+        "attributes": {
+          "upstream": "db"
+        },
+        "error": {
+          "code": "ECONNREFUSED",
+          "message": "connection refused"
+        }
+      }
+    },
+    {
+      "message": "Module.ControllerFile",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "relative": "./assets/default.css"
+      }
+    },
+    {
+      "message": "Module.ControllerFile",
+      "part": "response",
+      "body": {
+        "uri": "file:///app/modules/http-server/assets/default.css"
+      }
+    },
+    {
+      "message": "Module.File",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "relative": "./public/index.html"
+      }
+    },
+    {
+      "message": "Module.File",
+      "part": "response",
+      "body": {
+        "uri": "file:///app/site/public/index.html"
+      }
+    },
+    {
+      "message": "Native.File",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "name": "sqlite"
+      }
+    },
+    {
+      "message": "Native.File",
+      "part": "response",
+      "body": {
+        "uri": "file:///app/.telo/native/libsqlite.so"
+      }
+    },
+    {
+      "message": "Ref.Declaration",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "name": "db",
+        "alias": "Sql"
+      }
+    },
+    {
+      "message": "Ref.Declaration",
+      "part": "response",
+      "body": {
+        "manifest": {
+          "kind": "Sql.Connection",
+          "url": {
+            "$teloCompiled": "/url"
+          }
+        }
+      }
+    },
+    {
+      "message": "Ref.Ensure",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "value": {
+          "kind": "Http.Api",
+          "routes": []
+        },
+        "resourceName": "api"
+      }
+    },
+    {
+      "message": "Ref.Ensure",
+      "part": "response",
+      "body": {
+        "ref": {
+          "kind": "Http.Api",
+          "name": "api",
+          "origin": {
+            "module": "HttpServer",
+            "pointer": "/routes/0"
+          }
+        }
+      }
+    },
+    {
+      "message": "Ref.Resolve",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "value": {
+          "kind": "Sql.Connection",
+          "name": "db"
+        },
+        "expects": "Telo.Invocable"
+      }
+    },
+    {
+      "message": "Ref.Resolve",
+      "part": "response",
+      "body": {
+        "target": {
+          "id": "h1",
+          "ref": {
+            "kind": "Http.Server",
+            "name": "api"
+          }
+        },
+        "entryPoints": [
+          "invoke"
+        ],
+        "local": false
+      }
+    },
+    {
+      "message": "Runtime.Cancel",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "run": "run1",
+        "reason": "the test ended"
+      }
+    },
+    {
+      "message": "Runtime.Cancel",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Runtime.Check",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "source": "./child.yaml",
+        "desugarImports": true
+      }
+    },
+    {
+      "message": "Runtime.Check",
+      "part": "response",
+      "body": {
+        "diagnostics": [
+          {
+            "code": "UNKNOWN_KIND",
+            "message": "No kind named 'Http.Serverr'.",
+            "severity": "error",
+            "source": "./child.yaml",
+            "line": 12,
+            "column": 9,
+            "resource": "api",
+            "path": "/kind",
+            "fix": {
+              "replacement": "Http.Server"
+            }
+          }
+        ],
+        "loadError": ""
+      }
+    },
+    {
+      "message": "Runtime.Exited",
+      "part": "request",
+      "body": {
+        "session": "s2",
+        "run": "run1",
+        "exitCode": 0
+      }
+    },
+    {
+      "message": "Runtime.Run",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "source": "./child.yaml",
+        "env": {
+          "TZ": "UTC"
+        },
+        "inputs": {
+          "variables": {
+            "port": 8081
+          },
+          "secrets": {
+            "token": "t"
+          },
+          "ports": {
+            "http": 8081
+          }
+        }
+      }
+    },
+    {
+      "message": "Runtime.Run",
+      "part": "response",
+      "body": {
+        "run": "run1",
+        "session": "s2",
+        "stdin": "c-in",
+        "stdout": "c-out",
+        "stderr": "c-err"
+      }
+    },
+    {
+      "message": "Runtime.Started",
+      "part": "request",
+      "body": {
+        "session": "s2",
+        "run": "run1"
+      }
+    },
+    {
+      "message": "Schema.Check",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "validator": "v1",
+        "value": {
+          "id": 4
+        }
+      }
+    },
+    {
+      "message": "Schema.Check",
+      "part": "response",
+      "body": {
+        "valid": false,
+        "issues": [
+          {
+            "path": "/id",
+            "message": "must be a string"
+          }
+        ]
+      }
+    },
+    {
+      "message": "Schema.Compile",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "schema": {
+          "type": "object",
+          "required": [
+            "id"
+          ]
+        }
+      }
+    },
+    {
+      "message": "Schema.Compile",
+      "part": "response",
+      "body": {
+        "validator": "v1"
+      }
+    },
+    {
+      "message": "Schema.Resolve",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "type": {
+          "kind": "Telo.JsonSchema",
+          "name": "Order"
+        }
+      }
+    },
+    {
+      "message": "Schema.Resolve",
+      "part": "response",
+      "body": {
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "message": "Schema.Validate",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "value": {
+          "id": "4"
+        },
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "message": "Schema.Validate",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Session.Close",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "reason": "the kernel instance stopped"
+      }
+    },
+    {
+      "message": "Session.Close",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Session.Hello",
+      "part": "request",
+      "body": {
+        "generation": 4,
+        "kernel": {
+          "telo": "0.103.2",
+          "runtime": {
+            "name": "rust",
+            "version": "1.84.0"
+          }
+        }
+      }
+    },
+    {
+      "message": "Session.Hello",
+      "part": "response",
+      "body": {
+        "generation": 4,
+        "controller": {
+          "telo": "0.103.2",
+          "runtime": {
+            "name": "node",
+            "version": "24.11.1"
+          }
+        }
+      }
+    },
+    {
+      "message": "Session.Open",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "application": {
+          "name": "Api",
+          "source": "file:///app/telo.yaml"
+        }
+      }
+    },
+    {
+      "message": "Session.Open",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Span.Open",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "base": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        },
+        "ref": {
+          "kind": "Http.Server",
+          "name": "api"
+        },
+        "label": "GET /health",
+        "attributes": {
+          "http.route": "/health"
+        },
+        "inbound": {
+          "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+        }
+      }
+    },
+    {
+      "message": "Span.Open",
+      "part": "response",
+      "body": {
+        "span": "sp1",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Span.Settle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "span": "sp1",
+        "outcome": "parked",
+        "attributes": {
+          "http.status_code": 200
+        }
+      }
+    },
+    {
+      "message": "Span.Settle",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Status.Set",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "status": {
+          "port": 8080
+        }
+      }
+    },
+    {
+      "message": "Status.Set",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Value.Decode",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "value": {
+          "after": "2025-01-01T00:00:00Z"
+        },
+        "schema": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "message": "Value.Decode",
+      "part": "response",
+      "body": {
+        "value": {
+          "after": "2025-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "message": "Value.Expand",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "pointer": "/handler/body",
+        "scope": {
+          "request": {
+            "path": "/health"
+          }
+        }
+      }
+    },
+    {
+      "message": "Value.Expand",
+      "part": "response",
+      "body": {
+        "value": "ok"
+      }
+    },
+    {
+      "message": "Zone.Attributes",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.Attributes",
+      "part": "response",
+      "body": {
+        "zones": [
+          {
+            "entry": {
+              "kind": "Sql.Transaction",
+              "provider": {
+                "id": "h1",
+                "ref": {
+                  "kind": "Http.Server",
+                  "name": "api"
+                }
+              }
+            },
+            "attributes": {
+              "atomic": "one statement per transaction"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "message": "Zone.Close",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "slot": "/transaction",
+        "entry": {
+          "kind": "Sql.Transaction",
+          "provider": {
+            "id": "h1",
+            "ref": {
+              "kind": "Http.Server",
+              "name": "api"
+            }
+          }
+        },
+        "outcome": "ok"
+      }
+    },
+    {
+      "message": "Zone.Close",
+      "part": "response",
+      "body": {}
+    },
+    {
+      "message": "Zone.Find",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "field": "transaction",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.Find",
+      "part": "response",
+      "body": {
+        "entry": {
+          "kind": "Sql.Transaction",
+          "provider": {
+            "id": "h1",
+            "ref": {
+              "kind": "Http.Server",
+              "name": "api"
+            }
+          }
+        }
+      }
+    },
+    {
+      "message": "Zone.List",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "correlatedOn": {
+          "id": "h1",
+          "ref": {
+            "kind": "Http.Server",
+            "name": "api"
+          }
+        },
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.List",
+      "part": "response",
+      "body": {
+        "entries": [
+          {
+            "kind": "Sql.Transaction",
+            "provider": {
+              "id": "h1",
+              "ref": {
+                "kind": "Http.Server",
+                "name": "api"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "message": "Zone.Open",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "slot": "/transaction",
+        "base": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.Open",
+      "part": "response",
+      "body": {
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        },
+        "entry": {
+          "kind": "Sql.Transaction",
+          "provider": {
+            "id": "h1",
+            "ref": {
+              "kind": "Http.Server",
+              "name": "api"
+            }
+          }
+        }
+      }
+    },
+    {
+      "message": "Zone.Require",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "field": "transaction",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.Require",
+      "part": "response",
+      "body": {
+        "entry": {
+          "kind": "Sql.Transaction",
+          "provider": {
+            "id": "h1",
+            "ref": {
+              "kind": "Http.Server",
+              "name": "api"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a handshake whose generation is text",
+      "message": "Session.Hello",
+      "part": "request",
+      "body": {
+        "generation": "4",
+        "kernel": {
+          "telo": "0.103.2",
+          "runtime": {
+            "name": "rust",
+            "version": "1.84.0"
+          }
+        }
+      },
+      "pointer": "/generation"
+    },
+    {
+      "name": "a handshake below the generation this specification defines",
+      "message": "Session.Hello",
+      "part": "request",
+      "body": {
+        "generation": 3,
+        "kernel": {
+          "telo": "0.103.2",
+          "runtime": {
+            "name": "rust",
+            "version": "1.84.0"
+          }
+        }
+      },
+      "pointer": "/generation"
+    },
+    {
+      "name": "a handshake whose runtime has no version",
+      "message": "Session.Hello",
+      "part": "request",
+      "body": {
+        "generation": 4,
+        "kernel": {
+          "telo": "0.103.2",
+          "runtime": {
+            "name": "rust"
+          }
+        }
+      },
+      "pointer": "/kernel/runtime"
+    },
+    {
+      "name": "a hold with no instance",
+      "message": "Hold.Acquire",
+      "part": "request",
+      "body": {
+        "reason": "listening"
+      },
+      "pointer": ""
+    },
+    {
+      "name": "a hold whose instance handle is empty",
+      "message": "Hold.Acquire",
+      "part": "request",
+      "body": {
+        "instance": ""
+      },
+      "pointer": "/instance"
+    },
+    {
+      "name": "a channel opened for a purpose the protocol does not name",
+      "message": "Channel.Open",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "purpose": "metrics",
+        "credit": 0
+      },
+      "pointer": "/purpose"
+    },
+    {
+      "name": "a chunk with a negative sequence number",
+      "message": "Channel.Data",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "seq": -1,
+        "byteLength": 5
+      },
+      "pointer": "/seq"
+    },
+    {
+      "name": "a chunk whose byteLength is fractional",
+      "message": "Channel.Data",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "seq": 0,
+        "byteLength": 1.5
+      },
+      "pointer": "/byteLength"
+    },
+    {
+      "name": "a credit grant of nothing",
+      "message": "Channel.Credit",
+      "part": "request",
+      "body": {
+        "session": "s1",
+        "channelId": "c1",
+        "bytes": 0
+      },
+      "pointer": "/bytes"
+    },
+    {
+      "name": "a dispatch naming an unqualified kind",
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Query",
+        "name": "health",
+        "inputs": {}
+      },
+      "pointer": "/kind"
+    },
+    {
+      "name": "a dispatch whose context has no cancellation source",
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Sql.Query",
+        "name": "health",
+        "inputs": {},
+        "context": {
+          "invocationId": 7
+        }
+      },
+      "pointer": "/context"
+    },
+    {
+      "name": "a dispatch whose trace id is not 32 hex digits",
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Sql.Query",
+        "name": "health",
+        "inputs": {},
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "traceId": "0af7651916cd43dd"
+        }
+      },
+      "pointer": "/context/traceId"
+    },
+    {
+      "name": "a span settled with an outcome the protocol does not name",
+      "message": "Span.Settle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "span": "sp1",
+        "outcome": "done"
+      },
+      "pointer": "/outcome"
+    },
+    {
+      "name": "an expansion whose pointer is not a JSON Pointer",
+      "message": "Value.Expand",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "pointer": "handler/body"
+      },
+      "pointer": "/pointer"
+    },
+    {
+      "name": "a bind answering with an entry point the capability vocabulary does not have",
+      "message": "Controller.Bind",
+      "part": "response",
+      "body": {
+        "controller": "ctrl1",
+        "entryPoints": [
+          "create",
+          "teardown"
+        ]
+      },
+      "pointer": "/entryPoints/1"
+    },
+    {
+      "name": "a resolution answering without saying whether the instance is local",
+      "message": "Ref.Resolve",
+      "part": "response",
+      "body": {
+        "target": {
+          "id": "h1",
+          "ref": {
+            "kind": "Http.Server",
+            "name": "api"
+          }
+        },
+        "entryPoints": [
+          "invoke"
+        ]
+      },
+      "pointer": ""
+    },
+    {
+      "name": "a module file answering with a path rather than a URI",
+      "message": "Module.File",
+      "part": "response",
+      "body": {
+        "uri": "/app/site/public/index.html"
+      },
+      "pointer": "/uri"
+    },
+    {
+      "name": "a child run answering with a non-integer exit code",
+      "message": "Runtime.Exited",
+      "part": "request",
+      "body": {
+        "session": "s2",
+        "run": "run1",
+        "exitCode": "0"
+      },
+      "pointer": "/exitCode"
+    }
+  ]
+}

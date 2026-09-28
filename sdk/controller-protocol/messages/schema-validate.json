@@ -1,0 +1,39 @@
+{
+  "name": "Schema.Validate",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Validate a value against an author-written schema through the runtime's own engine, so its formats and x-telo-* keywords apply and one process never holds two disagreeing validators.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "value": {
+        "description": "The value."
+      },
+      "schema": {
+        "description": "The JSON Schema."
+      }
+    },
+    "required": [
+      "instance",
+      "value",
+      "schema"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Valid.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_INPUT_INVALID"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

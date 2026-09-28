@@ -1,0 +1,117 @@
+{
+  "name": "Runtime.Check",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Run the static-analysis pass over a manifest and its import graph, without instantiating anything. A manifest that fails to load is an answer, not an error.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1
+      },
+      "desugarImports": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "instance",
+      "source"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "diagnostic": {
+        "description": "One analyzer finding, flattened to data.",
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info",
+              "hint"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "column": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resource": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "object",
+            "required": [
+              "replacement"
+            ],
+            "properties": {
+              "replacement": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string",
+                "enum": [
+                  "ref",
+                  "cel",
+                  "module-path"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "The findings. `loadError` is set only when the import graph could not be loaded at all, in which case there was nothing to analyze.",
+    "type": "object",
+    "properties": {
+      "diagnostics": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/diagnostic"
+        }
+      },
+      "loadError": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "diagnostics"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

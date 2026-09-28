@@ -33,3 +33,8 @@ telorun-sdk-macros = { path = "./macros" }
 # is not correctly rounded; the vectors pin doubles to the last digit.
 serde_json = { version = "1", features = ["float_roundtrip"] }
 libloading = "0.8"
+# Unconditional, and at the identical version and feature set as the optional
+# normal dependency above, so the `native` backend and the controller protocol's
+# conformance run validate through one build of one validator. A conformance
+# claim that holds only under a feature flag is a claim with a switch on it.
+jsonschema = { version = "0.49", default-features = false }

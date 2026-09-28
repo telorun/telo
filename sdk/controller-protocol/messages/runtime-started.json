@@ -1,0 +1,29 @@
+{
+  "name": "Runtime.Started",
+  "direction": "kernel-to-controller",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Every one of the child's boot targets has been dispatched. Never sent for a child that exited first.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "run": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "session",
+      "run"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

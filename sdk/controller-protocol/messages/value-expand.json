@@ -1,0 +1,49 @@
+{
+  "name": "Value.Expand",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Evaluate the compiled value at a pointer into this instance's manifest, under the resource's own scope plus the bindings given. The controller end never evaluates CEL: a compiled value is code, so it is owned by the side that compiled it.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "pointer": {
+        "type": "string",
+        "pattern": "^(/([^/~]|~[01])*)*$"
+      },
+      "scope": {
+        "description": "Extra bindings, keyed by name, as typed frames."
+      }
+    },
+    "required": [
+      "instance",
+      "pointer"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The evaluated value.",
+    "type": "object",
+    "properties": {
+      "value": {
+        "description": "The value."
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+    "ERR_HOST_PATH_RELATIVE",
+    "ERR_FUNCTION_FAILED"
+  ],
+  "synchronous": true,
+  "reentrant": true
+}

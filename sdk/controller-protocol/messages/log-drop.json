@@ -1,0 +1,42 @@
+{
+  "name": "Log.Drop",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Count dropped records against a sink, so drop accounting stays complete when a sink loses a whole batch at once.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "sinkId": {
+        "type": "string"
+      },
+      "cause": {
+        "type": "string",
+        "enum": [
+          "buffer_full",
+          "sampled",
+          "encode_failure",
+          "sink_error"
+        ]
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "required": [
+      "instance",
+      "sinkId",
+      "cause"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

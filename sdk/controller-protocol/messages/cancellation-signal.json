@@ -1,0 +1,32 @@
+{
+  "name": "Cancellation.Signal",
+  "direction": "kernel-to-controller",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "A source the controller end observes has cancelled. Pushed rather than polled: a token is read between units of work, and a round trip per poll would put the carrier inside every loop.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "session",
+      "source"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

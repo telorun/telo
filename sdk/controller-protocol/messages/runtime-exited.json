@@ -1,0 +1,33 @@
+{
+  "name": "Runtime.Exited",
+  "direction": "kernel-to-controller",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The child has finished, including after a cancel. Both output channels have closed by now.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "run": {
+        "type": "string",
+        "minLength": 1
+      },
+      "exitCode": {
+        "type": "integer"
+      }
+    },
+    "required": [
+      "session",
+      "run",
+      "exitCode"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

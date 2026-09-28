@@ -1,0 +1,325 @@
+{
+  "name": "Span.Open",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "invokeContext": {
+        "description": "The out-of-band second argument of a dispatch. The durable run handle is deliberately absent: it is a live object the kernel carries and never calls.",
+        "type": "object",
+        "required": [
+          "cancellation"
+        ],
+        "properties": {
+          "cancellation": {
+            "type": "object",
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cancelled": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "invocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parentInvocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/zoneEntry"
+            }
+          },
+          "durablePath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "zoneEntry": {
+        "description": "One open execution zone — three identities and nothing else.",
+        "type": "object",
+        "required": [
+          "kind",
+          "provider"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "provider": {
+            "$ref": "#/definitions/resourceHandle"
+          },
+          "key": {
+            "$ref": "#/definitions/resourceHandle"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "Open a trace span for an inbound boundary. The span roots a fresh trace unless `inbound` continues an upstream one.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "base": {
+        "$ref": "#/definitions/invokeContext"
+      },
+      "ref": {
+        "$ref": "#/definitions/refIdentity"
+      },
+      "label": {
+        "type": "string"
+      },
+      "attributes": {
+        "description": "Structured span attributes."
+      },
+      "inbound": {
+        "description": "W3C Trace Context headers exactly as they arrived.",
+        "type": "object",
+        "properties": {
+          "traceparent": {
+            "type": "string"
+          },
+          "tracestate": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "traceparent"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "instance",
+      "ref"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "invokeContext": {
+        "description": "The out-of-band second argument of a dispatch. The durable run handle is deliberately absent: it is a live object the kernel carries and never calls.",
+        "type": "object",
+        "required": [
+          "cancellation"
+        ],
+        "properties": {
+          "cancellation": {
+            "type": "object",
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "cancelled": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "invocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parentInvocationId": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/zoneEntry"
+            }
+          },
+          "durablePath": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "zoneEntry": {
+        "description": "One open execution zone — three identities and nothing else.",
+        "type": "object",
+        "required": [
+          "kind",
+          "provider"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "provider": {
+            "$ref": "#/definitions/resourceHandle"
+          },
+          "key": {
+            "$ref": "#/definitions/resourceHandle"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "The span's id and the child context to thread into the handler. A kernel with tracing off returns the base context unchanged and a span id all the same, so a controller has one code path.",
+    "type": "object",
+    "properties": {
+      "span": {
+        "type": "string",
+        "minLength": 1
+      },
+      "context": {
+        "$ref": "#/definitions/invokeContext"
+      }
+    },
+    "required": [
+      "span",
+      "context"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_SPAN_ATTRIBUTE_INVALID"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}
