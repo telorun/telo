@@ -89,7 +89,7 @@ engine registry, which gains a `description` member alongside its `name` / `lang
 `forbidThrows` branches); `packages/ide-support/src/completions/valid-capabilities.ts` is deleted and
 both its exports sourced from them; `analyzer/rust/src/builtins.rs` reads the same bytes, keeping only
 `SUPPORTED_CAPABILITIES` Rust-local as the host-specific table — the exact analogue of `bindings()` in
-`sdk/rust/src/value_type.rs`. The two half-schemas for `Telo.Definition` / `Telo.Abstract` are unified
+`sdk/rust/core/src/value_type.rs`. The two half-schemas for `Telo.Definition` / `Telo.Abstract` are unified
 into one.
 
 **The hub indexes it like a module, without pretending it is one.** A reserved `modules` row with
