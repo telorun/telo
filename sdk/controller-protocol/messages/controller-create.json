@@ -153,6 +153,7 @@
         }
       },
       "teardownPriority": {
+        "description": "When this instance unwinds relative to the others in its context: resources tear down in ascending priority as a hard tier, and absence means 0. A tier rather than an ordering edge, because it states an edge nothing captured — a sink reached through Log.Write sits in no reference slot — so a sink reports a high value and unwinds after everything that may log. Within a tier the cascade orders resources against each other, the counterpart kernel/specs/revertible-effects.md names to the per-resource frame order it defines.",
         "type": "integer"
       },
       "sink": {

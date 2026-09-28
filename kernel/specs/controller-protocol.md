@@ -327,8 +327,13 @@ data        the rest          uninterpreted bytes
   exhaust with four bytes.
 - A reader MUST refuse a frame whose `metaLength` exceeds `length - 5`, and one
   whose `meta` is not well-formed UTF-8.
-- `length` counts bytes and nothing else: there is no padding and no alignment,
-  and a frame of `length` 0 is a refusal.
+- A reader MUST refuse a frame whose `length` is **below 5**. The class byte and
+  the four `metaLength` bytes are both mandatory, so no frame is shorter, and
+  leaving 1–4 undefined would make the rule above underflow: a reader computing
+  `length - 5` in unsigned arithmetic wraps it to an enormous bound, passes its
+  own `metaLength` guard and slices past the buffer, so four header bytes are a
+  denial of service against an otherwise conforming reader.
+- `length` counts bytes and nothing else: there is no padding and no alignment.
 
 Both fields are unsigned and big-endian. Big-endian because a frame header is
 read by eye in a hex dump as often as by code, and a width fixed at four bytes
@@ -344,8 +349,10 @@ The `meta` region is the **typed-frame JSON text**
 - **`session`** — the session the message belongs to, or `null` on
   `Session.Hello`, which precedes every session.
 - **`type`** — the message's `name`, exactly as `messages/` spells it.
-- **`payload`** — the message body, validated against that message's `request`
-  schema on a request and its `response` schema on a response.
+- **`payload`** — the message body. On a request it is validated against that
+  message's `request` schema. On a response it is the `ok` / `error` envelope
+  below, and it is the `ok` member — never the envelope around it — that is
+  validated against the message's `response` schema.
 
 Each member's spelling is fixed, because two runtimes writing one envelope must
 write the same bytes: `id` is a plain JSON number, whole and non-negative;
@@ -503,6 +510,20 @@ bound entry points to what this instance actually carries, and — for a
 `Telo.Sink` — reports the sink's identity, its fan-out level and whether it can
 be drained synchronously, which the kernel needs before it may write to it.
 
+Two members of that exchange are about how the controller was reached and when it
+is released. **`entryUrl`** is the location the kernel selected the controller's
+code from; selection happened before the protocol began (§0.1), so the controller
+end cannot re-derive it, and a host that must load the same code again is told
+rather than left to guess. **`teardownPriority`** answers what the teardown
+cascade cannot infer: resources unwind in **ascending** priority as a hard tier,
+and absence means `0`. It is a tier rather than an ordering edge because it states
+an edge nothing captured — a log sink is reached through `Log.Write` and no
+reference slot, so no walk of the manifest finds what will log on the way down,
+and a sink therefore reports a HIGH value so that everything able to log has
+already unwound. Within a tier the order is the cascade's own, which
+`kernel/specs/revertible-effects.md` names as the counterpart to the per-resource
+frame order it defines.
+
 A controller MUST NOT perform observable I/O in `Controller.Create` or
 `Controller.Init`. The protocol cannot enforce that, and states it because a
 runtime's retry semantics rest on it: a failed `init` unwinds and **discards the
@@ -535,11 +556,15 @@ would emit telemetry from inside the telemetry path.
 to the runtime. A sink failure is counted out of band (`Log.Drop`, §9.1) and
 never propagated to whatever was being logged.
 
-`Controller.SinkFlushSync` is the protocol's one **synchronous
-kernel-to-controller** message, and a no-op at a sink that reported
-`syncFlushable: false`. Synchronous flush is a sink capability, not a runtime
-guarantee: a kernel MUST NOT block on a sink that cannot be drained synchronously
-— on a single-threaded runtime that is a deadlock rather than durability.
+`Controller.SinkFlushSync` is **synchronous**: the kernel is blocked while it is
+outstanding, and it is a no-op at a sink that reported `syncFlushable: false`. It
+is one of exactly two synchronous `kernel-to-controller` messages, the other
+being `Callable.Call` (§6.7); a runtime that treats either as fire-and-return
+breaks the other end's contract — here the kernel returns from teardown before
+the records are durable, there §3.4's reader deadlocks. Synchronous flush is a
+sink capability, not a runtime guarantee: a kernel MUST NOT block on a sink that
+cannot be drained synchronously — on a single-threaded runtime that is a deadlock
+rather than durability.
 
 ### 5.4 Effects
 
@@ -684,9 +709,11 @@ unwind on a frame.
 ### 6.7 Callables, and reentrancy
 
 `Callable.Call` is the kernel calling a `Telo.Callable` synchronously, with its
-arguments as a typed frame keyed by parameter name. It is the one message that is
-both **synchronous** and **kernel-to-controller**, and it is the reason §3.4
-forbids a reader to block on dispatch.
+arguments as a typed frame keyed by parameter name. It is **synchronous** and
+**kernel-to-controller** — one of exactly two, the other being
+`Controller.SinkFlushSync` (§5.3) — and it is the one of the two that makes §3.4
+forbid a reader to block on dispatch, because the controller end must serve it
+while blocked on a request of its own.
 
 The shape it exists for: a controller sends `Value.Expand` (§7.4) and blocks; the
 kernel evaluates the expression and reaches a module function whose controller
@@ -850,8 +877,16 @@ message for attaching one.
 session's id, and the three channel ids carrying its standard streams. Values for
 the child's declared inputs are supplied **by the name the child declares**,
 never by the environment variable it binds them to: the child's `env:` mapping is
-its own business, and a raw environment map lets a caller set keys the child never
-declared.
+its own business, and supplying a declared input by setting the variable behind it
+lets a caller reach keys the child never declared.
+
+`env` is a different thing and both may be sent: it is the **host environment the
+child runs in**, which the child's own `variables:` / `secrets:` bind from. A
+runtime forwards it to the child unchanged and interprets nothing in it; absent,
+the child runs in the calling resource's own environment. It is never a second
+way to supply a declared input: an entry whose key a child binds loses to the
+value supplied by name, exactly as a host environment variable loses to one
+supplied by name.
 
 `Runtime.Started` is sent once every one of the child's boot targets has been
 dispatched — so a server it declares is listening — and is never sent for a child

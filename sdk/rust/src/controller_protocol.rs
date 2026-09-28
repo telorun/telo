@@ -359,9 +359,14 @@ mod tests {
             if is_request && message == "Session.Open" {
                 open.insert(payload["session"].as_str().expect("session").to_string());
             }
+            // Both directions: Session.Hello precedes every session and carries
+            // none, and every other frame names one that is open.
             match &envelope.session {
                 None => assert_eq!(message, "Session.Hello", "{at}: only Session.Hello precedes every session"),
-                Some(session) => assert!(open.contains(session), "{at} names session '{session}', which is not open"),
+                Some(session) => {
+                    assert_ne!(message, "Session.Hello", "{at}: Session.Hello precedes every session");
+                    assert!(open.contains(session), "{at} names session '{session}', which is not open");
+                }
             }
 
             if is_request {

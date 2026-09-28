@@ -184,8 +184,11 @@
       "body": {
         "entryPoints": [
           "init",
-          "run",
-          "destroy"
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
         ],
         "teardownPriority": 10,
         "sink": {

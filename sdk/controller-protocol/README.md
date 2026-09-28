@@ -31,7 +31,7 @@ TypeScript has neither and only `resolveJsonModule`.
 | `direction` | `kernel-to-controller`, `controller-to-kernel` or `either`, read against the protocol's two ends. |
 | `spec` | The heading of the spec section this message realises, verbatim and without its `#`s. |
 | `request` | JSON Schema of the request payload. |
-| `response` | JSON Schema of the response payload, or `null` for a notification — a message for which no response frame is ever sent. |
+| `response` | JSON Schema of the **`ok` member** of a response payload — the payload itself is the `ok` / `error` envelope (spec §3.2) — or `null` for a notification, a message for which no response frame is ever sent. |
 | `errors` | The protocol error codes this message may answer with. A controller's own declared `throws:` codes cross unchanged and are not listed. |
 | `synchronous` | The sender is blocked while the request is outstanding: it performs no other work and reaches no further state until the response arrives. |
 | `reentrant` | The responder MAY issue further requests to the sender while this one is outstanding, and the sender MUST serve them. |

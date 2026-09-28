@@ -258,10 +258,13 @@ function checkSequence(row: any): void {
     const isRequest = id % 2 === (from === "kernel" ? 0 : 1);
 
     if (isRequest && type === "Session.Open") open.add(payload.session);
-    if (type === "Session.Hello") {
-      expect(session, `frame ${index}: Session.Hello precedes every session`).toBeNull();
+    // Both directions: Session.Hello precedes every session and carries none,
+    // and every other frame names one that is open.
+    if (session === null) {
+      expect(type, `frame ${index}: only Session.Hello precedes every session`).toBe("Session.Hello");
     } else {
-      expect(open.has(session as string), `frame ${index} names session '${session}', which is not open`).toBe(true);
+      expect(type, `frame ${index}: Session.Hello precedes every session`).not.toBe("Session.Hello");
+      expect(open.has(session), `frame ${index} names session '${session}', which is not open`).toBe(true);
     }
 
     if (isRequest) {

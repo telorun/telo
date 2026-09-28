@@ -86,6 +86,11 @@
       "reason": "the four length bytes are not all there, so no frame has begun"
     },
     {
+      "name": "a length below 5",
+      "frame": "0000000401000000",
+      "reason": "no frame is shorter than its class byte and its four metaLength bytes, and a reader that let this through would compute length - 5 as an enormous unsigned bound and slice past the buffer"
+    },
+    {
       "name": "a length one byte over MAX_FRAME_LENGTH",
       "frame": "01000001",
       "reason": "16777217 exceeds MAX_FRAME_LENGTH, and the refusal is made on the length field alone — a reader that allocated first could be exhausted with four bytes"
