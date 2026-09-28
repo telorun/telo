@@ -1,5 +1,19 @@
 # @telorun/cli
 
+## 0.104.0
+
+### Patch Changes
+
+- Updated dependencies [4641afc]
+- Updated dependencies [4641afc]
+- Updated dependencies [4641afc]
+  - @telorun/sdk@0.104.0
+  - @telorun/kernel@0.104.0
+  - @telorun/runner-core@0.16.0
+  - @telorun/analyzer@0.104.0
+  - @telorun/ide-support@0.104.0
+  - @telorun/templating@0.104.0
+
 ## 0.103.2
 
 ### Patch Changes
