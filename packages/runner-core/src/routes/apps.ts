@@ -4,6 +4,7 @@ import type { RunnerBackend } from "../backend.js";
 import type { ResolvedRunnerApp } from "../config.js";
 import { DEFAULT_APP_NAME, type IoMode, type PortMapping, type RunnerTerms } from "../contract.js";
 import type { SessionRegistry } from "../session/registry.js";
+import { generateWorkloadToken } from "../session/workload-token.js";
 import { enforceTerms, portsSchema, startWorkloadSession } from "./session-start.js";
 
 export interface AppsRouteDeps {
@@ -73,15 +74,23 @@ export function appsRoute(deps: AppsRouteDeps): FastifyPluginAsync {
 
         if (!enforceTerms(req, reply, deps.terms)) return;
 
-        // Drop client-supplied values for any env key the catalog defines (a
-        // client must never override operator-held values, which include
-        // secrets), then inject the operator's values.
+        // Drop client-supplied values for any env key the catalog defines or
+        // the runner mints (a client must never override operator-held values,
+        // which include secrets), then inject the operator's values and the
+        // session's token.
+        const minted =
+          appEntry.tokenEnv !== undefined
+            ? { name: appEntry.tokenEnv, token: generateWorkloadToken() }
+            : undefined;
         const clientEnv = req.body?.env ?? {};
         const env = {
           ...Object.fromEntries(
-            Object.entries(clientEnv).filter(([key]) => !(key in appEntry.env)),
+            Object.entries(clientEnv).filter(
+              ([key]) => !(key in appEntry.env) && key !== minted?.name,
+            ),
           ),
           ...appEntry.env,
+          ...(minted ? { [minted.name]: minted.token } : {}),
         };
 
         return startWorkloadSession(
@@ -95,6 +104,7 @@ export function appsRoute(deps: AppsRouteDeps): FastifyPluginAsync {
             config: { image: appEntry.image, pullPolicy: appEntry.pullPolicy },
             selfContained: true,
             inspect: req.body?.inspect ?? false,
+            ...(minted ? { tokens: { endpoints: minted.token } } : {}),
             // An operator-predefined app session is one run of one application.
             // Watch is a workspace shape, and this door carries no workspace.
             mode: "run",

@@ -39,6 +39,19 @@ fn refuses_a_manifest_using_a_feature_it_does_not_implement() {
     assert!(err.message.contains("variables"), "{err}");
 }
 
+/// Trace export is not implemented here: a manifest declaring `tracing:` would
+/// otherwise run with every span it asked for silently absent.
+#[test]
+fn refuses_a_manifest_exporting_trace_spans() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-tracing"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("`tracing:`"), "{err}");
+    assert!(err.message.contains("exporting trace spans"), "{err}");
+}
+
 #[test]
 fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     let mut kernel = Kernel::new();

@@ -144,11 +144,14 @@ export type StreamPart =
  *  event, so a streaming consumer is never a strictly poorer event than the buffered
  *  trace. `content` is `MessageContent` — a string, or content parts when a tool
  *  answers with an image (mirroring the buffered agent). `error` is true when the
- *  dispatch failed and the message fed back to the model is an error string. */
+ *  dispatch failed and the message fed back to the model is an error string.
+ *  `output` — the streaming part only — is the tool's own result before any
+ *  mapping, as plain JSON; absent on an error. */
 export interface ToolResultRecord {
   toolCallId: string;
   name: string;
   content: MessageContent;
+  output?: unknown;
   error?: boolean;
 }
 
@@ -298,6 +301,14 @@ export interface AiToolProviderInstance {
   /** `ctx` is the agent invocation's context: a provider hands it to whatever
    *  runs the tool, so cancelling the turn stops the tool too. */
   callTool(name: string, args: Record<string, unknown>, ctx?: InvokeContext): Promise<unknown>;
+  /** The same call, returning the tool's own result (`output`) beside what goes
+   *  to the model (`result`), for a provider that maps one into the other. An
+   *  agent prefers it; without it, the one value `callTool` returns is both. */
+  callToolWithOutput?(
+    name: string,
+    args: Record<string, unknown>,
+    ctx?: InvokeContext,
+  ): Promise<{ output: unknown; result: unknown }>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
 }

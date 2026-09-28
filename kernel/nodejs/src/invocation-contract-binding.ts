@@ -6,6 +6,9 @@ import {
   defaultBearingPaths,
   normalizeDeclaredScalars,
   sensitivePaths,
+  describeSpanAttributeProblem,
+  spanAttributePaths,
+  type SpanAttributePath,
   effectiveContractField,
   describeProjectionFailure,
   resolveSchemaProjections,
@@ -21,6 +24,10 @@ import {
   ERR_SCHEMA_PROJECTION_UNRESOLVED,
   InvokeError,
 } from "@telorun/sdk";
+
+/** A contract whose `x-telo-span-attribute` marks cannot be read — the kernel
+ *  twin of `SPAN_ATTRIBUTE_INVALID` / `SPAN_ATTRIBUTE_MISPLACED`. */
+export const ERR_SPAN_ATTRIBUTE_INVALID = "ERR_SPAN_ATTRIBUTE_INVALID";
 import { typeReferenceKey } from "./type-field-schema.js";
 
 /**
@@ -80,6 +87,9 @@ export interface BoundContract {
   /** Paths the contract marked `x-telo-sensitive` — the values a trace payload
    *  carries as `[redacted]`. Empty when the contract marks none. */
   sensitivePaths(): string[][];
+  /** Properties the contract marked `x-telo-span-attribute` — the values its
+   *  dispatch span carries. Empty when the contract marks none. */
+  spanAttributes(): SpanAttributePath[];
 }
 
 const CONTRACT_ERROR: Record<ContractDirection, string> = {
@@ -155,6 +165,7 @@ export function resolveBoundContract(
   let paths: string[][] | undefined;
   let scalars: DeclaredScalarPath[] | undefined;
   let sensitive: string[][] | undefined;
+  let spanAttributes: SpanAttributePath[] | undefined;
 
   const resolve = (): { validate(value: unknown): void } => {
     if (compiled !== undefined) return compiled;
@@ -202,6 +213,23 @@ export function resolveBoundContract(
     // Read off the STRIPPED schema like the other two, so a marked node behind a
     // live value is not reported: nothing walks into a stream to redact it.
     sensitive = sensitivePaths(stripped, factory.resolveRef);
+    // Refused rather than skipped: a mark the runtime cannot read is a span
+    // attribute an author expects and a trace will never carry. `telo check`
+    // runs this same walk over the same contract, but reports only for the
+    // entry's own modules, so a dependency's contract is refused here.
+    const marks = spanAttributePaths(stripped, factory.resolveRef);
+    if (marks.problems.length > 0) {
+      throw new InvokeError(
+        ERR_SPAN_ATTRIBUTE_INVALID,
+        `declared \`${direction}\` carries an unreadable 'x-telo-span-attribute': ` +
+          marks.problems.map(describeSpanAttributeProblem).join("; ") +
+          ".",
+        {
+          problems: marks.problems.map(({ code, path, message }) => ({ code, path, message })),
+        },
+      );
+    }
+    spanAttributes = marks.attributes;
     // Compile by NAME whenever the declaration is one, so the type's CEL
     // `rules:` are composed in — including when a stream had to be stripped, in
     // which case the stream-bearing properties are dropped from the schema the
@@ -232,6 +260,10 @@ export function resolveBoundContract(
     sensitivePaths: () => {
       resolve();
       return sensitive ?? [];
+    },
+    spanAttributes: () => {
+      resolve();
+      return spanAttributes ?? [];
     },
   };
 }

@@ -50,6 +50,21 @@ describe("loadAppsFromEnv", () => {
   });
 });
 
+describe("tokenEnv", () => {
+  it("refuses a name the entry's own env also sets, and one that is not an env name", () => {
+    expect(() =>
+      loadAppsFromEnv({
+        RUNNER_APPS: '{"agent":{"image":"i","env":{"AGENT_TOKEN":"x"},"tokenEnv":"AGENT_TOKEN"}}',
+      }),
+    ).toThrow(/sets 'tokenEnv' to 'AGENT_TOKEN', which its own 'env' also defines/);
+    for (const bad of ['""', '"AGENT-TOKEN"', "7"]) {
+      expect(() =>
+        loadAppsFromEnv({ RUNNER_APPS: `{"agent":{"image":"i","tokenEnv":${bad}}}` }),
+      ).toThrow(RunnerConfigError);
+    }
+  });
+});
+
 describe("loadResolvedApps", () => {
   it("is empty when RUNNER_APPS is unset", () => {
     expect(loadResolvedApps({})).toEqual({});

@@ -40,6 +40,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
         { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },
         { type: "doc", id: "docs/guides/logging", label: "Logging" },
+        { type: "doc", id: "docs/guides/tracing", label: "Tracing" },
       ],
     },
     {
@@ -197,6 +198,7 @@ const sidebars: SidebarsConfig = {
                 { type: "doc", id: "kernel/specs/execution-zones", label: "Execution Zones" },
                 { type: "doc", id: "kernel/specs/durable-execution", label: "Durable Execution" },
                 { type: "doc", id: "kernel/specs/logging", label: "Logging" },
+                { type: "doc", id: "kernel/specs/tracing", label: "Tracing" },
                 { type: "doc", id: "kernel/specs/module-artifact", label: "Module Artifact" },
                 { type: "doc", id: "kernel/specs/application-arguments", label: "Application Arguments" },
               ],

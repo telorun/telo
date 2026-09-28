@@ -2,8 +2,14 @@ import { randomUUID } from "node:crypto";
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { type ControllerContext, type ResourceContext, RuntimeError } from "@telorun/sdk";
+import { isInitializeRequest, type RequestId } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestScope } from "@telorun/http-dispatch";
+import {
+  type ControllerContext,
+  type InvokeContext,
+  type ResourceContext,
+  RuntimeError,
+} from "@telorun/sdk";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import { buildServer, type SessionContext, type ServerInfo } from "./registry.js";
@@ -28,6 +34,8 @@ interface SessionRecord {
   server: Server;
   transport: StreamableHTTPServerTransport;
   context: SessionContext;
+  /** The HTTP request context each in-flight JSON-RPC request arrived on. */
+  dispatchContexts: Map<RequestId, InvokeContext>;
 }
 
 export async function register(_ctx: ControllerContext): Promise<void> {}
@@ -54,7 +62,8 @@ export class McpHttpEndpoint {
   }
 
   /** Mount contract — duck-typed against Http.Server's mount loop. The
-   *  signature matches Http.Api.register(); see plan §3 mount contract.
+   *  signature matches Http.Api.register(): `requestScope` is the transport's,
+   *  and every tool call runs on the context of the HTTP request that carried it.
    *
    *  Routes are declared with `app.route(...)` directly rather than via
    *  `app.register(plugin, { prefix })`. The latter is async (the plugin
@@ -62,9 +71,21 @@ export class McpHttpEndpoint {
    *  any ordering coupling with the host's `app.listen()` call. Both
    *  `<prefix>` and `<prefix>/` are registered so trailing-slash variants
    *  both reach the handler. */
-  register(app: FastifyInstance, prefix = "") {
+  register(
+    app: FastifyInstance,
+    prefix: string,
+    requestScope: RequestScope<FastifyRequest> | undefined,
+  ) {
     const handler = async (request: FastifyRequest, reply: FastifyReply) => {
-      await this.handleRequest(request, reply);
+      if (!requestScope) {
+        // Dispatching without one would root each tool call in a trace of its
+        // own, detached from the request's span and from its cancellation.
+        throw new RuntimeError(
+          "ERR_MCP_REQUEST_SCOPE_MISSING",
+          `${this.resource.kind}[${this.resource.metadata.name}] was mounted without a request scope, so it cannot dispatch ${request.method} ${request.url}`,
+        );
+      }
+      await this.handleRequest(request, reply, requestScope.forRequest(request).context);
     };
     const methods = ["POST", "GET", "DELETE"];
 
@@ -85,7 +106,11 @@ export class McpHttpEndpoint {
     });
   }
 
-  private async handleRequest(request: FastifyRequest, reply: FastifyReply) {
+  private async handleRequest(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    context: InvokeContext,
+  ) {
     const body = request.body as Record<string, unknown> | undefined;
 
     if (!this.resource.stateful) {
@@ -95,6 +120,7 @@ export class McpHttpEndpoint {
       // ignored. Required for horizontally scaled deploys without sticky
       // affinity at the LB.
       const record = await this.createSession({ stateful: false });
+      carryContext(record, body, context, reply);
       reply.hijack();
       try {
         await record.transport.handleRequest(request.raw, reply.raw, body);
@@ -138,6 +164,7 @@ export class McpHttpEndpoint {
     // Hand the raw request/response off to the SDK transport. Fastify has
     // already parsed the body, so we pass it explicitly — the transport will
     // not re-read the stream.
+    carryContext(record, body, context, reply);
     reply.hijack();
     await record.transport.handleRequest(request.raw, reply.raw, body);
   }
@@ -150,7 +177,7 @@ export class McpHttpEndpoint {
     // synchronously, before the transport writes the initialize response.
     // Registering after `await transport.handleRequest()` would open a race
     // where the client's follow-up request races with the registration.
-    const record = { context: sessionContext } as SessionRecord;
+    const record = { context: sessionContext, dispatchContexts: new Map() } as SessionRecord;
 
     const transport = new StreamableHTTPServerTransport(
       stateful
@@ -170,6 +197,16 @@ export class McpHttpEndpoint {
       instructions: this.resource.instructions,
       toolsBundles: this.toolsBundles,
       sessionResolver: () => sessionContext,
+      dispatchContext: (requestId) => {
+        const context = record.dispatchContexts.get(requestId);
+        if (!context) {
+          throw new RuntimeError(
+            "ERR_MCP_REQUEST_SCOPE_MISSING",
+            `${this.resource.kind}[${this.resource.metadata.name}]: request ${String(requestId)} arrived on no HTTP request this endpoint is serving`,
+          );
+        }
+        return context;
+      },
       ctx: this.ctx,
       moduleContext: this.ctx.moduleContext,
     });
@@ -215,6 +252,34 @@ export class McpHttpEndpoint {
       await this.closeRecord(record);
     }
   }
+}
+
+/**
+ * Binds every JSON-RPC request the HTTP body carries to the HTTP request's
+ * context until its response closes — which is after the transport has written
+ * each of those requests' responses to it.
+ */
+function carryContext(
+  record: SessionRecord,
+  body: unknown,
+  context: InvokeContext,
+  reply: FastifyReply,
+): void {
+  const messages = Array.isArray(body) ? body : [body];
+  const ids: RequestId[] = [];
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const { id, method } = message as { id?: unknown; method?: unknown };
+    if (typeof method !== "string" || (typeof id !== "string" && typeof id !== "number")) continue;
+    record.dispatchContexts.set(id, context);
+    ids.push(id);
+  }
+  if (ids.length === 0) return;
+  reply.raw.on("close", () => {
+    for (const id of ids) {
+      if (record.dispatchContexts.get(id) === context) record.dispatchContexts.delete(id);
+    }
+  });
 }
 
 function errorPayload(err: unknown): { message: string; stack?: string; code?: string } {

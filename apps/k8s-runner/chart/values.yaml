@@ -134,10 +134,14 @@ limits:
 # Empty catalog → no apps offered. The chart has no knowledge of any specific
 # app — the catalog and its secrets are entirely operator-supplied.
 apps:
-  # RUNNER_APPS JSON: {"<name>": {"image", "env"?, "pullPolicy"?, "title"?,
-  # "description"?}}. `env` is injected verbatim into the app's workload and
-  # may embed secrets (clients can never set those keys) — use catalogSecret
-  # instead of this inline value whenever it does.
+  # RUNNER_APPS JSON: {"<name>": {"image", "env"?, "pullPolicy"?, "port"?,
+  # "tokenEnv"?, "title"?, "description"?}}. `env` is injected verbatim into
+  # the app's workload and may embed secrets (clients can never set those
+  # keys) — use catalogSecret instead of this inline value whenever it does.
+  # `port` makes the entry usable as a session's co-resident agent. `tokenEnv`
+  # names an env var the runner fills with a token it mints per session and
+  # reports as `token` on that workload's endpoints; it must not also be a key
+  # of `env`.
   catalog: ""
   # Existing Secret holding the full RUNNER_APPS JSON under `key`. Takes
   # precedence over the inline `catalog`.

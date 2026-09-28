@@ -36,6 +36,16 @@ export interface OtlpEncodeOptions {
   scopeVersion?: string;
 }
 
+/** The resource attributes of a batch, with `service.name` filled in when the
+ *  manifest supplied none. */
+export function withServiceName(attributes: Record<string, AnyValue> | undefined): Record<string, AnyValue> {
+  const resourceAttributes = { ...(attributes ?? {}) };
+  if (resourceAttributes["service.name"] === undefined) {
+    resourceAttributes["service.name"] = defaultServiceName();
+  }
+  return resourceAttributes;
+}
+
 /** The `service.name` fallback: `unknown_service:<process executable name>`, or
  *  bare `unknown_service` when the executable name is unavailable. */
 export function defaultServiceName(): string {
@@ -54,10 +64,7 @@ export function toOtlpPayload(
   records: readonly LogRecord[],
   options: OtlpEncodeOptions = {},
 ): Record<string, unknown> {
-  const resourceAttributes = { ...(options.resourceAttributes ?? {}) };
-  if (resourceAttributes["service.name"] === undefined) {
-    resourceAttributes["service.name"] = defaultServiceName();
-  }
+  const resourceAttributes = withServiceName(options.resourceAttributes);
 
   // Records are grouped by `scope` so an OTLP receiver sees one instrumentation
   // scope per emitting module context, which is what `scope` identifies (§7.3).
@@ -124,7 +131,7 @@ function mirrorException(attributes: Record<string, AnyValue>, error: ErrorValue
   if (error.stack !== undefined) attributes["exception.stacktrace"] = error.stack;
 }
 
-function toKeyValueList(map: Record<string, AnyValue>): { key: string; value: unknown }[] {
+export function toKeyValueList(map: Record<string, AnyValue>): { key: string; value: unknown }[] {
   return Object.entries(map).map(([key, value]) => ({ key, value: toAnyValue(value) }));
 }
 

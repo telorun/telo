@@ -22,18 +22,11 @@ redaction, sampling, the JSON and console encodings, and configuration.
 designed so an OTLP exporter is a pure sink addition with no model change — that
 is a deliberate constraint on the design, not a deferred decision about it.
 
-**Relationship to tracing.** Dispatch tracing already ships (see
-`kernel/nodejs/plans/generic-dispatch-tracing.md`): every `invoke` / `run` /
-`provide` / `request` dispatch opens a span carrying a `traceId` and span ids.
-This spec does **not** redefine tracing. It defines how a log record *correlates*
-with an active span (§7) and requires that correlation be automatic.
-
-**Supersedes.** `kernel/specs/telemetry-and-observability.md` describes an
-unimplemented "ambient telemetry injection" design whose manifest syntax predates
-the current surface (it uses `config:` wrappers, `dependsOn`, and the inline
-untagged `${{ }}` string form, now a deprecated spelling). Where the two disagree,
-**this document governs for logging**. That file should be rewritten to cover
-tracing and metrics only, or removed; this spec does not itself delete it.
+**Relationship to tracing.** Every `invoke` / `run` dispatch opens a span
+carrying a `traceId` and span ids, and trace export is normative in
+[tracing.md](./tracing.md). This spec does **not** redefine tracing. It defines
+how a log record *correlates* with an active span (§7) and requires that
+correlation be automatic.
 
 ---
 
@@ -509,9 +502,18 @@ Redaction runs **before** serialization and before any sink sees the record.
 
 ### 10.2 Defined sinks
 
-A sink is a **resource**, declared in `logging.sinks` as an inline definition or
-a `!ref` (§12.1). The set is therefore open: a third party ships a sink by
-publishing a module whose kind `extends Telo.LogSink`.
+A sink is a **resource**, listed in `logging.sinks` as an inline definition or
+a `!ref`, optionally gated by `when` (§12.1). The set is therefore open: a third
+party ships a sink by publishing a module whose kind `extends Telo.LogSink`.
+
+The runtime attaches exactly the sinks the list names; a sink never attaches
+itself. Its instance **is** the sink — it exposes `sinkId`, `write`, `flush`,
+`flushSync` and `close` — and a listed instance that does not is refused at
+creation with `ERR_SINK_CONTRACT_MISSING`, naming the list entry
+(`logging.sinks[1]`). A sink declared and not listed — at the top level, or
+inside an imported library — is created and never written to; `telo check` warns
+`SINK_UNATTACHED` at a sink resource nothing references and its module does not
+export.
 
 **`Telo.LogSink`** is the `Telo.Abstract` every sink kind extends. It is a
 **kernel built-in**, resolvable without an import — so a sink author depends on
@@ -521,8 +523,8 @@ kernel↔module skew never becomes a compatibility surface for "where do logs go
 | Kind | Lives in | Required? | Notes |
 |---|---|---|---|
 | `Telo.LogSink` | kernel | REQUIRED | The abstract. Not instantiable. |
-| `Telo.ConsoleSink` | kernel | REQUIRED | Writes to `stderr`, or `stdout` on request. Dependency-free, so eagerly instantiated. |
-| `Telo.FileSink` | kernel | REQUIRED | Path destination. Dependency-free, so eagerly instantiated. |
+| `Telo.ConsoleSink` | kernel | REQUIRED | Writes to `stderr`, or `stdout` on request. Dependency-free. |
+| `Telo.FileSink` | kernel | REQUIRED | Path destination. Dependency-free. |
 | `Otlp.Sink` | module | OPTIONAL | MUST follow OTLP/JSON (§11.3) and MUST NOT accept another encoding. |
 | third-party | module | OPTIONAL | `Loki.Sink`, `Datadog.Sink`, … — any kind extending `Telo.LogSink`. |
 | `debug-wire` | kernel | REQUIRED | **Not declarable.** Host-attached on `--debug` / `--inspect`, detached on disconnect. Record framing per §11.4. |
@@ -878,7 +880,7 @@ the `!cel` tag.
 
 #### `sinks` is a list of references or inline definitions
 
-Each entry is an ordinary Telo **ref slot**, so it takes either form the
+Each entry holds an ordinary Telo **ref slot**, so the sink takes either form the
 reference grammar already defines:
 
 - an **inline definition** — `{ kind: <SinkKind>, …config }` with no `name`, for
@@ -886,6 +888,21 @@ reference grammar already defines:
 - a **`!ref`** to a sink resource declared elsewhere in the manifest, for a sink
   that depends on secrets, an HTTP client, a retry policy, or anything else the
   resource graph already models.
+
+An entry is that sink itself, or **`{ sink, when }`**, where `sink` is either form
+and `when` a boolean (default `true`) deciding whether the sink is attached. `when` MUST evaluate to a boolean. A runtime MUST refuse any other result at load, naming the entry's `when` (`ERR_MANIFEST_VALIDATION_FAILED`), and MUST NOT coerce it. For example:
+
+```yaml
+logging:
+  sinks:
+    - kind: Telo.ConsoleSink
+    - sink: !ref auditFile
+      when: !cel "variables.audit"
+```
+
+`when` is evaluated once at load with the rest of the block (`variables`,
+`secrets`, `ports`); `false` leaves the sink created and unattached. The same
+entry schema serves `tracing.sinks` (`tracing.md` §1).
 
 No new schema machinery is involved — this is the same slot shape used
 everywhere else a resource is accepted. A field that was both an enum and a
@@ -902,7 +919,9 @@ inline definition.
 
 **When `sinks:` is omitted**, a runtime MUST behave exactly as if a single
 `{ kind: Telo.ConsoleSink }` entry were declared. The zero-config case stays
-"pretty logs on stderr in a terminal, JSON when piped", with no imports.
+"pretty logs on stderr in a terminal, JSON when piped", with no imports. The same
+holds when every listed entry's `when` is `false`: an application attaching no
+log sink behaves as one declaring none.
 
 #### Fields common to every sink kind
 
@@ -936,23 +955,25 @@ logging through it would generate telemetry from inside the telemetry path. The
 integration shape is closer to `Telo.Mount` — a resource mounted into a host —
 than to normal invocation.
 
-#### Eager and late sinks
+#### When a sink attaches
 
-A sink is instantiated **eagerly**, before the init loop, if its kind has no
-resource dependencies. `Telo.ConsoleSink` and `Telo.FileSink` qualify by
-construction: their controllers are kernel built-ins that need nothing but a
-descriptor.
+The runtime attaches a listed sink **right after creating it**, as an effect of
+its creation whose inverse flushes, detaches and closes it; a sink listed through
+an import (`!ref <Alias>.<name>`) is attached once the graph is up. Sinks tear
+down after every other resource, so records logged during shutdown still reach
+them. Resources are created in dependency order, so a dependency-free sink —
+`Telo.ConsoleSink`, `Telo.FileSink` — attaches as soon as the init loop reaches
+it, and a sink depending on other resources attaches once they exist.
 
-Every other sink attaches when it initializes. Between process start and that
-moment, records are held in a bounded bootstrap buffer and **replayed** into each
-sink as it attaches, in original order. The buffer is subject to §10.3's drop
-policy and §10.4's accounting like any other; overflow before attach MUST be
-counted, not silently discarded.
+Between process start and a sink's attachment, records are held in a bounded
+bootstrap buffer and **replayed** into each sink as it attaches, in original
+order. The buffer is subject to §10.3's drop policy and §10.4's accounting like
+any other; overflow before attach MUST be counted, not silently discarded.
 
 This generalizes machinery the spec already required: `debug-wire` (§10.2)
 attaches and detaches dynamically at any point in the process lifetime. Late
-attachment is the normal case, not an exception, and the eager tier exists only
-so that a runtime never has *zero* destinations.
+attachment is the normal case, not an exception; the bootstrap writer covers the
+window before any sink attaches, so a runtime never has *zero* destinations.
 
 Attaching or detaching a sink changes the minimum-level gate (§12.1, per-sink
 level), so the runtime MUST recompute it and propagate the new threshold to
@@ -1314,16 +1335,17 @@ throws; child loggers merge with record-wins precedence.
 boundary; handles not retained past their call.
 
 **Sinks** — declared as a `sinks:` list of `!ref` or inline `{ kind, …config }`
-entries; `Telo.LogSink`, `Telo.ConsoleSink`, and `Telo.FileSink` are kernel
+entries, each optionally wrapped as `{ sink, when }`; only listed sinks attached; `Telo.LogSink`, `Telo.ConsoleSink`, and `Telo.FileSink` are kernel
 built-ins resolvable without an import; buffers bounded; `buffer` / `on_full` /
 `flush_interval` settable per entry; `on_full` honoured or rejected at load, never
 silently degraded; drops counted and reported; written through a direct contract
 rather than `ctx.invoke`; flush on shutdown with timeout; omitting `sinks:` yields
 exactly one `Telo.ConsoleSink`.
 
-**Sink lifecycle** — dependency-free sinks instantiate eagerly before the init
-loop; every other sink attaches on initialization with bootstrap records replayed
-in order; attach and detach recompute the minimum-level gate and propagate it to
+**Sink lifecycle** — a listed sink attaches right after it is created, with
+bootstrap records replayed in order, and its undo flushes, detaches and closes it;
+a listed instance lacking the sink contract is refused
+(`ERR_SINK_CONTRACT_MISSING`); attach and detach recompute the minimum-level gate and propagate it to
 guests.
 
 **Encodings** — `json` and `pretty` implemented exactly as §11.1/§11.2;
@@ -1388,10 +1410,12 @@ Every runtime MUST pass these:
     blocks (on a runtime that supports it) **or** is rejected at load with a
     diagnostic naming the sink — never silently degraded to dropping. Omitting
     `sinks:` yields exactly one `Telo.ConsoleSink` writing to `stderr`.
-13. **Sink entry forms** — an inline `{ kind: Telo.ConsoleSink, … }` and a
-    `!ref` to a declared sink resource are both accepted in `logging.sinks`; a
-    bare string is rejected with `INVALID_REFERENCE_FORM`; an `imports:` entry
-    declaring `sinks:` is a manifest validation error.
+13. **Sink entry forms** — an inline `{ kind: Telo.ConsoleSink, … }`, a `!ref`
+    to a declared sink resource, and `{ sink, when }` holding either are all
+    accepted in `logging.sinks`; an entry whose `when` is `false` receives no
+    record; a declared sink no entry names receives no record; a bare string is
+    rejected with `INVALID_REFERENCE_FORM`; an `imports:` entry declaring
+    `sinks:` is a manifest validation error.
 14. **Late attach and replay** — a sink that initializes during the init loop
     receives the records emitted before it attached, in original order; records
     dropped from the bootstrap buffer are counted, not silently discarded.

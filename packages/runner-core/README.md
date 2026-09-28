@@ -75,6 +75,21 @@ modes its session route accepts, an app that declares none gets the first, and
 an explicit mode the runner does not serve is refused with `io_unsupported`
 rather than downgraded — `isatty()` is observable to the application.
 
+## Workload tokens
+
+A `RUNNER_APPS` entry may declare `tokenEnv`. For every session started from it
+— an app session, or a watch session's co-resident agent — core mints a token
+(the session-id generator at 32 characters), injects it into that workload's
+env under `tokenEnv` (the app session's env, or the agent's operator env, so no
+other container sees it), and reports it as `RunnerEndpoint.token` on the
+workload's endpoints: `status.agent` for an agent, every `status.endpoints[]`
+entry for an app session. The token is carried on the retained launch, so a
+resumed session keeps it; a runner restart forgets every session, so it means a
+new token. A `tokenEnv` the entry's own `env` also sets is a `RunnerConfigError`
+at catalog load, and a client-supplied env var of that name is dropped. Core
+reports it, not the backend, so no backend can publish an endpoint without the
+token its workload holds.
+
 ## Two nouns, one stream
 
 `status` is the SESSION's state; `run` is one application's outcome. They are

@@ -245,7 +245,7 @@ export const InvokeStepSchema = {
       // decides whether the statement runs, and a surface showing what a step
       // is conditional on should not have to know which keyword spelled it.
       "x-telo-topology-role": "predicate",
-      type: "string",
+      type: "boolean",
     },
     retry: {
       title: "Retry",
@@ -486,6 +486,13 @@ export const StepSchema = {
       description:
         "Error boundary; executes try steps and handles failure via catch and finally.",
       properties: {
+        when: {
+          title: "When",
+          description:
+            "CEL boolean guard — the whole try/catch/finally is skipped when it evaluates false.",
+          "x-telo-topology-role": "predicate",
+          type: "boolean",
+        },
         try: stepList("Try", "Steps executed; halts on first failure and jumps to catch."),
         catch: {
           ...stepList("Catch", "Steps executed when try fails; receives error context."),

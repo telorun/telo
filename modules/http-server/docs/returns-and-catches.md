@@ -197,15 +197,21 @@ routes:
   variable.
 - **The server's list reaches every mount**, including an `Mcp.HttpEndpoint` or a
   third-party one, because an unclaimed throw leaves the mount rather than being rendered
-  inside it. It also covers `notFoundHandler`, whose own entries are tried first.
+  inside it. It also covers `notFoundHandler` and every mount's `guard`, whose own entries
+  are tried first.
+- **A mount's `guard.catches` is a rung of its own**, beside the mount rather than above
+  its routes: a guard throw is rendered by `guard.catches`, then the server's list, then
+  the built-in envelope — a route's or router's entries never see it, because the route
+  has not run. Its entries see `request.headers` / `query` / `path` / `method` / `ip`. See
+  [Mount guards](mount-guard.md).
 - **Non-`InvokeError` failures are untouched.** A catch entry keys on `error.code`; a plain
   `Error` has none, so those still go to Fastify's default 5xx renderer.
 
 ### Coverage
 
-`UNCOVERED_THROW_CODE` is asked **once per route**, over the route's entries plus every
-scope enclosing it — so a route that declares no `catches:` under a router that renders
-everything reports nothing. The same goes for the unbounded-union rule: one catch-all at the
+`UNCOVERED_THROW_CODE` is asked **once per route** (and once per `guard` and
+`notFoundHandler`), over the site's own entries plus every scope enclosing it — so a route
+that declares no `catches:` under a router that renders everything reports nothing. The same goes for the unbounded-union rule: one catch-all at the
 server satisfies it for every mounted route.
 
 Each list is still checked against its own denominator. A route's is its handler's declared

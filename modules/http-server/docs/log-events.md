@@ -19,10 +19,11 @@ match on it.
 | `http.server.stopped` | `info` | the server has closed | `server.address`, `server.port` |
 
 All attribute names are OpenTelemetry semantic conventions except
-`httpserver.request_id`, for which OTel defines no equivalent — request
-correlation is normally `trace_id` / `span_id`, and those are attached
-automatically when a span is active, but tracing is off by default, so a
-per-request id is the only correlator a default configuration has.
+`httpserver.request_id`, for which OTel defines no equivalent. It is the only
+request correlator these records carry: with tracing on, their `trace_id` /
+`span_id` are those of the span that started the server, not of the
+request's own span (see [Tracing](tracing.md)), and with tracing off — the
+default — they carry none.
 
 `http.server.request.duration` is **seconds, as a double** — OTel's unit for that
 name. A framework that measures in milliseconds converts.

@@ -523,12 +523,20 @@ export function validateReferences(
         // Skip inline resources — Phase 2 normalization hasn't run yet.
         if (isInlineResource(refVal)) return;
 
-        // Polymorphic ref slots (Application `targets`) accept object forms
-        // whose references live in nested slots rather than being a `{kind,
-        // name}` ref themselves — inline `{ invoke }` and gated `{ ref }`.
-        // Those nested refs are validated via their own field-map entries, so
-        // skip the item-level structural check here.
-        if (typeof refVal.kind !== "string" && ("invoke" in refVal || "ref" in refVal)) return;
+        // Polymorphic ref slots accept object forms whose references live in
+        // nested slots rather than being a `{kind, name}` ref themselves —
+        // Application `targets`' inline `{ invoke }` and gated `{ ref }`, and
+        // any object a slot's own value branch declares by its required keys
+        // (the sink lists' `{ sink, when }`). Those nested refs are validated
+        // via their own field-map entries, and the object's own shape by the
+        // schema, so skip the item-level structural check here — only where
+        // the slot declares such a form.
+        if (
+          typeof refVal.kind !== "string" &&
+          ("invoke" in refVal || "ref" in refVal || carriesDeclaredBranchKeys(refVal, entry.valueBranches))
+        ) {
+          return;
+        }
 
         // 1. Structural check
         if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {
@@ -714,4 +722,21 @@ export function validateReferences(
   );
 
   return diagnostics;
+}
+
+/** True when `value` carries every required key of one of the slot's own
+ *  object value branches — the form the slot declares, whose values (a CEL
+ *  guard, a nested reference) are not resolved yet, so matching the whole
+ *  branch would be premature. */
+function carriesDeclaredBranchKeys(
+  value: Record<string, unknown>,
+  branches: readonly Record<string, any>[] | undefined,
+): boolean {
+  return (branches ?? []).some(
+    (branch) =>
+      branch.type === "object" &&
+      Array.isArray(branch.required) &&
+      branch.required.length > 0 &&
+      branch.required.every((key: unknown) => typeof key === "string" && key in value),
+  );
 }

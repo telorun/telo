@@ -1,0 +1,207 @@
+kind: Telo.Library
+metadata:
+  name: SecretScan
+  version: "0.1.0"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Security]
+  description: >-
+    Find credentials in text before it is written or sent: API keys, access tokens,
+    private keys and other high-entropy secrets, detected by known token prefixes,
+    literal markers and Shannon entropy. Reports the rule, line and column of each
+    finding and never the matched text, so the result is safe to log or show.
+exports:
+  kinds:
+    - Detector
+  resources:
+    - credentialFindings
+---
+kind: Telo.Definition
+metadata:
+  name: Detector
+  description: >-
+    Scans text with a configured set of detection rules and returns one entry per
+    finding — the rule's name and the 1-based line and column where the match
+    starts — never the matched text. An empty list means nothing matched. Rules are
+    token prefixes with a length window, literal markers, and entropy thresholds.
+capability: Telo.Callable
+deterministic: true
+params:
+  - name: text
+    schema: { type: string }
+returns:
+  schema:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [ rule, line, column ]
+      properties:
+        rule: { type: string }
+        line: { type: integer, minimum: 1 }
+        column: { type: integer, minimum: 1 }
+controllers:
+  - pkg:telo/local/js?path=./nodejs/secret-scan.mjs&local_path=./nodejs/src/index.ts#Detector
+schema:
+  type: object
+  additionalProperties: false
+  required: [ rules ]
+  properties:
+    rules:
+      title: Rules
+      description: >-
+        The detection rules, each named and of exactly one shape: `token`, `marker`
+        or `entropy`. Every rule reports independently, so one secret can be
+        reported by several rules at the same position.
+      type: array
+      minItems: 1
+      items:
+        oneOf:
+          - title: Token rule
+            description: A known prefix followed by a run of token characters whose length falls in a window.
+            type: object
+            additionalProperties: false
+            required: [ name, token ]
+            properties:
+              name: { $ref: "#/$defs/RuleName" }
+              token:
+                type: object
+                additionalProperties: false
+                required: [ prefixes, charset, minLength ]
+                properties:
+                  prefixes:
+                    title: Prefixes
+                    description: >-
+                      Literal prefixes that start a token. A prefix matches only at
+                      the start of the text or after a character that is not a
+                      letter, digit, `_` or `-`.
+                    type: array
+                    items: { type: string, minLength: 1 }
+                  charset: { $ref: "#/$defs/Charset" }
+                  minLength:
+                    title: Minimum length
+                    description: >-
+                      Fewest characters of the run after the prefix — the maximal
+                      run of `charset` characters directly following it.
+                    type: integer
+                    minimum: 1
+                  maxLength:
+                    title: Maximum length
+                    description: Most characters of the run after the prefix. Omit for no upper bound.
+                    type: integer
+                    minimum: 1
+          - title: Marker rule
+            description: A literal text whose presence alone is the finding.
+            type: object
+            additionalProperties: false
+            required: [ name, marker ]
+            properties:
+              name: { $ref: "#/$defs/RuleName" }
+              marker:
+                type: object
+                additionalProperties: false
+                required: [ text ]
+                properties:
+                  text:
+                    title: Text
+                    description: The literal to find; each occurrence is a finding.
+                    type: string
+                    minLength: 1
+          - title: Entropy rule
+            description: Any long run of token characters whose Shannon entropy per character reaches a threshold.
+            type: object
+            additionalProperties: false
+            required: [ name, entropy ]
+            properties:
+              name: { $ref: "#/$defs/RuleName" }
+              entropy:
+                type: object
+                additionalProperties: false
+                required: [ charset, minLength, minBitsPerChar ]
+                properties:
+                  charset: { $ref: "#/$defs/Charset" }
+                  minLength:
+                    title: Minimum length
+                    description: Fewest characters in a maximal run of `charset` characters for it to be a candidate.
+                    type: integer
+                    minimum: 1
+                  minBitsPerChar:
+                    title: Minimum bits per character
+                    description: >-
+                      Shannon entropy, in bits per character over the candidate's
+                      own character frequencies, at or above which it is a
+                      finding. At most log2 of the charset's size.
+                    type: number
+                    exclusiveMinimum: 0
+                  except:
+                    title: Except
+                    description: >-
+                      Literals that exempt a candidate starting with one of them or
+                      directly following one — content digests such as `sha256-`.
+                    type: array
+                    items: { type: string, minLength: 1 }
+  $defs:
+    RuleName:
+      title: Name
+      description: Reported as the finding's `rule`.
+      type: string
+      minLength: 1
+    Charset:
+      title: Charset
+      description: >-
+        The characters a token is made of: `alphanumeric` (A-Z a-z 0-9),
+        `upperAlphanumeric` (A-Z 0-9), `hex` (0-9 a-f A-F), `base64` (A-Z a-z 0-9
+        + / and = padding) or `base64url` (A-Z a-z 0-9 _ -).
+      type: string
+      enum: [ alphanumeric, upperAlphanumeric, hex, base64, base64url ]
+  x-telo-resource-rules:
+    - in: /rules
+      condition: !cel "!has(this.token) || size(this.token.prefixes) > 0"
+      code: SECRET_SCAN_PREFIXES_EMPTY
+      message: is a token rule with no prefixes, so it can never match.
+    - in: /rules
+      condition: !cel "!has(this.token) || !has(this.token.maxLength) || this.token.maxLength >= this.token.minLength"
+      code: SECRET_SCAN_LENGTH_RANGE_EMPTY
+      message: sets `maxLength` below `minLength`, so no token length satisfies it.
+    - in: /rules
+      condition: !cel >-
+        !has(this.entropy) || this.entropy.minBitsPerChar <= {'alphanumeric': 5.954196310386876,
+        'upperAlphanumeric': 5.169925001442312, 'hex': 4.0, 'base64': 6.0, 'base64url': 6.0}[this.entropy.charset]
+      code: SECRET_SCAN_ENTROPY_UNREACHABLE
+      message: >-
+        asks for more bits per character than its charset can carry (log2 of the
+        charset's size), so no run can reach it.
+---
+# The standard set. Changing a rule changes what every consumer refuses, so an
+# edit here is a changelog entry. The entropy threshold and the evidence behind it
+# are in docs/detection-rules.md.
+kind: Self.Detector
+metadata:
+  name: credentialFindings
+  description: >-
+    Detects common credentials in text: OpenAI, AWS, GitHub, Google, Slack and Stripe
+    keys, PEM private keys, and long high-entropy tokens, while leaving content
+    digests such as integrity pins alone.
+rules:
+  - name: openaiKey
+    token: { prefixes: [ "sk-" ], charset: base64url, minLength: 20 }
+  - name: awsAccessKeyId
+    token: { prefixes: [ AKIA, ASIA ], charset: upperAlphanumeric, minLength: 16, maxLength: 16 }
+  - name: githubToken
+    token: { prefixes: [ ghp_, gho_, ghu_, ghs_, ghr_ ], charset: alphanumeric, minLength: 36 }
+  - name: githubFineGrainedToken
+    token: { prefixes: [ github_pat_ ], charset: alphanumeric, minLength: 22 }
+  - name: googleApiKey
+    token: { prefixes: [ AIza ], charset: base64url, minLength: 35, maxLength: 35 }
+  - name: slackToken
+    token: { prefixes: [ xoxb-, xoxp-, xoxa-, xoxr-, xoxs- ], charset: base64url, minLength: 10 }
+  - name: stripeKey
+    token: { prefixes: [ sk_live_, rk_live_ ], charset: alphanumeric, minLength: 24 }
+  - name: privateKey
+    marker: { text: "PRIVATE KEY-----" }
+  - name: highEntropyToken
+    entropy:
+      charset: base64url
+      minLength: 24
+      minBitsPerChar: 4.4
+      except: [ sha256-, sha384-, sha512-, "sha256:", "sha512:" ]

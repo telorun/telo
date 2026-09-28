@@ -6,11 +6,12 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Transport]
   description: >-
-    Serving HTTP: a listener bound to a port with CORS and a generated OpenAPI
-    document, routers whose routes validate the request against a schema, map it into
-    a handler with CEL, and render conditional typed responses buffered or streamed, a
-    browsable API reference router, and a static file router with SPA fallback for
-    shipping a frontend alongside the API.
+    Serving HTTP: a listener bound to a port with CORS, per-mount request guards for
+    authentication and access checks, and a generated OpenAPI document, routers whose
+    routes validate the request against a schema, map it into a handler with CEL, and
+    render conditional typed responses buffered or streamed, a browsable API reference
+    router, and a static file router with SPA fallback for shipping a frontend
+    alongside the API.
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
@@ -27,7 +28,12 @@ requires:
   #
   # 0.98.0: `Http.Static.root` is a `Telo.HostPath`, which 0.97.0 rejects as
   # X_TELO_TYPE_UNKNOWN (verified by execution).
-  telo: ">=0.98.0"
+  #
+  # 0.104.0: the request span continues an inbound `traceparent` through
+  # `openSpan`'s W3C carrier, which an older kernel ignores and so roots every
+  # trace, and the controllers import `errorTypeOf` from the runtime's SDK, which
+  # 0.103.2 does not export (its load fails; verified by execution).
+  telo: ">=0.104.0"
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
   # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
@@ -66,7 +72,7 @@ sources:
 kind: "Telo.Definition"
 metadata:
   name: "Server"
-  description: Listens on a TCP port and serves mounted routers, with CORS, OpenAPI docs, and custom content-type parsers.
+  description: Listens on a TCP port and serves mounted routers, with CORS, per-mount request guards, OpenAPI docs, and custom content-type parsers.
 capability: Telo.Service
 controllers:
   - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController
@@ -162,7 +168,9 @@ schema:
       # nodes cannot carry.
       x-telo-topology-role: entries
       type: "array"
-      x-telo-eval: compile
+      # Evaluated per field rather than on the whole list: `guard` holds CEL
+      # evaluated per request, which a compile mark on an ancestor would expand
+      # at startup.
       items:
         title: Mount
         description: Single mount configuration.
@@ -174,6 +182,7 @@ schema:
             title: Path
             description: URL prefix where the mount is attached.
             type: "string"
+            x-telo-eval: compile
             x-telo-topology-role: matcher
           mount:
             title: Mount
@@ -208,7 +217,85 @@ schema:
               The mounted resource itself is still created and initialized; only
               its attachment is skipped.
             type: "boolean"
+            x-telo-eval: compile
             default: true
+          guard:
+            title: Guard
+            description: >-
+              Inbound check run for every request that matches a route of THIS
+              mount, before the request body is read — authentication, an
+              origin allowlist, a tenant check. A normal return lets the request
+              through to its route (the returned value is discarded); a throw
+              refuses it, rendered by the guard's own `catches:`, then the
+              server's. A throw no entry claims is a 500, so a failing guard
+              never lets a request through.
+
+              CORS preflight is answered by the server's `cors` and never
+              reaches a guard; a request matching no route goes to the
+              not-found handler unguarded; a sibling mount without a guard is
+              unaffected.
+            type: object
+            additionalProperties: false
+            required: [ "invoke" ]
+            properties:
+              invoke:
+                title: Invoke
+                description: Resource invoked (or run) for each request; a throw refuses the request.
+                x-telo-ref:
+                  kind: Telo.Executable
+                  use: trigger.inbound
+                  inputs: /inputs
+              inputs:
+                title: Inputs
+                type: object
+                additionalProperties: true
+                description: >-
+                  CEL expressions evaluated against the request, before its body
+                  is read; the result is the guard's input. Without `inputs:`
+                  the guard is called with an empty object.
+                x-telo-context:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    request:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        headers: { type: object, additionalProperties: true }
+                        query: { type: object, additionalProperties: true }
+                        path: { type: string }
+                        method: { type: string }
+                        ip: { type: string }
+              catches:
+                title: Catches
+                description: >-
+                  Rendering rules for the guard's structured throws — a 401 or a
+                  403. Tried before the server's `catches:`. Entries see `error`
+                  and the request's `headers` / `query` / `path` / `method` /
+                  `ip`.
+                x-telo-outcome-list: catches
+                x-telo-catches-for: invoke
+                x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
+                x-telo-context:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    request:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        headers: { type: object, additionalProperties: true }
+                        query: { type: object, additionalProperties: true }
+                        path: { type: string }
+                        method: { type: string }
+                        ip: { type: string }
+                    error:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        code: { type: string }
+                        message: { type: string }
+                        data: { type: object, additionalProperties: true }
           logging:
             title: Logging
             description: >-
@@ -227,6 +314,7 @@ schema:
               request and request-received records). A handler's own records
               follow its own module's level.
             type: object
+            x-telo-eval: compile
             additionalProperties: false
             properties:
               level:

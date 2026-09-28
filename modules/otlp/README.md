@@ -1,7 +1,11 @@
 # otlp
 
-Export Telo's structured log records to an OpenTelemetry collector over
-OTLP/JSON.
+Export Telo's structured log records and finished trace spans to an
+OpenTelemetry collector over OTLP/JSON.
+
+- `Otlp.Sink` — a log sink, declared in `logging.sinks` (below).
+- `Otlp.TraceSink` — a trace sink, declared in `tracing.sinks`: see
+  [docs/otlp-trace-sink.md](docs/otlp-trace-sink.md).
 
 `Otlp.Sink` is a log sink: declare it as a resource, then point the root
 Application's `logging.sinks` at it with a `!ref`. It ships as a module rather
@@ -70,5 +74,22 @@ Put credentials in `secrets:`. Telo redacts secret values from its own records
 automatically, so a token interpolated into `headers` never appears in a log
 line about this sink.
 
-See the [logging guide](https://telo.run/docs/guides/logging) for the full
+## Traces
+
+```yaml
+tracing:
+  sinks:
+    - kind: Otlp.TraceSink
+      endpoint: https://collector.example.com/v1/traces
+      resourceAttributes:
+        service.name: my-app
+```
+
+Same fields as `Otlp.Sink` except `level`. To attach it only under a startup
+condition, list it as `{ sink, when }` in `tracing.sinks`. This module requires telo
+`>=0.104.0`, the release that carries trace export. Details:
+[docs/otlp-trace-sink.md](docs/otlp-trace-sink.md).
+
+See the [logging guide](https://telo.run/docs/guides/logging) and the
+[tracing guide](https://telo.run/docs/guides/tracing) for the full
 configuration surface.

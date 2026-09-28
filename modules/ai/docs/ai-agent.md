@@ -95,11 +95,15 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 - `text` — the model's final answer.
 - `usage` — token usage summed across every model call in the loop.
 - `finishReason` — from the final turn.
-- `steps` — one entry per turn that called tools: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and the result's `toolCallId` and the replayed assistant message carry the same one. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+- `steps` — one entry per model call, the final answering call included (its `toolCalls` and `toolResults` are empty), so `steps` has as many entries as the run made model calls: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and the result's `toolCallId` and the replayed assistant message carry the same one. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+
+## Tracing
+
+With tracing on, a run opens an `invoke_agent <name>` span over the whole run, a `chat <model>` span per model call and an `execute_tool <name>` span per tool call, with the OpenTelemetry GenAI attributes — token usage, finish reasons, tool name and call id, `error.type` on a failed tool — and never message content. The spans and their attributes are the streaming agent's: see [`Ai.AgentStream` → Tracing](./ai-agent-stream.md#tracing).
 
 ## Cancellation
 
-The invocation's context reaches every model call and every tool: the agent hands it to the tool provider's `callTool`, which passes it on to whatever runs the tool. Cancelling the invocation — a step's `timeout:`, a cancelled run — stops a running tool and ends the agent with `ERR_INVOKE_CANCELLED`, under either `onToolError`.
+The invocation's context reaches every model call and every tool: the agent hands it (through the call's span context) to the tool provider's `callTool`, which passes it on to whatever runs the tool. Cancelling the invocation — a step's `timeout:`, a cancelled run — stops a running tool and ends the agent with `ERR_INVOKE_CANCELLED`, under either `onToolError`.
 
 ## See also
 

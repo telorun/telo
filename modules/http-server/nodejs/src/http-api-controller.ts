@@ -5,6 +5,7 @@ import {
   dispatchCatches,
   dispatchReturns,
   ReturnEntry,
+  type RequestScope,
   validateNoContentTypeHeader,
   validateStreamWhenDoesNotReferenceResult,
 } from "@telorun/http-dispatch";
@@ -15,6 +16,7 @@ import {
   InvokeError,
   isCancellationError,
   isInvokeError,
+  RuntimeError,
   isLiveSlot,
   KindRef,
   plainSchemaOf,
@@ -73,24 +75,31 @@ export class HttpServerApi implements ResourceInstance {
 
   async init() {}
 
-  register(app: FastifyInstance, prefix = "") {
+  /** `requestScope` is the transport's: each route dispatches on the span the
+   *  transport opened for the request, which also carries its cancellation. */
+  register(
+    app: FastifyInstance,
+    prefix: string,
+    requestScope: RequestScope<FastifyRequest> | undefined,
+  ) {
     // Register each route at its full `prefix + path` on the root app rather than
     // inside a `{ prefix }`-encapsulated context. Fastify encapsulation makes
     // @fastify/swagger strip the prefix from the documented path, which conflates
     // routes from different mounts (e.g. an Api at `/admin` documented as `/links`).
     // Carrying the prefix on the path keeps the OpenAPI doc unambiguous for any mix
     // of mounts; a single `servers` origin is set by the server controller.
-    this.registerRoutes(app, normalizeMountPrefix(prefix));
-  }
-
-  private registerRoutes(app: FastifyInstance, prefix: string) {
     const routes = this.manifest.routes || [];
     for (const route of routes) {
-      this.registerRoute(app, route, prefix);
+      this.registerRoute(app, route, normalizeMountPrefix(prefix), requestScope);
     }
   }
 
-  private registerRoute(app: FastifyInstance, route: HttpApiRouteManifest, prefix: string) {
+  private registerRoute(
+    app: FastifyInstance,
+    route: HttpApiRouteManifest,
+    prefix: string,
+    requestScope: RequestScope<FastifyRequest> | undefined,
+  ) {
     // After Phase 5 injection, KindRef<Invocable> is replaced with the live Invocable instance.
     const handler = route.handler as unknown as ResourceInstance | undefined;
     const handlerRef = this.handlerRefs.get(route as unknown as object);
@@ -153,6 +162,15 @@ export class HttpServerApi implements ResourceInstance {
       url: translatedPath,
       schema,
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!requestScope) {
+          // Dispatching without one would root a trace of its own, detached from
+          // the request's span and from its cancellation.
+          throw new RuntimeError(
+            "ERR_HTTP_REQUEST_SCOPE_MISSING",
+            `Http.Api[${this.apiName}] was registered without a request scope, so it cannot dispatch ${request.method} ${request.url}`,
+          );
+        }
+        const trace = requestScope.forRequest(request);
         const received: Record<RequestLocation, unknown> = {
           query: request.query,
           params: request.params,
@@ -164,6 +182,7 @@ export class HttpServerApi implements ResourceInstance {
             received[location] = this.ctx.readPlainEncoded(received[location], declared);
           } catch (err) {
             if (!isInvokeError(err) || err.code !== ERR_INPUT_INVALID) throw err;
+            trace.reject(err);
             const issues = (err.data as { issues?: Array<{ path: string; message: string }> } | undefined)
               ?.issues;
             reply.code(400);
@@ -205,29 +224,6 @@ export class HttpServerApi implements ResourceInstance {
 
         const sink = fastifyReplySink(reply);
 
-        // Per-request cancellation: abandon downstream work when the client
-        // disconnects before the response is sent. Listen on the response
-        // socket, not the request stream — the latter's `close` fires as normal
-        // cleanup once a request body has been fully received, which would
-        // cancel any body-bearing request that awaits (e.g. a DB call) before
-        // replying. The response socket only closes early on a real disconnect.
-        const cancellation = this.ctx.createCancellationSource();
-        reply.raw.on("close", () => {
-          if (!reply.sent) cancellation.cancel("client-disconnect");
-        });
-
-        // Open a request span rooting this request's own trace: the handler (and
-        // its nested invokes) nest under it, and it's labelled with the route so
-        // the trace shows the actual method+path, attributed to this Http.Api.
-        // rootContext: an inbound registrant dispatches with a context that
-        // inherits nothing ambient — no zones, no trace parent, no caller token
-        // (the conformance obligation in kernel/specs/execution-zones.md §7).
-        const span = await this.ctx.openSpan(this.ctx.rootContext({ cancellation }), {
-          ref: { kind: "Http.Api", name: this.apiName },
-          label: `${route.request.method} ${route.request.path}`,
-          attributes: { method: route.request.method, path: route.request.path },
-        });
-
         let result: unknown;
         try {
           result = handler
@@ -236,20 +232,19 @@ export class HttpServerApi implements ResourceInstance {
                 handlerName,
                 handler,
                 invokeInput,
-                span.context,
+                trace.context,
               )
             : undefined;
         } catch (err) {
           if (isCancellationError(err)) {
-            await span.settle("cancelled");
+            trace.reject(err);
             if (!reply.sent) reply.code(499).send();
             return;
           }
-          if (!isInvokeError(err)) {
-            await span.settle("failed");
-            throw err;
-          }
-          await span.settle("rejected");
+          if (!isInvokeError(err)) throw err;
+          // Reported before rendering: the response may complete, and its span
+          // settle, while a rung is still being awaited.
+          trace.reject(err);
           // The route's own entries, then this router's. An unmatched throw
           // leaves the router entirely, so the server's list — and, failing
           // that, the transport's envelope — renders it. Rendering it here
@@ -268,7 +263,6 @@ export class HttpServerApi implements ResourceInstance {
           throw err;
         }
 
-        await span.settle("ok");
         return dispatchReturns(
           route.returns,
           result,

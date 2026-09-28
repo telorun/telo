@@ -1,0 +1,68 @@
+kind: Telo.Application
+metadata:
+  name: OtlpReceiver
+  version: 1.0.0
+  description: |
+    Test fixture: an in-test OpenTelemetry collector. It accepts OTLP/JSON on
+    POST /v1/traces, keeps every body, and answers GET /spans with every span
+    received, in arrival order, so a test reads what an application exported.
+imports:
+  Http: ../../../
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+ports:
+  http:
+    env: PORT
+    default: 18521
+targets:
+  - !ref schema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+migrations:
+  create_payloads:
+    statement: "CREATE TABLE payloads (id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT NOT NULL)"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /v1/traces
+      method: POST
+      schema:
+        body: { type: object, additionalProperties: true }
+    handler: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: "INSERT INTO payloads (body) VALUES (?)"
+      bindings: [ !cel "json(request.body)" ]
+    returns:
+      - status: 200
+        content: { application/json: { body: {} } }
+  - request:
+      path: /spans
+      method: GET
+    handler: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: "SELECT body FROM payloads ORDER BY id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              spans: !cel >-
+                flatten(flatten(result.rows.map(r, parseJson(r.body).resourceSpans
+                  .map(rs, flatten(rs.scopeSpans.map(ss, ss.spans))))))
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api

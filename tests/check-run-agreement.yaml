@@ -151,6 +151,32 @@ targets:
   - !ref cssSelectorComputedAtRuntime
   - !ref cssSelectorInputs
   - !ref cssSelectorInputsComputedAtRuntime
+  - !ref spanAttributeMarks
+  - !ref spanAttributeInvalidAtRuntime
+  - !ref spanAttributeMisplacedAtRuntime
+  - !ref spanAttributeBesideSensitiveAtRuntime
+  - !ref sinkWhenTracing
+  - !ref sinkWhenTracingAtRuntime
+  - !ref sinkWhenLogging
+  - !ref sinkWhenLoggingAtRuntime
+  - !ref targetWhenGated
+  - !ref targetWhenGatedAtRuntime
+  - !ref targetWhenInvoke
+  - !ref targetWhenInvokeAtRuntime
+  - !ref stepPredicate
+  - !ref stepPredicateAtRuntime
+  - !ref compileResultAtCreation
+  - !ref tryWhen
+  - !ref tryWhenAtRuntime
+  - !ref ambiguousUnionResult
+  - !ref ambiguousUnionResultAtRuntime
+  - !ref ambiguousUnionResultAccepted
+  - !ref spanAttributeReachedThroughRef
+  - !ref spanAttributeReachedThroughRefRuns
+  - !ref spanAttributeThroughItems
+  - !ref spanAttributeThroughItemsAtRuntime
+  - !ref tracingOnLibrary
+  - !ref tracingOnLibraryAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1490,3 +1516,249 @@ source: ./__fixtures__/check-run-agreement/css-selector-inputs-computed.yaml
 expect:
   errors: []
   runFails: '/selector must be a css-selector: Pseudo elements are not enabled at offset 2 of "p::before"'
+---
+# Contracts marking span attributes the runtime cannot read — a malformed name,
+# a property holding an object, and a property marked as auth material —
+# reported at the nodes the library writes…
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeMarks
+source: ./__fixtures__/check-run-agreement/span-attribute/lib/telo.yaml
+expect:
+  errors:
+    - code: SPAN_ATTRIBUTE_INVALID
+      message: "'x-telo-span-attribute: \"Turn-Id\"' is not an attribute name"
+    - code: SPAN_ATTRIBUTE_MISPLACED
+      message: "must mark a scalar property (type string, integer, number or boolean); this node is declared type \"object\""
+    - code: SPAN_ATTRIBUTE_MISPLACED
+      message: "'x-telo-span-attribute' sits beside 'x-telo-sensitive: true'"
+---
+# …and refused by the kernel when each instance is first dispatched, from
+# consumers whose entry-scoped check is silent about the library's contracts.
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/span-attribute/bad-name.yaml
+expect:
+  errors: []
+  runFails: "carries an unreadable 'x-telo-span-attribute': at 'turnId'"
+---
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeMisplacedAtRuntime
+source: ./__fixtures__/check-run-agreement/span-attribute/non-scalar.yaml
+expect:
+  errors: []
+  runFails: "at 'report': 'x-telo-span-attribute' must mark a scalar property"
+---
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeBesideSensitiveAtRuntime
+source: ./__fixtures__/check-run-agreement/span-attribute/beside-sensitive.yaml
+expect:
+  errors: []
+  runFails: "at 'token': 'x-telo-span-attribute' sits beside 'x-telo-sensitive: true'"
+---
+# A contract reaches a mark wherever `$ref` leads — a `$defs` entry, a named
+# shape — through `properties`: clean at the library that writes them…
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeReachedThroughRef
+source: ./__fixtures__/check-run-agreement/span-attribute/reached/lib/telo.yaml
+expect:
+  errors: []
+---
+# …and read by the kernel, which runs the dispatch.
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeReachedThroughRefRuns
+source: ./__fixtures__/check-run-agreement/span-attribute/reached/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A named shape's mark reached through an array item: reported at the property
+# that reaches it, in the library…
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeThroughItems
+source: ./__fixtures__/check-run-agreement/span-attribute/through-items/lib/telo.yaml
+expect:
+  errors:
+    - code: SPAN_ATTRIBUTE_MISPLACED
+      message: "the contract reaches an 'x-telo-span-attribute' mark through this property's array item or map value"
+---
+# …and refused by the kernel from a consumer whose check is silent about it.
+kind: Assert.Manifest
+metadata:
+  name: spanAttributeThroughItemsAtRuntime
+source: ./__fixtures__/check-run-agreement/span-attribute/through-items/telo.yaml
+expect:
+  errors: []
+  runFails: "carries an unreadable 'x-telo-span-attribute': at 'steps': the contract reaches"
+---
+# `tracing:` is a root-Application key: exporting spans is the application's
+# decision, never an imported library's. Refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: tracingOnLibrary
+source: ./__fixtures__/check-run-agreement/tracing-on-library/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "('tracing' is not allowed)"
+---
+# …and by the kernel when the library is imported.
+kind: Assert.Manifest
+metadata:
+  name: tracingOnLibraryAtRuntime
+source: ./__fixtures__/check-run-agreement/tracing-on-library/telo.yaml
+expect:
+  errors: []
+  runFails: "('tracing' is not allowed)"
+---
+# A predicate — a sink's `when`, a boot target's `when`, a step's `if:` — is a
+# boolean. Reported where its expression is typed as something else, and refused
+# by the kernel where only the result says so (a `dyn` value), never read by
+# truthiness.
+kind: Assert.Manifest
+metadata:
+  name: sinkWhenTracing
+source: ./__fixtures__/check-run-agreement/predicates/sink-when-tracing.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'tracing.sinks[0].when' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sinkWhenTracingAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/sink-when-tracing-dyn.yaml
+expect:
+  errors: []
+  runFails: "tracing.sinks[0].when must be a boolean, but the expression produced the string \"false\""
+---
+kind: Assert.Manifest
+metadata:
+  name: sinkWhenLogging
+source: ./__fixtures__/check-run-agreement/predicates/sink-when-logging.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'logging.sinks[0].when' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sinkWhenLoggingAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/sink-when-logging-dyn.yaml
+expect:
+  errors: []
+  runFails: "logging.sinks[0].when must be a boolean, but the expression produced the string \"false\""
+---
+kind: Assert.Manifest
+metadata:
+  name: targetWhenGated
+source: ./__fixtures__/check-run-agreement/predicates/target-when-gated.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'targets[0].when' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: targetWhenGatedAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/target-when-gated-dyn.yaml
+expect:
+  errors: []
+  runFails: "The predicate at 'targets[0].when' must evaluate to a boolean"
+---
+kind: Assert.Manifest
+metadata:
+  name: targetWhenInvoke
+source: ./__fixtures__/check-run-agreement/predicates/target-when-invoke.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'targets[0].when' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: targetWhenInvokeAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/target-when-invoke-dyn.yaml
+expect:
+  errors: []
+  runFails: "The predicate at 'targets[0].when' must evaluate to a boolean"
+---
+kind: Assert.Manifest
+metadata:
+  name: stepPredicate
+source: ./__fixtures__/check-run-agreement/predicates/step-predicate.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'steps[0].if' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: stepPredicateAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/step-predicate-dyn.yaml
+expect:
+  errors: []
+  runFails: "The predicate at 'steps/branch/if' must evaluate to a boolean"
+---
+# A compile-eval result is held to its slot's schema when the resource is
+# created: a `dyn` expression passes `telo check`, and its string where the slot
+# declares a boolean is refused before the controller receives it.
+kind: Assert.Manifest
+metadata:
+  name: compileResultAtCreation
+source: ./__fixtures__/check-run-agreement/predicates/mount-when-dyn.yaml
+expect:
+  errors: []
+  runFails: "mounts[0].when must be a boolean, but the expression produced the string \"false\""
+---
+kind: Assert.Manifest
+metadata:
+  name: tryWhen
+source: ./__fixtures__/check-run-agreement/predicates/try-when.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'steps[0].when' returns 'string' but the field expects 'boolean'"
+---
+kind: Assert.Manifest
+metadata:
+  name: tryWhenAtRuntime
+source: ./__fixtures__/check-run-agreement/predicates/try-when-dyn.yaml
+expect:
+  errors: []
+  runFails: "The predicate at 'steps/guarded/when' must evaluate to a boolean"
+---
+# A compile-eval value under a union its written shape does not decide: no
+# branch is guessed. Statically the expression is held to what every fitting
+# branch declares at its path; at runtime the evaluated subtree is held to the
+# whole union. A value no branch accepts is refused by both; one a branch
+# accepts passes both.
+kind: Assert.Manifest
+metadata:
+  name: ambiguousUnionResult
+source: ./__fixtures__/check-run-agreement/compiled-results/ambiguous-union-refused.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'cfg.x' returns 'string' but the field expects 'boolean | integer'"
+---
+kind: Assert.Manifest
+metadata:
+  name: ambiguousUnionResultAtRuntime
+source: ./__fixtures__/check-run-agreement/compiled-results/ambiguous-union-dyn.yaml
+expect:
+  errors: []
+  runFails: "Holder/holder: cfg must be what its schema declares"
+---
+kind: Assert.Manifest
+metadata:
+  name: ambiguousUnionResultAccepted
+source: ./__fixtures__/check-run-agreement/compiled-results/ambiguous-union-accepted.yaml
+expect:
+  runs: true

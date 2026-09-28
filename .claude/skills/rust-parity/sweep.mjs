@@ -6,7 +6,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 
 const options = parseArgs(process.argv.slice(2));
 const root = process.cwd();
@@ -114,10 +114,16 @@ function runTest([command, args], test) {
 }
 
 // The environment the suite gives a test: `.env`, then `.env.local`, beside the manifest, both
-// overridden by the host environment.
+// overridden by the host environment — with the workspace's own binaries on PATH, as `pnpm run`
+// puts them.
 function envForManifest(test) {
   const dir = dirname(join(root, test));
-  return { ...readEnvFile(join(dir, ".env")), ...readEnvFile(join(dir, ".env.local")), ...process.env };
+  return {
+    ...readEnvFile(join(dir, ".env")),
+    ...readEnvFile(join(dir, ".env.local")),
+    ...process.env,
+    PATH: [join(root, "node_modules", ".bin"), process.env.PATH].join(delimiter),
+  };
 }
 
 function readEnvFile(path) {

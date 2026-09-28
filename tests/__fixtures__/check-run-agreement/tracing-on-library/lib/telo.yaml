@@ -1,0 +1,11 @@
+# A library turning trace export on. Exporting spans is the application's
+# decision, so `tracing:` is a root-Application key and a library may not carry
+# it.
+kind: Telo.Library
+metadata:
+  name: TracingOnLibrary
+  version: 1.0.0
+  description: Fixture library declaring a tracing block it may not carry.
+tracing:
+  sinks:
+    - kind: Telo.LogTraceSink

@@ -68,7 +68,7 @@ import {
   userFacingImplementationsOf,
 } from "./instantiable-kind.js";
 import { visitManifest } from "./manifest-visitor.js";
-import { declaringModuleScope, moduleAliasScope } from "./module-alias-scope.js";
+import { declaringModuleScope, definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { ModuleFunctionIndex } from "./module-function-index.js";
@@ -140,8 +140,11 @@ import {
 } from "./validate-value-type-slots.js";
 import {
   validateSensitiveSlots,
-  type SensitiveSlotIssue,
 } from "./validate-sensitive-slots.js";
+import { validateSinkAttachment } from "./validate-sink-attachment.js";
+import {
+  validateSpanAttributes,
+} from "./validate-span-attributes.js";
 import { resolveSchemaTypeRefs } from "./resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "./validate-schema-type-refs.js";
 import { rewriteSyntheticOrigins } from "./rewrite-synthetic-origins.js";
@@ -152,6 +155,8 @@ import {
   inlineNamedShapes,
   navigateSchemaToExprPath,
   resolveRefIn,
+  fittingUnionBranches,
+  selectUnionBranch,
   substituteCelFields,
   validateAgainstSchema,
   VALUE_BRAND_BASE,
@@ -675,16 +680,42 @@ function collectCelValueSlots(
     return slots;
   }
 
+  // A union has no `items` / `properties` of its own: continue through the ONE
+  // branch the value was written against — the selection the placeholder walk
+  // and the kernel's pre-validation strip make. Where several branches fit, no
+  // branch is guessed: each leaf is held to the union of what every fitting
+  // branch declares at its path, so it is refused only when none accepts it.
+  if (data !== null && typeof data === "object") {
+    const fits = fittingUnionBranches(schema, data, root);
+    if (fits && fits.length > 1) {
+      const byPath = new Map<string, Record<string, any>[]>();
+      for (const branch of fits) {
+        for (const slot of collectCelValueSlots(data, branch, path, root)) {
+          const schemas = byPath.get(slot.path) ?? [];
+          if (!schemas.includes(slot.schema)) schemas.push(slot.schema);
+          byPath.set(slot.path, schemas);
+        }
+      }
+      for (const [slotPath, schemas] of byPath) {
+        slots.push({ path: slotPath, schema: schemas.length === 1 ? schemas[0]! : { anyOf: schemas } });
+      }
+      return slots;
+    }
+  }
+  const selected = selectUnionBranch(schema, data, root);
+  const entered = selected === schema ? { schema, root } : resolveRefIn(selected, root);
+  const node = entered.schema;
+
   if (Array.isArray(data)) {
-    const itemSchema = (schema.items ?? {}) as Record<string, any>;
+    const itemSchema = (node.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
-      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`, root));
+      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`, entered.root));
     }
   } else if (data !== null && typeof data === "object") {
-    const props = (schema.properties ?? {}) as Record<string, any>;
+    const props = (node.properties ?? {}) as Record<string, any>;
     const mapValueSchema =
-      schema.additionalProperties && typeof schema.additionalProperties === "object"
-        ? (schema.additionalProperties as Record<string, any>)
+      node.additionalProperties && typeof node.additionalProperties === "object"
+        ? (node.additionalProperties as Record<string, any>)
         : {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       slots.push(
@@ -692,7 +723,7 @@ function collectCelValueSlots(
           v,
           (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
-          root,
+          entered.root,
         ),
       );
     }
@@ -1101,16 +1132,10 @@ export class StaticAnalyzer {
     // definition's `schema:` does. Same scoping as every other schema issue —
     // the entry's own modules, since a dependency is not the consumer's to fix.
     const valueTypeSlotIssues: ValueTypeSlotIssue[] = [];
-    // `x-telo-sensitive` rides the same walk and the same scoping. It is read by
-    // ONE consumer — the kernel, off a bound contract — so an occurrence outside
-    // `inputType` / `outputType` is inert; for a security control, inert-and-
-    // silent is the failure worth reporting.
-    const sensitiveSlotIssues: SensitiveSlotIssue[] = [];
     for (const m of manifests) {
       const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
       if (!declaringModule || rootModules.has(declaringModule)) {
         valueTypeSlotIssues.push(...validateValueTypeSlots(m as unknown as ResourceManifest));
-        sensitiveSlotIssues.push(...validateSensitiveSlots(m as unknown as ResourceManifest));
       }
     }
     for (const m of manifests) {
@@ -1343,22 +1368,6 @@ export class StaticAnalyzer {
             filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
             path: issue.path,
             ...(issue.fix ? { fix: issue.fix } : {}),
-          },
-        });
-      }
-      for (const issue of sensitiveSlotIssues) {
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: issue.code,
-          source: SOURCE,
-          message: issue.message,
-          data: {
-            resource: {
-              kind: issue.manifest.kind,
-              name: issue.manifest.metadata?.name as string,
-            },
-            filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
-            path: issue.path,
           },
         });
       }
@@ -1604,6 +1613,16 @@ export class StaticAnalyzer {
       // §14.1 / §10.3: redaction paths and `on_full: block` are statically
       // detectable, so they fail `telo check` rather than only at boot.
       diagnostics.push(...validateLogging(allManifests, defs, aliases, aliasesByModule));
+      diagnostics.push(
+        ...validateSinkAttachment(
+          allManifests as unknown as ResourceManifest[],
+          getCallGraph(),
+          defs,
+          aliases,
+          aliasesByModule,
+          rootModules,
+        ),
+      );
       // Module-artifact surface: bundled-controller selector qualifiers and the
       // published `layers:` index. Every case is decidable from the manifest and
       // would otherwise fail on a consumer's machine — or, for a mistyped platform
@@ -1690,6 +1709,39 @@ export class StaticAnalyzer {
     const referrerRuleContext: ReferrerRuleContext = {
       peerBinder: analyzerPeerBinder(defs, aliases, allManifests as ResourceManifest[]),
     };
+
+    // `x-telo-sensitive` and `x-telo-span-attribute` are read by ONE consumer —
+    // the kernel, off a bound contract, following `$ref` — so both run the
+    // kernel's own walk over every declared contract, once named shapes resolve.
+    // A mark no contract reaches is inert; for a security control above all,
+    // inert-and-silent is the failure worth reporting.
+    const resolveMarkDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+    const capabilityOf = (m: ResourceManifest): string | undefined =>
+      typeof m.kind === "string"
+        ? inheritedCapability(
+            definitionInScope(defs, m.kind, m.metadata, aliases, aliasesByModule),
+            resolveMarkDef,
+          )
+        : undefined;
+    for (const issue of [
+      ...validateSensitiveSlots(allManifests as ResourceManifest[], rootModules, capabilityOf),
+      ...validateSpanAttributes(allManifests as ResourceManifest[], rootModules, capabilityOf),
+    ]) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: issue.code,
+        source: SOURCE,
+        message: issue.message,
+        data: {
+          resource: {
+            kind: issue.manifest.kind,
+            name: issue.manifest.metadata?.name as string,
+          },
+          filePath: (issue.manifest.metadata as { source?: string } | undefined)?.source,
+          path: issue.path,
+        },
+      });
+    }
 
     // Fail loud on definition schemas AJV cannot compile. `validateAgainstSchema`
     // and `validateWithRefs` swallow compile failures (returning no issues),

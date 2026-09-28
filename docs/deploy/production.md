@@ -216,12 +216,7 @@ carry trace and span identifiers when emitted inside a dispatch. There is no
 configuration stays visible to `telo check` and the editor. See
 [Logging](/build/logging).
 
-Records can be shipped to an OpenTelemetry collector with the `otlp` module's
-sink. **Metrics and distributed tracing are not yet exposed as a runtime
-export** — the record model carries the trace context, but there is no metrics
-endpoint or span exporter to point a collector at today. Plan for logs, and
-scrape your own application-level counters through whatever your app already
-serves.
+Records can be shipped to an OpenTelemetry collector with the `otlp` module's sink, and spans with its `OTLP.TraceSink` declared in `tracing.sinks` — see [Tracing](/build/tracing). There is no metrics signal: counters and latency distributions are aggregations over exported spans, computed by the backend.
 
 ## Runtime configuration
 

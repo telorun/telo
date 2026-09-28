@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: UnknownLevelFixture
+  version: 1.0.0
+imports:
+  Log: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: announce }
+steps:
+  - name: emit
+    invoke: !ref Log.emit
+    inputs:
+      level: loud
+      message: started

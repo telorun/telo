@@ -1,0 +1,40 @@
+kind: Telo.Library
+metadata:
+  name: GuardRequestHeadersFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: requireToken }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      authorization: { type: string }
+steps:
+  - name: pass
+    value: {}
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# `request.headers` is a map, so `size()` of it is an int; comparing it with a
+# string is a type error only a typed context can report.
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+mounts:
+  - mount: !ref api
+    guard:
+      invoke: !ref requireToken
+      inputs:
+        authorization: !cel "size(request.headers) == 'x' ? 'a' : 'b'"

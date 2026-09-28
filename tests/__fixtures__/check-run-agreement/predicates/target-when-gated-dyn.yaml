@@ -1,0 +1,21 @@
+# A gated boot target's `when` that produces a string, not a boolean. The value is `dyn`, so only the runtime can refuse it.
+kind: Telo.Application
+metadata:
+  name: TargetWhenGatedDyn
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  settings:
+    env: SETTINGS
+    type: object
+    default: { flag: "false" }
+targets:
+  - ref: !ref noop
+    when: !cel "variables.settings.flag"
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: done
+    value: true

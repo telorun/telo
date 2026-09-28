@@ -1,0 +1,47 @@
+kind: Telo.Application
+metadata:
+  name: MountGuardChecks
+  version: 1.0.0
+  description: |
+    The static half of a mount's `guard`: its `inputs:` are checked against the
+    guard's declared input, typed against the request as it is before the body
+    is read, and its throws are owed a rendering like any other dispatch site.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref testMisspelledInput
+  - !ref testNoBodyInContext
+  - !ref testHeadersTyped
+  - !ref testUncoveredThrow
+---
+kind: Assert.Manifest
+metadata: { name: testMisspelledInput }
+source: ./__fixtures__/guard-input-misspelled.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'authorisation' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: testNoBodyInContext }
+source: ./__fixtures__/guard-request-body.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "request.body"
+---
+kind: Assert.Manifest
+metadata: { name: testHeadersTyped }
+source: ./__fixtures__/guard-request-headers.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "int == string"
+---
+kind: Assert.Manifest
+metadata: { name: testUncoveredThrow }
+source: ./__fixtures__/guard-throw-uncovered.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'ERR_FORBIDDEN'"

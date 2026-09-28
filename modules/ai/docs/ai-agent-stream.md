@@ -1,5 +1,5 @@
 ---
-description: "Ai.AgentStream: a streaming tool-use loop over any Ai.ModelStream. Same config as Ai.Agent, but emits a Stream of Ai.AgentStreamPart records — deltas, tool calls with stable ids, per-call usage, tool results, provider state and a terminal finish — for live SSE."
+description: "Ai.AgentStream: a streaming tool-use loop over any Ai.ModelStream. Same config as Ai.Agent, but emits a Stream of Ai.AgentStreamPart records — deltas, tool calls with stable ids, per-call usage, tool results with the tool's own output, provider state and a terminal finish — for live SSE, and traces the run."
 sidebar_label: Ai.AgentStream
 ---
 
@@ -23,7 +23,7 @@ Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxStep
 | `tool-call`       | `toolCall: { id, name, arguments }`                 | The model requested a tool. The id is fixed for the rest of the run.   |
 | `provider-state`  | `providerState`                                     | Opaque provider state, forwarded as produced (see below).              |
 | `step-finish`     | `usage`, `finishReason`                             | One model call ended: that call's usage and finish reason.             |
-| `tool-result`     | `toolResult: { toolCallId, name, content, error? }` | A tool the agent executed. `error: true` on a failed call.             |
+| `tool-result`     | `toolResult: { toolCallId, name, content, output?, error? }` | A tool the agent executed: `content` is what the model was told, `output` what the tool returned. `error: true` on a failed call. |
 | `finish`          | `usage`, `finishReason`                             | Terminal — the usage of every call summed.                              |
 
 For a run that calls one tool and then answers, the order is:
@@ -35,7 +35,7 @@ tool-call(id) · step-finish(u1) · tool-result(id) · text-delta… · step-fin
 - **`step-finish`** closes each model call when its stream ends and **before** that call's tools run, so a consumer can account for spend call by call — including a run that is cancelled or fails later. A call interrupted by a cancellation before its provider's `finish` reports none; one whose `finish` arrived reports it even when the cancellation lands first.
 - **`finish`** is the only terminator, and its `usage` is the sum of the `step-finish` usages.
 - **Tool call ids** are fixed where the call is first seen: the `tool-call` part, the assistant message replayed to the next model call, and the `tool-result`'s `toolCallId` all carry the same one. A model that supplies none gets a generated `call_<uuid>`, unique across calls, runs and processes, so a stored transcript never has two calls under one id.
-- The `tool-result` shape matches `Ai.Agent`'s `steps[].toolResults` record exactly, so a streaming consumer is never a poorer signal than the buffered trace.
+- The `tool-result` record is `Ai.Agent`'s `steps[].toolResults` record plus `output` (see [Tool results](#tool-results)), so a streaming consumer is never a poorer signal than the buffered trace.
 
 A consumer that stores the parts types them by reference — `items: !ref Ai.AgentStreamPart` — and `telo check` then reports a misspelled field (`inputs.records[0].usge`) as `CEL_UNKNOWN_FIELD`.
 
@@ -94,7 +94,7 @@ event: step-finish
 data: {"usage":{"promptTokens":180,"completionTokens":40,"totalTokens":220,"unit":"tokens","total":220},"finishReason":"tool-calls"}
 
 event: tool-result
-data: {"toolResult":{"toolCallId":"call_0","name":"write_file","content":"{\"bytesWritten\":142}"}}
+data: {"toolResult":{"toolCallId":"call_0","name":"write_file","content":"wrote health.yaml","output":{"path":"health.yaml","bytesWritten":142}}}
 
 event: text-delta
 data: {"delta":"Added "}
@@ -131,6 +131,25 @@ These mirror [`Ai.Agent`](./ai-agent.md#maxsteps-and-error-handling). A failure 
 - **`onMaxSteps: throw`** (default) — rejects with `ERR_AGENT_MAX_STEPS`.
 - A model stream that ends without a `finish` part rejects with `ERR_CONTRACT_VIOLATION`.
 
-## Multimodal tool results
+## Tool results
 
-A tool that returns content parts (e.g. an image) flows through as `MessageContent` on the `tool-result` `content`, mirroring `Ai.Agent`. Encoding non-text content parts onto the SSE wire is not yet defined — text/JSON tool results are the supported path today.
+A `tool-result` carries two views of one call:
+
+- **`content`** — what was fed back to the model: the tool's `result:` mapping when the tool entry declares one, otherwise the tool's result written as plain JSON (or passed through as a string or content parts).
+- **`output`** — what the tool itself returned, before any `result:` mapping, as plain JSON (a timestamp, duration or bytes in its plain encoding). For an MCP tool it is the call's structured content when the server returns one, otherwise its content parts. It is **never sent to the model**; it is there for a consumer — a UI pulling the path a `write_file` tool wrote, a check's exit code — that would otherwise parse the rendering back.
+
+`output` is present whenever `error` is not `true` (a tool that returns nothing reports `null`) and absent when it is: a failed call has no result, only the error text in `content`. `Ai.Agent`'s buffered `steps[].toolResults` keep the record the model saw, without `output`.
+
+A tool that returns content parts (e.g. an image) flows through as `MessageContent` on `content`, mirroring `Ai.Agent`. Encoding non-text content parts onto the SSE wire is not yet defined — text/JSON tool results are the supported path today.
+
+## Tracing
+
+With tracing on (a trace sink in the application's `tracing.sinks`, or a debugger attached), a run opens:
+
+| Span | Covers | Attributes |
+| --- | --- | --- |
+| `invoke_agent <name>` | the whole run, until its `finish` (or failure, or the consumer stops reading) | `gen_ai.operation.name`, `ai.agent.steps` (model calls made), `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` summed over the run |
+| `chat <model>` | one model call, until its stream ends | `gen_ai.operation.name`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons` |
+| `execute_tool <name>` | one tool call | `gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type` when it failed |
+
+`chat` and `execute_tool` spans are children of `invoke_agent`, which is a child of the dispatch that started the run. The tool resource's own dispatch span nests under its `execute_tool` span (see [`Ai.Tools`](./ai-tool-provider.md#aitools)). `<model>` is the model resource's published `model` (the provider's model id), else the resource's name. A span that ends because the consumer stopped reading is `cancelled`. No span carries message content, tool arguments or tool results.

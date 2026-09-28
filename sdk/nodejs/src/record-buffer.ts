@@ -17,12 +17,15 @@ import type { SinkBufferPolicy } from "./log-sink.js";
  * `drop_old` has no precedent among the surveyed libraries, so it is implemented
  * as specified — true ring-buffer semantics, evicting the oldest record — rather
  * than by analogy to something else.
+ *
+ * Record-opaque, as the sink capability is: a trace sink buffers finished spans
+ * through the same class.
  */
-export class RecordBuffer {
+export class RecordBuffer<T = LogRecord> {
   readonly #capacity: number;
   readonly #policy: SinkBufferPolicy;
   readonly #onDrop: () => void;
-  #items: LogRecord[] = [];
+  #items: T[] = [];
   /** Index of the oldest record, so `drop_old` evicts in O(1) instead of
    *  shifting the whole array on every overflow. */
   #head = 0;
@@ -41,7 +44,7 @@ export class RecordBuffer {
     return this.size >= this.#capacity;
   }
 
-  push(record: LogRecord): void {
+  push(record: T): void {
     if (this.isFull) {
       if (this.#policy.onFull === "drop_old") {
         this.#head += 1;
@@ -59,7 +62,7 @@ export class RecordBuffer {
   }
 
   /** Take everything buffered, leaving the buffer empty. */
-  drain(): LogRecord[] {
+  drain(): T[] {
     const drained = this.#head === 0 ? this.#items : this.#items.slice(this.#head);
     this.#items = [];
     this.#head = 0;

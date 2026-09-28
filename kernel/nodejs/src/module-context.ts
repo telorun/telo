@@ -3,6 +3,7 @@ import {
   executeInvokeStep,
   getRefIdentity,
   type InlineInvokeTarget,
+  nowUnixNano,
   RuntimeError,
 } from "@telorun/sdk";
 import type { ScopeConfig } from "./logging/scope-config.js";
@@ -18,7 +19,7 @@ import type {
   ResourceManifest,
 } from "@telorun/sdk";
 import type { EmitEvent, InstanceFactory } from "@telorun/sdk";
-import { isCompiledValue } from "@telorun/sdk";
+import { errorTypeOf, isCompiledValue, predicateResult } from "@telorun/sdk";
 import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
@@ -786,7 +787,25 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     // The boot run roots a fresh trace; targets inherit it via `targetCtx`.
     const appTraceId = tracing ? this.tracer!.newTraceId() : undefined;
     const appRootScope = tracing ? this.traceRootScope() : undefined;
+    const appStartTime = tracing ? nowUnixNano() : undefined;
     const appLabel = appName ?? "application";
+    const finishApp = (outcome: "ok" | "failed" | "cancelled", err?: unknown) =>
+      this.exportSpan({
+        name: `run ${appLabel}`,
+        traceId: appTraceId,
+        spanId: appSpanId,
+        parentSpanId: undefined,
+        startTime: appStartTime,
+        endTime: nowUnixNano(),
+        outcome,
+        attributes: {
+          "telo.resource.kind": "Telo.Application",
+          "telo.resource.name": appLabel,
+          "error.type": outcome === "failed" ? errorTypeOf(err) : undefined,
+          "telo.cancellation.reason":
+            outcome === "cancelled" ? (err instanceof Error ? err.message : String(err)) : undefined,
+        },
+      });
     const appSpan = (
       phase: "start" | "end",
       outcome: "ok" | "failed" | "cancelled" | undefined,
@@ -829,7 +848,10 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     if (tracing) await this.emit(`${appLabel}.Running`, appSpan("start", undefined));
     try {
       await this.dispatchTargets(stepCtx, steps, runResolvedInstance, targetCtx);
-      if (tracing) await this.emit(`${appLabel}.Run`, appSpan("end", "ok"));
+      if (tracing) {
+        await this.emit(`${appLabel}.Run`, appSpan("end", "ok"));
+        finishApp("ok");
+      }
     } catch (err) {
       if (tracing) {
         const cancelled = (err as { code?: unknown })?.code === "ERR_INVOKE_CANCELLED";
@@ -837,6 +859,7 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
           `${appLabel}.${cancelled ? "RunCancelled" : "RunFailed"}`,
           appSpan("end", cancelled ? "cancelled" : "failed"),
         );
+        finishApp(cancelled ? "cancelled" : "failed", err);
       }
       throw err;
     }
@@ -881,11 +904,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         };
         // The boot cancellation, so a target parked in a retry backoff ends on
         // SIGINT rather than sitting out the remaining delay.
-        await executeInvokeStep(step, stepCtx, { steps, invokeCtx: ctx });
+        await executeInvokeStep(step, stepCtx, { steps, invokeCtx: ctx, site: `targets[${i}]` });
         continue;
       }
       if ("ref" in target && target.ref != null) {
-        if (target.when === undefined || this.expandWith(target.when, { steps })) {
+        if (
+          target.when === undefined ||
+          predicateResult(this.expandWith(target.when, { steps }), `targets[${i}].when`)
+        ) {
           const ref = target.ref as unknown;
           // Phase 5 injection may have replaced the ref slot with the live
           // instance; run it directly.

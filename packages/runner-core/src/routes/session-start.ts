@@ -9,6 +9,7 @@ import {
   type RunnerTerms,
 } from "../contract.js";
 import { generateSessionId } from "../session/session-id.js";
+import { endpointsWithToken, statusWithTokens } from "../session/workload-token.js";
 import {
   SessionLimitError,
   type SessionEntry,
@@ -155,7 +156,13 @@ export function launchWorkload(
       mode: args.mode,
       apps: args.apps,
       agent: args.agent,
-      onStatus: (status) => deps.registry.emit(sessionId, { type: "status", status }),
+      // Tokens are reported by core rather than by each backend, so a backend
+      // cannot publish an endpoint without the token its workload was given.
+      onStatus: (status) =>
+        deps.registry.emit(sessionId, {
+          type: "status",
+          status: statusWithTokens(status, args.tokens),
+        }),
       onProgress: (phase, message, done, app) =>
         deps.registry.emit(sessionId, { type: "progress", app, phase, message, done }),
       onOutput: (app, chunk, stream) => deps.registry.pushBytes(sessionId, app, chunk, stream),
@@ -201,7 +208,13 @@ export function launchWorkload(
             ...(change.added ?? []).map((e) => ({ port: e.port, protocol: e.protocol })),
           ];
         }
-        deps.registry.emit(sessionId, { type: "endpoints", app: appName, ...change });
+        const added = endpointsWithToken(change.added, args.tokens);
+        deps.registry.emit(sessionId, {
+          type: "endpoints",
+          app: appName,
+          ...change,
+          ...(added ? { added } : {}),
+        });
       },
       isUserStopped: () => entry.userStopped,
     })

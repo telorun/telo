@@ -1,6 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { InvokeContext } from "@telorun/sdk";
-import { InvokeError, isCancellationError, isSuspension, writePlainJson } from "@telorun/sdk";
+import {
+  InvokeError,
+  isCancellationError,
+  isSuspension,
+  toPlainJson,
+  writePlainJson,
+} from "@telorun/sdk";
+import {
+  openToolSpan,
+  settleFailure,
+  type AgentSpanIdentity,
+  type SpanOpener,
+} from "./agent-spans.js";
 import { isContentPart, isContentParts, type MessageContent } from "./content.js";
 import type {
   AiToolProviderInstance,
@@ -161,23 +173,31 @@ export async function assembleTools(
  *  becomes an `error: true` record whose `content` is the error string fed back to
  *  the model; on `"throw"` the error propagates and aborts the invoke. The turn's
  *  cancellation and a durable suspension are not tool failures: they propagate
- *  whatever `onToolError` says. `ctx` — the agent invocation's context — is handed
- *  to the provider, so cancelling the turn reaches the running tool. */
+ *  whatever `onToolError` says.
+ *
+ *  The call runs under an `execute_tool <name>` span opened on `ctx` — the agent
+ *  run's span context — and that span's context is what the provider receives, so
+ *  cancelling the turn reaches the running tool and the tool's own dispatch nests
+ *  under the span. `output` is the tool's result before any mapping the provider
+ *  applies, as plain JSON; it is never fed to the model. */
 export async function dispatchToolCall(
   call: ToolCall,
   dispatch: Map<string, Dispatch>,
   onToolError: "feedback" | "throw",
   label: string,
+  spans: SpanOpener,
+  agent: AgentSpanIdentity,
   ctx: InvokeContext | undefined,
 ): Promise<ToolResultRecord> {
+  const span = await openToolSpan(spans, ctx, agent, { name: call.name, callId: call.id });
   const target = dispatch.get(call.name);
   if (!target) {
-    if (onToolError === "throw") {
-      throw new InvokeError(
-        "ERR_AGENT_UNKNOWN_TOOL",
-        `${label}: model requested unknown tool "${call.name}".`,
-      );
-    }
+    const error = new InvokeError(
+      "ERR_AGENT_UNKNOWN_TOOL",
+      `${label}: model requested unknown tool "${call.name}".`,
+    );
+    await settleFailure(span, error);
+    if (onToolError === "throw") throw error;
     return {
       toolCallId: call.id,
       name: call.name,
@@ -185,12 +205,26 @@ export async function dispatchToolCall(
       error: true,
     };
   }
+  let called: { output: unknown; result: unknown };
   try {
-    const output = await target.provider.callTool(target.bareName, call.arguments, ctx);
-    return { toolCallId: call.id, name: call.name, content: toToolContent(output) };
+    called = target.provider.callToolWithOutput
+      ? await target.provider.callToolWithOutput(target.bareName, call.arguments, span.context)
+      : await target.provider
+          .callTool(target.bareName, call.arguments, span.context)
+          .then((output) => ({ output, result: output }));
   } catch (err) {
+    await settleFailure(span, err);
     if (onToolError === "throw" || isCancellationError(err) || isSuspension(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     return { toolCallId: call.id, name: call.name, content: `Error: ${message}`, error: true };
   }
+  await span.settle("ok");
+  return {
+    toolCallId: call.id,
+    name: call.name,
+    content: toToolContent(called.result),
+    // Present on every successful call: a tool that returns nothing produced
+    // `null`, which is a value a consumer can read, unlike a missing key.
+    output: called.output === undefined ? null : toPlainJson(called.output),
+  };
 }

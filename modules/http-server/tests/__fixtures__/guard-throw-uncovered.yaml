@@ -1,0 +1,40 @@
+kind: Telo.Library
+metadata:
+  name: GuardThrowUncoveredFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: requireToken }
+steps:
+  - name: refuse
+    if: !cel "true"
+    then:
+      - name: unauthenticated
+        throw: { code: ERR_UNAUTHENTICATED, message: "no token" }
+    else:
+      - name: forbidden
+        throw: { code: ERR_FORBIDDEN, message: "not allowed" }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# The guard's list renders ERR_UNAUTHENTICATED and nothing renders ERR_FORBIDDEN.
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+mounts:
+  - mount: !ref api
+    guard:
+      invoke: !ref requireToken
+      catches:
+        - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
+          status: 401
+          content: { application/json: { body: { code: !cel "error.code" } } }

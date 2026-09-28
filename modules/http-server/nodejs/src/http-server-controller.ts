@@ -6,13 +6,21 @@ import {
   dispatchReturns,
   errorEnvelope,
   ReturnEntry,
+  type RequestScope,
+  type RequestTrace,
 } from "@telorun/http-dispatch";
 import {
+  ERR_INPUT_INVALID,
+  errorTypeOf,
+  InvokeError,
+  isCancellationError,
   isInvokeError,
+  RuntimeError,
   toPlainJson,
   SEVERITY,
   severityForLevel,
   type Invocable,
+  type SpanOutcome,
   type KindRef,
   type LevelName,
   type ResourceContext,
@@ -23,6 +31,7 @@ import addFormats from "ajv-formats";
 import Fastify, {
   FastifyInstance,
   LogController,
+  type FastifyReply,
   type FastifyRequest,
   type FastifyServerOptions,
 } from "fastify";
@@ -37,9 +46,14 @@ import {
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
  *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
- *  resolve to an imported library's exported mount — and every mountable exposes register(). */
+ *  resolve to an imported library's exported mount — and every mountable exposes register().
+ *  `requestScope` gives each request's span context to whatever the mount dispatches. */
 interface Mountable {
-  register(app: FastifyInstance, prefix: string): void | Promise<void>;
+  register(
+    app: FastifyInstance,
+    prefix: string,
+    requestScope: RequestScope<FastifyRequest>,
+  ): void | Promise<void>;
 }
 
 type CorsOptions = {
@@ -57,6 +71,19 @@ type CorsOptions = {
   hideOptionsRoute?: boolean;
 };
 
+type MountGuard = {
+  invoke: KindRef<Invocable>;
+  inputs?: Record<string, unknown>;
+  catches?: CatchEntry[];
+};
+
+type ResolvedGuard = {
+  kind: string;
+  name: string;
+  inputs: Record<string, unknown>;
+  catches?: CatchEntry[];
+};
+
 type HttpMount = {
   path?: string;
   // x-telo-ref `Telo.Mount`: Phase 5 replaces this slot with the live mounted
@@ -65,6 +92,7 @@ type HttpMount = {
   logging?: { level?: LevelName };
   /** Expanded at startup (`x-telo-eval: compile`); `false` leaves the mount out. */
   when?: boolean;
+  guard?: MountGuard;
 };
 
 type HttpServerResource = RuntimeResource & {
@@ -111,14 +139,30 @@ class HttpServer implements ResourceInstance {
   private readonly resource: HttpServerResource;
   private readonly ctx: ResourceContext;
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
+  private readonly resolvedGuards: WeakMap<HttpMount, ResolvedGuard>;
+  private readonly requestTraces = new WeakMap<FastifyRequest, RequestTrace>();
+  private readonly requestScope: RequestScope<FastifyRequest> = {
+    forRequest: (request) => {
+      const trace = this.requestTraces.get(request);
+      if (!trace) {
+        throw new RuntimeError(
+          "ERR_HTTP_REQUEST_SCOPE_MISSING",
+          `Http.Server[${this.resource.metadata.name}] opened no request scope for ${request.method} ${request.url}`,
+        );
+      }
+      return trace;
+    },
+  };
 
   constructor(
     resource: HttpServerResource,
     ctx: ResourceContext,
-    resolvedNotFoundHandler: ResolvedHandler | null = null,
+    resolvedNotFoundHandler: ResolvedHandler | null,
+    resolvedGuards: WeakMap<HttpMount, ResolvedGuard>,
   ) {
     this.resource = resource;
     this.ctx = ctx;
+    this.resolvedGuards = resolvedGuards;
     this.host = resource.host || "0.0.0.0";
     this.port = Number(resource.port || 0);
     this.baseUrl = resource.baseUrl ?? `http://${this.host}:${this.port}`;
@@ -202,7 +246,7 @@ class HttpServer implements ResourceInstance {
   init() {
     return this.ctx.effect("fastify plugins and routes", async () => {
       await this.setupPlugins();
-      this.setupRoutes();
+      await this.setupRoutes();
       return { result: undefined, inverse: () => this.closeApp() };
     });
   }
@@ -258,6 +302,65 @@ class HttpServer implements ResourceInstance {
    */
   private activeMounts(): ReadonlyArray<HttpMount> {
     return (this.resource.mounts ?? []).filter((mount) => mount.when !== false);
+  }
+
+  /**
+   * One span per request, opened by the first root `onRequest` hook — before
+   * CORS, a mount's guard and body parsing — and settled when the raw response
+   * closes, which covers a streamed and a hijacked reply alike. Every dispatch
+   * the request drives runs on its context, and a client disconnect cancels
+   * that context. Continues an inbound W3C `traceparent`.
+   */
+  private installRequestSpan() {
+    const ref = { kind: "Http.Server", name: this.resource.metadata.name };
+    this.app.addHook("onRequest", async (request, reply) => {
+      const cancellation = this.ctx.createCancellationSource();
+      const method = request.method;
+      const route = request.routeOptions.url;
+      const traceparent = singleHeader(request.headers.traceparent);
+      const tracestate = singleHeader(request.headers.tracestate);
+      const opening = this.ctx.openSpan(this.ctx.rootContext({ cancellation }), {
+        ref,
+        label: route === undefined ? method : `${method} ${route}`,
+        attributes: {
+          "http.request.method": method,
+          ...(route === undefined ? {} : { "http.route": route }),
+        },
+        ...(traceparent === undefined
+          ? {}
+          : { inbound: { traceparent, ...(tracestate === undefined ? {} : { tracestate }) } }),
+      });
+      let decidedBy: { error: unknown } | undefined;
+      // Attached before the first await, so a disconnect during the open is seen.
+      reply.raw.on("close", () => {
+        const completed = reply.raw.writableEnded;
+        if (completed) cancellation.dispose();
+        else cancellation.cancel("client-disconnect");
+        const { outcome, attributes } = requestOutcome(completed, reply, decidedBy);
+        opening
+          .then((span) => span.settle(outcome, { attributes }))
+          .catch((err) => {
+            this.ctx.log.error(
+              "Request span could not be settled",
+              { "error.type": errorTypeOf(err), "error.message": String(err) },
+              { eventName: "http.server.request.span_failed" },
+            );
+          });
+      });
+      const span = await opening;
+      this.requestTraces.set(request, {
+        context: span.context,
+        reject: (error) => {
+          decidedBy = { error };
+        },
+      });
+    });
+  }
+
+  /** The error that decided a response, reported to its request's span. An error
+   *  raised before the span opened (the span hook's own) has no span to report to. */
+  private reportDecidingError(request: FastifyRequest, error: unknown): void {
+    this.requestTraces.get(request)?.reject(error);
   }
 
   private installRequestLogging() {
@@ -367,6 +470,7 @@ class HttpServer implements ResourceInstance {
     // A JSON body's reader is not Telo, so a CEL value in it is written as its
     // plain form — RFC 3339 text for a timestamp, `"5400s"` for a duration,
     // base64url for bytes — whether or not the route declares a response schema.
+    this.installRequestSpan();
     this.app.addHook("preSerialization", async (_request, _reply, payload) => toPlainJson(payload));
     this.installRequestLogging();
     this.installDefaultMultipartParser();
@@ -382,14 +486,16 @@ class HttpServer implements ResourceInstance {
         this.app.addContentTypeParser(
           contentType,
           { parseAs: "string" },
-          async (_req, body, done) => {
+          async (request, body, done) => {
             try {
-              // The bound entry point forwards every argument, so the root
-              // context rides in as the InvokeContext — §7's obligation for an
-              // inbound registrant. (This path still calls the instance
-              // directly rather than going through `invokeResolved`, so it is
-              // untraced; that predates zones and is tracked separately.)
-              done(null, await parser.invoke({ body }, this.ctx.rootContext()));
+              // The bound entry point forwards every argument, so the request's
+              // context rides in as the InvokeContext. (This path still calls
+              // the instance directly rather than going through
+              // `invokeResolved`, so the parse opens no span of its own.)
+              done(
+                null,
+                await parser.invoke({ body }, this.requestScope.forRequest(request).context),
+              );
             } catch (err) {
               done(err as Error, undefined);
             }
@@ -443,9 +549,14 @@ class HttpServer implements ResourceInstance {
     this.app.setErrorHandler(async (error, request, reply) => {
       const mappedError = convertFastifyValidationError(error);
       if (mappedError) {
+        this.reportDecidingError(
+          request,
+          new InvokeError(ERR_INPUT_INVALID, (error as Error).message),
+        );
         reply.code(400);
         return reply.send(mappedError);
       }
+      this.reportDecidingError(request, error);
       if (!isInvokeError(error)) throw error;
 
       const invokeError = { code: error.code, message: error.message, data: error.data };
@@ -512,7 +623,7 @@ class HttpServer implements ResourceInstance {
     }
   }
 
-  private setupRoutes(): void {
+  private async setupRoutes(): Promise<void> {
     // const routesByName = new Map<string, HttpRouteResource>();
     const mounts = this.activeMounts();
     for (const skipped of (this.resource.mounts ?? []).filter((mount) => mount.when === false)) {
@@ -539,7 +650,20 @@ class HttpServer implements ResourceInstance {
           `Failed to mount at "${prefix}": mount target did not resolve to a Telo.Mount instance`,
         );
       }
-      api.register(this.app, prefix);
+      const guard = this.resolvedGuards.get(mount);
+      if (!guard) {
+        api.register(this.app, prefix, this.requestScope);
+        continue;
+      }
+      // An encapsulated context confines the guard's hook to this mount's
+      // routes: CORS (and its preflight route) and the not-found handler live
+      // in the root context and never see it, and a sibling mount has its own.
+      // No `prefix` option — the mount carries its prefix on each route, which
+      // keeps the OpenAPI paths whole.
+      await this.app.register(async (scope) => {
+        scope.addHook("onRequest", this.guardHook(guard));
+        await api.register(scope, prefix, this.requestScope);
+      });
     }
 
     if (this.resolvedNotFoundHandler) {
@@ -582,15 +706,15 @@ class HttpServer implements ResourceInstance {
           inputs: resolvedInputs,
         };
 
+        const trace = this.requestScope.forRequest(request);
         let result: any;
         try {
-          // rootContext: an inbound registrant dispatches with a context that
-          // inherits nothing ambient (kernel/specs/execution-zones.md §7).
           result = await this.ctx.invoke(handler.kind, handler.name, invokeInput, {
-            ctx: this.ctx.rootContext(),
+            ctx: trace.context,
           });
         } catch (err) {
           if (!isInvokeError(err)) throw err;
+          trace.reject(err);
           // The not-found handler's own entries first; anything they decline
           // rethrows to the server's error handler, which is the same ladder a
           // mounted route's throw takes.
@@ -628,6 +752,53 @@ class HttpServer implements ResourceInstance {
         return reply.send(result?.body ?? result);
       });
     }
+  }
+
+  /**
+   * `onRequest` runs after the root context's hooks (the request span, CORS) and
+   * before the body is parsed; the guard dispatches on the request's context, so
+   * it nests under the request span and a client disconnect cancels it. A throw
+   * no rung of `guard.catches` claims is rethrown to the server's error handler,
+   * whose `catches:` and 500 envelope follow — so a guard that fails never lets
+   * the request through.
+   */
+  private guardHook(guard: ResolvedGuard) {
+    return async (request: FastifyRequest, reply: FastifyReply) => {
+      const requestContext = {
+        request: {
+          headers: normalizeHeaders(request.headers),
+          query: request.query ?? {},
+          path: request.url,
+          method: request.method,
+          ip: request.ip,
+        },
+      };
+      const inputs =
+        Object.keys(guard.inputs).length > 0
+          ? ((this.ctx.moduleContext.expandWith(guard.inputs, requestContext) as Record<
+              string,
+              unknown
+            >) ?? {})
+          : {};
+      const trace = this.requestScope.forRequest(request);
+      try {
+        await this.ctx.invoke(guard.kind, guard.name, inputs, { ctx: trace.context });
+      } catch (err) {
+        if (!isInvokeError(err)) throw err;
+        trace.reject(err);
+        const rendered = await dispatchCatches(
+          guard.catches,
+          { code: err.code, message: err.message, data: err.data },
+          requestContext,
+          request.headers.accept?.toString(),
+          this.ctx.moduleContext,
+          this.ctx.validateSchema.bind(this.ctx),
+          fastifyReplySink(reply),
+        );
+        if (!rendered) throw err;
+        return reply;
+      }
+    };
   }
 
   /**
@@ -719,7 +890,58 @@ export async function create(
       catches: resource.notFoundHandler.catches,
     };
   }
-  return new HttpServer(resource, ctx, resolvedNotFoundHandler);
+  // Captured before Phase 5 injection replaces each `invoke` ref with the live
+  // instance: dispatch goes by kind and name, like the not-found handler's.
+  const resolvedGuards = new WeakMap<HttpMount, ResolvedGuard>();
+  for (const mount of resource.mounts ?? []) {
+    if (!mount.guard) continue;
+    const { kind, name } = ctx.ensureKindRef(mount.guard.invoke);
+    resolvedGuards.set(mount, {
+      kind,
+      name,
+      inputs: mount.guard.inputs ?? {},
+      catches: mount.guard.catches,
+    });
+  }
+  return new HttpServer(resource, ctx, resolvedNotFoundHandler, resolvedGuards);
+}
+
+/** A header's value when it arrived exactly once; a repeated one is not a W3C
+ *  carrier and is ignored like an invalid one. */
+function singleHeader(value: string | string[] | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * How a request's span ends. `cancelled` when the connection closed before the
+ * response completed; otherwise by the error that decided the response, if any:
+ * a coded one is a refusal (`rejected`), an uncoded one a `failed` 5xx — or a
+ * `rejected` 4xx when the framework answered it (an unsupported media type) —
+ * and none is `ok`, whatever status a `returns:` entry chose.
+ */
+function requestOutcome(
+  completed: boolean,
+  reply: FastifyReply,
+  decidedBy: { error: unknown } | undefined,
+): { outcome: SpanOutcome; attributes: Record<string, unknown> } {
+  const attributes: Record<string, unknown> = reply.raw.headersSent
+    ? { "http.response.status_code": reply.raw.statusCode }
+    : {};
+  if (!completed) return { outcome: "cancelled", attributes };
+  if (!decidedBy) return { outcome: "ok", attributes };
+  const { error } = decidedBy;
+  if (isCancellationError(error)) return { outcome: "cancelled", attributes };
+  const outcome: SpanOutcome =
+    isInvokeError(error) || reply.raw.statusCode < 500 ? "rejected" : "failed";
+  return { outcome, attributes: { ...attributes, "error.type": errorTypeOf(error) } };
+}
+
+function normalizeHeaders(headers: FastifyRequest["headers"]): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    normalized[key.toLowerCase()] = value;
+  }
+  return normalized;
 }
 
 /**

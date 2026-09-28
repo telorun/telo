@@ -2,8 +2,15 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  type RequestId,
 } from "@modelcontextprotocol/sdk/types.js";
-import { isInvokeError, type ResourceContext, RuntimeError, toPlainJson } from "@telorun/sdk";
+import {
+  type InvokeContext,
+  isInvokeError,
+  type ResourceContext,
+  RuntimeError,
+  toPlainJson,
+} from "@telorun/sdk";
 
 import { matchCatch, type ModuleLikeContext, type ResolvedToolEntry } from "./outcome.js";
 import type { McpToolsBundle } from "./tools-controller.js";
@@ -21,6 +28,9 @@ export interface BuildOptions {
   toolsBundles: McpToolsBundle[];
   /** Per-session metadata exposed to CEL inputs as `request.session`. */
   sessionResolver: () => SessionContext;
+  /** The context a tool call dispatches on, by its JSON-RPC request id: the
+   *  context of the transport request that carried it. */
+  dispatchContext: (requestId: RequestId) => InvokeContext;
   ctx: ResourceContext;
   moduleContext: ModuleLikeContext;
 }
@@ -75,7 +85,7 @@ export function buildServer(opts: BuildOptions): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: advertised }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const tool = tools.get(request.params.name);
     if (!tool) {
       throw new RuntimeError(
@@ -103,16 +113,15 @@ export function buildServer(opts: BuildOptions): Server {
       unknown
     >;
 
+    const dispatchContext = opts.dispatchContext(extra.requestId);
     let handlerResult: unknown;
     try {
-      // rootContext: an inbound registrant dispatches with a context inheriting
-      // nothing ambient (kernel/specs/execution-zones.md §7), never `undefined`.
       handlerResult = await opts.ctx.invokeResolved(
         tool.handlerKind,
         tool.handlerName,
         tool.handler,
         { ...inputs, inputs },
-        opts.ctx.rootContext(),
+        dispatchContext,
       );
     } catch (err) {
       if (!isInvokeError(err)) throw err;

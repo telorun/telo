@@ -81,14 +81,13 @@ export interface LogSinkInstance {
 }
 
 /**
- * The pipeline surface a sink controller reaches for — attach, detach, resolve a
- * level, count a drop. Deliberately narrow: everything else about the pipeline
- * stays private to the runtime, so a third-party sink depends on this and
- * nothing deeper.
+ * The pipeline surface a sink controller reaches for — resolve a level, count a
+ * drop. Deliberately narrow: attaching is the kernel's (it attaches exactly the
+ * instances the root Application's `logging.sinks` lists), and everything else
+ * about the pipeline stays private to the runtime, so a third-party sink depends
+ * on this and nothing deeper.
  */
 export interface LoggingHost {
-  attach(sink: LogSinkInstance): void;
-  detach(sink: LogSinkInstance): void;
   /** Resolve a sink's declared `level:` to a severity number, falling back to
    *  the effective scope threshold when the sink declares none (§12.1). */
   levelFor(level: string | undefined): number;

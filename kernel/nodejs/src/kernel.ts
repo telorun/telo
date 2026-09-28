@@ -52,6 +52,7 @@ import {
   type InvokeOptions,
   type ModuleContext as IModuleContext,
   type LoadOptions,
+  type TraceSinkInstance,
 } from "@telorun/sdk";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
@@ -62,6 +63,7 @@ import { KernelLogging, type LoggingManifestBlock } from "./logging/kernel-loggi
 import type { ScopeConfig } from "./logging/scope-config.js";
 import type { LibraryAnalysisHost } from "./internal-context.js";
 import { formatSpanCounter } from "./logging/span-id.js";
+import { explicitRecordTraceIdentity } from "./logging/span-record-identity.js";
 import {
   graphFileSources,
   modulesThatMoved,
@@ -78,6 +80,14 @@ import { mintResourceHandle } from "./resource-handle.js";
 import { bindEffectOwner } from "./effect-scope.js";
 import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
 import { recordSensitivePaths } from "./instance-sensitive-paths.js";
+import { recordSpanAttributes } from "./instance-span-attributes.js";
+import {
+  assertSinkContract,
+  readListedSinks,
+  type AttachableSink,
+  type ListedSink,
+} from "./listed-sinks.js";
+import type { LogSinkInstance } from "./logging/log-sink.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
@@ -86,6 +96,7 @@ import { injectAtPath } from "./dependency-injection.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import { refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
+import { refuseMistypedResults } from "./compiled-results.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
   computeAnalysisSignature,
@@ -302,10 +313,18 @@ export class Kernel implements IKernel {
     // The validator is constructed outside the kernel's stdio scope, so it is
     // handed the kernel logger explicitly rather than writing to process.stderr.
     this.sharedSchemaValidator.setLogger(this.logging.kernelLogger());
+    // A trace sink that throws from `write` is reported, never propagated into
+    // the dispatch whose span it was handed.
+    this.tracer.onSinkError = (sinkId, error) =>
+      this.logging
+        .kernelLogger()
+        .error(`trace sink "${sinkId}" failed to accept a span`, { "telo.sink.id": sinkId }, { error });
     // §7.2: a record emitted inside an active dispatch span carries that span's
     // ids automatically — a controller never passes them. The ids come from the
     // same counter the trace wire uses, rendered here at the encoding boundary.
     this.logging.setTraceContextProvider(() => {
+      const explicit = explicitRecordTraceIdentity();
+      if (explicit) return explicit;
       const ambient = ambientInvokeContext();
       if (!ambient?.traceId || ambient.invocationId === undefined) return undefined;
       const spanId = formatSpanCounter(ambient.invocationId);
@@ -479,6 +498,12 @@ export class Kernel implements IKernel {
     this.controllers.registerController(
       "Telo.FileSink",
       await import("./controllers/logging/file-sink-controller.js"),
+    );
+    // The trace sink every runtime can offer with no collector: spans as log
+    // records, read wherever the logs already go.
+    this.controllers.registerController(
+      "Telo.LogTraceSink",
+      await import("./controllers/tracing/log-trace-sink-controller.js"),
     );
     // Data shapes are a kernel concern for the same reason: every kind with an
     // invocation contract declares one, so `inputType:` must be writable without
@@ -1219,6 +1244,116 @@ export class Kernel implements IKernel {
       }));
 
       this.applyLoggingConfig(rootApplicationManifest as Record<string, any>);
+      this.listSinks(rootApplicationManifest as Record<string, any>);
+    }
+  }
+
+  /** The instances the root Application's sink lists name, by local name. Read
+   *  once at load, when every entry's `when` is evaluated with the rest of its
+   *  block; a resource is attached right after it is created. */
+  private listedSinks = new Map<string, ListedSink[]>();
+  /** Listed instances an import exports, attached once the graph is up. */
+  private importedListedSinks: ListedSink[] = [];
+  /** How to detach an imported sink — run first at teardown, since the library
+   *  that owns the instance unwinds it in its own cascade. */
+  private importedSinkDetachers: Array<() => Promise<void>> = [];
+
+  private listSinks(rootApplicationManifest: Record<string, any>): void {
+    this.listedSinks = new Map();
+    this.importedListedSinks = [];
+    const logging = rootApplicationManifest["logging"];
+    const tracing = rootApplicationManifest["tracing"];
+    const listed = [
+      ...readListedSinks("logging", logging === undefined ? undefined : this.expandRootBlock("logging", logging)),
+      ...readListedSinks("tracing", tracing === undefined ? undefined : this.expandRootBlock("tracing", tracing)),
+    ];
+    for (const sink of listed) {
+      if (sink.alias !== undefined) {
+        this.importedListedSinks.push(sink);
+        continue;
+      }
+      const forName = this.listedSinks.get(sink.name) ?? [];
+      forName.push(sink);
+      this.listedSinks.set(sink.name, forName);
+    }
+  }
+
+  /** Attach `sink` to the destination its list feeds. */
+  private attachSink(listed: ListedSink, sink: AttachableSink): void {
+    if (listed.list === "logging") this.logging.pipeline.attach(sink as unknown as LogSinkInstance);
+    else this.tracer.attach(sink as unknown as TraceSinkInstance);
+  }
+
+  private detachSink(listed: ListedSink, sink: AttachableSink): void {
+    if (listed.list === "logging") this.logging.pipeline.detach(sink as unknown as LogSinkInstance);
+    else this.tracer.detach(sink as unknown as TraceSinkInstance);
+  }
+
+  /**
+   * Attach a just-created root resource to every list whose entry names it and
+   * holds, as one effect of its create frame: the undo flushes, detaches and
+   * closes it. Attaching at creation is what lets a sink receive records from
+   * the moment it exists, rather than only once the whole graph is up.
+   *
+   * A sink nothing attaches — unlisted, or listed with `when: false` — is inert,
+   * and its undo only releases what it opened.
+   */
+  private async attachListedSink(
+    evalContext: IEvaluationContext,
+    resource: ResourceManifest,
+    definition: ResourceDefinition | undefined,
+    instance: ResourceInstance,
+    ctx: ResourceContext,
+  ): Promise<void> {
+    const name = resource.metadata?.name as string | undefined;
+    const listed =
+      evalContext === this.rootContext && name !== undefined ? this.listedSinks.get(name) : undefined;
+    const attaching = (listed ?? []).filter((entry) => entry.attach);
+    if (attaching.length === 0) {
+      const closable = instance as { close?: () => Promise<void> };
+      if (definition?.capability === "Telo.Sink" && typeof closable.close === "function") {
+        await ctx
+          .effect("unattached sink", async () => ({ result: undefined, inverse: () => closable.close!() }))
+          .perform();
+      }
+      return;
+    }
+    const sink = assertSinkContract(instance, attaching[0]!);
+    for (const entry of attaching.slice(1)) assertSinkContract(instance, entry);
+    await ctx
+      .effect("sink", async () => {
+        for (const entry of attaching) this.attachSink(entry, sink);
+        return {
+          result: sink,
+          inverse: async () => {
+            await sink.flush();
+            for (const entry of attaching) this.detachSink(entry, sink);
+            await sink.close();
+          },
+        };
+      })
+      .perform();
+  }
+
+  /** How many log sinks the root Application attaches. Zero means the runtime
+   *  behaves as if a single `Telo.ConsoleSink` were declared, so a runtime never
+   *  has zero destinations. */
+  private attachedLogSinkCount(): number {
+    const all = [...[...this.listedSinks.values()].flat(), ...this.importedListedSinks];
+    return all.filter((entry) => entry.list === "logging" && entry.attach).length;
+  }
+
+  /** Attach the listed instances an import exports, once the graph is up. */
+  private attachImportedSinks(): void {
+    for (const entry of this.importedListedSinks) {
+      if (!entry.attach) continue;
+      const instance = this.rootContext.resolveImportedInstance(entry.alias!, entry.name);
+      const sink = assertSinkContract(instance, entry);
+      this.attachSink(entry, sink);
+      this.importedSinkDetachers.push(async () => {
+        await sink.flush();
+        this.detachSink(entry, sink);
+      });
     }
   }
 
@@ -1241,8 +1376,33 @@ export class Kernel implements IKernel {
       this.logging.applyRootConfig(undefined, this.rootContext.secretValues);
       return;
     }
-    const expanded = this.rootContext.expandWith(raw, {}) as LoggingManifestBlock;
+    const expanded = this.expandRootBlock("logging", raw) as LoggingManifestBlock;
     this.logging.applyRootConfig(expanded, this.rootContext.secretValues);
+  }
+
+  /**
+   * One of the root Application's load-time blocks (`logging:`, `tracing:`),
+   * expanded, with every expression result held to its slot's schema — before
+   * anything the block names is created or attached. A `when` producing the
+   * string `"false"` is refused here, never read as "not false".
+   */
+  private expandRootBlock(key: "logging" | "tracing", raw: unknown): unknown {
+    const expanded = this.rootContext.expandWith(raw, {});
+    const applicationSchema = this.registry.resolveDefinition("Telo.Application")?.schema as
+      | Record<string, any>
+      | undefined;
+    const slot = applicationSchema?.properties?.[key] as Record<string, any> | undefined;
+    if (applicationSchema && slot) {
+      refuseMistypedResults(
+        raw,
+        expanded,
+        slot,
+        this.sharedSchemaValidator,
+        (path, problem) => new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", `${path} ${problem}.`),
+        { root: applicationSchema, prefix: key },
+      );
+    }
+    return expanded;
   }
 
   /**
@@ -1341,13 +1501,14 @@ export class Kernel implements IKernel {
 
     await this.eventBus.emit("Kernel.ResourceInitializationStarting", {});
     await this.rootContext.initializeResources();
+    this.attachImportedSinks();
 
     // Every declared sink has now attached, so the bootstrap buffer has done its
     // job. A consumer connecting later — the debug wire — wants the live stream,
     // not the whole process history, so replay stops here rather than persisting
     // for the process lifetime. The sink-counting and the tree walk are logging
     // logic, so they live on KernelLogging; the kernel just hands it the graph.
-    this.logging.sealBootstrap(this.staticManifests);
+    this.logging.sealBootstrap(this.attachedLogSinkCount());
 
     await this.eventBus.emit("Kernel.Initialized", {});
 
@@ -1413,6 +1574,7 @@ export class Kernel implements IKernel {
     this._isTornDown = true;
 
     await this.eventBus.emit("Kernel.Stopping", {});
+    for (const detach of this.importedSinkDetachers.splice(0)) await detach();
     if (this.rootContext) {
       await this.rootContext.teardownResources();
     }
@@ -1784,13 +1946,14 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Turn invocation tracing on/off. A debug consumer (the CLI debug server) flips
-   * it on while attached: invocations then mint monotonic ids and emit
+   * Hold invocation tracing on/off for a debug consumer (the CLI debug server)
+   * while it is attached: invocations then mint monotonic ids and emit
    * `invocationId` / `parentInvocationId` in event metadata, so the consumer can
-   * rebuild the call tree. Off by default — zero overhead when nobody is watching.
+   * rebuild the call tree. An attached trace sink holds tracing on independently.
+   * Off by default — zero overhead when nobody is watching.
    */
   setTracing(enabled: boolean): void {
-    this.tracer.enabled = enabled;
+    this.tracer.setDebug(enabled);
   }
 
   on(event: string, handler: (event: RuntimeEvent) => void | Promise<void>): void {
@@ -2034,6 +2197,18 @@ export class Kernel implements IKernel {
         resourceLabel,
         schemaForRef,
       );
+      refuseMistypedResults(
+        resource,
+        processedResource,
+        configSchema as Record<string, any>,
+        this.sharedSchemaValidator,
+        (path, problem) =>
+          new RuntimeError(
+            "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+            `${resourceLabel}: ${path} ${problem}.`,
+          ),
+        { external: schemaForRef },
+      );
     }
 
     const moduleCtx = this.findModuleContext(evalContext);
@@ -2106,6 +2281,7 @@ export class Kernel implements IKernel {
     // in-flight work rather than undoing anything, so the teardown cascade
     // calls it directly (see `EvaluationContext.teardownResources`).
     bindEffectOwner(instance, ctx as ResourceContextImpl);
+    await this.attachListedSink(evalContext, processedResource, definition, instance, ctx);
 
     if (!runtime.length) return { instance, ctx, resource: processedResource };
 
@@ -2261,8 +2437,10 @@ export class Kernel implements IKernel {
     // it, and the trace site has only the instance. Lazily, so a contract is
     // still compiled on first dispatch rather than at create time.
     if (input) recordSensitivePaths(instance, "inputType", () => input.sensitivePaths());
+    if (input) recordSpanAttributes(instance, "inputType", () => input.spanAttributes());
     if (input) impl.setInputScalarPaths(() => input.scalarPaths());
     if (output) recordSensitivePaths(instance, "outputType", () => output.sensitivePaths());
+    if (output) recordSpanAttributes(instance, "outputType", () => output.spanAttributes());
 
     bindContract(instance, {
       input,

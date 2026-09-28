@@ -1,0 +1,158 @@
+kind: Telo.Application
+metadata:
+  name: RequestTraceTest
+  version: 1.0.0
+  description: |
+    Every request a server answers is one local root span named after its
+    matched route, with the mount's guard and the route's handler as its
+    children in the same trace. A refused request's span is `rejected` with the
+    guard's code and a 401, and holds no handler span. A request carrying a W3C
+    `traceparent` lands in the upstream trace, under the upstream span.
+imports:
+  App: ../../app
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:18520
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# Every exported span as { name, trace, span, parent, start, attrs }, attributes
+# flattened to `key=value` — once all four request spans are in.
+kind: Run.Sequence
+metadata: { name: exported }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18521/spans }
+  - name: spans
+    value: !cel >-
+      steps.get.result.body.spans.map(s, {
+        'name': s.name,
+        'trace': s.traceId,
+        'span': s.spanId,
+        'parent': has(s.parentSpanId) ? s.parentSpanId : '',
+        'start': s.startTimeUnixNano,
+        'attrs': s.attributes.map(a, a.key + '=' + (has(a.value.stringValue) ? a.value.stringValue
+          : has(a.value.intValue) ? a.value.intValue : has(a.value.boolValue) ? string(a.value.boolValue)
+          : json(a.value)))
+      })
+  - name: notYet
+    if: !cel "steps.spans.result.filter(s, s.attrs.exists(a, a.startsWith('http.request.method='))).size() < 4"
+    then:
+      - name: waiting
+        throw: { code: ERR_TEST_NOT_EXPORTED_YET, message: The request spans have not all been exported yet. }
+outputs:
+  spans: !cel "steps.spans.result"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: collector }
+    source: ./__fixtures__/otlp-receiver/telo.yaml
+    ports: { http: 18521 }
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ./__fixtures__/request-trace-app/telo.yaml
+    ports: { http: 18520 }
+    variables:
+      otlpEndpoint: http://127.0.0.1:18521
+targets: [ !ref collector, !ref app ]
+steps:
+  - name: allowed
+    invoke: !ref call
+    inputs:
+      url: /api/items
+      headers: { authorization: Bearer good }
+  - name: refused
+    invoke: !ref call
+    inputs: { url: /api/items }
+  - name: unguarded
+    invoke: !ref call
+    inputs: { url: /probes/ready }
+  - name: continued
+    invoke: !ref call
+    inputs:
+      url: /probes/ready
+      headers: { traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01 }
+  - name: spans
+    retry: { attempts: 80, initialDelay: 250, factor: 1, jitter: none }
+    invoke: !ref exported
+  # Each request span in the order the requests were made, with the spans
+  # parented by it; `http.*`, `error.type` and the outcome are the attributes
+  # the transport sets.
+  - name: trees
+    value: !cel >-
+      cel.bind(spans, steps.spans.result.spans,
+      sort(spans.filter(s, s.attrs.exists(a, a.startsWith('http.request.method='))).map(s, s.start + '|' + s.span))
+        .map(key, spans.filter(s, s.span == key.substring(key.indexOf('|') + 1))[0])
+        .map(r, {
+          'name': r.name,
+          'parent': r.parent,
+          'upstreamTrace': r.trace == '4bf92f3577b34da6a3ce929d0e0e4736',
+          'attrs': sort(r.attrs.filter(a, a.startsWith('http.') || a.startsWith('error.type=')
+            || a.startsWith('telo.span.outcome='))),
+          'children': sort(spans.filter(c, c.parent == r.span && c.trace == r.trace).map(c, c.start + '|' + c.name))
+            .map(k, k.substring(k.indexOf('|') + 1))
+        }))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        statuses:
+          - !cel "steps.allowed.result.status"
+          - !cel "steps.refused.result.status"
+          - !cel "steps.unguarded.result.status"
+          - !cel "steps.continued.result.status"
+        traces: !cel "size(distinct(steps.spans.result.spans.filter(s, s.attrs.exists(a, a.startsWith('http.request.method='))).map(s, s.trace)))"
+        trees: !cel "steps.trees.result"
+      expected:
+        statuses: [200, 401, 200, 200]
+        traces: 4
+        trees:
+          - name: GET /api/items
+            parent: ""
+            upstreamTrace: false
+            attrs:
+              - http.request.method=GET
+              - http.response.status_code=200
+              - http.route=/api/items
+              - telo.span.outcome=ok
+            children: [ invoke server_mounts_0_guard_invoke, invoke api_routes_0_handler ]
+          - name: GET /api/items
+            parent: ""
+            upstreamTrace: false
+            attrs:
+              - error.type=ERR_UNAUTHENTICATED
+              - http.request.method=GET
+              - http.response.status_code=401
+              - http.route=/api/items
+              - telo.span.outcome=rejected
+            children: [ invoke server_mounts_0_guard_invoke ]
+          - name: GET /probes/ready
+            parent: ""
+            upstreamTrace: false
+            attrs:
+              - http.request.method=GET
+              - http.response.status_code=200
+              - http.route=/probes/ready
+              - telo.span.outcome=ok
+            children: [ invoke probes_routes_0_handler ]
+          - name: GET /probes/ready
+            parent: 00f067aa0ba902b7
+            upstreamTrace: true
+            attrs:
+              - http.request.method=GET
+              - http.response.status_code=200
+              - http.route=/probes/ready
+              - telo.span.outcome=ok
+            children: [ invoke probes_routes_0_handler ]

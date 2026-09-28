@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: LogEmitRecordTest
+  version: 1.0.0
+  description: |
+    One invocation of the ready-made instance writes exactly one record, at the
+    given level, with the given attributes, from the `Log` import's scope.
+
+    Records are captured through a Telo.FileSink so the assertion can read them
+    back as data. The sink appends to a fixed path, so the record is found by a
+    marker unique to this run.
+logging:
+  level: info
+  sinks:
+    # A literal path: `Telo.FileSink.destination` is not a CEL slot.
+    - kind: Telo.FileSink
+      destination: /tmp/telo-log-emit-record.jsonl
+      flush_interval: 20ms
+imports:
+  Log: ../
+  Fs: ../../fs
+  Timer: ../../timer
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Fs.File
+    metadata: { name: readLog }
+steps:
+  - name: marker
+    value: !cel "'emit-' + uuidv4()"
+  - name: emit
+    invoke: !ref Log.emit
+    inputs:
+      level: warn
+      message: !cel "steps.marker.result"
+      attributes:
+        port: 8080
+        open: true
+        ratio: 0.5
+        missing: null
+        origins: [ "*" ]
+        limits: { rpm: 60 }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: read
+    invoke: !ref readLog
+    inputs: { path: /tmp/telo-log-emit-record.jsonl }
+  - name: records
+    value: !cel >-
+      steps.read.result.content.split('\n')
+        .filter(line, line.contains(steps.marker.result))
+        .map(line, parseJson(line))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        output: !cel "steps.emit.result"
+        records: !cel >-
+          steps.records.result.map(r, {
+            'level': r.level,
+            'msg': r.msg,
+            'scope': r.scope,
+            'attributes': r.attributes
+          })
+      expected:
+        output: {}
+        records:
+          - level: WARN
+            msg: !cel "steps.marker.result"
+            scope: Log
+            attributes:
+              port: 8080
+              open: true
+              ratio: 0.5
+              missing: null
+              origins: [ "*" ]
+              limits: { rpm: 60 }

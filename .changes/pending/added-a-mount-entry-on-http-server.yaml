@@ -1,0 +1,14 @@
+modules:
+  modules/http-server: Added
+body: "A mount entry on Http.Server may carry a guard: an invocable run for every
+  request that matches one of that mount's routes, after CORS and before the request
+  body is read. A normal return lets the request through; a throw refuses it, rendered
+  by the guard's own catches: list, then the server's; a throw no entry claims is the
+  built-in 500 envelope, so a failing guard never lets a request through. CORS
+  preflight, sibling mounts without a guard and requests matching no route never reach
+  it. The guard's inputs: are CEL over request.headers, query, path, method and ip,
+  checked against the guard's declared input by telo check, and its throws are owed a
+  rendering like any other dispatch site. A mount's path, when and logging are now
+  evaluated per field at startup instead of through a compile mark on the whole mounts
+  list, which is what leaves a guard's CEL to run per request; nothing that was accepted
+  before changes meaning."

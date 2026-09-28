@@ -146,6 +146,13 @@ export interface RunnerAppConfig {
    *  still works as a standalone app session (where the client declares the
    *  ports it wants published); only `agent` use requires it. */
   port?: number;
+  /** Env var name under which the runner injects a token it mints for every
+   *  session started from this entry — as an app session or as a co-resident
+   *  agent — and reports as `RunnerEndpoint.token` on that workload's endpoints.
+   *  It is kept across suspend and resume; a runner restart means a new session
+   *  and so a new token. A name the entry's own `env` also sets is refused, and
+   *  a client-supplied value under it is dropped. */
+  tokenEnv?: string;
   title?: string;
   description?: string;
 }
@@ -159,11 +166,15 @@ export interface ResolvedRunnerApp {
   /** See {@link RunnerAppConfig.port} — undefined when the operator declared
    *  none, which is what makes the entry unusable as an `agent`. */
   port?: number;
+  /** See {@link RunnerAppConfig.tokenEnv}. */
+  tokenEnv?: string;
   title?: string;
   description?: string;
 }
 
 const PULL_POLICIES: readonly string[] = ["missing", "always", "never"];
+
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
  * Parse the `RUNNER_APPS` JSON catalog ({ "<name>": RunnerAppConfig }).
@@ -224,6 +235,17 @@ function validateAppEntry(name: string, value: unknown): RunnerAppConfig {
   ) {
     fail("has an invalid 'port' — expected an integer in 1..65535.");
   }
+  if (entry.tokenEnv !== undefined) {
+    if (typeof entry.tokenEnv !== "string" || !ENV_NAME.test(entry.tokenEnv)) {
+      fail("has an invalid 'tokenEnv' — expected an environment variable name ([A-Za-z_][A-Za-z0-9_]*).");
+    }
+    // Two sources for one variable would leave which value the workload sees
+    // to merge order, and the operator's literal would silently shadow — or be
+    // shadowed by — the minted token.
+    if (entry.env !== undefined && Object.hasOwn(entry.env as object, entry.tokenEnv as string)) {
+      fail(`sets 'tokenEnv' to '${entry.tokenEnv}', which its own 'env' also defines — the runner mints that value per session.`);
+    }
+  }
   for (const key of ["title", "description"] as const) {
     if (entry[key] !== undefined && typeof entry[key] !== "string") {
       fail(`has an invalid '${key}' — expected a string.`);
@@ -265,6 +287,7 @@ export function loadResolvedApps(env: NodeJS.ProcessEnv): Record<string, Resolve
       env: entry.env ?? {},
       pullPolicy: entry.pullPolicy ?? "missing",
       port: entry.port,
+      tokenEnv: entry.tokenEnv,
       title: entry.title,
       description: entry.description,
     };

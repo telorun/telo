@@ -2,3 +2,4 @@
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
 export * as OtlpSinkController from "./otlp-sink-controller.js";
+export * as OtlpTraceSinkController from "./otlp-trace-sink-controller.js";

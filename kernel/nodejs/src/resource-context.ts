@@ -133,8 +133,8 @@ export class ResourceContextImpl implements ResourceContext {
     return this.#log;
   }
 
-  /** The sink-facing half of the pipeline. Only the built-in sink controllers
-   *  reach for it; every other controller uses {@link log}. */
+  /** The sink-facing half of the pipeline (level resolution, drop accounting).
+   *  Only sink controllers reach for it; every other controller uses {@link log}. */
   get logging(): LoggingHost {
     return this.kernel.logging.host;
   }

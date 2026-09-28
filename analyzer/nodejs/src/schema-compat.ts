@@ -814,7 +814,8 @@ export function inlineNamedShapes(
  * separates a `{type, text}` part from a `{type, data, mediaType}` one). If that
  * leaves anything other than exactly one branch, the union is returned unchanged
  * — an ambiguous union is one the analyzer should not resolve on the author's
- * behalf.
+ * behalf. A union beside a shared base (`type` / `properties` of its own)
+ * selects the same way and returns the base with the branch merged over it.
  */
 export function selectUnionBranch(
   schema: Record<string, any>,
@@ -822,9 +823,26 @@ export function selectUnionBranch(
   root: Record<string, any>,
   external?: ExternalSchemaResolver,
 ): Record<string, any> {
-  const branches = (schema.oneOf ?? schema.anyOf) as Record<string, any>[] | undefined;
-  if (!Array.isArray(branches) || branches.length === 0) return schema;
-  if (schema.type !== undefined || schema.properties !== undefined) return schema;
+  const fits = fittingUnionBranches(schema, data, root, external);
+  return fits?.length === 1 ? fits[0]! : schema;
+}
+
+/**
+ * Every `oneOf` / `anyOf` branch `data` may be written against — each merged
+ * over the union's shared base, as {@link selectUnionBranch} returns the one it
+ * selects — or `undefined` when `schema` is not a union. More than one entry is
+ * an ambiguous union: a walker that must not guess a branch checks against all
+ * of them.
+ */
+export function fittingUnionBranches(
+  schema: Record<string, any>,
+  data: unknown,
+  root: Record<string, any>,
+  external?: ExternalSchemaResolver,
+): Record<string, any>[] | undefined {
+  const unionKey = schema.oneOf !== undefined ? "oneOf" : "anyOf";
+  const branches = schema[unionKey] as Record<string, any>[] | undefined;
+  if (!Array.isArray(branches) || branches.length === 0) return undefined;
 
   const kind = Array.isArray(data)
     ? "array"
@@ -839,7 +857,7 @@ export function selectUnionBranch(
             : typeof data === "boolean"
               ? "boolean"
               : undefined;
-  if (!kind) return schema;
+  if (!kind) return undefined;
 
   const fits = branches
     .map((b) => resolveRef(b, root, external))
@@ -857,7 +875,20 @@ export function selectUnionBranch(
       }
       return true;
     });
-  return fits.length === 1 ? fits[0]! : schema;
+  if (schema.type === undefined && schema.properties === undefined) return fits;
+  // A discriminated union over a shared base (a step: a `name` beside one of
+  // several statement shapes) is the base with the branch's own keys over it.
+  const base: Record<string, any> = { ...schema };
+  delete base[unionKey];
+  return fits.map((branch) => {
+    const required = [...(base.required ?? []), ...(branch.required ?? [])];
+    return {
+      ...base,
+      ...branch,
+      properties: { ...(base.properties ?? {}), ...(branch.properties ?? {}) },
+      ...(required.length > 0 ? { required: [...new Set(required)] } : {}),
+    };
+  });
 }
 
 export function collectProperties(schema: Record<string, any>): Record<string, any> {

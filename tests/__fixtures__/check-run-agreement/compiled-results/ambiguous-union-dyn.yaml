@@ -1,0 +1,39 @@
+# The same union, the expression `dyn`: only the runtime can refuse its string,
+# held to the whole union.
+kind: Telo.Application
+metadata:
+  name: AmbiguousUnion
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+variables:
+  settings:
+    env: SETTINGS
+    type: object
+    default: { x: "s" }
+targets:
+  - invoke: !ref holder
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    cfg:
+      x-telo-eval: compile
+      anyOf:
+        - type: object
+          properties: { x: { type: boolean } }
+        - type: object
+          properties: { x: { type: integer } }
+resources:
+  - kind: Run.Value
+    metadata: { name: out }
+    value: !cel "self.cfg"
+invoke: !ref out
+---
+kind: Self.Holder
+metadata: { name: holder }
+cfg:
+  x: !cel "variables.settings.x"

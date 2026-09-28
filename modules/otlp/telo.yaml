@@ -6,18 +6,21 @@ metadata:
   license: LicenseRef-SustainableUse
   categories: [Observability]
   description: >-
-    Ships an application's structured log records to an OpenTelemetry collector over
-    OTLP, batched and flushed on an interval, with resource attributes such as the
-    service name attached to every batch. The route from local logging to any
-    OTel-compatible observability backend.
+    Ships an application's structured log records and finished trace spans to an
+    OpenTelemetry collector over OTLP, batched and flushed on an interval, with
+    resource attributes such as the service name attached to every batch. The route
+    from local logging and tracing to any OTel-compatible observability backend.
 requires:
-  # The sink pairs its attach with the flush/detach/close that undoes it, as an
-  # effect. A runtime without `ctx.effect` cannot construct this controller at
-  # all — the floor is what turns that into one message naming the cause.
-  telo: ">=0.82.0"
+  # The trace sink extends the kernel's trace-sink abstract, which an older
+  # runtime does not have, and both sinks rely on the kernel attaching what the
+  # Application's sink lists name — the floor turns that into one message naming
+  # the cause. (The log sink alone needed
+  # `>=0.82.0`, for `ctx.effect`.)
+  telo: ">=0.104.0"
 exports:
   kinds:
     - Sink
+    - TraceSink
 ---
 kind: Telo.Definition
 metadata:
@@ -85,6 +88,73 @@ schema:
     flush_interval:
       title: Flush interval
       description: Maximum time a record may sit buffered before an export.
+      type: string
+      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      x-telo-eval: compile
+  required: [endpoint]
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: TraceSink
+  description: >-
+    A destination for trace spans that batches them and sends them to an
+    OpenTelemetry collector's traces endpoint, bounded by a buffer with a drop
+    policy. Every finished dispatch becomes a span with its timing, outcome and
+    declared attributes. Delivery is a network round-trip, so spans held only here
+    may be lost if the process dies at once.
+capability: Telo.Sink
+extends: Telo.TraceSink
+controllers:
+  - pkg:telo/local/js?path=./nodejs/otlp.mjs&local_path=./nodejs/src/index.ts#OtlpTraceSinkController
+schema:
+  type: object
+  properties:
+    endpoint:
+      title: Collector endpoint
+      description: Full URL of the collector's OTLP/JSON traces endpoint (typically `…/v1/traces`).
+      type: string
+      x-telo-eval: compile
+    headers:
+      title: Headers
+      description: >-
+        Extra request headers, typically carrying credentials. Read these from
+        `secrets:` so their values are redacted from Telo's own log records.
+      type: object
+      additionalProperties:
+        type: string
+      x-telo-eval: compile
+    resourceAttributes:
+      title: Resource attributes
+      description: >-
+        OTel resource-level attributes attached to every exported batch.
+        `service.name` is required by OTLP; when unset it falls back to
+        `unknown_service:<executable>`.
+      type: object
+      x-telo-eval: compile
+    timeout:
+      title: Request timeout
+      description: How long a single export request may take before it is aborted.
+      type: string
+      pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
+      x-telo-eval: compile
+    buffer:
+      title: Buffer size
+      description: Maximum spans held before the drop policy applies.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
+    on_full:
+      title: On full
+      description: >-
+        What to do when the buffer saturates. `block` is rejected at load on a
+        single-threaded runtime rather than silently degraded.
+      type: string
+      enum: [block, drop_new, drop_old]
+      x-telo-eval: compile
+    flush_interval:
+      title: Flush interval
+      description: Maximum time a span may sit buffered before an export.
       type: string
       pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h)\\s*$"
       x-telo-eval: compile

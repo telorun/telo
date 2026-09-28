@@ -1,0 +1,25 @@
+# A sink kind whose instance is not the sink itself: listing it is refused.
+kind: Telo.Application
+metadata:
+  name: SinkContract
+imports:
+  Run: ../../../../../modules/run
+logging:
+  sinks:
+    - !ref hollow
+---
+kind: Telo.Definition
+metadata:
+  name: HollowSink
+capability: Telo.Sink
+extends: Telo.LogSink
+schema: { type: object }
+resources:
+  - kind: Run.Value
+    metadata: { name: body }
+    value: {}
+invoke: !ref body
+---
+kind: Self.HollowSink
+metadata:
+  name: hollow

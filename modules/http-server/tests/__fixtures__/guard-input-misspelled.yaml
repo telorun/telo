@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: GuardInputMisspelledFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: requireToken }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      authorization: { type: string }
+steps:
+  - name: pass
+    value: {}
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /x, method: GET }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+---
+# `authorisation` is not a key the guard's closed input declares.
+kind: Http.Server
+metadata: { name: server }
+port: 8080
+mounts:
+  - mount: !ref api
+    guard:
+      invoke: !ref requireToken
+      inputs:
+        authorisation: !cel "request.headers['authorization']"

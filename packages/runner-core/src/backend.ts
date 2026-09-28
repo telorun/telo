@@ -93,6 +93,18 @@ export interface WorkloadLaunch {
    *  credential boundary used to be structural (two pods) and is now a code
    *  invariant (containers in one pod). */
   agent?: ResolvedRunnerApp;
+  /** Tokens minted for this session, already injected into the env they belong
+   *  to, and reported by core as `RunnerEndpoint.token`. Retained with the rest
+   *  of the launch, so a resumed session keeps them. */
+  tokens?: WorkloadTokens;
+}
+
+/** A session's minted workload tokens, by where they are reported: `agent` on
+ *  the `running` status's `agent` endpoint, `endpoints` on every application
+ *  endpoint (a catalog app session's one workload). */
+export interface WorkloadTokens {
+  agent?: string;
+  endpoints?: string;
 }
 
 export interface BackendStartSpec extends WorkloadLaunch {

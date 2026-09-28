@@ -1,0 +1,82 @@
+kind: Telo.Library
+metadata:
+  name: Log
+  version: "0.1.0"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Observability]
+  description: >-
+    Write a structured diagnostic log record from a manifest: a startup warning, an
+    audit line, a milestone in a pipeline. Each call emits one record at a chosen
+    severity with a message and typed attributes, through the application's logging
+    pipeline — thresholds, redaction, trace correlation and every configured
+    destination apply as they do to the runtime's own records.
+exports:
+  kinds:
+    - Emit
+  resources:
+    - emit
+---
+kind: Telo.Definition
+metadata:
+  name: Emit
+  description: >-
+    Emits exactly one log record per call with the given severity, message and
+    attributes, stamped with the caller's trace ids when it runs inside a traced
+    call. Returns an empty object; a record below the configured threshold is
+    dropped, never an error.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/log.mjs&local_path=./nodejs/src/index.ts#Emit
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ level, message ]
+    examples:
+      - level: warn
+        message: The API is reachable without a token
+        attributes: { port: 8080 }
+    properties:
+      level:
+        type: string
+        enum: [ trace, debug, info, warn, error, fatal ]
+        description: Severity of the record.
+      message:
+        type: string
+        description: The record's human-readable headline.
+      attributes:
+        type: object
+        description: >-
+          Structured data carried on the record. Each value is a string, boolean,
+          integer, number, null, or a list or map of those.
+        additionalProperties: { $ref: "#/$defs/AnyValue" }
+    $defs:
+      AnyValue:
+        anyOf:
+          - type: string
+          - type: boolean
+          - type: integer
+          - type: number
+          - type: "null"
+          - type: array
+            items: { $ref: "#/$defs/AnyValue" }
+          - type: object
+            additionalProperties: { $ref: "#/$defs/AnyValue" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+---
+# Emitting takes no configuration, so one shared instance is all a consumer needs.
+kind: Self.Emit
+metadata:
+  name: emit
+  description: >-
+    Ready-made instance for writing one log record per call, referenced directly
+    instead of declaring one.

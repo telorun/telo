@@ -14,9 +14,10 @@ type HttpStaticResource = RuntimeResource & {
 };
 
 /** Serves a directory of static assets (a built SPA, plain HTML, images, …) as a
- *  Telo.Mount. Mirrors Http.Api's `register(app, prefix)` contract so it slots into
- *  Http.Server.mounts identically. Backed by @fastify/static, which handles MIME,
- *  ETag, conditional requests, and range requests. */
+ *  Telo.Mount. Takes the mount contract's `register(app, prefix)` so it slots into
+ *  Http.Server.mounts like Http.Api; it dispatches nothing, so it leaves the
+ *  request scope unused. Backed by @fastify/static, which handles MIME, ETag,
+ *  conditional requests, and range requests. */
 class HttpStatic implements ResourceInstance {
   private readonly root: string;
   private readonly index: string;

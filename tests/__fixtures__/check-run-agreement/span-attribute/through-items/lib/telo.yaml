@@ -1,0 +1,34 @@
+# A named shape whose mark the contract reaches through an array item: one
+# attribute per dispatch cannot hold every item's value.
+kind: Telo.Library
+metadata:
+  name: SpanAttributeThroughItemsLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose contract reaches a span attribute mark through an
+    array item.
+imports:
+  Run: ../../../../../../modules/run
+exports:
+  resources: [throughItems]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Step
+schema:
+  type: object
+  properties:
+    id: { type: string, x-telo-span-attribute: app.step.id }
+---
+kind: Run.Value
+metadata:
+  name: throughItems
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      steps:
+        type: array
+        items: !ref Step
+value: { ok: true }

@@ -4,6 +4,15 @@ import { logCompletion } from "./completion-log.js";
 import type { MessageContent } from "./content.js";
 import { tokenCounts, withTokenQuantity } from "./usage.js";
 import {
+  chatAttributes,
+  modelNameOf,
+  openAgentSpan,
+  openChatSpan,
+  settleFailure,
+  usageAttributes,
+  type AgentSpanIdentity,
+} from "./agent-spans.js";
+import {
   assembleTools,
   buildInitialMessages,
   dispatchToolCall,
@@ -100,80 +109,119 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
     // Carried across turns, opaque throughout.
     let providerState: unknown;
 
-    for (let step = 0; step < maxSteps; step++) {
-      ctx?.cancellation.throwIfCancelled();
-      const result = await model.invoke(
-        {
-          messages,
-          options: mergedOptions,
-          ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
-          // Replayed verbatim so a provider that keeps its reasoning
-          // server-side can pick the chain back up. This is what makes
-          // reasoning survive a tool loop rather than restarting at every
-          // turn; `ai` never looks inside it.
-          ...(providerState === undefined ? {} : { providerState }),
-        },
-        ctx,
-      );
-      last = result;
-      providerState = result.providerState;
-      // Converted before adding: a declared integer arrives as an int64, and
-      // `0 + 1n` is a TypeError rather than a sum.
-      const turnUsage = tokenCounts(result.usage);
-      usage.promptTokens += turnUsage.promptTokens;
-      usage.completionTokens += turnUsage.completionTokens;
-      usage.totalTokens += turnUsage.totalTokens;
-
-      const calls = result.toolCalls ?? [];
-      if (calls.length === 0) {
-        const total = withTokenQuantity(usage);
-        // The aggregate across every turn, which is what the run actually cost —
-        // a per-turn figure would understate an agent that looped eight times.
-        logCompletion(this.ctx.log, "Agent run finished", total, result.finishReason, {
-          "ai.agent.steps": steps.length,
-        });
-        return {
-          text: result.text,
-          usage: total,
-          finishReason: result.finishReason,
-          steps,
-        };
-      }
-
-      const normalized = calls.map(normalizeToolCall);
-      messages.push({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
-
-      const trace: StepTrace = { text: result.text ?? "", toolCalls: normalized, toolResults: [] };
-      for (const call of normalized) {
+    const agent: AgentSpanIdentity = { kind: "Ai.Agent", name };
+    const modelName = modelNameOf(model);
+    let calls = 0;
+    const runAttributes = () => ({ "ai.agent.steps": calls, ...usageAttributes(usage) });
+    const agentSpan = await openAgentSpan(this.ctx, ctx, agent);
+    try {
+      for (let step = 0; step < maxSteps; step++) {
         ctx?.cancellation.throwIfCancelled();
-        const record = await dispatchToolCall(call, dispatch, onToolError, label, ctx);
-        trace.toolResults.push(record);
-        messages.push({ role: "tool", content: record.content, toolCallId: call.id });
-      }
-      steps.push(trace);
-    }
+        calls += 1;
+        const chatSpan = await openChatSpan(this.ctx, agentSpan, agent, modelName);
+        let result: CompletionResult;
+        let turnUsage: Usage;
+        try {
+          result = await model.invoke(
+            {
+              messages,
+              options: mergedOptions,
+              ...(toolDefs.length > 0 ? { tools: toolDefs } : {}),
+              // Replayed verbatim so a provider that keeps its reasoning
+              // server-side can pick the chain back up. This is what makes
+              // reasoning survive a tool loop rather than restarting at every
+              // turn; `ai` never looks inside it.
+              ...(providerState === undefined ? {} : { providerState }),
+            },
+            chatSpan.context,
+          );
+          // Converted before adding: a declared integer arrives as an int64, and
+          // `0 + 1n` is a TypeError rather than a sum.
+          turnUsage = tokenCounts(result.usage);
+        } catch (err) {
+          await settleFailure(chatSpan, err);
+          throw err;
+        }
+        await chatSpan.settle("ok", { attributes: chatAttributes(turnUsage, result.finishReason) });
+        last = result;
+        providerState = result.providerState;
+        usage.promptTokens += turnUsage.promptTokens;
+        usage.completionTokens += turnUsage.completionTokens;
+        usage.totalTokens += turnUsage.totalTokens;
 
-    if (onMaxSteps === "throw") {
-      throw new InvokeError(
-        "ERR_AGENT_MAX_STEPS",
-        `Ai.Agent "${name}": did not converge within maxSteps=${maxSteps}.`,
-      );
+        const toolCalls = result.toolCalls ?? [];
+        if (toolCalls.length === 0) {
+          // A step is one model call, the answering one included.
+          steps.push({ text: result.text ?? "", toolCalls: [], toolResults: [] });
+          const total = withTokenQuantity(usage);
+          // The aggregate across every turn, which is what the run actually cost —
+          // a per-turn figure would understate an agent that looped eight times.
+          logCompletion(this.ctx.log, "Agent run finished", total, result.finishReason, {
+            "ai.agent.steps": calls,
+          });
+          await agentSpan.settle("ok", { attributes: runAttributes() });
+          return {
+            text: result.text,
+            usage: total,
+            finishReason: result.finishReason,
+            steps,
+          };
+        }
+
+        const normalized = toolCalls.map(normalizeToolCall);
+        messages.push({ role: "assistant", content: result.text ?? "", toolCalls: normalized });
+
+        const trace: StepTrace = { text: result.text ?? "", toolCalls: normalized, toolResults: [] };
+        for (const call of normalized) {
+          ctx?.cancellation.throwIfCancelled();
+          const record = await dispatchToolCall(
+            call,
+            dispatch,
+            onToolError,
+            label,
+            this.ctx,
+            agent,
+            agentSpan.context,
+          );
+          // The buffered trace keeps the record the model saw; the tool's own
+          // result travels on the streaming agent's part only.
+          trace.toolResults.push({
+            toolCallId: record.toolCallId,
+            name: record.name,
+            content: record.content,
+            ...(record.error ? { error: true } : {}),
+          });
+          messages.push({ role: "tool", content: record.content, toolCallId: call.id });
+        }
+        steps.push(trace);
+      }
+
+      if (onMaxSteps === "throw") {
+        throw new InvokeError(
+          "ERR_AGENT_MAX_STEPS",
+          `Ai.Agent "${name}": did not converge within maxSteps=${maxSteps}.`,
+        );
+      }
+      // `onMaxSteps: "return"` — the run is handed back as an ordinary result, so
+      // nothing in the returned value marks that the agent ran out of steps rather
+      // than finishing. `warn`, because the answer is a truncation.
+      const total = withTokenQuantity(usage);
+      this.ctx.log.warn("Agent stopped at maxSteps without converging; returning the last turn", {
+        "ai.agent.max_steps": maxSteps,
+        "gen_ai.usage.input_tokens": total.promptTokens,
+        "gen_ai.usage.output_tokens": total.completionTokens,
+      });
+      await agentSpan.settle("ok", { attributes: runAttributes() });
+      return {
+        text: last?.text ?? "",
+        usage: total,
+        finishReason: last?.finishReason ?? "tool-calls",
+        steps,
+      };
+    } catch (err) {
+      await settleFailure(agentSpan, err, runAttributes());
+      throw err;
     }
-    // `onMaxSteps: "return"` — the run is handed back as an ordinary result, so
-    // nothing in the returned value marks that the agent ran out of steps rather
-    // than finishing. `warn`, because the answer is a truncation.
-    const total = withTokenQuantity(usage);
-    this.ctx.log.warn("Agent stopped at maxSteps without converging; returning the last turn", {
-      "ai.agent.max_steps": maxSteps,
-      "gen_ai.usage.input_tokens": total.promptTokens,
-      "gen_ai.usage.output_tokens": total.completionTokens,
-    });
-    return {
-      text: last?.text ?? "",
-      usage: total,
-      finishReason: last?.finishReason ?? "tool-calls",
-      steps,
-    };
   }
 
   /** Assemble the tool set lazily on first invoke and cache it (list_changed refresh

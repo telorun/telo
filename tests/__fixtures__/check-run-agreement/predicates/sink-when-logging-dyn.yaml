@@ -1,0 +1,14 @@
+# A log sink's `when` that produces a string, not a boolean. The value is `dyn`, so only the runtime can refuse it.
+kind: Telo.Application
+metadata:
+  name: SinkWhenLoggingDyn
+  version: 1.0.0
+variables:
+  settings:
+    env: SETTINGS
+    type: object
+    default: { flag: "false" }
+logging:
+  sinks:
+    - sink: { kind: Telo.ConsoleSink }
+      when: !cel "variables.settings.flag"

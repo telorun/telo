@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedTracing
+  version: 1.0.0
+  description: |
+    A valid Telo application that exports its trace spans. This kernel does not
+    implement `tracing:`, and running it with no span reaching the declared sink
+    would be worse than refusing — so the load must fail naming the field.
+imports:
+  Console: ../../../../../modules/console
+tracing:
+  sinks:
+    - kind: Telo.LogTraceSink
+targets:
+  - invoke: !ref Console.writeLine
+    inputs:
+      output: "never printed: the load refuses the tracing block"

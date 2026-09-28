@@ -404,6 +404,42 @@ const IMPORT_LOGGING_SCHEMA = {
   additionalProperties: false,
 };
 
+/** A `logging.sinks` / `tracing.sinks` list. An entry is a sink — `!ref` or an
+ *  inline declaration — or `{ sink, when }`, which attaches the sink only while
+ *  `when` holds. The kernel attaches exactly the instances a list names; a sink
+ *  is written to directly, never dispatched, so from the Application's side it is
+ *  held, not called. `x-telo-inline` opts both sink positions into inline
+ *  extraction — see normalize-inline-resources.ts. */
+function sinkListSchema(sinkKind: string): Record<string, unknown> {
+  const sink = {
+    type: "object",
+    // Resolved reference or inline declaration — both carry `kind`, which is
+    // what keeps a malformed `{ sink, when }` from passing as a sink.
+    required: ["kind"],
+    "x-telo-ref": { kind: sinkKind, use: "dependency" },
+    "x-telo-inline": true,
+  };
+  return {
+    type: "array",
+    items: {
+      anyOf: [
+        sink,
+        {
+          type: "object",
+          required: ["sink"],
+          properties: {
+            sink,
+            // Resolved once at load with the rest of the block; `false` leaves
+            // the sink created and unattached.
+            when: { type: "boolean", default: true },
+          },
+          additionalProperties: false,
+        },
+      ],
+    },
+  };
+}
+
 /** The root Application's `logging:` block — the scope fields plus `sinks`.
  *
  *  `x-telo-eval: compile` covers the whole block: every value resolves once at
@@ -422,18 +458,24 @@ const ROOT_LOGGING_SCHEMA = {
     ...LOGGING_SCOPE_PROPERTIES,
     // A list rather than a keyed map because sinks are root-only and therefore
     // never merged; with no merge to disambiguate, a list matches how Telo
-    // spells every other ref-or-inline collection. `x-telo-inline` opts this one
-    // slot into inline-resource extraction — see normalize-inline-resources.ts.
-    sinks: {
-      type: "array",
-      items: {
-        type: "object",
-        // A sink is written to directly by the logging pipeline, never through
-        // `ctx.invoke` — so from the Application's side it is held, not called.
-        "x-telo-ref": { kind: "Telo.LogSink", use: "dependency" },
-        "x-telo-inline": true,
-      },
-    },
+    // spells every other ref-or-inline collection.
+    sinks: sinkListSchema("Telo.LogSink"),
+  },
+  additionalProperties: false,
+};
+
+/** The root Application's `tracing:` block — where finished spans go
+ *  (`kernel/specs/tracing.md`). Root-only for the reason `logging.sinks` is:
+ *  exporting spans is process-level I/O, and turning it on is the application's
+ *  decision, never an imported library's. Resolved once at load, like
+ *  `logging:`, so an entry's `when` reads `variables` / `secrets` / `ports`. */
+const ROOT_TRACING_SCHEMA = {
+  type: "object",
+  "x-telo-eval": "compile",
+  "x-telo-unbound-calls":
+    "the Application's tracing: block is resolved when the application is loaded, before any resource — any function among them — has been created",
+  properties: {
+    sinks: sinkListSchema("Telo.TraceSink"),
   },
   additionalProperties: false,
 };
@@ -548,6 +590,32 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         encoding: { type: "string", enum: ["json", "pretty"] },
       },
       required: ["destination"],
+      additionalProperties: false,
+    },
+  },
+  // The abstract every trace sink kind extends: where finished spans go. The
+  // same `Telo.Sink` capability as a log sink, with a span as the record.
+  {
+    kind: "Telo.Abstract",
+    metadata: { name: "TraceSink", module: "Telo" },
+    capability: "Telo.Sink",
+    schema: {
+      type: "object",
+      additionalProperties: true,
+    },
+  },
+  // Each finished span as one structured record through the logging pipeline —
+  // tracing with no collector, read wherever the logs already go.
+  {
+    kind: "Telo.Definition",
+    metadata: { name: "LogTraceSink", module: "Telo" },
+    capability: "Telo.Sink",
+    extends: "Telo.TraceSink",
+    schema: {
+      type: "object",
+      properties: {
+        level: { type: "string", enum: LOG_LEVEL_ENUM, default: "info", "x-telo-eval": "compile" },
+      },
       additionalProperties: false,
     },
   },
@@ -947,7 +1015,12 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
                       },
                     ],
                   },
-                  when: { type: "string" },
+                  when: {
+                    title: "When",
+                    description: "CEL guard — the target runs only when it evaluates true.",
+                    "x-telo-topology-role": "predicate",
+                    type: "boolean",
+                  },
                 },
                 additionalProperties: false,
               },
@@ -1103,6 +1176,9 @@ export const KERNEL_BUILTINS: ResourceDefinition[] = [
         // CLI flag — so a level derived from the host environment goes through a
         // `variables:` entry read with `!cel`. See kernel/specs/logging.md §12.
         logging: ROOT_LOGGING_SCHEMA,
+        // Trace export: at least one attached sink turns tracing on. See
+        // kernel/specs/tracing.md.
+        tracing: ROOT_TRACING_SCHEMA,
         // The runtime range this module is verified against. See
         // `analyzer/nodejs/src/requires-block.ts`.
         requires: REQUIRES_SCHEMA,

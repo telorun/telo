@@ -1266,6 +1266,21 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/log/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/mcp-client/nodejs:
     dependencies:
       '@modelcontextprotocol/sdk':
@@ -1294,6 +1309,9 @@ importers:
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
     devDependencies:
+      '@telorun/http-dispatch':
+        specifier: workspace:*
+        version: link:../../http-dispatch/nodejs
       '@telorun/sdk':
         specifier: workspace:*
         version: link:../../../sdk/nodejs
@@ -1309,6 +1327,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/multipart/nodejs:
     devDependencies:
@@ -1581,6 +1602,21 @@ importers:
       cron-parser:
         specifier: ^5.6.2
         version: 5.6.2
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/secret-scan/nodejs:
     devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
