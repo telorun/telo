@@ -1,0 +1,29 @@
+{
+  "name": "Controller.SinkClose",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Release the sink's destination, after its final flush.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Closed.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

@@ -1,0 +1,37 @@
+{
+  "name": "Controller.Snapshot",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Read the instance's configured state.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The configured state, as a typed frame. Observed state is pushed with Status.Set instead.",
+    "type": "object",
+    "properties": {
+      "state": {
+        "description": "Configured state."
+      }
+    },
+    "required": [
+      "state"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

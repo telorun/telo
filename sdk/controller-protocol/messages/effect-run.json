@@ -1,0 +1,68 @@
+{
+  "name": "Effect.Run",
+  "direction": "controller-to-kernel",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Execute a chain in place against the resource's current frame — the imperative door, for an allocation whose lifetime is an operation rather than the resource.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "chain": {
+        "description": "The chain, by the id the controller end minted for it.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "description": "One step's reason.",
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "steps"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "instance",
+      "chain"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The last step's result.",
+    "type": "object",
+    "properties": {
+      "result": {
+        "description": "The chain's result."
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_EFFECT_SCOPE_CLOSED"
+  ],
+  "synchronous": false,
+  "reentrant": true
+}

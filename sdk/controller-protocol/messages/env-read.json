@@ -1,0 +1,39 @@
+{
+  "name": "Env.Read",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Read one environment entry in this resource's module scope. One name at a time rather than a map handed over at creation: a key the application binds to a variable or a secret reads as absent, and nothing a controller never asks for crosses.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "name"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The value, or nothing when the name is not bound in this scope.",
+    "type": "object",
+    "properties": {
+      "value": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": true,
+  "reentrant": false
+}

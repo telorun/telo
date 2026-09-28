@@ -1,0 +1,125 @@
+{
+  "name": "Ref.Resolve",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Resolve a reference slot's value to a live instance. `expects` names the contract the slot wants, so a mis-wire says what was missing.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "value": {
+        "description": "The slot's value: a reference sentinel, an inline definition, or a normalized kind/name pair."
+      },
+      "expects": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "instance",
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "entryPoint": {
+        "description": "A capability entry point a controller implements.",
+        "type": "string",
+        "enum": [
+          "create",
+          "init",
+          "snapshot",
+          "run",
+          "invoke",
+          "provide",
+          "call",
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
+        ]
+      },
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "The target's handle, and the entry points reachable through it. Where the target's controller is bound in the same carrier instance and realm an implementation MAY hand over the live object; otherwise the handle is a proxy exposing exactly these entry points and nothing else.",
+    "type": "object",
+    "properties": {
+      "target": {
+        "$ref": "#/definitions/resourceHandle"
+      },
+      "entryPoints": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/entryPoint"
+        }
+      },
+      "local": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "target",
+      "entryPoints",
+      "local"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": true,
+  "reentrant": false
+}

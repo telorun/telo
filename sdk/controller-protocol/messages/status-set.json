@@ -1,0 +1,37 @@
+{
+  "name": "Status.Set",
+  "direction": "controller-to-kernel",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Report the resource's observed state. Replaces rather than merges, is sticky until teardown, and is illegal before the resource has started.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "status": {
+        "description": "The observed state, validated against the kind's status block."
+      }
+    },
+    "required": [
+      "instance",
+      "status"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Published.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_OBSERVED_STATE_BEFORE_START",
+    "ERR_OBSERVED_STATE_UNDECLARED",
+    "ERR_OBSERVED_STATE_INVALID"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

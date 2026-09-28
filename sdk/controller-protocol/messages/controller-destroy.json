@@ -1,0 +1,29 @@
+{
+  "name": "Controller.Destroy",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Release the instance. Every frame has already unwound; nothing is left to revert.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Released.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

@@ -1,0 +1,46 @@
+{
+  "name": "Channel.Close",
+  "direction": "either",
+  "spec": "8. Channels",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "End the channel. An `error` closes it abnormally — the reader sees a failure rather than end-of-input, which is what tells a truncated stream from a finished one.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "channelId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "error": {
+        "description": "Why the channel ended abnormally.",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "session",
+      "channelId"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

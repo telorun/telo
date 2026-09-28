@@ -1,0 +1,64 @@
+{
+  "name": "Controller.Init",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Initialize the instance. It may allocate; it performs no observable I/O.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The chain init() returned, by the id the controller end minted for it, with one entry per step in order. Absent when the controller returned none.",
+    "type": "object",
+    "properties": {
+      "chain": {
+        "description": "A lazy chain the kernel executes step by step with Effect.Perform.",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "description": "One step's reason, as it appears in a recovery diagnostic.",
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "steps"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_EFFECT_SCOPE_CLOSED"
+  ],
+  "synchronous": false,
+  "reentrant": true
+}

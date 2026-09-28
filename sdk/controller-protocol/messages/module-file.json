@@ -1,0 +1,45 @@
+{
+  "name": "Module.File",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Resolve a module-relative reference against the module that declared this resource, and return it as a URI. A path the resource's author wrote resolves against the author's module.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "relative": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "relative"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The absolute URI.",
+    "type": "object",
+    "properties": {
+      "uri": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*:"
+      }
+    },
+    "required": [
+      "uri"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_MODULE_FILES_UNAVAILABLE"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

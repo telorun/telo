@@ -1,0 +1,34 @@
+{
+  "name": "Hold.Release",
+  "direction": "controller-to-kernel",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Release a hold. Idempotent.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "hold": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "hold"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Released.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

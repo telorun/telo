@@ -1,0 +1,62 @@
+{
+  "name": "Dispatch.DetachSettle",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The detached task ended. A failure is routed to the event bus — there is no caller to raise it to — and the drain stops waiting for this task either way.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "task": {
+        "type": "string",
+        "minLength": 1
+      },
+      "outcome": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "failed"
+        ]
+      },
+      "error": {
+        "description": "Present when the outcome is failed.",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "description": "Structured detail."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "instance",
+      "task",
+      "outcome"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Recorded.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

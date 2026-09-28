@@ -1,0 +1,48 @@
+{
+  "name": "Session.Open",
+  "direction": "kernel-to-controller",
+  "spec": "4. Session",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Open one kernel instance's session on this carrier instance. Every later envelope of that instance carries this id.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "application": {
+        "description": "The application the session runs.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "session"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Accepted. A session the controller end cannot serve is refused instead.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_CONTROLLER_HOST_INCOMPATIBLE"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

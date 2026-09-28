@@ -1,0 +1,106 @@
+{
+  "name": "Session.Hello",
+  "direction": "kernel-to-controller",
+  "spec": "4. Session",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The kernel end opens a carrier instance, naming the protocol generation it speaks.",
+    "type": "object",
+    "properties": {
+      "generation": {
+        "type": "integer",
+        "minimum": 4
+      },
+      "kernel": {
+        "description": "The kernel end's own identity.",
+        "type": "object",
+        "properties": {
+          "telo": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+"
+          },
+          "runtime": {
+            "description": "Name and version of the runtime the kernel runs on.",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "telo",
+          "runtime"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "generation",
+      "kernel"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The controller end answers with the generation it speaks and its own identity.",
+    "type": "object",
+    "properties": {
+      "generation": {
+        "type": "integer",
+        "minimum": 4
+      },
+      "controller": {
+        "description": "The controller end's identity.",
+        "type": "object",
+        "properties": {
+          "telo": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+"
+          },
+          "runtime": {
+            "description": "Name and version of the runtime the controller end runs on.",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "telo",
+          "runtime"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "generation",
+      "controller"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_CONTROLLER_HOST_INCOMPATIBLE"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}

@@ -1,0 +1,79 @@
+{
+  "name": "Controller.Bind",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Obtain the controller a kind names, by its PURL candidate, so the kernel learns what it implements and what it needs.",
+    "type": "object",
+    "properties": {
+      "controller": {
+        "type": "string",
+        "pattern": "^pkg:"
+      },
+      "kind": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+      }
+    },
+    "required": [
+      "controller",
+      "kind"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "entryPoint": {
+        "description": "A capability entry point a controller implements.",
+        "type": "string",
+        "enum": [
+          "create",
+          "init",
+          "snapshot",
+          "run",
+          "invoke",
+          "provide",
+          "call",
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
+        ]
+      }
+    },
+    "description": "What the controller implements, and the controller-to-kernel operations it needs while inside one of them.",
+    "type": "object",
+    "properties": {
+      "controller": {
+        "type": "string",
+        "minLength": 1
+      },
+      "entryPoints": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/entryPoint"
+        },
+        "minItems": 1
+      },
+      "requires": {
+        "description": "Message names this controller may send. One the running generation does not name makes the controller unhostable; the refusal is raised at Controller.Create.",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z]*\\.[A-Z][A-Za-z]*$"
+        }
+      }
+    },
+    "required": [
+      "controller",
+      "entryPoints"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

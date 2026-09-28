@@ -1,0 +1,191 @@
+{
+  "name": "Controller.Create",
+  "direction": "kernel-to-controller",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "refIdentity": {
+        "description": "Where an instance was declared: its kind, its name, and the declaration site.",
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "origin": {
+            "type": "object",
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "resourceHandle": {
+        "description": "A live resource instance, by the id the kernel minted for it.",
+        "type": "object",
+        "required": [
+          "id",
+          "ref"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "$ref": "#/definitions/refIdentity"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "Build one instance from its resource manifest. The manifest is a typed frame whose unevaluated CEL nodes are compiled-value placeholders (§7.4).",
+    "type": "object",
+    "properties": {
+      "controller": {
+        "type": "string",
+        "minLength": 1
+      },
+      "instance": {
+        "$ref": "#/definitions/resourceHandle"
+      },
+      "manifest": {
+        "description": "The resource's own document."
+      },
+      "ownerPrefix": {
+        "type": "string"
+      },
+      "module": {
+        "description": "The module that declared the resource, and the module that declares the controller.",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "source": {
+            "type": "string"
+          },
+          "alias": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "controllerModule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "entryUrl": {
+        "type": "string"
+      },
+      "inputType": {
+        "description": "The resolved inputType schema, or absent when the kind declares none."
+      },
+      "outputType": {
+        "description": "The resolved outputType schema, or absent when the kind declares none."
+      }
+    },
+    "required": [
+      "controller",
+      "instance",
+      "manifest",
+      "ownerPrefix",
+      "module"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "entryPoint": {
+        "description": "A capability entry point a controller implements.",
+        "type": "string",
+        "enum": [
+          "create",
+          "init",
+          "snapshot",
+          "run",
+          "invoke",
+          "provide",
+          "call",
+          "destroy",
+          "sink.write",
+          "sink.flush",
+          "sink.flushSync",
+          "sink.close"
+        ]
+      },
+      "severity": {
+        "description": "An OpenTelemetry severity number (kernel/specs/logging.md §5.1).",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 24
+      }
+    },
+    "description": "The instance is built. `entryPoints` narrows Controller.Bind's list to what this instance actually carries.",
+    "type": "object",
+    "properties": {
+      "entryPoints": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/entryPoint"
+        }
+      },
+      "teardownPriority": {
+        "type": "integer"
+      },
+      "sink": {
+        "description": "Present when the instance is a Telo.Sink: its identity, its fan-out level and whether it can be drained synchronously.",
+        "type": "object",
+        "properties": {
+          "sinkId": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/definitions/severity"
+          },
+          "syncFlushable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sinkId",
+          "level",
+          "syncFlushable"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "entryPoints"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_CONTROLLER_HOST_INCOMPATIBLE",
+    "ERR_CONTRACT_UNRESOLVABLE"
+  ],
+  "synchronous": false,
+  "reentrant": true
+}

@@ -1,0 +1,46 @@
+{
+  "name": "Log.Write",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "severity": {
+        "description": "An OpenTelemetry severity number (kernel/specs/logging.md §5.1).",
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 24
+      }
+    },
+    "description": "Emit one log record. The kernel stamps the resource's identity, its module, its import-alias scope and the active span's ids; a controller never passes those.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "severity": {
+        "$ref": "#/definitions/severity"
+      },
+      "message": {
+        "type": "string"
+      },
+      "attributes": {
+        "description": "Structured attributes."
+      },
+      "error": {
+        "description": "An error value, as kernel/specs/logging.md §4.2 declares it."
+      }
+    },
+    "required": [
+      "instance",
+      "severity",
+      "message"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

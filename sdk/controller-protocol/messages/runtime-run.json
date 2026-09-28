@@ -1,0 +1,92 @@
+{
+  "name": "Runtime.Run",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Start a child manifest as its own session, isolated from the caller's. Values for the child's declared inputs are supplied by the name the child declares, never by the environment variable it binds them to.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1
+      },
+      "env": {
+        "description": "Host environment the child binds from. Absent means the caller's own.",
+        "type": "object",
+        "additionalProperties": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "inputs": {
+        "description": "Values for the child's declared inputs, keyed by declaration name.",
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object"
+          },
+          "secrets": {
+            "type": "object"
+          },
+          "ports": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "instance",
+      "source"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The child's run id and its three channels. The run resolves once the child has started, not once it has finished.",
+    "type": "object",
+    "properties": {
+      "run": {
+        "type": "string",
+        "minLength": 1
+      },
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "stdin": {
+        "type": "string",
+        "minLength": 1
+      },
+      "stdout": {
+        "type": "string",
+        "minLength": 1
+      },
+      "stderr": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "run",
+      "session",
+      "stdin",
+      "stdout",
+      "stderr"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": true
+}

@@ -1,0 +1,47 @@
+{
+  "name": "Value.Decode",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Read a value that arrived from outside Telo as the schema it was promised says it holds: every slot declaring an instance value type has its text decoded, and every declared scalar comes back in its CEL form.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "value": {
+        "description": "The value as it arrived."
+      },
+      "schema": {
+        "description": "The schema it was promised against."
+      }
+    },
+    "required": [
+      "instance",
+      "value",
+      "schema"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The decoded value.",
+    "type": "object",
+    "properties": {
+      "value": {
+        "description": "The decoded value."
+      }
+    },
+    "required": [
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_INPUT_INVALID"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

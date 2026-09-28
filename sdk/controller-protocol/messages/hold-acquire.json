@@ -1,0 +1,41 @@
+{
+  "name": "Hold.Acquire",
+  "direction": "controller-to-kernel",
+  "spec": "5. Lifecycle",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Hold the kernel open. The application exits at zero holds.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "reason": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "instance"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The hold's id. Releasing it is the caller's, placed in a chain — the kernel registers nothing for it.",
+    "type": "object",
+    "properties": {
+      "hold": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "hold"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

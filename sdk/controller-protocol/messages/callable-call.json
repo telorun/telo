@@ -1,0 +1,43 @@
+{
+  "name": "Callable.Call",
+  "direction": "kernel-to-controller",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Call a Telo.Callable synchronously, with its arguments as a typed frame keyed by parameter name. Served while the controller end is blocked on another synchronous request, which is what lets a module function appear inside an expression the kernel is evaluating for it.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "args": {
+        "description": "The arguments, keyed by parameter name."
+      }
+    },
+    "required": [
+      "instance",
+      "args"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The result, as a typed frame.",
+    "type": "object",
+    "properties": {
+      "result": {
+        "description": "The result."
+      }
+    },
+    "required": [
+      "result"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_FUNCTION_FAILED"
+  ],
+  "synchronous": true,
+  "reentrant": true
+}

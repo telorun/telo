@@ -1,0 +1,39 @@
+{
+  "name": "Channel.Data",
+  "direction": "either",
+  "spec": "8. Channels",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "One chunk. This is the protocol's only data frame: the chunk is the frame's trailing bytes rather than a member of this body, so a stream is not inflated through the typed frame.",
+    "type": "object",
+    "properties": {
+      "session": {
+        "type": "string",
+        "minLength": 1
+      },
+      "channelId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "seq": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "byteLength": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "session",
+      "channelId",
+      "seq",
+      "byteLength"
+    ],
+    "additionalProperties": false
+  },
+  "response": null,
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

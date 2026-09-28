@@ -1,0 +1,73 @@
+{
+  "name": "Schema.Check",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Validate a value against an already-compiled validator.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "validator": {
+        "type": "string",
+        "minLength": 1
+      },
+      "value": {
+        "description": "The value."
+      }
+    },
+    "required": [
+      "instance",
+      "validator",
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+      "issue": {
+        "description": "One validation refusal: where it is, and why.",
+        "type": "object",
+        "required": [
+          "path",
+          "message"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "description": "Whether the value is valid, and why not when it is not. A caller asking the question gets an answer; a caller demanding validity uses Schema.Validate.",
+    "type": "object",
+    "properties": {
+      "valid": {
+        "type": "boolean"
+      },
+      "issues": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/issue"
+        }
+      }
+    },
+    "required": [
+      "valid"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_INPUT_INVALID"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

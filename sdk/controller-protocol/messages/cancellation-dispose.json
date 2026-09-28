@@ -1,0 +1,34 @@
+{
+  "name": "Cancellation.Dispose",
+  "direction": "controller-to-kernel",
+  "spec": "6. Invocation",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Release a pending deadline and the source's subscribers without cancelling. Idempotent.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "source": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "source"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Disposed.",
+    "type": "object",
+    "additionalProperties": false
+  },
+  "errors": [],
+  "synchronous": false,
+  "reentrant": false
+}

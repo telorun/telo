@@ -1,0 +1,45 @@
+{
+  "name": "Native.File",
+  "direction": "controller-to-kernel",
+  "spec": "9. Host facilities",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Resolve a platform-specific file by the logical name a native entry declares. The first entry of that name, in declaration order, whose platform tuple matches the host wins.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "instance",
+      "name"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The file's URI.",
+    "type": "object",
+    "properties": {
+      "uri": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*:"
+      }
+    },
+    "required": [
+      "uri"
+    ],
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_NATIVE_FILE_UNAVAILABLE"
+  ],
+  "synchronous": false,
+  "reentrant": false
+}
