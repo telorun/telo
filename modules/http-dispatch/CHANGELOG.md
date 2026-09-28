@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-09-28
+### Added
+* RequestScope and RequestTrace: the request scope an HTTP transport hands every mount as the third argument of register(app, prefix, requestScope), giving each request's span context and a way to report the error that decided the response.
+
 ## 0.13.1 - 2026-09-19
 ### Fixed
 * A response header built from CEL is accepted again. Header values were typed as strings, so a computed one — Retry-After from a rate limiter, Location from a created id — arrived as a compiled CEL object and the route was refused at boot with a message about the header rather than about CEL. The dispatcher already expanded them; only the validation disagreed.

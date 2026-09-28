@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-09-28
+### Added
+* OTLP.TraceSink exports the runtime's finished trace spans to an OpenTelemetry collector's traces endpoint as OTLP/JSON, with OTLP.Sink's configuration (endpoint, headers, resourceAttributes, timeout, buffer, on_full, flush_interval). List it in the root Application's tracing.sinks, as a sink or as { sink, when } to attach it only under a startup condition. Both sinks now expose the sink contract on their instance and attach nothing themselves: the kernel attaches exactly the sinks logging.sinks / tracing.sinks name, so an OTLP.Sink declared but not listed receives no record. The module now requires telo >=0.104.0, the release that carries trace export and kernel-side sink attachment.
+
 ## 0.5.0 - 2026-08-23
 ### Added
 * Controllers return their effects from `init()` / `run()` instead of implementing `teardown()`: each allocation is written beside the inverse that undoes it, and the runtime unwinds them last-in-first-out. A failure part-way through startup now recovers what it already allocated — a bound port releases the kernel hold and unregisters the routes, a connection that fails its health check destroys its pool — and the retry starts from a freshly constructed resource. Declares `requires: telo: '>=0.82.0'`, since an older runtime discards what a controller returns and would allocate nothing.
