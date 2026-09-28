@@ -1,0 +1,126 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlSqliteSuite
+  version: 1.0.0
+  description: |
+    The graph operation suite on an in-memory SQLite database: every operation and
+    every code it throws, the cascade a node deletion runs through the tables'
+    foreign keys, a traversal through a cycle, and a rolled-back transaction.
+imports:
+  Suite:
+    source: ./__fixtures__/graph-suite
+    resources:
+      connection: !ref db
+      store: !ref kb
+      person: !ref person
+      document: !ref document
+      knows: !ref knows
+      authored: !ref authored
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  GraphSql: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.nodeWrites
+  - !ref Suite.nodeReads
+  - !ref Suite.relationshipWrites
+  - !ref Suite.relationshipReads
+  - !ref Suite.traversals
+  - !ref Suite.deletions
+  - !ref Suite.rollback
+  - !ref Suite.computedInputs
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  id: { type: text, primaryKey: true }
+  title: { type: text }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Table
+metadata: { name: authoredTable }
+table: authored
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+  role: { type: text }
+indexes:
+  authoredPair: { columns: [author, document], unique: true }
+foreignKeys:
+  authoredAuthor:
+    columns: [author]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  authoredDocument:
+    columns: [document]
+    references: { table: !ref documents, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]

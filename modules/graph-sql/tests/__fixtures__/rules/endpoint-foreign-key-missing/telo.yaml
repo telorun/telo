@@ -1,0 +1,46 @@
+# A relationship type whose target key does not cascade, so deleting a node
+# would be refused, or leave a relationship pointing at nothing.
+kind: Telo.Library
+metadata:
+  name: EndpointForeignKeyMissing
+imports:
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../..
+exports:
+  resources: [knows]
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

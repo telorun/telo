@@ -1,0 +1,25 @@
+# A key of the wrong type for the node type's key column, written as a literal.
+kind: Telo.Application
+metadata:
+  name: WrongKeyType
+include:
+  - ../graph-model.yaml
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphSql: ../../..
+  Run: ../../../../run
+targets:
+  - !ref appSchema
+  - !ref read
+---
+kind: Run.Sequence
+metadata: { name: read }
+steps:
+  - name: get
+    invoke:
+      kind: Graph.GetNode
+      store: !ref kb
+      node: !ref person
+    inputs: { key: 7 }

@@ -1,0 +1,22 @@
+# A node type keyed by a column that identifies no row: not the primary key,
+# and not unique.
+kind: Telo.Library
+metadata:
+  name: NodeKeyInvalid
+imports:
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../..
+exports:
+  resources: [person]
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: name

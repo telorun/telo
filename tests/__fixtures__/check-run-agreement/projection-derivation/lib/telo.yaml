@@ -1,0 +1,357 @@
+# Projections derived through references that cannot be resolved, one per
+# refusal. This library's own `telo check` reports each; a consumer dispatching
+# the exported instance is silent statically, and the kernel refuses the
+# contract when the instance is created.
+kind: Telo.Library
+metadata:
+  name: ProjectionAgreementLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [secondHop, cycle, unknownEntry, computedEntry, unsetSelector, unknownKey, twoProjections, kindPick, dataShaped, relay]
+---
+kind: Telo.Definition
+metadata:
+  name: Shape
+capability: Telo.Provider
+x-telo-schema-projection:
+  entries: /fields
+  key: type
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type:
+            type: string
+            enum: [text]
+            x-telo-schema-map:
+              text: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+# Derives its projection from the shape it references.
+kind: Telo.Definition
+metadata:
+  name: Node
+capability: Telo.Provider
+x-telo-schema-projection-from: /shape
+schema:
+  type: object
+  properties:
+    shape:
+      x-telo-ref: { kind: Self.Shape, use: schema }
+    key: { type: string, x-telo-eval: compile }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+# Derives its projection from itself, so the derivation never ends.
+kind: Telo.Definition
+metadata:
+  name: Mirror
+capability: Telo.Provider
+x-telo-schema-projection-from: ""
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+# Two answers to what a declaration projects to.
+kind: Telo.Definition
+metadata:
+  name: Both
+capability: Telo.Provider
+x-telo-schema-projection-from: /shape
+x-telo-schema-projection:
+  entries: /fields
+  key: type
+schema:
+  type: object
+  properties:
+    shape:
+      x-telo-ref: { kind: Self.Shape, use: schema }
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type: { type: string, x-telo-schema-map: { text: { type: string } } }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+# A declaration cannot project to one entry.
+kind: Telo.Definition
+metadata:
+  name: Picky
+capability: Telo.Provider
+x-telo-schema-projection-from: { from: /shape, pick: /key }
+schema:
+  type: object
+  properties:
+    shape:
+      x-telo-ref: { kind: Self.Shape, use: schema }
+    key: { type: string }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Write
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    row: { x-telo-schema-projection-from: /node }
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: [Self.Node, Self.Mirror, Self.Both, Self.Picky, Self.Relay], use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+# Reaches the shape through the node its slot references.
+kind: Telo.Definition
+metadata:
+  name: Reach
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    fields: { x-telo-schema-projection-from: /node/shape }
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+# Derives its projection from the node it references — exported, over an
+# internal node.
+kind: Telo.Definition
+metadata:
+  name: Relay
+capability: Telo.Provider
+x-telo-schema-projection-from: /node
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: {}
+provide: !ref body
+---
+# `meta` is plain data, whatever it looks like: a pointer never continues
+# through it.
+kind: Telo.Definition
+metadata:
+  name: Loose
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    row: { x-telo-schema-projection-from: /meta }
+schema:
+  type: object
+  properties:
+    meta: { type: object }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Pick
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    key: { x-telo-schema-projection-from: { from: /node, pick: /node/key } }
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+# `pick` points at a field the node does not carry, so it names no entry.
+kind: Telo.Definition
+metadata:
+  name: Unset
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    key: { x-telo-schema-projection-from: { from: /node, pick: /node/missing } }
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Sloppy
+capability: Telo.Invocable
+inputType:
+  type: object
+  properties:
+    key: { x-telo-schema-projection-from: { from: /node, pikc: /node/key } }
+schema:
+  type: object
+  properties:
+    node:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: !cel "inputs"
+invoke: !ref body
+---
+kind: Self.Shape
+metadata:
+  name: users
+fields:
+  id: { type: text }
+---
+# The second hop names nothing: this node references no shape.
+kind: Self.Node
+metadata:
+  name: shapeless
+---
+kind: Self.Reach
+metadata:
+  name: secondHop
+node: !ref shapeless
+---
+kind: Self.Mirror
+metadata:
+  name: mirror
+---
+kind: Self.Write
+metadata:
+  name: cycle
+node: !ref mirror
+---
+kind: Self.Node
+metadata:
+  name: misnamed
+shape: !ref users
+key: identifier
+---
+kind: Self.Pick
+metadata:
+  name: unknownEntry
+node: !ref misnamed
+---
+kind: Self.Node
+metadata:
+  name: computed
+shape: !ref users
+key: !cel "'i' + 'd'"
+---
+kind: Self.Pick
+metadata:
+  name: computedEntry
+node: !ref computed
+---
+kind: Self.Node
+metadata:
+  name: keyed
+shape: !ref users
+key: id
+---
+kind: Self.Unset
+metadata:
+  name: unsetSelector
+node: !ref keyed
+---
+kind: Self.Sloppy
+metadata:
+  name: unknownKey
+node: !ref keyed
+---
+kind: Self.Both
+metadata:
+  name: doubled
+shape: !ref users
+fields:
+  id: { type: text }
+---
+kind: Self.Write
+metadata:
+  name: twoProjections
+node: !ref doubled
+---
+kind: Self.Picky
+metadata:
+  name: picky
+shape: !ref users
+key: id
+---
+kind: Self.Write
+metadata:
+  name: kindPick
+node: !ref picky
+---
+kind: Self.Loose
+metadata:
+  name: dataShaped
+meta: { kind: Self.Shape, name: users }
+---
+# Exported; the node it derives from is internal and names no shape.
+kind: Self.Relay
+metadata:
+  name: relay
+node: !ref shapeless

@@ -1,0 +1,28 @@
+# An operation over a node type its store does not list.
+kind: Telo.Library
+metadata:
+  name: TypeNotInStore
+include:
+  - ../../graph-model.yaml
+imports:
+  Graph: ../../../..
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../../../graph-sql
+exports:
+  resources: [getTopic]
+---
+kind: SQLite.Table
+metadata: { name: topics }
+table: topics
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: GraphSql.Node
+metadata: { name: topic }
+table: !ref topics
+key: id
+---
+kind: Graph.GetNode
+metadata: { name: getTopic }
+store: !ref kb
+node: !ref topic

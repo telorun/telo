@@ -20,6 +20,7 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
+import type { LibraryDeclarations } from "./library-declarations.js";
 import type { RefSlot } from "./ref-slot.js";
 import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 
@@ -50,6 +51,8 @@ export interface AnalysisRegistryScope {
   aliases: AliasResolver;
   aliasesByModule: Map<string, AliasResolver>;
   views: Map<string, AnalysisRegistry>;
+  /** The last analysis's library declarations, shared by every view. */
+  libraries: { current?: LibraryDeclarations };
 }
 
 /**
@@ -62,12 +65,14 @@ export class AnalysisRegistry {
   private readonly aliases: AliasResolver;
   private readonly aliasesByModule: Map<string, AliasResolver>;
   private readonly views: Map<string, AnalysisRegistry>;
+  private readonly libraries: { current?: LibraryDeclarations };
 
   constructor(scope?: AnalysisRegistryScope) {
     this.defs = scope?.defs ?? new DefinitionRegistry();
     this.aliases = scope?.aliases ?? new AliasResolver();
     this.aliasesByModule = scope?.aliasesByModule ?? new Map();
     this.views = scope?.views ?? new Map();
+    this.libraries = scope?.libraries ?? {};
   }
 
   /**
@@ -107,6 +112,7 @@ export class AnalysisRegistry {
       aliases: table,
       aliasesByModule: this.aliasesByModule,
       views: this.views,
+      libraries: this.libraries,
     });
     this.views.set(module, view);
     return view;
@@ -166,6 +172,7 @@ export class AnalysisRegistry {
       defs: this.defs,
       aliases: this.aliases,
       aliasesByModule: this.aliasesByModule,
+      libraries: this.libraries.current,
       ...host,
     });
   }
@@ -419,6 +426,7 @@ export class AnalysisRegistry {
       defs: this.defs,
       aliases: this.aliases,
       aliasesByModule: this.aliasesByModule,
+      libraries: this.libraries.current,
     });
   }
 
@@ -602,6 +610,12 @@ export class AnalysisRegistry {
       }
     }
     return Array.from(out);
+  }
+
+  /** @internal Set by `StaticAnalyzer.analyze` — the imported libraries' own
+   *  declarations its last analysis indexed, which a projection hop reads. */
+  _setLibraries(libraries: LibraryDeclarations): void {
+    this.libraries.current = libraries;
   }
 
   /** @internal Bridge for StaticAnalyzer — do not use outside the analyzer package. */

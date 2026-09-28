@@ -82,6 +82,22 @@ async function openSqliteDatabase(file: string, ctx: ResourceContext): Promise<S
   return openNodeDatabase(file, addon);
 }
 
+// Declared foreign keys are part of the connection's contract, so a driver that
+// did not switch enforcement on is a failed connection, not a weaker one.
+function assertForeignKeysEnforced(sqlite: SqliteDb, name: string): void {
+  const rows = sqlite.prepare("PRAGMA foreign_keys").all([]) as Array<{ foreign_keys?: unknown }>;
+  const enabled = rows.length === 1 && Number(rows[0].foreign_keys) === 1;
+  if (enabled) return;
+  const driver = process.versions.bun ? "bun:sqlite" : "better-sqlite3";
+  sqlite.close();
+  throw new Error(
+    `SQLite.Connection "${name}": the ${driver} driver did not enable foreign-key enforcement ` +
+      `(PRAGMA foreign_keys reads ${rows.length === 0 ? "nothing" : String(rows[0].foreign_keys)}). ` +
+      `The SQLite library this host loads was built without foreign-key support; ` +
+      `run on a SQLite build that supports it.`,
+  );
+}
+
 export function register(): void {}
 
 export async function create(
@@ -89,6 +105,7 @@ export async function create(
   ctx: ResourceContext,
 ): Promise<SqliteConnection> {
   const sqlite = await openSqliteDatabase(resource.file ?? ":memory:", ctx);
+  assertForeignKeysEnforced(sqlite, resource.metadata.name);
   const db = new Kysely<any>({
     dialect: new TransactionalSqliteDialect({ database: sqlite }),
   });

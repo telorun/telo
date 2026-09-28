@@ -1,0 +1,729 @@
+# The graph's behaviour, once, for every engine: every operation, every code it
+# throws, the database's cascade, a cyclic traversal and a rolled-back
+# transaction. The SQLite run and the PostgreSQL integration run each supply
+# their own tables, types, store and connection and run these in order — each
+# sequence reads what the ones before it wrote.
+kind: Telo.Library
+metadata:
+  name: GraphSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the graph operation suite over any store holding people who know
+    people and author documents.
+imports:
+  Graph: ../../../../graph
+  Sql: ../../../../sql
+  Run: ../../../../run
+  Assert: ../../../../assert
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The connection the store runs on; the rollback test opens a transaction on it.
+  store:
+    kind: Graph.Store
+    description: A store listing `person`, `document`, `knows` and `authored`.
+  person:
+    kind: Graph.Node
+    description: People keyed by a text `id`, with a non-null text `name` and an integer `age`.
+  document:
+    kind: Graph.Node
+    description: Documents keyed by a text `id`, with a text `title`.
+  knows:
+    kind: Graph.Relationship
+    description: person → person, with an integer `since`.
+  authored:
+    kind: Graph.Relationship
+    description: person → document, with a text `role`.
+exports:
+  resources:
+    - nodeWrites
+    - nodeReads
+    - relationshipWrites
+    - relationshipReads
+    - traversals
+    - deletions
+    - rollback
+    - computedInputs
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Graph.CreateNode
+metadata: { name: createPerson }
+store: !ref store
+node: !ref person
+---
+kind: Graph.MergeNode
+metadata: { name: mergePerson }
+store: !ref store
+node: !ref person
+---
+kind: Graph.UpdateNode
+metadata: { name: updatePerson }
+store: !ref store
+node: !ref person
+---
+kind: Graph.DeleteNode
+metadata: { name: deletePerson }
+store: !ref store
+node: !ref person
+---
+kind: Graph.GetNode
+metadata: { name: getPerson }
+store: !ref store
+node: !ref person
+---
+kind: Graph.FindNodes
+metadata: { name: findPeople }
+store: !ref store
+node: !ref person
+---
+kind: Graph.CreateNode
+metadata: { name: createDocument }
+store: !ref store
+node: !ref document
+---
+kind: Graph.CreateRelationship
+metadata: { name: createKnows }
+store: !ref store
+relationship: !ref knows
+---
+kind: Graph.MergeRelationship
+metadata: { name: mergeKnows }
+store: !ref store
+relationship: !ref knows
+---
+kind: Graph.UpdateRelationship
+metadata: { name: updateKnows }
+store: !ref store
+relationship: !ref knows
+---
+kind: Graph.DeleteRelationship
+metadata: { name: deleteKnows }
+store: !ref store
+relationship: !ref knows
+---
+kind: Graph.FindRelationships
+metadata: { name: findKnows }
+store: !ref store
+relationship: !ref knows
+---
+kind: Graph.CreateRelationship
+metadata: { name: createAuthored }
+store: !ref store
+relationship: !ref authored
+---
+kind: Graph.FindRelationships
+metadata: { name: findAuthored }
+store: !ref store
+relationship: !ref authored
+---
+# One hop along `knows`, from a person to the people they know.
+kind: Graph.Traverse
+metadata: { name: friends }
+store: !ref store
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+---
+# Everyone reachable in one to three `knows` hops — through a cycle.
+kind: Graph.Traverse
+metadata: { name: reachable }
+store: !ref store
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    minHops: 1
+    maxHops: 3
+---
+kind: Run.Sequence
+metadata: { name: nodeWrites }
+steps:
+  - name: createAlice
+    invoke: !ref createPerson
+    inputs: { key: a, properties: { name: Alice, age: 30 } }
+  - name: assertCreated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.createAlice.result"
+      expected: { node: { key: a, properties: { name: Alice, age: 30 } } }
+  - name: createBob
+    invoke: !ref createPerson
+    inputs: { key: b, properties: { name: Bob, age: 25 } }
+  - name: createCarol
+    invoke: !ref createPerson
+    inputs: { key: c, properties: { name: Carol } }
+  - name: createDave
+    invoke: !ref createPerson
+    inputs: { key: d, properties: { name: Dave, age: 41 } }
+  - name: createAliceAgain
+    try:
+      - name: attemptDuplicate
+        invoke: !ref createPerson
+        inputs: { key: a, properties: { name: Imposter } }
+    catch:
+      - name: duplicateRefused
+        value: !cel "error.code"
+  - name: assertDuplicateRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.duplicateRefused.result"
+      expected: GRAPH_NODE_EXISTS
+  # A merge over an existing node sets what it is given and nothing else.
+  - name: mergeAlice
+    invoke: !ref mergePerson
+    inputs: { key: a, properties: { age: 31 } }
+  - name: assertMergeKeptName
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeAlice.result"
+      expected: { node: { key: a, properties: { name: Alice, age: 31 } } }
+  - name: mergeEve
+    invoke: !ref mergePerson
+    inputs: { key: e, properties: { name: Eve } }
+  - name: assertMergeCreated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeEve.result"
+      expected: { node: { key: e, properties: { name: Eve } } }
+  - name: updateBob
+    invoke: !ref updatePerson
+    inputs: { key: b, properties: { age: 26 } }
+  - name: assertUpdated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateBob.result"
+      expected: { node: { key: b, properties: { name: Bob, age: 26 } } }
+  - name: updateNobody
+    try:
+      - name: attemptUpdate
+        invoke: !ref updatePerson
+        inputs: { key: z, properties: { age: 1 } }
+    catch:
+      - name: updateRefused
+        value: !cel "error.code"
+  - name: assertUpdateRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: createGraphs
+    invoke: !ref createDocument
+    inputs: { key: doc1, properties: { title: Graphs } }
+  - name: createTrees
+    invoke: !ref createDocument
+    inputs: { key: doc2, properties: { title: Trees } }
+---
+kind: Run.Sequence
+metadata: { name: nodeReads }
+steps:
+  - name: getAlice
+    invoke: !ref getPerson
+    inputs: { key: a }
+  - name: assertGot
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.getAlice.result"
+      expected: { node: { key: a, properties: { name: Alice, age: 31 } } }
+  - name: getNobody
+    try:
+      - name: attemptGet
+        invoke: !ref getPerson
+        inputs: { key: z }
+    catch:
+      - name: getRefused
+        value: !cel "error.code"
+  - name: assertGetRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.getRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: findEveryone
+    invoke: !ref findPeople
+    inputs: {}
+  - name: assertEveryoneByKey
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findEveryone.result.nodes.map(n, n.key)"
+      expected: [a, b, c, d, e]
+  - name: findThirtyPlus
+    invoke: !ref findPeople
+    inputs: { where: { gte: { age: 30 } } }
+  - name: assertThirtyPlus
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findThirtyPlus.result.nodes"
+      expected:
+        - { key: a, properties: { name: Alice, age: 31 } }
+        - { key: d, properties: { name: Dave, age: 41 } }
+  # `eq` of null matches a node without the property.
+  - name: findAgeless
+    invoke: !ref findPeople
+    inputs: { where: { eq: { age: null } } }
+  - name: assertAgeless
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findAgeless.result.nodes.map(n, n.key)"
+      expected: [c, e]
+  # `ne` of null matches a node with the property; every operand is ANDed.
+  - name: findAgedNotBob
+    invoke: !ref findPeople
+    inputs: { where: { ne: { age: null, name: Bob } } }
+  - name: assertAgedNotBob
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findAgedNotBob.result.nodes.map(n, n.key)"
+      expected: [a, d]
+  # No comparison but eq / ne ever matches a missing property.
+  - name: findBelowNull
+    invoke: !ref findPeople
+    inputs: { where: { lt: { age: null } } }
+  - name: assertBelowNullEmpty
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findBelowNull.result.nodes"
+      expected: []
+  - name: findPage
+    invoke: !ref findPeople
+    inputs: { limit: 2, offset: 1 }
+  - name: assertPage
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findPage.result.nodes.map(n, n.key)"
+      expected: [b, c]
+---
+kind: Run.Sequence
+metadata: { name: relationshipWrites }
+steps:
+  - name: aKnowsB
+    invoke: !ref createKnows
+    inputs: { source: a, target: b, properties: { since: 2020 } }
+  - name: assertCreatedEdge
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.aKnowsB.result"
+      expected: { relationship: { source: a, target: b, properties: { since: 2020 } } }
+  - name: bKnowsC
+    invoke: !ref createKnows
+    inputs: { source: b, target: c, properties: { since: 2021 } }
+  # Closes the cycle a → b → c → a.
+  - name: cKnowsA
+    invoke: !ref createKnows
+    inputs: { source: c, target: a }
+  - name: assertNoProperties
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.cKnowsA.result"
+      expected: { relationship: { source: c, target: a, properties: {} } }
+  - name: cKnowsD
+    invoke: !ref createKnows
+    inputs: { source: c, target: d, properties: { since: 2019 } }
+  - name: aKnowsBAgain
+    try:
+      - name: attemptDuplicateEdge
+        invoke: !ref createKnows
+        inputs: { source: a, target: b }
+    catch:
+      - name: duplicateEdgeRefused
+        value: !cel "error.code"
+  - name: assertDuplicateEdgeRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.duplicateEdgeRefused.result"
+      expected: GRAPH_RELATIONSHIP_EXISTS
+  - name: toNobody
+    try:
+      - name: attemptMissingTarget
+        invoke: !ref createKnows
+        inputs: { source: a, target: z }
+    catch:
+      - name: missingTarget
+        value: !cel "{'code': error.code, 'endpoint': error.data.endpoint}"
+  - name: assertMissingTarget
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.missingTarget.result"
+      expected: { code: GRAPH_NODE_NOT_FOUND, endpoint: target }
+  - name: fromNobody
+    try:
+      - name: attemptMissingSource
+        invoke: !ref createKnows
+        inputs: { source: z, target: a }
+    catch:
+      - name: missingSource
+        value: !cel "{'code': error.code, 'endpoint': error.data.endpoint}"
+  - name: assertMissingSource
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.missingSource.result"
+      expected: { code: GRAPH_NODE_NOT_FOUND, endpoint: source }
+  - name: mergeExistingEdge
+    invoke: !ref mergeKnows
+    inputs: { source: a, target: b, properties: { since: 2022 } }
+  - name: assertMergedEdge
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeExistingEdge.result"
+      expected: { relationship: { source: a, target: b, properties: { since: 2022 } } }
+  - name: mergeNewEdge
+    invoke: !ref mergeKnows
+    inputs: { source: d, target: e }
+  - name: assertMergedNewEdge
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeNewEdge.result"
+      expected: { relationship: { source: d, target: e, properties: {} } }
+  - name: mergeToNobody
+    try:
+      - name: attemptMergeMissing
+        invoke: !ref mergeKnows
+        inputs: { source: a, target: z }
+    catch:
+      - name: mergeMissingRefused
+        value: !cel "error.code"
+  - name: assertMergeMissingRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.mergeMissingRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: updateEdge
+    invoke: !ref updateKnows
+    inputs: { source: b, target: c, properties: { since: 1999 } }
+  - name: assertUpdatedEdge
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateEdge.result"
+      expected: { relationship: { source: b, target: c, properties: { since: 1999 } } }
+  - name: updateNoEdge
+    try:
+      - name: attemptUpdateEdge
+        invoke: !ref updateKnows
+        inputs: { source: d, target: a, properties: { since: 1 } }
+    catch:
+      - name: updateEdgeRefused
+        value: !cel "error.code"
+  - name: assertUpdateEdgeRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.updateEdgeRefused.result"
+      expected: GRAPH_RELATIONSHIP_NOT_FOUND
+  - name: aAuthoredGraphs
+    invoke: !ref createAuthored
+    inputs: { source: a, target: doc1, properties: { role: author } }
+  - name: bAuthoredGraphs
+    invoke: !ref createAuthored
+    inputs: { source: b, target: doc1, properties: { role: reviewer } }
+  - name: cAuthoredTrees
+    invoke: !ref createAuthored
+    inputs: { source: c, target: doc2, properties: { role: author } }
+---
+kind: Run.Sequence
+metadata: { name: relationshipReads }
+steps:
+  - name: fromCarol
+    invoke: !ref findKnows
+    inputs: { source: c }
+  - name: assertFromCarol
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.fromCarol.result.relationships"
+      expected:
+        - { source: c, target: a, properties: {} }
+        - { source: c, target: d, properties: { since: 2019 } }
+  - name: toAlice
+    invoke: !ref findKnows
+    inputs: { target: a }
+  - name: assertToAlice
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.toAlice.result.relationships.map(r, r.source)"
+      expected: [c]
+  - name: sinceAfter2020
+    invoke: !ref findKnows
+    inputs: { where: { gt: { since: 2020 } } }
+  - name: assertSinceAfter2020
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.sinceAfter2020.result.relationships"
+      expected:
+        - { source: a, target: b, properties: { since: 2022 } }
+  - name: page
+    invoke: !ref findKnows
+    inputs: { limit: 2, offset: 1 }
+  - name: assertPage
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.page.result.relationships.map(r, [r.source, r.target])"
+      expected: [[b, c], [c, a]]
+---
+kind: Run.Sequence
+metadata: { name: traversals }
+steps:
+  - name: alicesFriends
+    invoke: !ref friends
+    inputs: { key: a }
+  - name: assertFriends
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.alicesFriends.result"
+      expected: { nodes: [{ key: b, properties: { name: Bob, age: 26 } }] }
+  # Depth 1 reaches b, 2 reaches c, 3 reaches a again (the cycle) and d; e is
+  # four hops out. The cycle terminates at the depth bound, and each node once.
+  - name: withinThree
+    invoke: !ref reachable
+    inputs: { key: a }
+  - name: assertWithinThree
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.withinThree.result.nodes.map(n, n.key)"
+      expected: [a, b, c, d]
+  - name: withinThreeOlder
+    invoke: !ref reachable
+    inputs: { key: a, where: { gte: { age: 30 } } }
+  - name: assertWithinThreeOlder
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.withinThreeOlder.result.nodes.map(n, n.key)"
+      expected: [a, d]
+  - name: withinThreePage
+    invoke: !ref reachable
+    inputs: { key: a, limit: 2, offset: 1 }
+  - name: assertWithinThreePage
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.withinThreePage.result.nodes.map(n, n.key)"
+      expected: [b, c]
+  - name: whoKnowsAlice
+    invoke:
+      kind: Graph.Traverse
+      store: !ref store
+      from: !ref person
+      to: !ref person
+      hops:
+        - relationship: !ref knows
+          direction: in
+    inputs: { key: a }
+  - name: assertWhoKnowsAlice
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.whoKnowsAlice.result.nodes.map(n, n.key)"
+      expected: [c]
+  - name: carolsCircle
+    invoke:
+      kind: Graph.Traverse
+      store: !ref store
+      from: !ref person
+      to: !ref person
+      hops:
+        - relationship: !ref knows
+          direction: both
+    inputs: { key: c }
+  - name: assertCarolsCircle
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.carolsCircle.result.nodes.map(n, n.key)"
+      expected: [a, b, d]
+  # Two fixed hops over two relationship types: the documents Alice's friends wrote.
+  - name: friendsDocuments
+    invoke:
+      kind: Graph.Traverse
+      store: !ref store
+      from: !ref person
+      to: !ref document
+      hops:
+        - relationship: !ref knows
+        - relationship: !ref authored
+    inputs: { key: a }
+  - name: assertFriendsDocuments
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.friendsDocuments.result"
+      expected: { nodes: [{ key: doc1, properties: { title: Graphs } }] }
+  # Out along `authored`, back in along it: everyone who worked on what Alice did.
+  - name: collaborators
+    invoke:
+      kind: Graph.Traverse
+      store: !ref store
+      from: !ref person
+      to: !ref person
+      hops:
+        - relationship: !ref authored
+        - relationship: !ref authored
+          direction: in
+    inputs: { key: a }
+  - name: assertCollaborators
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.collaborators.result.nodes.map(n, n.key)"
+      expected: [a, b]
+  # A start node that exists but reaches nothing is an empty result, not an error.
+  - name: evesFriends
+    invoke: !ref friends
+    inputs: { key: e }
+  - name: assertEveReachesNothing
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.evesFriends.result"
+      expected: { nodes: [] }
+  - name: fromNobody
+    try:
+      - name: attemptTraverse
+        invoke: !ref friends
+        inputs: { key: z }
+    catch:
+      - name: traverseRefused
+        value: !cel "error.code"
+  - name: assertTraverseRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.traverseRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
+---
+kind: Run.Sequence
+metadata: { name: deletions }
+steps:
+  - name: dropCarolKnowsDave
+    invoke: !ref deleteKnows
+    inputs: { source: c, target: d }
+  - name: assertDroppedEdge
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropCarolKnowsDave.result"
+      expected: { relationship: { source: c, target: d, properties: { since: 2019 } } }
+  - name: dropAgain
+    try:
+      - name: attemptDropAgain
+        invoke: !ref deleteKnows
+        inputs: { source: c, target: d }
+    catch:
+      - name: dropAgainRefused
+        value: !cel "error.code"
+  - name: assertDropAgainRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropAgainRefused.result"
+      expected: GRAPH_RELATIONSHIP_NOT_FOUND
+  - name: dropAlice
+    invoke: !ref deletePerson
+    inputs: { key: a }
+  - name: assertDroppedAlice
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropAlice.result"
+      expected: { node: { key: a, properties: { name: Alice, age: 31 } } }
+  # The database's cascade took every relationship touching Alice with her.
+  - name: remainingKnows
+    invoke: !ref findKnows
+    inputs: {}
+  - name: assertKnowsCascaded
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.remainingKnows.result.relationships.map(r, [r.source, r.target])"
+      expected: [[b, c], [d, e]]
+  - name: remainingAuthored
+    invoke: !ref findAuthored
+    inputs: {}
+  - name: assertAuthoredCascaded
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.remainingAuthored.result.relationships.map(r, [r.source, r.target])"
+      expected: [[b, doc1], [c, doc2]]
+  - name: dropAliceAgain
+    try:
+      - name: attemptDropAlice
+        invoke: !ref deletePerson
+        inputs: { key: a }
+    catch:
+      - name: dropAliceRefused
+        value: !cel "error.code"
+  - name: assertDropAliceRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.dropAliceRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
+---
+# The operations open no transaction of their own: inside one, they join it, so
+# a rollback takes their writes with it.
+kind: Run.Sequence
+metadata: { name: rollback }
+steps:
+  - name: failedTransaction
+    try:
+      - name: transaction
+        invoke:
+          kind: Sql.Transaction
+          connection: !ref connection
+          steps:
+            kind: Run.Sequence
+            steps:
+              - name: createTemp
+                invoke: !ref createPerson
+                inputs: { key: t, properties: { name: Temp } }
+              - name: linkTemp
+                invoke: !ref createKnows
+                inputs: { source: t, target: b }
+              - name: abort
+                throw: { code: ROLLBACK_PROBE, message: "abort the transaction" }
+    catch:
+      - name: aborted
+        value: !cel "error.code"
+  - name: assertAborted
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.aborted.result"
+      expected: ROLLBACK_PROBE
+  - name: tempGone
+    try:
+      - name: attemptGetTemp
+        invoke: !ref getPerson
+        inputs: { key: t }
+    catch:
+      - name: tempAbsent
+        value: !cel "error.code"
+  - name: assertTempGone
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.tempAbsent.result"
+      expected: GRAPH_NODE_NOT_FOUND
+  - name: tempEdges
+    invoke: !ref findKnows
+    inputs: { target: b }
+  - name: assertTempEdgesGone
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.tempEdges.result.relationships"
+      expected: []
+---
+# A computed input the analyzer cannot see is held to the same derived contract
+# at dispatch: a misspelled property, and a key of the wrong type.
+kind: Run.Sequence
+metadata: { name: computedInputs }
+steps:
+  - name: misspelled
+    try:
+      - name: attemptMisspelled
+        invoke: !ref createPerson
+        inputs: { key: m, properties: !cel "dyn({'nmae': 'Mallory'})" }
+    catch:
+      - name: misspelledRefused
+        value: !cel "error.code"
+  - name: assertMisspelledRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.misspelledRefused.result"
+      expected: ERR_INPUT_INVALID
+  - name: wrongKeyType
+    try:
+      - name: attemptWrongKey
+        invoke: !ref getPerson
+        inputs: { key: !cel "dyn(7)" }
+    catch:
+      - name: wrongKeyRefused
+        value: !cel "error.code"
+  - name: assertWrongKeyRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.wrongKeyRefused.result"
+      expected: ERR_INPUT_INVALID

@@ -95,9 +95,9 @@ async function computeLibraryScope(
     };
   }
 
-  const graphManifests = await ctx.loadManifests(resolvedUrl);
+  const { manifests: graphManifests, moduleDocuments } = await host.loadLibrary(resolvedUrl);
   const errors = host.analyzer
-    .analyze(graphManifests, undefined, registry)
+    .analyze(graphManifests, { moduleDocuments }, registry)
     .filter((d) => d.severity === DiagnosticSeverity.Error)
     .map((d) => d.message);
   if (errors.length > 0) {
@@ -119,13 +119,13 @@ async function ownRegistryScope(
   rawManifests: ResourceManifest[],
   module: string,
 ): Promise<LibraryScope> {
-  const graphManifests = await ctx.loadManifests(resolvedUrl);
+  const host = ctx.libraryAnalysisHost();
+  const { manifests: graphManifests, moduleDocuments } = await host.loadLibrary(resolvedUrl);
   const registry = new AnalysisRegistry();
-  const errors = ctx
-    .libraryAnalysisHost()
-    .analyzer.analyze(
+  const errors = host.analyzer
+    .analyze(
       graphManifests,
-      { skipValidation: ctx.isImportValidatedAtLoad(resolvedUrl) },
+      { skipValidation: ctx.isImportValidatedAtLoad(resolvedUrl), moduleDocuments },
       registry,
     )
     .filter((d) => d.severity === DiagnosticSeverity.Error)

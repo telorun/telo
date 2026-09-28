@@ -1,0 +1,42 @@
+# A route rendering a missing node as a 404: the handler declares
+# GRAPH_NODE_NOT_FOUND, the route catches it, and throws coverage is satisfied.
+kind: Telo.Library
+metadata:
+  name: CatchesNodeNotFound
+include:
+  - ../graph-model.yaml
+imports:
+  Http: ../../../../http-server
+  SQLite: ../../../../sqlite
+  Graph: ../../../../graph
+  GraphSql: ../../..
+---
+kind: Http.Api
+metadata: { name: peopleApi }
+routes:
+  - request:
+      path: /people/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+    handler:
+      kind: Graph.GetNode
+      store: !ref kb
+      node: !ref person
+    inputs:
+      key: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { id: !cel "result.node.key", name: !cel "result.node.properties.name" }
+    catches:
+      - when: !cel "error.code == 'GRAPH_NODE_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body: { error: !cel "error.message" }

@@ -1,0 +1,18 @@
+# A library whose shape is a resource INPUT: its `person` projects as whatever
+# table the importer supplies.
+kind: Telo.Library
+metadata:
+  name: ProjectionLibC
+imports:
+  Kinds: ../kinds
+resources:
+  table: { kind: Kinds.Shape }
+exports:
+  resources: [person]
+---
+kind: Kinds.Node
+metadata:
+  name: person
+shape: !ref table
+key: code
+secret: hidden

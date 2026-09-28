@@ -250,17 +250,36 @@ schema:
         # reports it instead of the boot.
         not:
           required: [default, defaultExpression]
-        # A primary key cannot hold NULL, and the engine enforces that whether
-        # or not the declaration says so. Declaring the opposite is a
-        # contradiction, and left standing it would make every boot after the
-        # first plan a DROP NOT NULL on the key.
+        # A primary key and an identity column cannot hold NULL, and the engine
+        # enforces that whether or not the declaration says so. Declaring the
+        # opposite is a contradiction, and left standing it would make every
+        # boot after the first plan a DROP NOT NULL on the key. Omitting
+        # `nullable` means exactly what the table makes of it — NOT NULL on such
+        # a column, NULL elsewhere — so the row projection types the key as
+        # non-null.
         allOf:
           - if:
-              required: [primaryKey, nullable]
+              required: [nullable]
               properties:
-                primaryKey: { const: true }
                 nullable: { const: true }
+              anyOf:
+                - required: [primaryKey]
+                  properties:
+                    primaryKey: { const: true }
+                - required: [identity]
             then: false
+          - if:
+              anyOf:
+                - required: [primaryKey]
+                  properties:
+                    primaryKey: { const: true }
+                - required: [identity]
+            then:
+              properties:
+                nullable: { default: false }
+            else:
+              properties:
+                nullable: { default: true }
         properties:
           type:
             title: Type
@@ -346,8 +365,10 @@ schema:
             default: false
           nullable:
             title: Nullable
+            description: >-
+              Whether the column admits NULL. Omitted, it is false on a primary
+              key or an identity column and true on any other.
             type: boolean
-            default: true
           primaryKey:
             title: Primary Key
             type: boolean

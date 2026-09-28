@@ -1,0 +1,22 @@
+kind: Telo.Library
+metadata:
+  name: ProjectionLibB
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [person]
+---
+kind: Kinds.Node
+metadata:
+  name: person
+shape: !ref users
+key: id
+secret: email
+---
+kind: Kinds.Shape
+metadata:
+  name: users
+fields:
+  id: { type: number }
+  name: { type: text }
+  email: { type: text, nullable: true }

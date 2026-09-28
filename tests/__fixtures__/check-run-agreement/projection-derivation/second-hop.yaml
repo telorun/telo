@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionSecondHop
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.secondHop

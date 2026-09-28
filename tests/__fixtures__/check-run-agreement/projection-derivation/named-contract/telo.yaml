@@ -1,0 +1,24 @@
+# A malformed derivation inside a named shape a resource uses as its contract.
+kind: Telo.Library
+metadata:
+  name: NamedContractLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [namedContract]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: SloppyRow
+schema:
+  type: object
+  properties:
+    row: { x-telo-schema-projection-from: { from: "", pikc: /y } }
+---
+kind: Run.Sequence
+metadata:
+  name: namedContract
+inputType: !ref SloppyRow
+steps:
+  - name: echo
+    value: !cel "inputs"

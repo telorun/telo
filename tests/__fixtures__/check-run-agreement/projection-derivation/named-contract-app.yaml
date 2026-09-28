@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionNamedContract
+imports:
+  Lib: ./named-contract
+targets:
+  - invoke: !ref Lib.namedContract

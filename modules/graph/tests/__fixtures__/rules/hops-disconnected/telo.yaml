@@ -1,0 +1,21 @@
+# A traversal whose one hop ends at a person, while it declares it ends at a
+# document.
+kind: Telo.Library
+metadata:
+  name: HopsDisconnected
+include:
+  - ../../graph-model.yaml
+imports:
+  Graph: ../../../..
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../../../graph-sql
+exports:
+  resources: [friendsAsDocuments]
+---
+kind: Graph.Traverse
+metadata: { name: friendsAsDocuments }
+store: !ref kb
+from: !ref person
+to: !ref document
+hops:
+  - relationship: !ref knows

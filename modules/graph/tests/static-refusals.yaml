@@ -1,0 +1,97 @@
+# Every rule the graph abstracts and operations declare, pinned both ways:
+# `telo check` refuses the declaring library, and a consumer whose entry-scoped
+# check is silent fails at creation with the same code. `graph` has no backend
+# of its own, so the fixtures instantiate its kinds through the SQL one.
+kind: Telo.Application
+metadata:
+  name: GraphStaticRefusals
+  version: 1.0.0
+  description: The graph model rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref endpointNotInStore
+  - !ref endpointNotInStoreAtRuntime
+  - !ref typeNotInStore
+  - !ref typeNotInStoreAtRuntime
+  - !ref hopsDisconnected
+  - !ref hopsDisconnectedAtRuntime
+  - !ref hopRepeatMixedTypes
+  - !ref hopRepeatMixedTypesAtRuntime
+  - !ref hopRangeInvalid
+  - !ref hopRangeInvalidAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: endpointNotInStore }
+source: ./__fixtures__/rules/endpoint-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "lists a relationship type whose source or target node type it does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: endpointNotInStoreAtRuntime }
+source: ./__fixtures__/rules/endpoint-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: typeNotInStore }
+source: ./__fixtures__/rules/type-not-in-store/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a node type its store does not list in 'nodes:'"
+---
+kind: Assert.Manifest
+metadata: { name: typeNotInStoreAtRuntime }
+source: ./__fixtures__/rules/type-not-in-store-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+---
+kind: Assert.Manifest
+metadata: { name: hopsDisconnected }
+source: ./__fixtures__/rules/hops-disconnected/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "declares hops that do not chain from 'from' to 'to'"
+---
+kind: Assert.Manifest
+metadata: { name: hopsDisconnectedAtRuntime }
+source: ./__fixtures__/rules/hops-disconnected-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_HOPS_DISCONNECTED"
+---
+kind: Assert.Manifest
+metadata: { name: hopRepeatMixedTypes }
+source: ./__fixtures__/rules/hop-repeat-mixed-types/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "follows a relationship whose source and target are different node types"
+---
+kind: Assert.Manifest
+metadata: { name: hopRepeatMixedTypesAtRuntime }
+source: ./__fixtures__/rules/hop-repeat-mixed-types-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_HOP_REPEAT_MIXED_TYPES"
+---
+kind: Assert.Manifest
+metadata: { name: hopRangeInvalid }
+source: ./__fixtures__/rules/hop-range-invalid/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "sets maxHops below minHops"
+---
+kind: Assert.Manifest
+metadata: { name: hopRangeInvalidAtRuntime }
+source: ./__fixtures__/rules/hop-range-invalid-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_HOP_RANGE_INVALID"

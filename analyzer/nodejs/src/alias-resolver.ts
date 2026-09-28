@@ -1,3 +1,4 @@
+import type { LibraryDeclarations } from "./library-declarations.js";
 /** Pure alias → real module name resolver.
  *  Ported from ModuleContext.resolveKind() without any lifecycle dependency. */
 export class AliasResolver {
@@ -128,6 +129,9 @@ export function scopeResolverForModule(
 export interface ModuleScopes {
   aliasesByModule: ReadonlyMap<string, { resolveKind(kind: string): string | undefined }>;
   rootModules: ReadonlySet<string>;
+  /** Each imported library's own declarations, where a projection hop reaches
+   *  one the flattened set does not carry. */
+  libraries?: LibraryDeclarations;
 }
 
 /** Minimal view of the definition registry a kind lookup needs. */

@@ -1,0 +1,98 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlIntegerKey
+  version: 1.0.0
+  description: |
+    A node type keyed by an SQLite INTEGER PRIMARY KEY. The key a create returns
+    is typed non-null, so it passes straight into a read's key; and a null key
+    computed at run time is refused at dispatch rather than handed to SQLite,
+    which would generate a rowid for it — a node is identified only by the key
+    its author supplies.
+imports:
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Graph: ../../graph
+  GraphSql: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref appSchema
+  - !ref integerKey
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: tickets }
+table: tickets
+columns:
+  id: { type: integer, primaryKey: true }
+  title: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref tickets]
+---
+kind: GraphSql.Node
+metadata: { name: ticket }
+table: !ref tickets
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref ticket]
+relationships: []
+---
+kind: Graph.CreateNode
+metadata: { name: createTicket }
+store: !ref kb
+node: !ref ticket
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: integerKey }
+steps:
+  - name: create
+    invoke: !ref createTicket
+    inputs: { key: 7, properties: { title: Keyed } }
+  - name: get
+    invoke:
+      kind: Graph.GetNode
+      store: !ref kb
+      node: !ref ticket
+    inputs: { key: !cel "steps.create.result.node.key" }
+  - name: assertGot
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.get.result"
+      expected: { node: { key: 7, properties: { title: Keyed } } }
+  - name: nullKey
+    try:
+      - name: attemptNullKey
+        invoke: !ref createTicket
+        inputs: { key: !cel "dyn(null)", properties: { title: Unkeyed } }
+    catch:
+      - name: nullKeyRefused
+        value: !cel "error.code"
+  - name: assertNullKeyRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.nullKeyRefused.result"
+      expected: ERR_INPUT_INVALID
+  - name: findAll
+    invoke:
+      kind: Graph.FindNodes
+      store: !ref kb
+      node: !ref ticket
+    inputs: {}
+  - name: assertNothingGenerated
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findAll.result.nodes"
+      expected: [{ key: 7, properties: { title: Keyed } }]

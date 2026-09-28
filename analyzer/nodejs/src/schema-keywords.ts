@@ -310,8 +310,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-schema-projection-from": {
     title: "Schema projection from",
     description:
-      "Replace this node with the projection of the entry collection declared by the kind referenced at the named field.",
-    type: "string",
+      "Replace this node with the projection of the declaration at the named field — a JSON Pointer that crosses references, or `{ from, pick?, omit? }` to select one entry or drop some. On a kind document, beside `schema:`: every declaration of the kind projects as that derivation.",
+    anyOf: [{ type: "string" }, { type: "object" }],
   },
   "x-telo-returns-from": {
     title: "Returns from",

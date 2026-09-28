@@ -1,0 +1,198 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlPostgresSuite
+  version: 1.0.0
+  description: |
+    The graph operation suite against a real PostgreSQL: the same sequences the
+    SQLite run executes, over PostgreSQL tables, so both engines are held to one
+    behaviour — every operation and code, the cascade, a cyclic traversal, a
+    rolled-back transaction — plus the refusal of a computed null key over a
+    text primary key, which the database would otherwise report as a raw NOT
+    NULL violation.
+
+    The tables live in their own namespace, which the connection's `search_path`
+    excludes, so every statement reaches them only through the schema's
+    qualified names.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Suite:
+    source: ../__fixtures__/graph-suite
+    resources:
+      connection: !ref db
+      store: !ref kb
+      person: !ref person
+      document: !ref document
+      knows: !ref knows
+      authored: !ref authored
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  GraphSql: ../..
+  Graph: ../../../graph
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref appSchema
+  - !ref Suite.nodeWrites
+  - !ref Suite.nodeReads
+  - !ref Suite.relationshipWrites
+  - !ref Suite.relationshipReads
+  - !ref Suite.traversals
+  - !ref Suite.deletions
+  - !ref Suite.rollback
+  - !ref Suite.computedInputs
+  - !ref nullKey
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName +
+  '?options=-c%20search_path%3Dpublic'
+---
+# The suite reads what it writes, so it must start from nothing — including the
+# ledger, which lives in the same namespace, or a previous run's declaration
+# would decide what this one plans.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_suite CASCADE
+---
+kind: Postgres.Table
+metadata: { name: people }
+table: graph_suite_people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+  age: { type: integer }
+---
+kind: Postgres.Table
+metadata: { name: documents }
+table: graph_suite_documents
+columns:
+  id: { type: text, primaryKey: true }
+  title: { type: text }
+---
+kind: Postgres.Table
+metadata: { name: knowsTable }
+table: graph_suite_knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+  since: { type: integer }
+indexes:
+  graph_suite_knows_pair: { columns: [source, target], unique: true }
+foreignKeys:
+  graph_suite_knows_source:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  graph_suite_knows_target:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: Postgres.Table
+metadata: { name: authoredTable }
+table: graph_suite_authored
+columns:
+  author: { type: text, nullable: false }
+  document: { type: text, nullable: false }
+  role: { type: text }
+indexes:
+  graph_suite_authored_pair: { columns: [author, document], unique: true }
+foreignKeys:
+  graph_suite_authored_author:
+    columns: [author]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  graph_suite_authored_document:
+    columns: [document]
+    references: { table: !ref documents, columns: [id] }
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+schema: graph_suite
+ledger: graph_suite
+tables: [!ref people, !ref documents, !ref knowsTable, !ref authoredTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Node
+metadata: { name: document }
+table: !ref documents
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Relationship
+metadata: { name: authored }
+table: !ref authoredTable
+source: !ref person
+target: !ref document
+sourceColumn: author
+targetColumn: document
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person, !ref document]
+relationships: [!ref knows, !ref authored]
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: Run.Sequence
+metadata: { name: nullKey }
+steps:
+  - name: nullKey
+    try:
+      - name: attemptNullKey
+        invoke:
+          kind: Graph.CreateNode
+          store: !ref kb
+          node: !ref person
+        inputs: { key: !cel "dyn(null)", properties: { name: Unkeyed } }
+    catch:
+      - name: nullKeyRefused
+        value: !cel "error.code"
+  - name: assertNullKeyRefused
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.nullKeyRefused.result"
+      expected: ERR_INPUT_INVALID
+  - name: findUnkeyed
+    invoke:
+      kind: Graph.FindNodes
+      store: !ref kb
+      node: !ref person
+    inputs: { where: { eq: { name: Unkeyed } } }
+  - name: assertNothingWritten
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.findUnkeyed.result.nodes"
+      expected: []

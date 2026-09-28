@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: NullKeySeed
+  version: 1.0.0
+  description: |
+    A seed row holding NULL in the primary key. The key column cannot hold NULL,
+    so the row is refused against the table's own columns by `telo check`,
+    before any database is reached.
+imports:
+  Sql: ../../../../sql
+  Postgres: ../../../../postgres
+targets:
+  - !ref appSchema
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: postgres://postgres:postgres@localhost:5432/postgres
+---
+kind: Postgres.Table
+metadata: { name: roles }
+table: roles
+columns:
+  id: { type: text, primaryKey: true }
+  label: { type: text }
+seeds:
+  key: [id]
+  rows:
+    - { id: null, label: Nobody }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref roles]

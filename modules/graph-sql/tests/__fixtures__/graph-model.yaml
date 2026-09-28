@@ -1,0 +1,54 @@
+# A small valid graph the fixtures beside it include: people who know people.
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target], unique: true }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people, !ref knowsTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]
+relationships: [!ref knows]

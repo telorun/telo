@@ -1,10 +1,13 @@
-import type { ResourceContext, ResourceInstance } from "@telorun/sdk";
+import type { ResourceContext } from "@telorun/sdk";
 import {
+  assertListedTable,
   resolveSqlConnection,
   runSchemaPass,
   type MigrationMap,
+  type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
+  type SqlSchema,
 } from "@telorun/sql";
 import { PostgresSchemaDriver } from "./postgres-schema-driver.js";
 import type { PostgresEnumResource } from "./enum-controller.js";
@@ -31,10 +34,11 @@ interface PostgresSchemaManifest {
  * two schema resources, and schema-per-tenant falls out as one per tenant, each
  * with its own migration history and reclaim clock.
  */
-class PostgresSchemaResource implements ResourceInstance {
+class PostgresSchemaResource implements SqlSchema {
   constructor(
     private readonly manifest: PostgresSchemaManifest,
     private readonly ctx: ResourceContext,
+    private readonly driver: PostgresSchemaDriver,
   ) {}
 
   /** Everything this resource knows is learned while running, so the snapshot is
@@ -44,18 +48,22 @@ class PostgresSchemaResource implements ResourceInstance {
     return {};
   }
 
-  async run(): Promise<void> {
-    const connection = resolveSqlConnection(
-      this.manifest.connection,
-      this.ctx,
-      () => `Postgres.Schema "${this.manifest.metadata.name}": 'connection'`,
-    );
-    if (!connection) {
-      throw new Error(`Postgres.Schema "${this.manifest.metadata.name}": missing connection`);
-    }
+  private get namespace(): string {
+    return this.manifest.schema ?? "public";
+  }
 
-    const status = await runSchemaPass(new PostgresSchemaDriver(connection), this.ctx, {
-      schema: this.manifest.schema ?? "public",
+  qualifiedTableName(table: DeclaredTable): string {
+    assertListedTable(
+      `Postgres.Schema "${this.manifest.metadata.name}"`,
+      (this.manifest.tables ?? []).map((listed) => listed.declaration),
+      table,
+    );
+    return this.driver.qualify(this.namespace, table.name);
+  }
+
+  async run(): Promise<void> {
+    const status = await runSchemaPass(this.driver, this.ctx, {
+      schema: this.namespace,
       ledger: this.manifest.ledger,
       version: this.manifest.version,
       tables: (this.manifest.tables ?? []).map((table) => table.declaration),
@@ -79,5 +87,13 @@ export async function create(
   resource: PostgresSchemaManifest,
   ctx: ResourceContext,
 ): Promise<PostgresSchemaResource> {
-  return new PostgresSchemaResource(resource, ctx);
+  const connection = resolveSqlConnection(
+    resource.connection,
+    ctx,
+    () => `Postgres.Schema "${resource.metadata.name}": 'connection'`,
+  );
+  if (!connection) {
+    throw new Error(`Postgres.Schema "${resource.metadata.name}": missing connection`);
+  }
+  return new PostgresSchemaResource(resource, ctx, new PostgresSchemaDriver(connection));
 }

@@ -695,6 +695,15 @@ capability: Telo.Runnable
 schema:
   type: object
   properties:
+    connection:
+      title: Connection
+      description: >-
+        The connection the schema lives in. Structural, as `tables:` is: each
+        engine restates it as a reference to its own connection kind, and a
+        consumer holding a schema reads it to know where the tables are.
+      x-telo-ref:
+        kind: Self.Connection
+        use: dependency
     version:
       title: Version
       description: >-

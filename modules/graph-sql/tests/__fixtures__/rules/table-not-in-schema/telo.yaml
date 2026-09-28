@@ -1,0 +1,42 @@
+# A store whose node table the schema it names does not list — nothing would
+# create it.
+kind: Telo.Library
+metadata:
+  name: TableNotInSchema
+imports:
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../..
+exports:
+  resources: [kb]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: documents }
+table: documents
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref documents]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]

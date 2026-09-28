@@ -78,6 +78,7 @@ export function callSiteContext(
     aliases,
     aliasesByModule: scopes.aliasesByModule,
     rootModules: scopes.rootModules,
+    libraries: scopes.libraries,
     typeManifests: allManifests,
     resolveTarget: (ref) =>
       typeof ref.name === "string"

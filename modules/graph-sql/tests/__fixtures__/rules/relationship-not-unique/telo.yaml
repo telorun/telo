@@ -1,0 +1,47 @@
+# A relationship type whose table allows two relationships between one ordered
+# pair: its index over the endpoint columns is not unique.
+kind: Telo.Library
+metadata:
+  name: RelationshipNotUnique
+imports:
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../..
+exports:
+  resources: [knows]
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: SQLite.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knowsPair: { columns: [source, target] }
+foreignKeys:
+  knowsSource:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knowsTarget:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target

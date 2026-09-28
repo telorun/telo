@@ -35,9 +35,12 @@
  * derivation can reach.
  */
 
-import type { ResourceManifest } from "@telorun/sdk";
-import { isRefSentinel } from "@telorun/templating";
-import { isInjectedDeclaration } from "./resource-input.js";
+import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
+import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import type { LibraryDeclarations } from "./library-declarations.js";
+import { shapeMatches } from "./peer-binding.js";
+import { createAjv } from "./schema-compat.js";
+import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 
 /** How a kind's entry collection projects to an object schema. */
 export interface SchemaProjection {
@@ -183,18 +186,108 @@ function ownSchemaMap(node: unknown): SchemaMap | undefined {
   return Object.fromEntries(entries) as SchemaMap;
 }
 
-/** The consumer-side annotation: a JSON Pointer to this resource's ref slot
- *  whose target declares the projection. */
-export function readProjectionFrom(node: unknown): string | undefined {
+const PROJECTION_FROM = "x-telo-schema-projection-from";
+
+/**
+ * What a slot (or, on a kind document, every declaration of the kind) is typed
+ * from: the declaration `from` points at, optionally narrowed to ONE entry
+ * (`pick`, a pointer to a field holding the entry's name) or without some
+ * (`omit`, pointers to fields each holding one). Every pointer is relative to
+ * the declaration carrying the annotated slot, and may cross references.
+ */
+export interface ProjectionDerivation {
+  readonly from: string;
+  readonly pick?: string;
+  readonly omit?: readonly string[];
+}
+
+/** The keys the object form may carry. Closed, for the reason
+ *  {@link SCHEMA_PROJECTION_KEYS} is. */
+export const PROJECTION_DERIVATION_KEYS: readonly string[] = ["from", "pick", "omit"];
+
+/** A derivation as read, or why the annotation that is present cannot be read. */
+export type DerivationRead = { readonly derivation: ProjectionDerivation } | { readonly invalid: string };
+
+/** Read the annotation's string or object form. Undefined when absent; the
+ *  strict half reports an `invalid` one, and the kernel refuses to bind it. */
+export function readProjectionDerivation(raw: unknown): DerivationRead | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw === "string") return { derivation: { from: raw } };
+  if (!isObject(raw)) {
+    return { invalid: `'${PROJECTION_FROM}' is a JSON Pointer, or an object '{ from, pick?, omit? }'.` };
+  }
+  const unknown = Object.keys(raw).filter((key) => !PROJECTION_DERIVATION_KEYS.includes(key));
+  if (unknown.length > 0) {
+    return {
+      invalid:
+        `'${PROJECTION_FROM}' has no ${unknown.map((k) => `'${k}'`).join(", ")}. It declares ` +
+        `${PROJECTION_DERIVATION_KEYS.map((k) => `'${k}'`).join(", ")}.`,
+    };
+  }
+  const { from, pick, omit } = raw;
+  if (typeof from !== "string") {
+    return { invalid: `'${PROJECTION_FROM}' needs 'from', a JSON Pointer to the declaration to project.` };
+  }
+  if (pick !== undefined && typeof pick !== "string") {
+    return { invalid: `'pick' is a JSON Pointer to a field holding the one entry's name.` };
+  }
+  if (omit !== undefined && !(Array.isArray(omit) && omit.every((p) => typeof p === "string"))) {
+    return { invalid: `'omit' is a list of JSON Pointers, each to a field holding an entry's name.` };
+  }
+  return {
+    derivation: {
+      from,
+      ...(pick !== undefined ? { pick } : {}),
+      ...(omit !== undefined ? { omit: omit as string[] } : {}),
+    },
+  };
+}
+
+/** The consumer-side annotation on a schema node, leniently: a malformed one
+ *  reads as absent. */
+export function readProjectionFrom(node: unknown): ProjectionDerivation | undefined {
   if (!isObject(node)) return undefined;
-  const raw = node["x-telo-schema-projection-from"];
-  return typeof raw === "string" ? raw : undefined;
+  const read = readProjectionDerivation(node[PROJECTION_FROM]);
+  return read && "derivation" in read ? read.derivation : undefined;
+}
+
+/**
+ * The annotation on a KIND DOCUMENT: every declaration of the kind projects as
+ * this derivation. Declaring it beside `x-telo-schema-projection` gives the kind
+ * two meanings, and `pick` would make a declaration project to a single entry
+ * rather than to an object — both are `invalid`.
+ */
+export function readKindDerivation(definition: unknown): DerivationRead | undefined {
+  if (!isObject(definition)) return undefined;
+  const read = readProjectionDerivation(definition[PROJECTION_FROM]);
+  if (!read || "invalid" in read) return read;
+  if (rawSchemaProjection(definition) !== undefined) {
+    return {
+      invalid:
+        `a kind declares its projection once: '${PROJECTION_FROM}' derives it from another ` +
+        `declaration and 'x-telo-schema-projection' reads it from this one's entries — keep one.`,
+    };
+  }
+  if (read.derivation.pick !== undefined) {
+    return {
+      invalid:
+        `'pick' types a slot as ONE entry; on a kind document the declaration must project to an ` +
+        `object, so only 'from' and 'omit' apply here.`,
+    };
+  }
+  return read;
+}
+
+function decodePointer(pointer: string): string[] {
+  return pointer
+    .split("/")
+    .filter((segment) => segment !== "")
+    .map(decodeSegment);
 }
 
 function navigate(root: unknown, pointer: string): unknown {
   let current: unknown = root;
-  for (const segment of pointer.split("/")) {
-    if (segment === "") continue;
+  for (const segment of decodePointer(pointer)) {
     if (!isObject(current)) return undefined;
     current = current[segment];
   }
@@ -328,6 +421,7 @@ function referencedNode(
   entryPointer: string,
   projection: SchemaProjection,
   map: SchemaMap,
+  holder: Record<string, any> | undefined,
   options?: ProjectOptions,
 ): Record<string, unknown> | undefined {
   const reference = projection.reference;
@@ -346,8 +440,8 @@ function referencedNode(
     });
     return {};
   };
-  const found = options?.scope?.resolveManifest(value);
-  if (!found || "ambiguous" in found) return report();
+  const found = options?.scope?.resolveManifest(value, holder);
+  if (!found || !("manifest" in found)) return report();
 
   const values = (found.manifest as Record<string, unknown>)[reference.from];
   if (!Array.isArray(values) || values.length === 0) return report();
@@ -382,20 +476,124 @@ interface ProjectionRun {
   readonly projection: SchemaProjection;
   readonly map: SchemaMap;
   readonly options?: ProjectOptions;
-  readonly defaults: Readonly<Record<string, unknown>>;
+  /** Where each modifier's `default:` is declared, from the entry schema. */
+  readonly defaultSites: Readonly<Record<string, readonly ModifierDefaultSite[]>>;
   readonly ancestors: Set<object>;
+  /** The declaration being projected — where an entry's reference resolves. */
+  readonly declaration?: Record<string, any>;
 }
 
-/** The declared `default:` of each modifier field, from the entry schema. */
-function modifierDefaults(projection: SchemaProjection, kindSchema: unknown): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
-  if (kindSchema === undefined) return defaults;
-  for (const field of [projection.array, projection.nullable]) {
-    if (field === undefined) continue;
-    const declared = projectionEntryField(kindSchema, projection, field)?.default;
-    if (declared !== undefined) defaults[field] = declared;
+/**
+ * A place the entry schema declares a modifier's `default:` — on the field
+ * itself, or in the `then` / `else` of a conditional over the entry (at the
+ * entry schema's root or one of its `allOf` members), so the default can depend
+ * on the entry's other fields. `path` is where the site is written, from the
+ * entry schema.
+ */
+export type ModifierDefaultSite =
+  | { readonly kind: "field"; readonly path: string; readonly value: unknown }
+  | {
+      readonly kind: "conditional";
+      readonly path: string;
+      readonly condition: unknown;
+      readonly then?: { readonly value: unknown };
+      readonly else?: { readonly value: unknown };
+    };
+
+function branchDefault(branch: unknown, field: string, root: unknown): { value: unknown } | undefined {
+  const node = resolveLocal(branch, root);
+  if (!isObject(node) || !isObject(node.properties)) return undefined;
+  const property = resolveLocal(node.properties[field], root);
+  return isObject(property) && "default" in property ? { value: property.default } : undefined;
+}
+
+/** Every site declaring `field`'s `default:` for an entry of `entrySchema`.
+ *  More than one is a contradiction the strict half reports. */
+export function modifierDefaultSites(
+  entrySchema: Record<string, unknown>,
+  field: string,
+  root: unknown,
+): ModifierDefaultSite[] {
+  const sites: ModifierDefaultSite[] = [];
+  const own = isObject(entrySchema.properties) ? resolveLocal(entrySchema.properties[field], root) : undefined;
+  if (isObject(own) && "default" in own) {
+    sites.push({ kind: "field", path: `properties.${field}.default`, value: own.default });
   }
-  return defaults;
+  const visit = (raw: unknown, path: string, seen: Set<unknown>): void => {
+    const node = resolveLocal(raw, root);
+    if (!isObject(node) || seen.has(node)) return;
+    seen.add(node);
+    if (node.if !== undefined) {
+      const thenDefault = branchDefault(node.then, field, root);
+      const elseDefault = branchDefault(node.else, field, root);
+      if (thenDefault || elseDefault) {
+        sites.push({
+          kind: "conditional",
+          path: path === "" ? "if" : `${path}.if`,
+          condition: node.if,
+          ...(thenDefault ? { then: thenDefault } : {}),
+          ...(elseDefault ? { else: elseDefault } : {}),
+        });
+      }
+    }
+    if (Array.isArray(node.allOf)) {
+      node.allOf.forEach((member, index) =>
+        visit(member, path === "" ? `allOf[${index}]` : `${path}.allOf[${index}]`, seen),
+      );
+    }
+  };
+  visit(entrySchema, "", new Set());
+  return sites;
+}
+
+type ConditionCheck = ((entry: unknown) => boolean) | { readonly error: string };
+const compiledConditions = new WeakMap<object, ConditionCheck>();
+let conditionAjv: ReturnType<typeof createAjv> | undefined;
+
+/**
+ * A conditional's `if`, compiled as JSON Schema — or why it cannot be. Evaluated
+ * against the entry AS WRITTEN: a computed value is not a literal, so it matches
+ * no `const` and the entry lands in the branch that does not rely on it.
+ */
+export function compileDefaultCondition(condition: unknown): ConditionCheck {
+  if (typeof condition === "boolean") return () => condition;
+  if (!isObject(condition)) return { error: "an 'if' is a JSON Schema: an object or a boolean" };
+  const cached = compiledConditions.get(condition);
+  if (cached) return cached;
+  let check: ConditionCheck;
+  try {
+    const validate = (conditionAjv ??= createAjv()).compile(condition);
+    check = (entry) => validate(entry) === true;
+  } catch (error) {
+    check = { error: error instanceof Error ? error.message : String(error) };
+  }
+  compiledConditions.set(condition, check);
+  return check;
+}
+
+/** The default declared for `field` that applies to this entry, or undefined —
+ *  none declared, or declared ambiguously (reported by the strict half). */
+function applicableDefault(sites: readonly ModifierDefaultSite[] | undefined, entry: unknown): unknown {
+  if (!sites || sites.length !== 1) return undefined;
+  const [site] = sites;
+  if (site.kind === "field") return site.value;
+  const check = compileDefaultCondition(site.condition);
+  if (typeof check !== "function") return undefined;
+  return (check(entry) ? site.then : site.else)?.value;
+}
+
+function modifierDefaultSitesOf(
+  projection: SchemaProjection,
+  kindSchema: unknown,
+): Record<string, readonly ModifierDefaultSite[]> {
+  const sites: Record<string, readonly ModifierDefaultSite[]> = {};
+  if (kindSchema === undefined) return sites;
+  const entry = collectionEntrySchema(projectionCollectionSchema(kindSchema, projection.entries), kindSchema);
+  if (!entry) return sites;
+  for (const field of [projection.array, projection.nullable]) {
+    if (field !== undefined) sites[field] = modifierDefaultSites(entry, field, kindSchema);
+  }
+  return sites;
 }
 
 function projectCollection(
@@ -457,14 +655,14 @@ function projectEntry(
     mapped =
       typeof key === "string"
         ? map[key]
-        : referencedNode(key, name, entryPointer, projection, map, options);
+        : referencedNode(key, name, entryPointer, projection, map, run.declaration, options);
   }
   // A value with no map entry projects to nothing rather than to `any`: the
   // vocabulary is the kind's own enum, so an unmapped value is a gap in the
   // kind's declaration, not a shape to guess at.
   if (!mapped) return undefined;
   const modifier = (field: string): unknown =>
-    entry[field] !== undefined ? entry[field] : run.defaults[field];
+    entry[field] !== undefined ? entry[field] : applicableDefault(run.defaultSites[field], entry);
   let node: Record<string, unknown> = { ...mapped };
   if (projection.array && modifier(projection.array) === true) {
     node = { type: "array", items: node };
@@ -482,8 +680,9 @@ function projectEntry(
  * `nullable` widens. Closed because each changes how the schema is assembled,
  * so a third-party modifier would be a name nothing acts on; ordered because
  * leaving it implicit is how two implementations come to disagree. An entry
- * that omits one reads the field's declared `default:`, and with none declared
- * `array` reads as false and `nullable` as true. `nested` recurses: an entry
+ * that omits one reads the `default:` that applies to IT — the field's own, or
+ * the one the selected `then` / `else` of a conditional over the entry declares
+ * — and with none declared `array` reads as false and `nullable` as true. `nested` recurses: an entry
  * carrying the sub-collection projects to the object it projects to.
  *
  * The projection is deliberately LOSSY. Length, precision, collation and check
@@ -504,8 +703,9 @@ export function projectEntries(
     projection,
     map,
     options,
-    defaults: modifierDefaults(projection, options?.kindSchema),
+    defaultSites: modifierDefaultSitesOf(projection, options?.kindSchema),
     ancestors: new Set(),
+    declaration: isObject(manifest) ? manifest : undefined,
   });
 }
 
@@ -545,17 +745,30 @@ export function readProjectionRef(value: unknown): ProjectionRef | undefined {
   };
 }
 
+/**
+ * Host-owned state one walk carries along its hops: the import each library was
+ * entered through, keyed by the library's module. A library's resource INPUT is
+ * a stand-in for what that import supplies, so the hop reaching one continues
+ * to the supplied declaration. The kernel needs none — its library context
+ * already holds the borrowed instance.
+ */
+export type ProjectionTrail = ReadonlyMap<string, Record<string, any>>;
+
 /** What a reference resolved to. `"ambiguous"` is distinct from `undefined`
  *  because the two need different advice: one says disambiguate, the other says
- *  the name resolves to nothing. */
+ *  the name resolves to nothing. `"injected"` is a library's resource input
+ *  whose supplier this walk did not enter through — answerable only where it is
+ *  supplied. */
 export type ProjectionLookup =
-  | { readonly manifest: Record<string, any> }
+  | { readonly manifest: Record<string, any>; readonly trail?: ProjectionTrail }
   | { readonly ambiguous: true }
+  | { readonly injected: true }
   | undefined;
 
 /**
  * What projecting a consumer's slot needs: resolving a reference to the manifest
- * it names, and the definition that manifest's `kind` names.
+ * it names, the definition that manifest's `kind` names, and which of its paths
+ * hold references.
  *
  * A RESOLVER rather than a list of manifests, because resolution is scoped and
  * only the host knows the scope: an alias-qualified `!ref Alias.users` names an
@@ -564,10 +777,16 @@ export type ProjectionLookup =
  * unambiguous cross-module reference came to read as ambiguous. It is also what
  * lets the kernel supply its own context lookup, so the contract the analyzer
  * types and the contract the kernel enforces are the same schema.
+ *
+ * **Every hop resolves in the scope of the module that declared the HOLDER** —
+ * the declaration the reference is written in, which past the first hop is not
+ * the consumer: a library's `node` naming `!ref users` means the library's
+ * `users`, whoever projects through it.
  */
 export interface ProjectionScope {
   /**
-   * The declaration the value at a projected slot names.
+   * The declaration the value at a projected slot names, resolved in the scope
+   * of the module that declared `holder`.
    *
    * Takes the RAW slot value rather than a parsed reference, because what sits
    * there depends on the host and only the host can read it: the analyzer sees
@@ -577,50 +796,145 @@ export interface ProjectionScope {
    * left the kernel unable to resolve anything — which is a contract enforced
    * statically and not at dispatch.
    */
-  resolveManifest(value: unknown): ProjectionLookup;
-  resolveDefinition(kind: string): Record<string, any> | undefined;
+  resolveManifest(
+    value: unknown,
+    holder?: Record<string, any>,
+    trail?: ProjectionTrail,
+  ): ProjectionLookup;
+  /** The definition a declaration's kind names, resolved in the module scope of
+   *  `declaration`. */
+  resolveDefinition(kind: string, declaration?: Record<string, any>): Record<string, any> | undefined;
+  /**
+   * The reference slots of `declaration`'s kind — the field map Phase-5
+   * injection injects, `x-telo-schema-from` expansions included, spelled
+   * `tables[]` / `mounts[].mount` / `tables.{}` — with the kind resolved in the
+   * module scope of `scope` (the declaration itself, or the one an inline
+   * declaration is written in). Undefined when the kind resolves to no
+   * definition. The ONLY thing that decides whether a value is a reference.
+   */
+  referenceSlots(
+    declaration: Record<string, any>,
+    scope: Record<string, any>,
+  ): readonly string[] | undefined;
+  /** True for a value the host holds in place of a reference — the kernel's
+   *  injected instance. Read only at a reference slot. */
+  isLiveReference?(value: unknown): boolean;
+  /** The declaration as its author wrote it, where the host holds an expanded
+   *  copy — so a selector landing on a computed value is recognised whether or
+   *  not it has been evaluated yet. */
+  authored?(declaration: Record<string, any>): Record<string, any>;
 }
+
+/** How the flattened list is read past its own manifests: which module an alias
+ *  names in the scope of the module that wrote it, a declaration's reference
+ *  slots, and each imported library's own declarations. */
+export interface ProjectionModules {
+  moduleForAlias(module: string | undefined, alias: string): string | undefined;
+  referenceSlots(declaration: Record<string, any>, module: string | undefined): readonly string[] | undefined;
+  readonly libraries?: LibraryDeclarations;
+}
+
+const moduleOf = (manifest: Record<string, any> | undefined): string | undefined => {
+  const module = (manifest?.metadata as { module?: unknown } | undefined)?.module;
+  return typeof module === "string" ? module : undefined;
+};
+
+/** The module whose scope a declaration's own references are written in: the
+ *  owner of a re-exported copy, which is stamped under the re-exporting module. */
+const scopeModuleOf = (manifest: Record<string, any> | undefined): string | undefined => {
+  const declaring = (manifest?.metadata as { declaringModule?: unknown } | undefined)?.declaringModule;
+  return typeof declaring === "string" ? declaring : moduleOf(manifest);
+};
 
 /**
  * The resolver for a FLATTENED manifest list — the analyzer's own shape.
  *
- * An alias narrows to the manifests forwarded from that import (stamped
- * `metadata.alias` by flatten), so two libraries each exporting a `users` table
- * stay distinguishable. Only when nothing carries the alias does it fall back to
- * matching by name alone, which is the pre-flatten shape a standalone module
- * analysis has.
+ * A reference resolves in the HOLDER's module, read off the `metadata.module`
+ * stamp: a bare name among that module's declarations in the flat set, then
+ * among the library's own documents; an alias through that module's own import
+ * table, into the target module the same way. So two libraries each declaring a
+ * `users` stay distinguishable at any hop, internal or exported. A holder with
+ * no stamp resolves among the unstamped manifests, as one scope. A name the
+ * holder's scope does not declare resolves to nothing — never to another
+ * module's resource of the same name.
+ *
+ * A library's resource INPUT continues to what the import the walk entered the
+ * library through supplies for it, resolved in the importing module's scope.
  */
 export function manifestListScope(
   manifests: readonly Record<string, any>[],
-  resolveDefinition: (kind: string) => Record<string, any> | undefined,
+  resolveDefinition: (kind: string, declaration?: Record<string, any>) => Record<string, any> | undefined,
+  modules?: ProjectionModules,
 ): ProjectionScope {
-  return {
+  const libraries = modules?.libraries;
+  const named = (name: string, module: string | undefined, kind?: string): Record<string, any>[] =>
+    manifests.filter(
+      (candidate) =>
+        (candidate?.metadata as { name?: unknown } | undefined)?.name === name &&
+        moduleOf(candidate) === module &&
+        (kind === undefined || candidate.kind === kind),
+    );
+
+  const scope: ProjectionScope = {
     resolveDefinition,
-    resolveManifest(value) {
+    referenceSlots: (declaration, holder) =>
+      modules?.referenceSlots(declaration, scopeModuleOf(declaration) ?? scopeModuleOf(holder)),
+    resolveManifest(value, holder, trail) {
       const ref = readProjectionRef(value);
       if (!ref) return undefined;
-      const byName = manifests.filter(
-        (candidate) =>
-          (candidate?.metadata as { name?: unknown } | undefined)?.name === ref.name &&
-          (typeof ref.kind !== "string" || candidate.kind === ref.kind),
-      );
-      const aliased =
-        ref.alias && ref.alias !== "Self"
-          ? byName.filter(
-              (candidate) =>
-                (candidate?.metadata as { alias?: unknown } | undefined)?.alias === ref.alias,
-            )
-          : byName;
-      // A name that matches SEVERAL manifests is REFUSED rather than resolved to
-      // the first: picking one by flatten order would type the consumer's rows
-      // against the wrong declaration — a wrong answer, which is worse than no
-      // answer. Reported, so the author is told to disambiguate.
-      const matches = aliased.length > 0 ? aliased : byName;
-      if (matches.length === 0) return undefined;
-      if (matches.length > 1) return { ambiguous: true };
-      return { manifest: matches[0]! };
+      const module = scopeModuleOf(holder);
+      if (ref.alias && ref.alias !== "Self") {
+        const target = modules?.moduleForAlias(module, ref.alias);
+        if (target === undefined) return undefined;
+        const entry = named(ref.alias, module, "Telo.Import")[0] ??
+          (module !== undefined ? libraries?.importOf(module, ref.alias) : undefined);
+        const entered = entry ? new Map(trail).set(target, entry) : trail;
+        return declaredIn(ref.name, target, entered);
+      }
+      return declaredIn(ref.name, module, trail);
     },
   };
+
+  /** `name` among `module`'s declarations: the flat set, then the library's own
+   *  documents, then its resource inputs. Undefined when none declares it. */
+  function declaredIn(
+    name: string,
+    module: string | undefined,
+    trail: ProjectionTrail | undefined,
+  ): ProjectionLookup {
+    const own = named(name, module);
+    if (own.length > 1) return { ambiguous: true };
+    if (own.length === 1) {
+      return isInjectedDeclaration(own[0] as ResourceManifest)
+        ? supplied(name, module, trail)
+        : { manifest: own[0]!, trail };
+    }
+    if (module === undefined || !libraries) return undefined;
+    if (libraries.isInput(module, name)) return supplied(name, module, trail);
+    const internal = libraries.declaration(module, name);
+    return internal ? { manifest: internal, trail } : undefined;
+  }
+
+  /** What the import the walk entered `module` through supplies for its input. */
+  function supplied(
+    name: string,
+    module: string | undefined,
+    trail: ProjectionTrail | undefined,
+  ): ProjectionLookup {
+    const entry = module === undefined ? undefined : trail?.get(module);
+    if (!entry) return { injected: true };
+    const value = readSuppliedResources(entry)[name];
+    return value === undefined ? undefined : scope.resolveManifest(value, entry, trail);
+  }
+
+  return scope;
+}
+
+/** Where a hop past the consumer's own declaration stopped: the pointer prefix
+ *  walked inside the declaration holding the value there. */
+export interface ProjectionHop {
+  readonly prefix: string;
+  readonly holder: string;
 }
 
 /**
@@ -632,11 +946,32 @@ export function manifestListScope(
  * was printed for a kind that declares one whose key field carries no map, and
  * for a declaration whose entry collection is simply absent — accusing the wrong
  * author of the wrong omission in both.
+ *
+ * `pointer` is always a path in the CONSUMER, where the diagnostic anchors; a
+ * failure past the first hop names where it stopped in `via`.
  */
 export type ProjectionFailure =
-  | { readonly reason: "no-ref"; readonly pointer: string }
-  | { readonly reason: "unresolved"; readonly pointer: string; readonly name: string }
-  | { readonly reason: "ambiguous"; readonly pointer: string; readonly name: string }
+  | { readonly reason: "no-ref"; readonly pointer: string; readonly via?: ProjectionHop }
+  | {
+      readonly reason: "unresolved";
+      readonly pointer: string;
+      readonly name: string;
+      readonly via?: ProjectionHop;
+    }
+  | {
+      readonly reason: "ambiguous";
+      readonly pointer: string;
+      readonly name: string;
+      readonly via?: ProjectionHop;
+    }
+  /** A declaration the walk reached has a kind that resolves to no definition,
+   *  so which of its paths hold references is not known. */
+  | {
+      readonly reason: "no-definition";
+      readonly pointer: string;
+      readonly kind: string;
+      readonly via?: ProjectionHop;
+    }
   /** The target's KIND declares no `x-telo-schema-projection` at all. */
   | { readonly reason: "no-projection"; readonly pointer: string; readonly kind: string }
   /** It declares one, but the field it keys on carries no `x-telo-schema-map`. */
@@ -651,13 +986,18 @@ export type ProjectionFailure =
     }
   /** The slot names a resource the module does not DECLARE — a library's
    *  `resources:` input, standing in for an instance its importer supplies. A
-   *  projection is DECLARATION-derived, so it cannot be answered here at all;
-   *  the stand-in has no entries, and reporting that would tell the library
-   *  author their block is wrong when it is correct. Resolution moves to the
-   *  injection site, where the real declaration is. Carried as its own reason
-   *  rather than as `no-entries` so a consumer can tell "unanswerable here"
-   *  from "answered, and empty". */
-  | { readonly reason: "injected"; readonly pointer: string; readonly name: string }
+   *  projection is DECLARATION-derived, so it cannot be answered in the
+   *  library's own pass, which does not hold the import; the stand-in has no
+   *  entries, and reporting that would tell the library author their block is
+   *  wrong when it is correct. Carried as its own reason rather than as
+   *  `no-entries` so a consumer can tell "unanswerable here" from "answered,
+   *  and empty". */
+  | {
+      readonly reason: "injected";
+      readonly pointer: string;
+      readonly name: string;
+      readonly via?: ProjectionHop;
+    }
   /** An ENTRY of the projected declaration references a shape that could not be
    *  read. Reported rather than dropped: the entry would silently vanish from
    *  the projected row, so a consumer naming it would be told the property does
@@ -670,60 +1010,356 @@ export type ProjectionFailure =
     }
   /** An entry's `nested` sub-collection leads back to the entry itself (a YAML
    *  alias), so projecting it would never terminate. It projects open. */
-  | { readonly reason: "nested-cycle"; readonly pointer: string; readonly entry: string };
+  | { readonly reason: "nested-cycle"; readonly pointer: string; readonly entry: string }
+  /** The annotation is malformed — at the slot, or on the kind document a hop
+   *  reached. Reported where it is written, as `SCHEMA_PROJECTION_INVALID`. */
+  | { readonly reason: "invalid"; readonly pointer: string; readonly detail: string }
+  /** Kind-document derivations lead back to a declaration already on the path. */
+  | { readonly reason: "cycle"; readonly pointer: string; readonly holder: string }
+  /** A `pick` / `omit` pointer lands on a value an expression computes. */
+  | { readonly reason: "selector-computed"; readonly pointer: string; readonly selector: string }
+  /** A `pick` / `omit` pointer lands on no entry name at all. */
+  | { readonly reason: "selector-unset"; readonly pointer: string; readonly selector: string }
+  /** A `pick` / `omit` pointer names an entry the projection does not have. */
+  | {
+      readonly reason: "selector-entry";
+      readonly pointer: string;
+      readonly selector: string;
+      readonly entry: string;
+    };
 
-function refTarget(
-  value: unknown,
-  scope: ProjectionScope,
-  pointer: string,
-):
-  | { manifest: Record<string, any>; definition: Record<string, any> }
-  | ProjectionFailure {
-  if (!isObject(value)) return { reason: "no-ref", pointer };
-  const name = typeof value.name === "string" ? value.name : "<unnamed>";
-  const found = scope.resolveManifest(value);
-  if (!found) return { reason: "unresolved", pointer, name };
-  if ("ambiguous" in found) return { reason: "ambiguous", pointer, name };
-  const manifest = found.manifest;
-  if (isInjectedDeclaration(manifest as ResourceManifest)) {
-    return { reason: "injected", pointer, name };
-  }
-  if (typeof manifest.kind !== "string") return { reason: "unresolved", pointer, name };
-  const definition = scope.resolveDefinition(manifest.kind);
-  if (!definition) return { reason: "no-projection", pointer, kind: manifest.kind };
-  return { manifest, definition };
+/** Failures the analyzer does not report at the consuming slot: `injected` is
+ *  unanswerable in the library's own pass, and `invalid` is reported where the
+ *  annotation is written. The kernel refuses both. */
+export function isReportedAtConsumer(failure: ProjectionFailure): boolean {
+  return failure.reason !== "injected" && failure.reason !== "invalid";
 }
 
-/** The declaration the annotation is written on, as a projection target. */
-function ownTarget(
-  manifest: Record<string, any>,
-  scope: ProjectionScope,
-): { manifest: Record<string, any>; definition: Record<string, any> } | ProjectionFailure {
-  if (typeof manifest.kind !== "string") {
-    return { reason: "no-ref", pointer: "" };
+/** Failures travel beside schemas through the resolution; neither a projected
+ *  object nor a mapped node carries a `reason` keyword. */
+function isFailure(value: unknown): value is ProjectionFailure {
+  return isObject(value) && typeof value.reason === "string" && typeof value.pointer === "string";
+}
+
+function isComputed(value: unknown): boolean {
+  return isCompiledValue(value) || (isTaggedSentinel(value) && !isRefSentinel(value));
+}
+
+const nameOf = (manifest: Record<string, any>): string =>
+  String((manifest.metadata as { name?: unknown } | undefined)?.name ?? `the inline ${manifest.kind}`);
+
+/** A declaration the walk stands in: `scope` is the declaration whose module its
+ *  names resolve in — itself, or the declaration an inline one is written in. */
+interface Holder {
+  readonly declaration: Record<string, any>;
+  readonly scope: Record<string, any>;
+  readonly trail?: ProjectionTrail;
+}
+
+/** One derivation being resolved: the consumer every failure anchors in. */
+interface Derivation {
+  readonly scope: ProjectionScope;
+  readonly consumer: Record<string, any>;
+}
+
+interface Walked {
+  readonly value: unknown;
+  readonly holder: Holder;
+  /** The segments walked inside the holder. */
+  readonly inner: readonly string[];
+  /** Whether the value sits at one of the holder's reference slots. */
+  readonly atReference: boolean;
+  /** The consumer-side path the walk left the consumer through. */
+  readonly anchor: string;
+}
+
+function hopOf(holder: Holder, inner: readonly string[], run: Derivation): ProjectionHop | undefined {
+  return holder.declaration === run.consumer
+    ? undefined
+    : { prefix: `/${inner.join("/")}`, holder: nameOf(holder.declaration) };
+}
+
+/** What a value at a reference slot IS: a reference in either spelling or a live
+ *  instance, an inline declaration, or data the slot's value branch holds. */
+function referenceValueKind(value: unknown, run: Derivation): "reference" | "inline" | "data" {
+  if (run.scope.isLiveReference?.(value) === true || isRefSentinel(value)) return "reference";
+  if (!isObject(value) || typeof value.kind !== "string") return "data";
+  return typeof value.name === "string" ? "reference" : "inline";
+}
+
+/** The declaration the value at a reference slot of `holder` names, as the next
+ *  holder. */
+function followReference(
+  value: unknown,
+  holder: Holder,
+  inner: readonly string[],
+  anchor: string,
+  run: Derivation,
+): Holder | ProjectionFailure {
+  const via = hopOf(holder, inner, run);
+  const hop = via ? { via } : {};
+  const kind = referenceValueKind(value, run);
+  if (kind === "data") return { reason: "no-ref", pointer: anchor, ...hop };
+  if (kind === "inline") {
+    return { declaration: value as Record<string, any>, scope: holder.scope, trail: holder.trail };
   }
-  const definition = scope.resolveDefinition(manifest.kind);
-  if (!definition) return { reason: "no-projection", pointer: "", kind: manifest.kind };
-  return { manifest, definition };
+  const name = readProjectionRef(value)?.name ?? "<unnamed>";
+  const found = run.scope.resolveManifest(value, holder.scope, holder.trail);
+  if (!found) return { reason: "unresolved", pointer: anchor, name, ...hop };
+  if ("ambiguous" in found) return { reason: "ambiguous", pointer: anchor, name, ...hop };
+  if ("injected" in found || isInjectedDeclaration(found.manifest as ResourceManifest)) {
+    return { reason: "injected", pointer: anchor, name, ...hop };
+  }
+  if (typeof found.manifest.kind !== "string") return { reason: "unresolved", pointer: anchor, name, ...hop };
+  return { declaration: found.manifest, scope: found.manifest, trail: found.trail };
+}
+
+/** The field-map spelling of a path walked inside a holder: `routes[0].handler`. */
+function concretePath(segments: readonly string[], containers: readonly unknown[]): string {
+  let out = "";
+  segments.forEach((segment, index) => {
+    if (Array.isArray(containers[index])) out += `[${segment}]`;
+    else out = out === "" ? segment : `${out}.${segment}`;
+  });
+  return out;
+}
+
+/**
+ * Walk `pointer` from `start`. The HOLDER KIND'S FIELD MAP decides where a
+ * reference is: a segment after a value at one of its reference slots continues
+ * inside the declaration that value names, to any depth — each one resolved in
+ * the scope of the module that declared the declaration holding it. At any other
+ * path a value is data, whatever its shape.
+ */
+function walk(
+  start: Holder,
+  pointer: string,
+  anchor: string | undefined,
+  run: Derivation,
+): Walked | ProjectionFailure {
+  let holder = start;
+  let value: unknown = start.declaration;
+  let prefix = "";
+  let inner: string[] = [];
+  let containers: unknown[] = [];
+  let atReference = false;
+  let left = anchor;
+  let slots = referenceSlotsOf(holder, [], run, left ?? "");
+  if (isFailure(slots)) return slots;
+  for (const segment of decodePointer(pointer)) {
+    if (atReference) {
+      left ??= prefix;
+      const next = followReference(value, holder, inner, left, run);
+      if (isFailure(next)) return next;
+      holder = next;
+      value = next.declaration;
+      inner = [];
+      containers = [];
+      slots = referenceSlotsOf(holder, inner, run, left);
+      if (isFailure(slots)) return slots;
+    }
+    if (!isObject(value) && !Array.isArray(value)) {
+      const via = hopOf(holder, inner, run);
+      return { reason: "no-ref", pointer: left ?? prefix, ...(via ? { via } : {}) };
+    }
+    containers.push(value);
+    value = (value as Record<string, unknown>)[segment];
+    prefix = `${prefix}/${segment}`;
+    inner.push(segment);
+    const concrete = concretePath(inner, containers);
+    atReference = slots.some((shape) => shapeMatches(concrete, shape));
+  }
+  return { value, holder, inner, atReference, anchor: left ?? prefix };
+}
+
+function referenceSlotsOf(
+  holder: Holder,
+  inner: readonly string[],
+  run: Derivation,
+  anchor: string,
+): readonly string[] | ProjectionFailure {
+  const slots = run.scope.referenceSlots(holder.declaration, holder.scope);
+  if (slots) return slots;
+  const via = hopOf(holder, inner, run);
+  return {
+    reason: "no-definition",
+    pointer: anchor,
+    kind: String(holder.declaration.kind),
+    ...(via ? { via } : {}),
+  };
+}
+
+/** The declaration `pointer` names, relative to `holder`; the empty pointer is
+ *  `holder` itself. */
+function derivedTarget(
+  holder: Holder,
+  pointer: string,
+  anchor: string | undefined,
+  run: Derivation,
+): { holder: Holder; anchor: string } | ProjectionFailure {
+  if (pointer === "") return { holder, anchor: anchor ?? "" };
+  const walked = walk(holder, pointer, anchor, run);
+  if (isFailure(walked)) return walked;
+  if (!walked.atReference) {
+    const via = hopOf(walked.holder, walked.inner, run);
+    return { reason: "no-ref", pointer: walked.anchor, ...(via ? { via } : {}) };
+  }
+  const next = followReference(walked.value, walked.holder, walked.inner, walked.anchor, run);
+  return isFailure(next) ? next : { holder: next, anchor: walked.anchor };
+}
+
+/** The entry name a `pick` / `omit` pointer selects. */
+function selectedEntry(
+  holder: Holder,
+  selector: string,
+  anchor: string,
+  run: Derivation,
+): string | ProjectionFailure {
+  const walked = walk(holder, selector, holder.declaration === run.consumer ? undefined : anchor, run);
+  if (isFailure(walked)) return walked;
+  const written = run.scope.authored?.(walked.holder.declaration) ?? walked.holder.declaration;
+  let authored: unknown = written;
+  for (const segment of walked.inner) {
+    authored = isObject(authored) || Array.isArray(authored) ? (authored as any)[segment] : undefined;
+  }
+  if (isComputed(authored) || isComputed(walked.value)) {
+    return { reason: "selector-computed", pointer: walked.anchor, selector };
+  }
+  if (typeof walked.value !== "string") {
+    return { reason: "selector-unset", pointer: walked.anchor, selector };
+  }
+  return walked.value;
+}
+
+function entriesOf(projected: Record<string, unknown>): Record<string, unknown> {
+  return isObject(projected.properties) ? projected.properties : {};
+}
+
+function withoutEntries(
+  projected: Record<string, unknown>,
+  holder: Holder,
+  selectors: readonly string[] | undefined,
+  anchor: string,
+  run: Derivation,
+): Record<string, unknown> | ProjectionFailure {
+  if (!selectors || selectors.length === 0) return projected;
+  const entries = { ...entriesOf(projected) };
+  for (const selector of selectors) {
+    const entry = selectedEntry(holder, selector, anchor, run);
+    if (typeof entry !== "string") return entry;
+    if (!Object.hasOwn(entries, entry)) {
+      return { reason: "selector-entry", pointer: anchor, selector, entry };
+    }
+    delete entries[entry];
+  }
+  return { ...projected, properties: entries };
+}
+
+/**
+ * Project one declaration: through its kind's own `x-telo-schema-projection`, or
+ * through the derivation its kind DOCUMENT declares — typed exactly as if the
+ * consumer had pointed at the derived target, less what that derivation omits.
+ */
+function projectDeclaration(
+  holder: Holder,
+  anchor: string,
+  run: Derivation,
+  failures: ProjectionFailure[] | undefined,
+  path: Set<object>,
+): Record<string, unknown> | ProjectionFailure | undefined {
+  const declaration = holder.declaration;
+  if (typeof declaration.kind !== "string") return { reason: "no-ref", pointer: "" };
+  const kind = declaration.kind;
+  const definition = run.scope.resolveDefinition(kind, holder.scope);
+  if (!definition) return { reason: "no-projection", pointer: anchor, kind };
+
+  const derived = readKindDerivation(definition);
+  if (derived && "invalid" in derived) {
+    return { reason: "invalid", pointer: anchor, detail: `kind '${kind}': ${derived.invalid}` };
+  }
+  if (derived) {
+    if (path.has(declaration)) return { reason: "cycle", pointer: anchor, holder: nameOf(declaration) };
+    path.add(declaration);
+    const target = derivedTarget(holder, derived.derivation.from, anchor, run);
+    if (isFailure(target)) return target;
+    const projected = projectDeclaration(target.holder, anchor, run, failures, path);
+    if (!projected || isFailure(projected)) return projected;
+    return withoutEntries(projected, holder, derived.derivation.omit, anchor, run);
+  }
+
+  const projection = readSchemaProjection(definition);
+  const map = projection && projectionKeyMap(definition.schema, projection);
+  // The EMPTY pointer names the declaration itself, whose entry paths are its
+  // own; any other declaration's entries are anchored at the consumer's slot.
+  const pointer = declaration === run.consumer ? "" : anchor === "" ? "/" : anchor;
+  const projected =
+    projection && map
+      ? projectEntries(declaration, projection, map, {
+          scope: run.scope,
+          pointer,
+          failures,
+          kindSchema: definition.schema,
+        })
+      : undefined;
+  if (projected) return projected;
+  // Three distinct omissions, three repairs by three different authors: the
+  // kind declares no projection, the kind declares one the key field has no
+  // vocabulary for, or this DECLARATION simply lists no entries.
+  if (!projection) return { reason: "no-projection", pointer: anchor, kind };
+  if (!map) return { reason: "no-projection-map", pointer: anchor, kind };
+  return { reason: "no-entries", pointer: anchor, kind, entries: projection.entries };
+}
+
+/** The schema a consumer's derivation types its slot as. */
+function projectDerivation(
+  consumer: Record<string, any>,
+  derivation: ProjectionDerivation,
+  scope: ProjectionScope,
+  failures: ProjectionFailure[] | undefined,
+): Record<string, unknown> | ProjectionFailure | undefined {
+  const run: Derivation = { scope, consumer };
+  const start: Holder = { declaration: consumer, scope: consumer };
+  const target = derivedTarget(start, derivation.from, undefined, run);
+  if (isFailure(target)) return target;
+  const projected = projectDeclaration(target.holder, target.anchor, run, failures, new Set());
+  if (!projected || isFailure(projected)) return projected;
+  const kept = withoutEntries(projected, start, derivation.omit, target.anchor, run);
+  if (isFailure(kept) || derivation.pick === undefined) return kept;
+  const entry = selectedEntry(start, derivation.pick, target.anchor, run);
+  if (typeof entry !== "string") return entry;
+  const entries = entriesOf(kept);
+  if (!Object.hasOwn(entries, entry)) {
+    return { reason: "selector-entry", pointer: target.anchor, selector: derivation.pick, entry };
+  }
+  return entries[entry] as Record<string, unknown>;
 }
 
 export function describeProjectionFailure(failure: ProjectionFailure): string {
+  const subject = (via: ProjectionHop | undefined): string =>
+    via
+      ? `'${failure.pointer}' leads to '${via.prefix}' inside '${via.holder}', which`
+      : `'${failure.pointer}'`;
   switch (failure.reason) {
     case "no-ref":
-      return failure.pointer === ""
+      return failure.pointer === "" && !failure.via
         ? "this resource declares no 'kind:', so there is no definition to project it through."
-        : `'${failure.pointer}' does not hold a reference, so there is no declaration to project.`;
+        : `${subject(failure.via)} does not hold a reference, so there is no declaration to project.`;
     case "unresolved":
-      return `'${failure.pointer}' references '${failure.name}', which resolves to no resource.`;
+      return `${subject(failure.via)} references '${failure.name}', which resolves to no resource.`;
+    case "no-definition":
+      return (
+        `${subject(failure.via)} is a resource of kind '${failure.kind}', which resolves to no ` +
+        `definition — so nothing says which of its fields hold references to continue through.`
+      );
     case "injected":
       return (
-        `'${failure.pointer}' references '${failure.name}', a resource input this module does ` +
+        `${subject(failure.via)} references '${failure.name}', a resource input this module does ` +
         `not declare — its entries belong to whoever supplies it.`
       );
     case "ambiguous":
       return (
-        `'${failure.pointer}' references '${failure.name}', which matches more than one resource ` +
-        `in scope. Rename one of them so the reference names exactly one declaration.`
+        `${subject(failure.via)} references '${failure.name}', which matches more than one ` +
+        `resource in scope. Rename one of them so the reference names exactly one declaration.`
       );
     case "no-projection":
       return (
@@ -753,12 +1389,32 @@ export function describeProjectionFailure(failure: ProjectionFailure): string {
         `entries, so its projection would never end — it is projected as an open value. ` +
         `Replace the alias that points back at it with the entries themselves.`
       );
+    case "invalid":
+      return failure.detail;
+    case "cycle":
+      return (
+        `'${failure.pointer}' is projected through kind-level derivations that lead back to ` +
+        `'${failure.holder}', so it never reaches a declaration whose kind declares ` +
+        `'x-telo-schema-projection'.`
+      );
+    case "selector-computed":
+      return (
+        `'${failure.selector}' names the entry to select, but the value there is computed by an ` +
+        `expression. An entry is selected by a literal name, known before anything runs.`
+      );
+    case "selector-unset":
+      return `'${failure.selector}' names the entry to select, but holds no entry name.`;
+    case "selector-entry":
+      return (
+        `'${failure.selector}' names entry '${failure.entry}', which the projection of ` +
+        `'${failure.pointer}' does not have.`
+      );
   }
 }
 
 /**
  * Replace every `x-telo-schema-projection-from` node with the projection of the
- * declaration it points at.
+ * declaration it derives.
  *
  * Structural: returns a new schema and never mutates the one handed in. A node
  * that cannot be projected is left exactly as it was — degrading to the slot's
@@ -794,44 +1450,17 @@ export function resolveSchemaProjections(
   }
   if (!isObject(schema)) return schema;
 
-  const pointer = readProjectionFrom(schema);
-  if (pointer !== undefined && manifest) {
-    // The EMPTY pointer names the declaration this annotation is written on,
-    // rather than a slot holding a reference to another. Resolution is skipped
-    // because the declaration is already in hand — which is what lets a kind
-    // type its own data against its own entries (a table's seed rows against its
-    // columns), something no reference could reach.
-    const target =
-      pointer === ""
-        ? ownTarget(manifest, scope)
-        : refTarget(navigate(manifest, pointer), scope, pointer);
-    if ("reason" in target) {
-      failures?.push(target);
-    } else {
-      const kind = String(target.manifest.kind ?? "<unknown>");
-      const projection = readSchemaProjection(target.definition);
-      const map = projection && projectionKeyMap(target.definition.schema, projection);
-      const projected =
-        projection && map
-          ? projectEntries(target.manifest, projection, map, {
-              scope,
-              pointer,
-              failures,
-              kindSchema: target.definition.schema,
-            })
-          : undefined;
-      if (projected) {
-        const { ["x-telo-schema-projection-from"]: _dropped, ...rest } = schema;
-        return { ...rest, ...projected };
-      }
-      // Three distinct omissions, three repairs by three different authors: the
-      // kind declares no projection, the kind declares one the key field has no
-      // vocabulary for, or this DECLARATION simply lists no entries.
-      if (!projection) failures?.push({ reason: "no-projection", pointer, kind });
-      else if (!map) failures?.push({ reason: "no-projection-map", pointer, kind });
-      else {
-        failures?.push({ reason: "no-entries", pointer, kind, entries: projection.entries });
-      }
+  const read = readProjectionDerivation(schema[PROJECTION_FROM]);
+  if (read && manifest) {
+    const projected =
+      "invalid" in read
+        ? ({ reason: "invalid", pointer: "", detail: read.invalid } as const)
+        : projectDerivation(manifest, read.derivation, scope, failures);
+    if (isFailure(projected)) {
+      failures?.push(projected);
+    } else if (projected) {
+      const { [PROJECTION_FROM]: _dropped, ...rest } = schema;
+      return { ...rest, ...projected };
     }
   }
 

@@ -1,0 +1,148 @@
+# Every rule the SQL graph kinds declare, pinned both ways: `telo check` refuses
+# the declaring library (RESOURCE_RULE_VIOLATED, the rule's code in
+# `data.rule`), and a consumer whose entry-scoped check is silent fails at boot
+# with the controller's refusal under the same code.
+kind: Telo.Application
+metadata:
+  name: GraphSqlStaticRefusals
+  version: 1.0.0
+  description: The graph-sql model rules, refused statically and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref nodeKeyUnknownColumn
+  - !ref nodeKeyUnknownColumnAtRuntime
+  - !ref nodeKeyInvalid
+  - !ref nodeKeyInvalidAtRuntime
+  - !ref endpointUnknownColumn
+  - !ref endpointUnknownColumnAtRuntime
+  - !ref endpointForeignKeyMissing
+  - !ref endpointForeignKeyMissingAtRuntime
+  - !ref relationshipNotUnique
+  - !ref relationshipNotUniqueAtRuntime
+  - !ref tableNotInSchema
+  - !ref tableNotInSchemaAtRuntime
+  - !ref schemaConnectionMismatch
+  - !ref schemaConnectionMismatchAtRuntime
+  - !ref tableShared
+  - !ref tableSharedAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumn }
+source: ./__fixtures__/rules/node-key-unknown-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column its table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyUnknownColumnAtRuntime }
+source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyInvalid }
+source: ./__fixtures__/rules/node-key-invalid/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a key column that does not identify a row"
+---
+kind: Assert.Manifest
+metadata: { name: nodeKeyInvalidAtRuntime }
+source: ./__fixtures__/rules/node-key-invalid-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_NODE_KEY_INVALID"
+---
+kind: Assert.Manifest
+metadata: { name: endpointUnknownColumn }
+source: ./__fixtures__/rules/endpoint-unknown-column/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a sourceColumn or targetColumn its table does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: endpointUnknownColumnAtRuntime }
+source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN"
+---
+kind: Assert.Manifest
+metadata: { name: endpointForeignKeyMissing }
+source: ./__fixtures__/rules/endpoint-foreign-key-missing/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "has no foreign key over exactly its sourceColumn (or targetColumn)"
+---
+kind: Assert.Manifest
+metadata: { name: endpointForeignKeyMissingAtRuntime }
+source: ./__fixtures__/rules/endpoint-foreign-key-missing-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_ENDPOINT_FOREIGN_KEY_MISSING"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipNotUnique }
+source: ./__fixtures__/rules/relationship-not-unique/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "has no unique index over exactly its sourceColumn and targetColumn"
+---
+kind: Assert.Manifest
+metadata: { name: relationshipNotUniqueAtRuntime }
+source: ./__fixtures__/rules/relationship-not-unique-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_RELATIONSHIP_NOT_UNIQUE"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchema }
+source: ./__fixtures__/rules/table-not-in-schema/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "whose table its schema does not list in 'tables:'"
+---
+kind: Assert.Manifest
+metadata: { name: tableNotInSchemaAtRuntime }
+source: ./__fixtures__/rules/table-not-in-schema-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatch }
+source: ./__fixtures__/rules/schema-connection-mismatch/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "names a schema on a different connection"
+---
+kind: Assert.Manifest
+metadata: { name: schemaConnectionMismatchAtRuntime }
+source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+---
+kind: Assert.Manifest
+metadata: { name: tableShared }
+source: ./__fixtures__/rules/table-shared/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "lists two node or relationship types over the same table"
+---
+kind: Assert.Manifest
+metadata: { name: tableSharedAtRuntime }
+source: ./__fixtures__/rules/table-shared-app.yaml
+expect:
+  errors: []
+  runFails: "GRAPH_TABLE_SHARED"

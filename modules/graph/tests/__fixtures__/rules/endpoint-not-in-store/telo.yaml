@@ -1,0 +1,18 @@
+# A store holding a relationship type whose endpoint node type it does not hold.
+kind: Telo.Library
+metadata:
+  name: EndpointNotInStore
+include:
+  - ../../graph-model.yaml
+imports:
+  GraphSql: ../../../../../graph-sql
+  SQLite: ../../../../../sqlite
+exports:
+  resources: [documentsOnly]
+---
+kind: GraphSql.Store
+metadata: { name: documentsOnly }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref document]
+relationships: [!ref knows]

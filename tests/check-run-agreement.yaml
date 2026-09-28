@@ -177,6 +177,22 @@ targets:
   - !ref spanAttributeThroughItemsAtRuntime
   - !ref tracingOnLibrary
   - !ref tracingOnLibraryAtRuntime
+  - !ref projectionDerivation
+  - !ref projectionSecondHopAtRuntime
+  - !ref projectionCycleAtRuntime
+  - !ref projectionUnknownEntryAtRuntime
+  - !ref projectionComputedEntryAtRuntime
+  - !ref projectionSelectorUnsetAtRuntime
+  - !ref projectionUnknownKeyAtRuntime
+  - !ref projectionTwoProjectionsAtRuntime
+  - !ref projectionKindPickAtRuntime
+  - !ref projectionDataShapedAtRuntime
+  - !ref projectionInternalHop
+  - !ref projectionOwnContract
+  - !ref projectionOwnContractAtRuntime
+  - !ref projectionNamedContract
+  - !ref projectionNamedContractAtRuntime
+  - !ref projectionDeclaredOnlyAtCreation
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1762,3 +1778,166 @@ metadata:
 source: ./__fixtures__/check-run-agreement/compiled-results/ambiguous-union-accepted.yaml
 expect:
   runs: true
+---
+# A projection derived through references, refused where it cannot yield one
+# declaration or one entry: a second hop naming nothing, a kind-level derivation
+# leading back to itself, a selector naming an entry the projection lacks,
+# landing on an expression or on no name at all, and a malformed annotation — at a slot, or on a kind
+# document declaring two projections or selecting one entry.
+kind: Assert.Manifest
+metadata:
+  name: projectionDerivation
+source: ./__fixtures__/check-run-agreement/projection-derivation/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node' leads to '/shape' inside 'shapeless', which does not hold a reference"
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node' is projected through kind-level derivations that lead back to 'mirror'"
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node/key' names entry 'identifier', which the projection of '/node' does not have"
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node/key' names the entry to select, but the value there is computed by an expression"
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node/missing' names the entry to select, but holds no entry name"
+    - code: SCHEMA_PROJECTION_INVALID
+      message: "'x-telo-schema-projection-from' has no 'pikc'"
+    - code: SCHEMA_PROJECTION_INVALID
+      message: "a kind declares its projection once"
+    - code: SCHEMA_PROJECTION_INVALID
+      message: "'pick' types a slot as ONE entry"
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "Self.Loose: '/meta' does not hold a reference"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionSecondHopAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/second-hop.yaml
+expect:
+  errors: []
+  runFails: "'/node' leads to '/shape' inside 'shapeless', which does not hold a reference"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionCycleAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/cycle.yaml
+expect:
+  errors: []
+  runFails: "'/node' is projected through kind-level derivations that lead back to 'mirror'"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionUnknownEntryAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/unknown-entry.yaml
+expect:
+  errors: []
+  runFails: "'/node/key' names entry 'identifier', which the projection of '/node' does not have"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionComputedEntryAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/computed-entry.yaml
+expect:
+  errors: []
+  runFails: "'/node/key' names the entry to select, but the value there is computed by an expression"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionSelectorUnsetAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/selector-unset.yaml
+expect:
+  errors: []
+  runFails: "'/node/missing' names the entry to select, but holds no entry name"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionUnknownKeyAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/unknown-key.yaml
+expect:
+  errors: []
+  runFails: "'x-telo-schema-projection-from' has no 'pikc'"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionTwoProjectionsAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/two-projections.yaml
+expect:
+  errors: []
+  runFails: "a kind declares its projection once"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionKindPickAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/kind-pick.yaml
+expect:
+  errors: []
+  runFails: "'pick' types a slot as ONE entry"
+---
+# A field the kind does not declare as a reference is data, whatever its shape:
+# `meta` holds exactly `{ kind, name }` and is never resolved, in either half.
+kind: Assert.Manifest
+metadata:
+  name: projectionDataShapedAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/data-shaped.yaml
+expect:
+  errors: []
+  runFails: "'/meta' does not hold a reference"
+---
+# A second hop inside a library's internals is resolved against the library's
+# own documents, so the application's check reports it and boot refuses it.
+kind: Assert.Manifest
+metadata:
+  name: projectionInternalHop
+source: ./__fixtures__/check-run-agreement/projection-derivation/internal-hop.yaml
+expect:
+  errors:
+    - code: SCHEMA_PROJECTION_FROM_UNRESOLVED
+      message: "'/node' leads to '/shape' inside 'shapeless', which does not hold a reference"
+  runFails: "Manifest validation failed"
+---
+# A malformed derivation is reported wherever a schema is written — a
+# resource's own contract, and a named shape used as one — not only in a
+# definition, and the kernel refuses the same annotation.
+kind: Assert.Manifest
+metadata:
+  name: projectionOwnContract
+source: ./__fixtures__/check-run-agreement/projection-derivation/own-contract/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_PROJECTION_INVALID
+      message: "'x-telo-schema-projection-from' has no 'pikc'"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionOwnContractAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/own-contract-app.yaml
+expect:
+  errors: []
+  runFails: "Run.Sequence ownContract: InvokeError: declared `inputType` could not be projected: 'x-telo-schema-projection-from' has no 'pikc'"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionNamedContract
+source: ./__fixtures__/check-run-agreement/projection-derivation/named-contract/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_PROJECTION_INVALID
+      message: "'x-telo-schema-projection-from' has no 'pikc'"
+---
+kind: Assert.Manifest
+metadata:
+  name: projectionNamedContractAtRuntime
+source: ./__fixtures__/check-run-agreement/projection-derivation/named-contract-app.yaml
+expect:
+  errors: []
+  runFails: "Run.Sequence namedContract: InvokeError: declared `inputType` could not be projected: 'x-telo-schema-projection-from' has no 'pikc'"
+---
+# A resource whose contract cannot be projected fails when it is CREATED: the
+# application dispatches nothing from the library and still does not boot.
+kind: Assert.Manifest
+metadata:
+  name: projectionDeclaredOnlyAtCreation
+source: ./__fixtures__/check-run-agreement/projection-derivation/declared-only.yaml
+expect:
+  errors: []
+  runFails: "Run.Sequence ownContract: InvokeError: declared `inputType` could not be projected"

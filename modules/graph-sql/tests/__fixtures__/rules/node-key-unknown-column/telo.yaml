@@ -1,0 +1,20 @@
+# A node type whose key names a column its table does not declare.
+kind: Telo.Library
+metadata:
+  name: NodeKeyUnknownColumn
+imports:
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../..
+exports:
+  resources: [person]
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: uid

@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionUnknownKey
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.unknownKey

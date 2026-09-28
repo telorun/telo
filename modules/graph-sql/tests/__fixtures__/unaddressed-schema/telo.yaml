@@ -1,0 +1,55 @@
+# An engine `Schema` kind whose instance predates table addressing, and a store
+# over it. The store must refuse it rather than address its tables unqualified.
+kind: Telo.Library
+metadata:
+  name: UnaddressedSchema
+imports:
+  Sql: ../../../../sql
+  SQLite: ../../../../sqlite
+  GraphSql: ../../..
+exports:
+  resources: [kb]
+---
+kind: Telo.Definition
+metadata:
+  name: Schema
+  description: Test fixture — a schema kind whose instance cannot address its tables.
+capability: Telo.Runnable
+extends: Sql.Schema
+controllers:
+  - pkg:telo/local/js?path=./schema.mjs#schema
+schema:
+  type: object
+  properties:
+    connection:
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    tables:
+      type: array
+      items:
+        x-telo-ref: { kind: Sql.Table, use: dependency }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+---
+kind: Self.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref people]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Store
+metadata: { name: kb }
+connection: !ref db
+schema: !ref appSchema
+nodes: [!ref person]

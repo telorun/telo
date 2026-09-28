@@ -69,6 +69,12 @@ tables: [ !ref users ]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+A primary-key or identity column is `NOT NULL` whether or not it says so, and
+its row projection is non-nullable to match: a `null` written for `id` above is
+a `telo check` error rather than a database one. Every other column that omits
+`nullable` admits NULL, and `nullable: true` on a primary-key or identity column
+is refused.
+
 ### Domains, predicates and reference data
 
 A column's `type:` takes a storage class or a `!ref` to a declared enum, and the
@@ -104,6 +110,10 @@ extensions: [citext]
 enums: [ !ref messageRole ]
 tables: [ !ref messages ]
 ```
+
+A consumer that reads or writes a listed table addresses it through the schema
+instance, which names it in this namespace — `"app"."messages"` above — so the
+connection's `search_path` never decides which table a statement reaches.
 
 `extensions:` provisions what a storage class needs before any column can use it
 — `citext` is unavailable until its extension exists — instead of smuggling

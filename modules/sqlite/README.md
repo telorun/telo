@@ -34,7 +34,7 @@ inputs:
 | --- | --- | --- | --- |
 | `file` | `:memory:` or `Telo.HostPath` | no | Absolute database file path, usually read from a variable declared `x-telo-type: Telo.HostPath` (which resolves a relative value against the working directory); the parent directory is auto-created. A relative literal is refused (`HOST_PATH_RELATIVE`). Omit, or use `:memory:`, for an in-memory database. |
 
-The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inline `${{ }}` parameters stay dialect-neutral. Migrations run with transactional DDL (a transactional-SQLite adapter wraps the batch), matching PostgreSQL.
+The connection's bind-placeholder style is fixed to SQLite anonymous `?`, so inline `${{ }}` parameters stay dialect-neutral. Migrations run with transactional DDL (a transactional-SQLite adapter wraps the batch), matching PostgreSQL. Every connection enforces foreign keys on both drivers (see [Declarative schema](#declarative-schema)).
 
 SQLite has no boolean storage class, so a bound `true` or `false` is written as `1` or `0` in an `integer` column — the same convention a declared column `default: true` renders. It reads back as the number, and a predicate bound with a boolean matches accordingly. Both drivers do this identically.
 
@@ -60,8 +60,27 @@ tables: [ !ref users ]
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ```
 
+A primary-key or identity column is `NOT NULL` whether or not it says so, and
+its row projection is non-nullable to match: a `null` written for `id` above is
+a `telo check` error, never a rowid SQLite generates. Every other column that
+omits `nullable` admits NULL, and `nullable: true` on a primary-key or identity
+column is refused.
+
 SQLite has exactly one namespace, so unlike `Postgres.Schema` there is no
-`schema:` field to name and nothing to create.
+`schema:` field to name and nothing to create. A consumer addressing a listed
+table through the schema instance gets the quoted table name on its own.
+
+Declared foreign keys are enforced under both host drivers (better-sqlite3 on
+Node, `bun:sqlite` on Bun): the connection switches SQLite's per-connection
+`foreign_keys` setting on when it opens the database and reads it back, and a
+host whose SQLite cannot enforce them fails to create the connection rather than
+running without. A write naming a missing parent row is refused, and deleting a
+parent runs the key's `onDelete` action (`cascade`, `set null`, `set default`;
+`restrict` / `no action` / none refuses the delete while a row still references
+it). Rows written before enforcement was on are not re-checked. Dropping a table
+that another table references, by reclamation or in a `migrations:` rebuild, runs
+its foreign keys' `onDelete` actions (SQLite deletes the rows first), and
+enforcement cannot be switched off inside the migration's transaction.
 
 ### Domains, predicates and reference data
 

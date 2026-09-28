@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionOwnContract
+imports:
+  Lib: ./own-contract
+targets:
+  - invoke: !ref Lib.ownContract

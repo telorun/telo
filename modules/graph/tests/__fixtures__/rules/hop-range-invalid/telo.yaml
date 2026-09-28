@@ -1,0 +1,22 @@
+# A repeated hop whose upper bound is below its lower one.
+kind: Telo.Library
+metadata:
+  name: HopRangeInvalid
+include:
+  - ../../graph-model.yaml
+imports:
+  Graph: ../../../..
+  SQLite: ../../../../../sqlite
+  GraphSql: ../../../../../graph-sql
+exports:
+  resources: [backwardsRange]
+---
+kind: Graph.Traverse
+metadata: { name: backwardsRange }
+store: !ref kb
+from: !ref person
+to: !ref person
+hops:
+  - relationship: !ref knows
+    minHops: 3
+    maxHops: 2

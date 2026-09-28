@@ -904,12 +904,28 @@ read from them with `x-telo-schema-projection` on the kind document (beside
 `schema:`): `entries` (pointer to the collection), `key` (the entry field
 whose value picks an `x-telo-schema-map` entry), optional `name` (for an
 array collection), `array` / `nullable` (modifier fields; an omitted one reads
-its field's `default:`), `nested` (an entry field holding a sub-collection of
-the SAME entry shape — the entry then projects to that sub-collection's closed
-object, recursively) and `reference`. No other key is allowed. A consumer
+the `default:` that applies to that entry — its field's own, or the one in the
+`then` / `else` of an `if` over the entry, e.g. `nullable` defaulting to
+`false` when `primaryKey: true`; declare each default in ONE place), `nested`
+(an entry field holding a sub-collection of the SAME entry shape — the entry
+then projects to that sub-collection's closed object, recursively) and
+`reference`. No other key is allowed. A consumer
 slot declares `x-telo-schema-projection-from: <pointer to a ref>`, or `""` for
 the declaration it is written on — which is how a kind's own `outputType`
-types `steps.x.result.fields.cards[0].name` from its `fields:` entries.
+types `steps.x.result.fields.cards[0].name` from its `fields:` entries. The
+pointer CROSSES references: `/relationship/source` continues inside the
+declaration `relationship` names, each hop resolved in the scope of the module
+that declared the declaration holding it. Only a field the holder's kind
+declares as an `x-telo-ref` slot is crossed; any other field is data. The object form
+`{ from, pick?, omit? }` narrows it: `pick` points at a field holding ONE
+entry name and types the slot as that entry (`{ from: /node, pick: /node/key }`),
+`omit` lists pointers to fields holding entry names to drop
+(`{ from: /node, omit: [/node/key] }`); every pointer is relative to the
+declaration carrying the slot. Written on a KIND DOCUMENT beside `schema:`
+(string or `{ from, omit? }`, never with `pick` and never beside
+`x-telo-schema-projection`), it makes every declaration of the kind project
+as that derivation — a consumer pointing at one is typed as if it pointed at
+the derived target. A selector must hold a literal entry name, never `!cel`.
 
 ## Functions — a computation CEL calls by name
 
@@ -1604,6 +1620,45 @@ the `imports` map.
   `pgcrypto`) ahead of everything else. Do NOT smuggle `CREATE EXTENSION` into
   `migrations:` — that is desired state wearing a migration's clothes, with a
   migration key that is a lie the first time the entry is deleted.
+
+  **A knowledge graph is `graph` + a backend (`graph-sql`), over tables you
+  declare.** Every node type and every relationship type is its OWN ordinary
+  engine `Table`, listed in the engine `Schema` like any other — the graph
+  issues no DDL. Then declare the mapping: `GraphSql.Node { table: !ref …,
+  key: <column> }` (the key column is the primary key, or `unique` +
+  `nullable: false`, never `identity` — keys are supplied by the caller, and
+  a null key is refused, so an SQLite `integer` primary key never generates
+  one);
+  `GraphSql.Relationship { table, source: !ref <node>, target: !ref <node>,
+  sourceColumn, targetColumn }`, whose table MUST declare a foreign key over
+  each endpoint column to that node's table and key with `onDelete: cascade`
+  and a `unique: true` index over exactly the two endpoint columns (deleting a
+  node removes its relationships through those keys); and `GraphSql.Store
+  { connection, schema, nodes: [...], relationships: [...] }` — the schema on
+  the same connection, listing every table, no two types sharing one. The
+  store addresses every table in its schema's namespace (`Postgres.Schema`'s
+  `schema:`), whatever the connection's `search_path` is — schema-per-tenant
+  is one schema and one store per tenant, sharing the node and relationship
+  types. Every other column is a property. Put the `Schema` in `targets:`
+  first. The
+  operations are `graph`'s, each `store:` plus `node:` / `relationship:`:
+  `Graph.CreateNode` / `MergeNode` / `UpdateNode` / `DeleteNode` / `GetNode` /
+  `FindNodes` take `key` / `properties`; `Graph.CreateRelationship` /
+  `MergeRelationship` / `UpdateRelationship` / `DeleteRelationship` /
+  `FindRelationships` take `source` / `target` (endpoint keys) /
+  `properties`; results are `{ node: { key, properties } }` /
+  `{ relationship: { source, target, properties } }` / lists, all TYPED from
+  the tables, so a misspelled property fails `telo check`. `where:` is
+  operator-first — `{ gte: { age: 30 }, ne: { email: null } }`, operators
+  `eq ne lt lte gt gte`, ANDed; `eq: { x: null }` means "has no x". `limit` /
+  `offset` page. `Graph.Traverse { store, from, to, hops: [{ relationship,
+  direction: out|in|both, minHops, maxHops }] }` returns the DISTINCT end nodes
+  of type `to` for input `key` (plus `where` / paging) — the hops must chain
+  from `from` to `to`, and only a relationship within one node type may repeat
+  (`maxHops` > 1 or `both`). Codes to catch: `GRAPH_NODE_NOT_FOUND`,
+  `GRAPH_NODE_EXISTS`, `GRAPH_RELATIONSHIP_EXISTS`,
+  `GRAPH_RELATIONSHIP_NOT_FOUND`. No operation opens a transaction; inside a
+  `Sql.Transaction` on the store's connection they join it.
 - `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
   declarations whose lifetime is that one sequence run: created when it starts,
   torn down when it ends, referenced by `!ref` from its steps. `targets:` (the

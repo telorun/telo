@@ -1,0 +1,276 @@
+kind: Telo.Library
+metadata:
+  name: GraphSql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Storage, Data]
+  description: >-
+    Stores a knowledge graph in ordinary relational tables: each entity type and
+    each link type is a table the application declares and migrates itself, and
+    the graph is mapped onto them. Deleting an entity removes its links through
+    the database's own cascading foreign keys, and multi-hop traversals run as one
+    query.
+requires:
+  # The node and relationship kinds write `x-telo-schema-projection-from` on the
+  # kind document, the relationship kind in its object form (`{ from, omit }`).
+  # 0.104.0 checks this file clean but reads neither kind as projecting, so a
+  # graph operation typed from one fails at dispatch with
+  # ERR_SCHEMA_PROJECTION_UNRESOLVED. Verified by execution (`run`) against 0.104.0.
+  telo: ">=0.105.0"
+imports:
+  Graph: ../graph
+  Sql: ../sql
+exports:
+  kinds:
+    - Node
+    - Relationship
+    - Store
+---
+# GraphSql.Node — a node type mapped onto one table the application declares.
+# The table is plain: nothing here creates, alters or migrates it; the engine
+# `Schema` that lists it does. The node's properties are the table's columns, so
+# its row projection IS the node's projection.
+kind: Telo.Definition
+metadata:
+  name: Node
+  description: >-
+    Maps one type of graph entity onto a relational table the application declares:
+    each row is an entity, one column holds the identifying key, and every other
+    column is a property. The key column must be a primary key, or unique and never
+    null, and never generated.
+capability: Telo.Provider
+extends: Graph.Node
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-sql.mjs&local_path=./nodejs/src/index.ts#Node
+x-telo-schema-projection-from: /table
+schema:
+  type: object
+  required: [table, key]
+  additionalProperties: false
+  examples:
+    - table: !ref people
+      key: id
+  properties:
+    table:
+      title: Table
+      description: >-
+        The table holding the nodes, one row each. Declared and migrated by the
+        engine `Schema` that lists it; the graph only reads and writes rows.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    key:
+      title: Key
+      description: >-
+        The column identifying a node — a primary key, or unique and not nullable,
+        and never an identity column: a node's key is supplied by the caller.
+      type: string
+      minLength: 1
+  x-telo-resource-rules:
+    - resolve: [/table]
+      condition: !cel "self.key in self.table.columns"
+      code: GRAPH_NODE_KEY_UNKNOWN_COLUMN
+      message: names a key column its table does not declare.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.key in self.table.columns)
+          || ((self.table.columns[self.key].?primaryKey.orValue(false)
+                || (self.table.columns[self.key].?unique.orValue(false)
+                  && !self.table.columns[self.key].?nullable.orValue(true)))
+              && !self.table.columns[self.key].?identity.hasValue())
+      code: GRAPH_NODE_KEY_INVALID
+      message: >-
+        names a key column that does not identify a row on its own terms: it must
+        be the primary key, or unique and 'nullable: false', and it must not be an
+        identity column, since a node's key is supplied by the caller.
+---
+# GraphSql.Relationship — a relationship type mapped onto one table whose two
+# endpoint columns are foreign keys to the endpoint node tables. The database
+# owns the cascade: deleting a node removes its relationships because each
+# foreign key declares `onDelete: cascade`, which is why the rules require it.
+kind: Telo.Definition
+metadata:
+  name: Relationship
+  description: >-
+    Maps one type of graph link onto a relational table the application declares:
+    two columns hold the source and target entities' keys as cascading foreign
+    keys, a unique index allows one link per ordered pair, and every other column
+    is a property of the link.
+capability: Telo.Provider
+extends: Graph.Relationship
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-sql.mjs&local_path=./nodejs/src/index.ts#Relationship
+x-telo-schema-projection-from: { from: /table, omit: [/sourceColumn, /targetColumn] }
+schema:
+  type: object
+  required: [table, source, target, sourceColumn, targetColumn]
+  additionalProperties: false
+  examples:
+    - table: !ref knowsTable
+      source: !ref person
+      target: !ref person
+      sourceColumn: source
+      targetColumn: target
+  properties:
+    table:
+      title: Table
+      description: >-
+        The table holding the relationships, one row each. Declared and migrated
+        by the engine `Schema` that lists it.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    source:
+      title: Source
+      description: The node type a relationship starts at.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    target:
+      title: Target
+      description: The node type a relationship ends at. May be the source's type.
+      x-telo-ref:
+        kind: Self.Node
+        use: dependency
+    sourceColumn:
+      title: Source Column
+      description: >-
+        The column holding the source node's key: a foreign key to the source
+        node's table and key column, with `onDelete: cascade`.
+      type: string
+      minLength: 1
+    targetColumn:
+      title: Target Column
+      description: >-
+        The column holding the target node's key: a foreign key to the target
+        node's table and key column, with `onDelete: cascade`.
+      type: string
+      minLength: 1
+  x-telo-resource-rules:
+    - resolve: [/table]
+      condition: !cel >-
+        self.sourceColumn in self.table.columns
+          && self.targetColumn in self.table.columns
+          && self.sourceColumn != self.targetColumn
+      code: GRAPH_ENDPOINT_UNKNOWN_COLUMN
+      message: >-
+        names a sourceColumn or targetColumn its table does not declare, or names
+        the same column for both.
+    # Each of the next two reads the endpoint columns, so it is moot — and left
+    # to the rule above — while either is undeclared.
+    - resolve: [/table, /source, /target]
+      condition: !cel >-
+        !(self.sourceColumn in self.table.columns && self.targetColumn in self.table.columns)
+          || self.table.?foreignKeys.orValue({}).exists(k,
+            self.table.foreignKeys[k].columns == [self.sourceColumn]
+              && self.table.foreignKeys[k].references.table.name == self.source.table.name
+              && self.table.foreignKeys[k].references.columns == [self.source.key]
+              && self.table.foreignKeys[k].?onDelete.orValue('') == 'cascade')
+          && self.table.?foreignKeys.orValue({}).exists(k,
+            self.table.foreignKeys[k].columns == [self.targetColumn]
+              && self.table.foreignKeys[k].references.table.name == self.target.table.name
+              && self.table.foreignKeys[k].references.columns == [self.target.key]
+              && self.table.foreignKeys[k].?onDelete.orValue('') == 'cascade')
+      code: GRAPH_ENDPOINT_FOREIGN_KEY_MISSING
+      message: >-
+        has no foreign key over exactly its sourceColumn (or targetColumn) to the
+        endpoint node's table and key column with `onDelete: cascade`. The
+        database deletes a node's relationships through that key, so the table
+        must declare one for each endpoint.
+    - resolve: [/table]
+      condition: !cel >-
+        !(self.sourceColumn in self.table.columns && self.targetColumn in self.table.columns)
+          || self.table.?indexes.orValue({}).exists(i,
+            self.table.indexes[i].?unique.orValue(false)
+              && !('where' in self.table.indexes[i])
+              && size(self.table.indexes[i].columns) == 2
+              && self.sourceColumn in self.table.indexes[i].columns
+              && self.targetColumn in self.table.indexes[i].columns)
+      code: GRAPH_RELATIONSHIP_NOT_UNIQUE
+      message: >-
+        has no unique index over exactly its sourceColumn and targetColumn. At most
+        one relationship of a type joins an ordered pair, and that index is what
+        the database enforces it with.
+---
+# GraphSql.Store — the graph over one connection. It issues no DDL: every table
+# it names must be listed by the `schema` it names, on the same connection, so
+# the engine's own schema pass is what creates and migrates them.
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: >-
+    A knowledge graph kept in relational tables over one database connection:
+    lists the entity and link types it holds and the declarative schema that
+    creates their tables. It never changes the schema itself; writes join an open
+    transaction, and multi-hop traversals run as one query.
+capability: Telo.Provider
+extends: Graph.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/graph-sql.mjs&local_path=./nodejs/src/index.ts#Store
+schema:
+  type: object
+  required: [connection, schema, nodes]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      schema: !ref appSchema
+      nodes: [!ref person]
+      relationships: [!ref knows]
+  properties:
+    connection:
+      title: Connection
+      description: The connection every statement runs on.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that declares every table this graph uses, on the same
+        connection. It creates and migrates them; the graph issues no DDL.
+      x-telo-ref:
+        kind: Sql.Schema
+        use: dependency
+    nodes:
+      title: Nodes
+      description: The node types this graph holds.
+      type: array
+      minItems: 1
+      items:
+        x-telo-ref:
+          kind: Self.Node
+          use: dependency
+    relationships:
+      title: Relationships
+      description: The relationship types this graph holds.
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Relationship
+          use: dependency
+  x-telo-resource-rules:
+    - resolve: [/schema, /nodes, /relationships]
+      condition: !cel >-
+        self.nodes.all(n, self.schema.?tables.orValue([]).exists(t, t.name == n.table.name))
+          && self.?relationships.orValue([]).all(r,
+            self.schema.?tables.orValue([]).exists(t, t.name == r.table.name))
+      code: GRAPH_TABLE_NOT_IN_SCHEMA
+      message: >-
+        lists a node or relationship type whose table its schema does not list in
+        'tables:'. The schema is what creates and migrates the table; add it there.
+    - resolve: [/schema]
+      condition: !cel "self.schema.connection.name == self.connection.name"
+      code: GRAPH_SCHEMA_CONNECTION_MISMATCH
+      message: >-
+        names a schema on a different connection. The schema must create its
+        tables where the graph reads them.
+    - resolve: [/nodes, /relationships]
+      condition: !cel >-
+        (self.nodes.map(n, n.table.name) + self.?relationships.orValue([]).map(r, r.table.name))
+          .all(t, size((self.nodes.map(n, n.table.name)
+            + self.?relationships.orValue([]).map(r, r.table.name)).filter(u, u == t)) == 1)
+      code: GRAPH_TABLE_SHARED
+      message: >-
+        lists two node or relationship types over the same table. Each type is its
+        own table, so a row belongs to exactly one type.

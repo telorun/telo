@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ProjectionKindPick
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref Lib.kindPick

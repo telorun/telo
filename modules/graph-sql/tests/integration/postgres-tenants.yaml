@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: GraphSqlPostgresTenants
+  version: 1.0.0
+  description: |
+    Schema-per-tenant: two PostgreSQL schemas list the same tables in two
+    namespaces, and two stores share one set of node and relationship types. A
+    node written through one tenant's store is absent through the other's, so
+    each store addresses only its own schema's tables.
+
+    NEEDS A LIVE POSTGRES, which is why it is under `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Graph: ../../../graph
+  GraphSql: ../..
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref reset
+  - !ref tenantASchema
+  - !ref tenantBSchema
+  - !ref isolation
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: drop
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+    inputs:
+      sql: DROP SCHEMA IF EXISTS graph_tenant_a, graph_tenant_b CASCADE
+---
+kind: Postgres.Table
+metadata: { name: people }
+table: people
+columns:
+  id: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+---
+kind: Postgres.Table
+metadata: { name: knowsTable }
+table: knows
+columns:
+  source: { type: text, nullable: false }
+  target: { type: text, nullable: false }
+indexes:
+  knows_pair: { columns: [source, target], unique: true }
+foreignKeys:
+  knows_source:
+    columns: [source]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+  knows_target:
+    columns: [target]
+    references: { table: !ref people, columns: [id] }
+    onDelete: cascade
+---
+kind: Postgres.Schema
+metadata: { name: tenantASchema }
+connection: !ref db
+schema: graph_tenant_a
+tables: [!ref people, !ref knowsTable]
+---
+kind: Postgres.Schema
+metadata: { name: tenantBSchema }
+connection: !ref db
+schema: graph_tenant_b
+tables: [!ref people, !ref knowsTable]
+---
+kind: GraphSql.Node
+metadata: { name: person }
+table: !ref people
+key: id
+---
+kind: GraphSql.Relationship
+metadata: { name: knows }
+table: !ref knowsTable
+source: !ref person
+target: !ref person
+sourceColumn: source
+targetColumn: target
+---
+kind: GraphSql.Store
+metadata: { name: tenantA }
+connection: !ref db
+schema: !ref tenantASchema
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: GraphSql.Store
+metadata: { name: tenantB }
+connection: !ref db
+schema: !ref tenantBSchema
+nodes: [!ref person]
+relationships: [!ref knows]
+---
+kind: Run.Sequence
+metadata: { name: isolation }
+steps:
+  - name: createInA
+    invoke:
+      kind: Graph.CreateNode
+      store: !ref tenantA
+      node: !ref person
+    inputs: { key: a, properties: { name: Alice } }
+  - name: readFromB
+    try:
+      - name: attemptRead
+        invoke:
+          kind: Graph.GetNode
+          store: !ref tenantB
+          node: !ref person
+        inputs: { key: a }
+    catch:
+      - name: readRefused
+        value: !cel "error.code"
+  - name: assertIsolated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readRefused.result"
+      expected: GRAPH_NODE_NOT_FOUND
