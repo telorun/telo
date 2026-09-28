@@ -34,6 +34,14 @@ than being a contract of its own, so a controller's behaviour does not change
 with how it happens to be loaded. Both carriers report the same generation number
 in their handshake, and a mismatch is refused rather than negotiated down.
 
+A peer that breaks the contract mid-session — a frame or message the protocol
+does not permit — is not skipped: that carrier instance is finished, and every
+call into it fails with `ERR_CONTROLLER_PROTOCOL_VIOLATION`. That is a different
+fact from a host that exited (`ERR_CONTROLLER_HOST_EXITED`, which is also what the
+kernel sees when an out-of-process host refuses a frame and closes its
+connection) and from a peer that was never compatible
+(`ERR_CONTROLLER_HOST_INCOMPATIBLE`).
+
 ## Writing a controller that can be hosted
 
 The message set is **closed at a generation**. If your controller needs an
