@@ -422,20 +422,42 @@ decided by which end refused and what the kernel observed:
 
 - **The kernel refuses** a frame or message, on either carrier: the cause is
   `ERR_CONTROLLER_PROTOCOL_VIOLATION`. On the **framed** carrier the kernel MUST
-  close the connection and end the host, and the host is **never restarted
-  silently** — a kernel that restarts it would hand back a controller with none
-  of the state the failed calls assumed. On the **ABI** carrier the kernel MUST
+  close the connection and end the host. On the **ABI** carrier the kernel MUST
   mark the controller unusable and MUST NOT make any further call into it.
-- **A controller on the ABI carrier refuses** a message: there is no process to
-  exit, so the refusal MUST return to the kernel as the error of the call that
-  carried the refused message, with `ERR_CONTROLLER_PROTOCOL_VIOLATION`, and the
-  kernel then treats the instance as terminal as above.
+- **A controller on the ABI carrier refuses** a message — a request the kernel
+  sent it, a notification, or the kernel's response to a request of its own — on
+  whichever thread, and whether or not a kernel call is in progress. There is no
+  process to exit and no connection to close, so the ABI carrier's host table
+  carries a `refuse` slot in their place. The controller MUST call `refuse` with
+  its own account of the refusal as UTF-8 text when it refuses, before it returns
+  from the call that carried the refused message, if there is one. The kernel
+  records `ERR_CONTROLLER_PROTOCOL_VIOLATION` as the cause, with that account as
+  its message, and treats the instance as terminal as above. Where the refused
+  message was a request carrying a response, the refusal MUST also return to the
+  kernel as the error of that call, with `ERR_CONTROLLER_PROTOCOL_VIOLATION`.
+  After calling `refuse` the controller MUST NOT make any further call into the
+  kernel on that carrier instance, and the kernel MUST fail any such call with
+  the recorded cause. `refuse` MUST be callable from any thread and MUST NOT
+  block on dispatch. A call after the cause is recorded does not replace it.
+  `refuse` is not a message: it is the ABI carrier's counterpart of closing the
+  connection, and it carries nothing the message set names.
 - **A controller host on the framed carrier refuses** a frame: the host MUST close
   the connection. The kernel observes only the host disappearing, so the cause is
   `ERR_CONTROLLER_HOST_EXITED`; the host's own account of why reaches the
   kernel's stderr through its forwarded output (§3.6). Naming the real cause
   would need a refusal message, which is a generation change, and the kernel
   reports what it observed.
+
+Whichever end refused, a framed host whose carrier instance is terminal is
+**never restarted silently**: a kernel that restarts it would hand back a
+controller with none of the state the failed calls assumed.
+
+**A carrier instance becomes terminal only through a carrier event** — the
+kernel's own refusal, a framed host's connection closing, or an ABI controller's
+`refuse` — and never through a code a response carried. A controller propagates
+`ERR_CONTROLLER_PROTOCOL_VIOLATION` legitimately, as the error of a dispatch into
+another carrier instance that is terminal, and a kernel that read the code as a
+refusal would end every carrier instance that ever called into a broken one.
 
 A runtime MUST NOT attempt to resynchronise a stream after a refused frame. The
 length prefix makes the next frame's boundary computable, which is precisely what
@@ -988,11 +1010,14 @@ A conforming runtime:
    by parity, and sends no response for a notification (§3.2);
 6. reads without blocking on dispatch, so a reentrant request is served while a
    synchronous one is outstanding (§3.4, §6.7);
-7. treats a refused frame as terminal for the carrier instance, recorded as
-   `ERR_CONTROLLER_PROTOCOL_VIOLATION` when the kernel refused it or a controller
-   on the ABI carrier did, and as `ERR_CONTROLLER_HOST_EXITED` when a framed host
-   closed its connection — never resynchronising and never restarting a host
-   silently (§3.5);
+7. treats a refused frame or message as terminal for the carrier instance,
+   recorded once as `ERR_CONTROLLER_PROTOCOL_VIOLATION` when the kernel refused
+   it or a controller on the ABI carrier refused it through `refuse` — a request,
+   a notification or the kernel's response to its own request, inside or outside
+   a kernel call — and as `ERR_CONTROLLER_HOST_EXITED` when a framed host closed
+   its connection; ends a carrier instance only on one of those carrier events,
+   never on a code a response carried; and never resynchronises and never
+   restarts a host silently (§3.5);
 8. keeps the carrier process's own output separate from a controller's standard
    streams, and never carries the protocol over the process's own streams (§3.6);
 9. drives an effect chain as §5.4 states — lazy, stepwise, inverses registered as

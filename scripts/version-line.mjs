@@ -18,11 +18,13 @@
 //
 // Run as the version step, right after `changeset version` (root
 // `version-packages`): it writes each twin's Node version into its
-// `Cargo.toml` and into the root `Cargo.lock` entry recording it, the way
-// `telo release apply` moves a module crate — a lockfile left behind makes every
-// `cargo --locked` invocation re-resolve over the network, which `--locked`
-// forbids. `check-changeset-status.mjs` imports `rustTwinMismatches` to fail a PR
-// whose twins disagree.
+// `Cargo.toml` and into its entry in the `Cargo.lock` governing it (its own, else
+// the nearest above), the way `telo release apply` moves a module crate — a
+// lockfile left behind makes every `cargo --locked` invocation re-resolve over the
+// network, which `--locked` forbids. That lockfile must record the crate exactly
+// once as a path package. `check-changeset-status.mjs` imports
+// `rustTwinMismatches` to fail a PR whose twins disagree or whose lockfile cannot
+// be moved with them.
 //
 // Both files are rewritten by scanning for the one scalar and splicing over it,
 // not by re-serializing: TOML is not parsed here for one value, and the shape
@@ -149,17 +151,86 @@ export function rustTwins(packages = workspacePackages()) {
   return twins;
 }
 
-/** Twins whose crate version is not their Node twin's, as human messages. */
+/** The `Cargo.lock` governing `crateDir` — its own, else the nearest one above
+ *  it, never past the repository root. */
+function governingLock(crateDir) {
+  for (let dir = crateDir; ; dir = dirname(dir)) {
+    const candidate = join(dir, "Cargo.lock");
+    if (existsSync(candidate)) return candidate;
+    if (dir === ROOT || dirname(dir) === dir) return undefined;
+  }
+}
+
+/** The version scalar of every PATH package `crate` in a `Cargo.lock` — a
+ *  workspace member carries no `source`, while a registry package of the same
+ *  name is another crate. */
+function lockRecords(text, crate, where) {
+  const headers = /^\[\[package\]\][ \t]*$/gm;
+  const records = [];
+  for (let header = headers.exec(text); header; header = headers.exec(text)) {
+    const start = header.index + header[0].length;
+    const next = /^[ \t]*\[/m.exec(text.slice(start));
+    const body = text.slice(start, next ? start + next.index : text.length);
+    if (/^[ \t]*name[ \t]*=[ \t]*"(.*?)"[ \t]*$/m.exec(body)?.[1] !== crate) continue;
+    if (/^[ \t]*source[ \t]*=/m.test(body)) continue;
+    const entry = /^([ \t]*version[ \t]*=[ \t]*)"(.*?)"[ \t]*$/m.exec(body);
+    if (!entry) throw new Error(`${where}: '${crate}' records no version that can be rewritten.`);
+    records.push({ at: start + entry.index + entry[1].length, length: entry[2].length + 2 });
+  }
+  return records;
+}
+
+/** Each twin with its governing lockfile, every lockfile read once:
+ *  `{ twin, lock, records, problem }`, `problem` a human message or undefined. */
+function resolveTwinLocks(twins, lockTexts = new Map()) {
+  return twins.map((twin) => {
+    const dir = relative(ROOT, twin.crateDir);
+    const lock = governingLock(twin.crateDir);
+    if (!lock) {
+      return {
+        twin,
+        problem:
+          `No \`Cargo.lock\` governs \`${dir}/Cargo.toml\` between it and the repository root, ` +
+          `so the crate's version cannot be moved with it. Make the crate a member of the root ` +
+          `workspace, or commit a \`Cargo.lock\` for its own workspace.`,
+      };
+    }
+    if (!lockTexts.has(lock)) lockTexts.set(lock, readFileSync(lock, "utf8"));
+    const where = relative(ROOT, lock);
+    const records = lockRecords(lockTexts.get(lock), twin.crate, where);
+    let problem;
+    if (records.length === 0) {
+      problem =
+        `\`${where}\` does not record '${twin.crate}' (\`${dir}/Cargo.toml\`) as a path package, ` +
+        `so the crate's version cannot be moved in the lockfile that governs it. \`${where}\` is ` +
+        `the nearest \`Cargo.lock\` above the crate: make the crate a member of the workspace ` +
+        `that lockfile belongs to, or give the crate a \`[workspace]\` of its own and commit its ` +
+        `own \`Cargo.lock\` (\`cargo generate-lockfile\` in \`${dir}\`).`;
+    } else if (records.length > 1) {
+      problem =
+        `\`${where}\` records '${twin.crate}' ${records.length} times as a path package, so which ` +
+        `entry is \`${dir}/Cargo.toml\` cannot be decided.`;
+    }
+    return { twin, lock, records, problem };
+  });
+}
+
+/** Twins whose crate version is not their Node twin's, and twins whose governing
+ *  lockfile cannot be moved with them, as human messages. */
 export function rustTwinMismatches(packages) {
-  return rustTwins(packages)
-    .filter((twin) => twin.crateVersion !== twin.nodeVersion)
-    .map(
-      (twin) =>
+  const messages = [];
+  for (const { twin, problem } of resolveTwinLocks(rustTwins(packages))) {
+    if (twin.crateVersion !== twin.nodeVersion) {
+      messages.push(
         `${relative(ROOT, join(twin.crateDir, "Cargo.toml"))} is ${twin.crateVersion} but its Node ` +
-        `twin ${twin.pkg} is ${twin.nodeVersion}. The two halves are one artifact — run ` +
-        `\`node scripts/version-line.mjs\` to write the Node version into the crate and ` +
-        `Cargo.lock.`,
-    );
+          `twin ${twin.pkg} is ${twin.nodeVersion}. The two halves are one artifact — run ` +
+          `\`node scripts/version-line.mjs\` to write the Node version into the crate and ` +
+          `Cargo.lock.`,
+      );
+    }
+    if (problem) messages.push(problem);
+  }
+  return messages;
 }
 
 function stampCrate(text, version, where) {
@@ -170,48 +241,36 @@ function stampCrate(text, version, where) {
   return `${text.slice(0, start)}"${version}"${text.slice(start + entry[2].length + 2)}`;
 }
 
-/** The PATH package `crate`'s version in a `Cargo.lock` — a workspace member
- *  carries no `source`, while a registry package of the same name is another
- *  crate. */
-function stampLock(text, crate, version, where) {
-  const headers = /^\[\[package\]\][ \t]*$/gm;
-  const edits = [];
-  for (let header = headers.exec(text); header; header = headers.exec(text)) {
-    const start = header.index + header[0].length;
-    const next = /^[ \t]*\[/m.exec(text.slice(start));
-    const body = text.slice(start, next ? start + next.index : text.length);
-    if (/^[ \t]*name[ \t]*=[ \t]*"(.*?)"[ \t]*$/m.exec(body)?.[1] !== crate) continue;
-    if (/^[ \t]*source[ \t]*=/m.test(body)) continue;
-    const entry = /^([ \t]*version[ \t]*=[ \t]*)"(.*?)"[ \t]*$/m.exec(body);
-    if (!entry) throw new Error(`${where}: '${crate}' records no version that can be rewritten.`);
-    edits.push({ at: start + entry.index + entry[1].length, length: entry[2].length + 2 });
-  }
-  if (edits.length !== 1) {
-    throw new Error(
-      `${where}: '${crate}' is recorded ${edits.length} times as a path package where exactly ` +
-        `one entry is the workspace member, so the lockfile cannot be moved with the crate.`,
-    );
-  }
-  const [{ at, length }] = edits;
-  return `${text.slice(0, at)}"${version}"${text.slice(at + length)}`;
-}
-
-/** Write every twin's Node version into its crate and the root lockfile. */
+/** Write every twin's Node version into its crate and its governing lockfile.
+ *  Every twin is checked before anything is written. */
 export function stampRustTwins() {
-  const lockPath = join(ROOT, "Cargo.lock");
-  let lock = readFileSync(lockPath, "utf8");
-  const written = [];
-  for (const twin of rustTwins()) {
+  const lockTexts = new Map();
+  const resolved = resolveTwinLocks(rustTwins(), lockTexts);
+  const problems = resolved.map(({ problem }) => problem).filter(Boolean);
+  if (problems.length > 0) throw new Error(problems.join("\n"));
+
+  const crates = [];
+  const lockEdits = new Map();
+  for (const { twin, lock, records } of resolved) {
     const manifest = join(twin.crateDir, "Cargo.toml");
     const where = relative(ROOT, manifest);
     const before = readFileSync(manifest, "utf8");
     const after = stampCrate(before, twin.nodeVersion, where);
-    if (after !== before) writeFileSync(manifest, after);
-    lock = stampLock(lock, twin.crate, twin.nodeVersion, "Cargo.lock");
-    if (after !== before) written.push(`${where} → ${twin.nodeVersion}`);
+    if (after !== before) crates.push({ manifest, after, note: `${where} → ${twin.nodeVersion}` });
+    const [{ at, length }] = records;
+    if (!lockEdits.has(lock)) lockEdits.set(lock, []);
+    lockEdits.get(lock).push({ at, length, version: twin.nodeVersion });
   }
-  writeFileSync(lockPath, lock);
-  return written;
+
+  for (const { manifest, after } of crates) writeFileSync(manifest, after);
+  for (const [lock, edits] of lockEdits) {
+    let text = lockTexts.get(lock);
+    for (const { at, length, version } of edits.sort((a, b) => b.at - a.at)) {
+      text = `${text.slice(0, at)}"${version}"${text.slice(at + length)}`;
+    }
+    if (text !== lockTexts.get(lock)) writeFileSync(lock, text);
+  }
+  return crates.map(({ note }) => note);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
@@ -223,7 +282,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         : "version-line: every Rust twin already carries its Node twin's version.",
     );
   } catch (error) {
-    console.error(`version-line: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    for (const line of message.split("\n")) console.error(`version-line: ${line}`);
     process.exit(1);
   }
 }
