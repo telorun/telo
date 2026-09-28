@@ -54,11 +54,23 @@ export interface ToolCall {
 export interface ToolResult {
   toolCallId?: string;
   name?: string;
+  /** What the model was given — text the agent rendered from the tool's result. */
   content?: unknown;
   error?: boolean | string;
-  // write_file / edit_file carry the auto-`telo check` verdict.
-  checkExitCode?: number;
-  checkOutput?: string;
+  /** The tool's structured result before its rendering, absent on an error.
+   *  write_file / edit_file / telo_check carry `{ path, checkExitCode,
+   *  checkReport, … }` here. */
+  output?: unknown;
+}
+
+/** One diagnostic of a `telo check -o json` report. */
+export interface CheckDiagnostic {
+  file: string;
+  line: number;
+  column: number;
+  severity: string;
+  code?: string;
+  message: string;
 }
 
 export interface Usage {
@@ -77,9 +89,12 @@ export interface ToolCallView {
   name: string;
   args?: unknown;
   state: ToolState;
+  /** What the model saw: the tool result's `content`. */
   output?: unknown;
+  /** The auto-`telo check` verdict of a write, an edit or a check, from the
+   *  result's structured `output`. */
   checkExitCode?: number;
-  checkOutput?: string;
+  diagnostics?: CheckDiagnostic[];
 }
 
 /**
@@ -173,8 +188,29 @@ export interface AgentWorkspace {
 export interface CoResidentAgent {
   runId: string;
   baseUrl: string;
+  /** The per-session token the runner minted for the agent, when it did. */
+  token?: string;
   workspace: AgentWorkspace;
 }
+
+/** What `GET /capabilities` says about the agent answering. */
+export interface AgentIdentity {
+  name: string;
+  version: string;
+  promptId: string;
+  /** `"none"` or `"bearer"` today; kept as the agent's own word, so a mode this
+   *  client does not know is not mistaken for one it does. */
+  auth: string;
+}
+
+/** The agent's identity as far as the panel knows it: `unavailable` for an
+ *  agent without the route (404), `unauthorized` when it requires a token the
+ *  panel does not have, `failed` when the agent could not be asked. */
+export type AgentIdentityState =
+  | { state: "known"; identity: AgentIdentity }
+  | { state: "unavailable" }
+  | { state: "unauthorized" }
+  | { state: "failed"; message: string };
 
 /**
  * The editor registers this bridge so the agent context can seed the agent's

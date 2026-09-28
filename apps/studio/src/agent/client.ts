@@ -1,5 +1,5 @@
 import type { RecordsPage } from "./records";
-import type { JournalRecord, TreeFile, TurnError } from "./types";
+import type { AgentIdentityState, TreeFile } from "./types";
 
 export type { TreeFile };
 
@@ -69,12 +69,22 @@ async function readBody(res: Response, what: string): Promise<Record<string, unk
   }
 }
 
+/** The code an agent refuses a request without its bearer token with. */
+export const ERR_UNAUTHENTICATED = "ERR_UNAUTHENTICATED";
+/** What the user reads for it, wherever it surfaces. */
+export const TOKEN_REQUIRED_MESSAGE = "This agent requires a token.";
+
 function refusal(res: Response, body: Record<string, unknown>, what: string): TurnRefused {
   return {
     kind: "refused",
     status: res.status,
     code: typeof body.code === "string" ? body.code : undefined,
-    message: typeof body.error === "string" ? body.error : `${what} failed (${res.status})`,
+    message:
+      body.code === ERR_UNAUTHENTICATED
+        ? TOKEN_REQUIRED_MESSAGE
+        : typeof body.error === "string"
+          ? body.error
+          : `${what} failed (${res.status})`,
     retryAfter: typeof body.retryAfter === "number" ? body.retryAfter : undefined,
     activeTurnId: typeof body.activeTurnId === "string" ? body.activeTurnId : undefined,
     reason: typeof body.reason === "string" ? body.reason : undefined,
@@ -85,13 +95,57 @@ function refusal(res: Response, body: Record<string, unknown>, what: string): Tu
 const ERR_IDEMPOTENCY_KEY_IN_FLIGHT = "ERR_IDEMPOTENCY_KEY_IN_FLIGHT";
 const IN_FLIGHT_RETRIES = 10;
 
+/** A request the agent refused for want of a token, or a request that failed
+ *  otherwise — named by route and status either way. */
+function failure(res: Response, what: string): Error {
+  return new Error(res.status === 401 ? TOKEN_REQUIRED_MESSAGE : `${what} failed (${res.status})`);
+}
+
+/** The `Authorization` header a token requires, merged into `headers`. Nothing
+ *  is added without one, so an open agent sees exactly the requests it did. */
+export function withToken(token: string | undefined, headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!token) return headers;
+  return { ...headers, authorization: `Bearer ${token}` };
+}
+
 /** Thin client for the authoring-agent's HTTP contract. `baseUrl` is the running
- *  agent service (a local `telo` run today; the active runner's advertised URL later). */
+ *  agent service; `token`, when known, rides every request as a bearer token —
+ *  the runner-minted one from the agent's endpoint, or the one a user entered. */
 export class AgentClient {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly token?: string,
+  ) {}
 
   private url(path: string): string {
     return `${this.baseUrl.replace(/\/$/, "")}${path}`;
+  }
+
+  private init(init: RequestInit = {}): RequestInit | undefined {
+    const headers = withToken(this.token, init.headers as Record<string, string> | undefined);
+    const merged = headers ? { ...init, headers } : init;
+    return Object.keys(merged).length === 0 ? undefined : merged;
+  }
+
+  /** GET /capabilities → who the agent is. Fetched once per agent instance by
+   *  the caller. An agent without the route (404) has no identity to show. */
+  async capabilities(): Promise<AgentIdentityState> {
+    const res = await fetchRetrying(this.url("/capabilities"), this.init());
+    if (res.status === 404) return { state: "unavailable" };
+    if (res.status === 401) return { state: "unauthorized" };
+    if (!res.ok) throw failure(res, "GET /capabilities");
+    const body = await readBody(res, "GET /capabilities");
+    const agent = (body.agent ?? {}) as Record<string, unknown>;
+    const prompt = (body.prompt ?? {}) as Record<string, unknown>;
+    return {
+      state: "known",
+      identity: {
+        name: String(agent.name ?? ""),
+        version: String(agent.version ?? ""),
+        promptId: String(prompt.id ?? ""),
+        auth: typeof body.auth === "string" ? body.auth : "",
+      },
+    };
   }
 
   /**
@@ -104,11 +158,11 @@ export class AgentClient {
    * call, so a new attempt with a key of its own.
    */
   async startTurn(conversationId: string, message: string): Promise<StartTurnOutcome> {
-    const init: RequestInit = {
+    const init = this.init({
       method: "POST",
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ conversationId, message }),
-    };
+    });
     for (let attempt = 0; ; attempt++) {
       const res = await fetchRetrying(this.url("/chat"), init);
       const body = await readBody(res, "POST /chat");
@@ -131,7 +185,7 @@ export class AgentClient {
    *  other answer (404 unknown, 410 removed, …) throws with its code. */
   async abortTurn(turnId: string): Promise<{ cancelled: boolean }> {
     const what = `POST /chat/${turnId}/abort`;
-    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/abort`), { method: "POST" });
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/abort`), this.init({ method: "POST" }));
     const body = await readBody(res, what);
     if (!res.ok) {
       const refused = refusal(res, body, what);
@@ -144,7 +198,7 @@ export class AgentClient {
    *  turn, inside the same turn, or a coded refusal. */
   async continueTurn(turnId: string): Promise<ContinueTurnOutcome> {
     const what = `POST /chat/${turnId}/continue`;
-    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/continue`), { method: "POST" });
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/continue`), this.init({ method: "POST" }));
     const body = await readBody(res, what);
     if (res.status !== 200) return refusal(res, body, what);
     if (typeof body.fromId !== "number") throw new Error(`${what} succeeded but returned no fromId.`);
@@ -153,26 +207,29 @@ export class AgentClient {
 
   /** GET /workspace → the agent's content-hash tree. */
   async workspaceTree(): Promise<TreeFile[]> {
-    const res = await fetchRetrying(this.url("/workspace"));
-    if (!res.ok) throw new Error(`GET /workspace failed (${res.status})`);
+    const res = await fetchRetrying(this.url("/workspace"), this.init());
+    if (!res.ok) throw failure(res, "GET /workspace");
     const body = await res.json();
     return Array.isArray(body.files) ? body.files : [];
   }
 
   /** POST /workspace — apply an explicit write/delete change set (Fs.TreeSync). */
   async syncWorkspace(write: Array<{ path: string; content: string }>, del: string[]): Promise<void> {
-    const res = await fetchRetrying(this.url("/workspace"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ write, delete: del }),
-    });
-    if (!res.ok) throw new Error(`POST /workspace failed (${res.status})`);
+    const res = await fetchRetrying(
+      this.url("/workspace"),
+      this.init({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ write, delete: del }),
+      }),
+    );
+    if (!res.ok) throw failure(res, "POST /workspace");
   }
 
   /** GET /workspace/file?path= → one file's contents. */
   async readWorkspaceFile(path: string): Promise<string> {
-    const res = await fetchRetrying(this.url(`/workspace/file?path=${encodeURIComponent(path)}`));
-    if (!res.ok) throw new Error(`GET /workspace/file failed (${res.status})`);
+    const res = await fetchRetrying(this.url(`/workspace/file?path=${encodeURIComponent(path)}`), this.init());
+    if (!res.ok) throw failure(res, "GET /workspace/file");
     const body = await res.json();
     return typeof body.content === "string" ? body.content : "";
   }
@@ -188,95 +245,9 @@ export class AgentClient {
       url.searchParams.set("fromTurn", cursor.fromTurn);
       url.searchParams.set("fromId", String(cursor.fromId));
     }
-    const res = await fetchRetrying(url.toString());
-    if (!res.ok) throw new Error(`GET /conversations/${conversationId}/records failed (${res.status})`);
+    const res = await fetchRetrying(url.toString(), this.init());
+    if (!res.ok) throw failure(res, `GET /conversations/${conversationId}/records`);
     const body = (await res.json()) as Partial<RecordsPage>;
     return { turns: Array.isArray(body.turns) ? body.turns : [], next: body.next ?? null };
-  }
-}
-
-export interface AgentStreamHandle {
-  close(): void;
-}
-
-/** Why an agent stream ended without its turn finishing: the turn's own error,
- *  by `code`, when the server sent one; a lost connection otherwise. */
-export class AgentStreamError extends Error {
-  constructor(
-    message: string,
-    readonly code?: string,
-  ) {
-    super(message);
-  }
-}
-
-/**
- * Consume `GET /chat/{turnId}/events` — a resumable SSE stream of `{ id, data }`
- * journal records. Replays after `fromId` (the client's last seen id) then tails
- * live; ends after the turn's `finish` record, or with an `event: error` frame
- * carrying the turn's error `{ code, message }`.
- */
-export function openAgentStream(opts: {
-  baseUrl: string;
-  turnId: string;
-  fromId: number;
-  onRecord: (record: JournalRecord) => void;
-  onError: (err: AgentStreamError) => void;
-  onEnd: () => void;
-}): AgentStreamHandle {
-  const url = new URL(`${opts.baseUrl.replace(/\/$/, "")}/chat/${opts.turnId}/events`, window.location.href);
-  if (opts.fromId > 0) url.searchParams.set("lastEventId", String(opts.fromId));
-  const source = new EventSource(url.toString(), { withCredentials: false });
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    source.close();
-  };
-
-  source.onmessage = (e: MessageEvent) => {
-    let envelope: Partial<JournalRecord>;
-    try {
-      envelope = JSON.parse(e.data);
-    } catch {
-      return;
-    }
-    const part = envelope?.data;
-    if (!part || typeof part.type !== "string") return;
-    const id = typeof envelope.id === "number" ? envelope.id : Number(e.lastEventId) || 0;
-    opts.onRecord({ id, data: part });
-    if (part.type === "finish") {
-      close();
-      opts.onEnd();
-    }
-  };
-
-  // A server-sent `event: error` frame (journal failed) carries data; a native
-  // connection error does not. Only surface a hard failure when the socket is
-  // closed — an auto-reconnect (readyState CONNECTING) is left to recover.
-  source.addEventListener("error", (e) => {
-    const data = (e as MessageEvent).data;
-    if (typeof data === "string" && data.length > 0) {
-      close();
-      opts.onError(parseErrorFrame(data));
-      opts.onEnd();
-    } else if (source.readyState === EventSource.CLOSED) {
-      close();
-      opts.onError(new AgentStreamError("agent stream connection lost"));
-    }
-  });
-
-  return { close };
-}
-
-function parseErrorFrame(data: string): AgentStreamError {
-  try {
-    const parsed = JSON.parse(data) as Partial<TurnError>;
-    return new AgentStreamError(
-      typeof parsed.message === "string" ? parsed.message : "agent stream error",
-      typeof parsed.code === "string" ? parsed.code : undefined,
-    );
-  } catch {
-    return new AgentStreamError("agent stream error");
   }
 }

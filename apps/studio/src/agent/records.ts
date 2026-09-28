@@ -3,6 +3,7 @@ import type {
   AgentStreamPart,
   AssistantMessage,
   ChatMessage,
+  CheckDiagnostic,
   JournalRecord,
   ToolCall,
   ToolResult,
@@ -26,19 +27,25 @@ export function userMessageId(turnId: string): string {
   return `${turnId}:user`;
 }
 
-/** Recover a tool result's structured fields from its `content`. Tool outputs
- *  are a string; object outputs like write_file's
- *  `{ path, checkExitCode, checkOutput }` arrive JSON-stringified. */
-export function parseToolContent(
-  content: unknown,
-): { path?: string; checkExitCode?: number; checkOutput?: string } | undefined {
-  if (typeof content !== "string") return undefined;
-  try {
-    const obj = JSON.parse(content);
-    return obj && typeof obj === "object" ? obj : undefined;
-  } catch {
-    return undefined;
-  }
+/** The fields the panel reads from a tool result's structured `output` — the
+ *  tool's result before the agent rendered it into text for the model:
+ *  write_file / edit_file / telo_check carry `{ path, checkExitCode,
+ *  checkReport: { diagnostics } | null, … }`. Absent fields read as absent. */
+export function toolOutputFields(result: ToolResult | undefined): {
+  path?: string;
+  checkExitCode?: number;
+  diagnostics?: CheckDiagnostic[];
+} {
+  const output = result?.output;
+  if (!output || typeof output !== "object") return {};
+  const { path, checkExitCode, checkReport } = output as Record<string, unknown>;
+  const diagnostics =
+    checkReport && typeof checkReport === "object" ? (checkReport as { diagnostics?: unknown }).diagnostics : undefined;
+  return {
+    path: typeof path === "string" ? path : undefined,
+    checkExitCode: typeof checkExitCode === "number" ? checkExitCode : undefined,
+    diagnostics: Array.isArray(diagnostics) ? (diagnostics as CheckDiagnostic[]) : undefined,
+  };
 }
 
 function withAssistant(
@@ -119,15 +126,15 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
     case "tool-result": {
       const result = (part as { toolResult?: ToolResult }).toolResult;
       if (!result) return messages;
-      const parsed = parseToolContent(result.content);
+      const { checkExitCode, diagnostics } = toolOutputFields(result);
       return withAssistant(messages, turnId, (m) => ({
         ...m,
         parts: settleToolCall(m.parts, result, (tool) => ({
           ...tool,
           state: result.error === true ? "error" : "done",
           output: result.content,
-          checkExitCode: parsed?.checkExitCode,
-          checkOutput: parsed?.checkOutput,
+          checkExitCode,
+          diagnostics,
         })),
       }));
     }

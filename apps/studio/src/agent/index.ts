@@ -1,9 +1,12 @@
 export { AgentProvider, useAgent } from "./context";
 export type {
+  AgentIdentity,
+  AgentIdentityState,
   AgentStatus,
   AssistantMessage,
   AssistantPart,
   ChatMessage,
+  CheckDiagnostic,
   ToolCallView,
   UserMessage,
   WorkspaceBridge,

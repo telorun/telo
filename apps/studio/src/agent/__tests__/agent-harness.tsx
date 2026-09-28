@@ -8,34 +8,47 @@ import { AGENT_PANEL_DEFAULT_WIDTH, saveAgentSettings, saveConversationId } from
 import type { JournalRecord, WorkspaceBridge } from "../types";
 
 /** The provider under test, on a dev-override agent, with a conversation open
- *  and a workspace registered, talking to a fetch stub and a fake EventSource. */
+ *  and a workspace registered, talking to a fetch stub that also serves the
+ *  turns' event streams. */
 
 export const AGENT_URL = "http://agent.test";
 export const CONVERSATION = "conv-1";
 
-export class FakeEventSource {
-  static readonly CLOSED = 2;
-  static opened: FakeEventSource[] = [];
+/** One `GET /chat/{turnId}/events` connection the provider opened: its body is
+ *  written by the test, frame by frame, as the agent would. */
+export class FakeEventStream {
+  static opened: FakeEventStream[] = [];
   readonly url: string;
-  readyState = 1;
-  onmessage: ((e: { data: string; lastEventId: string }) => void) | null = null;
-  private readonly errorListeners: Array<(e: { data?: string }) => void> = [];
-  constructor(url: string) {
+  readonly headers: Record<string, string>;
+  readonly response: Response;
+  private controller!: ReadableStreamDefaultController<Uint8Array>;
+  private readonly encoder = new TextEncoder();
+  /** Set when the client closed the connection. */
+  closed = false;
+  constructor(url: string, init: RequestInit | undefined) {
     this.url = url;
-    FakeEventSource.opened.push(this);
+    this.headers = { ...(init?.headers as Record<string, string> | undefined) };
+    init?.signal?.addEventListener("abort", () => {
+      this.closed = true;
+    });
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.controller = controller;
+      },
+    });
+    this.response = new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    FakeEventStream.opened.push(this);
   }
-  addEventListener(type: string, listener: (e: { data?: string }) => void) {
-    if (type === "error") this.errorListeners.push(listener);
-  }
-  close() {
-    this.readyState = FakeEventSource.CLOSED;
+  private write(frame: string) {
+    this.controller.enqueue(this.encoder.encode(frame));
   }
   emit(record: JournalRecord) {
-    this.onmessage?.({ data: JSON.stringify(record), lastEventId: String(record.id) });
+    this.write(`id: ${record.id}\nevent: message\ndata: ${JSON.stringify({ data: record.data })}\n\n`);
   }
   /** A server-sent `event: error` frame. */
   fail(code: string, message: string) {
-    for (const listener of this.errorListeners) listener({ data: JSON.stringify({ code, message }) });
+    this.write(`event: error\ndata: ${JSON.stringify({ code, message })}\n\n`);
+    this.controller.close();
   }
 }
 
@@ -50,13 +63,18 @@ export function stubAgent(page: RecordsPage, routes: Record<string, Answer> = {}
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
     const url = new URL(String(input));
     const key = `${init?.method ?? "GET"} ${url.pathname}`;
+    if (!routes[key] && /^GET \/chat\/[^/]+\/events$/.test(key)) {
+      return new FakeEventStream(String(input), init).response;
+    }
     const answer: Answer =
       routes[key] ??
       (key === `GET /conversations/${CONVERSATION}/records`
         ? { status: 200, body: page }
         : key === "GET /workspace"
           ? { status: 200, body: { files: [] } }
-          : { status: 599, body: { error: `unexpected ${key}` } });
+          : key === "GET /capabilities"
+            ? { status: 404, body: { error: "not found" } }
+            : { status: 599, body: { error: `unexpected ${key}` } });
     return new Response(JSON.stringify(answer.body), { status: answer.status });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -70,8 +88,7 @@ const bridge: WorkspaceBridge = {
 };
 
 export function installAgentGlobals() {
-  FakeEventSource.opened = [];
-  vi.stubGlobal("EventSource", FakeEventSource);
+  FakeEventStream.opened = [];
   saveAgentSettings({ overrideUrl: AGENT_URL, panelOpen: true, panelWidth: AGENT_PANEL_DEFAULT_WIDTH, questionCards: true });
   saveConversationId("ws", CONVERSATION);
 }

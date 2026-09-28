@@ -157,7 +157,11 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p e2e-logs
-          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./apps/hub/test-suite-e2e.yaml 2>&1 | tee e2e-logs/hub-suite.log
+          # Not `pnpm exec`: it puts a RELATIVE `./node_modules/.bin` first on PATH,
+          # and Bun's spawn stops at it with ENOENT for a child whose working
+          # directory differs — a test's `bun …/telo.ts` then cannot start.
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          bun ./cli/nodejs/bin/telo.ts --debug ./apps/hub/test-suite-e2e.yaml 2>&1 | tee e2e-logs/hub-suite.log
 
       - name: Dump stack logs on failure
         if: failure()
@@ -256,7 +260,9 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p e2e-logs
-          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./examples/test-suite-live.yaml 2>&1 | tee e2e-logs/live-examples.log
+          # Not `pnpm exec` — see the hub step.
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          bun ./cli/nodejs/bin/telo.ts --debug ./examples/test-suite-live.yaml 2>&1 | tee e2e-logs/live-examples.log
 
       - name: Upload logs on failure
         if: failure()
@@ -367,7 +373,9 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p e2e-logs
-          pnpm exec bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
+          # Not `pnpm exec` — see the hub step.
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
 
       # `workspace/` holds what the agent built in each test, so a failed run
       # shows the files it could not get green.

@@ -23,7 +23,14 @@ const toolTurn: JournalRecord[] = [
       toolResult: {
         toolCallId: "call_1",
         name: "write_file",
-        content: JSON.stringify({ path: "a.yaml", checkExitCode: 0, checkOutput: "{}" }),
+        content: "wrote a.yaml\ncheck: clean",
+        output: {
+          path: "a.yaml",
+          bytesWritten: 12,
+          checkExitCode: 0,
+          checkReport: { ok: true, errorCount: 0, warnCount: 0, diagnostics: [] },
+          checkMessages: "",
+        },
       },
     },
   },
@@ -119,7 +126,14 @@ describe("records → transcript", () => {
         { kind: "thinking", text: "plan" },
         {
           kind: "tool",
-          tool: { toolCallId: "call_1", name: "write_file", state: "done", checkExitCode: 0 },
+          tool: {
+            toolCallId: "call_1",
+            name: "write_file",
+            state: "done",
+            output: "wrote a.yaml\ncheck: clean",
+            checkExitCode: 0,
+            diagnostics: [],
+          },
         },
         { kind: "text", text: "Wrote it." },
       ],

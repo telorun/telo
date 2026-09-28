@@ -3,7 +3,7 @@ import { act, waitFor } from "@testing-library/react";
 
 import { transcriptFromTurns } from "../records";
 import type { JournalRecord, TurnRecords } from "../types";
-import { AGENT_URL, CONVERSATION, FakeEventSource, installAgentGlobals, openAgent, stubAgent } from "./agent-harness";
+import { AGENT_URL, CONVERSATION, FakeEventStream, installAgentGlobals, openAgent, stubAgent } from "./agent-harness";
 
 const finishedTurn: TurnRecords = {
   turnId: "t1",
@@ -40,9 +40,9 @@ describe("AgentProvider on open", () => {
 
     const { result } = await openAgent();
 
-    await waitFor(() => expect(FakeEventSource.opened).toHaveLength(1));
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
     expect(String(fetchMock.mock.calls[0][0])).toBe(`${AGENT_URL}/conversations/${CONVERSATION}/records`);
-    const stream = FakeEventSource.opened[0];
+    const stream = FakeEventStream.opened[0];
     expect(stream.url).toBe(`${AGENT_URL}/chat/t2/events?lastEventId=2`);
     expect(result.current.status).toBe("streaming");
 

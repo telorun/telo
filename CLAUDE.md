@@ -383,8 +383,8 @@ Sync this file — and the nested `CLAUDE.md` of every package you changed — a
 ## Keep the authoring agent in sync — MANDATORY
 
 `apps/authoring-agent` is an AI agent that authors Telo manifests for users. Its
-system prompt (`apps/authoring-agent/chat/telo.yaml`, the `system:` block) is a
-full primer that encodes the current Telo architecture — resource kinds,
+system prompt (`apps/authoring-agent/chat/primer.md`, read by the chat library's
+`system:` via `!include-text`) is a full primer that encodes the current Telo architecture — resource kinds,
 capabilities, reference/CEL rules, import/export semantics, and authoring patterns
 (composition, inheritance, etc.). **Any change to Telo's architecture MUST include
 a matching update to that system prompt**, as part of the same change — never a

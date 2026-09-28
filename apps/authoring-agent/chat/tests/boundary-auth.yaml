@@ -1,0 +1,290 @@
+kind: Telo.Application
+metadata:
+  name: ChatBoundaryAuth
+  version: 1.0.0
+  description: |
+    The agent's inbound boundary, offline. With AGENT_TOKEN set, every guarded
+    route answers 401 ERR_UNAUTHENTICATED (with `WWW-Authenticate: Bearer`)
+    without the bearer and is served by the route itself with it, a disallowed Origin is 403
+    ERR_ORIGIN_NOT_ALLOWED even with the right token, a request with the token
+    and no Origin passes, and CORS preflight passes without a token.
+    `/health` answers without any header, `/capabilities` reports the auth
+    mode and a prompt id equal to the SHA-256 of `chat/primer.md`, and `/ready`
+    names an empty model key and an unwritable workspace in fixed messages. With no token, one `warn` record at boot names
+    the exposure — read from an in-test OTLP collector — and a token-guarded
+    agent emits none.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_BOUNDARY_AUTH_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/boundary-auth
+  primer:
+    env: CHAT_TEST_BOUNDARY_AUTH_PRIMER
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/primer.md
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# Every route the `api` router serves, each with the given credential or none.
+kind: Run.Projection
+metadata: { name: everyRoute }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [base]
+    properties:
+      base: { type: string }
+      authorization: { type: string }
+collection:
+  - { method: POST, path: /chat }
+  - { method: GET, path: /chat/t/events }
+  - { method: POST, path: /chat/t/abort }
+  - { method: POST, path: /chat/t/continue }
+  - { method: GET, path: /conversations/c/records }
+  - { method: GET, path: /workspace }
+  - { method: POST, path: /workspace }
+  - { method: GET, path: "/workspace/file?path=notes.txt" }
+  - { method: GET, path: /capabilities }
+steps:
+  - name: send
+    invoke: !ref call
+    inputs:
+      url: !cel "inputs.base + item.path"
+      method: !cel "item.method"
+      headers: !cel "has(inputs.authorization) ? {'authorization': inputs.authorization} : {}"
+outputs:
+  route: !cel "item.method + ' ' + item.path"
+  status: !cel "steps.send.result.status"
+  code: !cel "has(steps.send.result.body.code) ? steps.send.result.body.code : null"
+  challenge: !cel "'www-authenticate' in steps.send.result.headers ? steps.send.result.headers['www-authenticate'] : null"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: collector }
+    source: ./__fixtures__/otlp-receiver/telo.yaml
+    ports: { http: 18510 }
+targets: [ !ref collector ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  # A file for the guarded agent's `/workspace/file` to serve.
+  - name: seed
+    invoke: { kind: Fs.FileWrite }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('guarded/notes.txt'))"
+      content: notes
+      createParents: true
+  # A directory where the open agent's readiness probe writes its file, so the
+  # probe fails with an error naming an absolute path.
+  - name: blockProbe
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('open/.telo-agent/ready-probe'))"
+      createParents: true
+  - name: agents
+    invoke:
+      kind: Run.Sequence
+      with:
+        # Token-guarded, origins narrowed to one.
+        - kind: App.Instance
+          metadata: { name: guarded }
+          source: ../../telo.yaml
+          ports: { http: 18501 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('guarded')"
+            modelEndpoint: http://127.0.0.1:18519/v1
+            allowedOrigins: "https://studio.example, "
+            otlpEndpoint: http://127.0.0.1:18510
+          secrets:
+            openaiApiKey: stub-key
+            agentToken: test-token-2b7f
+        # Open, and with no model key.
+        - kind: App.Instance
+          metadata: { name: open }
+          source: ../../telo.yaml
+          ports: { http: 18502 }
+          variables:
+            workspaceDir: !cel "variables.scratch.joinPath('open')"
+            modelEndpoint: http://127.0.0.1:18519/v1
+            otlpEndpoint: http://127.0.0.1:18510
+          secrets:
+            openaiApiKey: ""
+      targets: [ !ref guarded, !ref open ]
+      steps:
+        - name: refused
+          invoke: !ref everyRoute
+          inputs: { base: http://127.0.0.1:18501 }
+        - name: served
+          invoke: !ref everyRoute
+          inputs: { base: http://127.0.0.1:18501, authorization: Bearer test-token-2b7f }
+        - name: wrongToken
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/workspace
+            headers: { authorization: Bearer not-the-token }
+        - name: admitted
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/workspace
+            headers: { authorization: bearer test-token-2b7f }
+        - name: foreignOrigin
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/workspace
+            headers:
+              authorization: Bearer test-token-2b7f
+              origin: https://evil.example
+        - name: listedOrigin
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/workspace
+            headers:
+              authorization: Bearer test-token-2b7f
+              origin: https://studio.example
+        - name: preflight
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/chat
+            method: OPTIONS
+            headers:
+              origin: https://studio.example
+              access-control-request-method: POST
+              access-control-request-headers: authorization, content-type
+        - name: health
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18501/health }
+        - name: guardedCapabilities
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18501/capabilities
+            headers: { authorization: Bearer test-token-2b7f }
+        - name: guardedReady
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18501/ready }
+        - name: openCapabilities
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18502/capabilities }
+        - name: openReady
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18502/ready }
+        - name: primer
+          invoke: { kind: Fs.File }
+          inputs: { path: !cel "string(variables.primer)" }
+        # Both agents have started listening — which each logs after its boot
+        # targets — so a warning either of them emitted at boot was exported.
+        - name: logs
+          retry: { attempts: 60, initialDelay: 250, factor: 1, jitter: none }
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: get
+                invoke: !ref call
+                inputs: { url: http://127.0.0.1:18510/logs }
+              - name: notYet
+                if: !cel >-
+                  !([18501, 18502].all(port, steps.get.result.body.records.exists(r,
+                    has(r.eventName) && r.eventName == 'http.server.started'
+                      && r.attributes.exists(a, a.key == 'server.port' && a.value.intValue == string(port)))))
+                then:
+                  - name: waiting
+                    throw: { code: ERR_TEST_NOT_EXPORTED_YET, message: Both agents have not started yet. }
+            outputs:
+              records: !cel "steps.get.result.body.records"
+        - name: verify
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              refused: !cel "steps.refused.result"
+              served: !cel "steps.served.result"
+              wrongToken: !cel "[steps.wrongToken.result.status, steps.wrongToken.result.body.code]"
+              admittedStatus: !cel "steps.admitted.result.status"
+              foreignOrigin: !cel "[steps.foreignOrigin.result.status, steps.foreignOrigin.result.body.code]"
+              listedOriginStatus: !cel "steps.listedOrigin.result.status"
+              preflightStatus: !cel "steps.preflight.result.status"
+              health: !cel "[steps.health.result.status, steps.health.result.body]"
+              guardedAuth: !cel "steps.guardedCapabilities.result.body.auth"
+              guardedReady: !cel "[steps.guardedReady.result.status, steps.guardedReady.result.body]"
+              # The version moves with every release, so its shape is asserted.
+              openCapabilities: !cel >-
+                cel.bind(b, steps.openCapabilities.result.body,
+                  {'agent': {'name': b.agent.name, 'versioned': b.agent.version.matches('^[0-9]+[.][0-9]+[.][0-9]+$')},
+                   'prompt': b.prompt, 'auth': b.auth})
+              openReady: !cel >-
+                [steps.openReady.result.status, steps.openReady.result.body]
+              exposure: !cel >-
+                steps.logs.result.records
+                  .filter(r, r.body.stringValue.startsWith('AGENT_TOKEN is not set'))
+                  .map(r, [r.severityText, r.attributes.filter(a, a.key == 'port')[0].value.intValue])
+            expected:
+              refused:
+                - { route: POST /chat, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /chat/t/events, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /chat/t/abort, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /chat/t/continue, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /conversations/c/records, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: "GET /workspace/file?path=notes.txt", status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /capabilities, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+              # With the bearer the guard admits every route, which answers for
+              # itself: bodyless writes fail their own schema, unknown turns 404.
+              served:
+                - { route: POST /chat, status: 400, code: null, challenge: null }
+                - { route: GET /chat/t/events, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
+                - { route: POST /chat/t/abort, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
+                - { route: POST /chat/t/continue, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
+                - { route: GET /conversations/c/records, status: 200, code: null, challenge: null }
+                - { route: GET /workspace, status: 200, code: null, challenge: null }
+                - { route: POST /workspace, status: 400, code: null, challenge: null }
+                - { route: "GET /workspace/file?path=notes.txt", status: 200, code: null, challenge: null }
+                - { route: GET /capabilities, status: 200, code: null, challenge: null }
+              wrongToken: [ 401, ERR_UNAUTHENTICATED ]
+              admittedStatus: 200
+              foreignOrigin: [ 403, ERR_ORIGIN_NOT_ALLOWED ]
+              listedOriginStatus: 200
+              preflightStatus: 204
+              health: [ 200, { status: up } ]
+              guardedAuth: bearer
+              guardedReady: [ 200, { ready: true, reasons: [] } ]
+              openCapabilities:
+                agent: { name: AuthoringAgent, versioned: true }
+                prompt: { id: !cel "sha256(steps.primer.result.content)" }
+                auth: none
+              # Fixed messages: the probe's own error, which names a path on the
+              # host, is not in the unguarded answer.
+              openReady:
+                - 503
+                - ready: false
+                  reasons:
+                    - { code: MODEL_CREDENTIAL_MISSING, message: "No model API key is configured (OPENAI_API_KEY is empty)." }
+                    - { code: WORKSPACE_NOT_WRITABLE, message: The workspace is not writable. }
+              # Exactly one, from the open agent — the guarded one said nothing.
+              exposure: [ [ WARN, "18502" ] ]

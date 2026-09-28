@@ -419,6 +419,10 @@ longer matches — goes to *For the user* rather than being improvised.
 - `SendMessage` only to the builder: its next card, fix rounds, and the audit's fix items. Every
   other role is a fresh subagent.
 - Gates in one command where possible. Ten probing commands cost more than the suite.
+- A gate that spends money — a suite that calls a paid model or API — runs once per loop, after
+  the last fix and before the closing summary. Cards, fix rounds and builders gate on the offline
+  cases; a brief says so, since a builder otherwise runs everything its gates list. A failure the
+  offline cases cannot reach is re-run alone, never by re-running the whole paid suite.
 - One test per behaviour. A second proof of the same behaviour is cost, not coverage.
 - Park early. The cheapest card is the one you stopped working on at round two.
 

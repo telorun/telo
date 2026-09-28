@@ -44,7 +44,9 @@ imports:
     variables:
       workspaceDir: !cel "variables.workspaceDir"
       stateDir: !cel "variables.stateDir"
-      # No `model:` — inherited from the library, so this exercises what ships.
+      # No `model:` — inherited from the library. `low` effort: the case pins
+      # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
+      reasoningEffort: low
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   # By path, as the chat library imports it, until it is published.

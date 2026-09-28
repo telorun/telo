@@ -1,0 +1,275 @@
+kind: Telo.Application
+metadata:
+  name: ChatWorkspaceTools
+  version: 1.0.0
+  description: |
+    The workspace tools as the model sees them, driven offline: the provider
+    stub asks for scripted tool calls and records what the agent sends back,
+    so every assertion is on the model-facing text.
+
+    Renderings: a write is `wrote <path>` then `check: clean` or one
+    `file:line:col CODE message` line per diagnostic; a read is the file
+    byte for byte; a listing is one path per line; a delete is `deleted <path>`;
+    a check is the check part alone; the `telo` tool is the command's output.
+    None is a JSON document.
+
+    Confinement: an absolute path, a `..` segment, a backslash, a drive letter
+    and a `telo` argument outside the workspace are refused with
+    ERR_PATH_OUTSIDE_WORKSPACE, and so are both workspace routes, which apply
+    nothing. Secrets: a write holding an OpenAI key is refused with
+    ERR_SECRET_IN_MANIFEST naming its line, and so is an edit whose result would
+    hold one; neither file changes; an OCI integrity pin passes.
+secrets:
+  openaiApiKey:
+    env: CHAT_TEST_WORKSPACE_TOOLS_KEY
+    type: string
+    default: stub-key
+variables:
+  scratch:
+    env: CHAT_TEST_WORKSPACE_TOOLS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/workspace-tools
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: !cel "secrets.openaiApiKey"
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18504/v1
+      # The repo's own CLI, relative to the workspace the tools run in.
+      teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref reset
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# The workspaces are emptied; the state directory is not — the conversation
+# database is already open by the time a target runs, and every turn here opens
+# a conversation of its own.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      createParents: true
+  - name: remove
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      recursive: true
+  - name: prepareRoutes
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('routes'))"
+      createParents: true
+  - name: removeRoutes
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('routes'))"
+      recursive: true
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# One turn driven to its end: the stub is told which tool calls to ask for.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [calls]
+    properties:
+      calls:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "uuidv4()"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "'do it STUB_CALLS:' + base64Encode(json(inputs.calls))"
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+outputs:
+  types: !cel "steps.drain.result.items.map(r, r.data.type)"
+---
+# The content every tool result carried to the model, in call order, from the
+# requests the stub received.
+kind: Run.Sequence
+metadata: { name: modelSaw }
+steps:
+  - name: requests
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18504/requests }
+outputs:
+  outputs: !cel >-
+    flatten(steps.requests.result.body.requests.map(q,
+      q.input.filter(i, has(i.type) && i.type == 'function_call_output').map(i, i.output)))
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18504 }
+  # The routes, over a workspace of their own.
+  - kind: App.Instance
+    metadata: { name: agent }
+    source: ../../telo.yaml
+    ports: { http: 18505 }
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('routes')"
+      modelEndpoint: http://127.0.0.1:18504/v1
+    secrets:
+      openaiApiKey: stub-key
+targets: [ !ref stub, !ref agent ]
+steps:
+  - name: samples
+    value:
+      # An OCI integrity pin is a long high-entropy run; its `sha256-` prefix is
+      # what keeps it from reading as a credential.
+      valid: "kind: Telo.Library\nmetadata:\n  name: Demo\n  # pinned: oci://ghcr.io/telorun/console@0.18.1#sha256-niku7HENXm7yoj4_rJXfmDVvLc5Kh9iMGRdB6w0fb9w\n"
+      invalid: "kind: Telo.Library\nmetadata:\n  name: 7demo\n"
+      # Assembled, so no credential-shaped literal sits in the repository.
+      key: !cel "'sk-' + 'proj-' + 'Aa1Bb2Cc3Dd4Ee5Ff6Gg7Hh8Jj9Kk0'"
+  - name: first
+    invoke: !ref turn
+    inputs:
+      calls:
+        - { name: write_file, arguments: { path: apps/demo/telo.yaml, content: !cel "steps.samples.result.valid" } }
+        - { name: write_file, arguments: { path: apps/demo/bad.yaml, content: !cel "steps.samples.result.invalid" } }
+        - name: write_file
+          arguments:
+            path: apps/demo/secret.yaml
+            content: !cel "'kind: Telo.Library\\napiKey: ' + steps.samples.result.key + '\\n'"
+        - { name: read_file, arguments: { path: /etc/passwd } }
+        - { name: read_file, arguments: { path: ../../etc/passwd } }
+        - { name: list_dir, arguments: { path: "a\\b" } }
+        - { name: write_file, arguments: { path: "C:x", content: "x" } }
+        - { name: telo, arguments: { args: [ check, /etc/x ] } }
+  - name: second
+    invoke: !ref turn
+    inputs:
+      calls:
+        - { name: read_file, arguments: { path: apps/demo/telo.yaml } }
+        - name: edit_file
+          arguments:
+            path: apps/demo/telo.yaml
+            oldString: "name: Demo"
+            newString: !cel "'name: Demo\\n  token: ' + steps.samples.result.key"
+        - { name: delete_file, arguments: { path: apps/demo/bad.yaml } }
+        - { name: list_dir, arguments: { path: apps } }
+        - { name: telo_check, arguments: { path: apps/demo/telo.yaml } }
+        - { name: telo, arguments: { args: [ check, apps/demo/telo.yaml ] } }
+  - name: saw
+    invoke: !ref modelSaw
+  - name: onDisk
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: manifest
+          invoke: { kind: Fs.File }
+          inputs: { path: !cel "string(variables.scratch.joinPath('workspace/apps/demo/telo.yaml'))" }
+        - name: secret
+          try:
+            - name: readSecret
+              invoke: { kind: Fs.File }
+              inputs: { path: !cel "string(variables.scratch.joinPath('workspace/apps/demo/secret.yaml'))" }
+          catch:
+            - name: secretAbsent
+              value: true
+      outputs:
+        manifest: !cel "steps.manifest.result.content"
+        secretWritten: !cel "!has(steps.secretAbsent)"
+  - name: routeRead
+    invoke: !ref call
+    inputs: { url: "http://127.0.0.1:18505/workspace/file?path=/etc/passwd" }
+  - name: routeSync
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18505/workspace
+      method: POST
+      body:
+        write:
+          - { path: inside.txt, content: kept out }
+          - { path: ../escape.txt, content: x }
+        delete: [ /etc/hosts ]
+  - name: routeAfter
+    invoke: !ref call
+    inputs: { url: "http://127.0.0.1:18505/workspace/file?path=inside.txt" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        turns: !cel "[steps.first.result.types[size(steps.first.result.types) - 1], steps.second.result.types[size(steps.second.result.types) - 1]]"
+        count: !cel "size(steps.saw.result.outputs)"
+        wroteValid: !cel "steps.saw.result.outputs[0]"
+        wroteInvalid: !cel >-
+          steps.saw.result.outputs[1].matches('^wrote apps/demo/bad\\.yaml\\n[^\\n]*bad\\.yaml:[0-9]+:[0-9]+ [A-Z_]+ .+')
+        secretRefused: !cel >-
+          steps.saw.result.outputs[2].contains('ERR_SECRET_IN_MANIFEST')
+            && steps.saw.result.outputs[2].contains('line 2 (openaiKey)')
+            && steps.saw.result.outputs[2].contains('secrets.<name>')
+        keyNeverEchoed: !cel "!steps.saw.result.outputs.exists(o, o.contains(steps.samples.result.key))"
+        outside: !cel "slice(steps.saw.result.outputs, 3, 8).map(o, o.contains('ERR_PATH_OUTSIDE_WORKSPACE'))"
+        readBack: !cel "steps.saw.result.outputs[8] == steps.samples.result.valid"
+        editRefused: !cel "steps.saw.result.outputs[9].contains('ERR_SECRET_IN_MANIFEST')"
+        deleted: !cel "steps.saw.result.outputs[10]"
+        listed: !cel "steps.saw.result.outputs[11]"
+        checked: !cel "steps.saw.result.outputs[12]"
+        teloRan: !cel "steps.saw.result.outputs[13].contains('No issues found')"
+        noJson: !cel "steps.saw.result.outputs.exists(o, o.trim().startsWith('{'))"
+        manifestUnchanged: !cel "steps.onDisk.result.manifest == steps.samples.result.valid"
+        secretWritten: !cel "steps.onDisk.result.secretWritten"
+        routeRead: !cel "[steps.routeRead.result.status, steps.routeRead.result.body.code]"
+        routeSync: !cel "[steps.routeSync.result.status, steps.routeSync.result.body.code]"
+        routeAppliedNothing: !cel "steps.routeAfter.result.status != 200"
+      expected:
+        turns: [ finish, finish ]
+        count: 14
+        wroteValid: "wrote apps/demo/telo.yaml\ncheck: clean"
+        wroteInvalid: true
+        secretRefused: true
+        keyNeverEchoed: true
+        outside: [ true, true, true, true, true ]
+        readBack: true
+        editRefused: true
+        deleted: deleted apps/demo/bad.yaml
+        listed: apps/demo/
+        checked: "check: clean"
+        teloRan: true
+        noJson: false
+        manifestUnchanged: true
+        secretWritten: false
+        routeRead: [ 400, ERR_PATH_OUTSIDE_WORKSPACE ]
+        routeSync: [ 400, ERR_PATH_OUTSIDE_WORKSPACE ]
+        routeAppliedNothing: true

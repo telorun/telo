@@ -116,6 +116,8 @@ export interface CoResidentAgentSession {
   runId: string;
   /** Where the agent's HTTP contract answers. */
   baseUrl: string;
+  /** The token the runner minted for the agent, when it did. */
+  token?: string;
   session: RunSession;
 }
 
@@ -771,7 +773,12 @@ export function RunProvider({ children }: { children: ReactNode }) {
       if (!record || record.status.kind !== "running" || !record.status.agent) continue;
       const session = runtimes.current.get(record.id)?.session;
       if (!session) continue;
-      return { runId: record.id, baseUrl: endpointUrl(record.status.agent), session };
+      return {
+        runId: record.id,
+        baseUrl: endpointUrl(record.status.agent),
+        token: record.status.agent.token,
+        session,
+      };
     }
     return null;
   }, [runsByApp, isLiveWatch]);

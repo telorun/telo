@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageBlock } from "./MessageBlock";
+import { AgentIdentityDetails, NoAuthBadge } from "./AgentIdentity";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -141,6 +142,7 @@ export function AgentPanel({ className }: { className?: string }) {
       />
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <span className="flex-1 truncate text-sm font-medium">Authoring agent</span>
+        <NoAuthBadge identity={agent.identity} />
         <Button
           variant="ghost"
           size="icon-xs"
@@ -169,6 +171,24 @@ export function AgentPanel({ className }: { className?: string }) {
             placeholder="e.g. http://localhost:8899 (dev)"
             spellCheck={false}
           />
+          {agent.overrideUrl.trim() !== "" && (
+            <>
+              <label className="mt-2 mb-1 block text-xs text-muted-foreground">
+                Token for that agent (kept for this session only)
+              </label>
+              <Input
+                type="password"
+                value={agent.overrideToken}
+                onChange={(e) => agent.setOverrideToken(e.target.value)}
+                placeholder="AGENT_TOKEN, when the agent sets one"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </>
+          )}
+          <div className="mt-2">
+            <AgentIdentityDetails identity={agent.identity} />
+          </div>
           <label className="mt-3 flex items-start gap-2 text-xs">
             <Checkbox
               checked={agent.questionCards}
