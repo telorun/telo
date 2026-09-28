@@ -8,12 +8,13 @@
 // that version IS the surface generation a module's `requires.telo` range is
 // written against (`generate-telo-version.mjs`).
 //
-// The Rust half of the polyglot runtime is part of the same artifact: a crate at
-// `<x>/rust` whose Node twin `<x>/nodejs` is on the line carries its twin's
-// version. Derived from the layout the repo already mandates (the Rust tree
-// mirrors the Node one) rather than listed, so a new twin joins by existing.
-// `telorun-abi` (`sdk/rust/abi`) is not a twin — it is versioned by the ABI
-// generation its consumers name — and is never touched.
+// The Rust half of the polyglot runtime is part of the same artifact: every crate
+// beneath `<x>/rust/` (the directory's own and every nested one) whose Node twin
+// `<x>/nodejs` is on the line carries its twin's version. Derived from the layout
+// the repo already mandates (the Rust tree mirrors the Node one) rather than
+// listed, so a new twin joins by existing. `telorun-abi` (`sdk/rust/abi`) is the
+// only exception — it is versioned by the ABI generation its consumers name — and
+// is never touched.
 //
 // Run as the version step, right after `changeset version` (root
 // `version-packages`): it writes each twin's Node version into its
@@ -35,6 +36,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LINE_ANCHOR = "@telorun/analyzer";
+const ABI_CRATE_DIR = join(ROOT, "sdk", "rust", "abi");
 
 /** Member names of the telo version line, from `.changeset/config.json`. Throws
  *  when the analyzer is in no `fixed` group — there is then no line. */
@@ -110,6 +112,18 @@ function crateField(text, field, where) {
   return match[1];
 }
 
+/** Every crate directory at or beneath `dir`, skipping build output and the ABI
+ *  crate. */
+function crateDirs(dir) {
+  if (dir === ABI_CRATE_DIR) return [];
+  const found = existsSync(join(dir, "Cargo.toml")) ? [dir] : [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "target" || entry.name.startsWith(".")) continue;
+    found.push(...crateDirs(join(dir, entry.name)));
+  }
+  return found;
+}
+
 /** Every Rust twin of a line member: `{ pkg, nodeVersion, crateDir, crate,
  *  crateVersion }`. */
 export function rustTwins(packages = workspacePackages()) {
@@ -117,18 +131,20 @@ export function rustTwins(packages = workspacePackages()) {
   for (const name of versionLineMembers()) {
     const pkg = packages.get(name);
     if (!pkg) continue;
-    const crateDir = join(dirname(pkg.dir), "rust");
-    const manifest = join(crateDir, "Cargo.toml");
-    if (!existsSync(manifest)) continue;
-    const text = readFileSync(manifest, "utf8");
-    const where = relative(ROOT, manifest);
-    twins.push({
-      pkg: name,
-      nodeVersion: pkg.version,
-      crateDir,
-      crate: crateField(text, "name", where),
-      crateVersion: crateField(text, "version", where),
-    });
+    const rustDir = join(dirname(pkg.dir), "rust");
+    if (!existsSync(rustDir)) continue;
+    for (const crateDir of crateDirs(rustDir)) {
+      const manifest = join(crateDir, "Cargo.toml");
+      const text = readFileSync(manifest, "utf8");
+      const where = relative(ROOT, manifest);
+      twins.push({
+        pkg: name,
+        nodeVersion: pkg.version,
+        crateDir,
+        crate: crateField(text, "name", where),
+        crateVersion: crateField(text, "version", where),
+      });
+    }
   }
   return twins;
 }
