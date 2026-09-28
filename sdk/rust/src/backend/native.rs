@@ -16,11 +16,11 @@ use telorun_abi::{
     TeloBuf, TeloController, TeloFunction, TeloFunctionHost, TeloHost, TELO_ABI_VERSION, TELO_ERR, TELO_OK,
 };
 
-use crate::error::{guard, ControllerError};
+use crate::{guard, ControllerError};
 use crate::function_controller::{wire as function_wire, Function, FunctionContext};
 use crate::logging::SeverityNumber;
-use crate::invoke_context::{CancellationToken, InvokeContext};
-use crate::traits::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
+use crate::{CancellationToken, InvokeContext};
+use crate::{Controller, ControllerContext, DataValidator, ResourceContext, Result};
 
 pub use telorun_abi::TeloController as Vtable;
 

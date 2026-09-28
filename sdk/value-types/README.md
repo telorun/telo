@@ -36,7 +36,7 @@ An entry declares **how the value is represented** and nothing about any runtime
 
 `binding` is deliberately **not** a constructor name — that is a fact about one
 language. Each runtime carries a binding table (`sdk/nodejs/src/value-type.ts`,
-`sdk/rust/src/value_type.rs`) mapping the key to its own identity. A `binding`
+`sdk/rust/core/src/value_type.rs`) mapping the key to its own identity. A `binding`
 with no row in the host's table is a **hard startup error**, never a skipped
 assertion: a type that cannot be asserted would silently exempt every slot that
 declares it.

@@ -1,6 +1,6 @@
 //! Structured logging — the Rust half of `kernel/specs/logging.md`.
 //!
-//! The same crate serves two roles, gated by the existing Cargo features:
+//! The same code serves two roles, one per `telorun-sdk` backend feature:
 //!
 //! * `native` — a **host** runtime. The logger is a full implementation: it owns
 //!   the threshold, builds records, and hands them to a sink.

@@ -4,16 +4,16 @@
 use napi::{Env, JsError, JsFunction, JsObject, JsUnknown, Property, PropertyAttributes, Ref};
 use serde_json::Value;
 
-use crate::error::{guard, ControllerError};
+use crate::{guard, ControllerError};
 use crate::function_controller::{wire as function_wire, Function, FunctionContext};
-use crate::invoke_context::{CancellationToken, InvokeContext};
+use crate::{CancellationToken, InvokeContext};
 use crate::logging::SeverityNumber;
-use crate::traits::{ControllerContext, DataValidator, ResourceContext, Result};
+use crate::{ControllerContext, DataValidator, ResourceContext, Result};
 
-impl From<napi::Error> for ControllerError {
-    fn from(err: napi::Error) -> Self {
-        ControllerError::new("ERR_NAPI", err.reason)
-    }
+// A function, not `From`: `ControllerError` lives in `telorun-sdk-core`, and the
+// orphan rule forbids implementing a foreign trait between two foreign types.
+fn napi_failure(err: napi::Error) -> ControllerError {
+    ControllerError::new("ERR_NAPI", err.reason)
 }
 
 /// Property the thrown JS error carries when it is a controller's OWN error,
@@ -82,12 +82,15 @@ impl NapiResourceContext {
 
 impl ResourceContext for NapiResourceContext {
     fn create_type_validator(&self, type_ref: &Value) -> Result<Box<dyn DataValidator>> {
-        let ctx_obj: JsObject = self.env.get_reference_value(&self.ctx_ref)?;
-        let create_fn: JsFunction = ctx_obj.get_named_property("createTypeValidator")?;
-        let arg = value_to_js(&self.env, type_ref)?;
-        let result: JsUnknown = create_fn.call(Some(&ctx_obj), &[arg])?;
-        let validator_obj = result.coerce_to_object()?;
-        let validator_ref = self.env.create_reference(validator_obj)?;
+        let validator_ref = (|| -> napi::Result<Ref<()>> {
+            let ctx_obj: JsObject = self.env.get_reference_value(&self.ctx_ref)?;
+            let create_fn: JsFunction = ctx_obj.get_named_property("createTypeValidator")?;
+            let arg = value_to_js(&self.env, type_ref)?;
+            let result: JsUnknown = create_fn.call(Some(&ctx_obj), &[arg])?;
+            let validator_obj = result.coerce_to_object()?;
+            self.env.create_reference(validator_obj)
+        })()
+        .map_err(napi_failure)?;
         Ok(Box::new(NapiDataValidator {
             env: self.env,
             validator_ref,
@@ -104,14 +107,17 @@ pub struct NapiDataValidator {
 
 impl DataValidator for NapiDataValidator {
     fn validate(&self, data: &Value) -> Result<()> {
-        let validator_obj: JsObject = self.env.get_reference_value(&self.validator_ref)?;
-        let validate_fn: JsFunction = validator_obj.get_named_property("validate")?;
-        let arg = value_to_js(&self.env, data)?;
-        // The JS validate() throws on invalid input — napi-rs converts the
-        // thrown Error into Err(napi::Error), which our From impl maps to
-        // ControllerError so the caller surfaces it as a controller error.
-        validate_fn.call(Some(&validator_obj), &[arg])?;
-        Ok(())
+        (|| -> napi::Result<()> {
+            let validator_obj: JsObject = self.env.get_reference_value(&self.validator_ref)?;
+            let validate_fn: JsFunction = validator_obj.get_named_property("validate")?;
+            let arg = value_to_js(&self.env, data)?;
+            // The JS validate() throws on invalid input — napi-rs converts the
+            // thrown Error into Err(napi::Error), which `napi_failure` maps to
+            // ControllerError so the caller surfaces it as a controller error.
+            validate_fn.call(Some(&validator_obj), &[arg])?;
+            Ok(())
+        })()
+        .map_err(napi_failure)
     }
 }
 
@@ -188,12 +194,15 @@ impl<'a> NapiFunctionContext<'a> {
 
 impl FunctionContext for NapiFunctionContext<'_> {
     fn log(&self, severity: SeverityNumber, message: &str) -> Result<()> {
-        let logger: JsObject = self.ctx.get_named_property("log")?;
-        let log: JsFunction = logger.get_named_property("log")?;
-        let severity = self.env.create_int64(severity)?.into_unknown();
-        let message = self.env.create_string(message)?.into_unknown();
-        log.call(Some(&logger), &[severity, message])?;
-        Ok(())
+        (|| -> napi::Result<()> {
+            let logger: JsObject = self.ctx.get_named_property("log")?;
+            let log: JsFunction = logger.get_named_property("log")?;
+            let severity = self.env.create_int64(severity)?.into_unknown();
+            let message = self.env.create_string(message)?.into_unknown();
+            log.call(Some(&logger), &[severity, message])?;
+            Ok(())
+        })()
+        .map_err(napi_failure)
     }
 }
 
@@ -256,7 +265,7 @@ pub fn invoke_context_from_js(ctx: Option<JsObject>) -> InvokeContext {
 }
 
 fn poll_cancelled(ctx: &JsObject) -> bool {
-    fn read(ctx: &JsObject) -> Result<bool> {
+    fn read(ctx: &JsObject) -> napi::Result<bool> {
         let cancellation: JsObject = ctx.get_named_property("cancellation")?;
         let cancelled: bool = cancellation.get_named_property("isCancelled")?;
         Ok(cancelled)

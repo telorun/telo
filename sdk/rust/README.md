@@ -2,6 +2,15 @@
 
 The Rust SDK provides the authoring surface for Telo controllers written in Rust. It defines the shared contracts (traits and lifecycle types) that controllers use to plug into the kernel, so module code stays consistent across languages.
 
+## Crates
+
+The SDK is two crates, one package:
+
+- **`telorun-sdk`** (`sdk/rust`) — what a controller crate depends on, and the only one it should: the controller backends (`napi`, `native`), the bridge macros `#[controller]` and `#[function]` expand to, and every item of `telorun-sdk-core` re-exported at the same paths.
+- **`telorun-sdk-core`** (`sdk/rust/core`) — the value domain: CEL value types, the typed frame, plain encodings, the value-type reader, the log record model, the controller traits and the controller-protocol conformance run. It has no features and links no backend, so a runtime (the Rust kernel) can hold the value domain without compiling one in. It carries `@telorun/sdk`'s version.
+
+The split is a Rust packaging boundary only: each file still twins its Node counterpart in `sdk/nodejs` by name.
+
 ## What It Provides
 
 > **Status:** Both backends are implemented. `napi` loads a controller into the Node.js kernel; `native` loads one into the Rust kernel (`kernel/rust`) over the C ABI in `telorun-abi`.
