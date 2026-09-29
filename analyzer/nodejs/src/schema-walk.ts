@@ -11,7 +11,7 @@
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import type { RefSlot } from "./ref-slot.js";
 import type { StepSlot } from "./step-slot.js";
-import { buildDrivenSlotMap, refSlotOfEntry, type DrivenSlots } from "./reference-field-map.js";
+import { drivenSites, reachOfSchema, refSlotOfEntry } from "./reference-reach.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
@@ -170,11 +170,11 @@ export type DrivenSlot =
 /**
  * Every slot a kind's schema declares through which its resources drive
  * another — the schema-only mode of {@link forEachDrivenSlot}, read off the
- * same {@link buildDrivenSlotMap}.
+ * same reach (`reference-reach.ts`).
  */
 export function forEachDeclaredSlot(schema: unknown, visit: (slot: DeclaredSlot) => void): void {
   if (!schema || typeof schema !== "object") return;
-  for (const [path, at] of buildDrivenSlotMap(schema as Record<string, any>).paths) {
+  for (const [path, at] of reachOfSchema(schema as Record<string, any>).paths) {
     if (at.steps.length > 0) visit({ kind: "step", slots: at.steps, path });
     if (at.refs.length > 0) visit({ kind: "ref", slots: at.refs.map(refSlotOfEntry), path });
   }
@@ -182,147 +182,35 @@ export function forEachDeclaredSlot(schema: unknown, visit: (slot: DeclaredSlot)
 
 /**
  * Every slot of one resource through which it drives another, schema and data in
- * tandem.
+ * tandem — the throws view of the schema's reach.
  *
  * One traversal for every throws question — a kind's `inherit` union, a scope
  * list's denominator, catch-scope enclosure, and whether `inherit` is legal —
  * because they ask the same structural question and two copies would eventually
- * disagree about where the walk stops. The slots are the driven-slot map's, so
- * the reach is the reference field map's plus local `$ref`; a step slot is a
- * stop (that traversal owns everything below it, `try`/`catch` subtraction
- * included) and so is a reference slot (a resolved ref is a leaf).
+ * disagree about where the walk stops. A step slot is a stop (that traversal
+ * owns everything below it, `try`/`catch` subtraction included) and so is a
+ * reference slot (a resolved ref is a leaf); an `x-telo-schema-from` slot is not
+ * expanded, so a denominator never includes a shape borrowed from another kind.
  *
  * Each concrete site is visited once, with every slot that reaches it. A
  * map-value (`additionalProperties`) slot applies only to keys its schema does
  * not declare, and never to the resource envelope at the root, as JSON Schema
  * applies it. A recursive schema's back-edge is followed as deep as the data
  * goes, guarded against data that aliases one of its own ancestors. A schema
- * whose map holds no step or reference slot is not walked at all.
+ * that holds no step or reference slot is not walked at all.
  */
 export function forEachDrivenSlot(
   schema: unknown,
   data: unknown,
   visit: (slot: DrivenSlot) => void,
 ): void {
-  if (!schema || typeof schema !== "object" || data === undefined || data === null) return;
-  const driven = buildDrivenSlotMap(schema as Record<string, any>);
-  if (!driven.drives) return;
-  const sites = new Map<
-    string,
-    { data: unknown; steps: StepSlot[]; refs: DrivenRef[]; from: Set<object> }
-  >();
-  const onData = new Set<unknown>([data]);
-
-  const walk = (prefix: string, value: unknown, base: string): void => {
-    for (const [fieldPath, at] of driven.paths) {
-      const rel = relativeFieldPath(fieldPath, prefix);
-      if (rel === undefined) continue;
-      for (const found of resolveSites(value, rel, prefix, driven)) {
-        const path = joinConcrete(base, found.path);
-        if (at.steps.length > 0 || at.refs.length > 0) {
-          let site = sites.get(path);
-          if (!site) {
-            site = { data: found.value, steps: [], refs: [], from: new Set() };
-            sites.set(path, site);
-          }
-          for (const step of at.steps) {
-            if (site.from.has(step)) continue;
-            site.from.add(step);
-            site.steps.push(step);
-          }
-          for (const entry of at.refs) {
-            if (site.from.has(entry)) continue;
-            site.from.add(entry);
-            site.refs.push({ slot: refSlotOfEntry(entry), fieldPath });
-          }
-        }
-        if (at.recurse.length === 0) continue;
-        if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
-        onData.add(found.value);
-        for (const to of at.recurse) walk(to, found.value, path);
-        onData.delete(found.value);
-      }
-    }
-  };
-  walk("", data, "");
-
-  for (const [path, site] of sites) {
+  if (!schema || typeof schema !== "object") return;
+  for (const site of drivenSites(schema as Record<string, any>, data)) {
     if (site.steps.length > 0 && Array.isArray(site.data)) {
-      visit({ kind: "step", slots: site.steps, data: site.data, path });
+      visit({ kind: "step", slots: site.steps, data: site.data, path: site.path });
     } else if (site.refs.length > 0) {
-      visit({ kind: "ref", slots: site.refs, data: site.data, path });
+      const slots = site.refs.map(({ slot, fieldPath }) => ({ slot, fieldPath }));
+      visit({ kind: "ref", slots, data: site.data, path: site.path });
     }
   }
 }
-
-interface Site {
-  value: unknown;
-  path: string;
-}
-
-/** The values at `rel` below `value`, where `rel` is relative to the field path
- *  `prefix`. A `{}` segment skips the keys the driven map records as declared
- *  for that map path; each `[]` iterates one array level. */
-function resolveSites(value: unknown, rel: string, prefix: string, driven: DrivenSlots): Site[] {
-  let sites: Site[] = [{ value, path: "" }];
-  let field = prefix;
-  for (const part of rel.split(".")) {
-    const next: Site[] = [];
-    if (part === "{}") {
-      field = joinKey(field, "{}");
-      const declared = driven.declaredKeys.get(field);
-      for (const site of sites) {
-        if (!site.value || typeof site.value !== "object" || Array.isArray(site.value)) continue;
-        for (const [key, entry] of Object.entries(site.value as Record<string, unknown>)) {
-          if (entry == null || declared?.has(key)) continue;
-          next.push({ value: entry, path: joinKey(site.path, key) });
-        }
-      }
-    } else {
-      const key = part.replace(/(\[\])+$/, "");
-      const depth = (part.length - key.length) / 2;
-      field = key ? joinKey(field, part) : `${field}${part}`;
-      for (const site of sites) {
-        let level: Site[];
-        if (key) {
-          if (!site.value || typeof site.value !== "object") continue;
-          const entry = (site.value as Record<string, unknown>)[key];
-          if (entry == null) continue;
-          level = [{ value: entry, path: joinKey(site.path, key) }];
-        } else {
-          level = [site];
-        }
-        for (let d = 0; d < depth; d++) {
-          const items: Site[] = [];
-          for (const holder of level) {
-            if (!Array.isArray(holder.value)) continue;
-            holder.value.forEach((item, i) => {
-              if (item != null) items.push({ value: item, path: `${holder.path}[${i}]` });
-            });
-          }
-          level = items;
-        }
-        next.push(...level);
-      }
-    }
-    sites = next;
-  }
-  return sites;
-}
-
-const joinKey = (path: string, key: string): string => (path ? `${path}.${key}` : key);
-
-/** `fieldPath` relative to `prefix`, or undefined when it is not strictly
- *  below it. A result starting `[]` iterates the value at `prefix` itself. */
-function relativeFieldPath(fieldPath: string, prefix: string): string | undefined {
-  if (prefix === "") return fieldPath;
-  if (fieldPath.startsWith(`${prefix}.`)) return fieldPath.slice(prefix.length + 1);
-  if (fieldPath.startsWith(`${prefix}[]`)) return fieldPath.slice(prefix.length);
-  return undefined;
-}
-
-function joinConcrete(base: string, rel: string): string {
-  if (!base) return rel;
-  return rel.startsWith("[") ? `${base}${rel}` : `${base}.${rel}`;
-}
-
