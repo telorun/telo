@@ -1,4 +1,8 @@
-export { AgentProvider, useAgent } from "./context";
+export { AgentProvider, CONVERSATION_POLL_MS, useAgent } from "./context";
+export type { ConversationDownload, TurnActionOutcome } from "./context";
+export { unsupportedFeatures } from "./agent-features";
+export { turnIds, turnRequest, turnsFrom } from "./turn-actions";
+export { turnOfUserMessage } from "./records";
 export type {
   AgentIdentity,
   AgentIdentityState,
@@ -7,7 +11,9 @@ export type {
   AssistantPart,
   ChatMessage,
   CheckDiagnostic,
+  Conversation,
   ToolCallView,
+  TurnError,
   UserMessage,
   WorkspaceBridge,
 } from "./types";

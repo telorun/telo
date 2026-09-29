@@ -1,0 +1,321 @@
+kind: Telo.Application
+metadata:
+  name: ChatConversations
+  version: 1.0.0
+  description: |
+    Conversations as the agent owns them, offline against the provider stub. A
+    minted conversation reads untitled and empty; one turn names it, and it then
+    reports the model, two messages, every token its model calls reported (the
+    naming call's included) and a revision moved by the turn's admission, its
+    title and its ending. PATCH renames (trimmed) and archives; a blank title,
+    an empty body and a null title are 400. The list is newest activity first,
+    paged by cursor; `q` finds a phrase in a title or an assistant reply but not
+    one that only a tool result holds, and archived conversations are listed
+    only with `archived=true`. POST /chat refuses an unknown conversation (404)
+    and an archived one (409); an unknown conversation's routes are 404.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONVERSATIONS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversations
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# One turn to its end: started, then its event stream drained.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: start
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18521/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+  - name: get
+    timeout: 30000
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18521/chat/${{ steps.start.result.body.turnId }}/events"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  turnId: !cel "steps.start.result.body.turnId"
+  kinds: !cel >-
+    steps.all.result.items.map(r, r.event == 'error' ? parseJson(r.data).code : parseJson(r.data).data.type)
+---
+kind: Run.Sequence
+metadata: { name: create }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18521/conversations
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+  conversation: !cel "steps.post.result.body"
+---
+kind: Run.Sequence
+metadata: { name: read }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18521${{ inputs.path }}"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+kind: Run.Sequence
+metadata: { name: patch }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, body]
+    properties:
+      conversationId: { type: string }
+      body: {}
+steps:
+  - name: send
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18521/conversations/${{ inputs.conversationId }}"
+      method: PATCH
+      body: !cel "inputs.body"
+outputs:
+  status: !cel "steps.send.result.status"
+  body: !cel "steps.send.result.body"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18520 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18521 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18520/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        # ── one conversation's life ─────────────────────────────────────────
+        - name: a
+          invoke: !ref create
+        - name: minted
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.a.result.conversation.id }}" }
+        - name: first
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.a.result.conversation.id", message: hello there }
+        - name: named
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.a.result.conversation.id }}" }
+        - name: renamed
+          invoke: !ref patch
+          inputs:
+            conversationId: !cel "steps.a.result.conversation.id"
+            body: { title: "  Renamed by hand  " }
+        - name: blank
+          invoke: !ref patch
+          inputs: { conversationId: !cel "steps.a.result.conversation.id", body: { title: "   " } }
+        - name: empty
+          invoke: !ref patch
+          inputs: { conversationId: !cel "steps.a.result.conversation.id", body: {} }
+        - name: nullTitle
+          invoke: !ref patch
+          inputs: { conversationId: !cel "steps.a.result.conversation.id", body: { title: null } }
+        - name: life
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              created: !cel "steps.a.result.status"
+              minted: !cel >-
+                cel.bind(c, steps.minted.result.body,
+                  [c.title, c.model, c.messageCount, c.totalTokens, c.archived, c.revision, c.createdAt == c.updatedAt])
+              turn: !cel "steps.first.result.kinds"
+              # Admission, the title and the ending each moved the revision.
+              named: !cel >-
+                cel.bind(c, steps.named.result.body,
+                  [c.title, c.model, c.messageCount, c.totalTokens, c.revision])
+              renamed: !cel "[steps.renamed.result.status, steps.renamed.result.body.title, steps.renamed.result.body.revision]"
+              refused: !cel "[steps.blank.result.status, steps.empty.result.status, steps.nullTitle.result.status]"
+            expected:
+              created: 201
+              minted: [null, null, 0, 0, false, 0, true]
+              turn: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, finish]
+              named: [Stub title, gpt-5.2, 2, 30, 3]
+              renamed: [200, Renamed by hand, 4]
+              refused: [400, 400, 400]
+        # ── the list ────────────────────────────────────────────────────────
+        # B: its only user text is below, its only tool result holds the file
+        # written here — a phrase no user or assistant message holds.
+        - name: b
+          invoke: !ref create
+        - name: seedFile
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18521/workspace
+            method: POST
+            body:
+              write: [ { path: notes.txt, content: zebra quartz } ]
+        - name: bTurn
+          invoke: !ref turn
+          inputs:
+            conversationId: !cel "steps.b.result.conversation.id"
+            message: !cel "'read the notes STUB_CALLS:' + base64Encode(json([{'name': 'read_file', 'arguments': {'path': 'notes.txt'}}]))"
+        - name: c
+          invoke: !ref create
+        # Newest activity first: C was minted last, B's turn ran after A's
+        # rename.
+        - name: page1
+          invoke: !ref read
+          inputs: { path: /conversations?limit=2 }
+        - name: page2
+          invoke: !ref read
+          inputs:
+            path: !interpolate "/conversations?limit=2&before=${{ steps.page1.result.body.next.before }}&beforeId=${{ steps.page1.result.body.next.beforeId }}"
+        - name: byReply
+          invoke: !ref read
+          inputs: { path: "/conversations?q=STUB%20REPLY" }
+        - name: byTitle
+          invoke: !ref read
+          inputs: { path: "/conversations?q=renamed" }
+        - name: byToolResult
+          invoke: !ref read
+          inputs: { path: "/conversations?q=zebra" }
+        - name: archive
+          invoke: !ref patch
+          inputs: { conversationId: !cel "steps.b.result.conversation.id", body: { archived: true } }
+        - name: byUserText
+          invoke: !ref read
+          inputs: { path: "/conversations?q=read%20the%20notes" }
+        - name: archivedByUserText
+          invoke: !ref read
+          inputs: { path: "/conversations?q=read%20the%20notes&archived=true" }
+        - name: listed
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              page1: !cel "steps.page1.result.body.conversations.map(c, c.id)"
+              page2: !cel "steps.page2.result.body.conversations.map(c, c.id)"
+              end: !cel "steps.page2.result.body.next"
+              byReply: !cel "steps.byReply.result.body.conversations.map(c, c.id)"
+              byTitle: !cel "steps.byTitle.result.body.conversations.map(c, c.id)"
+              byToolResult: !cel "steps.byToolResult.result.body.conversations"
+              archived: !cel "[steps.archive.result.body.archived, steps.byUserText.result.body.conversations]"
+              archivedListed: !cel "steps.archivedByUserText.result.body.conversations.map(c, c.id)"
+            expected:
+              page1: [ !cel "steps.c.result.conversation.id", !cel "steps.b.result.conversation.id" ]
+              page2: [ !cel "steps.a.result.conversation.id" ]
+              end: null
+              # A and B both hold the reply; only A's title matches.
+              byReply: [ !cel "steps.b.result.conversation.id", !cel "steps.a.result.conversation.id" ]
+              byTitle: [ !cel "steps.a.result.conversation.id" ]
+              byToolResult: []
+              archived: [ true, [] ]
+              archivedListed: [ !cel "steps.b.result.conversation.id" ]
+        # ── refusals ────────────────────────────────────────────────────────
+        - name: chatArchived
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18521/chat
+            method: POST
+            body: { conversationId: !cel "steps.b.result.conversation.id", message: hello }
+        - name: chatUnknown
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18521/chat
+            method: POST
+            body: { conversationId: 01a0deb2-0000-7000-8000-000000000000, message: hello }
+        - name: getUnknown
+          invoke: !ref read
+          inputs: { path: /conversations/01a0deb2-0000-7000-8000-000000000000 }
+        - name: recordsUnknown
+          invoke: !ref read
+          inputs: { path: /conversations/01a0deb2-0000-7000-8000-000000000000/records }
+        - name: patchUnknown
+          invoke: !ref patch
+          inputs: { conversationId: 01a0deb2-0000-7000-8000-000000000000, body: { title: x } }
+        - name: refusals
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              chatArchived: [ !cel "steps.chatArchived.result.status", !cel "steps.chatArchived.result.body.code" ]
+              chatUnknown: [ !cel "steps.chatUnknown.result.status", !cel "steps.chatUnknown.result.body.code" ]
+              getUnknown: [ !cel "steps.getUnknown.result.status", !cel "steps.getUnknown.result.body.code" ]
+              recordsUnknown: [ !cel "steps.recordsUnknown.result.status", !cel "steps.recordsUnknown.result.body.code" ]
+              patchUnknown: [ !cel "steps.patchUnknown.result.status", !cel "steps.patchUnknown.result.body.code" ]
+            expected:
+              chatArchived: [ 409, ERR_CONVERSATION_ARCHIVED ]
+              chatUnknown: [ 404, ERR_CONVERSATION_NOT_FOUND ]
+              getUnknown: [ 404, ERR_CONVERSATION_NOT_FOUND ]
+              recordsUnknown: [ 404, ERR_CONVERSATION_NOT_FOUND ]
+              patchUnknown: [ 404, ERR_CONVERSATION_NOT_FOUND ]

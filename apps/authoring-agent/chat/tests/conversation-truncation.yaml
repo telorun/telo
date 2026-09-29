@@ -1,0 +1,367 @@
+kind: Telo.Application
+metadata:
+  name: ChatConversationTruncation
+  version: 1.0.0
+  description: |
+    Truncating a conversation, offline against the provider stub. Of six turns,
+    removing the third and every later one answers 200 with four removed turns
+    and the conversation at two turns (four messages); the records route, the
+    `turns` table and the next turn's model request then hold only the first
+    two turns, and the removed third turn's events answer 410. A stale
+    `revision` is 409 ERR_CONVERSATION_CHANGED carrying the current one, a turn
+    of another conversation is 404 ERR_TURN_NOT_FOUND, and while the latest turn
+    is held by the stub the truncation is 409 ERR_TURN_IN_PROGRESS.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONVERSATION_TRUNCATION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversation-truncation
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: create }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18525/conversations
+      method: POST
+outputs:
+  id: !cel "steps.post.result.body.id"
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18525/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  turnId: !cel "steps.post.result.body.turnId"
+---
+kind: Run.Sequence
+metadata: { name: drain }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18525/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  count: !cel "size(steps.all.result.items)"
+---
+# One turn to its end.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: start
+    invoke: !ref startTurn
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      message: !cel "inputs.message"
+  - name: drained
+    invoke: !ref drain
+    inputs: { turnId: !cel "steps.start.result.turnId" }
+outputs:
+  turnId: !cel "steps.start.result.turnId"
+---
+kind: Run.Sequence
+metadata: { name: truncate }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, from, revision]
+    properties:
+      conversationId: { type: string }
+      from: { type: string }
+      revision: { type: integer }
+steps:
+  - name: send
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18525/conversations/${{ inputs.conversationId }}/turns?from=${{ inputs.from }}&revision=${{ inputs.revision }}"
+      method: DELETE
+outputs:
+  status: !cel "steps.send.result.status"
+  body: !cel "steps.send.result.body"
+---
+kind: Run.Sequence
+metadata: { name: read }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18525${{ inputs.path }}"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+# Fails until the stub holds an agent call (not a naming call) carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubHolds }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18524/requests
+  - name: notYet
+    if: !cel >-
+      !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
+        && !json(r).contains('You name conversations'))
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub holds no agent call carrying ' + inputs.text + ' yet.'"
+---
+kind: Run.Sequence
+metadata: { name: turnRows }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+with:
+  - kind: SQLite.Connection
+    metadata: { name: agentDb }
+    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+  - kind: Sql.Query
+    metadata: { name: agentQuery }
+    connection: !ref agentDb
+steps:
+  - name: rows
+    invoke: !ref agentQuery
+    inputs:
+      sql: "SELECT turn_id FROM turns WHERE conversation_id = ? ORDER BY turn_id"
+      bindings: [ !cel "inputs.conversationId" ]
+outputs:
+  turnIds: !cel "steps.rows.result.rows.map(r, string(r.turn_id))"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18524 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18525 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18524/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: conversation
+          invoke: !ref create
+        - name: six
+          invoke:
+            kind: Run.Projection
+            collection: [ t1, t2, t3, t4, t5, t6 ]
+            concurrency: 1
+            steps:
+              - name: one
+                invoke: !ref turn
+                inputs:
+                  conversationId: !cel "inputs.conversationId"
+                  message: !cel "'message ' + item"
+            outputs:
+              turnId: !cel "steps.one.result.turnId"
+          inputs:
+            conversationId: !cel "steps.conversation.result.id"
+        - name: before
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}" }
+        # ── refusals that change nothing ────────────────────────────────────
+        - name: stale
+          invoke: !ref truncate
+          inputs:
+            conversationId: !cel "steps.conversation.result.id"
+            from: !cel "steps.six.result[2].turnId"
+            revision: !cel "int(steps.before.result.body.revision) - 1"
+        - name: other
+          invoke: !ref create
+        - name: foreign
+          invoke: !ref truncate
+          inputs:
+            conversationId: !cel "steps.other.result.id"
+            from: !cel "steps.six.result[2].turnId"
+            revision: 0
+        # ── truncate from the third ─────────────────────────────────────────
+        - name: truncated
+          invoke: !ref truncate
+          inputs:
+            conversationId: !cel "steps.conversation.result.id"
+            from: !cel "steps.six.result[2].turnId"
+            revision: !cel "int(steps.before.result.body.revision)"
+        - name: records
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}/records" }
+        - name: rows
+          invoke: !ref turnRows
+          inputs: { conversationId: !cel "steps.conversation.result.id" }
+        - name: removedEvents
+          invoke: !ref read
+          inputs: { path: !interpolate "/chat/${{ steps.six.result[2].turnId }}/events" }
+        - name: seventh
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: message t7 }
+        - name: sent
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18524/requests }
+        - name: truncatedToTwo
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              stale: !cel >-
+                [steps.stale.result.status, steps.stale.result.body.code,
+                 steps.stale.result.body.revision == steps.before.result.body.revision]
+              foreign: [ !cel "steps.foreign.result.status", !cel "steps.foreign.result.body.code" ]
+              truncated: !cel >-
+                [steps.truncated.result.status, steps.truncated.result.body.removedTurns,
+                 steps.truncated.result.body.conversation.messageCount]
+              records: !cel "steps.records.result.body.turns.map(t, t.turnId)"
+              rows: !cel "steps.rows.result.turnIds"
+              removedEvents: [ !cel "steps.removedEvents.result.status", !cel "steps.removedEvents.result.body.code" ]
+              # The messages the seventh turn's model request carries.
+              history: !cel >-
+                cel.bind(last, json(steps.sent.result.body.requests[size(steps.sent.result.body.requests) - 1].input),
+                  ['t1', 't2', 't3', 't4', 't5', 't6', 't7'].filter(t, last.contains('message ' + t)))
+            expected:
+              stale: [ 409, ERR_CONVERSATION_CHANGED, true ]
+              foreign: [ 404, ERR_TURN_NOT_FOUND ]
+              truncated: [ 200, 4, 4 ]
+              records: [ !cel "steps.six.result[0].turnId", !cel "steps.six.result[1].turnId" ]
+              rows: [ !cel "steps.six.result[0].turnId", !cel "steps.six.result[1].turnId" ]
+              removedEvents: [ 410, ERR_JOURNAL_KEY_REMOVED ]
+              history: [ t1, t2, t7 ]
+        # ── a running turn ──────────────────────────────────────────────────
+        - name: held
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: STUB_SLOW message t8 }
+        - name: heldAtStub
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubHolds
+          inputs: { text: STUB_SLOW message t8 }
+        - name: current
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}" }
+        - name: whileRunning
+          invoke: !ref truncate
+          inputs:
+            conversationId: !cel "steps.conversation.result.id"
+            from: !cel "steps.held.result.turnId"
+            revision: !cel "int(steps.current.result.body.revision)"
+        - name: release
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18524/release
+            method: POST
+        - name: heldDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.held.result.turnId" }
+        - name: running
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual: [ !cel "steps.whileRunning.result.status", !cel "steps.whileRunning.result.body.code" ]
+            expected: [ 409, ERR_TURN_IN_PROGRESS ]

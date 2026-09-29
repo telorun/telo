@@ -119,13 +119,18 @@ steps:
             openaiApiKey: stub-key
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18514/conversations
+            method: POST
         - name: start
           invoke: !ref call
           inputs:
             url: http://127.0.0.1:18514/chat
             method: POST
             body:
-              conversationId: 5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b
+              conversationId: !cel "steps.conversation.result.body.id"
               message: !cel >-
                 'build it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments':
                   {'path': 'apps/demo/telo.yaml', 'content': 'kind: Telo.Library\nmetadata:\n  name: 7demo\n'}}]))
@@ -134,6 +139,7 @@ steps:
           invoke: !ref exported
           inputs: { turnId: !cel "steps.start.result.body.turnId" }
       outputs:
+        conversationId: !cel "steps.conversation.result.body.id"
         turnId: !cel "steps.start.result.body.turnId"
         spans: !cel "steps.spans.result.spans"
   # Standalone, with no endpoint: the boot's own spans are written to stderr as
@@ -183,7 +189,7 @@ steps:
             || s.name.startsWith('execute_tool ')).map(s, s.trace)),
         'rootTrace': root.trace,
         'rootIsRoot': root.parent == '',
-        'rootConversation': root.attrs.exists(a, a == 'gen_ai.conversation.id=5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b'),
+        'rootConversation': root.attrs.exists(a, a == 'gen_ai.conversation.id=' + steps.traced.result.conversationId),
         'genAi': sort(trace.filter(s, s.name.startsWith('invoke_agent ') || s.name.startsWith('chat ')
             || s.name.startsWith('execute_tool ')).map(s, s.start + '|' + s.name)).map(k, k.substring(k.indexOf('|') + 1)),
         'writeExit': trace.filter(s, s.attrs.exists(a, a.startsWith('telo.check.exit_code='))).map(s,
@@ -212,6 +218,7 @@ steps:
         rootConversation: true
         genAi: [ "invoke_agent author", "chat gpt-5.2", "execute_tool write_file", "chat gpt-5.2" ]
         writeFailed: true
-        usage: [ [ gen_ai.usage.input_tokens=20, gen_ai.usage.output_tokens=10 ] ]
+        # The turn's two agent calls and the call that named the conversation.
+        usage: [ [ gen_ai.usage.input_tokens=30, gen_ai.usage.output_tokens=15 ] ]
         textLeaked: false
         console: ERR_TEST_BOOTED_WITHOUT_SPANS

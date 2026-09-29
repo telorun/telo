@@ -1,12 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RotateCw, Send, Square, SquarePen, X, ChevronDown } from "lucide-react";
-import { AGENT_PANEL_DEFAULT_WIDTH, AGENT_PANEL_MIN_WIDTH, useAgent } from "@/agent";
+import {
+  AGENT_PANEL_DEFAULT_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
+  turnIds,
+  turnOfUserMessage,
+  turnRequest,
+  useAgent,
+  type ChatMessage,
+} from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageBlock } from "./MessageBlock";
-import { AgentIdentityDetails, NoAuthBadge } from "./AgentIdentity";
+import { MessageBlock, SummaryDivider } from "./MessageBlock";
+import type { MessageActionHandlers } from "./MessageActions";
+import { AgentIdentityDetails, NoAuthBadge, NoTestRunsBadge, UnsupportedFeatures } from "./AgentIdentity";
+import { ConversationSwitcher } from "./ConversationSwitcher";
+import { useTurnActions } from "./TurnActionConfirm";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,6 +112,47 @@ export function AgentPanel({ className }: { className?: string }) {
     setDraft("");
   };
 
+  const turnActions = useTurnActions();
+  const { features } = agent;
+  // Copy is always offered; the rest only by an agent serving them, and never
+  // on a bubble the agent has not admitted as a turn.
+  const actionsFor = (m: ChatMessage): MessageActionHandlers => {
+    const busy = agent.locked;
+    if (m.local) return { busy };
+    if (m.role === "user") {
+      const turn = turnOfUserMessage(m.id);
+      if (!turn || !features.truncation) return { busy };
+      return {
+        busy,
+        onEditResend: (text) => turnActions.editResend(turn, text),
+        onDeleteFrom: () => turnActions.deleteFrom(turn),
+      };
+    }
+    const request = turnRequest(agent.messages, m.id);
+    return {
+      busy,
+      onRetry: features.truncation && request !== null ? () => turnActions.retry(m.id, request) : undefined,
+      onBranch: features.branching ? () => void agent.branchFrom(m.id) : undefined,
+    };
+  };
+
+  // A summary shows after the last turn it covers, whichever turn journaled it.
+  const summaries = useMemo(() => {
+    const anchors = new Set(turnIds(agent.messages));
+    const after = new Map<string, string[]>();
+    for (const m of agent.messages) {
+      if (m.role !== "assistant") continue;
+      for (const part of m.parts) {
+        if (part.kind !== "summary" || !anchors.has(part.throughTurnId)) continue;
+        after.set(part.throughTurnId, [...(after.get(part.throughTurnId) ?? []), part.summary]);
+      }
+    }
+    return { anchors, after };
+  }, [agent.messages]);
+
+  const archived = agent.conversation?.archived === true;
+  const canCompose = (agent.conversationId !== null || agent.draft) && !archived;
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -109,7 +161,9 @@ export function AgentPanel({ className }: { className?: string }) {
   };
 
   const startOver = () => {
-    if (agent.messages.length) {
+    // With an agent that keeps conversations nothing is discarded: the current
+    // one stays in the list.
+    if (agent.messages.length && !agent.features.conversations) {
       setConfirmClear(true);
       return;
     }
@@ -141,8 +195,13 @@ export function AgentPanel({ className }: { className?: string }) {
         title="Drag to resize — double-click to reset"
       />
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <span className="flex-1 truncate text-sm font-medium">Authoring agent</span>
+        {agent.features.conversations ? (
+          <ConversationSwitcher />
+        ) : (
+          <span className="flex-1 truncate text-sm font-medium">Authoring agent</span>
+        )}
         <NoAuthBadge identity={agent.identity} />
+        <NoTestRunsBadge identity={agent.identity} />
         <Button
           variant="ghost"
           size="icon-xs"
@@ -186,8 +245,9 @@ export function AgentPanel({ className }: { className?: string }) {
               />
             </>
           )}
-          <div className="mt-2">
+          <div className="mt-2 space-y-2">
             <AgentIdentityDetails identity={agent.identity} />
+            <UnsupportedFeatures identity={agent.identity} />
           </div>
           <label className="mt-3 flex items-start gap-2 text-xs">
             <Checkbox
@@ -214,18 +274,22 @@ export function AgentPanel({ className }: { className?: string }) {
             />
           )}
           {agent.messages.map((m, i) => (
-            <MessageBlock
-              key={m.id}
-              message={m}
-              questionCards={agent.questionCards}
-              // Only the last message's questions are still open: anything
-              // earlier has been answered, or the user moved on without doing so.
-              answerable={i === agent.messages.length - 1 && !agent.locked}
-              onAnswer={agent.send}
-              // Likewise for resuming: only the conversation's last turn can be
-              // continued.
-              onRetry={i === agent.messages.length - 1 && agent.canRetry ? agent.retry : undefined}
-            />
+            <Fragment key={m.id}>
+              <MessageBlock
+                message={m}
+                questionCards={agent.questionCards}
+                // Only the last message's questions are still open: anything
+                // earlier has been answered, or the user moved on without doing so.
+                answerable={i === agent.messages.length - 1 && !agent.locked}
+                onAnswer={agent.send}
+                // Likewise for resuming: only the conversation's last turn can be
+                // continued.
+                onRetry={i === agent.messages.length - 1 && agent.canRetry ? agent.retry : undefined}
+                actions={actionsFor(m)}
+                summaryAnchors={summaries.anchors}
+              />
+              {summaries.after.get(m.id)?.map((summary, j) => <SummaryDivider key={j} summary={summary} />)}
+            </Fragment>
           ))}
         </ConversationContent>
         <ConversationScrollButton />
@@ -264,8 +328,14 @@ export function AgentPanel({ className }: { className?: string }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={agent.conversationId ? "Message the agent…" : "Open a workspace first"}
-            disabled={agent.locked || !agent.conversationId}
+            placeholder={
+              archived
+                ? "Archived — unarchive to continue"
+                : canCompose
+                  ? "Message the agent…"
+                  : "Open a workspace first"
+            }
+            disabled={agent.locked || !canCompose}
             rows={2}
             className="max-h-40 resize-none"
           />
@@ -280,12 +350,14 @@ export function AgentPanel({ className }: { className?: string }) {
               <Square className="size-4" />
             </Button>
           ) : (
-            <Button size="icon" onClick={submit} disabled={!draft.trim() || !agent.conversationId} title="Send">
+            <Button size="icon" onClick={submit} disabled={!draft.trim() || !canCompose} title="Send">
               <Send className="size-4" />
             </Button>
           )}
         </div>
       </div>
+
+      {turnActions.dialog}
 
       <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
         <AlertDialogContent>

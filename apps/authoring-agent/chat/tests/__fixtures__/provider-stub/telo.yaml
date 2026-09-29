@@ -6,6 +6,19 @@ metadata:
     Test fixture: a local stand-in for the OpenAI responses endpoint, so the
     agent's tests run whole turns offline and key-free. POST /v1/responses
     answers with a streamed response chosen by the request's text:
+      - a naming call (instructions starting `You name conversations`)
+        answers `"Stub title."` and a second line, and a summary call
+        (`You summarize conversations`) answers `stub summary`; neither
+        heeds the directives below, only its own: STUB_TITLE_FAIL /
+        STUB_SUMMARY_FAIL refuse it with 400, STUB_SUMMARY_EMPTY completes
+        it with no text, STUB_TITLE_CUT / STUB_SUMMARY_CUT end it
+        `response.incomplete` (reason `max_output_tokens`) after part of its
+        text — each with usage, and each with an `_ONCE` form that applies
+        only to the first call of its kind carrying that marker —, and
+        STUB_TITLE_SLOW holds a naming call like STUB_SLOW, and
+        STUB_TITLE_LONG answers it with a 94-character line whose 80th
+        character is the astral `😀`, and `STUB_TITLE_REPLY:<base64 of a
+        UTF-8 text>` answers it with exactly that text;
       - a message containing STUB_FAIL is refused with 400 — with
         STUB_FAIL_ONCE, only until a request carries a continued turn's note
         (`TURN CONTINUED: the previous attempt`; the system prompt names the
@@ -70,10 +83,50 @@ steps:
       bindings: [ !cel "json(inputs.body)" ]
   - name: request
     value: !cel "json(inputs.body)"
+  # A naming or summary call is told apart by its instructions; the agent's
+  # own directives never apply to it, only its own.
+  - name: kind
+    value: !cel >-
+      has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You name conversations') ? 'title'
+        : has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You summarize conversations') ? 'summary'
+        : 'agent'
+  # A naming or summary call's own directives; empty where its kind has none.
+  - name: markers
+    value: !cel >-
+      steps.kind.result == 'title' ? {'fail': 'STUB_TITLE_FAIL', 'empty': '', 'cut': 'STUB_TITLE_CUT'}
+        : {'fail': 'STUB_SUMMARY_FAIL', 'empty': 'STUB_SUMMARY_EMPTY', 'cut': 'STUB_SUMMARY_CUT'}
+  # Earlier calls of this kind that carried each directive's `_ONCE` marker too.
+  - name: earlier
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: |
+        SELECT COALESCE(SUM(body LIKE ?), 0) AS fail, COALESCE(SUM(body LIKE ?), 0) AS empty,
+               COALESCE(SUM(body LIKE ?), 0) AS cut
+        FROM requests WHERE id < ? AND body LIKE ?
+      bindings:
+        - !cel "'%' + steps.markers.result.fail + '_ONCE%'"
+        - !cel "'%' + steps.markers.result.empty + '_ONCE%'"
+        - !cel "'%' + steps.markers.result.cut + '_ONCE%'"
+        - !cel "steps.record.result.rows[0].id"
+        - !cel "steps.kind.result == 'title' ? '%You name conversations%' : '%You summarize conversations%'"
+  # Which directives this call obeys: its marker is present, and its `_ONCE`
+  # form is not, or no earlier call of this kind carried that.
+  - name: obeys
+    value: !cel >-
+      cel.bind(req, steps.request.result, cel.bind(m, steps.markers.result, cel.bind(prior, steps.earlier.result.rows[0], {
+        'fail': steps.kind.result != 'agent' && req.contains(m.fail)
+          && !(req.contains(m.fail + '_ONCE') && int(prior.fail) > 0),
+        'empty': steps.kind.result != 'agent' && m.empty != '' && req.contains(m.empty)
+          && !(req.contains(m.empty + '_ONCE') && int(prior.empty) > 0),
+        'cut': steps.kind.result != 'agent' && req.contains(m.cut)
+          && !(req.contains(m.cut + '_ONCE') && int(prior.cut) > 0)
+      })))
   - name: refused
     if: !cel >-
-      steps.request.result.contains('STUB_FAIL')
-        && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt'))
+      steps.kind.result == 'agent'
+        ? steps.request.result.contains('STUB_FAIL')
+          && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt'))
+        : steps.obeys.result.fail
     then:
       - name: refuse
         throw:
@@ -82,7 +135,9 @@ steps:
   # Held until released. An agent that abandons the request (an aborted turn)
   # disconnects, which cancels this handler and ends the hold with it.
   - name: slow
-    if: !cel "steps.request.result.contains('STUB_SLOW')"
+    if: !cel >-
+      steps.kind.result == 'agent' ? steps.request.result.contains('STUB_SLOW')
+        : steps.kind.result == 'title' && steps.request.result.contains('STUB_TITLE_SLOW')
     then:
       - name: released
         invoke: !ref releasedCount
@@ -103,13 +158,25 @@ steps:
   - name: scripted
     value: !cel >-
       cel.bind(directive, regexExtract(steps.request.result, 'STUB_CALLS:[A-Za-z0-9+/=]+'),
-        directive == '' || steps.request.result.contains('function_call_output') ? []
+        steps.kind.result != 'agent' || directive == '' || steps.request.result.contains('function_call_output') ? []
           : parseJson(base64Decode(directive.substring(11))))
+  - name: titleReply
+    value: !cel >-
+      cel.bind(directive, regexExtract(steps.request.result, 'STUB_TITLE_REPLY:[A-Za-z0-9+/=]+'),
+        directive == '' ? '' : base64Decode(directive.substring(17)))
   - name: events
     value: !cel >-
       [{'type': 'response.output_item.done',
         'item': {'type': 'reasoning', 'id': 'rs_stub', 'encrypted_content': 'stub-reasoning', 'summary': []}}]
-      + (size(steps.scripted.result) > 0
+      + (steps.kind.result == 'title'
+          ? [{'type': 'response.output_text.delta', 'delta': steps.obeys.result.cut ? '"Stub ti'
+              : steps.titleReply.result != '' ? steps.titleReply.result
+              : steps.request.result.contains('STUB_TITLE_LONG') ? join(range(79).map(i, 'a'), '') + '😀' + ' and then more'
+              : '"Stub title."\nA second line'}]
+      : steps.kind.result == 'summary'
+          ? (steps.obeys.result.empty ? []
+              : [{'type': 'response.output_text.delta', 'delta': steps.obeys.result.cut ? 'stub sum' : 'stub summary'}])
+      : size(steps.scripted.result) > 0
           ? steps.scripted.result.map(c, {'type': 'response.output_item.done',
               'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
                        'name': c.name, 'arguments': json(c.arguments)}})
@@ -119,9 +186,13 @@ steps:
                        'name': 'list_dir', 'arguments': '{}'}}]
           : [{'type': 'response.output_text.delta', 'delta': 'stub '},
              {'type': 'response.output_text.delta', 'delta': 'reply'}])
-      + [{'type': 'response.completed',
-          'response': {'status': 'completed', 'output': [],
-                       'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}]
+      + [steps.obeys.result.cut
+          ? {'type': 'response.incomplete',
+             'response': {'status': 'incomplete', 'incomplete_details': {'reason': 'max_output_tokens'}, 'output': [],
+                          'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}
+          : {'type': 'response.completed',
+             'response': {'status': 'completed', 'output': [],
+                          'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}]
   - name: frames
     invoke: { kind: Stream.Of }
     inputs:

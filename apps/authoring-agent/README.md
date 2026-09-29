@@ -256,15 +256,22 @@ back into a question, never quietly replaced with a guess.
 
 | Route | Purpose |
 | --- | --- |
-| `POST /chat` | Start a turn. `200 {turnId}`, or a coded refusal (below). Takes an optional `Idempotency-Key` header |
+| `POST /chat` | Start a turn in a conversation. `200 {turnId}`, or a coded refusal (below). Takes an optional `Idempotency-Key` header |
 | `GET /chat/{turnId}/events` | The turn's records as SSE frames, replayed and then tailed (below) |
 | `POST /chat/{turnId}/abort` | Cancel the turn's running attempt. No body. `200 {cancelled}` (below) |
 | `POST /chat/{turnId}/continue` | Continue an interrupted turn inside the same turn. No body. `200 {turnId, fromId}` (below) |
+| `POST /conversations` | Mint a conversation. `201` Conversation (see Conversations) |
+| `GET /conversations?limit=&archived=&q=&before=&beforeId=` | List conversations, newest activity first. `200 { conversations, next }` |
+| `GET /conversations/{id}` | One conversation. `200` Conversation |
+| `PATCH /conversations/{id}` | Rename and/or (un)archive: `{ title?, archived? }`. `200` Conversation |
+| `DELETE /conversations/{id}` | Delete a conversation and everything it holds. `204` |
+| `DELETE /conversations/{id}/turns?from=&revision=` | Remove a turn and every later one. `200 { removedTurns, conversation }` |
+| `POST /conversations/{id}/branch` | A new conversation copying every turn through `{ throughTurnId }`. `201` Conversation |
 | `GET /conversations/{id}/records` | The conversation's turns and their records, paged (below) |
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
 | `POST /workspace` | Apply an explicit write/delete change set |
 | `GET /workspace/file?path=` | One file's contents |
-| `GET /capabilities` | `{ agent: { name, version }, prompt: { id }, auth }` — who this agent is: the application's name and version, `prompt.id` the lowercase hex SHA-256 of `chat/primer.md` (the system prompt it runs with), `auth` `none` or `bearer` |
+| `GET /capabilities` | The capability document — who this agent is and what it serves (see The capability document) |
 | `GET /health` | `200 { status: "up" }` — liveness. Unguarded |
 | `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`OPENAI_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo-agent/ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
 
@@ -294,6 +301,9 @@ is what a client branches on:
 
 | Status | `code` | Meaning |
 | --- | --- | --- |
+| 404 | `ERR_CONVERSATION_NOT_FOUND` | No such conversation on this agent — it mints every id (`POST /conversations`) |
+| 410 | `ERR_CONVERSATION_REMOVED` | The conversation was deleted |
+| 409 | `ERR_CONVERSATION_ARCHIVED` | The conversation is archived; unarchive it to continue it |
 | 429 | `ERR_RATE_LIMITED` | Too many turns from this client address. Carries `retryAfter` (seconds) |
 | 429 | `ERR_AT_CAPACITY` | The operator's spend ceiling is reached. Carries `retryAfter` (seconds) |
 | 409 | `ERR_TURN_IN_PROGRESS` | A turn is already running for the conversation. Carries `activeTurnId` |
@@ -301,11 +311,20 @@ is what a client branches on:
 | 422 | `ERR_IDEMPOTENCY_KEY_REUSED` | The key was already used for a different message in this conversation |
 | 500 | the failure's own code | Anything else |
 
-A refused start leaves nothing behind: the throttle and the budget refuse
-before anything is written, and a start refused because another turn is running
-— or failing after its reservation, at the claim, the `turns` row or the lease —
-takes back its reservation and whatever of its journal key and `turns` row it
-wrote. A failure is answered with its own code.
+A refused start leaves nothing behind: the conversation check, the throttle
+and the budget refuse before anything is written, and a start refused because
+another turn is running — or failing after its reservation, at the claim, the
+`turns` row or the lease — takes back its reservation and whatever of its
+journal key and `turns` row it wrote. A failure is answered with its own code.
+
+**Admission order.** A turn's journal key is claimed first; only then is its
+`turns` row written — in one transaction with the conversation's `revision`
+bump, and only while the conversation is live and unarchived. So a `turns` row
+never becomes visible before its key is claimed, and a deletion that read the
+conversation's revision before the turn existed fails its compare-and-set. A
+conversation deleted or archived between the check and that write refuses the
+start there with the same codes, and the claimed key is removed and the
+reservation refunded.
 
 **`Idempotency-Key`** (optional, 1–255 characters) makes a retried POST safe.
 The admission runs at most once per `<conversationId>:<key>`: a repeat returns
@@ -347,15 +366,97 @@ the event stream from the last id it saw. Refusals, checked in this order:
 | --- | --- | --- |
 | 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed |
 | 404 | `ERR_TURN_NOT_FOUND` | No such turn on this agent |
+| 410 / 409 | `ERR_CONVERSATION_REMOVED` / `ERR_CONVERSATION_ARCHIVED` | Its conversation was deleted, or is archived |
 | 409 | `ERR_TURN_IN_PROGRESS` | A turn of the conversation is still running — this one (its stream was lost, not its work) or a later one. Carries `activeTurnId` |
 | 409 | `ERR_TURN_NOT_CONTINUABLE` | Carries `reason`: `finished`, `aborted` (a user's abort is a chosen ending), or `superseded` (a later turn exists; only the last turn continues) |
 | 429 | `ERR_RATE_LIMITED` / `ERR_AT_CAPACITY` | As for `POST /chat`, with `retryAfter` |
 
 Each attempt reserves against the budget and settles on its own; a continue that
 fails before its attempt starts refunds its reservation and answers with the
-failure's own code. A continue
-that finds the turn already taken over by another continue's attempt answers
-409 `ERR_TURN_IN_PROGRESS` naming the turn itself.
+failure's own code. A continue takes the turn's journal key over **before** it
+counts as a change to the conversation, so a deletion or truncation that reads
+the turn while it is being continued finds it running (409) — and one that
+removed the conversation or the turn first leaves the continue refused (410,
+or 409 once archived), the key given back failed with its recorded error, and
+no attempt started. A continue that finds the turn already taken over by
+another continue answers 409 `ERR_TURN_IN_PROGRESS` naming the turn itself.
+
+### Conversations
+
+The agent mints every conversation (`POST /conversations`) and owns its row. Every
+conversation route answers the same shape:
+
+```
+Conversation = { id, title, createdAt, updatedAt, model, messageCount, totalTokens, archived, revision }
+```
+
+`title` is null until one is generated or set. `model` is the model the latest
+turn's latest attempt ran on (null with no turns), `messageCount` two per turn
+(a failed turn included), `totalTokens` every token the turns' model calls
+reported — each agent call, and the calls that named and summarized the
+conversation — all derived from the live turns when read, never stored.
+`revision` counts changes, and it and `updatedAt` move together, in the same
+transaction as the change, on: a turn's admission, a continue, a turn's ending,
+a generated title applied, a PATCH, a truncation and the deletion. A client
+that polls `GET /conversations/{id}` and sees `revision` move re-reads the
+records.
+
+- **`GET /conversations`** lists by `updatedAt` then `id`, both descending.
+  `limit` (default 50, at most 200); `archived=true` lists only archived
+  conversations (default: only unarchived); `q` (1–200 characters) is a
+  case-insensitive substring of the title or of the text of a user or assistant
+  message — not tool calls or results, reasoning or summaries; a continued
+  turn's note is user text and is searched. `next` is `{ before, beforeId }` —
+  pass both back for the following page — or null on the last.
+- **`PATCH /conversations/{id}`** takes `{ title?, archived? }`, at least one. A
+  title is 1–200 characters with one that is not a space, stored trimmed, and
+  never reset to null; anything else is 400. An archived conversation is
+  listed only with `archived=true` and is readable, exportable, branchable,
+  renamable and deletable, but takes no turn: `POST /chat`, continue and
+  truncation answer 409 `ERR_CONVERSATION_ARCHIVED`.
+- **`DELETE /conversations/{id}`** answers 204. It is refused 409
+  `ERR_TURN_IN_PROGRESS` (with `activeTurnId`) while the latest turn runs —
+  abort it, wait for its stream to end, then delete. The tombstone is a
+  compare-and-set on the `revision` read beside that check, so a turn admitted
+  in between makes it re-read and re-check rather than delete a running turn;
+  it marks every turn removed and drops their projection rows in the same
+  transaction, then each marked turn's journal key and rows are removed.
+  Repeating it on a deleted conversation finishes an interrupted removal and
+  answers 204 again. An unknown id is 404.
+- **`DELETE /conversations/{id}/turns?from={turnId}&revision={n}`** removes
+  turn `from` and every later one — what Retry, Edit & resend and Delete from
+  here compose before a fresh `POST /chat` with a new `Idempotency-Key` — and
+  answers `200 { removedTurns, conversation }`. Refused, in order: 404/410 for
+  the conversation, 409 `ERR_CONVERSATION_ARCHIVED`, 404 `ERR_TURN_NOT_FOUND`
+  (`from` is not a live turn of it), 409 `ERR_TURN_IN_PROGRESS` (its latest
+  turn runs), 409 `ERR_CONVERSATION_CHANGED` carrying the current `revision`
+  (compared inside the marking transaction). Removed turns go through the
+  deletion's removal; a summary held by a removed turn goes with it.
+- **`POST /conversations/{id}/branch`** `{ throughTurnId }` answers 201 with a
+  new conversation holding a copy of every live turn through that one, record
+  for record under new ids in the same order: a finished turn finishes, a failed
+  or aborted one fails with its recorded error, a summary is remapped onto the
+  copies, and the title is `<title> (branch)` when that is at most 200
+  characters, else the source title's first 190 characters, trailing
+  whitespace trimmed, followed by `… (branch)` — within PATCH's bound, counted
+  the same way (null when untitled). The source,
+  which may be archived, is never modified. Refused: 404/410 for the source,
+  404 `ERR_TURN_NOT_FOUND`, 409 `ERR_TURN_IN_PROGRESS` when a copied turn runs,
+  409 `ERR_CONVERSATION_CHANGED` when one is removed during the copy.
+
+A deleted conversation answers 410 `ERR_CONVERSATION_REMOVED` on every conversation route except a repeated `DELETE` (204, which finishes the removal), and to `POST /chat`, for `RETENTION_DAYS`, then 404; its turns answer 410 `ERR_JOURNAL_KEY_REMOVED` as long.
+
+| Status | `code` | Where |
+| --- | --- | --- |
+| 404 | `ERR_CONVERSATION_NOT_FOUND` | Every conversation route and `POST /chat`: no such conversation |
+| 410 | `ERR_CONVERSATION_REMOVED` | Every conversation route, `POST /chat` and continue: it was deleted |
+| 409 | `ERR_CONVERSATION_ARCHIVED` | `POST /chat`, continue, truncation: it is archived |
+| 409 | `ERR_CONVERSATION_CHANGED` | Truncation (with `revision`) and branch: it changed under the request |
+| 409 | `ERR_TURN_IN_PROGRESS` | Deletion, truncation, branch: a turn runs (with `activeTurnId`) |
+| 404 | `ERR_TURN_NOT_FOUND` | Truncation and branch: the turn is not a live turn of the conversation |
+| — | `ERR_CONTEXT_COMPACTION_FAILED` | A turn's recorded error when summarizing its history failed (see The model's history); `data.cause` is the call's own error, or `ERR_SUMMARY_INCOMPLETE` (the reply did not end with `stop` — cut at its cap, say) or `ERR_SUMMARY_EMPTY` (it held no text) |
+| — | `ERR_TITLE_INCOMPLETE` | A `conversation-title` record's error when the model's reply did not end with `stop` (cut at its cap, say) |
+| — | `ERR_TITLE_EMPTY` | A `conversation-title` record's error when the model's reply held no usable title |
 
 ### A turn's records
 
@@ -366,6 +467,8 @@ the moment its id does. The turn then records, in order:
 | --- | --- |
 | `user-message` | Always first: `{ content, model }` — what was asked, and the model answering it |
 | `turn-continued` | Opens each attempt after the first: `{ note, model }` — what the model was told about the interruption, and the model answering |
+| `conversation-title` | Right after the lead record of a new turn in an untitled conversation, in one of three forms: `{ title, model, usage }` — the conversation took `title`; `{ model, usage }` — the call returned a title, but the conversation was named meanwhile, so it was not applied; or `{ error: { code, message } }` (with `model` and `usage` when the call returned) when naming it failed. A `title` in the record is always one the conversation was given |
+| `context-summary` | Right after the lead record (and title) of an attempt that compacted the history: `{ throughTurnId, summary, model, usage }` — the summary covers every turn through `throughTurnId`. When the summary call returned an unusable reply, `{ throughTurnId, error: { code, message }, model, usage }` with no `summary`, right before the turn fails: it is no summary, and counts only for its usage |
 | `text-delta`, `reasoning-delta` | The reply and the model's summary of its thinking, as they stream |
 | `tool-call`, `tool-result` | A tool the model called, and what came back (`toolCall.id` = `toolResult.toolCallId`) |
 | `provider-state` | The model's own replay material (encrypted reasoning); nothing to render |
@@ -399,8 +502,10 @@ error come from the same snapshot its page was planned from, so a turn that ends
 while the page is read is reported `running` with the records up to that point,
 and a client attaching to its event stream from the last of them receives the
 rest. `next` is `{ fromTurn, fromId }` for the following page, or
-null on the last. An unknown conversation is an empty page; a `fromTurn` that is
-not one of its turns is 404 `ERR_TURN_NOT_FOUND`. The records of a turn are
+null on the last. A `fromTurn` that is not one of its turns is 404
+`ERR_TURN_NOT_FOUND`; an unknown conversation is 404
+`ERR_CONVERSATION_NOT_FOUND`, a deleted one 410 `ERR_CONVERSATION_REMOVED`, and a
+removed turn is not listed. The records of a turn are
 exactly the frames its event stream delivers, so a client renders a conversation
 it opens and a turn it follows with the same fold.
 
@@ -419,24 +524,101 @@ no recorded result is left out, since the provider refuses a call with no
 answer. A `turn-continued` record closes the interrupted model call like the end
 of a call does and adds its note as a user message, so a continued turn replays
 every attempt in order. The last recorded provider state is replayed only to an
-attempt running on the model that produced it. `rebuildProjection` (exported by
-the chat library) projects a conversation again from its journal.
+attempt running on the model that produced it, and never across a summary.
+`rebuildProjection` (exported by the chat library) projects a conversation again
+from its journal; `catchUpProjections` runs at boot and projects every turn a
+migration left unprojected.
+
+**The history is bounded.** Every tool result feeds the model at most
+`MAX_TOOL_RESULT_BYTES` of text; a longer one keeps its first bytes and ends with
+`[truncated: <omitted> of <total> bytes cut; a tool result passes at most <limit> bytes to the model]`,
+while the tool-result record's `output` stays whole. And once a turn's last model
+call reported a context (prompt plus completion tokens) of at least
+`MAX_CONTEXT_TOKENS`, the next attempt **compacts**: the history before it — the
+latest summary and the turns after the one it covers — keeps its newest turns
+holding at most a quarter of its bytes raw and summarizes everything older, in
+one call capped at `MAX_CONTEXT_TOKENS / 8` output tokens (15000 by default).
+The summary is journaled as `context-summary` and the model then reads it as the
+first message, `CONVERSATION SUMMARY: …`, followed by the raw turns after it;
+that attempt replays no provider state. A summary is accepted only when the reply
+ended with `stop`: one cut short would replace the covered turns with part of
+them. A summary call that fails fails the turn with
+`ERR_CONTEXT_COMPACTION_FAILED` (its cause in `data.cause`), which a continue
+retries; when the call returned — a reply cut short (`ERR_SUMMARY_INCOMPLETE`,
+naming the reason and the cap) or empty (`ERR_SUMMARY_EMPTY`) — a
+`context-summary` carrying the error and the call's usage is journaled first,
+and a refused call journals nothing. The raw turns stay in the records route and
+in an export.
+
+**The naming and summary calls run on a model of their own**: the agent's
+`MODEL` through the same endpoint, at `reasoning.effort: low` and with no
+reasoning summary, while the agent's own calls keep `REASONING_EFFORT`. On the
+responses API `max_output_tokens` bounds reasoning and the reply together, so
+the operator's effort would spend a capped call on thinking.
+
+**Naming.** While a conversation is untitled, every new turn (never a continue)
+asks the low-effort model, capped at 1024 output tokens, for a title from the
+conversation's first user message (its first 4000 characters), before the
+agent runs; the reply's first line, trimmed, without quotes or a trailing
+period and at most 80 characters, becomes the title unless one was set meanwhile — then the record carries the
+call's model and usage alone, and the naming changes nothing. A reply that did
+not end with `stop` is `ERR_TITLE_INCOMPLETE`, an empty one `ERR_TITLE_EMPTY`. A
+failure is the `conversation-title` record's error and never fails the turn; the
+next new turn tries again. Characters are Unicode code points, so an emoji is
+never split by the cut or by a stripped quote or period.
+
+Every model call a turn makes — the agent's, the title's and the summary's, an
+unusable summary included — is in its records, in its settled budget amount and
+in the conversation's `totalTokens`.
 
 ### Retention
 
-Retention deletes **whole conversations**: one with no turn started or continued
-for `RETENTION_DAYS` loses every turn's journal key, then its `messages`,
-`turn_projections` and `turns` rows — nothing of a conversation outlives its
-source. A removed turn's event stream answers 410 for another `RETENTION_DAYS`
-(the journal's removal marker), then 404. The sweep runs at boot and hourly; it
-is exported as `retentionSweep { idleBefore }`, and every step of it is safe to
-repeat, so a sweep a crash cut short is finished by the next one.
+**What the agent keeps, and for how long.** A conversation — its title, its
+turns' journal records and their projected history — is kept until it is
+deleted or until it has not changed for `RETENTION_DAYS`, whichever comes first.
+Retention then deletes it **whole**, through the same path `DELETE
+/conversations/{id}` takes: a tombstone, every turn marked, then every turn's
+journal key and its `messages`, `turn_projections` and `turns` rows — nothing of
+a conversation outlives it. The tombstone (id and timestamps only) answers 410
+for another `RETENTION_DAYS`, then is forgotten and the id answers 404; a
+removed turn's event stream answers 410 as long (the journal's removal marker).
+A conversation whose latest turn is running, or that changed during the sweep,
+is left for a later round. The sweep also finishes any removal a crash cut
+short. A branch is assembled under a conversation hidden from every route (404)
+until its last turn is copied; one a crash cut short stays hidden and is removed
+like any idle conversation, and one refused partway is removed at once. It runs at boot and
+hourly, exported as `retentionSweep { idleBefore }`, and every step of it is
+safe to repeat. `Idempotency-Key` admission records are not part of a
+conversation and lapse after 24 hours.
 
-Breaking against earlier releases: `GET /conversations/{id}` and
-`POST /conversations/{id}/messages` are gone — the records route replaces the
-first, and a client no longer seeds history, because the agent keeps it. The
-old `messages` table held joined text only and is replaced; conversations from
-before this release keep no history.
+Breaking against earlier releases: the agent mints conversation ids —
+`POST /chat` refuses an id it did not mint with 404 `ERR_CONVERSATION_NOT_FOUND`,
+so a client creates a conversation with `POST /conversations` first. Every
+conversation recorded before this release is kept under its own id, with its
+title unset. Earlier still, `POST /conversations/{id}/messages` was removed — a
+client no longer seeds history, because the agent keeps it.
+
+### The capability document
+
+`GET /capabilities` answers:
+
+```
+{
+  agent: { name, version },
+  prompt: { id },
+  auth: "none" | "bearer",
+  features: ["conversations", "conversation-truncation", "conversation-branching"],
+  manifestRuns: true | false
+}
+```
+
+`prompt.id` is the lowercase hex SHA-256 of `chat/primer.md`, the system prompt
+the agent runs with. `features` says which surfaces a client may offer:
+`conversations` (the conversation routes, their refusals on `POST /chat`,
+export), `conversation-truncation` (`DELETE /conversations/{id}/turns`: Retry,
+Edit & resend, Delete from here) and `conversation-branching`
+(`POST /conversations/{id}/branch`). A client ignores an entry it does not know
+and treats a missing one as unsupported. `manifestRuns` is `ALLOW_MANIFEST_RUNS`.
 
 ## Configuration
 
@@ -458,6 +640,8 @@ Variables:
 | `MODEL_ENDPOINT` | `https://api.openai.com/v1` | The OpenAI-compatible endpoint the model is called through — a gateway, or the local stub the tests use |
 | `RETENTION_DAYS` | `30` | Days a conversation may sit idle before it is deleted whole, and how long its removed turns then answer 410 rather than 404 (at least 1) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
+| `MAX_CONTEXT_TOKENS` | `120000` | The context, in tokens, a conversation may reach before its older turns are summarized (see The model's history) (at least 8, so the summary's cap is at least 1 token) |
+| `MAX_TOOL_RESULT_BYTES` | `32768` | The most UTF-8 bytes of text one tool result feeds the model; a longer one is cut and marked `[truncated: …]` |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated origins a browser may call the guarded routes from (see Routes) |
@@ -608,7 +792,28 @@ model then receives; and every refusal of both routes answers its code.
 `projection-rebuild.yaml` imports the chat library and rebuilds the projection
 from the journal; `retention-sweep.yaml` imports it too and deletes an idle
 conversation whole while an active one with old turns is untouched, including
-after a sweep a crash cut short.
+after a sweep or a deletion a crash cut short, and forgets a tombstone after
+the window. `turn-spend.yaml` and `tool-result-bound.yaml` import it as well:
+the first pins that the naming and summary calls are charged to their turn —
+an empty summary that failed the turn included —, the second that a 100 KB tool result reaches the model bounded while its
+`output` stays whole.
+
+The conversation cases boot the application against the stub, which answers a
+naming call (instructions starting `You name conversations`) and a summary call
+(`You summarize conversations`) on their own and can refuse, empty, cut or hold
+them (`STUB_TITLE_FAIL`, `STUB_SUMMARY_FAIL`, `STUB_SUMMARY_EMPTY`,
+`STUB_TITLE_CUT`, `STUB_SUMMARY_CUT`, each with an `_ONCE` form, and
+`STUB_TITLE_SLOW`), or script a naming call's reply
+(`STUB_TITLE_REPLY:<base64>`):
+`conversations.yaml` (create, read, rename, archive, list, paging, `q`, and the
+refusals), `conversation-title.yaml`, `context-compaction.yaml`,
+`conversation-removal.yaml` (deletion, a stale-revision tombstone, twenty
+deletions racing twenty admissions, twenty deletions racing twenty continues,
+and deletion beside a continue), `conversation-truncation.yaml`,
+`conversation-branch.yaml` and `conversation-migration.yaml`, which boots the
+agent on a database written before conversations existed. `context-floor.yaml`
+pins that the agent refuses to boot with `maxContextTokens` below 8, naming
+the variable.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

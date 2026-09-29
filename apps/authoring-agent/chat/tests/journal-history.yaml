@@ -12,7 +12,8 @@ metadata:
     query cursor; a malformed cursor is 400; an unknown turn and an unknown page
     cursor are 404; a removed turn is 410. A turn's recorded reasoning is replayed
     to the same model on the next turn, and not to another one — read off what
-    the stub was sent.
+    the stub was sent. The conversation's first turn names it, so its second
+    record is the `conversation-title` record.
 imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
@@ -20,9 +21,8 @@ imports:
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  # By path, as the agent imports them, until they are published.
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
 variables:
@@ -68,6 +68,25 @@ outputs:
     steps.all.result.items.map(r, r.event == 'error'
       ? {'event': 'error', 'error': parseJson(r.data)}
       : {'event': r.event, 'id': int(r.id), 'data': parseJson(r.data).data})
+---
+kind: Run.Sequence
+metadata: { name: newConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [port]
+    properties:
+      port: { type: integer }
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ inputs.port }}/conversations"
+      method: POST
+outputs:
+  id: !cel "steps.post.result.body.id"
 ---
 kind: Run.Sequence
 metadata: { name: startTurn }
@@ -128,9 +147,12 @@ steps:
             openaiApiKey: stub-key
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke: !ref newConversation
+          inputs: { port: 18451 }
         - name: plain
           invoke: !ref startTurn
-          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: hello }
+          inputs: { port: 18451, conversationId: !cel "steps.conversation.result.id", message: hello }
         - name: plainEvents
           timeout: 30000
           invoke: !ref readEvents
@@ -138,7 +160,7 @@ steps:
             url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.plain.result.turnId }}/events"
         - name: tool
           invoke: !ref startTurn
-          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: STUB_TOOL list the workspace }
+          inputs: { port: 18451, conversationId: !cel "steps.conversation.result.id", message: STUB_TOOL list the workspace }
         - name: toolEvents
           timeout: 30000
           invoke: !ref readEvents
@@ -146,7 +168,7 @@ steps:
             url: !interpolate "http://127.0.0.1:18451/chat/${{ steps.tool.result.turnId }}/events"
         - name: refused
           invoke: !ref startTurn
-          inputs: { port: 18451, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: STUB_FAIL please }
+          inputs: { port: 18451, conversationId: !cel "steps.conversation.result.id", message: STUB_FAIL please }
         # Bounded: a failed turn must END its stream, never tail it.
         - name: refusedEvents
           timeout: 30000
@@ -162,13 +184,13 @@ steps:
               refused: !cel >-
                 steps.refusedEvents.result.frames.map(f, f.event == 'error' ? f.error.code : f.data.type)
             expected:
-              plain: [user-message, text-delta, text-delta, provider-state, step-finish, finish]
+              plain: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, finish]
               toolLast: finish
               refused: [user-message, ERR_OPENAI_REQUEST_FAILED]
         - name: records
           invoke: { kind: HttpClient.Request }
           inputs:
-            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records
+            url: !interpolate "http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records"
         - name: recordsMatchEvents
           invoke: { kind: Assert.Equals }
           inputs:
@@ -197,12 +219,12 @@ steps:
         - name: firstPage
           invoke: { kind: HttpClient.Request }
           inputs:
-            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?limit=4
+            url: !interpolate "http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records?limit=4"
         - name: nextPage
           invoke: { kind: HttpClient.Request }
           inputs:
             url: !interpolate >-
-              http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?limit=4&fromTurn=${{ steps.firstPage.result.body.next.fromTurn }}&fromId=${{ steps.firstPage.result.body.next.fromId }}
+              http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records?limit=4&fromTurn=${{ steps.firstPage.result.body.next.fromTurn }}&fromId=${{ steps.firstPage.result.body.next.fromId }}
         - name: paged
           invoke: { kind: Assert.Equals }
           inputs:
@@ -214,8 +236,8 @@ steps:
               first: [[1, 2, 3, 4]]
               cursor: { fromTurn: !cel "steps.plain.result.turnId", fromId: 4 }
               second:
-                - [ !cel "steps.plain.result.turnId", [5, 6] ]
-                - [ !cel "steps.tool.result.turnId", [1, 2] ]
+                - [ !cel "steps.plain.result.turnId", [5, 6, 7] ]
+                - [ !cel "steps.tool.result.turnId", [1] ]
         # The header a reconnecting EventSource sends wins over the query.
         - name: resumed
           invoke: !ref readEvents
@@ -234,7 +256,7 @@ steps:
         - name: unknownPage
           invoke: { kind: HttpClient.Request }
           inputs:
-            url: http://127.0.0.1:18451/conversations/6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e/records?fromTurn=not-a-turn
+            url: !interpolate "http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records?fromTurn=not-a-turn"
         - name: refusals
           invoke: { kind: Assert.Equals }
           inputs:
@@ -244,7 +266,7 @@ steps:
               unknownTurn: [ !cel "steps.unknownTurn.result.status", !cel "steps.unknownTurn.result.body.code" ]
               unknownPage: [ !cel "steps.unknownPage.result.status", !cel "steps.unknownPage.result.body.code" ]
             expected:
-              resumedIds: [5, 6]
+              resumedIds: [5, 6, 7]
               badCursor: 400
               unknownTurn: [404, ERR_TURN_NOT_FOUND]
               unknownPage: [404, ERR_TURN_NOT_FOUND]
@@ -281,6 +303,8 @@ steps:
           inputs:
             actual: [ !cel "steps.removedEvents.result.status", !cel "steps.removedEvents.result.body.code" ]
             expected: [410, ERR_JOURNAL_KEY_REMOVED]
+      outputs:
+        conversationId: !cel "steps.conversation.result.id"
   # The same workspace on another model: its turn is sent no reasoning recorded
   # under the first one.
   - name: otherModel
@@ -301,18 +325,20 @@ steps:
       steps:
         - name: switched
           invoke: !ref startTurn
-          inputs: { port: 18452, conversationId: 6b1c0d5e-2f3a-4b4c-8d5e-6f7a8b9c0d1e, message: and now? }
+          inputs: { port: 18452, conversationId: !cel "inputs.conversationId", message: and now? }
         - name: switchedEvents
           timeout: 30000
           invoke: !ref readEvents
           inputs:
             url: !interpolate "http://127.0.0.1:18452/chat/${{ steps.switched.result.turnId }}/events"
+    inputs:
+      conversationId: !cel "steps.sameModel.result.conversationId"
   - name: sent
     invoke: { kind: HttpClient.Request }
     inputs:
       url: http://127.0.0.1:18450/requests
-  # Requests in order: the plain turn, the tool turn's two model calls, the
-  # refused turn, the switched turn.
+  # Requests in order: the first turn's naming call and its own, the tool
+  # turn's two model calls, the refused turn, the switched turn.
   - name: reasoningReplayedToItsModelOnly
     invoke: { kind: Assert.Equals }
     inputs:
@@ -322,5 +348,5 @@ steps:
           steps.sent.result.body.requests.map(r,
             r.input.exists(i, 'type' in i && i.type == 'reasoning'))
       expected:
-        models: [gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, another-model]
-        carriesReasoning: [false, true, true, true, false]
+        models: [gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, gpt-5.2, another-model]
+        carriesReasoning: [false, false, true, true, true, false]

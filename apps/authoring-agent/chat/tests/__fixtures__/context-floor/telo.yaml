@@ -1,0 +1,42 @@
+kind: Telo.Application
+metadata:
+  name: ContextFloorAgent
+  version: 1.0.0
+  description: |
+    Test fixture: stands the agent up with `maxContextTokens: 7` and calls its
+    health route, so an agent that refuses to boot fails this run with its
+    refusal on stderr.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+variables:
+  scratch:
+    env: CHAT_TEST_CONTEXT_FLOOR_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/context-floor
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: agent }
+    source: ../../../../telo.yaml
+    ports: { http: 18599 }
+    variables:
+      workspaceDir: !cel "variables.scratch"
+      modelEndpoint: http://127.0.0.1:18598/v1
+      maxContextTokens: 7
+    secrets:
+      openaiApiKey: stub-key
+targets: [ !ref agent ]
+steps:
+  - name: health
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client }
+      url: http://127.0.0.1:18599/health
+      method: GET

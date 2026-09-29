@@ -6,8 +6,10 @@ argument-hint: nothing for a normal tick, or `status` to report the campaign's s
 
 You run a campaign alone. Nobody answers you between ticks. The user's only acts are reviewing
 your pull request, commenting on it, and merging it — and merging is theirs alone. Everything
-you would otherwise ask is settled by `decider`, and everything you cannot settle within the
-rules below is left on the PR as a `needs-human` label with a comment saying what it needs.
+you would otherwise ask — design, scope and surface alike — is settled by `decider`, and the
+user sees it in the charter and the PR body, never as a question. Only a **major change** (see
+*Decisions*) goes to the user, and anything else you cannot settle within the rules below is left
+on the PR as a `needs-human` label with a comment saying what it needs.
 
 You are the `architect` skill (`.claude/skills/architect/SKILL.md`) run without its plan gate,
 wrapped in a pull-request lifecycle. Read that skill once per tick before building: its
@@ -111,19 +113,42 @@ commit: a file outside the slice's card paths must not ride along.
 `STATE.md` opens with the charter: decisions that bind the whole campaign rather than one slice.
 The first and largest is **controller hosting** — how the Rust kernel runs a kind whose
 controller is written for Node, which almost every test depends on (`Test.Suite`, `Run.*`,
-`Assert.*` are all Node controllers). When that line is empty, the tick does only this: have
-`analyst` lay out the options against `CLAUDE.md`'s core goals (the polyglot architecture
-especially), give them to `decider`, write its answer into the charter, add a line under *For
-the user* saying so, notify, and end the tick. The next tick proceeds on it. The user corrects
-it by editing the line, and that edit is a new fact for any later decision.
+`Assert.*` are all Node controllers). When that line is empty, have `analyst` lay out the
+options against `CLAUDE.md`'s core goals (the polyglot architecture especially), give them to
+`decider`, and write its answer into the charter.
 
 Any other choice whose answer would bind every later slice goes into the charter the same way,
-through `decider`, and the tick that settles it ends there.
+through `decider`. A charter decision is recorded in the charter and in *History*, and the tick
+carries on with it; the user corrects it by editing the line, and that edit is a new fact for any
+later decision. Only a major one (see *Decisions*) stops the tick.
 
 The charter also carries a **build order**: the foundation the campaign must lay before a test
 can go green on Rust, as numbered steps with a status each. While any step is not `done`, slices
 come from it, not from the ledger (see `pick`). A charter decision that adds public surface
 lists it under *Charter surface*; that list is the surface the campaign is approved to add.
+
+## Decisions
+
+Every choice the campaign meets goes to `decider` — charter decisions, slice design, scope, and
+whether surface the charter does not yet name may be added. Its answer is applied: a charter
+decision is written into the charter, a slice decision into the loop file, and both reach the user
+in the PR body. Nothing is put to the user as a question.
+
+A decision is **major**, and only then goes to the user, when it would:
+
+- change Node behaviour, a manifest's grammar, a shared vocabulary file, or a test's expectations;
+- overturn a charter line the user wrote or edited, or narrow the campaign's goal or target;
+- make something newly published (a package or crate released to a registry) or retire,
+  deprecate or remove a module, kind or package.
+
+Nothing outside that list is major. `decider` is told the list with every question and says, with
+its answer, whether the answer is major. A major answer is written into the charter marked
+*awaiting the user*, with one line under *For the user* saying what it changes and why; the tick
+notifies, sets `blocked` on it, and ends. Everything else is applied without stopping.
+
+An item left under *For the user* that is not major under this list — from before the rule, or
+from a finding that turned out smaller than it looked — is sent to `decider` by the next tick,
+applied, and removed.
 
 ## The surface rule
 
@@ -140,13 +165,14 @@ the charter describes it, with the docs, changesets and `CLAUDE.md` / authoring-
 `CLAUDE.md` makes mandatory for it. Where the charter puts shared machinery in one
 implementation (the Node kernel's bundle loading shared with the controller host), moving that
 code so both use it is within the exception, provided the Node kernel's behaviour does not
-change — `pnpm run test` staying exactly as green is the proof. Surface the charter does not name
-is still refused.
+change — `pnpm run test` staying exactly as green is the proof.
 
-When parity cannot be reached without doing one of those — Node looks wrong, a shared file
-needs a new entry, a test encodes a Node accident — the slice parks on it. The finding goes to
-*For the user* with the test and the evidence, the ledger entry becomes `needs-human`, and the
-tick moves to the next entry. You never "fix" a test or Node to make Rust pass.
+Surface the charter does not name goes to `decider`. When its answer is not major, the surface is
+added to *Charter surface* with the decision, and the slice builds it. When parity cannot be
+reached without a major change — Node looks wrong, a shared file needs a new entry, a test
+encodes a Node accident — the slice parks on it: the finding goes to *For the user* with the test
+and the evidence, the ledger entry becomes `needs-human`, and the tick moves to the next entry.
+You never "fix" a test or Node to make Rust pass.
 
 ## A tick
 
@@ -194,7 +220,8 @@ Run the architect's phases on the slice, with these differences:
 - **No plan gate, and no queue from the user.** Recon, the `reviewer` pass over the queue and
   `decider` still happen. Then the queue *is* approved — by the charter, the surface rule and
   the goal — and that approval is written under the loop file's *Standing approvals*. A card
-  that would break the surface rule is not built; it parks as that rule says.
+  needing surface the charter does not name goes to `decider` before it is built; it parks only
+  on a major answer, as the surface rule says.
 - **Acceptance names tests.** Beside its behaviour, a slice's acceptance lists the target tests
   it turns green on Rust, plus the rule that no test green on Rust in the last sweep turns red.
   Anything the sweep cannot show — an analyzer twin, a Rust unit test, the README table — is
@@ -278,7 +305,8 @@ holds:
 
 ### `blocked`
 
-Check whether *Blocked on* has cleared: `agent-identity.mjs configure` succeeds again, the user edited the charter,
+Check whether *Blocked on* has cleared: `agent-identity.mjs configure` succeeds again, the user edited the charter
+(a line *awaiting the user* is cleared by the user editing or confirming it),
 wrote under *For the user* or emptied *Blocked on* themselves, or a PR's `needs-human` came off.
 A block from a refused call clears only by the user's act, never by trying the call again to
 see. If it has, clear *Blocked on*,
@@ -294,7 +322,7 @@ regression — sets `pick` and continues into it. Otherwise end the tick.
 Notify by loading the `PushNotification` tool through `ToolSearch` and sending one short line:
 what happened and the PR link. When it is unavailable in print mode, record that once under
 *For the user* and carry on — the PR comment and the label are the channel of record, and
-GitHub delivers those on its own. Notify only on: a charter decision, a PR opened, a PR ready,
+GitHub delivers those on its own. Notify only on: a major decision, a PR opened, a PR ready,
 `needs-human`, `blocked`, `aligned`.
 
 ## Hard rules

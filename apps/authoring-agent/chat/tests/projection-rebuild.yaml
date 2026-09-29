@@ -8,7 +8,8 @@ metadata:
     plain — and each ends with its rows projected: the user's message, the
     assistant's tool call, the tool's result, the assistant's reply. Dropping
     every projected row and running rebuildProjection writes the same rows back,
-    byte for byte, from the journal alone.
+    byte for byte, from the journal alone — the per-turn readings a conversation
+    is summed from (tokens, model, context) included.
 imports:
   Chat:
     source: ../
@@ -22,7 +23,6 @@ imports:
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  # By path, as the chat library imports it, until it is published.
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
@@ -36,26 +36,7 @@ variables:
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
-  - !ref reset
   - !ref test
----
-# This run starts with an empty conversation. The database is opened at boot,
-# so its rows are emptied rather than the file removed.
-kind: Run.Sequence
-metadata: { name: reset }
-steps:
-  - name: turns
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM turns WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
-  - name: messages
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM messages WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
-  - name: projections
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM turn_projections WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
 ---
 kind: SQLite.Connection
 metadata: { name: stateDb }
@@ -77,14 +58,15 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [message]
+    required: [conversationId, message]
     properties:
+      conversationId: { type: string }
       message: { type: string }
 steps:
   - name: start
     invoke: !ref Chat.chatStart
     inputs:
-      conversationId: 0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0
+      conversationId: !cel "inputs.conversationId"
       idempotencyKey: ""
       clientIp: test-runner
       message: !cel "inputs.message"
@@ -102,19 +84,30 @@ steps:
 # Every projected row of the conversation, in order.
 kind: Run.Sequence
 metadata: { name: projectedRows }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
 steps:
   - name: messages
     invoke: !ref stateQuery
     inputs:
       sql: >-
         SELECT turn_id, seq, role, content, tool_calls, tool_call_id FROM messages
-        WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0' ORDER BY turn_id, seq
+        WHERE conversation_id = ? ORDER BY turn_id, seq
+      bindings: [ !cel "inputs.conversationId" ]
   - name: projections
     invoke: !ref stateQuery
     inputs:
       sql: >-
-        SELECT turn_id, through_id, provider_state, provider_model FROM turn_projections
-        WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0' ORDER BY turn_id
+        SELECT turn_id, through_id, provider_state, provider_model, tokens, model, context_tokens,
+               summary, summary_through
+        FROM turn_projections WHERE conversation_id = ? ORDER BY turn_id
+      bindings: [ !cel "inputs.conversationId" ]
 outputs:
   messages: !cel "steps.messages.result.rows"
   projections: !cel "steps.projections.result.rows"
@@ -128,14 +121,17 @@ with:
     ports: { http: 18460 }
 targets: [ !ref stub ]
 steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
   - name: withTool
     invoke: !ref turn
-    inputs: { message: STUB_TOOL what is here? }
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id", message: STUB_TOOL what is here? }
   - name: plain
     invoke: !ref turn
-    inputs: { message: thanks }
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id", message: thanks }
   - name: projected
     invoke: !ref projectedRows
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id" }
   - name: foldedPerTurn
     invoke: { kind: Assert.Equals }
     inputs:
@@ -147,20 +143,32 @@ steps:
         - [assistant, false, false]
         - [user, false, false]
         - [assistant, false, false]
+  # Two model calls for the tool turn, one each for the naming and the plain
+  # turn, at 15 tokens each; each turn's context is its last call's 10 + 5.
+  - name: readings
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.projected.result.projections.map(p, [int(p.tokens), p.model, int(p.context_tokens)])"
+      expected:
+        - [45, gpt-5.2, 15]
+        - [15, gpt-5.2, 15]
   - name: dropMessages
     invoke: !ref stateCommand
     inputs:
-      sql: "DELETE FROM messages WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+      sql: "DELETE FROM messages WHERE conversation_id = ?"
+      bindings: [ !cel "steps.conversation.result.conversation.id" ]
   - name: dropProjections
     invoke: !ref stateCommand
     inputs:
-      sql: "DELETE FROM turn_projections WHERE conversation_id = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0'"
+      sql: "DELETE FROM turn_projections WHERE conversation_id = ?"
+      bindings: [ !cel "steps.conversation.result.conversation.id" ]
   - name: rebuild
     invoke: !ref Chat.rebuildProjection
     inputs:
-      conversationId: 0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0
+      conversationId: !cel "steps.conversation.result.conversation.id"
   - name: rebuilt
     invoke: !ref projectedRows
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id" }
   - name: identical
     invoke: { kind: Assert.Equals }
     inputs:

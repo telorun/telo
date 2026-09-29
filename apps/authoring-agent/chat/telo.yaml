@@ -13,28 +13,30 @@ metadata:
     absent, so an anonymous prompt can neither execute a manifest on this host nor
     reach the operator's key or registry credentials. Plus live Telo hub discovery tools (an
     AiMcp.ToolProvider over the hub's MCP endpoint — search_resources /
-    get_module_manifest), and the turn machinery that ties them together: admit a
-    turn at most once per idempotency key, claim its journal key before answering,
-    record every part of it — the user's message first — in a durable journal in
-    `agent.sqlite`, project the journal into the model's full-fidelity history,
-    serve the event stream and the conversation's records from the journal, abort
-    a running turn, continue an interrupted one inside the same turn, and delete
+    get_module_manifest), and the turn machinery that ties them together: mint,
+    list, search, rename, archive, delete, truncate and branch conversations,
+    admit a turn at most once per idempotency key, claim its journal key before
+    answering, record every part of it — the user's message first — in a durable
+    journal in `agent.sqlite`, name an untitled conversation, summarize a history
+    past `maxContextTokens`, project the journal into the model's history, serve
+    the event stream and the conversation's records from the journal, abort a
+    running turn, continue an interrupted one inside the same turn, and delete
     whole conversations idle past the retention window.
     Exported so the app and its tests drive the same handler. Parameterized by the
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.23.0#sha256-IJSI5EEBoOjvHI-vKQ2LnjaKlmM1C83si4gVYiNNR_U
-  OpenAI: oci://ghcr.io/telorun/openai@0.8.0#sha256-IiH0b38hJUdj6Np-Z37M-jF1X9a8xJshtrr41OE56lw
+  Ai: oci://ghcr.io/telorun/ai@0.24.0#sha256-l7e2l8uDoqZlHpQ8qTwxGIBpBozMdKR11TZAr4bEiqU
+  OpenAI: oci://ghcr.io/telorun/openai@0.9.0#sha256-xMAOI8NDfvEbqw2bjZt0nuuvZQqVW8gP4SZz_Ly5Olo
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.18.0#sha256-5d9idTyIsXSS7nLkSaXI3_iXOLYOUUiT4u1gVO5woo0
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.19.0#sha256-P95SFQDZbOT7fHb57MMNorot29XXhUaYn4m319fGi9U
   Mcp: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Lease: oci://ghcr.io/telorun/lease@0.13.0#sha256-HTQ8Fds5O9h15_gsOlVNSgVpGl7Ma3uKJRldfw-lfyI
@@ -167,6 +169,21 @@ variables:
     # whole, and how long its removed turns then keep answering 410 rather than
     # 404 — the journal's removal-marker retention.
     default: 30
+  maxContextTokens:
+    type: integer
+    minimum: 8
+    # The context a conversation may report before its older turns are
+    # summarized: once the last model call of a turn reported at least this many
+    # tokens (prompt plus completion), the next attempt compacts the history.
+    # At least 8, so the summary call's cap (`maxContextTokens / 8` output
+    # tokens) is at least 1.
+    default: 120000
+  maxToolResultBytes:
+    type: integer
+    minimum: 1
+    # The most UTF-8 bytes of text one tool result feeds the model; a longer
+    # result is cut and ends with a `[truncated: …]` marker.
+    default: 32768
   runTimeoutMs:
     type: integer
     # A test suite terminates; an application with a server in it does not, and
@@ -178,8 +195,17 @@ exports:
     - ensureWorkspace
     - initSchema
     - chatStart
+    - createConversation
+    - listConversations
+    - getConversation
+    - updateConversation
+    - deleteConversation
+    - truncateConversation
+    - branchConversation
+    - catchUpProjections
     - abortTurn
     - continueTurn
+    - releaseAttempt
     - journalSource
     - turnEvents
     - conversationRecords
@@ -264,6 +290,54 @@ migrations:
   # is a deliberate ending that cannot be continued.
   projection_4_aborted_at:
     statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+  # Conversations become the agent's own: a row per conversation holding only
+  # what nothing else determines — its title, archive flag, timestamps, a change
+  # counter and a deletion tombstone. Every legacy conversation keeps its id.
+  # A turn is marked `removed_at` before its key and row are deleted, so a
+  # deletion a crash cut short is finished by the next sweep. The projection
+  # gains the per-turn readings a conversation is summed from; it is cleared
+  # here and rebuilt from the journal by `catchUpProjections` at boot. A branch
+  # being copied is `assembling`: hidden from every route until it is whole.
+  projection_5_conversations:
+    statements:
+      - |
+        CREATE TABLE conversations (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+          revision INTEGER NOT NULL DEFAULT 0,
+          removed_at TEXT,
+          assembling INTEGER NOT NULL DEFAULT 0
+        )
+      - |
+        INSERT INTO conversations (id, created_at, updated_at)
+        SELECT conversation_id, MIN(started_at), MAX(active_at) FROM turns GROUP BY conversation_id
+      - CREATE INDEX conversations_by_activity ON conversations (updated_at, id)
+      - ALTER TABLE turns ADD COLUMN removed_at TEXT
+      - ALTER TABLE turns DROP COLUMN active_at
+      - DELETE FROM turn_projections
+      - ALTER TABLE turn_projections ADD COLUMN tokens INTEGER NOT NULL DEFAULT 0
+      - ALTER TABLE turn_projections ADD COLUMN model TEXT
+      - ALTER TABLE turn_projections ADD COLUMN context_tokens INTEGER
+      - ALTER TABLE turn_projections ADD COLUMN summary TEXT
+      - ALTER TABLE turn_projections ADD COLUMN summary_through TEXT
+      # The wire shape's derived half, computed at read time from live turns:
+      # the model of the latest one, two messages per turn, and every token
+      # each turn's projection reports.
+      - |
+        CREATE VIEW conversation_view AS
+        SELECT c.id, c.title, c.archived, c.created_at, c.updated_at, c.revision, c.removed_at,
+               (SELECT p.model FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+                 WHERE t.conversation_id = c.id AND t.removed_at IS NULL
+                 ORDER BY t.turn_id DESC LIMIT 1) AS model,
+               (SELECT COUNT(*) FROM turns t
+                 WHERE t.conversation_id = c.id AND t.removed_at IS NULL) * 2 AS message_count,
+               (SELECT COALESCE(SUM(p.tokens), 0) FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+                 WHERE t.conversation_id = c.id AND t.removed_at IS NULL) AS total_tokens
+        FROM conversations c
+        WHERE c.assembling = 0
 ---
 # The account, declared once: base URL and credential on the client, so the model
 # kinds carry no key and the 401 re-acquire-and-retry is inherited from
@@ -754,8 +828,9 @@ outputs:
 # The turn journal: every record of every turn, under the turn's id, in the
 # agent's own database. It is the one source of truth — the event stream, the
 # records route and the model's history (the `messages` projection) are all read
-# from it. No `retention:`: turns are removed only with their whole conversation
-# (`retentionSweep`), so expiry never takes one turn's records alone; a removed
+# from it. No `retention:`: turns are removed only by a removal the agent
+# decides — a deletion, a truncation or the retention sweep, all through
+# `cascadeTurns` — never by expiry taking one turn's records alone; a removed
 # turn keeps answering "removed" (410) for `retentionDays`.
 kind: RecordStream.Journal
 metadata: { name: turnJournal }
@@ -822,8 +897,9 @@ steps:
 outputs:
   output: !cel "steps.read.result.output"
 ---
-# GET /conversations/{id}/records — the display transcript, server-side: the
-# conversation's turns in order, each with its status and its records, paged by
+# GET /conversations/{id}/records — the display transcript, server-side: an
+# existing, undeleted conversation's live turns in order, each with its status
+# and its records, paged by
 # (turn, record id). The page is planned from one snapshot of each turn's
 # header first, so `limit` bounds the records read, not only the records
 # returned, and each turn's status and error are that snapshot's.
@@ -842,10 +918,16 @@ inputType:
       fromId: { type: integer, minimum: 0 }
       limit: { type: integer, minimum: 1, maximum: 10000 }
 steps:
+  - name: conversation
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
   - name: turns
     invoke: !ref historyRows
     inputs:
-      sql: "SELECT turn_id, started_at, aborted_at FROM turns WHERE conversation_id = ? AND turn_id >= ? ORDER BY turn_id"
+      sql: |
+        SELECT turn_id, started_at, aborted_at FROM turns
+        WHERE conversation_id = ? AND turn_id >= ? AND removed_at IS NULL ORDER BY turn_id
       bindings:
         - !cel "inputs.conversationId"
         - !cel "inputs.fromTurn"
@@ -1004,6 +1086,127 @@ body: !cel >-
           ? 'aborted' : 'failed')
     : state
 ---
+# A conversation as every route answers it. `title` is null until one is
+# generated or set; `model`, `messageCount` and `totalTokens` are derived from
+# its live turns at read time, never stored.
+kind: Telo.JsonSchema
+metadata: { name: Conversation }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, title, createdAt, updatedAt, model, messageCount, totalTokens, archived, revision]
+  properties:
+    id: { type: string }
+    title: { type: [string, "null"] }
+    createdAt: { type: string }
+    updatedAt: { type: string }
+    model: { type: [string, "null"] }
+    messageCount: { type: integer }
+    totalTokens: { type: integer }
+    archived: { type: boolean }
+    revision: { type: integer }
+---
+kind: Telo.Function
+metadata:
+  name: conversationOf
+  description: A conversation's wire shape, from its row in `conversation_view`.
+params:
+  - name: row
+    schema: { type: object }
+returns:
+  schema: !ref Conversation
+body: !cel >-
+  {'id': row.id, 'title': row.title, 'createdAt': row.created_at, 'updatedAt': row.updated_at,
+   'model': row.model, 'messageCount': int(row.message_count), 'totalTokens': int(row.total_tokens),
+   'archived': int(row.archived) != 0, 'revision': int(row.revision)}
+---
+# A message's text: a string as it is, content parts as their text parts joined.
+kind: Telo.Function
+metadata:
+  name: contentText
+  description: The text of a message's content, whether a string or a list of content parts.
+params:
+  - name: content
+    schema: {}
+returns:
+  schema: { type: string }
+body: !cel >-
+  type(content) == type('') ? content
+    : type(content) == type([])
+      ? join(content.filter(p, type(p) == type({}) && 'type' in p && p.type == 'text').map(p, string(p.text)), '')
+      : ''
+---
+# A generated title as the conversation carries it: the reply's first non-empty
+# line, trimmed, without surrounding quotes or a trailing period, at most 80
+# characters. Empty when nothing usable is left. Characters are code points:
+# the strips and the cut are regexes, which match them, never `substring`,
+# which counts UTF-16 units.
+kind: Telo.Function
+metadata:
+  name: titleOf
+  description: Sanitizes a model's reply into a conversation title.
+params:
+  - name: reply
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  cel.bind(lines, reply.split('\n').map(l, l.trim()).filter(l, l != ''),
+    size(lines) == 0 ? ''
+      : cel.bind(line, lines[0],
+          cel.bind(unquoted, regexReplace(line, '^"(.*)"$|^\'(.*)\'$', '$1$2').trim(),
+            cel.bind(bare, regexReplace(unquoted, '\\.$', '').trim(),
+              size(bare) > 80 ? regexReplace(regexExtract(bare, '(?s)^.{0,80}'), '[\\s\\p{Z}]+$', '') : bare))))
+---
+# A branch's title, within the 200 characters PATCH accepts: `<title> (branch)`
+# when that fits, else the source's first 190 characters, trailing whitespace
+# trimmed, then `… (branch)`. Characters are code points, as PATCH counts them:
+# `size` counts them, and the prefix is cut by a regex, which matches them.
+kind: Telo.Function
+metadata:
+  name: branchTitle
+  description: The title a branch of a conversation carries, from its source's title.
+params:
+  - name: title
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  size(title) + size(' (branch)') <= 200 ? title + ' (branch)'
+    : regexReplace(regexExtract(title, '(?s)^.{0,190}'), '[\\s\\p{Z}]+$', '') + '… (branch)'
+---
+# What a summary call reads: the previous summary, then the covered turns'
+# projected messages as a transcript — the user's text, the assistant's text,
+# each tool call with its arguments, and each tool result as the model got it.
+kind: Telo.Function
+metadata:
+  name: transcriptOf
+  description: Renders a previous summary and projected message rows as the transcript a summary call reads.
+params:
+  - name: previous
+    schema: { type: string }
+    nullable: true
+  - name: rows
+    schema:
+      type: array
+      items:
+        type: object
+        required: [role, content]
+        properties:
+          role: { type: string }
+          content: { type: string }
+          tool_calls: { type: [string, "null"] }
+returns:
+  schema: { type: string }
+body: !cel >-
+  (previous == null ? '' : 'EARLIER SUMMARY:\n' + previous + '\n\n')
+    + join(rows.map(r,
+        (r.role == 'user' ? 'USER: ' : r.role == 'assistant' ? 'ASSISTANT: ' : 'TOOL RESULT: ')
+          + Self.contentText(parseJson(r.content))
+          + (!has(r.tool_calls) || r.tool_calls == null ? ''
+              : join(parseJson(r.tool_calls).map(c, '\nTOOL CALL ' + string(c.name) + ' ' + json(c.arguments)), ''))),
+      '\n\n')
+---
 # The note a continued turn's model reads after everything the interrupted
 # attempt recorded: what ended that attempt, and every tool call it started with
 # no recorded result — named with its path, as an effect nobody observed, so the
@@ -1068,7 +1271,18 @@ steps:
           schema:
             type: object
             additionalProperties: false
-            required: [conversationId, turnId, messages, throughId, providerState, providerModel]
+            required:
+              - conversationId
+              - turnId
+              - messages
+              - throughId
+              - providerState
+              - providerModel
+              - tokens
+              - model
+              - contextTokens
+              - summary
+              - summaryThrough
             properties:
               conversationId: { type: string }
               turnId: { type: string }
@@ -1076,6 +1290,11 @@ steps:
               throughId: { type: integer }
               providerState: { type: [string, "null"] }
               providerModel: { type: [string, "null"] }
+              tokens: { type: integer }
+              model: { type: [string, "null"] }
+              contextTokens: { type: [integer, "null"] }
+              summary: { type: [string, "null"] }
+              summaryThrough: { type: [string, "null"] }
         steps:
           - name: clear
             invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -1100,18 +1319,29 @@ steps:
             invoke: { kind: Sql.Command, connection: !ref chatDb }
             inputs:
               sql: |
-                INSERT INTO turn_projections (turn_id, conversation_id, through_id, provider_state, provider_model)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO turn_projections (turn_id, conversation_id, through_id, provider_state, provider_model,
+                                              tokens, model, context_tokens, summary, summary_through)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (turn_id) DO UPDATE SET
                   through_id = excluded.through_id,
                   provider_state = excluded.provider_state,
-                  provider_model = excluded.provider_model
+                  provider_model = excluded.provider_model,
+                  tokens = excluded.tokens,
+                  model = excluded.model,
+                  context_tokens = excluded.context_tokens,
+                  summary = excluded.summary,
+                  summary_through = excluded.summary_through
               bindings:
                 - !cel "inputs.turnId"
                 - !cel "inputs.conversationId"
                 - !cel "inputs.throughId"
                 - !cel "inputs.providerState"
                 - !cel "inputs.providerModel"
+                - !cel "inputs.tokens"
+                - !cel "inputs.model"
+                - !cel "inputs.contextTokens"
+                - !cel "inputs.summary"
+                - !cel "inputs.summaryThrough"
       inputs:
         conversationId: !cel "inputs.conversationId"
         turnId: !cel "inputs.turnId"
@@ -1119,14 +1349,26 @@ steps:
         throughId: !cel "inputs.throughId"
         providerState: !cel "inputs.providerState"
         providerModel: !cel "inputs.providerModel"
+        tokens: !cel "inputs.tokens"
+        model: !cel "inputs.model"
+        contextTokens: !cel "inputs.contextTokens"
+        summary: !cel "inputs.summary"
+        summaryThrough: !cel "inputs.summaryThrough"
     inputs:
       conversationId: !cel "inputs.conversationId"
       turnId: !cel "inputs.turnId"
       messages: !cel "json(Self.turnMessages(steps.records.result))"
       throughId: !cel "steps.read.result.lastId"
+      # None when a summary follows the last recorded state: that state
+      # continues a history the summary has replaced. A `context-summary`
+      # carrying only an error is no summary.
       providerState: !cel >-
-        cel.bind(states, steps.records.result.filter(r, r.type == 'provider-state'),
-          size(states) > 0 ? dyn(json(states[size(states) - 1].providerState)) : null)
+        cel.bind(records, steps.records.result,
+          cel.bind(states, enumerate(records).filter(e, e.value.type == 'provider-state').map(e, e.index),
+            cel.bind(summaries, enumerate(records).filter(e, e.value.type == 'context-summary' && has(e.value.summary)).map(e, e.index),
+              size(states) == 0
+                || (size(summaries) > 0 && summaries[size(summaries) - 1] > states[size(states) - 1])
+                ? null : dyn(json(records[states[size(states) - 1]].providerState)))))
       # The model of the attempt that recorded that state: the last lead record
       # (`user-message` or `turn-continued`) before it.
       providerModel: !cel >-
@@ -1135,6 +1377,28 @@ steps:
             : cel.bind(leads, enumerate(steps.records.result).filter(e,
                   e.index < states[size(states) - 1] && e.value.type in ['user-message', 'turn-continued']),
                 size(leads) > 0 ? dyn(leads[size(leads) - 1].value.model) : null))
+      # Every model call the turn made, across its attempts: each call's
+      # `step-finish`, plus the title and summary calls.
+      tokens: !cel >-
+        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
+            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.totalTokens)),
+          size(spent) == 0 ? 0 : int(sum(spent)))
+      # The model the latest attempt ran on.
+      model: !cel >-
+        cel.bind(leads, steps.records.result.filter(r, r.type in ['user-message', 'turn-continued']),
+          size(leads) > 0 ? dyn(leads[size(leads) - 1].model) : null)
+      # The context the turn's last model call reported.
+      contextTokens: !cel >-
+        cel.bind(calls, steps.records.result.filter(r, r.type == 'step-finish'),
+          size(calls) > 0
+            ? dyn(int(calls[size(calls) - 1].usage.promptTokens) + int(calls[size(calls) - 1].usage.completionTokens))
+            : null)
+      summary: !cel >-
+        cel.bind(summaries, steps.records.result.filter(r, r.type == 'context-summary' && has(r.summary)),
+          size(summaries) > 0 ? dyn(summaries[size(summaries) - 1].summary) : null)
+      summaryThrough: !cel >-
+        cel.bind(summaries, steps.records.result.filter(r, r.type == 'context-summary' && has(r.summary)),
+          size(summaries) > 0 ? dyn(summaries[size(summaries) - 1].throughTurnId) : null)
 ---
 # Bring the projection up to date for every turn of a conversation whose journal
 # holds records the projection has not seen — the step every history read goes
@@ -1157,7 +1421,7 @@ steps:
       sql: |
         SELECT t.turn_id, COALESCE(p.through_id, -1) AS through_id
         FROM turns t LEFT JOIN turn_projections p ON p.turn_id = t.turn_id
-        WHERE t.conversation_id = ?
+        WHERE t.conversation_id = ? AND t.removed_at IS NULL
         ORDER BY t.turn_id
       bindings: [ !cel "inputs.conversationId" ]
   - name: each
@@ -1199,7 +1463,7 @@ steps:
   - name: turns
     invoke: !ref historyRows
     inputs:
-      sql: "SELECT turn_id FROM turns WHERE conversation_id = ? ORDER BY turn_id"
+      sql: "SELECT turn_id FROM turns WHERE conversation_id = ? AND removed_at IS NULL ORDER BY turn_id"
       bindings: [ !cel "inputs.conversationId" ]
   - name: each
     invoke:
@@ -1213,6 +1477,1029 @@ steps:
             turnId: !cel "item.turn_id"
     inputs:
       turns: !cel "steps.turns.result.rows"
+      conversationId: !cel "inputs.conversationId"
+---
+# Boot: catch up every conversation holding a live turn with no projection row
+# — after the migration that clears `turn_projections`, every conversation.
+kind: Run.Sequence
+metadata: { name: catchUpProjections }
+steps:
+  - name: behind
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT DISTINCT t.conversation_id FROM turns t
+        WHERE t.removed_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM turn_projections p WHERE p.turn_id = t.turn_id)
+        ORDER BY t.conversation_id
+      bindings: []
+  - name: each
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "inputs.conversations"
+      steps:
+        - name: catchUp
+          invoke: !ref catchUpProjection
+          inputs:
+            conversationId: !cel "item.conversation_id"
+    inputs:
+      conversations: !cel "steps.behind.result.rows"
+outputs:
+  conversations: !cel "size(steps.behind.result.rows)"
+---
+# A conversation that exists and is not deleted, as its `conversation_view`
+# row: 404 ERR_CONVERSATION_NOT_FOUND for an id this agent never minted (or
+# whose tombstone outlived the retention window), 410 ERR_CONVERSATION_REMOVED
+# for a deleted one.
+kind: Run.Sequence
+metadata: { name: requireConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: found
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT * FROM conversation_view WHERE id = ?"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: unknown
+    if: !cel "size(steps.found.result.rows) == 0"
+    then:
+      - name: refuseUnknown
+        throw:
+          code: ERR_CONVERSATION_NOT_FOUND
+          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+  - name: removed
+    if: !cel "steps.found.result.rows[0].removed_at != null"
+    then:
+      - name: refuseRemoved
+        throw:
+          code: ERR_CONVERSATION_REMOVED
+          message: !cel "'Conversation ' + inputs.conversationId + ' was deleted.'"
+outputs:
+  row: !cel "steps.found.result.rows[0]"
+  conversation: !cel "Self.conversationOf(steps.found.result.rows[0])"
+  archived: !cel "int(steps.found.result.rows[0].archived) != 0"
+---
+# The refusal for a turn-starting request on an archived conversation.
+kind: Run.Sequence
+metadata: { name: requireWritableConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: conversation
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: archived
+    if: !cel "steps.conversation.result.archived"
+    then:
+      - name: refuseArchived
+        throw:
+          code: ERR_CONVERSATION_ARCHIVED
+          message: !cel "'Conversation ' + inputs.conversationId + ' is archived; unarchive it to continue it.'"
+outputs:
+  conversation: !cel "steps.conversation.result.conversation"
+---
+# Why a conditional write on a conversation changed nothing — the same codes
+# `requireWritableConversation` answers, decided from the row as it is now.
+# Run inside the transaction whose write missed, so it reads that snapshot.
+kind: Run.Sequence
+metadata: { name: refuseConversationWrite }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: current
+    invoke: { kind: Sql.Query, connection: !ref chatDb }
+    inputs:
+      sql: "SELECT removed_at, archived FROM conversations WHERE id = ? AND assembling = 0"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: unknown
+    if: !cel "size(steps.current.result.rows) == 0"
+    then:
+      - name: refuseUnknown
+        throw:
+          code: ERR_CONVERSATION_NOT_FOUND
+          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+  - name: removed
+    if: !cel "steps.current.result.rows[0].removed_at != null"
+    then:
+      - name: refuseRemoved
+        throw:
+          code: ERR_CONVERSATION_REMOVED
+          message: !cel "'Conversation ' + inputs.conversationId + ' was deleted.'"
+  - name: refuseArchived
+    throw:
+      code: ERR_CONVERSATION_ARCHIVED
+      message: !cel "'Conversation ' + inputs.conversationId + ' is archived; unarchive it to continue it.'"
+---
+# POST /conversations. The agent mints every conversation id.
+kind: Run.Sequence
+metadata: { name: createConversation }
+steps:
+  - name: id
+    value: !cel "uuidv7()"
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: "INSERT INTO conversations (id) VALUES (?)"
+      bindings: [ !cel "steps.id.result" ]
+  - name: read
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "steps.id.result"
+outputs:
+  conversation: !cel "steps.read.result.conversation"
+---
+# GET /conversations/{id}.
+kind: Run.Sequence
+metadata: { name: getConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: read
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+outputs:
+  conversation: !cel "steps.read.result.conversation"
+---
+# GET /conversations — newest activity first (`updated_at`, then `id`, both
+# descending), archived or not, optionally filtered by `q`: a case-insensitive
+# substring of the title or of the TEXT of a user or assistant message (never
+# a tool call or result, reasoning or a summary). A page is cut at `limit`;
+# `next` is the cursor of the following one.
+kind: Run.Sequence
+metadata: { name: listConversations }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [limit, archived, q, before, beforeId]
+    properties:
+      limit: { type: integer, minimum: 1, maximum: 200 }
+      archived: { type: boolean }
+      # Empty for no filter.
+      q: { type: string }
+      # Empty for the first page.
+      before: { type: string }
+      beforeId: { type: string }
+steps:
+  # LIKE's wildcards and its escape character are matched literally.
+  - name: pattern
+    value: !cel >-
+      '%' + replace(replace(replace(inputs.q.trim().lowerAscii(), '\\', '\\\\'), '%', '\\%'), '_', '\\_') + '%'
+  - name: page
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT * FROM conversation_view v
+        WHERE v.removed_at IS NULL AND v.archived = ?
+          AND (? = '' OR v.updated_at < ? OR (v.updated_at = ? AND v.id < ?))
+          AND (? = ''
+               OR lower(COALESCE(v.title, '')) LIKE ? ESCAPE '\'
+               OR EXISTS (
+                 SELECT 1 FROM messages m
+                 WHERE m.conversation_id = v.id AND m.role IN ('user', 'assistant')
+                   AND lower(CASE json_type(m.content)
+                               WHEN 'text' THEN m.content ->> '$'
+                               ELSE (SELECT group_concat(j.value ->> '$.text', '') FROM json_each(m.content) AS j
+                                     WHERE j.value ->> '$.type' = 'text')
+                             END) LIKE ? ESCAPE '\'))
+        ORDER BY v.updated_at DESC, v.id DESC
+        LIMIT ?
+      bindings:
+        - !cel "inputs.archived ? 1 : 0"
+        - !cel "inputs.before"
+        - !cel "inputs.before"
+        - !cel "inputs.before"
+        - !cel "inputs.beforeId"
+        - !cel "inputs.q.trim()"
+        - !cel "steps.pattern.result"
+        - !cel "steps.pattern.result"
+        - !cel "inputs.limit + 1"
+outputs:
+  conversations: !cel >-
+    slice(steps.page.result.rows, 0, size(steps.page.result.rows) > inputs.limit ? inputs.limit : size(steps.page.result.rows))
+      .map(r, Self.conversationOf(r))
+  next: !cel >-
+    size(steps.page.result.rows) > inputs.limit
+      ? dyn({'before': steps.page.result.rows[inputs.limit - 1].updated_at,
+             'beforeId': steps.page.result.rows[inputs.limit - 1].id})
+      : null
+---
+# PATCH /conversations/{id}: rename and/or (un)archive. A title is stored
+# trimmed and never reset to null.
+kind: Run.Sequence
+metadata: { name: updateConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, title, archived]
+    properties:
+      conversationId: { type: string }
+      # Null when the request left it unchanged.
+      title: { type: [string, "null"] }
+      archived: { type: [boolean, "null"] }
+steps:
+  - name: exists
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: write
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: |
+        UPDATE conversations
+        SET title = COALESCE(?, title), archived = COALESCE(?, archived),
+            revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE id = ? AND removed_at IS NULL AND assembling = 0
+      bindings:
+        - !cel "inputs.title == null ? null : dyn(inputs.title.trim())"
+        - !cel "inputs.archived == null ? null : dyn(inputs.archived ? 1 : 0)"
+        - !cel "inputs.conversationId"
+  - name: read
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+outputs:
+  conversation: !cel "steps.read.result.conversation"
+---
+# Remove every marked turn of a set: its journal key first (a removed turn keeps
+# answering 410 for the journal's marker retention), then its rows. Each step is
+# safe to repeat, so a cascade a crash cut short is finished by the next one.
+kind: Run.Sequence
+metadata: { name: cascadeTurns }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnIds]
+    properties:
+      turnIds:
+        type: array
+        items: { type: string }
+steps:
+  - name: each
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "inputs.turnIds"
+      steps:
+        - name: removeKey
+          invoke:
+            kind: RecordStream.JournalRemoval
+            journal: !ref turnJournal
+          inputs:
+            key: !cel "item"
+        - name: removeRows
+          invoke:
+            kind: Sql.Transaction
+            connection: !ref chatDb
+            steps:
+              kind: Run.Sequence
+              inputType:
+                kind: Telo.JsonSchema
+                schema:
+                  type: object
+                  additionalProperties: false
+                  required: [turnId]
+                  properties:
+                    turnId: { type: string }
+              steps:
+                - name: messages
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM messages WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+                - name: projection
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM turn_projections WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+                - name: turn
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM turns WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+            inputs:
+              turnId: !cel "inputs.turnId"
+          inputs:
+            turnId: !cel "item"
+    inputs:
+      turnIds: !cel "inputs.turnIds"
+---
+kind: Run.Sequence
+metadata: { name: cascadeConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: marked
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT turn_id FROM turns WHERE conversation_id = ? AND removed_at IS NOT NULL ORDER BY turn_id"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: cascade
+    invoke: !ref cascadeTurns
+    inputs:
+      turnIds: !cel "steps.marked.result.rows.map(r, r.turn_id)"
+---
+# One attempt at tombstoning a conversation, and the answer as data:
+# `missing`, `removed` (already tombstoned), `busy` (its latest live turn's key
+# is open), `tombstoned`, or `changed` — the revision read beside the running
+# check moved before the tombstone was written, so the check no longer holds.
+# The tombstone is a compare-and-set on that revision, in one transaction with
+# marking every live turn removed and dropping their projection rows; a turn
+# admitted since is caught by the revision its admission bumped. A hidden
+# (`assembling`) conversation is `missing` to a client and a conversation like
+# any other to the sweep (`includeHidden`).
+kind: Run.Sequence
+metadata: { name: tombstoneConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, includeHidden]
+    properties:
+      conversationId: { type: string }
+      includeHidden: { type: boolean }
+steps:
+  - name: row
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT c.revision, c.removed_at, c.assembling,
+               (SELECT MAX(t.turn_id) FROM turns t
+                 WHERE t.conversation_id = c.id AND t.removed_at IS NULL) AS latest
+        FROM conversations c WHERE c.id = ?
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: visible
+    value: !cel >-
+      size(steps.row.result.rows) > 0
+        && (inputs.includeHidden || int(steps.row.result.rows[0].assembling) == 0)
+  - name: live
+    value: !cel "steps.visible.result && steps.row.result.rows[0].removed_at == null"
+  - name: latest
+    if: !cel "steps.live.result && steps.row.result.rows[0].latest != null"
+    then:
+      - name: header
+        invoke: !ref journalRead
+        inputs:
+          key: !cel "string(steps.row.result.rows[0].latest)"
+          limit: 0
+  - name: running
+    value: !cel "has(steps.header) && steps.header.result.state == 'open'"
+  - name: mark
+    if: !cel "steps.live.result && !steps.running.result"
+    then:
+      - name: tombstone
+        invoke:
+          kind: Sql.Transaction
+          connection: !ref chatDb
+          steps:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [conversationId, revision]
+                properties:
+                  conversationId: { type: string }
+                  revision: { type: integer }
+            outputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [tombstoned]
+                properties:
+                  tombstoned: { type: boolean }
+            steps:
+              - name: stamp
+                invoke: { kind: Sql.Command, connection: !ref chatDb }
+                inputs:
+                  sql: |
+                    UPDATE conversations
+                    SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), revision = revision + 1,
+                        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    WHERE id = ? AND revision = ? AND removed_at IS NULL
+                  bindings:
+                    - !cel "inputs.conversationId"
+                    - !cel "inputs.revision"
+              - name: stamped
+                if: !cel "steps.stamp.result.rowCount > 0"
+                then:
+                  - name: markTurns
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: |
+                        UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE conversation_id = ? AND removed_at IS NULL
+                      bindings: [ !cel "inputs.conversationId" ]
+                  - name: dropMessages
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: "DELETE FROM messages WHERE conversation_id = ?"
+                      bindings: [ !cel "inputs.conversationId" ]
+                  - name: dropProjections
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: "DELETE FROM turn_projections WHERE conversation_id = ?"
+                      bindings: [ !cel "inputs.conversationId" ]
+            outputs:
+              tombstoned: !cel "steps.stamp.result.rowCount > 0"
+          inputs:
+            conversationId: !cel "inputs.conversationId"
+            revision: !cel "inputs.revision"
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+          revision: !cel "int(steps.row.result.rows[0].revision)"
+outputs:
+  outcome: !cel >-
+    !steps.visible.result ? 'missing'
+      : !steps.live.result ? 'removed'
+      : steps.running.result ? 'busy'
+      : steps.tombstone.result.tombstoned ? 'tombstoned'
+      : 'changed'
+  activeTurnId: !cel "steps.running.result ? dyn(string(steps.row.result.rows[0].latest)) : null"
+---
+# DELETE /conversations/{id}. Tombstoned by compare-and-set, retried against the
+# new revision for as long as the conversation changes under it; refused while
+# its latest turn runs; then every marked turn's key and rows are removed.
+# Repeating it on a tombstone finishes the removal and answers 204 again.
+kind: Run.Sequence
+metadata: { name: deleteConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: attempt
+    invoke: !ref tombstoneConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      includeHidden: false
+  - name: untilSettled
+    while: !cel "steps.attempt.result.outcome == 'changed'"
+    do:
+      - name: attempt
+        invoke: !ref tombstoneConversation
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+          includeHidden: false
+  - name: missing
+    if: !cel "steps.attempt.result.outcome == 'missing'"
+    then:
+      - name: refuseMissing
+        throw:
+          code: ERR_CONVERSATION_NOT_FOUND
+          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+  - name: busy
+    if: !cel "steps.attempt.result.outcome == 'busy'"
+    then:
+      - name: refuseBusy
+        throw:
+          code: ERR_TURN_IN_PROGRESS
+          message: A turn is running in this conversation; abort it before deleting the conversation.
+          data:
+            activeTurnId: !cel "steps.attempt.result.activeTurnId"
+  - name: cascade
+    invoke: !ref cascadeConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+---
+# DELETE /conversations/{id}/turns?from=…&revision=…: removes turn `from` and
+# every later one — what Retry, Edit & resend and Delete from here compose.
+# Refused, in order: the conversation unknown (404) or deleted (410), archived
+# (409), `from` not a live turn of it (404 ERR_TURN_NOT_FOUND), its latest turn
+# running (409 ERR_TURN_IN_PROGRESS), `revision` not the current one (409
+# ERR_CONVERSATION_CHANGED, compared inside the marking transaction).
+kind: Run.Sequence
+metadata: { name: truncateConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, fromTurnId, revision]
+    properties:
+      conversationId: { type: string }
+      fromTurnId: { type: string }
+      revision: { type: integer }
+steps:
+  - name: conversation
+    invoke: !ref requireWritableConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: turns
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT turn_id FROM turns WHERE conversation_id = ? AND removed_at IS NULL ORDER BY turn_id"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: unknownTurn
+    if: !cel "!steps.turns.result.rows.exists(r, r.turn_id == inputs.fromTurnId)"
+    then:
+      - name: refuseUnknownTurn
+        throw:
+          code: ERR_TURN_NOT_FOUND
+          message: !cel "'Turn ' + inputs.fromTurnId + ' is not a turn of this conversation.'"
+  - name: latest
+    invoke: !ref journalRead
+    inputs:
+      key: !cel "string(steps.turns.result.rows[size(steps.turns.result.rows) - 1].turn_id)"
+      limit: 0
+  - name: running
+    if: !cel "steps.latest.result.state == 'open'"
+    then:
+      - name: refuseRunning
+        throw:
+          code: ERR_TURN_IN_PROGRESS
+          message: A turn is running in this conversation; abort it before removing turns.
+          data:
+            activeTurnId: !cel "string(steps.turns.result.rows[size(steps.turns.result.rows) - 1].turn_id)"
+  - name: mark
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref chatDb
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [conversationId, fromTurnId, revision]
+            properties:
+              conversationId: { type: string }
+              fromTurnId: { type: string }
+              revision: { type: integer }
+        outputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [marked, removedTurns, revision]
+            properties:
+              marked: { type: boolean }
+              removedTurns: { type: integer }
+              # The current revision when it was not the one sent.
+              revision: { type: [integer, "null"] }
+        steps:
+          - name: stamp
+            invoke: { kind: Sql.Command, connection: !ref chatDb }
+            inputs:
+              sql: |
+                UPDATE conversations
+                SET revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ? AND revision = ? AND removed_at IS NULL AND archived = 0 AND assembling = 0
+              bindings:
+                - !cel "inputs.conversationId"
+                - !cel "inputs.revision"
+          - name: outcome
+            if: !cel "steps.stamp.result.rowCount == 0"
+            then:
+              - name: current
+                invoke: { kind: Sql.Query, connection: !ref chatDb }
+                inputs:
+                  sql: "SELECT revision FROM conversations WHERE id = ?"
+                  bindings: [ !cel "inputs.conversationId" ]
+            else:
+              - name: markTurns
+                invoke: { kind: Sql.Query, connection: !ref chatDb }
+                inputs:
+                  sql: |
+                    UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    WHERE conversation_id = ? AND turn_id >= ? AND removed_at IS NULL
+                    RETURNING turn_id
+                  bindings:
+                    - !cel "inputs.conversationId"
+                    - !cel "inputs.fromTurnId"
+              - name: dropMessages
+                invoke: { kind: Sql.Command, connection: !ref chatDb }
+                inputs:
+                  sql: "DELETE FROM messages WHERE conversation_id = ? AND turn_id >= ?"
+                  bindings:
+                    - !cel "inputs.conversationId"
+                    - !cel "inputs.fromTurnId"
+              - name: dropProjections
+                invoke: { kind: Sql.Command, connection: !ref chatDb }
+                inputs:
+                  sql: "DELETE FROM turn_projections WHERE conversation_id = ? AND turn_id >= ?"
+                  bindings:
+                    - !cel "inputs.conversationId"
+                    - !cel "inputs.fromTurnId"
+        outputs:
+          marked: !cel "steps.stamp.result.rowCount > 0"
+          removedTurns: !cel "has(steps.markTurns) ? size(steps.markTurns.result.rows) : 0"
+          revision: !cel >-
+            has(steps.current) && size(steps.current.result.rows) > 0
+              ? dyn(int(steps.current.result.rows[0].revision)) : null
+      inputs:
+        conversationId: !cel "inputs.conversationId"
+        fromTurnId: !cel "inputs.fromTurnId"
+        revision: !cel "inputs.revision"
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      fromTurnId: !cel "inputs.fromTurnId"
+      revision: !cel "inputs.revision"
+  - name: changed
+    if: !cel "!steps.mark.result.marked"
+    then:
+      - name: refuseChanged
+        throw:
+          code: ERR_CONVERSATION_CHANGED
+          message: The conversation changed since it was read; reload it and try again.
+          data:
+            revision: !cel "steps.mark.result.revision"
+  - name: cascade
+    invoke: !ref cascadeConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: read
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+outputs:
+  removedTurns: !cel "steps.mark.result.removedTurns"
+  conversation: !cel "steps.read.result.conversation"
+---
+# Raises a recorded error as it was — what re-fails a copied turn's key.
+kind: Run.Sequence
+metadata: { name: raiseRecorded }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [code, message, data]
+    properties:
+      code: { type: string }
+      message: { type: string }
+      data: {}
+steps:
+  - name: recorded
+    value: !cel "inputs.data == null"
+  # An error recorded without data is raised without it.
+  - name: raise
+    if: !cel "steps.recorded.result"
+    then:
+      - name: bare
+        throw:
+          code: !cel "inputs.code"
+          message: !cel "inputs.message"
+    else:
+      - name: withData
+        throw:
+          code: !cel "inputs.code"
+          message: !cel "inputs.message"
+          data: !cel "inputs.data"
+---
+# One turn of a branch: the source key read ONCE — its state and every record —
+# then the copy's `turns` row, then its key claimed and written record for
+# record. A finished source finishes the copy; a failed one re-raises its
+# recorded error into the copy, which fails it with that error. A summary's
+# `throughTurnId` is remapped onto the copies. Refused while the source runs
+# (409 ERR_TURN_IN_PROGRESS) or once it is removed (409 ERR_CONVERSATION_CHANGED).
+kind: Run.Sequence
+metadata: { name: copyTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, sourceTurnId, turnId, startedAt, abortedAt, sourceIds, copyIds]
+    properties:
+      conversationId: { type: string }
+      sourceTurnId: { type: string }
+      turnId: { type: string }
+      startedAt: { type: string }
+      abortedAt: { type: [string, "null"] }
+      sourceIds:
+        type: array
+        items: { type: string }
+      copyIds:
+        type: array
+        items: { type: string }
+steps:
+  - name: source
+    invoke: !ref journalRead
+    inputs:
+      key: !cel "inputs.sourceTurnId"
+  - name: running
+    if: !cel "steps.source.result.state == 'open'"
+    then:
+      - name: refuseRunning
+        throw:
+          code: ERR_TURN_IN_PROGRESS
+          message: A turn of the source conversation is running; branch once it has ended.
+          data:
+            activeTurnId: !cel "inputs.sourceTurnId"
+  - name: gone
+    if: !cel "!(steps.source.result.state in ['finished', 'failed'])"
+    then:
+      - name: refuseGone
+        throw:
+          code: ERR_CONVERSATION_CHANGED
+          message: !cel "'Turn ' + inputs.sourceTurnId + ' was removed while the branch was copied.'"
+  - name: records
+    value: !cel >-
+      steps.source.result.entries.map(e, e.data).map(r,
+        r.type == 'context-summary' && inputs.sourceIds.exists(s, s == r.throughTurnId)
+          ? cel.bind(through, inputs.copyIds[range(size(inputs.sourceIds)).filter(i, inputs.sourceIds[i] == r.throughTurnId)[0]],
+              has(r.summary)
+                ? dyn({'type': r.type, 'throughTurnId': through, 'summary': r.summary, 'model': r.model, 'usage': r.usage})
+                : dyn({'type': r.type, 'throughTurnId': through, 'error': r.error, 'model': r.model, 'usage': r.usage}))
+          : r)
+  - name: writer
+    value: !cel "uuidv4()"
+  # Only under the branch's own conversation, while it is still being assembled
+  # and not removed: a branch the sweep or a deletion took copies nothing more.
+  - name: row
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: |
+        INSERT INTO turns (turn_id, conversation_id, started_at, aborted_at)
+        SELECT ?, id, ?, ? FROM conversations WHERE id = ? AND removed_at IS NULL AND assembling = 1
+      bindings:
+        - !cel "inputs.turnId"
+        - !cel "inputs.startedAt"
+        - !cel "inputs.abortedAt"
+        - !cel "inputs.conversationId"
+  - name: branchGone
+    if: !cel "steps.row.result.rowCount == 0"
+    then:
+      - name: refuseBranchGone
+        throw:
+          code: ERR_CONVERSATION_CHANGED
+          message: The branch was removed while it was copied.
+  - name: claim
+    invoke:
+      kind: RecordStream.JournalClaim
+      journal: !ref turnJournal
+    inputs:
+      key: !cel "inputs.turnId"
+      writer: !cel "steps.writer.result"
+  - name: finished
+    if: !cel "steps.source.result.state == 'finished'"
+    then:
+      - name: finishedRecords
+        invoke: { kind: Stream.Of }
+        inputs:
+          items: !cel "steps.records.result"
+      - name: writeFinished
+        invoke:
+          kind: RecordStream.JournalSink
+          journal: !ref turnJournal
+        inputs:
+          key: !cel "inputs.turnId"
+          writer: !cel "steps.writer.result"
+          input: !cel "steps.finishedRecords.result.output"
+    else:
+      - name: failedRecords
+        invoke:
+          kind: Stream.Concat
+          sources:
+            - invoke: { kind: Stream.Of }
+              inputs:
+                items: !cel "context.records"
+            - invoke: !ref raiseRecorded
+              inputs:
+                code: !cel "context.error.code"
+                message: !cel "context.error.message"
+                data: !cel "'data' in context.error ? context.error.data : null"
+        inputs:
+          context:
+            records: !cel "steps.records.result"
+            error: !cel "steps.source.result.error"
+      # The sink fails the copy's key with the recorded error, then raises it
+      # here: expected, and anything else is not.
+      - name: writeFailed
+        try:
+          - name: drainFailed
+            invoke:
+              kind: RecordStream.JournalSink
+              journal: !ref turnJournal
+            inputs:
+              key: !cel "inputs.turnId"
+              writer: !cel "steps.writer.result"
+              input: !cel "steps.failedRecords.result.output"
+        catch:
+          - name: unexpected
+            if: !cel "steps.source.result.error == null || error.code != steps.source.result.error.code"
+            then:
+              - name: reraise
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+                  data: !cel "has(error.data) ? error.data : null"
+  - name: project
+    invoke: !ref projectTurn
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      turnId: !cel "inputs.turnId"
+---
+# POST /conversations/{id}/branch: a new conversation holding a copy of every
+# live turn through `throughTurnId`, record for record, under new ids minted in
+# order. The new conversation's row is written FIRST, `assembling` — hidden from
+# every route — then each turn is copied under it, and the mark is cleared
+# last; so no turn row ever exists without its conversation row, and a branch a
+# crash cut short is a hidden conversation the retention sweep removes when it
+# goes idle. A refusal once the row exists removes the partial branch (its
+# tombstone, then the shared cascade) and raises the refusal as it was. The
+# source — which may be archived — is never modified.
+kind: Run.Sequence
+metadata: { name: branchConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, throughTurnId]
+    properties:
+      conversationId: { type: string }
+      throughTurnId: { type: string }
+steps:
+  - name: source
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: turns
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT turn_id, started_at, aborted_at FROM turns
+        WHERE conversation_id = ? AND removed_at IS NULL AND turn_id <= ?
+        ORDER BY turn_id
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.throughTurnId"
+  - name: unknownTurn
+    if: !cel >-
+      size(steps.turns.result.rows) == 0
+        || steps.turns.result.rows[size(steps.turns.result.rows) - 1].turn_id != inputs.throughTurnId
+    then:
+      - name: refuseUnknownTurn
+        throw:
+          code: ERR_TURN_NOT_FOUND
+          message: !cel "'Turn ' + inputs.throughTurnId + ' is not a turn of this conversation.'"
+  # Sorted, so the copies keep the source's order however the ids were minted.
+  - name: ids
+    value:
+      conversation: !cel "uuidv7()"
+      sources: !cel "steps.turns.result.rows.map(r, string(r.turn_id))"
+      copies: !cel "sort(steps.turns.result.rows.map(r, uuidv7()))"
+  - name: create
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: "INSERT INTO conversations (id, title, assembling) VALUES (?, ?, 1)"
+      bindings:
+        - !cel "steps.ids.result.conversation"
+        - !cel "steps.source.result.conversation.title == null ? null : dyn(Self.branchTitle(steps.source.result.conversation.title))"
+  - name: assemble
+    try:
+      - name: copy
+        invoke:
+          kind: Run.Iteration
+          collection: !cel "range(size(inputs.turns))"
+          steps:
+            - name: turn
+              invoke: !ref copyTurn
+              inputs:
+                conversationId: !cel "inputs.conversationId"
+                sourceTurnId: !cel "inputs.sourceIds[item]"
+                turnId: !cel "inputs.copyIds[item]"
+                startedAt: !cel "string(inputs.turns[item].started_at)"
+                abortedAt: !cel "inputs.turns[item].aborted_at == null ? null : dyn(string(inputs.turns[item].aborted_at))"
+                sourceIds: !cel "inputs.sourceIds"
+                copyIds: !cel "inputs.copyIds"
+        inputs:
+          conversationId: !cel "steps.ids.result.conversation"
+          turns: !cel "steps.turns.result.rows"
+          sourceIds: !cel "steps.ids.result.sources"
+          copyIds: !cel "steps.ids.result.copies"
+      - name: reveal
+        invoke: { kind: Sql.Command, connection: !ref chatDb }
+        inputs:
+          sql: |
+            UPDATE conversations SET assembling = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = ? AND removed_at IS NULL AND assembling = 1
+          bindings: [ !cel "steps.ids.result.conversation" ]
+      - name: revealed
+        if: !cel "steps.reveal.result.rowCount == 0"
+        then:
+          - name: refuseRemoved
+            throw:
+              code: ERR_CONVERSATION_CHANGED
+              message: The branch was removed while it was copied.
+    catch:
+      - name: discard
+        invoke: !ref discardBranch
+        inputs:
+          conversationId: !cel "steps.ids.result.conversation"
+      - name: reraise
+        throw:
+          code: !cel "error.code"
+          message: !cel "error.message"
+          data: !cel "has(error.data) ? error.data : null"
+  - name: read
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "steps.ids.result.conversation"
+outputs:
+  conversation: !cel "steps.read.result.conversation"
+---
+# Removes a branch that could not be completed: its hidden conversation is
+# tombstoned with every turn copied so far marked, then the shared cascade
+# removes their keys and rows. A key still claimed by the failed copy is
+# removed with the rest.
+kind: Run.Sequence
+metadata: { name: discardBranch }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: mark
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref chatDb
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            additionalProperties: false
+            required: [conversationId]
+            properties:
+              conversationId: { type: string }
+        steps:
+          - name: tombstone
+            invoke: { kind: Sql.Command, connection: !ref chatDb }
+            inputs:
+              sql: |
+                UPDATE conversations
+                SET removed_at = COALESCE(removed_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), revision = revision + 1,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ? AND assembling = 1
+              bindings: [ !cel "inputs.conversationId" ]
+          - name: markTurns
+            invoke: { kind: Sql.Command, connection: !ref chatDb }
+            inputs:
+              sql: |
+                UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE conversation_id = ? AND removed_at IS NULL
+                  AND EXISTS (SELECT 1 FROM conversations c WHERE c.id = turns.conversation_id AND c.assembling = 1)
+              bindings: [ !cel "inputs.conversationId" ]
+      inputs:
+        conversationId: !cel "inputs.conversationId"
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: cascade
+    invoke: !ref cascadeConversation
+    inputs:
       conversationId: !cel "inputs.conversationId"
 ---
 # Spend-budget state. A CacheMemory.Store for a single instance; swap to a
@@ -1774,9 +3061,28 @@ system: !include-text ./primer.md
 # turn's real ceiling is the token budget, which settles to what was actually
 # spent.
 maxSteps: 40
+# What one tool result may put into the context: a file read whole, a module
+# manifest or a command's output would otherwise fill it in one step.
+maxToolResultBytes: !cel "int(variables.maxToolResultBytes)"
 toolProviders:
   - provider: !ref workspaceTools
   - provider: !ref hubTools
+---
+# The agent's model at low effort, with no readable reasoning, for the naming
+# and summary calls: on this API `max_output_tokens` bounds reasoning and reply
+# together, so the operator's effort would spend a capped call's budget on
+# thinking about a title or a summary.
+kind: OpenAI.ResponsesModelStream
+metadata: { name: lowEffortModel }
+model: !cel "variables.model"
+request: !ref openaiRequest
+reasoning:
+  effort: low
+---
+# What the title and summary calls run on.
+kind: Ai.Buffered
+metadata: { name: bufferedModel }
+model: !ref lowEffortModel
 ---
 # How a turn ends, whichever way it ends: settle its budget reservation, then
 # bring its projection up to date. A turn that completed is charged what its
@@ -1789,25 +3095,23 @@ inputs:
   conversationId: !cel "context.conversationId"
   turnId: !cel "context.turnId"
   reserved: !cel "context.reserved"
-  # What the turn consumed, as the model reported it: the terminal `finish`
-  # record's sum when the turn completed, else the sum over the model calls
-  # that finished.
+  # What the attempt consumed, as the model reported it: every model call that
+  # finished — the agent's steps (their sum is the terminal `finish` record's),
+  # plus the title and summary calls. A completed attempt is charged that; any
+  # other ending at least its reservation.
   inputTokens: !cel >-
-    cel.bind(finishes, records.filter(r, r.type == 'finish'),
-      outcome.state == 'completed' && size(finishes) > 0
-        ? int(finishes[0].usage.promptTokens)
-        : int(sum(records.filter(r, r.type == 'step-finish').map(r, r.usage.promptTokens))))
+    cel.bind(calls, records.filter(r, r.type == 'step-finish'
+        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.promptTokens)),
+      size(calls) == 0 ? 0 : int(sum(calls)))
   outputTokens: !cel >-
-    cel.bind(finishes, records.filter(r, r.type == 'finish'),
-      outcome.state == 'completed' && size(finishes) > 0
-        ? int(finishes[0].usage.completionTokens)
-        : int(sum(records.filter(r, r.type == 'step-finish').map(r, r.usage.completionTokens))))
+    cel.bind(calls, records.filter(r, r.type == 'step-finish'
+        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.completionTokens)),
+      size(calls) == 0 ? 0 : int(sum(calls)))
   amount: !cel >-
-    cel.bind(finishes, records.filter(r, r.type == 'finish'),
-      outcome.state == 'completed' && size(finishes) > 0
-        ? int(finishes[0].usage.totalTokens)
-        : cel.bind(spent, int(sum(records.filter(r, r.type == 'step-finish').map(r, r.usage.totalTokens))),
-            spent > context.reserved ? spent : context.reserved))
+    cel.bind(calls, records.filter(r, r.type == 'step-finish'
+        || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.totalTokens)),
+      cel.bind(spent, size(calls) == 0 ? 0 : int(sum(calls)),
+        outcome.state == 'completed' || spent > context.reserved ? spent : context.reserved))
 ---
 kind: Run.Sequence
 metadata: { name: endTurn }
@@ -1836,11 +3140,24 @@ steps:
       key: "global"
       amount: !cel "inputs.amount"
       reserved: !cel "inputs.reserved"
-  - name: project
-    invoke: !ref projectTurn
-    inputs:
-      conversationId: !cel "inputs.conversationId"
-      turnId: !cel "inputs.turnId"
+  # The turn's ending is a change to its conversation whether or not the
+  # projection succeeds: another client re-reads the records either way.
+  - name: projection
+    try:
+      - name: project
+        invoke: !ref projectTurn
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+          turnId: !cel "inputs.turnId"
+    finally:
+      - name: ended
+        invoke: { kind: Sql.Command, connection: !ref chatDb }
+        inputs:
+          sql: |
+            UPDATE conversations
+            SET revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = ? AND removed_at IS NULL
+          bindings: [ !cel "inputs.conversationId" ]
 ---
 # POST /chat entry. Admits a turn — per-IP throttle, spend reservation, the
 # one-turn-per-conversation lease — and returns { turnId } immediately, the turn
@@ -1875,6 +3192,12 @@ steps:
       id: !cel "uuidv7()"
       # The token only this turn's journal sink drains under.
       writer: !cel "uuidv4()"
+  # A conversation that does not exist, was deleted or is archived takes no
+  # turn. Checked again where the turn row is written, which is what decides.
+  - name: conversation
+    invoke: !ref requireWritableConversation
+    inputs:
+      conversationId: !cel "inputs.conversationId"
   - name: admission
     if: !cel "inputs.idempotencyKey == ''"
     then:
@@ -2003,13 +3326,57 @@ steps:
           writer: !cel "inputs.writer"
       - name: claimed
         try:
+          # Written only for a live, unarchived conversation, and bumping its
+          # revision in the same transaction — so a deletion that read the
+          # revision before this turn existed fails its compare-and-set. The key
+          # is already claimed, so the row is never visible before its key.
           - name: recordTurn
-            invoke: { kind: Sql.Command, connection: !ref chatDb }
+            invoke:
+              kind: Sql.Transaction
+              connection: !ref chatDb
+              steps:
+                kind: Run.Sequence
+                inputType:
+                  kind: Telo.JsonSchema
+                  schema:
+                    type: object
+                    additionalProperties: false
+                    required: [conversationId, turnId]
+                    properties:
+                      conversationId: { type: string }
+                      turnId: { type: string }
+                steps:
+                  - name: insert
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: |
+                        INSERT INTO turns (turn_id, conversation_id)
+                        SELECT ?, id FROM conversations
+                        WHERE id = ? AND removed_at IS NULL AND archived = 0 AND assembling = 0
+                      bindings:
+                        - !cel "inputs.turnId"
+                        - !cel "inputs.conversationId"
+                  - name: refused
+                    if: !cel "steps.insert.result.rowCount == 0"
+                    then:
+                      - name: refuse
+                        invoke: !ref refuseConversationWrite
+                        inputs:
+                          conversationId: !cel "inputs.conversationId"
+                  - name: admitted
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: |
+                        UPDATE conversations
+                        SET revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE id = ?
+                      bindings: [ !cel "inputs.conversationId" ]
+              inputs:
+                conversationId: !cel "inputs.conversationId"
+                turnId: !cel "inputs.turnId"
             inputs:
-              sql: "INSERT INTO turns (turn_id, conversation_id) VALUES (?, ?)"
-              bindings:
-                - !cel "inputs.turnId"
-                - !cel "inputs.conversationId"
+              conversationId: !cel "inputs.conversationId"
+              turnId: !cel "inputs.turnId"
           - name: startTurn
             invoke: !ref turnLock
             inputs:
@@ -2167,8 +3534,10 @@ outputs:
 # turn of this conversation still running (409 ERR_TURN_IN_PROGRESS), a turn
 # that finished, was aborted or has a later turn after it (409
 # ERR_TURN_NOT_CONTINUABLE with the reason), then the throttle and the budget
-# (429). The attempt reserves and settles on its own. Returns the id of the last
-# record before the attempt: the next one is its `turn-continued` record.
+# (429), then — once its key is taken over — a conversation deleted or archived
+# or a turn removed since (410 / 409). The attempt reserves and settles on its
+# own. Returns the id of the last record before the attempt: the next one is
+# its `turn-continued` record.
 kind: Run.Sequence
 metadata: { name: continueTurn }
 inputType:
@@ -2185,10 +3554,13 @@ steps:
     value:
       # The token only this attempt's journal sink drains under.
       writer: !cel "uuidv4()"
+  # The key's state alone, for the refusals below; the note's records and the
+  # error it names come from the takeover.
   - name: snapshot
     invoke: !ref journalRead
     inputs:
       key: !cel "inputs.turnId"
+      limit: 0
   - name: removed
     if: !cel "steps.snapshot.result.state == 'removed'"
     then:
@@ -2201,8 +3573,9 @@ steps:
     inputs:
       sql: |
         SELECT t.conversation_id, t.aborted_at,
-               (SELECT MAX(l.turn_id) FROM turns l WHERE l.conversation_id = t.conversation_id) AS last_turn_id
-        FROM turns t WHERE t.turn_id = ?
+               (SELECT MAX(l.turn_id) FROM turns l
+                 WHERE l.conversation_id = t.conversation_id AND l.removed_at IS NULL) AS last_turn_id
+        FROM turns t WHERE t.turn_id = ? AND t.removed_at IS NULL
       bindings: [ !cel "inputs.turnId" ]
   - name: unknown
     if: !cel "steps.snapshot.result.state == 'unknown' || size(steps.row.result.rows) == 0"
@@ -2211,6 +3584,10 @@ steps:
         throw:
           code: ERR_TURN_NOT_FOUND
           message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+  - name: conversation
+    invoke: !ref requireWritableConversation
+    inputs:
+      conversationId: !cel "string(steps.row.result.rows[0].conversation_id)"
   - name: turn
     value:
       conversationId: !cel "steps.row.result.rows[0].conversation_id"
@@ -2277,34 +3654,139 @@ steps:
           message: The agent's spend ceiling is reached. Retry after `retryAfter` seconds.
           data:
             retryAfter: !cel "steps.reserve.result.retryAfter"
-  # Until the attempt is started, nothing else settles this reservation: any
-  # failure gives it back and is raised as it was. Once started, the attempt's
-  # own ending settles it.
+  # The key is taken over FIRST, as admission claims first: while it is open a
+  # deletion or truncation reading it refuses the turn as running, and one that
+  # read it before fails its compare-and-set on the revision `touch` bumps. A
+  # key removed since the snapshot is refused here (410), and one another
+  # continue holds is running (409). Taken over before this answers, so a
+  # reader attaching now tails the attempt instead of reading the previous
+  # attempt's failure; the attempt's sink adopts the claim under the same
+  # writer. The takeover reports the error the key held at the version it took
+  # over — even when another continue failed it again since the snapshot — and
+  # that error is what the note names and what a refusal restores. Until the
+  # attempt is started, nothing else settles this reservation: every refusal
+  # and failure gives it back and is raised as it was. Once started, the
+  # attempt's own ending settles it.
   - name: start
     try:
-      # A new attempt drops any abort mark: an abort stamps before it cancels,
-      # and an attempt that then ended another way leaves the mark behind, which
-      # must not make a later cancellation of THIS attempt read as `aborted`.
-      - name: touch
-        invoke: { kind: Sql.Command, connection: !ref chatDb }
+      - name: takeOver
+        invoke:
+          kind: RecordStream.JournalClaim
+          journal: !ref turnJournal
         inputs:
-          sql: "UPDATE turns SET active_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), aborted_at = NULL WHERE turn_id = ?"
-          bindings: [ !cel "inputs.turnId" ]
-      - name: startAttempt
-        invoke: !ref turnLock
-        inputs:
-          key: !cel "steps.turn.result.conversationId"
-          holder: !cel "inputs.turnId"
-          inputs:
-            conversationId: !cel "steps.turn.result.conversationId"
-            turnId: !cel "inputs.turnId"
-            lead: !cel >-
-              {'type': 'turn-continued',
-               'note': Self.interruptionNote(steps.snapshot.result.entries.map(e, e.data), steps.snapshot.result.error),
-               'model': variables.model}
-            resume: true
-            reserved: !cel "steps.reserve.result.reserved"
-            writer: !cel "steps.attempt.result.writer"
+          key: !cel "inputs.turnId"
+          writer: !cel "steps.attempt.result.writer"
+          resume: true
+      # A takeover with no error created the key: it was removed and its
+      # marker forgotten since the snapshot. The created key is failed as
+      # removed, so it never reads as a live turn, and the continue refused.
+      - name: recreated
+        if: !cel "steps.takeOver.result.error == null"
+        then:
+          - name: giveBackRemoved
+            invoke: !ref releaseAttempt
+            inputs:
+              turnId: !cel "inputs.turnId"
+              writer: !cel "steps.attempt.result.writer"
+              failure:
+                code: ERR_JOURNAL_KEY_REMOVED
+                message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          - name: refuseRecreated
+            throw:
+              code: ERR_JOURNAL_KEY_REMOVED
+              message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+      # From here the key is this attempt's: a refusal fails it again with the
+      # error the takeover reported, so it reads as it did before.
+      - name: held
+        try:
+          # Every record the interrupted attempts wrote, read after the
+          # takeover, which kept them.
+          - name: records
+            invoke: !ref journalRead
+            inputs:
+              key: !cel "inputs.turnId"
+          # A new attempt drops any abort mark: an abort stamps before it
+          # cancels, and an attempt that then ended another way leaves the mark
+          # behind, which must not make a later cancellation of THIS attempt
+          # read as `aborted`. The continue is a change to the conversation,
+          # taken only while it is live and unarchived and the turn is not
+          # marked removed.
+          - name: touch
+            invoke:
+              kind: Sql.Transaction
+              connection: !ref chatDb
+              steps:
+                kind: Run.Sequence
+                inputType:
+                  kind: Telo.JsonSchema
+                  schema:
+                    type: object
+                    additionalProperties: false
+                    required: [conversationId, turnId]
+                    properties:
+                      conversationId: { type: string }
+                      turnId: { type: string }
+                steps:
+                  - name: bump
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: |
+                        UPDATE conversations
+                        SET revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE id = ? AND removed_at IS NULL AND archived = 0 AND assembling = 0
+                      bindings: [ !cel "inputs.conversationId" ]
+                  - name: refused
+                    if: !cel "steps.bump.result.rowCount == 0"
+                    then:
+                      - name: refuse
+                        invoke: !ref refuseConversationWrite
+                        inputs:
+                          conversationId: !cel "inputs.conversationId"
+                  - name: unmark
+                    invoke: { kind: Sql.Command, connection: !ref chatDb }
+                    inputs:
+                      sql: "UPDATE turns SET aborted_at = NULL WHERE turn_id = ? AND removed_at IS NULL"
+                      bindings: [ !cel "inputs.turnId" ]
+                  - name: turnRemoved
+                    if: !cel "steps.unmark.result.rowCount == 0"
+                    then:
+                      - name: refuseRemoved
+                        throw:
+                          code: ERR_JOURNAL_KEY_REMOVED
+                          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+              inputs:
+                conversationId: !cel "inputs.conversationId"
+                turnId: !cel "inputs.turnId"
+            inputs:
+              conversationId: !cel "string(steps.turn.result.conversationId)"
+              turnId: !cel "inputs.turnId"
+          - name: startAttempt
+            invoke: !ref turnLock
+            inputs:
+              key: !cel "steps.turn.result.conversationId"
+              holder: !cel "inputs.turnId"
+              inputs:
+                conversationId: !cel "steps.turn.result.conversationId"
+                turnId: !cel "inputs.turnId"
+                lead: !cel >-
+                  {'type': 'turn-continued',
+                   'note': Self.interruptionNote(steps.records.result.entries.map(e, e.data), steps.takeOver.result.error),
+                   'model': variables.model}
+                resume: true
+                reserved: !cel "steps.reserve.result.reserved"
+                writer: !cel "steps.attempt.result.writer"
+        catch:
+          - name: giveBack
+            invoke: !ref releaseAttempt
+            inputs:
+              turnId: !cel "inputs.turnId"
+              writer: !cel "steps.attempt.result.writer"
+              failure: !cel "steps.takeOver.result.error"
+          - name: raiseHeldFailure
+            throw:
+              code: !cel "error.code"
+              message: !cel "error.message"
+              data: !cel "has(error.data) ? error.data : null"
     catch:
       - name: refundFailed
         invoke: !ref budget
@@ -2313,14 +3795,32 @@ steps:
           key: "global"
           amount: 0
           reserved: !cel "steps.reserve.result.reserved"
+      # Held under another writer: another continue of this turn took it first.
+      - name: runningSince
+        if: !cel "error.code == 'ERR_JOURNAL_KEY_BUSY'"
+        then:
+          - name: refuseRunning
+            throw:
+              code: ERR_TURN_IN_PROGRESS
+              message: A turn is already running for this conversation.
+              data:
+                activeTurnId: !cel "inputs.turnId"
       - name: raiseStartFailure
         throw:
           code: !cel "error.code"
           message: !cel "error.message"
           data: !cel "has(error.data) ? error.data : null"
+  # Another turn of this conversation holds the lease: give the key back, then
+  # the reservation.
   - name: overlap
     if: !cel "!steps.startAttempt.result.acquired"
     then:
+      - name: giveBackOverlap
+        invoke: !ref releaseAttempt
+        inputs:
+          turnId: !cel "inputs.turnId"
+          writer: !cel "steps.attempt.result.writer"
+          failure: !cel "steps.takeOver.result.error"
       - name: refund
         invoke: !ref budget
         inputs:
@@ -2334,62 +3834,80 @@ steps:
           message: A turn is already running for this conversation.
           data:
             activeTurnId: !cel "steps.startAttempt.result.holder"
-  # Taken over before this answers, so a reader attaching now tails the attempt
-  # instead of reading the previous attempt's failure. The attempt's own sink
-  # drains under the same writer and may get there first — even end the attempt
-  # first, and then the claim leaves that ending as it is. The records before
-  # the attempt are the snapshot's.
-  - name: claim
+outputs:
+  turnId: !cel "inputs.turnId"
+  fromId: !cel "steps.takeOver.result.lastId"
+---
+# Gives back a failed turn's key that a continue took over but did not start:
+# a sink adopts the claim under the same writer and fails the key again with
+# `failure` — the error the takeover reported, or the removal a takeover that
+# created the key stands for — appending nothing. A key removed meanwhile is
+# already gone, which is expected too.
+kind: Run.Sequence
+metadata: { name: releaseAttempt }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId, writer, failure]
+    properties:
+      turnId: { type: string }
+      writer: { type: string }
+      # The error to fail the key with, in the shape a journal read reports.
+      failure:
+        type: object
+        additionalProperties: false
+        required: [message]
+        properties:
+          code: { type: string }
+          message: { type: string }
+          data: {}
+steps:
+  - name: records
+    invoke:
+      kind: Stream.Concat
+      sources:
+        - invoke: { kind: Stream.Of }
+          inputs:
+            items: []
+        - invoke: !ref raiseRecorded
+          inputs:
+            code: !cel "context.failure.code"
+            message: !cel "context.failure.message"
+            data: !cel "'data' in context.failure ? context.failure.data : null"
+    inputs:
+      context:
+        failure: !cel "inputs.failure"
+  - name: refail
     try:
-      - name: takeOver
+      - name: drain
         invoke:
-          kind: RecordStream.JournalClaim
+          kind: RecordStream.JournalSink
           journal: !ref turnJournal
         inputs:
           key: !cel "inputs.turnId"
-          writer: !cel "steps.attempt.result.writer"
-          resume: true
+          writer: !cel "inputs.writer"
+          input: !cel "steps.records.result.output"
     catch:
-      # Removed since the snapshot: the attempt's sink is refused the same key
-      # before it pulls a record, so nothing else settles this reservation.
-      - name: removedSince
-        if: !cel "error.code == 'ERR_JOURNAL_KEY_REMOVED'"
+      - name: unexpected
+        if: !cel "error.code != inputs.failure.code && error.code != 'ERR_JOURNAL_KEY_REMOVED'"
         then:
-          - name: refundRemoved
-            invoke: !ref budget
-            inputs:
-              op: settle
-              key: "global"
-              amount: 0
-              reserved: !cel "steps.reserve.result.reserved"
-      # Held under another writer: a second continue of this turn started its
-      # own attempt after this one's had already ended, so this attempt's
-      # reservation was settled by its own ending and the turn is running now.
-      - name: runningSince
-        if: !cel "error.code == 'ERR_JOURNAL_KEY_BUSY'"
-        then:
-          - name: refuseRunning
+          - name: reraise
             throw:
-              code: ERR_TURN_IN_PROGRESS
-              message: A turn is already running for this conversation.
-              data:
-                activeTurnId: !cel "inputs.turnId"
-      - name: reraise
-        throw:
-          code: !cel "error.code"
-          message: !cel "error.message"
-          data: !cel "has(error.data) ? error.data : null"
-outputs:
-  turnId: !cel "inputs.turnId"
-  fromId: !cel "steps.snapshot.result.lastId"
+              code: !cel "error.code"
+              message: !cel "error.message"
+              data: !cel "has(error.data) ? error.data : null"
 ---
-# Retention: every conversation with no activity since `idleBefore` is deleted
-# whole — each of its turns' journal keys removed (a removed turn answers 410
-# for `retentionDays`), then its `messages`, `turn_projections` and `turns` rows
-# in one transaction — and then one expiry pass forgets removal markers past
-# their retention. A conversation is active when any of its turns was started or
-# continued in the window. Every step is safe to repeat, so a sweep a crash cut
-# short is finished by the next one.
+# Retention: every conversation not changed since `idleBefore` is deleted
+# whole, through the path DELETE /conversations/{id} takes — tombstoned by
+# compare-and-set, its turns marked, then each marked turn's key removed (a
+# removed turn answers 410 for `retentionDays`) and its rows deleted. Then
+# tombstones older than the window are forgotten and one expiry pass forgets
+# removal markers past their retention. A branch a crash cut short is a hidden
+# (`assembling`) conversation, idle like any other, and goes the same way.
+# Every step is safe to repeat, so a sweep a crash cut short is finished by the
+# next one.
 kind: Run.Sequence
 metadata: { name: retentionSweep }
 inputType:
@@ -2406,77 +3924,59 @@ steps:
     invoke: !ref historyRows
     inputs:
       sql: |
-        SELECT conversation_id, json_group_array(turn_id) AS turn_ids FROM turns
-        GROUP BY conversation_id
-        HAVING julianday(MAX(active_at)) < julianday(?)
-        ORDER BY conversation_id
+        SELECT id FROM conversations
+        WHERE removed_at IS NULL AND julianday(updated_at) < julianday(?)
+        ORDER BY id
       bindings: [ !cel "string(inputs.idleBefore)" ]
-  - name: each
+  # The tombstone DELETE writes, one attempt each: a conversation that changed
+  # or is running is `busy` this round and swept by a later one.
+  - name: tombstones
     invoke:
-      kind: Run.Iteration
+      kind: Run.Projection
       collection: !cel "inputs.conversations"
       steps:
-        - name: removeKeys
-          invoke:
-            kind: Run.Iteration
-            collection: !cel "inputs.turnIds"
-            steps:
-              - name: remove
-                invoke:
-                  kind: RecordStream.JournalRemoval
-                  journal: !ref turnJournal
-                inputs:
-                  key: !cel "item"
+        - name: tombstone
+          invoke: !ref tombstoneConversation
           inputs:
-            turnIds: !cel "parseJson(item.turn_ids)"
-        # Only the turns whose keys were removed: a turn a message admitted
-        # during the sweep keeps its rows.
-        - name: deleteRows
-          invoke:
-            kind: Sql.Transaction
-            connection: !ref chatDb
-            steps:
-              kind: Run.Sequence
-              inputType:
-                kind: Telo.JsonSchema
-                schema:
-                  type: object
-                  additionalProperties: false
-                  required: [turnIds]
-                  properties:
-                    turnIds: { type: string }
-              steps:
-                - name: messages
-                  invoke: { kind: Sql.Command, connection: !ref chatDb }
-                  inputs:
-                    sql: "DELETE FROM messages WHERE turn_id IN (SELECT value FROM json_each(?))"
-                    bindings: [ !cel "inputs.turnIds" ]
-                - name: projections
-                  invoke: { kind: Sql.Command, connection: !ref chatDb }
-                  inputs:
-                    sql: "DELETE FROM turn_projections WHERE turn_id IN (SELECT value FROM json_each(?))"
-                    bindings: [ !cel "inputs.turnIds" ]
-                - name: turns
-                  invoke: { kind: Sql.Command, connection: !ref chatDb }
-                  inputs:
-                    sql: "DELETE FROM turns WHERE turn_id IN (SELECT value FROM json_each(?))"
-                    bindings: [ !cel "inputs.turnIds" ]
-            inputs:
-              turnIds: !cel "inputs.turnIds"
-          inputs:
-            turnIds: !cel "item.turn_ids"
+            conversationId: !cel "string(item.id)"
+            includeHidden: true
+      outputs:
+        conversationId: !cel "string(item.id)"
+        outcome: !cel "steps.tombstone.result.outcome"
     inputs:
       conversations: !cel "steps.idle.result.rows"
+  # Every marked turn — this round's, and a deletion's, a truncation's or a
+  # failed branch's a crash cut short. No turn row outlives its conversation
+  # row: a branch writes its (hidden) conversation row before any turn.
+  - name: leftovers
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT turn_id FROM turns WHERE removed_at IS NOT NULL ORDER BY turn_id"
+      bindings: []
+  - name: cascade
+    invoke: !ref cascadeTurns
+    inputs:
+      turnIds: !cel "steps.leftovers.result.rows.map(r, string(r.turn_id))"
+  # A tombstone answers 410 for the retention window, then is forgotten and
+  # the conversation answers 404.
+  - name: forget
+    invoke: { kind: Sql.Command, connection: !ref chatDb }
+    inputs:
+      sql: "DELETE FROM conversations WHERE removed_at IS NOT NULL AND julianday(removed_at) < julianday(?)"
+      bindings: [ !cel "string(inputs.idleBefore)" ]
   - name: expire
     invoke:
       kind: RecordStream.JournalExpiry
       journal: !ref turnJournal
 outputs:
-  conversations: !cel "size(steps.idle.result.rows)"
+  conversations: !cel "size(steps.tombstones.result.filter(t, t.outcome == 'tombstoned'))"
+  busy: !cel "steps.tombstones.result.filter(t, t.outcome in ['busy', 'changed']).map(t, t.conversationId)"
 ---
 # The detached turn body — one attempt at a turn, run once admission or a
 # continue succeeded. Its whole output is one recorded stream: the attempt's
-# lead record first, then the preparation and the agent's own parts — so
+# lead record first, then a `conversation-title` record when the conversation
+# was named, a `context-summary` record when its history was compacted, then
+# the preparation and the agent's own parts — so
 # everything that can fail is inside the journal, and an attempt that fails
 # before the model is reached still ends with its error recorded. The end
 # handler projects the turn and settles this attempt's reservation, and the sink
@@ -2515,6 +4015,14 @@ steps:
         - invoke: { kind: Stream.Of }
           inputs:
             items: !cel "[context.lead]"
+        - invoke: !ref nameConversation
+          inputs:
+            conversationId: !cel "context.conversationId"
+            lead: !cel "context.lead"
+        - invoke: !ref compactHistory
+          inputs:
+            conversationId: !cel "context.conversationId"
+            turnId: !cel "context.turnId"
         - invoke: !ref agentTurn
           inputs:
             conversationId: !cel "context.conversationId"
@@ -2542,6 +4050,364 @@ steps:
       writer: !cel "inputs.writer"
       resume: !cel "inputs.resume"
 ---
+# A conversation's title, while it has none: every NEW turn (never a continued
+# attempt) asks the agent's model, at low effort and at most 1024 output
+# tokens, to name it from its first user message, then applies the sanitized
+# reply only where the title is still null — a title the user set meanwhile
+# stays. Its record carries the title, the model and the call's usage; the
+# model and usage alone when the title was not applied; or the error it failed
+# with — a reply that did not end with `stop` is ERR_TITLE_INCOMPLETE, an empty
+# one ERR_TITLE_EMPTY. A failure never fails the turn and the next new turn
+# retries. A cancelled turn is not a naming failure.
+kind: Run.Sequence
+metadata: { name: nameConversation }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, lead]
+    properties:
+      conversationId: { type: string }
+      lead:
+        type: object
+        required: [type, model]
+        properties:
+          type: { type: string, enum: [user-message, turn-continued] }
+          model: { type: string }
+          content: { type: string }
+steps:
+  - name: conversation
+    invoke: !ref historyRows
+    inputs:
+      sql: "SELECT title IS NULL AS untitled FROM conversations WHERE id = ?"
+      bindings: [ !cel "inputs.conversationId" ]
+  - name: wanted
+    value: !cel >-
+      inputs.lead.type == 'user-message'
+        && size(steps.conversation.result.rows) > 0 && int(steps.conversation.result.rows[0].untitled) != 0
+  - name: name
+    if: !cel "steps.wanted.result"
+    then:
+      # The conversation's first user message: its earliest live turn's, which
+      # is this one's own lead when nothing earlier was projected.
+      - name: catchUp
+        invoke: !ref catchUpProjection
+        inputs:
+          conversationId: !cel "inputs.conversationId"
+      - name: first
+        invoke: !ref historyRows
+        inputs:
+          sql: |
+            SELECT m.content FROM messages m JOIN turns t ON t.turn_id = m.turn_id
+            WHERE t.conversation_id = ? AND t.removed_at IS NULL AND m.role = 'user'
+            ORDER BY m.turn_id, m.seq LIMIT 1
+          bindings: [ !cel "inputs.conversationId" ]
+      # Its first 4000 code points, cut by a regex (which matches code points);
+      # four runs of 1000, RE2's largest repeat count.
+      - name: message
+        value: !cel >-
+          cel.bind(text, size(steps.first.result.rows) > 0
+              ? Self.contentText(parseJson(steps.first.result.rows[0].content))
+              : has(inputs.lead.content) ? inputs.lead.content : '',
+            regexExtract(text, '(?s)^.{0,1000}.{0,1000}.{0,1000}.{0,1000}'))
+      - name: attempt
+        try:
+          - name: call
+            invoke:
+              kind: Ai.Text
+              model: !ref bufferedModel
+              system: >-
+                You name conversations. Reply with a title of at most six words for
+                the conversation that begins with the user's message. Reply with
+                the title alone: no quotes, no trailing period, nothing else.
+            inputs:
+              prompt: !cel "steps.message.result"
+              options:
+                maxOutputTokens: 1024
+          # A reply cut short is not a title, however its first line reads.
+          - name: incomplete
+            if: !cel "steps.call.result.finishReason != 'stop'"
+            then:
+              - name: refuseIncomplete
+                throw:
+                  code: ERR_TITLE_INCOMPLETE
+                  message: !cel >-
+                    'The naming call ended before its reply was complete (finish reason `'
+                      + steps.call.result.finishReason + '`; a title may take at most 1024 output tokens).'
+          - name: title
+            value: !cel "Self.titleOf(steps.call.result.text)"
+          - name: empty
+            if: !cel "steps.title.result == ''"
+            then:
+              - name: refuseEmpty
+                throw:
+                  code: ERR_TITLE_EMPTY
+                  message: The model's reply held no usable title.
+          - name: apply
+            invoke: { kind: Sql.Command, connection: !ref chatDb }
+            inputs:
+              sql: |
+                UPDATE conversations
+                SET title = ?, revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = ? AND title IS NULL AND removed_at IS NULL AND assembling = 0
+              bindings:
+                - !cel "steps.title.result"
+                - !cel "inputs.conversationId"
+        catch:
+          - name: cancelled
+            if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+            then:
+              - name: propagate
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+          - name: failure
+            value:
+              code: !cel "error.code"
+              message: !cel "error.message"
+  # A failure after the call returned still carries that call's usage, which
+  # the turn is charged. A title the update did not apply — the conversation
+  # was named meanwhile — is left out: the record then carries the call's model
+  # and usage alone, so a `title` in it is always one the conversation took.
+  - name: emit
+    invoke: { kind: Stream.Of }
+    inputs:
+      items: !cel >-
+        has(steps.failure)
+          ? [has(steps.call)
+              ? dyn({'type': 'conversation-title', 'error': steps.failure.result,
+                     'model': inputs.lead.model, 'usage': steps.call.result.usage})
+              : dyn({'type': 'conversation-title', 'error': steps.failure.result})]
+          : has(steps.apply)
+            ? [steps.apply.result.rowCount > 0
+                ? dyn({'type': 'conversation-title', 'title': steps.title.result,
+                       'model': inputs.lead.model, 'usage': steps.call.result.usage})
+                : dyn({'type': 'conversation-title', 'model': inputs.lead.model, 'usage': steps.call.result.usage})]
+            : []
+outputs:
+  output: !cel "steps.emit.result.output"
+---
+# Context compaction, at the start of every attempt: when the conversation's
+# latest live turn up to this one reported a context (its last model call's
+# prompt plus completion tokens) of at least `maxContextTokens`, the history
+# before this turn — the latest summary plus the live turns after the turn it
+# covers — is split: the longest run of newest turns holding at most a quarter
+# of its bytes stays raw, and everything older is summarized, the previous
+# summary included, by one call to the agent's model at low effort, capped at
+# `maxContextTokens / 8` output tokens (at least 1: `maxContextTokens` is at
+# least 8). The summary rides this turn's `context-summary` record; nothing
+# to cover means no call. A failed call fails
+# the turn with ERR_CONTEXT_COMPACTION_FAILED (its cause in `data.cause`),
+# which a continue retries: a reply that did not end with `stop`
+# (ERR_SUMMARY_INCOMPLETE) or is empty (ERR_SUMMARY_EMPTY) is first journaled
+# as a `context-summary` carrying `error`, `model` and `usage` and no
+# `summary`. A cancellation propagates as it is.
+kind: Run.Sequence
+metadata: { name: compactHistory }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, turnId]
+    properties:
+      conversationId: { type: string }
+      turnId: { type: string }
+steps:
+  - name: catchUp
+    invoke: !ref catchUpProjection
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+  - name: measured
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT p.context_tokens FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+        WHERE t.conversation_id = ? AND t.removed_at IS NULL AND t.turn_id <= ? AND p.context_tokens IS NOT NULL
+        ORDER BY t.turn_id DESC LIMIT 1
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.turnId"
+  - name: previous
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT p.summary, p.summary_through, length(CAST(p.summary AS BLOB)) AS bytes
+        FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+        WHERE t.conversation_id = ? AND t.removed_at IS NULL AND t.turn_id <= ? AND p.summary IS NOT NULL
+        ORDER BY t.turn_id DESC LIMIT 1
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.turnId"
+  - name: since
+    value: !cel "size(steps.previous.result.rows) > 0 ? string(steps.previous.result.rows[0].summary_through) : ''"
+  - name: sizes
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT t.turn_id,
+               COALESCE(SUM(length(CAST(m.content AS BLOB)) + COALESCE(length(CAST(m.tool_calls AS BLOB)), 0)), 0) AS bytes
+        FROM turns t LEFT JOIN messages m ON m.turn_id = t.turn_id
+        WHERE t.conversation_id = ? AND t.removed_at IS NULL AND t.turn_id > ? AND t.turn_id < ?
+        GROUP BY t.turn_id ORDER BY t.turn_id
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "steps.since.result"
+        - !cel "inputs.turnId"
+  # `cover` is how many of the oldest turns the summary takes: all but the
+  # longest suffix whose bytes are at most a quarter of the history's.
+  - name: plan
+    value: !cel >-
+      cel.bind(bytes, steps.sizes.result.rows.map(r, int(r.bytes)),
+        cel.bind(total, (size(bytes) == 0 ? 0 : int(sum(bytes)))
+            + (size(steps.previous.result.rows) > 0 ? int(steps.previous.result.rows[0].bytes) : 0),
+          cel.bind(cover, range(size(bytes) + 1).filter(k,
+              k == size(bytes) || int(sum(slice(bytes, k, size(bytes)))) * 4 <= total)[0],
+            {
+              'compact': size(steps.measured.result.rows) > 0
+                && int(steps.measured.result.rows[0].context_tokens) >= int(variables.maxContextTokens)
+                && cover > 0,
+              'through': cover > 0 ? string(steps.sizes.result.rows[cover - 1].turn_id) : ''
+            })))
+  - name: summarize
+    if: !cel "steps.plan.result.compact"
+    then:
+      - name: covered
+        invoke: !ref historyRows
+        inputs:
+          sql: |
+            SELECT m.role, m.content, m.tool_calls FROM messages m JOIN turns t ON t.turn_id = m.turn_id
+            WHERE t.conversation_id = ? AND t.removed_at IS NULL AND t.turn_id > ? AND t.turn_id <= ?
+            ORDER BY m.turn_id, m.seq
+          bindings:
+            - !cel "inputs.conversationId"
+            - !cel "steps.since.result"
+            - !cel "steps.plan.result.through"
+      # `int(...)`: an integer variable forwarded through an import arrives as a
+      # double at runtime.
+      - name: cap
+        value: !cel "int(variables.maxContextTokens) / 8"
+      - name: attempt
+        try:
+          - name: call
+            invoke:
+              kind: Ai.Text
+              model: !ref bufferedModel
+              system: >-
+                You summarize conversations for an assistant that authors Telo
+                manifests and will continue this one from your summary alone. Write
+                what the user asked for and decided, every fact they supplied (names,
+                identifiers, columns, credentials' env var names — never a secret's
+                value), which files exist and what each does, what was checked or
+                run and with what result, and what is still open. Keep exact names,
+                paths and versions. Plain prose and lists; no preamble.
+            inputs:
+              prompt: !cel >-
+                Self.transcriptOf(size(steps.previous.result.rows) > 0
+                    ? dyn(string(steps.previous.result.rows[0].summary)) : null,
+                  steps.covered.result.rows.map(r, {'role': string(r.role), 'content': string(r.content),
+                    'tool_calls': r.tool_calls == null ? null : dyn(string(r.tool_calls))}))
+              options:
+                maxOutputTokens: !cel "steps.cap.result"
+          # A summary cut short would replace the turns it covers with part of
+          # what they held, so only a reply that ended with `stop` is one.
+          - name: incomplete
+            if: !cel "steps.call.result.finishReason != 'stop'"
+            then:
+              - name: refuseIncomplete
+                throw:
+                  code: ERR_SUMMARY_INCOMPLETE
+                  message: !cel >-
+                    'The summary call ended before its reply was complete (finish reason `'
+                      + steps.call.result.finishReason + '`; a summary may take at most '
+                      + string(steps.cap.result) + ' output tokens).'
+          - name: empty
+            if: !cel "steps.call.result.text.trim() == ''"
+            then:
+              - name: refuseEmpty
+                throw:
+                  code: ERR_SUMMARY_EMPTY
+                  message: The model's reply held no summary.
+        catch:
+          - name: cancelled
+            if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+            then:
+              - name: propagate
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+          - name: failure
+            value:
+              code: !cel "error.code"
+              message: !cel "error.message"
+  # The record first, then the failure: a call that returned is journaled with
+  # its usage — charged, and in `tokens` — before the turn fails, and one the
+  # provider refused writes nothing. A failure in a later source ends the
+  # stream after the records already yielded.
+  - name: emit
+    invoke:
+      kind: Stream.Concat
+      sources:
+        - invoke: { kind: Stream.Of }
+          inputs:
+            items: !cel "context.records"
+        - invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [failed, cause]
+                properties:
+                  failed: { type: boolean }
+                  cause:
+                    type: object
+                    additionalProperties: false
+                    required: [code, message]
+                    properties:
+                      code: { type: string }
+                      message: { type: string }
+            steps:
+              - name: failed
+                if: !cel "inputs.failed"
+                then:
+                  - name: raise
+                    throw:
+                      code: ERR_CONTEXT_COMPACTION_FAILED
+                      message: !cel "'Compacting this conversation\\'s history failed: ' + inputs.cause.message"
+                      data:
+                        cause:
+                          code: !cel "inputs.cause.code"
+                          message: !cel "inputs.cause.message"
+              - name: none
+                invoke: { kind: Stream.Of }
+                inputs:
+                  items: []
+            outputs:
+              output: !cel "steps.none.result.output"
+          inputs:
+            failed: !cel "context.failed"
+            cause: !cel "context.cause"
+    inputs:
+      context:
+        records: !cel >-
+          !steps.plan.result.compact ? []
+            : has(steps.failure)
+              ? (has(steps.call)
+                  ? [dyn({'type': 'context-summary', 'throughTurnId': steps.plan.result.through,
+                          'error': steps.failure.result, 'model': variables.model,
+                          'usage': steps.call.result.usage})]
+                  : [])
+              : [dyn({'type': 'context-summary', 'throughTurnId': steps.plan.result.through,
+                      'summary': steps.call.result.text.trim(), 'model': variables.model,
+                      'usage': steps.call.result.usage})]
+        failed: !cel "has(steps.failure)"
+        cause: !cel "has(steps.failure) ? steps.failure.result : {'code': '', 'message': ''}"
+outputs:
+  output: !cel "steps.emit.result.output"
+---
 # The agent's part of a turn, invoked only once the lead record is journaled:
 # catch the projection up (the lead record included), replay it as the model's
 # history, and stream the agent. Returns the agent's stream.
@@ -2561,6 +4427,19 @@ steps:
     invoke: !ref catchUpProjection
     inputs:
       conversationId: !cel "inputs.conversationId"
+  # The latest summary up to this turn — this turn's own when this attempt
+  # compacted: the history starts from it.
+  - name: summary
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT t.turn_id AS host, p.summary, p.summary_through
+        FROM turns t JOIN turn_projections p ON p.turn_id = t.turn_id
+        WHERE t.conversation_id = ? AND t.removed_at IS NULL AND t.turn_id <= ? AND p.summary IS NOT NULL
+        ORDER BY t.turn_id DESC LIMIT 1
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.turnId"
   - name: readHistory
     invoke: !ref historyRows
     inputs:
@@ -2572,21 +4451,26 @@ steps:
                    THEN json_object('role', role, 'content', json(content), 'toolCallId', tool_call_id)
                  ELSE json_object('role', role, 'content', json(content))
                END AS message
-        FROM messages WHERE conversation_id = ? ORDER BY turn_id, seq
-      bindings: [ !cel "inputs.conversationId" ]
+        FROM messages WHERE conversation_id = ? AND turn_id > ? ORDER BY turn_id, seq
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "size(steps.summary.result.rows) > 0 ? string(steps.summary.result.rows[0].summary_through) : ''"
   # The reasoning the conversation last recorded, replayed only to the model
   # that produced it: another model cannot read it. This turn's own counts — a
-  # continued turn's interrupted attempt recorded the latest.
+  # continued turn's interrupted attempt recorded the latest. Never state from
+  # before the latest summary: it continues a history the summary replaced (a
+  # turn that compacted after recording state projects none).
   - name: previous
     invoke: !ref historyRows
     inputs:
       sql: |
         SELECT provider_state, provider_model FROM turn_projections
-        WHERE conversation_id = ? AND turn_id <= ? AND provider_state IS NOT NULL
+        WHERE conversation_id = ? AND turn_id <= ? AND turn_id >= ? AND provider_state IS NOT NULL
         ORDER BY turn_id DESC LIMIT 1
       bindings:
         - !cel "inputs.conversationId"
         - !cel "inputs.turnId"
+        - !cel "size(steps.summary.result.rows) > 0 ? string(steps.summary.result.rows[0].host) : ''"
   # What is already in the workspace, handed to the agent rather than left for it
   # to remember to look up. It asked "new app, or change an existing one?" against
   # an EMPTY workspace — a question the runtime can answer for free and exactly,
@@ -2630,7 +4514,10 @@ steps:
       # boundaries may well want the user's own zone, and that is a question to
       # ask rather than a guess to bury in an offset.
       messages: !cel >-
-        steps.readHistory.result.rows.map(r, parseJson(r.message)) + [{
+        (size(steps.summary.result.rows) > 0
+          ? [{'role': 'user', 'content': 'CONVERSATION SUMMARY: ' + string(steps.summary.result.rows[0].summary)}]
+          : [])
+        + steps.readHistory.result.rows.map(r, parseJson(r.message)) + [{
           'role': 'user',
           'content': 'CURRENT TIME: ' + nowIso() + ' (UTC). Resolve every relative period the user names — "last week", "this month", "since Friday" — against this, and say which absolute range you resolved it to. Never guess a date, and where the boundaries depend on the user timezone, ask.'
         }, {

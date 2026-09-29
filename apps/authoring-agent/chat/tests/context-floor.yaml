@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: ChatContextFloor
+  version: 1.0.0
+  description: |
+    The agent refuses to boot with `maxContextTokens` below 8 — the floor that
+    keeps the summary call's cap (`maxContextTokens / 8` output tokens) at least
+    1 — and its refusal names the variable.
+imports:
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref refusesSmallContext
+---
+kind: Assert.Manifest
+metadata: { name: refusesSmallContext }
+source: ./__fixtures__/context-floor/telo.yaml
+expect:
+  errors: []
+  runFails: "maxContextTokens: / must be >= 8"

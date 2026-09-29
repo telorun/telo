@@ -72,7 +72,6 @@ imports:
       allowManifestRuns: true
   Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
-  # By path, as the chat library imports it, until it is published.
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
@@ -113,10 +112,12 @@ steps:
     then:
       # The app's NAME is fixed by the request so the assertions below can name
       # exact paths; everything else about the shape is the agent's to decide.
+      - name: conversation
+        invoke: !ref Chat.createConversation
       - name: chat
         invoke: !ref Chat.chatStart
         inputs:
-          conversationId: !cel "'builds-' + uuidv4()"
+          conversationId: !cel "steps.conversation.result.conversation.id"
           idempotencyKey: ""
           clientIp: test-runner
           message: |

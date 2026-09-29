@@ -21,6 +21,20 @@ export type AgentStreamPart =
   // Opens another attempt at an interrupted turn; `note` is what its model was
   // told about the interruption.
   | { type: "turn-continued"; note: string; model?: string }
+  // The agent's summary of every turn through `throughTurnId`, standing in for
+  // them in the model's history from this attempt on — or, with `error` and no
+  // `summary`, a summarization that failed, which the turn's own error reports.
+  | {
+      type: "context-summary";
+      throughTurnId: string;
+      summary?: string;
+      error?: TurnError;
+      model?: string;
+      usage?: Usage;
+    }
+  // The conversation's generated title, or why it could not be generated;
+  // with neither, a title that was not applied, which changes nothing.
+  | { type: "conversation-title"; title?: string; error?: TurnError; model?: string; usage?: Usage }
   | { type: string; [k: string]: unknown };
 
 /** One journaled record: its id within the turn and the part it carries. */
@@ -108,12 +122,19 @@ export type AssistantPart =
   | { kind: "text"; text: string }
   | { kind: "tool"; tool: ToolCallView }
   // Where an interrupted turn was continued: the next attempt's parts follow.
-  | { kind: "continued" };
+  | { kind: "continued" }
+  // The agent summarized every turn through `throughTurnId` for its model; the
+  // panel shows it after that turn, not in the turn that journaled it.
+  | { kind: "summary"; throughTurnId: string; summary: string }
+  // Naming the conversation failed in this turn.
+  | { kind: "title-error"; error: TurnError };
 
 export interface UserMessage {
   id: string;
   role: "user";
   text: string;
+  /** Shown before the agent admitted its turn: no turn of the agent's yet. */
+  local?: boolean;
 }
 
 export interface AssistantMessage {
@@ -142,6 +163,8 @@ export interface AssistantMessage {
    *  there is anything to resume. Absent on transcripts persisted before it
    *  existed; those read as unfinished, which shows no button on its own. */
   completed?: boolean;
+  /** Shown before the agent admitted its turn: no turn of the agent's yet. */
+  local?: boolean;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -201,6 +224,33 @@ export interface AgentIdentity {
   /** `"none"` or `"bearer"` today; kept as the agent's own word, so a mode this
    *  client does not know is not mistaken for one it does. */
   auth: string;
+  /** The optional surfaces this agent serves (`conversations`,
+   *  `conversation-truncation`, `conversation-branching`); absent from an agent
+   *  that predates them. Entries this client does not know are ignored. */
+  features?: string[];
+  /** Whether the agent may run manifests and their tests; absent = unknown. */
+  manifestRuns?: boolean;
+}
+
+/** A conversation as the agent reports it. `revision` moves with every change
+ *  to it — a turn admitted or ended, a title, a rename, an archive, a
+ *  truncation — so a client that holds an older one holds a stale transcript. */
+export interface Conversation {
+  id: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  model: string | null;
+  messageCount: number;
+  totalTokens: number;
+  archived: boolean;
+  revision: number;
+}
+
+/** One page of `GET /conversations`, newest activity first. */
+export interface ConversationPage {
+  conversations: Conversation[];
+  next: { before: string; beforeId: string } | null;
 }
 
 /** The agent's identity as far as the panel knows it: `unavailable` for an

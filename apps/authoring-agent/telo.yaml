@@ -8,12 +8,16 @@ metadata:
     history + ChatHandler). This root exposes the library's ChatHandler over a
     declared port and starts the conversation store, kept in `agent.sqlite` under
     AGENT_STATE_DIR (default `<WORKSPACE_DIR>/.telo-agent`), where every turn's
-    records are journaled. POST /chat admits a turn — at most once per
+    records are journaled. POST /conversations mints a conversation, which is
+    listed, searched, renamed, archived, deleted, truncated and branched under
+    /conversations; POST /chat admits a turn into one — at most once per
     Idempotency-Key — and its records stream from GET /chat/{turnId}/events as
     Server-Sent Events; POST /chat/{turnId}/abort cancels a running turn and
     POST /chat/{turnId}/continue resumes an interrupted one inside the same turn;
-    GET /conversations/{id}/records pages a conversation's records. Conversations
-    idle for RETENTION_DAYS are deleted whole, at boot and hourly. Requires
+    GET /conversations/{id}/records pages a conversation's records. A
+    conversation is named after its first message, and its older turns are
+    summarized once its context reaches MAX_CONTEXT_TOKENS. Conversations idle
+    for RETENTION_DAYS are deleted whole, at boot and hourly. Requires
     OPENAI_API_KEY (any value when MODEL_ENDPOINT names a keyless endpoint).
 
     Every route of the `api` router passes one guard: an Origin outside
@@ -41,6 +45,8 @@ imports:
       modelEndpoint: !cel "variables.modelEndpoint"
       retentionDays: !cel "variables.retentionDays"
       teloProgram: !cel "variables.teloProgram"
+      maxContextTokens: !cel "variables.maxContextTokens"
+      maxToolResultBytes: !cel "variables.maxToolResultBytes"
   Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
   Scheduler: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
@@ -97,6 +103,22 @@ variables:
     env: BUDGET_LIMIT
     type: integer
     default: 4000000
+  # The context, in tokens, a conversation may reach before its older turns are
+  # summarized for the model. Below the model's own window, so a turn that
+  # grows it still fits. At least 8, so the summary call's cap
+  # (`MAX_CONTEXT_TOKENS / 8` output tokens) is at least 1.
+  maxContextTokens:
+    env: MAX_CONTEXT_TOKENS
+    type: integer
+    minimum: 8
+    default: 120000
+  # The most UTF-8 bytes of text one tool result may feed the model; a longer
+  # one is cut and marked `[truncated: …]`.
+  maxToolResultBytes:
+    env: MAX_TOOL_RESULT_BYTES
+    type: integer
+    minimum: 1
+    default: 32768
   # How hard the model thinks before each turn. Bound to an env var because it
   # is the dial an operator turns per deployment: it trades answer quality
   # against latency and spend on every turn of every tool loop, and `minimal`
@@ -183,6 +205,8 @@ tracing:
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
+  # Rebuilds whatever projection a migration cleared, before anything reads it.
+  - !ref Chat.catchUpProjections
   # Retention at boot, so an agent restarted less often than hourly still
   # deletes what went idle while it was down. `int(...)`: an integer variable
   # arrives here as a double at runtime, though it is typed int statically.
@@ -246,8 +270,10 @@ routes:
             conversationId:
               type: string
               format: uuid
-              description: Conversation id (UUID); groups messages into a thread.
-              examples: [ "f47ac10b-58cc-4372-a567-0e02b2c3d479" ]
+              description: >-
+                A conversation this agent minted (POST /conversations): unknown is
+                404, deleted 410, archived 409.
+              examples: [ "0192f0c1-7a3e-7cc2-9d4b-5f1e2a3b4c5d" ]
             message:
               type: string
               description: The user's message.
@@ -267,6 +293,27 @@ routes:
     # Every refusal is a coded error, so a client reads `code` from any non-200
     # body rather than inferring the reason from the status.
     catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_CONVERSATION_ARCHIVED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_ARCHIVED
       # Per-IP throttle — no turn started.
       - when: !cel "error.code == 'ERR_RATE_LIMITED'"
         status: 429
@@ -461,6 +508,20 @@ routes:
               error: !cel "error.message"
               code: ERR_TURN_IN_PROGRESS
               activeTurnId: !cel "error.data.activeTurnId"
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_CONVERSATION_ARCHIVED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_ARCHIVED
       - when: !cel "error.code == 'ERR_TURN_NOT_CONTINUABLE'"
         status: 409
         content:
@@ -533,6 +594,20 @@ routes:
               turns: !cel "result.turns"
               next: !cel "result.next"
     catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
       - when: !cel "error.code == 'ERR_TURN_NOT_FOUND'"
         status: 404
         content:
@@ -540,6 +615,337 @@ routes:
             body:
               error: !cel "error.message"
               code: ERR_TURN_NOT_FOUND
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Conversations. The agent mints every id; a conversation is readable,
+  # renamable, branchable and deletable while archived, but takes no new turn.
+  # A deleted one answers 410 ERR_CONVERSATION_REMOVED on every route for
+  # RETENTION_DAYS, then 404 ERR_CONVERSATION_NOT_FOUND.
+  - request:
+      path: /conversations
+      method: POST
+    handler: !ref Chat.createConversation
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.conversation"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Newest activity first. `q` filters by a case-insensitive substring of the
+  # title or of any user or assistant message's text; `archived=true` lists
+  # only archived ones. `next` is the cursor of the following page, null on
+  # the last.
+  - request:
+      path: /conversations
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 200, description: Most conversations the page carries (default 50). }
+            archived: { type: boolean, description: "true lists only archived conversations (default false)." }
+            q: { type: string, minLength: 1, maxLength: 200, pattern: "\\S" }
+            before: { type: string, description: The `updatedAt` of the previous page's last conversation. }
+            beforeId: { type: string, description: The `id` of the previous page's last conversation. }
+    handler: !ref Chat.listConversations
+    inputs:
+      limit: !cel "has(request.query.limit) ? request.query.limit : 50"
+      archived: !cel "has(request.query.archived) ? request.query.archived : false"
+      q: !cel "has(request.query.q) ? request.query.q : ''"
+      before: !cel "has(request.query.before) ? request.query.before : ''"
+      beforeId: !cel "has(request.query.beforeId) ? request.query.beforeId : ''"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              conversations: !cel "result.conversations"
+              next: !cel "result.next"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  - request:
+      path: /conversations/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+    handler: !ref Chat.getConversation
+    inputs:
+      conversationId: !cel "request.params.id"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.conversation"
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Rename and/or (un)archive. A title is 1–200 characters with at least one
+  # that is not a space, and is never reset to null.
+  - request:
+      path: /conversations/{id}
+      method: PATCH
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        body:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          properties:
+            title: { type: string, minLength: 1, maxLength: 200, pattern: "\\S" }
+            archived: { type: boolean }
+    handler: !ref Chat.updateConversation
+    inputs:
+      conversationId: !cel "request.params.id"
+      title: !cel "has(request.body.title) ? dyn(request.body.title) : null"
+      archived: !cel "has(request.body.archived) ? dyn(request.body.archived) : null"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.conversation"
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Delete a conversation and everything it holds. Refused while its latest turn
+  # runs (abort it first); repeating it finishes an interrupted removal.
+  - request:
+      path: /conversations/{id}
+      method: DELETE
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+    handler: !ref Chat.deleteConversation
+    inputs:
+      conversationId: !cel "request.params.id"
+    returns:
+      - status: 204
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_IN_PROGRESS
+              activeTurnId: !cel "error.data.activeTurnId"
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Remove turn `from` and every later one, against the `revision` the client
+  # last read — what Retry, Edit & resend and Delete from here compose before a
+  # fresh POST /chat.
+  - request:
+      path: /conversations/{id}/turns
+      method: DELETE
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        query:
+          type: object
+          required: [from, revision]
+          properties:
+            from: { type: string, description: The first turn to remove. }
+            revision: { type: integer, minimum: 0, description: The conversation's revision as the client last read it. }
+    handler: !ref Chat.truncateConversation
+    inputs:
+      conversationId: !cel "request.params.id"
+      fromTurnId: !cel "request.query.from"
+      revision: !cel "request.query.revision"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              removedTurns: !cel "result.removedTurns"
+              conversation: !cel "result.conversation"
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_CONVERSATION_ARCHIVED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_ARCHIVED
+      - when: !cel "error.code == 'ERR_TURN_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_NOT_FOUND
+      - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_IN_PROGRESS
+              activeTurnId: !cel "error.data.activeTurnId"
+      - when: !cel "error.code == 'ERR_CONVERSATION_CHANGED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_CHANGED
+              revision: !cel "error.data.revision"
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # A new conversation holding a copy of every turn through `throughTurnId`.
+  - request:
+      path: /conversations/{id}/branch
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string }
+        body:
+          type: object
+          additionalProperties: false
+          required: [throughTurnId]
+          properties:
+            throughTurnId: { type: string, description: The last turn the branch copies. }
+    handler: !ref Chat.branchConversation
+    inputs:
+      conversationId: !cel "request.params.id"
+      throughTurnId: !cel "request.body.throughTurnId"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: !cel "result.conversation"
+    catches:
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_TURN_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_NOT_FOUND
+      - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_IN_PROGRESS
+              activeTurnId: !cel "error.data.activeTurnId"
+      - when: !cel "error.code == 'ERR_CONVERSATION_CHANGED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_CHANGED
       - status: 500
         content:
           application/json:
@@ -647,7 +1053,8 @@ routes:
             body:
               error: !cel "error.message"
   # Who this agent is: the application's name and version, the prompt it runs
-  # with (the SHA-256 of its primer) and whether it requires a token. Guarded
+  # with (the SHA-256 of its primer), whether it requires a token, the
+  # conversation features it serves and whether it may run manifests. Guarded
   # like every `api` route.
   - request:
       path: /capabilities
@@ -664,6 +1071,12 @@ routes:
               prompt:
                 id: !cel "result.id"
               auth: !cel "secrets.agentToken == '' ? 'none' : 'bearer'"
+              # What a client may offer: `conversations` (the conversation
+              # routes, their refusals on POST /chat, export), and the
+              # truncation and branch routes. A client ignores an entry it does
+              # not know.
+              features: [conversations, conversation-truncation, conversation-branching]
+              manifestRuns: !cel "variables.allowManifestRuns"
 ---
 # Liveness and readiness, for an orchestrator's probes: never guarded, since a
 # probe carries no credential.
@@ -713,7 +1126,7 @@ trustProxy: 1
 # browser may READ an answer, so it stays open and the guard refuses.
 cors:
   origin: "*"
-  methods: [GET, POST, OPTIONS]
+  methods: [GET, POST, PATCH, DELETE, OPTIONS]
   allowedHeaders: [content-type, idempotency-key, last-event-id, authorization]
 mounts:
   - path: /

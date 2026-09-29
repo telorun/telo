@@ -27,6 +27,11 @@ export function userMessageId(turnId: string): string {
   return `${turnId}:user`;
 }
 
+/** The turn a user bubble belongs to, or null for a bubble of no turn yet. */
+export function turnOfUserMessage(messageId: string): string | null {
+  return messageId.endsWith(":user") ? messageId.slice(0, -":user".length) : null;
+}
+
 /** The fields the panel reads from a tool result's structured `output` — the
  *  tool's result before the agent rendered it into text for the model:
  *  write_file / edit_file / telo_check carry `{ path, checkExitCode,
@@ -136,6 +141,24 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
           checkExitCode,
           diagnostics,
         })),
+      }));
+    }
+    case "context-summary": {
+      const { throughTurnId, summary } = part as { throughTurnId?: unknown; summary?: unknown };
+      // A failed summarization carries no summary; the turn's error reports it.
+      if (typeof throughTurnId !== "string" || typeof summary !== "string") return messages;
+      return withAssistant(messages, turnId, (m) => ({
+        ...m,
+        parts: [...m.parts, { kind: "summary", throughTurnId, summary }],
+      }));
+    }
+    case "conversation-title": {
+      const error = (part as { error?: TurnError }).error;
+      // Neither a title nor an error: nothing was applied, nothing to show.
+      if (!error || typeof error !== "object") return messages;
+      return withAssistant(messages, turnId, (m) => ({
+        ...m,
+        parts: [...m.parts, { kind: "title-error", error: { code: error.code, message: String(error.message ?? "") } }],
       }));
     }
     case "finish":

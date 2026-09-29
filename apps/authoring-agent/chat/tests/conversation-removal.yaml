@@ -1,0 +1,1029 @@
+kind: Telo.Application
+metadata:
+  name: ChatConversationRemoval
+  version: 1.0.0
+  description: |
+    Deleting a conversation, offline against the provider stub. A finished
+    conversation is deleted with 204: it then answers 410 on its own routes and
+    to POST /chat, its turn's events answer 410, and none of its turns,
+    messages or projection rows is left; deleting it again answers 204. While
+    its latest turn is held by the stub, DELETE is refused 409
+    ERR_TURN_IN_PROGRESS naming that turn and marks nothing — the conversation
+    still reads — and once the turn ends it is deleted. POST /chat on an
+    archived conversation is 409. Twenty conversations each take a DELETE and a
+    POST /chat of a held turn at once, and none answers both 204 and 200.
+    Twenty conversations with a failed turn each take a DELETE and a POST
+    /chat/{turnId}/continue at once, and none answers both 204 and 200.
+    Through the chat library, a continued attempt holds its turn's key, so a
+    deletion while the stub holds it is refused 409 naming the turn and succeeds
+    once it ends; a turn of a deleted conversation is not continued (its key
+    stays removed); and a key a continue took over but did not start is given
+    back failed, with its recorded error and its records.
+    Throughout, every journal key without a `turns` row reads removed: a
+    refused start leaves no live key behind. Through the chat library, a hidden
+    (`assembling`) conversation — as a branch a crash cut short leaves it, with
+    two copied turns — is not found, not listed and takes no turn; a sweep
+    whose window ended before it changed leaves it whole, and one whose window
+    ends after removes it, its turns and their keys.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.libraryScratch.joinPath('workspace')"
+      stateDir: !cel "variables.libraryScratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18522/v1
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONVERSATION_REMOVAL_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversation-removal
+  # The chat library's own state, opened at boot and so never emptied.
+  libraryScratch:
+    env: CHAT_TEST_CONVERSATION_REMOVAL_LIBRARY_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversation-removal-library
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref crashedBranch
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: create }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18523/conversations
+      method: POST
+outputs:
+  id: !cel "steps.post.result.body.id"
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18523/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  status: !cel "steps.post.result.status"
+  body: !cel "steps.post.result.body"
+---
+# Drains a turn's event stream to its end.
+kind: Run.Sequence
+metadata: { name: drain }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18523/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  count: !cel "size(steps.all.result.items)"
+---
+kind: Run.Sequence
+metadata: { name: remove }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+steps:
+  - name: send
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18523/conversations/${{ inputs.conversationId }}"
+      method: DELETE
+outputs:
+  status: !cel "steps.send.result.status"
+  body: !cel "steps.send.result.body"
+---
+kind: Run.Sequence
+metadata: { name: read }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18523${{ inputs.path }}"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+# Fails until the stub holds an agent call (not a naming call) carrying every
+# one of `texts`. The stub keeps every request this file sent, so a text an
+# earlier case's calls also carry would match their call instead.
+kind: Run.Sequence
+metadata: { name: stubHolds }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [texts]
+    properties:
+      texts: { type: array, items: { type: string }, minItems: 1 }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18522/requests
+  - name: notYet
+    if: !cel >-
+      !steps.sent.result.body.requests.exists(r, inputs.texts.all(t, json(r).contains(t))
+        && !json(r).contains('You name conversations'))
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub holds no agent call carrying ' + join(inputs.texts, ' and ') + ' yet.'"
+---
+# Fails until the stub holds `count` agent calls carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubHoldsAll }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text, count]
+    properties:
+      text: { type: string }
+      count: { type: integer }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18522/requests
+  - name: notYet
+    if: !cel >-
+      size(steps.sent.result.body.requests.filter(r, json(r).contains(inputs.text)
+        && json(r).contains('contested'))) < inputs.count
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub holds fewer than ' + string(inputs.count) + ' agent calls carrying ' + inputs.text + '.'"
+---
+# Every journal key with no `turns` row, as the events route answers it: a
+# removed key is 410, a live one would be served.
+kind: Run.Sequence
+metadata: { name: keysWithoutTurns }
+with:
+  - kind: SQLite.Connection
+    metadata: { name: agentDb }
+    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+  - kind: Sql.Query
+    metadata: { name: agentQuery }
+    connection: !ref agentDb
+steps:
+  - name: keys
+    invoke: !ref agentQuery
+    inputs:
+      sql: |
+        SELECT k.journal_key FROM turn_journal_keys k
+        WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.turn_id = k.journal_key)
+  - name: answers
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.keys"
+      steps:
+        - name: events
+          timeout: 5000
+          invoke: !ref read
+          inputs: { path: !interpolate "/chat/${{ item.journal_key }}/events" }
+      outputs:
+        status: !cel "steps.events.result.status"
+    inputs:
+      keys: !cel "steps.keys.result.rows"
+outputs:
+  states: !cel "distinct(steps.answers.result.map(a, a.status))"
+---
+kind: Run.Sequence
+metadata: { name: rowsOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId]
+    properties:
+      conversationId: { type: string }
+with:
+  - kind: SQLite.Connection
+    metadata: { name: agentDb }
+    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+  - kind: Sql.Query
+    metadata: { name: agentQuery }
+    connection: !ref agentDb
+steps:
+  - name: counts
+    invoke: !ref agentQuery
+    inputs:
+      sql: |
+        SELECT (SELECT COUNT(*) FROM turns WHERE conversation_id = ?) AS turns,
+               (SELECT COUNT(*) FROM messages WHERE conversation_id = ?) AS messages,
+               (SELECT COUNT(*) FROM turn_projections WHERE conversation_id = ?) AS projections
+      bindings:
+        - !cel "inputs.conversationId"
+        - !cel "inputs.conversationId"
+        - !cel "inputs.conversationId"
+outputs:
+  counts: !cel >-
+    [int(steps.counts.result.rows[0].turns), int(steps.counts.result.rows[0].messages),
+     int(steps.counts.result.rows[0].projections)]
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18522 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18523 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18522/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        # ── a finished conversation ─────────────────────────────────────────
+        - name: x
+          invoke: !ref create
+        - name: xTurn
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.x.result.id", message: hello }
+        - name: xDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.xTurn.result.body.turnId" }
+        - name: deleted
+          invoke: !ref remove
+          inputs: { conversationId: !cel "steps.x.result.id" }
+        - name: xRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.x.result.id }}" }
+        - name: xRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.x.result.id }}/records" }
+        - name: xEvents
+          invoke: !ref read
+          inputs: { path: !interpolate "/chat/${{ steps.xTurn.result.body.turnId }}/events" }
+        - name: xChat
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.x.result.id", message: again }
+        - name: xRows
+          invoke: !ref rowsOf
+          inputs: { conversationId: !cel "steps.x.result.id" }
+        - name: deletedAgain
+          invoke: !ref remove
+          inputs: { conversationId: !cel "steps.x.result.id" }
+        - name: removedWhole
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              deleted: !cel "steps.deleted.result.status"
+              read: [ !cel "steps.xRead.result.status", !cel "steps.xRead.result.body.code" ]
+              records: [ !cel "steps.xRecords.result.status", !cel "steps.xRecords.result.body.code" ]
+              events: [ !cel "steps.xEvents.result.status", !cel "steps.xEvents.result.body.code" ]
+              chat: [ !cel "steps.xChat.result.status", !cel "steps.xChat.result.body.code" ]
+              rows: !cel "steps.xRows.result.counts"
+              again: !cel "steps.deletedAgain.result.status"
+            expected:
+              deleted: 204
+              read: [ 410, ERR_CONVERSATION_REMOVED ]
+              records: [ 410, ERR_CONVERSATION_REMOVED ]
+              events: [ 410, ERR_JOURNAL_KEY_REMOVED ]
+              chat: [ 410, ERR_CONVERSATION_REMOVED ]
+              rows: [ 0, 0, 0 ]
+              again: 204
+        # ── a running turn ──────────────────────────────────────────────────
+        - name: y
+          invoke: !ref create
+        - name: yTurn
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.y.result.id", message: STUB_SLOW keep going }
+        - name: yHeld
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubHolds
+          inputs: { texts: [STUB_SLOW keep going] }
+        - name: whileRunning
+          invoke: !ref remove
+          inputs: { conversationId: !cel "steps.y.result.id" }
+        - name: stillThere
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.y.result.id }}" }
+        - name: release
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18522/release
+            method: POST
+        - name: yDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.yTurn.result.body.turnId" }
+        - name: onceEnded
+          invoke: !ref remove
+          inputs: { conversationId: !cel "steps.y.result.id" }
+        # ── archived ────────────────────────────────────────────────────────
+        - name: z
+          invoke: !ref create
+        - name: archive
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18523/conversations/${{ steps.z.result.id }}"
+            method: PATCH
+            body: { archived: true }
+        - name: zChat
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.z.result.id", message: hello }
+        - name: refused
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              whileRunning: !cel >-
+                [steps.whileRunning.result.status, steps.whileRunning.result.body.code,
+                 steps.whileRunning.result.body.activeTurnId == steps.yTurn.result.body.turnId]
+              stillThere: !cel "steps.stillThere.result.status"
+              onceEnded: !cel "steps.onceEnded.result.status"
+              archived: [ !cel "steps.zChat.result.status", !cel "steps.zChat.result.body.code" ]
+            expected:
+              whileRunning: [ 409, ERR_TURN_IN_PROGRESS, true ]
+              stillThere: 200
+              onceEnded: 204
+              archived: [ 409, ERR_CONVERSATION_ARCHIVED ]
+  # ── deletion racing admission ─────────────────────────────────────────
+  # A fresh instance on the same workspace, so its per-address throttle admits
+  # all twenty starts. Each admitted turn is held by the stub, so it is still
+  # running when its conversation's DELETE decides.
+  - name: racing
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18523 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18522/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: racers
+          invoke:
+            kind: Run.Projection
+            collection: !cel "range(20)"
+            concurrency: 20
+            steps:
+              - name: conversation
+                invoke: !ref create
+            outputs:
+              id: !cel "steps.conversation.result.id"
+        - name: race
+          invoke:
+            kind: Run.Projection
+            collection: !cel "inputs.pairs"
+            concurrency: 40
+            steps:
+              - name: send
+                if: !cel "item.op == 'delete'"
+                then:
+                  - name: deletion
+                    invoke: !ref remove
+                    inputs: { conversationId: !cel "item.id" }
+                else:
+                  - name: admission
+                    invoke: !ref startTurn
+                    inputs: { conversationId: !cel "item.id", message: STUB_SLOW race }
+            outputs:
+              id: !cel "item.id"
+              op: !cel "item.op"
+              status: !cel "has(steps.deletion) ? steps.deletion.result.status : steps.admission.result.status"
+          inputs:
+            pairs: !cel "flatten(steps.racers.result.map(r, [{'id': r.id, 'op': 'delete'}, {'id': r.id, 'op': 'chat'}]))"
+        - name: releaseRacers
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18522/release
+            method: POST
+        # The refused starts above and in the race alike.
+        - name: raceKeys
+          invoke: !ref keysWithoutTurns
+        - name: neverBoth
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              both: !cel >-
+                steps.racers.result.filter(r,
+                  steps.race.result.exists(o, o.id == r.id && o.op == 'delete' && o.status == 204)
+                    && steps.race.result.exists(o, o.id == r.id && o.op == 'chat' && o.status == 200))
+              outcomes: !cel >-
+                distinct(steps.racers.result.map(r,
+                  string(steps.race.result.filter(o, o.id == r.id && o.op == 'delete')[0].status) + '/'
+                    + string(steps.race.result.filter(o, o.id == r.id && o.op == 'chat')[0].status)))
+                  .filter(s, !(s in ['204/410', '409/200']))
+              keysWithoutTurns: !cel "steps.raceKeys.result.states"
+            expected:
+              both: []
+              outcomes: []
+              keysWithoutTurns: [ 410 ]
+  # ── deletion racing a continue ────────────────────────────────────────
+  # Twenty conversations, each with one failed turn, then a DELETE and a
+  # continue of that turn at once, staggered from the continue 30 ms behind
+  # to the DELETE 27 ms behind, so the pairs sweep from the DELETE winning to
+  # the continue winning. The continued
+  # attempt is held by the stub, so a continue that won still holds its key
+  # when its DELETE decides. Each
+  # half runs on a fresh instance, so the per-address throttle admits all
+  # twenty starts and then all twenty continues.
+  - name: failedTurns
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18523 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18522/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: turns
+          invoke:
+            kind: Run.Projection
+            collection: !cel "range(20)"
+            concurrency: 20
+            steps:
+              - name: conversation
+                invoke: !ref create
+              - name: start
+                invoke: !ref startTurn
+                inputs:
+                  conversationId: !cel "steps.conversation.result.id"
+                  message: STUB_FAIL_ONCE STUB_SLOW contested
+              - name: failed
+                invoke: !ref drain
+                inputs: { turnId: !cel "steps.start.result.body.turnId" }
+            outputs:
+              id: !cel "steps.conversation.result.id"
+              turnId: !cel "steps.start.result.body.turnId"
+      outputs:
+        turns: !cel "steps.turns.result"
+  - name: contested
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          additionalProperties: false
+          required: [turns]
+          properties:
+            turns:
+              type: array
+              items:
+                type: object
+                required: [id, turnId]
+                properties:
+                  id: { type: string }
+                  turnId: { type: string }
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18523 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18522/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: race
+          invoke:
+            kind: Run.Projection
+            collection: !cel "inputs.pairs"
+            concurrency: 40
+            steps:
+              - name: stagger
+                invoke: { kind: Timer.Delay }
+                inputs: { duration: !cel "string(item.delay) + 'ms'" }
+              - name: send
+                if: !cel "item.op == 'delete'"
+                then:
+                  - name: deletion
+                    invoke: !ref remove
+                    inputs: { conversationId: !cel "item.id" }
+                else:
+                  - name: continuation
+                    invoke: !ref call
+                    inputs:
+                      url: !interpolate "http://127.0.0.1:18523/chat/${{ item.turnId }}/continue"
+                      method: POST
+            outputs:
+              id: !cel "item.id"
+              op: !cel "item.op"
+              status: !cel >-
+                has(steps.deletion) ? steps.deletion.result.status : steps.continuation.result.status
+          inputs:
+            pairs: !cel >-
+              flatten(range(size(inputs.turns)).map(i, cel.bind(lead, 3 * i - 30,
+                [{'id': inputs.turns[i].id, 'turnId': inputs.turns[i].turnId, 'op': 'delete', 'delay': lead > 0 ? lead : 0},
+                 {'id': inputs.turns[i].id, 'turnId': inputs.turns[i].turnId, 'op': 'continue', 'delay': lead < 0 ? -lead : 0}])))
+        # Every continue that answered 200 has its attempt held by the stub.
+        - name: continuedHeld
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubHoldsAll
+          inputs:
+            text: "TURN CONTINUED: the previous attempt"
+            count: !cel "size(steps.race.result.filter(o, o.op == 'continue' && o.status == 200))"
+        - name: releaseContinued
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18522/release
+            method: POST
+        # A deleted conversation's turn key reads removed; a continued one ends.
+        - name: keys
+          invoke:
+            kind: Run.Projection
+            collection: !cel "inputs.turns"
+            steps:
+              - name: events
+                timeout: 5000
+                invoke: !ref read
+                inputs: { path: !interpolate "/chat/${{ item.turnId }}/events" }
+            outputs:
+              id: !cel "item.id"
+              status: !cel "steps.events.result.status"
+          inputs:
+            turns: !cel "inputs.turns"
+      outputs:
+        both: !cel >-
+          inputs.turns.filter(t,
+            steps.race.result.exists(o, o.id == t.id && o.op == 'delete' && o.status == 204)
+              && steps.race.result.exists(o, o.id == t.id && o.op == 'continue' && o.status == 200))
+        outcomes: !cel >-
+          distinct(inputs.turns.map(t,
+            string(steps.race.result.filter(o, o.id == t.id && o.op == 'delete')[0].status) + '/'
+              + string(steps.race.result.filter(o, o.id == t.id && o.op == 'continue')[0].status) + '/'
+              + string(steps.keys.result.filter(k, k.id == t.id)[0].status)))
+    inputs:
+      turns: !cel "steps.failedTurns.result.turns"
+  - name: neverContinuedAndDeleted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        both: !cel "steps.contested.result.both"
+        # DELETE / continue / the turn's events.
+        outcomes: !cel >-
+          steps.contested.result.outcomes.filter(s, !(s in ['204/410/410', '204/404/410', '409/200/200']))
+      expected:
+        both: []
+        outcomes: []
+  # ── deletion beside a continue ────────────────────────────────────────
+  - name: continuing
+    invoke: !ref continueAndDelete
+  - name: continueHoldsTheKey
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.continuing.result"
+      expected:
+        whileContinued: [ ERR_TURN_IN_PROGRESS, true ]
+        continued: [ finish ]
+        deletedOnceEnded: true
+        gone: [ ERR_JOURNAL_KEY_REMOVED, removed ]
+        givenBack: [ open, true, true, true, true ]
+---
+# A turn's journal read to its end, however it ends.
+kind: Run.Sequence
+metadata: { name: settled }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: ending
+    try:
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "inputs.turnId"
+          fromId: 0
+      - name: drain
+        timeout: 30000
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.read.result.output"
+    catch:
+      - name: ended
+        value: !cel "error.code"
+outputs:
+  types: !cel "has(steps.drain) ? steps.drain.result.items.map(r, r.data.type) : []"
+---
+# A continue and a deletion of the same conversation, through the chat library.
+# While the continued attempt is held by the stub its key is taken over, so the
+# deletion is refused naming the turn, and it succeeds once the attempt ends. A
+# turn whose conversation was deleted is not continued. A key a continue took
+# over but did not start is given back, with the error the takeover reported,
+# as it was: failed, with its recorded error and its records.
+kind: Run.Sequence
+metadata: { name: continueAndDelete }
+steps:
+  - name: held
+    invoke: !ref Chat.createConversation
+  - name: heldTurn
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.held.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: continue-and-delete
+      message: STUB_FAIL_ONCE STUB_SLOW continued
+  - name: heldFailed
+    invoke: !ref settled
+    inputs: { turnId: !cel "steps.heldTurn.result.turnId" }
+  - name: continued
+    invoke: !ref Chat.continueTurn
+    inputs: { turnId: !cel "steps.heldTurn.result.turnId", clientIp: continue-and-delete }
+  - name: attemptHeld
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubHolds
+    inputs: { texts: ["STUB_FAIL_ONCE STUB_SLOW continued", "TURN CONTINUED: the previous attempt"] }
+  - name: whileContinued
+    try:
+      - name: refusedDelete
+        invoke: !ref Chat.deleteConversation
+        inputs: { conversationId: !cel "steps.held.result.conversation.id" }
+    catch:
+      - name: busy
+        value: !cel "[error.code, error.data.activeTurnId == steps.heldTurn.result.turnId]"
+  - name: release
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18522/release
+      method: POST
+  - name: attemptEnded
+    invoke: !ref settled
+    inputs: { turnId: !cel "steps.heldTurn.result.turnId" }
+  - name: deletedOnceEnded
+    invoke: !ref Chat.deleteConversation
+    inputs: { conversationId: !cel "steps.held.result.conversation.id" }
+  # ── deleted, then continued ─────────────────────────────────────────────
+  - name: gone
+    invoke: !ref Chat.createConversation
+  - name: goneTurn
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.gone.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: continue-and-delete
+      message: STUB_FAIL gone
+  - name: goneFailed
+    invoke: !ref settled
+    inputs: { turnId: !cel "steps.goneTurn.result.turnId" }
+  - name: goneDeleted
+    invoke: !ref Chat.deleteConversation
+    inputs: { conversationId: !cel "steps.gone.result.conversation.id" }
+  - name: goneContinue
+    try:
+      - name: refusedContinue
+        invoke: !ref Chat.continueTurn
+        inputs: { turnId: !cel "steps.goneTurn.result.turnId", clientIp: continue-and-delete }
+    catch:
+      - name: removed
+        value: !cel "error.code"
+  - name: goneKey
+    invoke: !ref libraryRead
+    inputs: { key: !cel "steps.goneTurn.result.turnId", limit: 0 }
+  # ── taken over, then given back ─────────────────────────────────────────
+  - name: back
+    invoke: !ref Chat.createConversation
+  - name: backTurn
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.back.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: continue-and-delete
+      message: STUB_FAIL given back
+  - name: backFailed
+    invoke: !ref settled
+    inputs: { turnId: !cel "steps.backTurn.result.turnId" }
+  - name: before
+    invoke: !ref libraryRead
+    inputs: { key: !cel "steps.backTurn.result.turnId", limit: 0 }
+  - name: takeOver
+    invoke: !ref libraryClaim
+    inputs: { key: !cel "steps.backTurn.result.turnId", writer: taken-over, resume: true }
+  - name: taken
+    invoke: !ref libraryRead
+    inputs: { key: !cel "steps.backTurn.result.turnId", limit: 0 }
+  - name: giveBack
+    invoke: !ref Chat.releaseAttempt
+    inputs:
+      turnId: !cel "steps.backTurn.result.turnId"
+      writer: taken-over
+      failure: !cel "steps.takeOver.result.error"
+  - name: after
+    invoke: !ref libraryRead
+    inputs: { key: !cel "steps.backTurn.result.turnId", limit: 0 }
+outputs:
+  whileContinued: !cel "steps.busy.result"
+  continued: !cel "[steps.attemptEnded.result.types[size(steps.attemptEnded.result.types) - 1]]"
+  deletedOnceEnded: !cel "has(steps.deletedOnceEnded)"
+  gone: !cel "[steps.removed.result, steps.goneKey.result.state]"
+  givenBack: !cel >-
+    [steps.taken.result.state, steps.takeOver.result.error == steps.before.result.error,
+     steps.after.result.state == steps.before.result.state, steps.after.result.error == steps.before.result.error,
+     steps.after.result.lastId == steps.before.result.lastId]
+---
+# The chat library's database, reached from outside it.
+kind: SQLite.Connection
+metadata: { name: libraryDb }
+file: !cel "variables.libraryScratch.joinPath('state').joinPath('agent.sqlite')"
+---
+kind: Sql.Command
+metadata: { name: libraryCommand }
+connection: !ref libraryDb
+---
+kind: Sql.Query
+metadata: { name: libraryQuery }
+connection: !ref libraryDb
+---
+kind: RecordStream.Journal
+metadata: { name: libraryJournal }
+store:
+  kind: RecordStreamSql.JournalStore
+  connection: !ref libraryDb
+  table: turn_journal
+markerRetention: 1h
+---
+kind: RecordStream.JournalClaim
+metadata: { name: libraryClaim }
+journal: !ref libraryJournal
+---
+kind: RecordStream.JournalSink
+metadata: { name: librarySink }
+journal: !ref libraryJournal
+---
+kind: RecordStream.JournalRead
+metadata: { name: libraryRead }
+journal: !ref libraryJournal
+---
+# One copied turn of the hand-crafted branch: its row, then its key claimed and
+# written, as a copy leaves it.
+kind: Run.Sequence
+metadata: { name: copiedTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, turnId]
+    properties:
+      conversationId: { type: string }
+      turnId: { type: string }
+steps:
+  - name: row
+    invoke: !ref libraryCommand
+    inputs:
+      sql: "INSERT INTO turns (turn_id, conversation_id) VALUES (?, ?)"
+      bindings: [ !cel "inputs.turnId", !cel "inputs.conversationId" ]
+  - name: claim
+    invoke: !ref libraryClaim
+    inputs: { key: !cel "inputs.turnId", writer: crashed-branch }
+  - name: records
+    invoke: { kind: Stream.Of }
+    inputs:
+      items:
+        - { type: user-message, content: copied, model: gpt-5.2 }
+        - type: finish
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }
+          finishReason: stop
+  - name: write
+    invoke: !ref librarySink
+    inputs:
+      key: !cel "inputs.turnId"
+      writer: crashed-branch
+      input: !cel "steps.records.result.output"
+---
+kind: Run.Sequence
+metadata: { name: hiddenState }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, turnIds]
+    properties:
+      conversationId: { type: string }
+      turnIds:
+        type: array
+        items: { type: string }
+steps:
+  - name: counts
+    invoke: !ref libraryQuery
+    inputs:
+      sql: |
+        SELECT (SELECT COUNT(*) FROM conversations WHERE id = ? AND removed_at IS NULL) AS live,
+               (SELECT COUNT(*) FROM turns WHERE conversation_id = ?) AS turns
+      bindings: [ !cel "inputs.conversationId", !cel "inputs.conversationId" ]
+  - name: keys
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.turnIds"
+      steps:
+        - name: header
+          invoke: !ref libraryRead
+          inputs: { key: !cel "item", limit: 0 }
+      outputs:
+        state: !cel "steps.header.result.state"
+    inputs:
+      turnIds: !cel "inputs.turnIds"
+outputs:
+  live: !cel "int(steps.counts.result.rows[0].live)"
+  turns: !cel "int(steps.counts.result.rows[0].turns)"
+  keys: !cel "steps.keys.result.map(k, k.state)"
+---
+kind: Run.Sequence
+metadata: { name: crashedBranch }
+steps:
+  - name: ids
+    value:
+      conversation: !cel "uuidv7()"
+      turns: !cel "sort([uuidv7(), uuidv7()])"
+  - name: hidden
+    invoke: !ref libraryCommand
+    inputs:
+      sql: "INSERT INTO conversations (id, title, assembling) VALUES (?, 'Crashed (branch)', 1)"
+      bindings: [ !cel "steps.ids.result.conversation" ]
+  - name: copies
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "inputs.turnIds"
+      steps:
+        - name: copy
+          invoke: !ref copiedTurn
+          inputs:
+            conversationId: !cel "inputs.conversationId"
+            turnId: !cel "item"
+    inputs:
+      conversationId: !cel "steps.ids.result.conversation"
+      turnIds: !cel "steps.ids.result.turns"
+  - name: found
+    try:
+      - name: read
+        invoke: !ref Chat.getConversation
+        inputs: { conversationId: !cel "steps.ids.result.conversation" }
+    catch:
+      - name: notFound
+        value: !cel "error.code"
+  - name: list
+    invoke: !ref Chat.listConversations
+    inputs: { limit: 200, archived: false, q: "", before: "", beforeId: "" }
+  - name: chat
+    try:
+      - name: start
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.ids.result.conversation"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: hello
+    catch:
+      - name: refused
+        value: !cel "error.code"
+  - name: earlierWindow
+    invoke: !ref Chat.retentionSweep
+    inputs:
+      idleBefore: "2000-01-01T00:00:00Z"
+  - name: intact
+    invoke: !ref hiddenState
+    inputs:
+      conversationId: !cel "steps.ids.result.conversation"
+      turnIds: !cel "steps.ids.result.turns"
+  - name: laterWindow
+    invoke: !ref Chat.retentionSweep
+    inputs:
+      idleBefore: !cel "now() + duration('1h')"
+  - name: removed
+    invoke: !ref hiddenState
+    inputs:
+      conversationId: !cel "steps.ids.result.conversation"
+      turnIds: !cel "steps.ids.result.turns"
+  - name: events
+    try:
+      - name: readEvents
+        invoke: !ref Chat.turnEvents
+        inputs: { turnId: !cel "steps.ids.result.turns[0]", fromId: 0 }
+    catch:
+      - name: eventsCode
+        value: !cel "error.code"
+  - name: hiddenUntilIdle
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        found: !cel "steps.notFound.result"
+        listed: !cel "steps.list.result.conversations.exists(c, c.id == steps.ids.result.conversation)"
+        chat: !cel "steps.refused.result"
+        intact: !cel "steps.intact.result"
+        removed: !cel "steps.removed.result"
+        events: !cel "steps.eventsCode.result"
+      expected:
+        found: ERR_CONVERSATION_NOT_FOUND
+        listed: false
+        chat: ERR_CONVERSATION_NOT_FOUND
+        intact: { live: 1, turns: 2, keys: [ finished, finished ] }
+        removed: { live: 0, turns: 0, keys: [ removed, removed ] }
+        events: ERR_JOURNAL_KEY_REMOVED

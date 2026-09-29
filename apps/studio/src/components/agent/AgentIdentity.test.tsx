@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { AgentIdentityState } from "@/agent";
-import { AgentIdentityDetails, NoAuthBadge } from "./AgentIdentity";
+import type { AgentIdentity, AgentIdentityState } from "@/agent";
+import { AgentIdentityDetails, NoAuthBadge, NoTestRunsBadge, UnsupportedFeatures } from "./AgentIdentity";
 
 afterEach(() => {
   cleanup();
@@ -42,5 +42,33 @@ describe("agent identity", () => {
     };
     expect(said({ state: "unavailable" })).toBe("Agent identity unavailable.");
     expect(said({ state: "unauthorized" })).toBe("This agent requires a token.");
+  });
+
+  it("badges an agent that may not run manifests, and lists what an agent does not support", () => {
+    const withRuns = (manifestRuns: boolean | undefined): AgentIdentityState => ({
+      state: "known",
+      identity: { ...(known("bearer") as { identity: AgentIdentity }).identity, manifestRuns },
+    });
+    const text = (node: React.ReactElement) => {
+      const { container } = render(node);
+      const said = container.textContent;
+      cleanup();
+      return said;
+    };
+
+    expect(text(<NoTestRunsBadge identity={withRuns(false)} />)).toBe("No test runs");
+    expect(text(<NoTestRunsBadge identity={withRuns(true)} />)).toBe("");
+    expect(text(<NoTestRunsBadge identity={withRuns(undefined)} />)).toBe("");
+
+    const partial: AgentIdentityState = {
+      state: "known",
+      identity: { name: "A", version: "1", promptId: "p", auth: "bearer", features: ["conversations", "later-thing"] },
+    };
+    expect(text(<UnsupportedFeatures identity={partial} />)).toBe(
+      "Not supported by this agent:Retry, edit & resend, delete from hereBranching a conversation",
+    );
+    expect(text(<UnsupportedFeatures identity={{ state: "unavailable" }} />)).toContain(
+      "Conversation list, search and export",
+    );
   });
 });
