@@ -10,8 +10,10 @@ import {
   reachOfSchema,
   valueBranchSchema,
   type ReachPath,
+  type ReachRef,
   type SchemaReach,
 } from "./reference-reach.js";
+import { substituteCelFields } from "./schema-compat.js";
 
 export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
 export { refSlotOfEntry } from "./reference-reach.js";
@@ -35,8 +37,8 @@ export interface RefFieldEntry {
   isArray: boolean;
   /** The slot's non-reference alternatives: the node's own union branches (see
    *  {@link RefSlot.valueBranches}) and, at an object-level `anyOf` / `oneOf` at
-   *  any depth, the declarations of the same key in the other branches. A value
-   *  satisfying one of these is a value, not a malformed reference. */
+   *  any depth, the declarations of the same key in the other branches. Whether
+   *  a value at a concrete site is one of them is {@link isValueAtSlot}'s. */
   valueBranches?: Record<string, any>[];
   /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
    *  context available to resources placed in this slot. */
@@ -121,24 +123,53 @@ export function satisfiesValueBranch(
 }
 
 /**
+ * True when the value at a reference site satisfies one of its value branches:
+ * a branch of a slot node's own union, or a pattern-level alternative whose
+ * union members all accept the concrete value at their union's position.
+ *
+ * The member condition is JSON Schema's own: a union accepts a value only when
+ * the WHOLE object fits one member, so in a discriminated union the rest of the
+ * object decides whether a sibling branch's plain value applies at the slot.
+ * Expressions in that object stand in as their slot's placeholder, as in every
+ * other schema check of a manifest.
+ */
+export function satisfiesSiteValue(
+  value: unknown,
+  refs: readonly Pick<ReachRef, "node" | "alternatives">[],
+  registry: ValueBranchValidator,
+): boolean {
+  return refs.some(
+    (ref) =>
+      satisfiesValueBranch(value, readRefSlot(ref.node)?.valueBranches, registry) ||
+      ref.alternatives.some(
+        ({ node, members }) =>
+          members !== undefined &&
+          satisfiesValueBranch(value, [node], registry) &&
+          members.every(({ member, document, value: at }) =>
+            satisfiesValueBranch(substituteCelFields(at, member, document), [member], registry),
+          ),
+      ),
+  );
+}
+
+/**
  * True when the value at a reference site is a VALUE rather than a reference.
  *
  * A scalar at a slot whose own node unions a value branch is left to that
  * branch, which AJV already judges beside the reference branch. A pattern-level
  * alternative (a sibling `anyOf` / `oneOf` branch giving the key a value) has no
  * such judge — the reference branch beside it constrains nothing AJV sees — so
- * there the value must satisfy a branch itself, or a string fitting no branch
- * would pass as neither.
+ * there the value must satisfy a branch itself ({@link satisfiesSiteValue}), or
+ * a string fitting no branch would pass as neither.
  */
 export function isValueAtSlot(
   value: unknown,
-  refs: readonly { node: Record<string, any> }[],
-  branches: readonly Record<string, any>[] | undefined,
+  refs: readonly Pick<ReachRef, "node" | "alternatives">[],
   registry: ValueBranchValidator,
 ): boolean {
   const nodeUnionsValue = refs.some((ref) => (readRefSlot(ref.node)?.valueBranches.length ?? 0) > 0);
   if (nodeUnionsValue && typeof value !== "object") return true;
-  return satisfiesValueBranch(value, branches, registry);
+  return satisfiesSiteValue(value, refs, registry);
 }
 
 /** Keys that a named reference object may have. Values beyond these indicate an inline resource. */

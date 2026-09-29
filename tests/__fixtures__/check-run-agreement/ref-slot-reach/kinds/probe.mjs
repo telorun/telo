@@ -111,3 +111,16 @@ export const ReceivedInner = {
     return { invoke: async () => resource.inner.target };
   },
 };
+
+// The target a discriminated `inner` holds: resolved as a reference when `mode`
+// is `ref`, returned as written otherwise.
+export const DiscriminatedInner = {
+  async create(resource, ctx) {
+    return {
+      invoke: async () =>
+        resource.inner.mode === "ref"
+          ? probe(resource.inner.target, ctx, () => "'inner.target'")
+          : resource.inner.target,
+    };
+  },
+};

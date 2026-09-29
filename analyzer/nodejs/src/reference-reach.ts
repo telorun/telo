@@ -24,8 +24,9 @@
  * are ALTERNATIVES when they were entered through different branches of one
  * union, and CONJUNCTS otherwise (the object's own `properties` beside a branch,
  * the members of an `allOf`, a `$ref` and its target). A slot's value branches
- * are its alternatives that carry no reference; the object enclosing a slot is
- * the conjunct declarations one pattern up ({@link ReachRef.enclosing}).
+ * are its alternatives that carry no reference, each kept with the union members
+ * it diverged through ({@link ReachRef.alternatives}); the object enclosing a
+ * slot is the conjunct declarations one pattern up ({@link ReachRef.enclosing}).
  *
  * Every consumer reads a view of it rather than resolving a pattern against a
  * value itself: the kernel's Phase-5 substitution and scope creation, inline
@@ -91,6 +92,8 @@ export interface BranchChoice {
   /** The union's branch array, by identity. */
   union: object;
   index: number;
+  /** The pattern the union is written at, relative to the reach's node. */
+  path: string;
 }
 
 /** A schema node entered at a pattern, with the union branches that led to it. */
@@ -206,6 +209,15 @@ export function valueBranchSchema(branch: Record<string, any>): Record<string, a
  *  value alternatives. */
 const entryDeclarations = new WeakMap<RefFieldEntry, Declaration>();
 
+/** A value alternative of a slot: its declaration at the slot's pattern, and
+ *  each union branch it was entered through where the slot was not. */
+interface DeclaredAlternative {
+  node: Record<string, any>;
+  diverging: BranchChoice[];
+}
+
+const entryAlternatives = new WeakMap<RefFieldEntry, DeclaredAlternative[]>();
+
 const resourceReaches = new WeakMap<object, SchemaReach>();
 const enteredReaches = new WeakMap<object, WeakMap<object, SchemaReach>>();
 
@@ -301,8 +313,9 @@ function isReferenceNode(node: Record<string, any>, document: Record<string, any
 }
 
 /** Each reference slot takes the non-reference declarations that are its
- *  alternatives at its pattern as value branches, and every value branch
- *  records the document it resolves against. */
+ *  alternatives at its pattern as value branches, keeping the union members
+ *  each diverged through; every value branch and member records the document it
+ *  resolves against. */
 function addValueAlternatives(reach: SchemaReach): void {
   for (const [path, at] of reach.paths) {
     for (const entry of at.refs) {
@@ -314,12 +327,31 @@ function addValueAlternatives(reach: SchemaReach): void {
         : [];
       if (alternatives.length > 0) {
         entry.valueBranches = [...(entry.valueBranches ?? []), ...alternatives.map((d) => d.node)];
+        entryAlternatives.set(
+          entry,
+          alternatives.map((d) => ({
+            node: d.node,
+            diverging: d.branches.filter((x) =>
+              own!.branches.some((y) => x.union === y.union && x.index !== y.index),
+            ),
+          })),
+        );
       }
       for (const branch of entry.valueBranches ?? []) {
         if (!branchDocuments.has(branch)) branchDocuments.set(branch, reach.document);
       }
+      for (const { diverging } of entryAlternatives.get(entry) ?? []) {
+        for (const choice of diverging) {
+          const member = unionMember(choice);
+          if (!branchDocuments.has(member)) branchDocuments.set(member, reach.document);
+        }
+      }
     }
   }
+}
+
+function unionMember(choice: BranchChoice): Record<string, any> {
+  return (choice.union as Record<string, any>[])[choice.index]!;
 }
 
 /** The pattern of the object enclosing `path`'s value: `routes[].handler` →
@@ -489,7 +521,7 @@ function visitVariants(schema: Record<string, any>, path: string, loc: string, w
     const disjunct = variantKey !== "allOf";
     variants.forEach((variant, i) => {
       if (!variant || typeof variant !== "object") return;
-      if (disjunct) walk.branches.push({ union: variants, index: i });
+      if (disjunct) walk.branches.push({ union: variants, index: i, path });
       try {
         visitVariant(variant, path, `${joinKey(loc, variantKey)}[${i}]`, walk);
       } finally {
@@ -713,6 +745,17 @@ export interface ReachRef {
   /** The conjunct declarations of the object enclosing the slot, in the order
    *  the reach entered them — never a branch alternative to the slot's own. */
   enclosing: readonly Record<string, any>[];
+  /** The slot's value alternatives at this site: each alternative's declaration
+   *  at the slot's pattern and, per union it was entered through where the slot
+   *  was not, that union's member with the value at the union's position here.
+   *  `members` is undefined where this site has no such position (a recursion
+   *  re-entered below the union), so the alternative does not apply. */
+  alternatives: readonly {
+    node: Record<string, any>;
+    members:
+      | readonly { member: Record<string, any>; document: Record<string, any>; value: unknown }[]
+      | undefined;
+  }[];
 }
 
 /**
@@ -907,6 +950,7 @@ function enumerateSites(
               viaAnchor: reach !== root,
               node: entryDeclarations.get(entry)!.node,
               enclosing: enclosingDeclarations(reach, declaredPath, entry),
+              alternatives: siteAlternatives(entry, reach, prefix, at0, found),
             };
             if (entry.context) ref.context = entry.context;
             site.refs.push(ref);
@@ -962,6 +1006,37 @@ function enumerateSites(
   walk(root, "", { value: data, path: "", keys: [] }, "", [], "");
 
   return [...sites.values()].map(({ from, ...site }) => site);
+}
+
+/** An entry's value alternatives at one concrete site `found` below `start`,
+ *  each union member paired with the value at the union's position — the site's
+ *  own ancestor there, among the positions the union's pattern resolves to. */
+function siteAlternatives(
+  entry: RefFieldEntry,
+  reach: SchemaReach,
+  prefix: string,
+  start: Site,
+  found: Site,
+): ReachRef["alternatives"] {
+  const declared = entryAlternatives.get(entry);
+  if (!declared) return [];
+  return declared.map(({ node, diverging }) => {
+    const members: { member: Record<string, any>; document: Record<string, any>; value: unknown }[] = [];
+    for (const choice of diverging) {
+      const rel = choice.path === prefix ? "" : relativeFieldPath(choice.path, prefix);
+      const position =
+        rel === undefined
+          ? undefined
+          : resolveSites(start, rel, prefix, reach).find(
+              (site) =>
+                site.keys.length <= found.keys.length &&
+                site.keys.every((key, i) => found.keys[i] === key),
+            );
+      if (!position) return { node, members: undefined };
+      members.push({ member: unionMember(choice), document: reach.document, value: position.value });
+    }
+    return { node, members };
+  });
 }
 
 /** A concrete position of a resource at or above a reference slot. */

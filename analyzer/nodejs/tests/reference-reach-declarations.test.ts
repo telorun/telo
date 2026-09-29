@@ -259,6 +259,57 @@ describe("a key a sibling branch gives a value", () => {
     expect(formCodes(schema, { mode: "text", target: "hello" })).toEqual([]);
   });
 
+  describe("only where the rest of the object fits the branch giving the value", () => {
+    const discriminated = {
+      oneOf: [
+        { required: ["mode"], properties: { mode: { const: "ref" }, target: refNode } },
+        { required: ["mode"], properties: { mode: { const: "text" }, target: { type: "string" } } },
+      ],
+    };
+
+    it("at a root `oneOf`", () => {
+      expect(formCodes(discriminated, { mode: "ref", target: "hello" })).toEqual(["INVALID_REFERENCE_FORM"]);
+    });
+
+    it("at a property's `oneOf`", () => {
+      const schema = { properties: { inner: { type: "object", ...discriminated } } };
+      expect(formCodes(schema, { inner: { mode: "ref", target: "hello" } })).toEqual([
+        "INVALID_REFERENCE_FORM",
+      ]);
+      expect(formCodes(schema, { inner: { mode: "text", target: "hello" } })).toEqual([]);
+    });
+
+    it("at a union several objects above the slot, per array item", () => {
+      const schema = {
+        properties: {
+          items: {
+            type: "array",
+            items: {
+              oneOf: [
+                {
+                  required: ["mode"],
+                  properties: { mode: { const: "ref" }, inner: { properties: { target: refNode } } },
+                },
+                {
+                  required: ["mode"],
+                  properties: { mode: { const: "text" }, inner: { properties: { target: { type: "string" } } } },
+                },
+              ],
+            },
+          },
+        },
+      };
+      expect(
+        formCodes(schema, {
+          items: [
+            { mode: "text", inner: { target: "hello" } },
+            { mode: "ref", inner: { target: "hello" } },
+          ],
+        }),
+      ).toEqual(["INVALID_REFERENCE_FORM"]);
+    });
+  });
+
   it("does not read an `allOf` member that only annotates the key as a value", () => {
     const schema = {
       allOf: [{ properties: { target: refNode } }, { properties: { target: { description: "The target." } } }],

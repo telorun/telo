@@ -208,6 +208,8 @@ targets:
   - !ref refSlotReachValueAlternativeRuns
   - !ref refSlotReachValueConjunct
   - !ref refSlotReachValueConjunctAtRuntime
+  - !ref refSlotReachValueDiscriminated
+  - !ref refSlotReachValueDiscriminatedAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -2109,3 +2111,24 @@ source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-conjunct/telo.ya
 expect:
   errors: []
   runFails: "'target' must be a `!ref` to a resource satisfying `Telo.Invocable`."
+---
+# A sibling branch of a discriminated union giving the key a string is not an
+# alternative where the discriminator selects the reference branch: the string
+# is refused at the declaring library and, from a silent consumer, where the
+# slot is resolved.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachValueDiscriminated
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-discriminated/lib/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE_FORM
+      message: "Reach.ValueViaDiscriminated/discriminated: string reference at 'inner.target' → 'hello' is not supported"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachValueDiscriminatedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-discriminated/telo.yaml
+expect:
+  errors: []
+  runFails: "'inner.target' must be a `!ref` to a resource satisfying `Telo.Invocable`."

@@ -25,6 +25,7 @@ exports:
     - ValueViaRootAnyOf
     - ValueViaNested
     - ValueViaAllOf
+    - ValueViaDiscriminated
 ---
 kind: Telo.Definition
 metadata:
@@ -265,3 +266,28 @@ schema:
           x-telo-ref: { kind: Telo.Invocable, use: call }
     - properties:
         target: { description: The target to hold. }
+---
+# A discriminated union one object down: `mode` selects the branch, so a plain
+# string at `target` is a value only beside `mode: text`.
+kind: Telo.Definition
+metadata:
+  name: ValueViaDiscriminated
+  description: Resolves the target it holds as a reference when mode is ref, and returns it as written when mode is text.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#DiscriminatedInner
+schema:
+  type: object
+  properties:
+    inner:
+      type: object
+      oneOf:
+        - required: [mode]
+          properties:
+            mode: { const: ref }
+            target:
+              x-telo-ref: { kind: Telo.Invocable, use: call }
+        - required: [mode]
+          properties:
+            mode: { const: text }
+            target: { type: string }

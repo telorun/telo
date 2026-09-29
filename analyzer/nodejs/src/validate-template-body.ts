@@ -9,7 +9,6 @@ import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
-import { siteRefEntry } from "./reference-reach.js";
 import { templateBodies } from "./template-body.js";
 import { isSelfForward } from "./template-self-forward.js";
 import {
@@ -313,7 +312,6 @@ export function validateTemplateBody(
       }
       for (const site of registry.referenceSites(view, aliases, aliasesByModule, body.manifest)) {
         if (site.refs.length === 0) continue;
-        const entry = siteRefEntry(site);
         const value = site.data;
         if (value == null) continue;
         const path = `${body.prefix}.${site.path}`;
@@ -338,7 +336,7 @@ export function validateTemplateBody(
           );
           continue;
         }
-        if (isValueAtSlot(value, site.refs, entry.valueBranches, registry)) continue;
+        if (isValueAtSlot(value, site.refs, registry)) continue;
         if (typeof value === "string") {
           report(
             "INVALID_REFERENCE_FORM",
