@@ -1,6 +1,6 @@
 [package]
 name = "telorun-sdk-core"
-version = "0.104.0"
+version = "0.105.0"
 edition = "2021"
 publish = false
 description = "The Telo SDK's value domain — CEL values, typed frames, plain encodings, value types, logging — without a controller backend."
