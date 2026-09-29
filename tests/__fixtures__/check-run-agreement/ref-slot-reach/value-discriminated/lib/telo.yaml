@@ -1,0 +1,21 @@
+# A string at a reference slot whose sibling union branch gives the key a plain
+# string, while `mode` selects the reference branch: the string is the removed
+# string-reference spelling. `telo check` reports it here.
+kind: Telo.Library
+metadata:
+  name: RefSlotReachValueDiscriminated
+  version: 1.0.0
+  description: >-
+    Fixture library whose resource writes a plain string at a reference slot of
+    a discriminated union whose discriminator selects the reference branch.
+imports:
+  Reach: ../../kinds
+exports:
+  resources: [discriminated]
+---
+kind: Reach.ValueViaDiscriminated
+metadata:
+  name: discriminated
+inner:
+  mode: ref
+  target: hello

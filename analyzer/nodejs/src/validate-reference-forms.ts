@@ -69,7 +69,7 @@ export function validateReferenceForms(
         // what the value must be one of. The object form below is not ambiguous
         // the same way: `{kind, name}` is the removed reference object, so it is
         // still reported unless a branch genuinely describes that shape.
-        if (isValueAtSlot(value, e.refs, e.entry.valueBranches, registry)) return;
+        if (isValueAtSlot(value, e.refs, registry)) return;
 
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;

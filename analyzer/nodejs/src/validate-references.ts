@@ -4,7 +4,7 @@ import { visitManifest } from "./manifest-visitor.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import {
   isInlineResource,
-  satisfiesValueBranch,
+  satisfiesSiteValue,
   type RefFieldEntry,
 } from "./reference-field-map.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
@@ -518,7 +518,7 @@ export function validateReferences(
         // function, because it has to be applied here too: an OBJECT-shaped value
         // branch would otherwise reach the structural check below and be reported
         // as a reference missing 'kind' and 'name'.
-        if (satisfiesValueBranch(val, entry.valueBranches, registry)) return;
+        if (satisfiesSiteValue(val, e.refs, registry)) return;
 
         // Skip inline resources — Phase 2 normalization hasn't run yet.
         if (isInlineResource(refVal)) return;
