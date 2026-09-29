@@ -6,7 +6,12 @@
  * `reference-reach.ts`: the one enumeration every consumer reads.
  */
 import { type RefUse, type RefUseCases, readRefSlot } from "./ref-slot.js";
-import { reachOfSchema, type ReachPath, type SchemaReach } from "./reference-reach.js";
+import {
+  reachOfSchema,
+  valueBranchSchema,
+  type ReachPath,
+  type SchemaReach,
+} from "./reference-reach.js";
 
 export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
 export { refSlotOfEntry } from "./reference-reach.js";
@@ -28,9 +33,10 @@ export interface RefFieldEntry {
   inputs?: string;
   /** True when the field path traversed through at least one array (path contains "[]"). */
   isArray: boolean;
-  /** The slot's non-reference branches, when the reference constraint is a
-   *  branch of a union — see {@link RefSlot.valueBranches}. A value satisfying
-   *  one of these is a value, not a malformed reference. */
+  /** The slot's non-reference alternatives: the node's own union branches (see
+   *  {@link RefSlot.valueBranches}) and, at an object-level `anyOf` / `oneOf` at
+   *  any depth, the declarations of the same key in the other branches. A value
+   *  satisfying one of these is a value, not a malformed reference. */
   valueBranches?: Record<string, any>[];
   /** x-telo-context schema declared on this ref slot, if any. Describes the CEL invocation
    *  context available to resources placed in this slot. */
@@ -105,11 +111,34 @@ export function satisfiesValueBranch(
   registry: ValueBranchValidator,
 ): boolean {
   if (!branches?.length) return false;
-  return branches.some(
-    (branch) =>
-      registry.schemaCompileError(branch) === undefined &&
-      registry.validateWithRefs(value, branch).length === 0,
-  );
+  return branches.some((branch) => {
+    const schema = valueBranchSchema(branch);
+    return (
+      registry.schemaCompileError(schema) === undefined &&
+      registry.validateWithRefs(value, schema).length === 0
+    );
+  });
+}
+
+/**
+ * True when the value at a reference site is a VALUE rather than a reference.
+ *
+ * A scalar at a slot whose own node unions a value branch is left to that
+ * branch, which AJV already judges beside the reference branch. A pattern-level
+ * alternative (a sibling `anyOf` / `oneOf` branch giving the key a value) has no
+ * such judge — the reference branch beside it constrains nothing AJV sees — so
+ * there the value must satisfy a branch itself, or a string fitting no branch
+ * would pass as neither.
+ */
+export function isValueAtSlot(
+  value: unknown,
+  refs: readonly { node: Record<string, any> }[],
+  branches: readonly Record<string, any>[] | undefined,
+  registry: ValueBranchValidator,
+): boolean {
+  const nodeUnionsValue = refs.some((ref) => (readRefSlot(ref.node)?.valueBranches.length ?? 0) > 0);
+  if (nodeUnionsValue && typeof value !== "object") return true;
+  return satisfiesValueBranch(value, branches, registry);
 }
 
 /** Keys that a named reference object may have. Values beyond these indicate an inline resource. */

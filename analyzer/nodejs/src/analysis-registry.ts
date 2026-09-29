@@ -17,18 +17,18 @@ import { inheritedCapability, type ContractDirection, type DefResolver } from ".
 import { resolveContract } from "./invocation-contract.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import type { ReachSite } from "./reference-reach.js";
+import { refSlotOfEntry, type ReachSite } from "./reference-reach.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
-import type { RefSlot } from "./ref-slot.js";
+import { possibleUses, type RefSlot } from "./ref-slot.js";
 import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
 
 const TELO_BUILTIN_MODULE = "Telo";
 
 /** One reference field declared by a resource's definition, derived purely from
- *  the schema field map (independent of whether the manifest fills it). Editor
- *  hosts render these as ports / adapters on a node. */
+ *  the schema's reference reach (independent of whether the manifest fills it).
+ *  Editor hosts render these as ports / adapters on a node. */
 export interface RefFieldInfo {
   /** Field-map path with `[]` / `{}` markers (e.g. `targets[]`,
    *  `routes[].handler`, `encoder`). */
@@ -429,7 +429,16 @@ export class AnalysisRegistry {
       new Set(options.entryModule ? [options.entryModule] : []),
     );
     return {
-      refFields: (resource) => this.refFieldsForResource(resource),
+      refFields: (resource) => {
+        const declared = this.defs.declaredReachOf(resource, this.aliases, this.aliasesByModule);
+        return (declared?.references ?? []).map(({ path, isArray, kinds, entries }) => ({
+          path,
+          isArray,
+          refs: kinds,
+          capabilities: this.capabilitiesForRefs(kinds),
+          uses: [...new Set(entries.flatMap((entry) => possibleUses(refSlotOfEntry(entry))))],
+        }));
+      },
       refPositions: (resource) =>
         this.defs.referencePositions(resource, this.aliases, this.aliasesByModule),
       refSites: (resource) =>

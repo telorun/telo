@@ -11,7 +11,20 @@ metadata:
     Fixture library whose kinds hold references and execution scopes through
     local $ref, root union branches, open-keyed roots and recursive shapes.
 exports:
-  kinds: [ViaDefs, ViaRootAnyOf, ViaRootMap, ViaRecursion, ScopeViaAnyOf, ScopeViaDefs]
+  kinds:
+    - ViaDefs
+    - ViaRootAnyOf
+    - ViaRootMap
+    - ViaRecursion
+    - ScopeViaAnyOf
+    - ScopeViaDefs
+    - Echo
+    - PairedViaDefs
+    - PairedViaRootAnyOf
+    - PairedViaRootMap
+    - ValueViaRootAnyOf
+    - ValueViaNested
+    - ValueViaAllOf
 ---
 kind: Telo.Definition
 metadata:
@@ -115,3 +128,140 @@ schema:
       type: array
       x-telo-scope: /pick
       items: { type: object }
+---
+# A reference slot paired with an author-written argument map through its own
+# `inputs:` pointer — behind a local `$ref`, in a root `anyOf` branch and under a
+# root `additionalProperties`. The slot's kind declares input `a`; a target
+# requiring anything else is satisfied only by the map written beside it.
+kind: Telo.Definition
+metadata:
+  name: Echo
+  description: Returns the inputs it was invoked with.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Echo
+inputType:
+  type: object
+  properties:
+    a: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    inputType: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: PairedViaDefs
+  description: Invokes each route's handler with the inputs written beside it, routes declared through a local $ref.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#PairedRoutes
+schema:
+  type: object
+  additionalProperties: false
+  required: [routes]
+  properties:
+    routes:
+      type: array
+      items: { $ref: "#/$defs/Route" }
+  $defs:
+    Route:
+      type: object
+      additionalProperties: false
+      properties:
+        handler:
+          x-telo-ref: { kind: Self.Echo, use: call, inputs: /inputs }
+        inputs:
+          type: object
+          x-telo-topology-role: inputs
+---
+kind: Telo.Definition
+metadata:
+  name: PairedViaRootAnyOf
+  description: Invokes its handler with the inputs written beside it, both declared by a root union branch.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#PairedRoot
+schema:
+  type: object
+  anyOf:
+    - required: [handler]
+      properties:
+        handler:
+          x-telo-ref: { kind: Self.Echo, use: call, inputs: /inputs }
+        inputs:
+          type: object
+          x-telo-topology-role: inputs
+---
+kind: Telo.Definition
+metadata:
+  name: PairedViaRootMap
+  description: Invokes each keyed entry's handler with the inputs written beside it, entries under an open-keyed root.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#PairedMap
+schema:
+  type: object
+  additionalProperties:
+    properties:
+      handler:
+        x-telo-ref: { kind: Self.Echo, use: call, inputs: /inputs }
+      inputs:
+        type: object
+        x-telo-topology-role: inputs
+---
+# A key one union branch declares a reference slot and a sibling branch a plain
+# string, at the schema root and one object down: the string is a value. The
+# same key annotated by an `allOf` member is not an alternative, so a string
+# there is still the removed string-reference spelling.
+kind: Telo.Definition
+metadata:
+  name: ValueViaRootAnyOf
+  description: Returns the target it holds, a reference or a plain string unioned at the schema root.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Received
+schema:
+  type: object
+  anyOf:
+    - properties:
+        target:
+          x-telo-ref: { kind: Telo.Invocable, use: call }
+    - properties:
+        target: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: ValueViaNested
+  description: Returns the target it holds, a reference or a plain string unioned one object down.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#ReceivedInner
+schema:
+  type: object
+  properties:
+    inner:
+      type: object
+      anyOf:
+        - properties:
+            target:
+              x-telo-ref: { kind: Telo.Invocable, use: call }
+        - properties:
+            target: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: ValueViaAllOf
+  description: Reports whether the target an allOf member annotates arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Target
+schema:
+  type: object
+  allOf:
+    - properties:
+        target:
+          x-telo-ref: { kind: Telo.Invocable, use: call }
+    - properties:
+        target: { description: The target to hold. }

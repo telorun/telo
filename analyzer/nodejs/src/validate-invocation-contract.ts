@@ -151,7 +151,7 @@ export function validateInvocationContract(
  *
  *  - the slot's declared kind declares no `inputType` and is not a run site →
  *    nothing to violate, accept;
- *  - the wiring site takes a paired author `inputs:` → the author supplies the
+ *  - a slot at the site declares an `inputs:` pointer → the author supplies the
  *    arguments and can see both sides, so the call site check covers it;
  *  - the consumer's controller builds the arguments and knows only the slot's
  *    kind → the wired resource must not require anything that kind does not
@@ -177,11 +177,10 @@ function checkRefSlotWiring(
   const ownModule = (m.metadata as { module?: string } | undefined)?.module;
   for (const site of reachSites(schema, m)) {
     if (site.refs.length === 0) continue;
-    // A slot that takes a paired `inputs:` is the author's to fill; its values
-    // are checked at the call site instead, against the target's own contract.
-    if (site.refs.some((ref) => slotTakesPairedInputs(ref.declaredIn.node, ref.declaredPath))) {
-      continue;
-    }
+    // A slot whose own `inputs:` pointer names an argument map is the author's
+    // to fill; its values are checked at the call site instead
+    // (`CONTRACT_INPUTS_MISMATCH`), against the target's own contract.
+    if (site.refs.some((ref) => ref.slot.inputs !== undefined)) continue;
     const entry = siteRefEntry(site);
     const slotDeclares = slotDeclaredInputs(entry.refs, resolveDef, manifests);
     const runSite = isRunOnlySlot(entry.refs, resolveDef);
@@ -302,33 +301,6 @@ function contractSchemaFor(
 function requiredInputsOf(schema: Record<string, any> | undefined): string[] | undefined {
   if (!schema) return undefined;
   return Array.isArray(schema.required) ? (schema.required as string[]) : [];
-}
-
-/** Whether the object containing this ref slot also declares an inputs field —
- *  the `invoke`/`inputs` pairing, recognised through the topology role rather
- *  than a field name, so a composer spelling it differently still counts. */
-function slotTakesPairedInputs(schema: Record<string, any>, path: string): boolean {
-  const parentPath = path.slice(0, Math.max(0, path.lastIndexOf(".")));
-  const parent = parentPath ? navigateSchema(schema, parentPath) : schema;
-  const properties = (parent?.properties ?? {}) as Record<string, Record<string, any>>;
-  return Object.values(properties).some((p) => p?.["x-telo-topology-role"] === "inputs");
-}
-
-/** Follow a field-map path (`a.b[].c`) through a schema's properties/items. */
-function navigateSchema(
-  schema: Record<string, any>,
-  path: string,
-): Record<string, any> | undefined {
-  let node: Record<string, any> | undefined = schema;
-  for (const raw of path.split(".")) {
-    if (!node) return undefined;
-    const key = raw.replace(/\[\]|\{\}/g, "");
-    let next = (node.properties ?? {})[key] as Record<string, any> | undefined;
-    if (!next) return undefined;
-    if (raw.includes("[]")) next = (next.items ?? {}) as Record<string, any>;
-    node = next;
-  }
-  return node;
 }
 
 /** The `{kind, name}` references a site holds — one, or each item of a list. */

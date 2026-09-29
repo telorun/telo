@@ -3388,9 +3388,9 @@ export class StaticAnalyzer {
       });
     }
 
-    // Validate step `invoke` references — the slots the reference field map
-    // deliberately skips (behind the step `$ref`), so a missing instance or a
-    // kind-instead-of-instance ref there is caught statically, not at runtime.
+    // Validate step `invoke` references — the slots inside a step body, where
+    // the reference reach stops, so a missing instance or a kind-instead-of-
+    // instance ref there is caught statically, not at runtime.
     diagnostics.push(...validateStepInvokeReferences(allManifests, defs, aliases));
 
     // `required:` inside a `status:` block — reported here rather than by the

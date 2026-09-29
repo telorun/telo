@@ -5,7 +5,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { isRefSourceSpelling } from "./ref-sentinel-target.js";
-import { satisfiesValueBranch } from "./reference-field-map.js";
+import { isValueAtSlot } from "./reference-field-map.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -62,16 +62,14 @@ export function validateReferenceForms(
         // `!ref` and `!cel` sentinels are the supported shapes.
         if (isTaggedSentinel(value)) return;
 
-        // A SCALAR at a slot whose union has a value branch is a value, and the
-        // value branch is what judges it. Reporting a mistyped storage class as
-        // a malformed reference — "write it as '!ref txt'" — instructs the author
-        // to convert a typo into a reference, and AJV has already said what the
-        // value must be one of. The object form below is not ambiguous the same
-        // way: `{kind, name}` is the removed reference object, so it is still
-        // reported unless a branch genuinely describes that shape.
-        const hasValueBranch = (e.entry.valueBranches?.length ?? 0) > 0;
-        if (hasValueBranch && typeof value !== "object") return;
-        if (satisfiesValueBranch(value, e.entry.valueBranches, registry)) return;
+        // A SCALAR at a slot whose own node unions a value branch is a value, and
+        // the value branch is what judges it. Reporting a mistyped storage class
+        // as a malformed reference — "write it as '!ref txt'" — instructs the
+        // author to convert a typo into a reference, and AJV has already said
+        // what the value must be one of. The object form below is not ambiguous
+        // the same way: `{kind, name}` is the removed reference object, so it is
+        // still reported unless a branch genuinely describes that shape.
+        if (isValueAtSlot(value, e.refs, e.entry.valueBranches, registry)) return;
 
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;

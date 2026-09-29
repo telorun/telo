@@ -4,6 +4,8 @@ import { AliasResolver } from "../src/alias-resolver.js";
 import { buildCallGraph, resourceId } from "../src/call-graph.js";
 import { DefinitionRegistry } from "../src/definition-registry.js";
 import { createResolveCtx, resolveThrowsUnion } from "../src/resolve-throws-union.js";
+import { possibleUses } from "../src/ref-slot.js";
+import { refSlotOfEntry, type DeclaredReference } from "../src/reference-reach.js";
 import { manifestFragmentRef, withSchemaFragments } from "../src/manifest-schemas.js";
 import {
   buildModuleGraph,
@@ -14,6 +16,11 @@ import {
   isUnwired,
   type ModuleGraphDeps,
 } from "../src/module-graph.js";
+
+/** Every use the slots at one declared pattern can take — the registry's rule. */
+const usesOf = (entries: DeclaredReference["entries"]) => [
+  ...new Set(entries.flatMap((entry) => possibleUses(refSlotOfEntry(entry)))),
+];
 
 /** A resource's filled reference sites, as `AnalysisRegistry.moduleGraphDeps`
  *  reads them. */
@@ -206,13 +213,14 @@ function fixtureWith(
       return { codes: [...union.codes.keys()], unbounded: union.unbounded };
     },
     refFields: (resource) =>
-      (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds }) => ({
+      (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds, entries }) => ({
         path,
         isArray,
         refs: kinds,
         capabilities: kinds.map(
           (r) => (byKind.get(r) as { capability?: string } | undefined)?.capability ?? r,
         ),
+        uses: usesOf(entries),
       })),
     refSites: (resource) => refSitesOf(registry, resource),
     refPositions: (resource) => registry.referencePositions(resource),
@@ -773,11 +781,12 @@ describe("where a row's call is written", () => {
           return { codes: [...union.codes.keys()], unbounded: union.unbounded };
         },
         refFields: (resource) =>
-          (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds }) => ({
+          (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds, entries }) => ({
             path,
             isArray,
             refs: kinds,
             capabilities: kinds,
+            uses: usesOf(entries),
           })),
         refSites: (resource) => refSitesOf(registry, resource),
         refPositions: (resource) => registry.referencePositions(resource),

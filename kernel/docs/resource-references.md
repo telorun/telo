@@ -471,12 +471,13 @@ The analyzer owns all logic that both the kernel and IDE need:
 
 | Export                                          | Used by                                        |
 | ----------------------------------------------- | ---------------------------------------------- |
-| `reachSites(schema, data, schemaFrom?)` / `declaredReach(schema, schemaFrom?)` | Kernel (Phase 5, scope creation, the inherited-controller path), every analyzer pass, IDE (Section 10 port list) |
+| `reachSites(schema, data, schemaFrom?)`         | Kernel (Phase 5, scope creation, the inherited-controller path), every analyzer pass |
+| `DefinitionRegistry.declaredReachOf(resource, aliases?, aliasesByModule?)` | IDE (Section 10 port list), the module graph |
 | `normalizeInlineResources(manifests, registry)` | Kernel (Phase 2)                               |
 | `validateReferences(resources, context)`        | Kernel (Phase 3), IDE (diagnostics)            |
 | `buildDependencyGraph(resources, registry)`     | Kernel (Phase 4), `telo check` and the editor (`DEPENDENCY_CYCLE`) |
 
-Both read ONE traversal of a kind's schema (the reach, §9 Phase 1), which records `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots) separately; a scope entry carries its JSON Pointer visibility path. `reachSites` enumerates one resource's CONCRETE sites — what the kernel substitutes and what every analyzer pass reads; `declaredReach` lists the kind's PATTERNS — what the editor draws as ports, filled or not. No consumer resolves a pattern against a value itself.
+Both read ONE traversal of a kind's schema (the reach, §9 Phase 1), which records `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots) separately; a scope entry carries its JSON Pointer visibility path. `reachSites` enumerates one resource's CONCRETE sites — what the kernel substitutes and what every analyzer pass reads; the registry's `declaredReachOf` lists the kind's PATTERNS, its kind resolved in the declaring module's scope and its schema-from slots expanded — what the editor draws as ports, filled or not. No consumer resolves a pattern against a value itself.
 
 `validateReferences` takes an `AnalysisContext` as its second parameter — the same type already used by `StaticAnalyzer.analyze()`, carrying both `AliasResolver` and `DefinitionRegistry`.
 
@@ -594,7 +595,7 @@ Reference injection is implemented across five sequential phases that span `load
 
 A kind's schema is traversed once (memoized per schema object) into its **reach**. The traversal follows a local `$ref` against the document it sits in, walks the root's `properties`, its `anyOf` / `oneOf` / `allOf` branches and its `additionalProperties`, records a reference back to a node already on the descent as a back-edge rather than unrolling it, never follows a non-local `$ref`, and stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body. It records:
 
-- A node containing `x-telo-ref` is a **reference slot**. Every slot any branch declares at one pattern is kept, kinds unioned (a `kind:` list and `anyOf` branches alike).
+- A node containing `x-telo-ref` is a **reference slot**. Every slot any branch declares at one pattern is kept, kinds unioned (a `kind:` list and `anyOf` branches alike). A sibling `anyOf` / `oneOf` branch giving the same key a plain value (`target: { type: string }`) is one of the slot's value branches, at any depth: a value it accepts is left in place for the controller, never substituted. An `allOf` member or the object's own `properties` beside a branch is not an alternative and adds none.
 - A node containing `x-telo-scope` is a **scope slot**, legal only on a named top-level property (§7). The JSON Pointer visibility path is recorded alongside the field path.
 
 Two views read it. The **declared patterns** (below; a recursive slot is listed at its outermost occurrence). The **concrete sites** of one resource, schema and data in tandem: a `[]` segment iterates an array, a `{}` segment every key its schema does not declare (at the root, never `kind` / `metadata`), a back-edge is followed as deep as the data goes — a datum aliasing one of its own ancestors ends the walk rather than looping — and a static `x-telo-schema-from` slot is expanded by walking the anchor definition's WHOLE schema, entered at the anchor node, in the anchor definition's module alias scope. Each site is visited once with the union of every slot that reaches it.

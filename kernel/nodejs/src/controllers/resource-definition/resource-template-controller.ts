@@ -286,10 +286,10 @@ export function createTemplateController(definition: {
 
       // A child is DECLARED by the defining library, so its kind and every
       // alias-qualified name in its body are written in that library's alias
-      // scope. Phase-5 injection resolves a resource's ref-slot map through its
+      // scope. Phase-5 injection resolves a resource's reference sites through its
       // `metadata.module`, and a child registered without one was resolved
-      // against the ROOT application's imports instead — which found a field map
-      // only when the consumer happened to import the same alias, and otherwise
+      // against the ROOT application's imports instead — which found its reference
+      // reach only when the consumer happened to import the same alias, and otherwise
       // silently injected nothing, leaving every ref slot a raw `{kind, name}`.
       const definingModule = definition.metadata?.module;
       const stampDeclaringModule = (child: any): any => {

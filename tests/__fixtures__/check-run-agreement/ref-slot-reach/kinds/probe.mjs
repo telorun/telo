@@ -60,3 +60,54 @@ export const Scoped = {
     };
   },
 };
+
+// Returns the inputs it was invoked with.
+export const Echo = {
+  async create() {
+    return { invoke: async (inputs) => inputs };
+  },
+};
+
+// Invokes a `{ handler, inputs }` entry's handler with the inputs written beside it.
+const callEntry = (entry) => entry.handler.invoke(entry.inputs);
+
+export const PairedRoutes = {
+  async create(resource) {
+    return { invoke: () => Promise.all(resource.routes.map(callEntry)) };
+  },
+};
+
+export const PairedRoot = {
+  async create(resource) {
+    return { invoke: () => callEntry(resource) };
+  },
+};
+
+// Every configured key of an open-keyed resource, in key order.
+export const PairedMap = {
+  async create(resource) {
+    return {
+      invoke: async () => {
+        const out = {};
+        for (const key of Object.keys(resource).sort()) {
+          if (key === "kind" || key === "metadata") continue;
+          out[key] = await callEntry(resource[key]);
+        }
+        return out;
+      },
+    };
+  },
+};
+
+// The target it holds, as the kernel handed it over.
+export const Received = {
+  async create(resource) {
+    return { invoke: async () => resource.target };
+  },
+};
+
+export const ReceivedInner = {
+  async create(resource) {
+    return { invoke: async () => resource.inner.target };
+  },
+};

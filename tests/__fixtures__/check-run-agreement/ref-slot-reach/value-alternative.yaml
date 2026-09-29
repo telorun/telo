@@ -1,0 +1,29 @@
+# A key one union branch declares a reference slot and a sibling branch a plain
+# string — at the schema root and one object down — takes a string as a value:
+# `telo check` accepts it and the controller receives it as written.
+kind: Telo.Application
+metadata:
+  name: RefSlotReachValueAlternative
+  version: 1.0.0
+imports:
+  Reach: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: viaRootAnyOf
+    invoke: { kind: Reach.ValueViaRootAnyOf, target: hello }
+  - name: viaNested
+    invoke: { kind: Reach.ValueViaNested, inner: { target: hello } }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'viaRootAnyOf': steps.viaRootAnyOf.result, 'viaNested': steps.viaNested.result}"
+      expected:
+        viaRootAnyOf: hello
+        viaNested: hello
