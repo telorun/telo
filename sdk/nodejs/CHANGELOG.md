@@ -1,5 +1,11 @@
 # @telorun/sdk
 
+## 0.105.0
+
+### Patch Changes
+
+- 9f62699: The Telo controller protocol's conformance vectors: `sdk/controller-protocol/vectors/framing.json` (the framed carrier byte for byte, and the frames a reader refuses), `messages.json` (every message's request and response body against its schema, each refusal naming the RFC 6901 instance pointer it reports), `sequences.json` (whole exchanges — correlation, id parity, the reentrant interleave, channel credit and ordering, signals against errors) and `carrier-equivalence.json` (the framed frame and the ABI buffer carry the same payload bytes). One runner in each language executes all four with no skip path — a vitest suite in `@telorun/sdk` and a test module in `telorun-sdk`, each with its own framing codec written from the spec's prose. `@telorun/sdk`'s published `package.json` gains `ajv` as a dev-dependency only; no runtime code, export or dependency of `@telorun/sdk` changes, so the release carrying it is a patch of the telo version line.
+
 ## 0.104.0
 
 ### Minor Changes

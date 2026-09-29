@@ -1,5 +1,17 @@
 # @telorun/analyzer
 
+## 0.105.0
+
+### Minor Changes
+
+- 57045e6: `x-telo-schema-projection-from` derives a projection rather than only naming a slot. Its pointer crosses references — only at a path the holding declaration's kind declares as a reference slot — continuing inside each declaration a reference names, with every hop resolved in the scope of the module that declared the declaration holding it; a hop into a library's internals resolves against that library's own documents, and a library resource input continues to what its importer supplies. The object form `{ from, pick?, omit? }` types a slot as one entry (`pick`) or without some (`omit`). Written on a kind document, it makes every declaration of the kind project as that derivation. `telo check` and the kernel's contract binding resolve all three identically: a hop that yields no single declaration, a kind-level cycle, or a selector naming an absent entry, holding no name or landing on an expression is `SCHEMA_PROJECTION_FROM_UNRESOLVED` / `ERR_SCHEMA_PROJECTION_UNRESOLVED`, and a malformed annotation is `SCHEMA_PROJECTION_INVALID`, reported wherever it is written inside a schema — a resource's own contract and a named shape as well as a definition. The kernel resolves a contract's projections when the resource is created, so an unresolvable one fails boot rather than the first call; a reference resolves only in its holder's module scope, never by name across the whole set. `ProjectionScope` gains `referenceSlots`, and `resolveManifest` / `resolveDefinition` take the holding declaration; `readProjectionFrom` returns the derivation instead of a string. Every analysis over a flattened set now takes the imported libraries' documents (`AnalysisOptions.moduleDocuments`) — `telo publish` passes them too.
+
+  An entry that omits a projection modifier reads the `default:` that applies to that entry: its field's own, or the one the selected `then` / `else` of an `if` over the entry declares, the `if` evaluated as JSON Schema against the entry as written (a computed value matches no `const`). A modifier default declared in more than one place — on the field and in a branch, or in two conditionals — or decided by an `if` that does not compile is `SCHEMA_PROJECTION_INVALID` at the kind.
+
+### Patch Changes
+
+- @telorun/templating@0.105.0
+
 ## 0.104.0
 
 ### Minor Changes
