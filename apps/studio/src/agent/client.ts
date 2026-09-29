@@ -1,5 +1,5 @@
 import type { RecordsPage } from "./records";
-import type { AgentIdentityState, TreeFile } from "./types";
+import type { AgentIdentityState, Conversation, ConversationPage, TreeFile } from "./types";
 
 export type { TreeFile };
 
@@ -101,6 +101,74 @@ function failure(res: Response, what: string): Error {
   return new Error(res.status === 401 ? TOKEN_REQUIRED_MESSAGE : `${what} failed (${res.status})`);
 }
 
+/** A conversation request the agent refused, by status and the `code` its body
+ *  carries, with the fields a code carries (`revision` on
+ *  `ERR_CONVERSATION_CHANGED`, `activeTurnId` on `ERR_TURN_IN_PROGRESS`). The
+ *  message ends with the code, so wherever it is shown the code is too. */
+export class AgentRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly revision?: number,
+    readonly activeTurnId?: string,
+  ) {
+    super(message);
+  }
+}
+
+export const ERR_CONVERSATION_NOT_FOUND = "ERR_CONVERSATION_NOT_FOUND";
+export const ERR_CONVERSATION_REMOVED = "ERR_CONVERSATION_REMOVED";
+export const ERR_CONVERSATION_ARCHIVED = "ERR_CONVERSATION_ARCHIVED";
+export const ERR_CONVERSATION_CHANGED = "ERR_CONVERSATION_CHANGED";
+export const ERR_TURN_IN_PROGRESS = "ERR_TURN_IN_PROGRESS";
+
+/** The error a non-2xx conversation answer is, read from its body when it has one. */
+async function requestError(res: Response, what: string): Promise<AgentRequestError> {
+  const text = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    body = {};
+  }
+  const code = typeof body.code === "string" ? body.code : undefined;
+  const said =
+    res.status === 401
+      ? TOKEN_REQUIRED_MESSAGE
+      : typeof body.error === "string"
+        ? body.error
+        : typeof body.message === "string"
+          ? body.message
+          : `${what} failed (${res.status})${text && !code ? `: ${text.slice(0, 200)}` : ""}`;
+  return new AgentRequestError(
+    code ? `${said} (${code})` : said,
+    res.status,
+    code,
+    typeof body.revision === "number" ? body.revision : undefined,
+    typeof body.activeTurnId === "string" ? body.activeTurnId : undefined,
+  );
+}
+
+/** A conversation as the wire carries it, or a named failure when it is not one. */
+function readConversationBody(body: unknown, what: string): Conversation {
+  const c = (body ?? {}) as Record<string, unknown>;
+  if (typeof c.id !== "string" || typeof c.revision !== "number") {
+    throw new Error(`${what} returned no conversation.`);
+  }
+  return {
+    id: c.id,
+    title: typeof c.title === "string" ? c.title : null,
+    createdAt: String(c.createdAt ?? ""),
+    updatedAt: String(c.updatedAt ?? ""),
+    model: typeof c.model === "string" ? c.model : null,
+    messageCount: typeof c.messageCount === "number" ? c.messageCount : 0,
+    totalTokens: typeof c.totalTokens === "number" ? c.totalTokens : 0,
+    archived: c.archived === true,
+    revision: c.revision,
+  };
+}
+
 /** The `Authorization` header a token requires, merged into `headers`. Nothing
  *  is added without one, so an open agent sees exactly the requests it did. */
 export function withToken(token: string | undefined, headers?: Record<string, string>): Record<string, string> | undefined {
@@ -144,8 +212,118 @@ export class AgentClient {
         version: String(agent.version ?? ""),
         promptId: String(prompt.id ?? ""),
         auth: typeof body.auth === "string" ? body.auth : "",
+        ...(Array.isArray(body.features)
+          ? { features: body.features.filter((f): f is string => typeof f === "string") }
+          : {}),
+        ...(typeof body.manifestRuns === "boolean" ? { manifestRuns: body.manifestRuns } : {}),
       },
     };
+  }
+
+  /** POST /conversations, no body → 201, the new (empty) conversation. */
+  async createConversation(): Promise<Conversation> {
+    const what = "POST /conversations";
+    const res = await fetchRetrying(this.url("/conversations"), this.init({ method: "POST" }));
+    if (res.status !== 201) throw await requestError(res, what);
+    return readConversationBody(await readBody(res, what), what);
+  }
+
+  /** GET /conversations/{id} → 200, or 404 `ERR_CONVERSATION_NOT_FOUND` / 410
+   *  `ERR_CONVERSATION_REMOVED` as an `AgentRequestError`. */
+  async conversation(id: string): Promise<Conversation> {
+    const what = `GET /conversations/${id}`;
+    const res = await fetchRetrying(this.url(`/conversations/${encodeURIComponent(id)}`), this.init());
+    if (!res.ok) throw await requestError(res, what);
+    return readConversationBody(await readBody(res, what), what);
+  }
+
+  /** GET /conversations → one page, newest activity first. */
+  async listConversations(query: {
+    limit?: number;
+    archived?: boolean;
+    q?: string;
+    cursor?: { before: string; beforeId: string } | null;
+  }): Promise<ConversationPage> {
+    const what = "GET /conversations";
+    const url = new URL(this.url("/conversations"), window.location.href);
+    if (query.limit !== undefined) url.searchParams.set("limit", String(query.limit));
+    if (query.archived) url.searchParams.set("archived", "true");
+    if (query.q) url.searchParams.set("q", query.q);
+    if (query.cursor) {
+      url.searchParams.set("before", query.cursor.before);
+      url.searchParams.set("beforeId", query.cursor.beforeId);
+    }
+    const res = await fetchRetrying(url.toString(), this.init());
+    if (!res.ok) throw await requestError(res, what);
+    const body = await readBody(res, what);
+    const next = body.next as { before?: unknown; beforeId?: unknown } | null | undefined;
+    return {
+      conversations: Array.isArray(body.conversations)
+        ? body.conversations.map((c) => readConversationBody(c, what))
+        : [],
+      next:
+        next && typeof next.before === "string" && typeof next.beforeId === "string"
+          ? { before: next.before, beforeId: next.beforeId }
+          : null,
+    };
+  }
+
+  /** PATCH /conversations/{id} `{ title?, archived? }` → 200, the conversation. */
+  async updateConversation(id: string, change: { title?: string; archived?: boolean }): Promise<Conversation> {
+    const what = `PATCH /conversations/${id}`;
+    const res = await fetchRetrying(
+      this.url(`/conversations/${encodeURIComponent(id)}`),
+      this.init({ method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(change) }),
+    );
+    if (!res.ok) throw await requestError(res, what);
+    return readConversationBody(await readBody(res, what), what);
+  }
+
+  /** DELETE /conversations/{id} → 204; refused 409 `ERR_TURN_IN_PROGRESS`
+   *  (with `activeTurnId`) while its latest turn runs. */
+  async deleteConversation(id: string): Promise<void> {
+    const res = await fetchRetrying(
+      this.url(`/conversations/${encodeURIComponent(id)}`),
+      this.init({ method: "DELETE" }),
+    );
+    if (res.status !== 204) throw await requestError(res, `DELETE /conversations/${id}`);
+  }
+
+  /** DELETE /conversations/{id}/turns?from=&revision= → the turn `from` and every
+   *  later one removed; refused 409 `ERR_CONVERSATION_CHANGED` (with the current
+   *  `revision`) when the conversation moved past `revision`. */
+  async truncateConversation(
+    id: string,
+    fromTurnId: string,
+    revision: number,
+  ): Promise<{ removedTurns: number; conversation: Conversation }> {
+    const what = `DELETE /conversations/${id}/turns`;
+    const url = new URL(this.url(`/conversations/${encodeURIComponent(id)}/turns`), window.location.href);
+    url.searchParams.set("from", fromTurnId);
+    url.searchParams.set("revision", String(revision));
+    const res = await fetchRetrying(url.toString(), this.init({ method: "DELETE" }));
+    if (!res.ok) throw await requestError(res, what);
+    const body = await readBody(res, what);
+    return {
+      removedTurns: typeof body.removedTurns === "number" ? body.removedTurns : 0,
+      conversation: readConversationBody(body.conversation, what),
+    };
+  }
+
+  /** POST /conversations/{id}/branch `{ throughTurnId }` → 201, the new
+   *  conversation holding a copy of every turn through that one. */
+  async branchConversation(id: string, throughTurnId: string): Promise<Conversation> {
+    const what = `POST /conversations/${id}/branch`;
+    const res = await fetchRetrying(
+      this.url(`/conversations/${encodeURIComponent(id)}/branch`),
+      this.init({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ throughTurnId }),
+      }),
+    );
+    if (res.status !== 201) throw await requestError(res, what);
+    return readConversationBody(await readBody(res, what), what);
   }
 
   /**
@@ -246,7 +424,7 @@ export class AgentClient {
       url.searchParams.set("fromId", String(cursor.fromId));
     }
     const res = await fetchRetrying(url.toString(), this.init());
-    if (!res.ok) throw failure(res, `GET /conversations/${conversationId}/records`);
+    if (!res.ok) throw await requestError(res, `GET /conversations/${conversationId}/records`);
     const body = (await res.json()) as Partial<RecordsPage>;
     return { turns: Array.isArray(body.turns) ? body.turns : [], next: body.next ?? null };
   }

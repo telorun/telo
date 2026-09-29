@@ -1,5 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { AgentClient, ERR_UNAUTHENTICATED, TOKEN_REQUIRED_MESSAGE, type TurnRefused } from "./client";
+import {
+  AgentClient,
+  AgentRequestError,
+  ERR_CONVERSATION_ARCHIVED,
+  ERR_CONVERSATION_CHANGED,
+  ERR_CONVERSATION_NOT_FOUND,
+  ERR_CONVERSATION_REMOVED,
+  ERR_TURN_IN_PROGRESS,
+  ERR_UNAUTHENTICATED,
+  TOKEN_REQUIRED_MESSAGE,
+  type TurnRefused,
+} from "./client";
+import { AGENT_FEATURES, hasFeature } from "./agent-features";
+import { exportJson, exportMarkdown } from "./transcript-export";
+import { dropTurnsFrom } from "./turn-actions";
 import { openAgentStream, type AgentStreamError, type AgentStreamHandle } from "./event-stream";
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
@@ -30,10 +44,24 @@ import type {
   AssistantMessage,
   ChatMessage,
   CoResidentAgent,
+  Conversation,
+  ConversationPage,
   JournalRecord,
   ToolResult,
   WorkspaceBridge,
 } from "./types";
+
+/** How a Retry, Edit & resend or Delete from here ended: `changed` when the
+ *  conversation moved on since the transcript was read — it has been re-read,
+ *  and the action is to be asked again against it. */
+export type TurnActionOutcome = "done" | "changed" | "failed";
+
+/** A conversation exported for download. */
+export interface ConversationDownload {
+  filename: string;
+  content: string;
+  type: string;
+}
 
 interface AgentContextValue {
   // Panel + connection settings.
@@ -76,9 +104,41 @@ interface AgentContextValue {
   retry: () => void;
   /** True when there is something `retry()` would act on. */
   canRetry: boolean;
-  /** Discard the current thread and start a fresh conversation for this
-   *  workspace — clears the panel and gives the agent an empty history. */
+  /** Start a fresh conversation for this workspace. With an agent serving
+   *  `conversations` this opens a draft the first send creates, and the current
+   *  one stays in the list; with an older agent a new id is minted at once. */
   clearConversation: () => void;
+
+  // Conversations — only with an agent whose capabilities list `conversations`.
+  /** Which conversation surfaces the agent serves: truncation and branching
+   *  count only alongside `conversations`. */
+  features: { conversations: boolean; truncation: boolean; branching: boolean };
+  /** The open conversation as the agent last reported it; null for a draft and
+   *  with an agent that does not serve conversations. */
+  conversation: Conversation | null;
+  /** No conversation yet: the first send creates one. */
+  draft: boolean;
+  listConversations: (query: {
+    archived: boolean;
+    q?: string;
+    limit?: number;
+    cursor?: { before: string; beforeId: string } | null;
+  }) => Promise<ConversationPage>;
+  /** Open a conversation from the list; it becomes the workspace's last-opened one. */
+  openConversation: (conversation: Conversation) => void;
+  renameConversation: (id: string, title: string) => Promise<void>;
+  setConversationArchived: (id: string, archived: boolean) => Promise<void>;
+  /** Delete a conversation. `running` when its latest turn runs and
+   *  `stopRunning` is false; with it, the turn is aborted, its stream waited
+   *  out, and the conversation deleted. */
+  deleteConversation: (id: string, stopRunning: boolean) => Promise<"deleted" | "running">;
+  exportConversation: (id: string, format: "markdown" | "json") => Promise<ConversationDownload>;
+  /** Delete from here: remove `turnId` and every later turn. */
+  truncateFrom: (turnId: string) => Promise<TurnActionOutcome>;
+  /** Retry / Edit & resend: remove `turnId` and every later turn, then send `text`. */
+  resendFrom: (turnId: string, text: string) => Promise<TurnActionOutcome>;
+  /** Branch: a new conversation holding every turn through `turnId`, opened. */
+  branchFrom: (turnId: string) => Promise<void>;
 
   // Wiring from the editor shell.
   setConversation: (id: string | null) => void;
@@ -107,6 +167,11 @@ interface ReachableAgent {
   url: string;
   token?: string;
   workspace: AgentWorkspace;
+}
+
+/** One agent instance: its URL and the token it is talked to with. */
+function agentKey(agent: { url: string; token?: string }): string {
+  return `${agent.url}\n${agent.token ?? ""}`;
 }
 
 /** Heuristic for "the per-session container is gone": a network-level fetch
@@ -143,6 +208,12 @@ function refusalMessage(refusal: TurnRefused): string {
       return "The agent no longer has this turn — send your message again.";
     case ERR_UNAUTHENTICATED:
       return TOKEN_REQUIRED_MESSAGE;
+    case ERR_CONVERSATION_NOT_FOUND:
+      return goneNotice(404);
+    case ERR_CONVERSATION_REMOVED:
+      return goneNotice(410);
+    case ERR_CONVERSATION_ARCHIVED:
+      return `This conversation is archived — unarchive it to continue. (${refusal.code})`;
     default:
       return refusal.message;
   }
@@ -150,6 +221,59 @@ function refusalMessage(refusal: TurnRefused): string {
 
 /** How a turn's stream ends when its running attempt was cancelled. */
 const ERR_INVOKE_CANCELLED = "ERR_INVOKE_CANCELLED";
+
+/** What the user reads when the open conversation is gone from the agent. */
+const GONE_MESSAGE = {
+  404: "The agent no longer has this conversation.",
+  410: "This conversation was deleted.",
+} as const;
+
+/** Why the open conversation was left, by the status it answered. */
+function goneNotice(gone: 404 | 410): string {
+  return `${GONE_MESSAGE[gone]} (${gone === 410 ? ERR_CONVERSATION_REMOVED : ERR_CONVERSATION_NOT_FOUND})`;
+}
+
+/** A workspace whose conversation could not be resolved for a reason other than
+ *  404/410, retried in the revision poll's slot; `notice` says why the one open
+ *  before was left, when it was. */
+interface Unresolved {
+  workspaceKey: string;
+  notice?: string;
+}
+
+/** How often an open, visible panel asks whether its conversation changed. */
+export const CONVERSATION_POLL_MS = 5000;
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** A 404 or 410 about the conversation itself, rather than about a turn of it. */
+function goneStatus(err: unknown): 404 | 410 | null {
+  if (!(err instanceof AgentRequestError)) return null;
+  if (err.status === 410 && err.code === ERR_CONVERSATION_REMOVED) return 410;
+  if (err.status === 404 && err.code === ERR_CONVERSATION_NOT_FOUND) return 404;
+  return null;
+}
+
+/** Wait for a turn's event stream to end — its cancellation, its finish, or the
+ *  stream given up. */
+function waitForTurnEnd(baseUrl: string, token: string | undefined, turnId: string): Promise<void> {
+  return new Promise((resolve) => {
+    const handle = openAgentStream({
+      baseUrl,
+      token,
+      turnId,
+      fromId: 0,
+      onRecord: () => undefined,
+      onError: () => {
+        handle.close();
+        resolve();
+      },
+      onEnd: resolve,
+    });
+  });
+}
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
@@ -175,6 +299,45 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [panelWidth, setPanelWidth] = useState(initialSettings.current.panelWidth);
 
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // The open conversation's agent-side state, and the agent (URL + token) it
+  // was read from: a conversation is one agent's, never carried to another.
+  const [conversation, setConversationState] = useState<Conversation | null>(null);
+  const conversationRef = useRef<Conversation | null>(null);
+  const conversationAgentRef = useRef<string | null>(null);
+  const setConversationMeta = useCallback((next: Conversation | null) => {
+    conversationRef.current = next;
+    setConversationState(next);
+  }, []);
+  // Set while the workspace's conversation waits for the agent to say whether it
+  // serves conversations — which decides between resolving the last-opened
+  // pointer against the agent and minting an id as an older agent needs.
+  const deferredResolveRef = useRef(false);
+  // Set while the workspace's conversation could not be resolved: the pointed
+  // one stays open unadopted (or a draft shows, with no pointer), and the
+  // resolution is retried in the revision poll's slot. `resolveErrorRef` is the
+  // error it showed, cleared on success only while it is still the one shown.
+  const [unresolved, setUnresolvedState] = useState<Unresolved | null>(null);
+  const unresolvedRef = useRef<Unresolved | null>(null);
+  const markUnresolved = useCallback((next: Unresolved | null) => {
+    unresolvedRef.current = next;
+    setUnresolvedState(next);
+  }, []);
+  const resolveErrorRef = useRef<string | null>(null);
+  // Bumped by every resolution and by a send adopting its conversation, so a
+  // resolution still in flight notices it was superseded.
+  const resolveGenRef = useRef(0);
+  const resolvingRef = useRef(false);
+  // The workspace's conversation was settled by something other than the
+  // resolution — a send adopting one, a branch, the workspace closing.
+  const supersedeResolution = useCallback(() => {
+    resolveGenRef.current++;
+    resolvingRef.current = false;
+    markUnresolved(null);
+    resolveErrorRef.current = null;
+  }, [markUnresolved]);
+  // A revision change seen while a turn of this client ran: the transcript is
+  // re-read once the turn's stream ends, never under it.
+  const staleRef = useRef(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<AgentStatus>("idle");
   const [turnId, setTurnId] = useState<string | null>(null);
@@ -230,6 +393,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   messagesRef.current = messages;
 
   const locked = status === "launching" || status === "seeding" || status === "streaming" || status === "stopping";
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const identityRef = useRef<AgentIdentityState | null>(identity);
+  const conversationsOn = hasFeature(identity, AGENT_FEATURES.conversations);
 
   const client = useCallback(() => new AgentClient(agentUrlRef.current, agentTokenRef.current), []);
 
@@ -280,24 +449,39 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // and token), since the answer does not change while it runs. A reply for an
   // agent no longer current is dropped.
   const identityKeyRef = useRef<string | null>(null);
+  // The answer for the agent currently asked, for a send that must know it
+  // before it can decide how the conversation is created.
+  const identityAnswerRef = useRef<Promise<AgentIdentityState> | null>(null);
   const refreshIdentityRef = useRef<() => void>(() => undefined);
+  // Assigned below, once the conversation resolver exists.
+  const onIdentityRef = useRef<() => void>(() => undefined);
   refreshIdentityRef.current = () => {
     const agent = reachableAgent();
-    const key = agent ? `${agent.url}\n${agent.token ?? ""}` : null;
+    const key = agent ? agentKey(agent) : null;
     if (key === identityKeyRef.current) return;
     identityKeyRef.current = key;
+    identityRef.current = null;
     setIdentity(null);
-    if (!agent) return;
-    new AgentClient(agent.url, agent.token).capabilities().then(
-      (state) => {
-        if (identityKeyRef.current === key) setIdentity(state);
-      },
-      (err: unknown) => {
-        if (identityKeyRef.current !== key) return;
-        setIdentity({ state: "failed", message: err instanceof Error ? err.message : String(err) });
-      },
-    );
+    if (!agent) {
+      identityAnswerRef.current = null;
+      return;
+    }
+    const answer = new AgentClient(agent.url, agent.token)
+      .capabilities()
+      .catch((err: unknown): AgentIdentityState => ({ state: "failed", message: message(err) }));
+    identityAnswerRef.current = answer;
+    void answer.then((state) => {
+      if (identityKeyRef.current !== key) return;
+      identityRef.current = state;
+      setIdentity(state);
+      onIdentityRef.current();
+    });
   };
+  // What the selected agent serves, asked now if nobody has yet.
+  const currentIdentity = useCallback(async (): Promise<AgentIdentityState | null> => {
+    refreshIdentityRef.current();
+    return identityAnswerRef.current ? identityAnswerRef.current : null;
+  }, []);
   // The override is typed a character at a time: ask once it settles.
   useEffect(() => {
     const timer = setTimeout(() => refreshIdentityRef.current(), 400);
@@ -383,6 +567,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // exactly as it will after a reload.
   const applyStreamRecord = useCallback((turn: string, record: JournalRecord) => {
     setMessages((prev) => applyRecord(prev, turn, record));
+    // The generated title names the conversation as soon as it is journaled —
+    // unless it already has one, which the agent does not overwrite either.
+    const title = (record.data as { type: string; title?: unknown }).title;
+    if (record.data.type === "conversation-title" && typeof title === "string") {
+      const current = conversationRef.current;
+      if (current && current.title === null) setConversationMeta({ ...current, title });
+    }
     // Eager reflection: pull the one file the agent just wrote.
     if (record.data.type !== "tool-result") return;
     const raw = (record.data as { toolResult?: ToolResult }).toolResult;
@@ -396,14 +587,21 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         console.error(`Failed to pull '${path}' from the agent workspace`, err);
       });
     }
-  }, []);
+  }, [setConversationMeta]);
+
+  // Assigned below, once the conversation poll exists: a turn's ending changed
+  // the conversation, and whatever else changed it meanwhile is read now.
+  const afterTurnRef = useRef<() => void>(() => undefined);
 
   const endTurn = useCallback(async () => {
     const bridge = bridgeRef.current;
     const workspace = workspaceRef.current;
     stoppingRef.current = false;
+    turnIdRef.current = null;
+    lockedRef.current = false;
     setStatus("idle");
     setTurnId(null);
+    afterTurnRef.current();
     if (bridge && workspace) {
       try {
         await reconcile(workspace, bridge);
@@ -512,11 +710,68 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // what differs between them is the transcript bookkeeping, which stays with
   // each caller, since only they know whether a bubble is being appended or
   // replaced.
+  // The open conversation as the selected agent knows it — adopted as that
+  // agent's without touching the transcript on screen.
+  const adoptConversation = useCallback(
+    (next: Conversation, key: string) => {
+      deferredResolveRef.current = false;
+      supersedeResolution();
+      conversationAgentRef.current = key;
+      setConversationMeta(next);
+      conversationIdRef.current = next.id;
+      setConversationId(next.id);
+      if (workspaceKeyRef.current) saveConversationId(workspaceKeyRef.current, next.id);
+    },
+    [setConversationMeta, supersedeResolution],
+  );
+
+  // Assigned below, once the resolver exists.
+  const resolveOwnedRef = useRef<(workspaceKey: string, notice?: string, keepUnsent?: boolean) => Promise<void>>(
+    async () => undefined,
+  );
+
+  // The conversation a send goes to, on the agent just selected. An agent that
+  // serves conversations mints its ids: a draft is created there first, and an
+  // id this agent has not confirmed is asked for — never replaced by a new
+  // conversation: a gone one resolves the workspace again and the message stays
+  // unsent (null). An older agent takes a client-minted id.
+  const conversationForSend = useCallback(async (): Promise<string | null> => {
+    const key = agentKey({ url: agentUrlRef.current, token: agentTokenRef.current });
+    const current = conversationIdRef.current;
+    if (current && conversationAgentRef.current === key) return current;
+    const identity = await currentIdentity();
+    const c = client();
+    if (hasFeature(identity, AGENT_FEATURES.conversations)) {
+      if (current) {
+        try {
+          const known = await c.conversation(current);
+          adoptConversation(known, key);
+          return known.id;
+        } catch (err) {
+          const gone = goneStatus(err);
+          if (gone === null) throw err;
+          const workspaceKey = workspaceKeyRef.current;
+          if (workspaceKey) await resolveOwnedRef.current(workspaceKey, goneNotice(gone), true);
+          return null;
+        }
+      }
+      const created = await c.createConversation();
+      adoptConversation(created, key);
+      return created.id;
+    }
+    deferredResolveRef.current = false;
+    if (current) return current;
+    const minted = crypto.randomUUID();
+    if (workspaceKeyRef.current) saveConversationId(workspaceKeyRef.current, minted);
+    conversationIdRef.current = minted;
+    setConversationId(minted);
+    return minted;
+  }, [adoptConversation, client, currentIdentity]);
+
   const dispatchTurn = useCallback(
     (text: string, userId: string, assistantId: string) => {
-      const convId = conversationIdRef.current;
       const bridge = bridgeRef.current;
-      if (!convId || !bridge) return;
+      if (!workspaceKeyRef.current || !bridge) return;
       setUnsent({ text, userId, assistantId });
 
       // A Stop click bumps the generation; the pipeline re-checks it after
@@ -534,6 +789,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           if (!workspace) throw new Error("No agent workspace is reachable.");
           await seedDelta(workspace, bridge);
           if (superseded()) return;
+          const convId = await conversationForSend();
+          if (superseded()) return;
+          if (convId === null) {
+            setStatus("error");
+            updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
+            return;
+          }
           const outcome = await c.startTurn(convId, text);
           if (superseded()) {
             // Stopped while the agent was admitting it: the turn exists now,
@@ -557,7 +819,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           setUnsent(null);
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === userId ? { ...m, id: userMessageId(turn) } : m.id === assistantId ? { ...m, id: turn } : m,
+              m.id === userId
+                ? { ...m, id: userMessageId(turn), local: undefined }
+                : m.id === assistantId
+                  ? { ...m, id: turn, local: undefined }
+                  : m,
             ),
           );
           assistantIdRef.current = turn;
@@ -584,22 +850,23 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [client, ensureAgent, attachStream, invalidateLaunched, updateAssistant, abortUnattached],
+    [client, conversationForSend, ensureAgent, attachStream, invalidateLaunched, updateAssistant, abortUnattached],
   );
 
   const send = useCallback(
     (message: string) => {
       const text = message.trim();
-      if (!text || locked || !conversationIdRef.current || !bridgeRef.current) return;
+      if (!text || lockedRef.current || !workspaceKeyRef.current || !bridgeRef.current) return;
+      if (conversationRef.current?.archived) return;
       setError(null);
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text };
+      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", text, local: true };
       const assistantId = crypto.randomUUID();
       assistantIdRef.current = assistantId;
-      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", parts: [], pending: true };
+      const assistantMsg: ChatMessage = { id: assistantId, role: "assistant", parts: [], pending: true, local: true };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
       dispatchTurn(text, userMsg.id, assistantId);
     },
-    [dispatchTurn, locked],
+    [dispatchTurn],
   );
 
   // ── resume ──────────────────────────────────────────────────────────────────
@@ -670,7 +937,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
    * stopped instead of from a summary of itself.
    */
   const retry = useCallback(() => {
-    if (locked || !conversationIdRef.current || !bridgeRef.current) return;
+    if (locked || !workspaceKeyRef.current || !bridgeRef.current) return;
     setError(null);
     const pendingSend = unsentRef.current;
     if (pendingSend) {
@@ -723,58 +990,247 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, [client, updateAssistant]);
 
   // ── conversation switch (workspace load / reload) ──────────────────────────
-  // Read the open conversation back from the agent's records, and re-attach to
-  // its last turn when that one is still running — from the last record read.
-  const loadTranscript = useCallback(async () => {
+  // Replace the transcript with the open conversation's records on the agent,
+  // and re-attach to its last turn when that one is still running — from the
+  // last record read. A bubble the agent never admitted stays below it.
+  // Resolves `loaded` only when the transcript was replaced from the agent.
+  const onGoneRef = useRef<(status: 404 | 410) => void>(() => undefined);
+  const loadTranscript = useCallback(async (): Promise<"loaded" | "failed" | "skipped"> => {
     const convId = conversationIdRef.current;
     const agent = reachableAgent();
-    if (!convId || !agent || turnIdRef.current) return;
+    if (!convId || !agent || turnIdRef.current) return "skipped";
     const agentClient = new AgentClient(agent.url, agent.token);
     try {
       const turns = await readConversation((cursor) => agentClient.records(convId, cursor));
-      if (conversationIdRef.current !== convId || turnIdRef.current) return;
-      setMessages(transcriptFromTurns(turns));
+      if (conversationIdRef.current !== convId || turnIdRef.current) return "skipped";
+      setMessages((prev) => [...transcriptFromTurns(turns), ...prev.filter((m) => m.local)]);
       const last = turns[turns.length - 1];
-      if (last?.status !== "running") return;
+      if (last?.status !== "running") return "loaded";
       selectAgent(agent);
       assistantIdRef.current = last.turnId;
+      turnIdRef.current = last.turnId;
       setTurnId(last.turnId);
       setStatus("streaming");
       attachStream(last.turnId, last.records[last.records.length - 1]?.id ?? 0);
+      return "loaded";
     } catch (err) {
-      if (conversationIdRef.current !== convId) return;
-      setError(`Failed to read the conversation from the agent: ${err instanceof Error ? err.message : String(err)}`);
+      if (conversationIdRef.current !== convId) return "failed";
+      const gone = goneStatus(err);
+      if (gone !== null) {
+        // Not known yet whether this agent serves conversations: the answer
+        // resolves the workspace's conversation, this id included.
+        if (identityRef.current === null) return "failed";
+        if (hasFeature(identityRef.current, AGENT_FEATURES.conversations)) {
+          onGoneRef.current(gone);
+          return "failed";
+        }
+      }
+      setError(`Failed to read the conversation from the agent: ${message(err)}`);
+      return "failed";
     }
   }, [attachStream, reachableAgent, selectAgent]);
   onCoResidentRef.current = () => {
     void loadTranscript();
   };
 
-  const openConversation = useCallback(
-    (effectiveId: string) => {
+  // Show `id` — or an empty draft for null — with nothing of the previous
+  // conversation left: its stream detached, its transcript and error cleared.
+  // `keepUnsent` keeps a message the agent never admitted, to be retried there.
+  const switchTo = useCallback(
+    (id: string | null, keepUnsent = false) => {
       streamRef.current?.close();
       streamRef.current = null;
-      conversationIdRef.current = effectiveId;
-      setConversationId(effectiveId);
+      conversationIdRef.current = id;
+      setConversationId(id);
       setError(null);
-      setMessages([]);
+      setMessages(keepUnsent ? (prev) => prev.filter((m) => m.local) : []);
       assistantIdRef.current = null;
       turnIdRef.current = null;
       setTurnId(null);
       setStatus("idle");
       stoppingRef.current = false;
-      setUnsent(null);
-      void loadTranscript();
+      staleRef.current = false;
+      if (!keepUnsent) setUnsent(null);
+      if (id) void loadTranscript();
     },
     [loadTranscript],
   );
 
+  // Open a conversation the agent reported, as the workspace's last-opened one.
+  // The one already open is adopted in place rather than re-read.
+  const showOwned = useCallback(
+    (next: Conversation, key: string, keepUnsent = false) => {
+      const reopened = next.id === conversationIdRef.current;
+      conversationAgentRef.current = key;
+      setConversationMeta(next);
+      if (workspaceKeyRef.current) saveConversationId(workspaceKeyRef.current, next.id);
+      if (!reopened) switchTo(next.id, keepUnsent);
+    },
+    [setConversationMeta, switchTo],
+  );
+
+  const showDraft = useCallback(
+    (keepUnsent = false) => {
+      conversationAgentRef.current = null;
+      setConversationMeta(null);
+      switchTo(null, keepUnsent);
+    },
+    [setConversationMeta, switchTo],
+  );
+
+  // The workspace's conversation on an agent that serves conversations: the
+  // last-opened one while the agent has it, else its most recent live one, else
+  // a draft. `notice` says why the open one was left. Any failure other than
+  // 404/410 leaves the workspace unresolved — the pointed conversation open but
+  // not adopted, or a draft when there is no pointer — the pointer untouched,
+  // and the resolution retried by the revision poll's tick. `keepUnsent` keeps
+  // a message a send could not deliver.
+  const resolveOwned = useCallback(
+    async (workspaceKey: string, notice?: string, keepUnsent = false) => {
+      const agent = reachableAgent();
+      if (!agent) return;
+      const key = agentKey(agent);
+      const c = new AgentClient(agent.url, agent.token);
+      const gen = ++resolveGenRef.current;
+      const superseded = () => resolveGenRef.current !== gen || workspaceKeyRef.current !== workspaceKey;
+      const retrying = unresolvedRef.current?.workspaceKey === workspaceKey;
+      resolvingRef.current = true;
+      const resolved = (switched: boolean) => {
+        const failedBefore = resolveErrorRef.current;
+        resolveErrorRef.current = null;
+        markUnresolved(null);
+        if (switched || failedBefore === null) {
+          if (notice) setError(notice);
+          return;
+        }
+        setError((current) => (current === failedBefore ? (notice ?? null) : current));
+      };
+      const failed = (err: unknown) => {
+        const said = `${notice ? `${notice} ` : ""}Failed to open the workspace's conversation: ${message(err)}`;
+        resolveErrorRef.current = said;
+        markUnresolved({ workspaceKey, notice });
+        setError(said);
+      };
+      // A retry leaves the draft it already shows — and a message kept in it — as it is.
+      const draftShown = () => retrying && conversationIdRef.current === null;
+      try {
+        const pointer = loadConversationId(workspaceKey);
+        if (pointer) {
+          try {
+            const known = await c.conversation(pointer);
+            if (superseded()) return;
+            const switched = known.id !== conversationIdRef.current;
+            showOwned(known, key, keepUnsent);
+            resolved(switched);
+            return;
+          } catch (err) {
+            if (superseded()) return;
+            if (goneStatus(err) === null) {
+              conversationAgentRef.current = null;
+              setConversationMeta(null);
+              if (conversationIdRef.current !== pointer) switchTo(pointer, keepUnsent);
+              failed(err);
+              return;
+            }
+          }
+        }
+        try {
+          const page = await c.listConversations({ limit: 1, archived: false });
+          if (superseded()) return;
+          const recent = page.conversations[0];
+          if (recent) {
+            const switched = recent.id !== conversationIdRef.current;
+            showOwned(recent, key, keepUnsent);
+            resolved(switched);
+            return;
+          }
+          const switched = !draftShown();
+          if (switched) showDraft(keepUnsent);
+          resolved(switched);
+        } catch (err) {
+          if (superseded()) return;
+          if (!draftShown()) showDraft(keepUnsent);
+          failed(err);
+        }
+      } finally {
+        if (resolveGenRef.current === gen) resolvingRef.current = false;
+      }
+    },
+    [markUnresolved, reachableAgent, setConversationMeta, showDraft, showOwned, switchTo],
+  );
+  resolveOwnedRef.current = resolveOwned;
+
+  // Set while this client deletes a conversation: its own 410 is not news.
+  const deletingRef = useRef<string | null>(null);
+  onGoneRef.current = (gone) => {
+    const workspaceKey = workspaceKeyRef.current;
+    if (!workspaceKey || deletingRef.current === conversationIdRef.current) return;
+    void resolveOwned(workspaceKey, goneNotice(gone));
+  };
+
+  // The workspace's conversation, once it is known what the agent serves. An
+  // agent not asked yet, or one that predates conversations, gets the stored id
+  // as it always did — minted when there is none, unless the answer is on its
+  // way, in which case a draft waits for it.
+  const resolveWorkspace = useCallback(
+    (workspaceKey: string) => {
+      const agent = reachableAgent();
+      const identityNow = identityRef.current;
+      const pending = agent !== null && (identityKeyRef.current !== agentKey(agent) || identityNow === null);
+      deferredResolveRef.current = false;
+      markUnresolved(null);
+      resolveErrorRef.current = null;
+      if (agent && !pending && hasFeature(identityNow, AGENT_FEATURES.conversations)) {
+        void resolveOwned(workspaceKey);
+        return;
+      }
+      conversationAgentRef.current = null;
+      setConversationMeta(null);
+      const stored = loadConversationId(workspaceKey);
+      if (stored) {
+        switchTo(stored);
+        return;
+      }
+      if (pending) {
+        deferredResolveRef.current = true;
+        switchTo(null);
+        return;
+      }
+      const minted = crypto.randomUUID();
+      saveConversationId(workspaceKey, minted);
+      switchTo(minted);
+    },
+    [markUnresolved, reachableAgent, resolveOwned, setConversationMeta, switchTo],
+  );
+
+  onIdentityRef.current = () => {
+    const workspaceKey = workspaceKeyRef.current;
+    const agent = reachableAgent();
+    // A send in flight settles its own conversation against this answer.
+    const sending = statusRef.current === "launching" || statusRef.current === "seeding";
+    if (!workspaceKey || !agent || sending) return;
+    if (deferredResolveRef.current) {
+      resolveWorkspace(workspaceKey);
+      return;
+    }
+    const on = hasFeature(identityRef.current, AGENT_FEATURES.conversations);
+    if (on && conversationAgentRef.current !== agentKey(agent)) void resolveOwned(workspaceKey);
+    else if (!on && conversationRef.current) resolveWorkspace(workspaceKey);
+  };
+
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const setConversation = useCallback(
     (key: string | null) => {
       workspaceKeyRef.current = key;
+      setWorkspaceOpen(key !== null);
       if (!key) {
+        deferredResolveRef.current = false;
+        supersedeResolution();
+        conversationAgentRef.current = null;
+        setConversationMeta(null);
         streamRef.current?.close();
         streamRef.current = null;
+        conversationIdRef.current = null;
         setConversationId(null);
         setMessages([]);
         setTurnId(null);
@@ -782,32 +1238,280 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         setError(null);
         return;
       }
-      // The conversation id is a UUID (the agent keys its history by it), mapped
-      // per-workspace and persisted so a reload restores the same thread. Mint
-      // one on first use for this workspace.
-      let id = loadConversationId(key);
-      if (!id) {
-        id = crypto.randomUUID();
-        saveConversationId(key, id);
-      }
-      openConversation(id);
+      resolveWorkspace(key);
     },
-    [openConversation],
+    [resolveWorkspace, setConversationMeta, supersedeResolution],
   );
 
   const clearConversation = useCallback(() => {
     const key = workspaceKeyRef.current;
     if (!key) return;
+    if (hasFeature(identityRef.current, AGENT_FEATURES.conversations)) {
+      // The current conversation stays the agent's, listed; the draft becomes
+      // one on its first send.
+      showDraft();
+      return;
+    }
     // Detach any live turn client-side; the server turn is orphaned under the
     // old id and its journal is no longer read.
-    streamRef.current?.close();
-    streamRef.current = null;
-    assistantIdRef.current = null;
-    // Mint a fresh UUID — a new conversation the agent has no records for.
     const next = crypto.randomUUID();
     saveConversationId(key, next);
-    openConversation(next);
-  }, [openConversation]);
+    conversationAgentRef.current = null;
+    setConversationMeta(null);
+    switchTo(next);
+  }, [setConversationMeta, showDraft, switchTo]);
+
+  // ── other clients ───────────────────────────────────────────────────────────
+  // Another client's turn, rename, archive, truncation or deletion moves the
+  // conversation's revision; the transcript is re-read when it moved — never
+  // under a turn of this client's, which re-reads once its stream ends.
+  const pollingRef = useRef(false);
+  const pollErrorRef = useRef<string | null>(null);
+  const pollConversation = useCallback(async (): Promise<boolean> => {
+    const id = conversationIdRef.current;
+    const agent = reachableAgent();
+    if (!id || !agent || pollingRef.current || conversationAgentRef.current !== agentKey(agent)) return false;
+    pollingRef.current = true;
+    try {
+      const next = await new AgentClient(agent.url, agent.token).conversation(id);
+      if (conversationIdRef.current !== id) return false;
+      const failedBefore = pollErrorRef.current;
+      if (failedBefore) {
+        pollErrorRef.current = null;
+        setError((current) => (current === failedBefore ? null : current));
+      }
+      const previous = conversationRef.current;
+      setConversationMeta(next);
+      if (previous && previous.revision === next.revision) return false;
+      if (lockedRef.current || turnIdRef.current) {
+        staleRef.current = true;
+        return false;
+      }
+      await loadTranscript();
+      return true;
+    } catch (err) {
+      if (conversationIdRef.current !== id) return false;
+      const gone = goneStatus(err);
+      if (gone !== null) {
+        onGoneRef.current(gone);
+        return false;
+      }
+      const said = `Failed to check the conversation for changes: ${message(err)}`;
+      pollErrorRef.current = said;
+      setError(said);
+      return false;
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [loadTranscript, reachableAgent, setConversationMeta]);
+
+  afterTurnRef.current = () => {
+    const stale = staleRef.current;
+    staleRef.current = false;
+    void pollConversation().then((reloaded) => {
+      if (stale && !reloaded) void loadTranscript();
+    });
+  };
+
+  // An unresolved workspace retries its resolution in the poll's slot instead.
+  useEffect(() => {
+    if (!panelOpen || !conversationsOn || (!conversationId && !unresolved)) return;
+    const tick = () => {
+      // A resolution in flight owns the slot.
+      if (document.visibilityState !== "visible" || resolvingRef.current) return;
+      const pending = unresolvedRef.current;
+      if (!pending) {
+        void pollConversation();
+        return;
+      }
+      if (lockedRef.current || workspaceKeyRef.current !== pending.workspaceKey) return;
+      void resolveOwned(pending.workspaceKey, pending.notice);
+    };
+    const timer = setInterval(tick, CONVERSATION_POLL_MS);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", tick);
+    };
+  }, [panelOpen, conversationsOn, conversationId, unresolved, pollConversation, resolveOwned]);
+
+  // ── conversation operations ─────────────────────────────────────────────────
+  const agentClientOrThrow = useCallback((): { agent: ReachableAgent; client: AgentClient } => {
+    const agent = reachableAgent();
+    if (!agent) throw new Error("No agent is reachable.");
+    return { agent, client: new AgentClient(agent.url, agent.token) };
+  }, [reachableAgent]);
+
+  const listConversations = useCallback<AgentContextValue["listConversations"]>(
+    (query) => agentClientOrThrow().client.listConversations(query),
+    [agentClientOrThrow],
+  );
+
+  const openListed = useCallback(
+    (next: Conversation) => {
+      const agent = reachableAgent();
+      if (!agent || next.id === conversationIdRef.current) return;
+      // The user's choice settles the workspace's conversation.
+      supersedeResolution();
+      showOwned(next, agentKey(agent));
+    },
+    [reachableAgent, showOwned, supersedeResolution],
+  );
+
+  const updateConversation = useCallback(
+    async (id: string, change: { title?: string; archived?: boolean }) => {
+      const updated = await agentClientOrThrow().client.updateConversation(id, change);
+      if (conversationIdRef.current === id) setConversationMeta(updated);
+    },
+    [agentClientOrThrow, setConversationMeta],
+  );
+  const renameConversation = useCallback(
+    (id: string, title: string) => updateConversation(id, { title }),
+    [updateConversation],
+  );
+  const setConversationArchived = useCallback(
+    (id: string, archived: boolean) => updateConversation(id, { archived }),
+    [updateConversation],
+  );
+
+  const deleteConversation = useCallback(
+    async (id: string, stopRunning: boolean): Promise<"deleted" | "running"> => {
+      const { agent, client: c } = agentClientOrThrow();
+      const running = id === conversationIdRef.current ? turnIdRef.current : null;
+      if (running && !stopRunning) return "running";
+      deletingRef.current = id;
+      try {
+        if (running) {
+          stop();
+          await waitForTurnEnd(agent.url, agent.token, running);
+        }
+        try {
+          await c.deleteConversation(id);
+        } catch (err) {
+          if (!(err instanceof AgentRequestError) || err.code !== ERR_TURN_IN_PROGRESS || !err.activeTurnId) throw err;
+          if (!stopRunning) return "running";
+          await c.abortTurn(err.activeTurnId);
+          await waitForTurnEnd(agent.url, agent.token, err.activeTurnId);
+          await c.deleteConversation(id);
+        }
+        const workspaceKey = workspaceKeyRef.current;
+        if (id === conversationIdRef.current && workspaceKey) await resolveOwned(workspaceKey);
+        return "deleted";
+      } finally {
+        deletingRef.current = null;
+      }
+    },
+    [agentClientOrThrow, resolveOwned, stop],
+  );
+
+  const exportConversation = useCallback(
+    async (id: string, format: "markdown" | "json"): Promise<ConversationDownload> => {
+      const identityNow = identityRef.current;
+      if (identityNow?.state !== "known") throw new Error("The agent's identity is not known — it cannot be exported.");
+      const { client: c } = agentClientOrThrow();
+      const [exported, turns] = await Promise.all([
+        c.conversation(id),
+        readConversation((cursor) => c.records(id, cursor)),
+      ]);
+      const base = `${(exported.title ?? "conversation").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "conversation"}-${id.slice(0, 8)}`;
+      return format === "json"
+        ? { filename: `${base}.json`, content: exportJson(identityNow.identity, exported, turns), type: "application/json" }
+        : { filename: `${base}.md`, content: exportMarkdown(exported, turns), type: "text/markdown" };
+    },
+    [agentClientOrThrow],
+  );
+
+  // Re-read a conversation that moved on: its state, then its transcript. True
+  // only when both were read, so nothing is asked again against a stale view.
+  const reread = useCallback(
+    async (c: AgentClient, id: string): Promise<boolean> => {
+      try {
+        const next = await c.conversation(id);
+        if (conversationIdRef.current !== id) return false;
+        setConversationMeta(next);
+        const transcript = await loadTranscript();
+        if (transcript === "skipped" && conversationIdRef.current === id) {
+          setError("The conversation changed and could not be read again; nothing was repeated.");
+        }
+        return transcript === "loaded";
+      } catch (err) {
+        if (conversationIdRef.current === id) setError(`Failed to re-read the conversation: ${message(err)}`);
+        return false;
+      }
+    },
+    [loadTranscript, setConversationMeta],
+  );
+
+  // A turn action's failure: a conversation gone is left, one that moved on is
+  // re-read (`changed` only when the re-read succeeded), anything else is shown
+  // with its code.
+  const actionFailed = useCallback(
+    async (c: AgentClient, id: string, err: unknown): Promise<TurnActionOutcome> => {
+      if (conversationIdRef.current !== id) return "failed";
+      const gone = goneStatus(err);
+      if (gone !== null) {
+        onGoneRef.current(gone);
+        return "failed";
+      }
+      if (err instanceof AgentRequestError && err.code === ERR_CONVERSATION_CHANGED) {
+        return (await reread(c, id)) ? "changed" : "failed";
+      }
+      setError(message(err));
+      return "failed";
+    },
+    [reread],
+  );
+
+  const truncateFrom = useCallback(
+    async (turn: string): Promise<TurnActionOutcome> => {
+      const id = conversationIdRef.current;
+      const current = conversationRef.current;
+      const agent = reachableAgent();
+      if (!id || !current || !agent || lockedRef.current) return "failed";
+      const c = new AgentClient(agent.url, agent.token);
+      try {
+        const { conversation: next } = await c.truncateConversation(id, turn, current.revision);
+        if (conversationIdRef.current !== id) return "failed";
+        setConversationMeta(next);
+        setMessages((prev) => dropTurnsFrom(prev, turn));
+        setUnsent(null);
+        setError(null);
+        return "done";
+      } catch (err) {
+        return actionFailed(c, id, err);
+      }
+    },
+    [actionFailed, reachableAgent, setConversationMeta],
+  );
+
+  const resendFrom = useCallback(
+    async (turn: string, text: string): Promise<TurnActionOutcome> => {
+      const outcome = await truncateFrom(turn);
+      if (outcome === "done") send(text);
+      return outcome;
+    },
+    [send, truncateFrom],
+  );
+
+  const branchFrom = useCallback(
+    async (turn: string) => {
+      const id = conversationIdRef.current;
+      const agent = reachableAgent();
+      if (!id || !agent || lockedRef.current) return;
+      const c = new AgentClient(agent.url, agent.token);
+      try {
+        const branch = await c.branchConversation(id, turn);
+        if (conversationIdRef.current !== id) return;
+        // The agent just answered for the branch: it is the workspace's, and a
+        // resolution still in flight must not switch back to the old pointer.
+        supersedeResolution();
+        showOwned(branch, agentKey(agent));
+      } catch (err) {
+        if ((await actionFailed(c, id, err)) === "changed") setError(message(err));
+      }
+    },
+    [actionFailed, reachableAgent, showOwned, supersedeResolution],
+  );
 
   useEffect(
     () => () => {
@@ -853,6 +1557,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     retry,
     canRetry: !locked && (unsent !== null || interruptedTurn(messages) !== null),
     clearConversation,
+    features: {
+      conversations: conversationsOn,
+      truncation: conversationsOn && hasFeature(identity, AGENT_FEATURES.truncation),
+      branching: conversationsOn && hasFeature(identity, AGENT_FEATURES.branching),
+    },
+    conversation,
+    draft: workspaceOpen && conversationId === null,
+    listConversations,
+    openConversation: openListed,
+    renameConversation,
+    setConversationArchived,
+    deleteConversation,
+    exportConversation,
+    truncateFrom,
+    resendFrom,
+    branchFrom,
     setConversation,
     registerWorkspace,
     setRunner,

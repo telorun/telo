@@ -1,0 +1,156 @@
+kind: Telo.Application
+metadata:
+  name: ChatTurnSpend
+  version: 1.0.0
+  description: |
+    A turn is charged for every model call it makes — the agent's, the one that
+    names the conversation and the one that summarizes it, a summary that came
+    back unusable included — offline against the provider stub, whose every
+    call reports 15 tokens. With room for 80 tokens and 10 reserved per turn:
+    the first turn is charged its naming and agent calls (30); the second's
+    summary call returns empty and fails the turn, which is charged that call
+    (15) rather than its reservation (10); continuing it is charged its summary
+    and agent calls (30); and the third is refused for capacity, 75 spent plus
+    its reservation being over the ceiling. Were any of those calls left out —
+    the unusable summary's included — the third would fit.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18532/v1
+      budgetLimit: 80
+      reservePerTurn: 10
+      maxContextTokens: 10
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_TURN_SPEND_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-spend
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# A turn's journal drained to its end: its record types, or the code it failed
+# with.
+kind: Run.Sequence
+metadata: { name: drain }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "inputs.turnId"
+      fromId: 0
+  - name: ending
+    try:
+      - name: all
+        timeout: 30000
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.read.result.output"
+    catch:
+      - name: failure
+        value: !cel "error.code"
+outputs:
+  types: !cel "has(steps.all) ? steps.all.result.items.map(r, r.data.type) : []"
+  failure: !cel "has(steps.failure) ? dyn(steps.failure.result) : null"
+---
+kind: Run.Sequence
+metadata: { name: start }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: admit
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "inputs.message"
+  - name: drained
+    invoke: !ref drain
+    inputs: { turnId: !cel "steps.admit.result.turnId" }
+outputs:
+  turnId: !cel "steps.admit.result.turnId"
+  types: !cel "steps.drained.result.types"
+  failure: !cel "steps.drained.result.failure"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18532 }
+targets: [ !ref stub ]
+steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
+  - name: first
+    invoke: !ref start
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id", message: STUB_SUMMARY_EMPTY_ONCE hello }
+  - name: second
+    invoke: !ref start
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id", message: and more }
+  - name: continued
+    invoke: !ref Chat.continueTurn
+    inputs: { turnId: !cel "steps.second.result.turnId", clientIp: test-runner }
+  - name: continuedDrain
+    invoke: !ref drain
+    inputs: { turnId: !cel "steps.second.result.turnId" }
+  - name: third
+    try:
+      - name: thirdStart
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.conversation.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: once more
+    catch:
+      - name: refused
+        value: !cel "error.code"
+  - name: read
+    invoke: !ref Chat.getConversation
+    inputs: { conversationId: !cel "steps.conversation.result.conversation.id" }
+  - name: charged
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        first: !cel "steps.first.result.types.filter(t, t in ['conversation-title', 'context-summary', 'finish'])"
+        second: !cel "steps.second.result.failure"
+        continued: !cel >-
+          [steps.continuedDrain.result.failure,
+           steps.continuedDrain.result.types.filter(t, t in ['context-summary', 'turn-continued', 'finish'])]
+        third: !cel "steps.refused.result"
+        totalTokens: !cel "steps.read.result.conversation.totalTokens"
+      expected:
+        first: [ conversation-title, finish ]
+        second: ERR_CONTEXT_COMPACTION_FAILED
+        continued: [ null, [ context-summary, turn-continued, context-summary, finish ] ]
+        third: ERR_AT_CAPACITY
+        totalTokens: 75

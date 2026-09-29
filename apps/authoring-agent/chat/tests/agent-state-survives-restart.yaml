@@ -62,6 +62,11 @@ steps:
             openaiApiKey: stub-key
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18431/conversations
+            method: POST
         - name: start
           invoke:
             kind: HttpClient.Request
@@ -69,7 +74,7 @@ steps:
             method: POST
           inputs:
             body:
-              conversationId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+              conversationId: !cel "steps.conversation.result.body.id"
               message: STUB_TOOL what is in the workspace?
         # Drained to its end, so the turn is finished before the restart.
         - name: events
@@ -79,10 +84,11 @@ steps:
             url: !interpolate "http://127.0.0.1:18431/chat/${{ steps.start.result.body.turnId }}/events"
             responseType: text
         - name: page
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18431/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/records
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18431/conversations/${{ steps.conversation.result.body.id }}/records"
       outputs:
+        conversationId: !cel "steps.conversation.result.body.id"
         turnId: !cel "steps.start.result.body.turnId"
         page: !cel "steps.page.result.body"
   - name: secondBoot
@@ -101,9 +107,9 @@ steps:
       targets: [ !ref agent ]
       steps:
         - name: page
-          invoke:
-            kind: HttpClient.Request
-            url: http://127.0.0.1:18432/conversations/7c9e6679-7425-40de-944b-e07fc1f90ae7/records
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: !interpolate "http://127.0.0.1:18432/conversations/${{ inputs.conversationId }}/records"
         # The state directory is not workspace content: the agent's own tree
         # listing never shows it.
         - name: tree
@@ -114,6 +120,8 @@ steps:
       outputs:
         page: !cel "steps.page.result.body"
         files: !cel "steps.tree.result.body.files"
+    inputs:
+      conversationId: !cel "steps.firstBoot.result.conversationId"
   - name: kept
     invoke: { kind: Assert.Equals }
     inputs:

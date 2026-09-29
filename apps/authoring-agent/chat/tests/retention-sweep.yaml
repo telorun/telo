@@ -3,13 +3,18 @@ metadata:
   name: ChatRetentionSweep
   version: 1.0.0
   description: |
-    Retention deletes whole conversations. Conversation A is idle; conversation
-    B has an equally old turn and a recent one. The sweep removes every journal
-    key of A — its turns then read as removed, which the event route answers
-    with 410 — and deletes A's `turns`, `messages` and `turn_projections` rows,
-    while B keeps every turn, row and record. A's key was already removed before
-    the sweep, as a sweep a crash cut short leaves it, and the sweep still
-    finishes; a second sweep finds nothing to do. Offline, against the stub.
+    Retention deletes whole conversations. Conversation A has not changed since
+    long ago; conversation B changed just now. The sweep tombstones A and
+    removes every journal key of it — its turns then read as removed, which the
+    event route answers with 410 — and deletes A's `turns`, `messages` and
+    `turn_projections` rows, while B keeps every turn, row and record. A's key
+    was already removed before the sweep, as a sweep a crash cut short leaves
+    it, and the sweep still finishes. Conversation D was tombstoned with its
+    turns marked removed and nothing else done, as a deletion a crash cut
+    short leaves it: the sweep removes its keys and rows too. A second sweep
+    finds nothing to do. A
+    reads 410 until its tombstone is older than the window, then 404. Offline,
+    against the stub.
 imports:
   Chat:
     source: ../
@@ -22,10 +27,9 @@ imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  # By path, as the chat library imports them, until they are published.
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.18.0#sha256-lA9kmx0POJtB2MQabT5D8tdW46Bz9vx1UnOPXRcpiHI
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.4.0#sha256-LP5BOEFkOUJUKCkxW7-nbnBB4UIqvzCUpeOu-riERXQ
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
 variables:
@@ -39,7 +43,6 @@ variables:
 targets:
   - !ref Chat.ensureWorkspace
   - !ref Chat.initSchema
-  - !ref reset
   - !ref test
 ---
 kind: SQLite.Connection
@@ -66,22 +69,6 @@ markerRetention: 1h
 kind: RecordStream.JournalRead
 metadata: { name: journalRead }
 journal: !ref journal
----
-kind: Run.Sequence
-metadata: { name: reset }
-steps:
-  - name: turns
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM turns WHERE conversation_id IN ('a1a1a1a1-0000-4000-8000-000000000001', 'b2b2b2b2-0000-4000-8000-000000000002')"
-  - name: messages
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM messages WHERE conversation_id IN ('a1a1a1a1-0000-4000-8000-000000000001', 'b2b2b2b2-0000-4000-8000-000000000002')"
-  - name: projections
-    invoke: !ref stateCommand
-    inputs:
-      sql: "DELETE FROM turn_projections WHERE conversation_id IN ('a1a1a1a1-0000-4000-8000-000000000001', 'b2b2b2b2-0000-4000-8000-000000000002')"
 ---
 # One turn to its end: started, then its journal drained.
 kind: Run.Sequence
@@ -118,20 +105,38 @@ outputs:
 # How many rows each conversation keeps, per table.
 kind: Run.Sequence
 metadata: { name: rowCounts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ids]
+    properties:
+      ids:
+        type: array
+        items: { type: string }
 steps:
   - name: counts
-    invoke: !ref stateQuery
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.ids"
+      steps:
+        - name: count
+          invoke: !ref stateQuery
+          inputs:
+            sql: |
+              SELECT (SELECT COUNT(*) FROM turns WHERE conversation_id = ?) AS turns,
+                     (SELECT COUNT(*) FROM messages WHERE conversation_id = ?) AS messages,
+                     (SELECT COUNT(*) FROM turn_projections WHERE conversation_id = ?) AS projections
+            bindings: [ !cel "item", !cel "item", !cel "item" ]
+      outputs:
+        turns: !cel "int(steps.count.result.rows[0].turns)"
+        messages: !cel "int(steps.count.result.rows[0].messages)"
+        projections: !cel "int(steps.count.result.rows[0].projections)"
     inputs:
-      sql: |
-        SELECT c.id AS conversation,
-               (SELECT COUNT(*) FROM turns WHERE conversation_id = c.id) AS turns,
-               (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) AS messages,
-               (SELECT COUNT(*) FROM turn_projections WHERE conversation_id = c.id) AS projections
-        FROM (SELECT 'a1a1a1a1-0000-4000-8000-000000000001' AS id
-              UNION ALL SELECT 'b2b2b2b2-0000-4000-8000-000000000002') AS c
-        ORDER BY c.id
+      ids: !cel "inputs.ids"
 outputs:
-  rows: !cel "steps.counts.result.rows"
+  rows: !cel "steps.counts.result"
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -142,22 +147,40 @@ with:
     ports: { http: 18485 }
 targets: [ !ref stub ]
 steps:
+  - name: a
+    invoke: !ref Chat.createConversation
+  - name: b
+    invoke: !ref Chat.createConversation
   - name: idleTurn
     invoke: !ref turn
-    inputs: { conversationId: a1a1a1a1-0000-4000-8000-000000000001 }
+    inputs: { conversationId: !cel "steps.a.result.conversation.id" }
   - name: oldTurn
     invoke: !ref turn
-    inputs: { conversationId: b2b2b2b2-0000-4000-8000-000000000002 }
+    inputs: { conversationId: !cel "steps.b.result.conversation.id" }
   - name: recentTurn
     invoke: !ref turn
-    inputs: { conversationId: b2b2b2b2-0000-4000-8000-000000000002 }
+    inputs: { conversationId: !cel "steps.b.result.conversation.id" }
+  - name: d
+    invoke: !ref Chat.createConversation
+  - name: halfRemovedTurn
+    invoke: !ref turn
+    inputs: { conversationId: !cel "steps.d.result.conversation.id" }
+  - name: tombstoneD
+    invoke: !ref stateCommand
+    inputs:
+      sql: "UPDATE conversations SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), revision = revision + 1 WHERE id = ?"
+      bindings: [ !cel "steps.d.result.conversation.id" ]
+  - name: markD
+    invoke: !ref stateCommand
+    inputs:
+      sql: "UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE conversation_id = ?"
+      bindings: [ !cel "steps.d.result.conversation.id" ]
+  # Idleness is the conversation's last change, whenever its turns ran.
   - name: age
     invoke: !ref stateCommand
     inputs:
-      sql: "UPDATE turns SET active_at = '2000-01-01T00:00:00.000Z' WHERE turn_id IN (?, ?)"
-      bindings:
-        - !cel "steps.idleTurn.result.turnId"
-        - !cel "steps.oldTurn.result.turnId"
+      sql: "UPDATE conversations SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = ?"
+      bindings: [ !cel "steps.a.result.conversation.id" ]
   # Where a sweep a crash cut short leaves a conversation: its key removed, its
   # rows still there.
   - name: crashedSweep
@@ -172,9 +195,17 @@ steps:
       idleBefore: "2020-01-01T00:00:00Z"
   - name: counts
     invoke: !ref rowCounts
+    inputs:
+      ids:
+        - !cel "steps.a.result.conversation.id"
+        - !cel "steps.b.result.conversation.id"
+        - !cel "steps.d.result.conversation.id"
   - name: idleKey
     invoke: !ref journalRead
     inputs: { key: !cel "steps.idleTurn.result.turnId", limit: 0 }
+  - name: halfRemovedKey
+    invoke: !ref journalRead
+    inputs: { key: !cel "steps.halfRemovedTurn.result.turnId", limit: 0 }
   - name: oldKey
     invoke: !ref journalRead
     inputs: { key: !cel "steps.oldTurn.result.turnId", limit: 0 }
@@ -190,6 +221,27 @@ steps:
     invoke: !ref Chat.retentionSweep
     inputs:
       idleBefore: "2020-01-01T00:00:00Z"
+  - name: tombstoned
+    try:
+      - name: readTombstoned
+        invoke: !ref Chat.getConversation
+        inputs: { conversationId: !cel "steps.a.result.conversation.id" }
+    catch:
+      - name: tombstonedCode
+        value: !cel "error.code"
+  # A window that ends after the tombstone was written: it is forgotten.
+  - name: pastWindow
+    invoke: !ref Chat.retentionSweep
+    inputs:
+      idleBefore: !cel "now() + duration('1h')"
+  - name: forgotten
+    try:
+      - name: readForgotten
+        invoke: !ref Chat.getConversation
+        inputs: { conversationId: !cel "steps.a.result.conversation.id" }
+    catch:
+      - name: forgottenCode
+        value: !cel "error.code"
   - name: wholeConversations
     invoke: { kind: Assert.Equals }
     inputs:
@@ -198,14 +250,21 @@ steps:
         counts: !cel "steps.counts.result.rows"
         idleKey: !cel "steps.idleKey.result.state"
         oldKey: !cel "steps.oldKey.result.state"
+        halfRemovedKey: !cel "steps.halfRemovedKey.result.state"
         removedEvents: !cel "steps.removedCode.result"
         sweptAgain: !cel "steps.again.result.conversations"
+        tombstoned: !cel "steps.tombstonedCode.result"
+        forgotten: !cel "steps.forgottenCode.result"
       expected:
         swept: 1
         counts:
-          - { conversation: a1a1a1a1-0000-4000-8000-000000000001, turns: 0, messages: 0, projections: 0 }
-          - { conversation: b2b2b2b2-0000-4000-8000-000000000002, turns: 2, messages: 4, projections: 2 }
+          - { turns: 0, messages: 0, projections: 0 }
+          - { turns: 2, messages: 4, projections: 2 }
+          - { turns: 0, messages: 0, projections: 0 }
         idleKey: removed
         oldKey: finished
+        halfRemovedKey: removed
         removedEvents: ERR_JOURNAL_KEY_REMOVED
         sweptAgain: 0
+        tombstoned: ERR_CONVERSATION_REMOVED
+        forgotten: ERR_CONVERSATION_NOT_FOUND

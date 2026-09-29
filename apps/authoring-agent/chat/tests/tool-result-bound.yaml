@@ -1,0 +1,83 @@
+kind: Telo.Application
+metadata:
+  name: ChatToolResultBound
+  version: 1.0.0
+  description: |
+    A tool result the agent feeds its model is bounded by `maxToolResultBytes`
+    (32768 by default), offline against the provider stub. The stub asks for a
+    100 000-byte file to be read: the tool-result record's `content` — what the
+    model received — keeps its first 32768 bytes and ends with the truncation
+    marker, and its `output` still holds the file whole.
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18533/v1
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_TOOL_RESULT_BOUND_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/tool-result-bound
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18533 }
+targets: [ !ref stub ]
+steps:
+  # 1000 lines of 100 bytes.
+  - name: large
+    value: !cel "join(range(1000).map(i, '012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678\\n'), '')"
+  - name: seed
+    invoke: !ref Chat.syncWorkspace
+    inputs:
+      write: [ { path: large.txt, content: !cel "steps.large.result" } ]
+      delete: []
+  - name: conversation
+    invoke: !ref Chat.createConversation
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.conversation.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "'read it STUB_CALLS:' + base64Encode(json([{'name': 'read_file', 'arguments': {'path': 'large.txt'}}]))"
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+  - name: result
+    value: !cel "steps.drain.result.items.filter(r, r.data.type == 'tool-result')[0].data.toolResult"
+  - name: bounded
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        kept: !cel "steps.result.result.content == steps.large.result.substring(0, 32768) + '\\n' + '[truncated: 67232 of 100000 bytes cut; a tool result passes at most 32768 bytes to the model]'"
+        outputWhole: !cel "steps.result.result.output.content == steps.large.result"
+        outputSize: !cel "steps.result.result.output.size"
+      expected:
+        kept: true
+        outputWhole: true
+        outputSize: 100000

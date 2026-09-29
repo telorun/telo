@@ -9,7 +9,8 @@ metadata:
     ERR_ORIGIN_NOT_ALLOWED even with the right token, a request with the token
     and no Origin passes, and CORS preflight passes without a token.
     `/health` answers without any header, `/capabilities` reports the auth
-    mode and a prompt id equal to the SHA-256 of `chat/primer.md`, and `/ready`
+    mode, a prompt id equal to the SHA-256 of `chat/primer.md`, the
+    conversation features and whether manifest runs are allowed, and `/ready`
     names an empty model key and an unwritable workspace in fixed messages. With no token, one `warn` record at boot names
     the exposure — read from an in-test OTLP collector — and a token-guarded
     agent emits none.
@@ -59,6 +60,13 @@ collection:
   - { method: POST, path: /chat/t/abort }
   - { method: POST, path: /chat/t/continue }
   - { method: GET, path: /conversations/c/records }
+  - { method: POST, path: /conversations }
+  - { method: GET, path: /conversations }
+  - { method: GET, path: /conversations/c }
+  - { method: PATCH, path: /conversations/c }
+  - { method: DELETE, path: /conversations/c }
+  - { method: DELETE, path: /conversations/c/turns }
+  - { method: POST, path: /conversations/c/branch }
   - { method: GET, path: /workspace }
   - { method: POST, path: /workspace }
   - { method: GET, path: "/workspace/file?path=notes.txt" }
@@ -123,6 +131,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18519/v1
             allowedOrigins: "https://studio.example, "
             otlpEndpoint: http://127.0.0.1:18510
+            allowManifestRuns: true
           secrets:
             openaiApiKey: stub-key
             agentToken: test-token-2b7f
@@ -230,13 +239,17 @@ steps:
               listedOriginStatus: !cel "steps.listedOrigin.result.status"
               preflightStatus: !cel "steps.preflight.result.status"
               health: !cel "[steps.health.result.status, steps.health.result.body]"
-              guardedAuth: !cel "steps.guardedCapabilities.result.body.auth"
+              guardedCapabilities: !cel >-
+                cel.bind(b, steps.guardedCapabilities.result.body,
+                  {'auth': b.auth, 'features': b.features, 'manifestRuns': b.manifestRuns})
               guardedReady: !cel "[steps.guardedReady.result.status, steps.guardedReady.result.body]"
-              # The version moves with every release, so its shape is asserted.
+              # The whole body; the version moves with every release, so its
+              # shape is asserted.
               openCapabilities: !cel >-
                 cel.bind(b, steps.openCapabilities.result.body,
                   {'agent': {'name': b.agent.name, 'versioned': b.agent.version.matches('^[0-9]+[.][0-9]+[.][0-9]+$')},
-                   'prompt': b.prompt, 'auth': b.auth})
+                   'prompt': b.prompt, 'auth': b.auth, 'features': b.features, 'manifestRuns': b.manifestRuns,
+                   'keys': sort(b.map(k, k))})
               openReady: !cel >-
                 [steps.openReady.result.status, steps.openReady.result.body]
               exposure: !cel >-
@@ -250,18 +263,33 @@ steps:
                 - { route: POST /chat/t/abort, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /chat/t/continue, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /conversations/c/records, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /conversations, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /conversations, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /conversations/c, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: PATCH /conversations/c, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: DELETE /conversations/c, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: DELETE /conversations/c/turns, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /conversations/c/branch, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /workspace, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: "GET /workspace/file?path=notes.txt", status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /capabilities, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
               # With the bearer the guard admits every route, which answers for
-              # itself: bodyless writes fail their own schema, unknown turns 404.
+              # itself: bodyless writes fail their own schema, unknown turns and
+              # conversations 404.
               served:
                 - { route: POST /chat, status: 400, code: null, challenge: null }
                 - { route: GET /chat/t/events, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/abort, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/continue, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
-                - { route: GET /conversations/c/records, status: 200, code: null, challenge: null }
+                - { route: GET /conversations/c/records, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
+                - { route: POST /conversations, status: 201, code: null, challenge: null }
+                - { route: GET /conversations, status: 200, code: null, challenge: null }
+                - { route: GET /conversations/c, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
+                - { route: PATCH /conversations/c, status: 400, code: null, challenge: null }
+                - { route: DELETE /conversations/c, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
+                - { route: DELETE /conversations/c/turns, status: 400, code: null, challenge: null }
+                - { route: POST /conversations/c/branch, status: 400, code: null, challenge: null }
                 - { route: GET /workspace, status: 200, code: null, challenge: null }
                 - { route: POST /workspace, status: 400, code: null, challenge: null }
                 - { route: "GET /workspace/file?path=notes.txt", status: 200, code: null, challenge: null }
@@ -272,12 +300,18 @@ steps:
               listedOriginStatus: 200
               preflightStatus: 204
               health: [ 200, { status: up } ]
-              guardedAuth: bearer
+              guardedCapabilities:
+                auth: bearer
+                features: [conversations, conversation-truncation, conversation-branching]
+                manifestRuns: true
               guardedReady: [ 200, { ready: true, reasons: [] } ]
               openCapabilities:
                 agent: { name: AuthoringAgent, versioned: true }
                 prompt: { id: !cel "sha256(steps.primer.result.content)" }
                 auth: none
+                features: [conversations, conversation-truncation, conversation-branching]
+                manifestRuns: false
+                keys: [agent, auth, features, manifestRuns, prompt]
               # Fixed messages: the probe's own error, which names a path on the
               # host, is not in the unguarded answer.
               openReady:

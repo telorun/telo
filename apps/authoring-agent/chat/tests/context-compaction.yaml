@@ -1,0 +1,502 @@
+kind: Telo.Application
+metadata:
+  name: ChatContextCompaction
+  version: 1.0.0
+  description: |
+    Context compaction, offline against the provider stub, with a context bound
+    (10 tokens) below what every stub call reports (15). The second turn
+    summarizes the first: it journals a `context-summary` record right after its
+    lead record, and its agent call starts from `CONVERSATION SUMMARY:` with no
+    earlier message and no replayed reasoning; the summary call's tokens are the
+    conversation's. A summary call the provider refuses fails the turn with
+    ERR_CONTEXT_COMPACTION_FAILED carrying the cause and journals no summary
+    record, and continuing the turn summarizes and finishes it. A summary call
+    that returns an empty reply (cause ERR_SUMMARY_EMPTY) or one cut at its cap
+    (cause ERR_SUMMARY_INCOMPLETE, naming the reason and the cap) fails the
+    turn the same way after journaling a `context-summary` with the error and
+    the call's usage and no summary: the conversation's tokens count it, before
+    and after a continue that summarizes for real, and the continued history
+    carries that summary alone. Every summary call runs at low effort with no
+    reasoning summary and asks for at most `maxContextTokens / 8` output tokens
+    (10 / 8 = 1), while the agent's own calls keep the configured effort.
+    Truncating the turn that holds a summary removes the summary, so the next
+    turn summarizes again from the one before it. A branch remaps the summary it
+    copies onto its own turns and continues from it.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONTEXT_COMPACTION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/context-compaction
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: create }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18529/conversations
+      method: POST
+outputs:
+  id: !cel "steps.post.result.body.id"
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18529/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  turnId: !cel "steps.post.result.body.turnId"
+---
+kind: Run.Sequence
+metadata: { name: drain }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18529/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  count: !cel "size(steps.all.result.items)"
+---
+# One turn to its end.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: start
+    invoke: !ref startTurn
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      message: !cel "inputs.message"
+  - name: drained
+    invoke: !ref drain
+    inputs: { turnId: !cel "steps.start.result.turnId" }
+outputs:
+  turnId: !cel "steps.start.result.turnId"
+---
+kind: Run.Sequence
+metadata: { name: truncate }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, from, revision]
+    properties:
+      conversationId: { type: string }
+      from: { type: string }
+      revision: { type: integer }
+steps:
+  - name: send
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18529/conversations/${{ inputs.conversationId }}/turns?from=${{ inputs.from }}&revision=${{ inputs.revision }}"
+      method: DELETE
+outputs:
+  status: !cel "steps.send.result.status"
+  body: !cel "steps.send.result.body"
+---
+kind: Run.Sequence
+metadata: { name: read }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18529${{ inputs.path }}"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+# Fails until the stub holds an agent call (not a naming call) carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubHolds }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18528/requests
+  - name: notYet
+    if: !cel >-
+      !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
+        && !json(r).contains('You name conversations'))
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub holds no agent call carrying ' + inputs.text + ' yet.'"
+---
+# The agent call of a turn (neither naming nor summarizing) whose input carries
+# `text`, as the stub received it.
+kind: Run.Sequence
+metadata: { name: agentCall }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18528/requests }
+outputs:
+  request: !cel >-
+    steps.sent.result.body.requests.filter(r, json(r.input).contains(inputs.text)
+      && !string(r.instructions).startsWith('You name conversations')
+      && !string(r.instructions).startsWith('You summarize conversations'))[0]
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18528 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18529 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18528/v1
+            maxContextTokens: 10
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: conversation
+          invoke: !ref create
+        - name: t1
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: message t1 }
+        # Its own summary covers t1; the next one, covering it, is refused once.
+        - name: t2
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: STUB_SUMMARY_FAIL_ONCE message t2 }
+        - name: afterT2
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}" }
+        - name: t2Call
+          invoke: !ref agentCall
+          inputs: { text: message t2 }
+        - name: t3
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: message t3 }
+        - name: failedRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}/records" }
+        - name: continued
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18529/chat/${{ steps.t3.result.turnId }}/continue"
+            method: POST
+        - name: continuedDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.t3.result.turnId" }
+        - name: continuedRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}/records" }
+        - name: summarized
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              t2: !cel >-
+                steps.continuedRecords.result.body.turns[1].records.map(r, r.data.type).filter(t, t in ['user-message', 'context-summary'])
+              t2Summary: !cel >-
+                cel.bind(s, steps.continuedRecords.result.body.turns[1].records[1].data,
+                  [s.type, s.throughTurnId == steps.t1.result.turnId, s.summary, s.model, s.usage.totalTokens])
+              # t1: its naming call and its own; t2: its summary call and its own.
+              tokens: !cel "steps.afterT2.result.body.totalTokens"
+              t2Call: !cel >-
+                cel.bind(input, steps.t2Call.result.request.input,
+                  [json(input[0]).contains('CONVERSATION SUMMARY: stub summary'),
+                   json(input).contains('message t1'),
+                   input.exists(i, has(i.type) && i.type == 'reasoning')])
+              failed: !cel >-
+                cel.bind(t, steps.failedRecords.result.body.turns[2],
+                  [t.status, t.error.code, t.error.data.cause.code, t.records.map(r, r.data.type)])
+              continued: !cel >-
+                [steps.continued.result.status,
+                 steps.continuedRecords.result.body.turns[2].status,
+                 steps.continuedRecords.result.body.turns[2].records.map(r, r.data.type)
+                   .filter(t, t in ['user-message', 'turn-continued', 'context-summary', 'finish'])]
+            expected:
+              t2: [ user-message, context-summary ]
+              t2Summary: [ context-summary, true, stub summary, gpt-5.2, 15 ]
+              tokens: 60
+              t2Call: [ true, false, false ]
+              failed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_OPENAI_REQUEST_FAILED, [ user-message ] ]
+              continued: [ 200, finished, [ user-message, turn-continued, context-summary, finish ] ]
+        # ── truncating the turn that holds the latest summary ───────────────
+        - name: current
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}" }
+        - name: truncated
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18529/conversations/${{ steps.conversation.result.id }}/turns?from=${{ steps.t3.result.turnId }}&revision=${{ steps.current.result.body.revision }}"
+            method: DELETE
+        - name: t4
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.conversation.result.id", message: message t4 }
+        - name: afterTruncation
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.conversation.result.id }}/records" }
+        # ── a branch carries its summary over ───────────────────────────────
+        - name: branched
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18529/conversations/${{ steps.conversation.result.id }}/branch"
+            method: POST
+            body: { throughTurnId: !cel "steps.t4.result.turnId" }
+        - name: branchRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.branched.result.body.id }}/records" }
+        - name: b5
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.branched.result.body.id", message: message b5 }
+        - name: b5Call
+          invoke: !ref agentCall
+          inputs: { text: message b5 }
+        - name: resummarized
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              truncated: !cel "steps.truncated.result.status"
+              summaries: !cel >-
+                steps.afterTruncation.result.body.turns.map(t,
+                  t.records.filter(r, r.data.type == 'context-summary').map(r, r.data.throughTurnId))
+              remapped: !cel >-
+                steps.branchRecords.result.body.turns.map(t,
+                  t.records.filter(r, r.data.type == 'context-summary').map(r, r.data.throughTurnId))
+              b5Call: !cel >-
+                [json(steps.b5Call.result.request.input).contains('CONVERSATION SUMMARY: stub summary'),
+                 json(steps.b5Call.result.request.input).contains('message t1')]
+            expected:
+              truncated: 200
+              summaries:
+                - []
+                - [ !cel "steps.t1.result.turnId" ]
+                - [ !cel "steps.t2.result.turnId" ]
+              remapped:
+                - []
+                - [ !cel "steps.branchRecords.result.body.turns[0].turnId" ]
+                - [ !cel "steps.branchRecords.result.body.turns[1].turnId" ]
+              b5Call: [ true, false ]
+        # ── an empty summary is journaled with its usage, then fails ────────
+        - name: e
+          invoke: !ref create
+        - name: e1
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.e.result.id", message: STUB_SUMMARY_EMPTY_ONCE message e1 }
+        - name: e2
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.e.result.id", message: message e2 }
+        - name: eFailed
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.e.result.id }}/records" }
+        - name: eAfterFailure
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.e.result.id }}" }
+        - name: eContinued
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18529/chat/${{ steps.e2.result.turnId }}/continue"
+            method: POST
+        - name: eContinuedDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.e2.result.turnId" }
+        - name: eRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.e.result.id }}/records" }
+        - name: eAfterContinue
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.e.result.id }}" }
+        # The failed attempt reached no agent call: this is the continued one's.
+        - name: eCall
+          invoke: !ref agentCall
+          inputs: { text: message e2 }
+        # ── a summary cut at its cap is journaled with its usage, then fails ─
+        - name: f
+          invoke: !ref create
+        - name: f1
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.f.result.id", message: STUB_SUMMARY_CUT_ONCE message f1 }
+        - name: f2
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.f.result.id", message: message f2 }
+        - name: fFailed
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.f.result.id }}/records" }
+        - name: fContinued
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18529/chat/${{ steps.f2.result.turnId }}/continue"
+            method: POST
+        - name: fContinuedDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.f2.result.turnId" }
+        - name: fRecords
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.f.result.id }}/records" }
+        - name: allSent
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18528/requests }
+        - name: unusableSummaries
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              eFailed: !cel >-
+                cel.bind(t, steps.eFailed.result.body.turns[1],
+                  [t.status, t.error.code, t.error.data.cause.code, t.records.map(r, r.data.type)])
+              eRecord: !cel >-
+                cel.bind(s, steps.eFailed.result.body.turns[1].records[1].data,
+                  [has(s.summary), s.error.code, s.throughTurnId == steps.e1.result.turnId, s.model, s.usage.totalTokens])
+              # e1: naming and agent; e2: the empty summary, then the real one
+              # and the agent call.
+              eTokens: !cel "[steps.eAfterFailure.result.body.totalTokens, steps.eAfterContinue.result.body.totalTokens]"
+              eContinued: !cel >-
+                cel.bind(t, steps.eRecords.result.body.turns[1],
+                  [steps.eContinued.result.status, t.status,
+                   t.records.map(r, r.data.type).filter(x, x in ['user-message', 'turn-continued', 'context-summary', 'finish']),
+                   t.records.filter(r, r.data.type == 'context-summary').map(r, has(r.data.summary))])
+              eCall: !cel >-
+                cel.bind(input, json(steps.eCall.result.request.input),
+                  [json(steps.eCall.result.request.input[0]).contains('CONVERSATION SUMMARY: stub summary'),
+                   size(input.split('CONVERSATION SUMMARY:')) - 1,
+                   input.contains('message e1')])
+              fFailed: !cel >-
+                cel.bind(t, steps.fFailed.result.body.turns[1],
+                  [t.status, t.error.code, t.error.data.cause.code, t.error.data.cause.message,
+                   t.records.map(r, r.data.type)])
+              fRecord: !cel >-
+                cel.bind(s, steps.fFailed.result.body.turns[1].records[1].data,
+                  [has(s.summary), s.error.code, s.usage.totalTokens])
+              fContinued: !cel >-
+                cel.bind(t, steps.fRecords.result.body.turns[1],
+                  [steps.fContinued.result.status, t.status,
+                   t.records.filter(r, r.data.type == 'context-summary').map(r, has(r.data.summary) ? r.data.summary : r.data.error.code)])
+              summaryCalls: !cel >-
+                distinct(steps.allSent.result.body.requests
+                  .filter(r, string(r.instructions).startsWith('You summarize conversations'))
+                  .map(r, string(int(r.max_output_tokens)) + ' ' + r.reasoning.effort
+                    + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+              agentCalls: !cel >-
+                distinct(steps.allSent.result.body.requests
+                  .filter(r, !string(r.instructions).startsWith('You summarize conversations')
+                    && !string(r.instructions).startsWith('You name conversations'))
+                  .map(r, r.reasoning.effort + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+            expected:
+              eFailed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_SUMMARY_EMPTY, [ user-message, context-summary ] ]
+              eRecord: [ false, ERR_SUMMARY_EMPTY, true, gpt-5.2, 15 ]
+              eTokens: [ 45, 75 ]
+              eContinued:
+                - 200
+                - finished
+                - [ user-message, context-summary, turn-continued, context-summary, finish ]
+                - [ false, true ]
+              eCall: [ true, 1, false ]
+              fFailed:
+                - failed
+                - ERR_CONTEXT_COMPACTION_FAILED
+                - ERR_SUMMARY_INCOMPLETE
+                - "The summary call ended before its reply was complete (finish reason `length`; a summary may take at most 1 output tokens)."
+                - [ user-message, context-summary ]
+              fRecord: [ false, ERR_SUMMARY_INCOMPLETE, 15 ]
+              fContinued: [ 200, finished, [ ERR_SUMMARY_INCOMPLETE, stub summary ] ]
+              summaryCalls: [ "1 low -" ]
+              agentCalls: [ "medium auto" ]

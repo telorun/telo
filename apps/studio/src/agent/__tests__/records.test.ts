@@ -8,7 +8,7 @@ import {
   transcriptFromTurns,
   type RecordsPage,
 } from "../records";
-import type { ChatMessage, JournalRecord, TurnRecords } from "../types";
+import type { AssistantMessage, ChatMessage, JournalRecord, TurnRecords } from "../types";
 
 const toolTurn: JournalRecord[] = [
   { id: 1, data: { type: "user-message", content: "build it", model: "m" } },
@@ -177,5 +177,57 @@ describe("records → transcript", () => {
 
     expect(cursors).toEqual([null, { fromTurn: "t1", fromId: 4 }]);
     expect(transcriptFromTurns(read)).toEqual(transcriptFromTurns(turns));
+  });
+
+  it("folds a title failure and a context summary into the turn that journaled them, in stream order", () => {
+    const messages = transcriptFromTurns([
+      {
+        turnId: "t3",
+        status: "finished",
+        error: null,
+        records: [
+          { id: 1, data: { type: "user-message", content: "go on", model: "m" } },
+          { id: 2, data: { type: "conversation-title", error: { code: "ERR_TITLE_EMPTY", message: "empty title" } } },
+          { id: 3, data: { type: "context-summary", throughTurnId: "t1", summary: "Earlier: a server.", model: "m" } },
+          { id: 4, data: { type: "text-delta", delta: "Done." } },
+          { id: 5, data: { type: "finish", finishReason: "stop" } },
+        ],
+      },
+    ]);
+
+    expect(messages[1]).toMatchObject({
+      parts: [
+        { kind: "title-error", error: { code: "ERR_TITLE_EMPTY", message: "empty title" } },
+        { kind: "summary", throughTurnId: "t1", summary: "Earlier: a server." },
+        { kind: "text", text: "Done." },
+      ],
+    });
+  });
+
+  it("folds a failed summarization and a title record with neither title nor error into nothing", () => {
+    const plain: JournalRecord[] = [
+      { id: 1, data: { type: "user-message", content: "go on", model: "m" } },
+      { id: 4, data: { type: "text-delta", delta: "Done." } },
+    ];
+    const withDegenerate: JournalRecord[] = [
+      plain[0],
+      { id: 2, data: { type: "conversation-title", model: "m", usage: { totalTokens: 3 } } },
+      {
+        id: 3,
+        data: {
+          type: "context-summary",
+          throughTurnId: "t1",
+          error: { code: "ERR_OPENAI_REQUEST_FAILED", message: "down" },
+          model: "m",
+        },
+      },
+      plain[1],
+    ];
+    const turn = (records: JournalRecord[]): TurnRecords => ({ turnId: "t3", status: "finished", error: null, records });
+
+    const { lastRecordId, ...folded } = transcriptFromTurns([turn(withDegenerate)])[1] as AssistantMessage;
+    const { lastRecordId: plainLast, ...expected } = transcriptFromTurns([turn(plain)])[1] as AssistantMessage;
+    expect([lastRecordId, plainLast]).toEqual([4, 4]);
+    expect(folded).toEqual(expected);
   });
 });

@@ -1,0 +1,408 @@
+kind: Telo.Application
+metadata:
+  name: ChatConversationTitle
+  version: 1.0.0
+  description: |
+    Naming a conversation, offline against the provider stub. A conversation's
+    first turn journals a `conversation-title` record right after its lead
+    record — the sanitized title (the reply's first line, without quotes or a
+    trailing period), the model and the call's usage — and the conversation
+    takes the title. The naming call runs at low effort with no reasoning
+    summary and asks for at most 1024 output tokens. A title the user sets while
+    the naming call is still out stays: the record then carries the call's model
+    and usage and no title, the naming bumps no revision, and the call's tokens
+    are still the conversation's. A naming call the provider refuses is recorded
+    as the record's error, the turn still finishes and the conversation stays
+    untitled; the next turn names it. A reply cut at its cap is recorded as
+    ERR_TITLE_INCOMPLETE with its usage, the turn finishes and the conversation
+    stays untitled. A reply longer than 80 characters whose 80th is an astral
+    code point is cut to its first 80 code points, the astral one whole. A
+    quote or trailing period is stripped beside an astral character without
+    splitting it, and a first message whose 4000th code point is astral is sent
+    to the naming call as its first 4000 code points, the astral one whole.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONVERSATION_TITLE_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversation-title
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: create }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18531/conversations
+      method: POST
+outputs:
+  id: !cel "steps.post.result.body.id"
+---
+kind: Run.Sequence
+metadata: { name: startTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18531/chat
+      method: POST
+      body:
+        conversationId: !cel "inputs.conversationId"
+        message: !cel "inputs.message"
+outputs:
+  turnId: !cel "steps.post.result.body.turnId"
+---
+kind: Run.Sequence
+metadata: { name: drain }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 30000
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18531/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: frames
+    invoke: { kind: Sse.Decoder }
+    inputs:
+      input: !cel "steps.get.result.body"
+  - name: all
+    timeout: 30000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.frames.result.records"
+outputs:
+  count: !cel "size(steps.all.result.items)"
+---
+# One turn to its end.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: start
+    invoke: !ref startTurn
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      message: !cel "inputs.message"
+  - name: drained
+    invoke: !ref drain
+    inputs: { turnId: !cel "steps.start.result.turnId" }
+outputs:
+  turnId: !cel "steps.start.result.turnId"
+---
+kind: Run.Sequence
+metadata: { name: read }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18531${{ inputs.path }}"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+---
+# Fails until the stub holds a naming call carrying `text`.
+kind: Run.Sequence
+metadata: { name: namingHeld }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties:
+      text: { type: string }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18530/requests
+  - name: notYet
+    if: !cel >-
+      !steps.sent.result.body.requests.exists(r, json(r).contains(inputs.text)
+        && string(r.instructions).startsWith('You name conversations'))
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: !cel "'The stub holds no naming call carrying ' + inputs.text + ' yet.'"
+---
+# A turn's `conversation-title` record, from the records route.
+kind: Run.Sequence
+metadata: { name: titleRecord }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, index]
+    properties:
+      conversationId: { type: string }
+      index: { type: integer }
+steps:
+  - name: records
+    invoke: !ref read
+    inputs: { path: !interpolate "/conversations/${{ inputs.conversationId }}/records" }
+outputs:
+  status: !cel "steps.records.result.body.turns[inputs.index].status"
+  types: !cel "steps.records.result.body.turns[inputs.index].records.map(r, r.data.type)"
+  record: !cel >-
+    steps.records.result.body.turns[inputs.index].records.filter(r, r.data.type == 'conversation-title').map(r, r.data)
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18530 }
+targets: [ !ref stub ]
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18531 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18530/v1
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        # ── named ───────────────────────────────────────────────────────────
+        - name: a
+          invoke: !ref create
+        - name: aTurn
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.a.result.id", message: Hello there }
+        - name: aRecord
+          invoke: !ref titleRecord
+          inputs: { conversationId: !cel "steps.a.result.id", index: 0 }
+        - name: aRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.a.result.id }}" }
+        # ── renamed while the naming call is out ────────────────────────────
+        - name: b
+          invoke: !ref create
+        - name: bTurn
+          invoke: !ref startTurn
+          inputs: { conversationId: !cel "steps.b.result.id", message: STUB_TITLE_SLOW hi }
+        - name: bHeld
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref namingHeld
+          inputs: { text: STUB_TITLE_SLOW hi }
+        - name: rename
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18531/conversations/${{ steps.b.result.id }}"
+            method: PATCH
+            body: { title: Mine }
+        - name: release
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18530/release
+            method: POST
+        - name: bDrained
+          invoke: !ref drain
+          inputs: { turnId: !cel "steps.bTurn.result.turnId" }
+        - name: bRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.b.result.id }}" }
+        - name: bRecord
+          invoke: !ref titleRecord
+          inputs: { conversationId: !cel "steps.b.result.id", index: 0 }
+        # ── refused, then named by the next turn ────────────────────────────
+        - name: c
+          invoke: !ref create
+        - name: cFirst
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.c.result.id", message: STUB_TITLE_FAIL_ONCE hey }
+        - name: cFailed
+          invoke: !ref titleRecord
+          inputs: { conversationId: !cel "steps.c.result.id", index: 0 }
+        - name: cUntitled
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.c.result.id }}" }
+        - name: cSecond
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.c.result.id", message: again }
+        - name: cRetried
+          invoke: !ref titleRecord
+          inputs: { conversationId: !cel "steps.c.result.id", index: 1 }
+        - name: cRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.c.result.id }}" }
+        # ── cut at its cap ──────────────────────────────────────────────────
+        - name: d
+          invoke: !ref create
+        - name: dTurn
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.d.result.id", message: STUB_TITLE_CUT hi }
+        - name: dRecord
+          invoke: !ref titleRecord
+          inputs: { conversationId: !cel "steps.d.result.id", index: 0 }
+        - name: dRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.d.result.id }}" }
+        # ── a long reply, cut at 80 code points ─────────────────────────────
+        - name: e
+          invoke: !ref create
+        - name: eTurn
+          invoke: !ref turn
+          inputs: { conversationId: !cel "steps.e.result.id", message: STUB_TITLE_LONG hi }
+        - name: eRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.e.result.id }}" }
+        # ── astral characters beside a stripped quote or period ─────────────
+        - name: f
+          invoke: !ref create
+        - name: fTurn
+          invoke: !ref turn
+          inputs:
+            conversationId: !cel "steps.f.result.id"
+            message: !cel "'name it STUB_TITLE_REPLY:' + base64Encode('\"Deploy 🚀 app\"')"
+        - name: fRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.f.result.id }}" }
+        - name: g
+          invoke: !ref create
+        - name: gTurn
+          invoke: !ref turn
+          inputs:
+            conversationId: !cel "steps.g.result.id"
+            message: !cel "'name it STUB_TITLE_REPLY:' + base64Encode('Ship 🚀.')"
+        - name: gRead
+          invoke: !ref read
+          inputs: { path: !interpolate "/conversations/${{ steps.g.result.id }}" }
+        # ── a first message cut at 4000 code points, the 4000th astral ──────
+        - name: h
+          invoke: !ref create
+        - name: hTurn
+          invoke: !ref turn
+          inputs:
+            conversationId: !cel "steps.h.result.id"
+            message: !cel "join(range(3999).map(i, 'a'), '') + '😀 and more'"
+        - name: sent
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18530/requests }
+        - name: named
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              aOrder: !cel "slice(steps.aRecord.result.types, 0, 2)"
+              aRecord: !cel >-
+                steps.aRecord.result.record.map(r, [r.title, r.model, r.usage.totalTokens])
+              aTitle: !cel "steps.aRead.result.body.title"
+              # Admission, PATCH and the turn's ending; the naming changed nothing.
+              bKept: !cel >-
+                [steps.rename.result.status, steps.bRead.result.body.title, steps.bRead.result.body.revision,
+                 steps.bRead.result.body.totalTokens]
+              bRecord: !cel >-
+                steps.bRecord.result.record.map(r, [has(r.title), has(r.error), r.model, r.usage.totalTokens])
+              cFailed: !cel >-
+                [steps.cFailed.result.status,
+                 steps.cFailed.result.record.map(r, [has(r.title), r.error.code])]
+              cUntitled: !cel "steps.cUntitled.result.body.title"
+              cRetried: !cel "steps.cRetried.result.record.map(r, r.title)"
+              cTitle: !cel "steps.cRead.result.body.title"
+              dCut: !cel >-
+                [steps.dRecord.result.status,
+                 steps.dRecord.result.record.map(r, [has(r.title), r.error.code, r.usage.totalTokens]),
+                 steps.dRead.result.body.title]
+              eLong: !cel >-
+                [size(steps.eRead.result.body.title),
+                 steps.eRead.result.body.title == join(range(79).map(i, 'a'), '') + '😀']
+              fQuoted: !cel "steps.fRead.result.body.title"
+              gPeriod: !cel "steps.gRead.result.body.title"
+              hPrompt: !cel >-
+                steps.sent.result.body.requests
+                  .filter(r, string(r.instructions).startsWith('You name conversations')
+                    && string(r.input[0].content[0].text).startsWith('aaaaaaaaaa'))
+                  .map(r, string(r.input[0].content[0].text))
+                  .map(t, [size(t), t == join(range(3999).map(i, 'a'), '') + '😀'])
+              namingCalls: !cel >-
+                distinct(steps.sent.result.body.requests
+                  .filter(r, string(r.instructions).startsWith('You name conversations'))
+                  .map(r, string(int(r.max_output_tokens)) + ' ' + r.reasoning.effort
+                    + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+            expected:
+              aOrder: [ user-message, conversation-title ]
+              aRecord: [ [ Stub title, gpt-5.2, 15 ] ]
+              aTitle: Stub title
+              bKept: [ 200, Mine, 3, 30 ]
+              bRecord: [ [ false, false, gpt-5.2, 15 ] ]
+              cFailed: [ finished, [ [ false, ERR_OPENAI_REQUEST_FAILED ] ] ]
+              cUntitled: null
+              cRetried: [ Stub title ]
+              cTitle: Stub title
+              dCut: [ finished, [ [ false, ERR_TITLE_INCOMPLETE, 15 ] ], null ]
+              eLong: [ 80, true ]
+              fQuoted: Deploy 🚀 app
+              gPeriod: Ship 🚀
+              hPrompt: [ [ 4000, true ] ]
+              namingCalls: [ "1024 low -" ]

@@ -68,6 +68,11 @@ steps:
             openaiApiKey: dummy-key-never-used
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18433/conversations
+            method: POST
         - name: first
           invoke:
             kind: HttpClient.Request
@@ -76,7 +81,7 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: repeat
           invoke:
@@ -86,7 +91,7 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: reused
           invoke:
@@ -96,7 +101,7 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b
+              conversationId: !cel "steps.conversation.result.body.id"
               message: something else entirely
         - name: replayed
           invoke: { kind: Assert.Equals }
@@ -123,8 +128,9 @@ steps:
               - name: read
                 invoke:
                   kind: HttpClient.Request
-                  url: http://127.0.0.1:18433/conversations/3f2b8c1e-5d4a-4e6f-9b7c-2a1d0e9f8c7b/records
                   method: GET
+                inputs:
+                  url: !interpolate "http://127.0.0.1:18433/conversations/${{ inputs.conversationId }}/records"
               - name: notYet
                 if: !cel "size(steps.read.result.body.turns) == 0 || size(steps.read.result.body.turns[0].records) == 0"
                 then:
@@ -134,6 +140,8 @@ steps:
                       message: The admitted turn has not recorded the user message yet.
             outputs:
               turns: !cel "steps.read.result.body.turns"
+          inputs:
+            conversationId: !cel "steps.conversation.result.body.id"
         - name: oneTurn
           invoke: { kind: Assert.Equals }
           inputs:
@@ -159,6 +167,11 @@ steps:
             openaiApiKey: dummy-key-never-used
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18434/conversations
+            method: POST
         - name: refused
           invoke:
             kind: HttpClient.Request
@@ -167,7 +180,7 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+              conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         # A refusal releases the key: the same key is a fresh attempt, refused
         # on its own merits, not a replay of an admission.
@@ -179,13 +192,14 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d
+              conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: read
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18434/conversations/5a6b7c8d-9e0f-4a1b-8c2d-3e4f5a6b7c8d/records
             method: GET
+          inputs:
+            url: !interpolate "http://127.0.0.1:18434/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: nothingWritten
           invoke: { kind: Assert.Equals }
           inputs:
@@ -222,6 +236,11 @@ steps:
           connection: !ref agentDb
       targets: [ !ref agent ]
       steps:
+        - name: conversation
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18435/conversations
+            method: POST
         # An unexpired claim on `<conversationId>:<key>`, as another request
         # admitting under that key leaves it: the record Idempotency.Once writes.
         - name: claim
@@ -229,7 +248,7 @@ steps:
           inputs:
             sql: "INSERT INTO turn_admissions (store_key, value, version, expires_at) VALUES (?, ?, ?, ?)"
             bindings:
-              - 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d:send-1
+              - !cel "steps.conversation.result.body.id + ':send-1'"
               - '{"holder":"another-request","settled":false}'
               - claim-1
               # 2100-01-01: never lapses within the test.
@@ -242,13 +261,14 @@ steps:
           inputs:
             headers: { idempotency-key: send-1 }
             body:
-              conversationId: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+              conversationId: !cel "steps.conversation.result.body.id"
               message: add a health endpoint
         - name: read
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18435/conversations/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d/records
             method: GET
+          inputs:
+            url: !interpolate "http://127.0.0.1:18435/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: refusedInFlight
           invoke: { kind: Assert.Equals }
           inputs:
@@ -281,6 +301,11 @@ steps:
             openaiApiKey: stub-key
       targets: [ !ref stub, !ref agent ]
       steps:
+        - name: conversation
+          invoke:
+            kind: HttpClient.Request
+            url: http://127.0.0.1:18436/conversations
+            method: POST
         # The stub holds its model call until released — never, here — so the
         # turn is still running when the next two starts arrive.
         - name: running
@@ -290,7 +315,7 @@ steps:
             method: POST
           inputs:
             body:
-              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              conversationId: !cel "steps.conversation.result.body.id"
               message: STUB_SLOW build it
         - name: overlapping
           invoke:
@@ -299,7 +324,7 @@ steps:
             method: POST
           inputs:
             body:
-              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              conversationId: !cel "steps.conversation.result.body.id"
               message: and another thing
         - name: again
           invoke:
@@ -308,13 +333,14 @@ steps:
             method: POST
           inputs:
             body:
-              conversationId: 2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f
+              conversationId: !cel "steps.conversation.result.body.id"
               message: and another thing
         - name: read
           invoke:
             kind: HttpClient.Request
-            url: http://127.0.0.1:18436/conversations/2d4e6f80-1a3b-4c5d-8e7f-9a0b1c2d3e4f/records
             method: GET
+          inputs:
+            url: !interpolate "http://127.0.0.1:18436/conversations/${{ steps.conversation.result.body.id }}/records"
         - name: refusedAndTakenBack
           invoke: { kind: Assert.Equals }
           inputs:

@@ -112,4 +112,15 @@ describe("MessageBlock", () => {
     expect(shown("ERR_JOURNAL_KEY_REMOVED")).toBe("This turn was deleted.");
     expect(shown("ERR_OPENAI_REQUEST_FAILED")).toBe("raw message");
   });
+
+  it("notes a conversation that could not be named, by code, without failing the turn", () => {
+    const { container } = renderTurn(
+      [{ kind: "title-error", error: { code: "ERR_TITLE_EMPTY", message: "empty title" } }, { kind: "text", text: "Done." }],
+      { completed: true },
+    );
+
+    expect(container.textContent).toBe(
+      "Couldn't name this conversation — ERR_TITLE_EMPTY: empty title. Rename it from the conversation list.Done.",
+    );
+  });
 });

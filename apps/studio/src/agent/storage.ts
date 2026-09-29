@@ -83,10 +83,11 @@ export function purgeStoredTranscripts(): void {
 }
 
 /**
- * The current conversation id (a UUID) for a workspace, or null if none exists
- * yet. The agent keys its conversation by this id, so it must be a plain UUID
- * — never the workspace path. "Start over" mints a fresh one; a reload restores
- * it so the client transcript and the agent's server-side history stay aligned.
+ * The workspace's last-opened conversation id, or null if none. With an agent
+ * serving conversations it is a pointer to an agent-minted id, resolved against
+ * the agent on open; with an older agent it is the client-minted UUID the agent
+ * keys its history by, which "New conversation" replaces. Never the workspace
+ * path.
  */
 export function loadConversationId(workspaceKey: string): string | null {
   const raw = readJson<{ id?: string }>(CONV_PREFIX + workspaceKey, {});

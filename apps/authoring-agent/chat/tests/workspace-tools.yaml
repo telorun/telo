@@ -102,10 +102,12 @@ inputType:
         type: array
         items: { type: object, additionalProperties: true }
 steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
   - name: start
     invoke: !ref Chat.chatStart
     inputs:
-      conversationId: !cel "uuidv4()"
+      conversationId: !cel "steps.conversation.result.conversation.id"
       idempotencyKey: ""
       clientIp: test-runner
       message: !cel "'do it STUB_CALLS:' + base64Encode(json(inputs.calls))"

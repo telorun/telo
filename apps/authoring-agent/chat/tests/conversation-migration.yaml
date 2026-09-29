@@ -1,0 +1,259 @@
+kind: Telo.Application
+metadata:
+  name: ChatConversationMigration
+  version: 1.0.0
+  description: |
+    An agent database written before conversations were the agent's own — the
+    `turns` table with its `active_at` column, the journal, no `conversations`
+    table — is migrated when the agent boots: every legacy conversation keeps
+    its id and lists with its first turn's start as `createdAt`, its latest
+    activity as `updatedAt`, the model its turns ran on, two messages per turn
+    and every token its journal reports, newest activity first; its records
+    read as before.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  scratch:
+    env: CHAT_TEST_CONVERSATION_MIGRATION_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/conversation-migration
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: stateDir
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('.telo-agent'))"
+      createParents: true
+  # The database as the previous agent left it: its schema, three turns of two
+  # conversations in its `turns` table, their records in the journal.
+  - name: legacy
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: SQLite.Connection
+          metadata: { name: legacyDb }
+          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+        # The previous agent's migrations, verbatim.
+        - kind: SQLite.Schema
+          metadata: { name: legacySchema }
+          connection: !ref legacyDb
+          migrations:
+            create_messages:
+              statement: |
+                CREATE TABLE IF NOT EXISTS messages (
+                  id TEXT PRIMARY KEY,
+                  conversation_id TEXT NOT NULL,
+                  role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant')),
+                  content TEXT NOT NULL,
+                  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            projection_1_turns:
+              statements:
+                - |
+                  CREATE TABLE turns (
+                    turn_id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                    active_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                  )
+                - CREATE INDEX turns_by_conversation ON turns (conversation_id, turn_id)
+            projection_2_messages:
+              statements:
+                - DROP TABLE messages
+                - |
+                  CREATE TABLE messages (
+                    turn_id TEXT NOT NULL,
+                    seq INTEGER NOT NULL,
+                    conversation_id TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
+                    content TEXT NOT NULL,
+                    tool_calls TEXT,
+                    tool_call_id TEXT,
+                    PRIMARY KEY (turn_id, seq)
+                  )
+                - CREATE INDEX messages_by_conversation ON messages (conversation_id, turn_id, seq)
+            projection_3_turn_projections:
+              statement: |
+                CREATE TABLE turn_projections (
+                  turn_id TEXT PRIMARY KEY,
+                  conversation_id TEXT NOT NULL,
+                  through_id INTEGER NOT NULL,
+                  provider_state TEXT,
+                  provider_model TEXT
+                )
+            projection_4_aborted_at:
+              statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+        - kind: Sql.Command
+          metadata: { name: seedCommand }
+          connection: !ref legacyDb
+        - kind: RecordStream.Journal
+          metadata: { name: legacyJournal }
+          store:
+            kind: RecordStreamSql.JournalStore
+            connection: !ref legacyDb
+            table: turn_journal
+          markerRetention: 1h
+        - kind: RecordStream.JournalClaim
+          metadata: { name: claim }
+          journal: !ref legacyJournal
+        - kind: RecordStream.JournalSink
+          metadata: { name: sink }
+          journal: !ref legacyJournal
+      targets: [ !ref legacySchema ]
+      steps:
+          - name: claim1
+            invoke: !ref claim
+            inputs: { key: 0190a000-0000-7000-8000-00000000b001, writer: seed-1 }
+          - name: records1
+            invoke: { kind: Stream.Of }
+            inputs:
+              items:
+                - { type: user-message, content: legacy message 1, model: gpt-legacy }
+                - { type: text-delta, delta: legacy reply 1 }
+                - type: step-finish
+                  usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                  finishReason: stop
+                - type: finish
+                  usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                  finishReason: stop
+          - name: sink1
+            invoke: !ref sink
+            inputs:
+              key: 0190a000-0000-7000-8000-00000000b001
+              writer: seed-1
+              input: !cel "steps.records1.result.output"
+          - name: row1
+            invoke: !ref seedCommand
+            inputs:
+              sql: "INSERT INTO turns (turn_id, conversation_id, started_at, active_at) VALUES (?, ?, ?, ?)"
+              bindings: [ 0190a000-0000-7000-8000-00000000b001, 0190a000-0000-7000-8000-00000000a001, "2026-01-01T00:00:00.000Z", "2026-01-01T00:01:00.000Z" ]
+          - name: claim2
+            invoke: !ref claim
+            inputs: { key: 0190a000-0000-7000-8000-00000000b002, writer: seed-2 }
+          - name: records2
+            invoke: { kind: Stream.Of }
+            inputs:
+              items:
+                - { type: user-message, content: legacy message 2, model: gpt-legacy }
+                - { type: text-delta, delta: legacy reply 2 }
+                - type: step-finish
+                  usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                  finishReason: stop
+                - type: finish
+                  usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
+                  finishReason: stop
+          - name: sink2
+            invoke: !ref sink
+            inputs:
+              key: 0190a000-0000-7000-8000-00000000b002
+              writer: seed-2
+              input: !cel "steps.records2.result.output"
+          - name: row2
+            invoke: !ref seedCommand
+            inputs:
+              sql: "INSERT INTO turns (turn_id, conversation_id, started_at, active_at) VALUES (?, ?, ?, ?)"
+              bindings: [ 0190a000-0000-7000-8000-00000000b002, 0190a000-0000-7000-8000-00000000a001, "2026-01-02T00:00:00.000Z", "2026-01-02T00:05:00.000Z" ]
+          - name: claim3
+            invoke: !ref claim
+            inputs: { key: 0190a000-0000-7000-8000-00000000b003, writer: seed-3 }
+          - name: records3
+            invoke: { kind: Stream.Of }
+            inputs:
+              items:
+                - { type: user-message, content: legacy message 3, model: gpt-legacy }
+                - { type: text-delta, delta: legacy reply 3 }
+                - type: step-finish
+                  usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 }
+                  finishReason: stop
+                - type: finish
+                  usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 }
+                  finishReason: stop
+          - name: sink3
+            invoke: !ref sink
+            inputs:
+              key: 0190a000-0000-7000-8000-00000000b003
+              writer: seed-3
+              input: !cel "steps.records3.result.output"
+          - name: row3
+            invoke: !ref seedCommand
+            inputs:
+              sql: "INSERT INTO turns (turn_id, conversation_id, started_at, active_at) VALUES (?, ?, ?, ?)"
+              bindings: [ 0190a000-0000-7000-8000-00000000b003, 0190a000-0000-7000-8000-00000000a002, "2026-01-03T00:00:00.000Z", "2026-01-03T00:02:00.000Z" ]
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18535 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            # Nothing is called: a model is never reached.
+            modelEndpoint: http://127.0.0.1:9/v1
+            # The seeded activity is months old; retention must not take it.
+            retentionDays: 3650
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: list
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18535/conversations }
+        - name: records
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18535/conversations/0190a000-0000-7000-8000-00000000a001/records }
+      outputs:
+        conversations: !cel "steps.list.result.body.conversations"
+        records: !cel "steps.records.result.body.turns.map(t, [t.turnId, t.status, size(t.records)])"
+  - name: migrated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.agent.result"
+      expected:
+        conversations:
+          - id: 0190a000-0000-7000-8000-00000000a002
+            title: null
+            createdAt: "2026-01-03T00:00:00.000Z"
+            updatedAt: "2026-01-03T00:02:00.000Z"
+            model: gpt-legacy
+            messageCount: 2
+            totalTokens: 10
+            archived: false
+            revision: 0
+          - id: 0190a000-0000-7000-8000-00000000a001
+            title: null
+            createdAt: "2026-01-01T00:00:00.000Z"
+            updatedAt: "2026-01-02T00:05:00.000Z"
+            model: gpt-legacy
+            messageCount: 4
+            totalTokens: 30
+            archived: false
+            revision: 0
+        records:
+          - [ 0190a000-0000-7000-8000-00000000b001, finished, 4 ]
+          - [ 0190a000-0000-7000-8000-00000000b002, finished, 4 ]

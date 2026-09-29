@@ -43,6 +43,7 @@ export const LOCAL_PREFIXES = {
   /** Transcripts an earlier Studio stored per conversation. Nothing writes them
    *  now — the agent's journal is the transcript — and they are deleted on load. */
   agentChat: "telo-studio:agent:chat:",
+  /** The workspace's last-opened agent conversation, `{ id }`. */
   agentConv: "telo-studio:agent:conv:",
   /** The `telo.version` setting, one per workspace root. */
   teloVersion: "telo-studio:telo-version:v1:",
