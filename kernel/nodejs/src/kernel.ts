@@ -33,7 +33,7 @@ import {
   type ContractValidatorFactory,
   resolveBoundContract,
 } from "./invocation-contract-binding.js";
-import { readProjectionRef, type ProjectionScope } from "@telorun/analyzer";
+import { readProjectionRef, scopeSlotProblems, type ProjectionScope } from "@telorun/analyzer";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -97,7 +97,7 @@ import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
-import { injectAtPath } from "./dependency-injection.js";
+import { injectAtSite } from "./dependency-injection.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import { refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
@@ -380,9 +380,19 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Register a resource definition with the controller registry
+   * Register a resource definition with the controller registry. A definition
+   * placing `x-telo-scope` anywhere but on a named top-level property is refused
+   * here — the kernel stands a scope up at one top-level field — so a
+   * dependency's kind is refused too (`telo check`'s twin: `SCOPE_SLOT_MISPLACED`).
    */
   registerResourceDefinition(definition: ResourceDefinition): void {
+    const misplaced = scopeSlotProblems(definition);
+    if (misplaced.length > 0) {
+      throw new RuntimeError(
+        "ERR_SCOPE_SLOT_MISPLACED",
+        misplaced.map((problem) => `${definition.kind} ${problem.message}`).join("\n"),
+      );
+    }
     this.controllers.registerDefinition(definition);
     this.registry.registerDefinition(definition);
   }
@@ -2433,19 +2443,16 @@ export class Kernel implements IKernel {
         const found = scope.resolveDeclaredManifest?.(ref.name, ref.alias);
         return found ? { manifest: found as unknown as Record<string, any> } : undefined;
       },
-      // The field map Phase-5 injection walks is the one that decides where a
-      // reference is, with the kind resolved in the declaring module's scope.
+      // The sites Phase-5 injection substitutes are the ones that decide where
+      // a reference is, with the kind resolved in the declaring module's scope.
       referenceSlots: (declaration, scope) => {
         const module = declaration.metadata?.module ?? scope.metadata?.module;
         const view = { ...declaration, metadata: { ...declaration.metadata, module } };
         if (!this.registry.resolveDefinitionIn(String(declaration.kind), module)) return undefined;
-        const slots: string[] = [];
-        this.registry.iterateFieldEntries(
-          view as ResourceManifest,
-          (path) => slots.push(path),
-          () => {},
-        );
-        return slots;
+        return this.registry
+          .referenceSitesOf(view as ResourceManifest, declaration)
+          .filter((site) => site.refs.length > 0)
+          .map((site) => site.path);
       },
       isLiveReference: (value) => declarationOfInstance(value) !== undefined,
       authored: (declaration) =>
@@ -2517,16 +2524,20 @@ export class Kernel implements IKernel {
   /**
    * Phase 5 — Inject live instances into reference fields of a resource config.
    *
-   * Called between create() and init() for every resource. Walks the definition's
-   * field map and replaces each {kind, name} reference value (outside scope visibility
-   * paths) with the live ResourceInstance returned by getInstance(name). Fields within
-   * scope paths are left as {kind, name} — the controller resolves them at runtime.
+   * Called between create() and init() for every resource. Reads the resource's
+   * concrete sites off its kind's reach (`reference-reach.ts`, the enumeration
+   * `telo check` reads) and SUBSTITUTES each `{kind, name}` reference with the
+   * live ResourceInstance returned by getInstance(name) — behind a local `$ref`,
+   * in a root union branch, under a root `additionalProperties` and at every
+   * depth of a recursive shape alike. A reference inside a scope array is left
+   * as `{kind, name}` — the controller resolves it at runtime.
    *
-   * `owner` is the context the resource belongs to, and the scope handle built for an
-   * `x-telo-scope` field hangs off it rather than off the root: a `with:` block's inline
-   * declarations name their kinds through the import aliases of the module that DECLARED
-   * the resource, so a library's scoped `kind: OAuth.RedirectListener` resolves against
-   * that library's imports — the root has never heard of the alias.
+   * An `x-telo-scope` site is replaced with a scope handle. `owner` is the
+   * context the resource belongs to, and the handle hangs off it rather than off
+   * the root: a `with:` block's inline declarations name their kinds through the
+   * import aliases of the module that DECLARED the resource, so a library's
+   * scoped `kind: OAuth.RedirectListener` resolves against that library's
+   * imports — the root has never heard of the alias.
    */
   private _injectDependencies(
     resource: ResourceManifest,
@@ -2534,41 +2545,39 @@ export class Kernel implements IKernel {
     isPending: ((name: string) => boolean) | undefined,
     owner: IEvaluationContext,
   ): void {
-    this.registry.iterateFieldEntries(
-      resource,
-      (fieldPath) => injectAtPath(resource, fieldPath, getInstance, isPending),
-      (fieldPath) => {
-        const val = (resource as Record<string, unknown>)[fieldPath];
-        if (Array.isArray(val)) {
-          for (const entry of val) {
-            // A scope field holds inline resource definitions (a `kind:` with
-            // its config, named via `metadata.name`). A `!ref` resolves to a
-            // `{kind, name}` reference — registering that as a manifest would
-            // silently produce a config-less resource, so reject it with an
-            // actionable message instead.
-            if (
-              entry &&
-              typeof entry === "object" &&
-              typeof (entry as Record<string, unknown>).kind === "string" &&
-              typeof (entry as Record<string, unknown>).name === "string"
-            ) {
-              const refName = String((entry as Record<string, unknown>).name);
-              throw new RuntimeError(
-                "ERR_SCOPE_ENTRY_NOT_INLINE",
-                `Scope field '${fieldPath}' on resource '${String(resource.metadata?.name)}' ` +
-                  `contains a reference (\`!ref ${refName}\`), but scope entries must be inline ` +
-                  `resource definitions (a \`kind:\` with its config). Declare the resource inline ` +
-                  `under '${fieldPath}:', or reference an outer resource from a sibling field ` +
-                  `such as 'targets:'.`,
-              );
-            }
+    for (const site of this.registry.referenceSitesOf(resource)) {
+      if (site.scopes.length > 0) {
+        if (!Array.isArray(site.data) || !site.holder) continue;
+        for (const entry of site.data) {
+          // A scope field holds inline resource definitions (a `kind:` with
+          // its config, named via `metadata.name`). A `!ref` resolves to a
+          // `{kind, name}` reference — registering that as a manifest would
+          // silently produce a config-less resource, so reject it with an
+          // actionable message instead.
+          if (
+            entry &&
+            typeof entry === "object" &&
+            typeof (entry as Record<string, unknown>).kind === "string" &&
+            typeof (entry as Record<string, unknown>).name === "string"
+          ) {
+            const refName = String((entry as Record<string, unknown>).name);
+            throw new RuntimeError(
+              "ERR_SCOPE_ENTRY_NOT_INLINE",
+              `Scope field '${site.path}' on resource '${String(resource.metadata?.name)}' ` +
+                `contains a reference (\`!ref ${refName}\`), but scope entries must be inline ` +
+                `resource definitions (a \`kind:\` with its config). Declare the resource inline ` +
+                `under '${site.path}:', or reference an outer resource from a sibling field ` +
+                `such as 'targets:'.`,
+            );
           }
-          (resource as Record<string, unknown>)[fieldPath] = owner.createScopeHandle(
-            val as ResourceManifest[],
-          );
         }
-      },
-    );
+        (site.holder as Record<string | number, unknown>)[site.key!] = owner.createScopeHandle(
+          site.data as ResourceManifest[],
+        );
+        continue;
+      }
+      if (site.refs.length > 0) injectAtSite(site, getInstance, isPending);
+    }
   }
 }
 

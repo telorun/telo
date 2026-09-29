@@ -15,7 +15,7 @@ import {
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelsIn } from "./contract-shapes.js";
-import { buildReferenceFieldMap, isRefEntry } from "./reference-field-map.js";
+import { reachSites, siteRefEntry } from "./reference-reach.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 import { signatureMismatches, type SignatureMismatch } from "./signature-substitution.js";
 import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
@@ -174,18 +174,21 @@ function checkRefSlotWiring(
   const schema = definition.schema as Record<string, any> | undefined;
   if (!schema) return;
 
-  for (const [path, entry] of buildReferenceFieldMap(schema)) {
-    if (!isRefEntry(entry)) continue;
+  const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+  for (const site of reachSites(schema, m)) {
+    if (site.refs.length === 0) continue;
     // A slot that takes a paired `inputs:` is the author's to fill; its values
     // are checked at the call site instead, against the target's own contract.
-    if (slotTakesPairedInputs(schema, path)) continue;
-
+    if (site.refs.some((ref) => slotTakesPairedInputs(ref.declaredIn.node, ref.declaredPath))) {
+      continue;
+    }
+    const entry = siteRefEntry(site);
     const slotDeclares = slotDeclaredInputs(entry.refs, resolveDef, manifests);
     const runSite = isRunOnlySlot(entry.refs, resolveDef);
     if (!runSite && slotDeclares === undefined) continue;
 
-    const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-    for (const name of refValuesAt(m as Record<string, any>, path)) {
+    const path = site.path;
+    for (const name of referencedNames(site.data)) {
       // Scoped to the declaring module: a resource of the same name in another
       // module is a different resource, and checking against its contract would
       // report on something the author never wired.
@@ -328,41 +331,23 @@ function navigateSchema(
   return node;
 }
 
-/** The `{kind, name}` references actually written at a field-map path. */
-function refValuesAt(manifest: Record<string, any>, path: string): string[] {
+/** The `{kind, name}` references a site holds — one, or each item of a list. */
+function referencedNames(value: unknown): string[] {
   const out: string[] = [];
-  const walk = (node: unknown, segments: string[]): void => {
-    if (node == null) return;
-    if (segments.length === 0) {
-      const items = Array.isArray(node) ? node : [node];
-      for (const item of items) {
-        // A reference is `{kind, name}` — BOTH fields. Requiring only `name`
-        // would read an inline invoke step (`{ name, invoke, inputs }`) as a
-        // reference to a resource called after the step, which it is not: that
-        // `name` labels the step, and the step is an invoke site anyway.
-        if (
-          item &&
-          typeof item === "object" &&
-          typeof (item as any).name === "string" &&
-          typeof (item as any).kind === "string"
-        ) {
-          out.push((item as any).name);
-        }
-      }
-      return;
+  for (const item of Array.isArray(value) ? value : [value]) {
+    // A reference is `{kind, name}` — BOTH fields. Requiring only `name` would
+    // read an inline invoke step (`{ name, invoke, inputs }`) as a reference to
+    // a resource called after the step, which it is not: that `name` labels the
+    // step, and the step is an invoke site anyway.
+    if (
+      item &&
+      typeof item === "object" &&
+      typeof (item as any).name === "string" &&
+      typeof (item as any).kind === "string"
+    ) {
+      out.push((item as any).name);
     }
-    const [head, ...rest] = segments;
-    const key = head!.replace(/\[\]|\{\}/g, "");
-    const value = (node as Record<string, any>)[key];
-    if (head!.includes("[]") && Array.isArray(value)) {
-      for (const item of value) walk(item, rest);
-    } else if (head!.includes("{}") && value && typeof value === "object") {
-      for (const item of Object.values(value)) walk(item, rest);
-    } else {
-      walk(value, rest);
-    }
-  };
-  walk(manifest, path.split("."));
+  }
   return out;
 }
 

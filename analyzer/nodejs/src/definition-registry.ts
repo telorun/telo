@@ -3,13 +3,17 @@ import { schemaWithTagsAsText } from "./schema-tag-text.js";
 import { canonicalTypeSchemaId } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
-import { moduleAliasScope } from "./module-alias-scope.js";
+import { moduleAliasScope, type KindResolver } from "./module-alias-scope.js";
 import {
-  buildFieldMapAtPath,
-  buildReferenceFieldMap,
-  isSchemaFromEntry,
-  type ReferenceFieldMap,
-} from "./reference-field-map.js";
+  declaredReach,
+  reachPositions,
+  reachSites,
+  type DeclaredReach,
+  type ReachPosition,
+  type ReachSite,
+  type ResolvedSchemaNode,
+  type SchemaFromResolver,
+} from "./reference-reach.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
 import {
   explainFormatErrors,
@@ -23,6 +27,25 @@ import { effectiveAuthorSchema } from "./extends-resolution.js";
 /** Pure kind → ResourceDefinition map. No controller loading, no lifecycle. */
 /** What `ajv.compile` hands back: a predicate carrying its own `errors`. */
 type CompiledValidator = ((data: unknown) => boolean) & { errors?: any[] | null };
+
+/** A kind's reach as one owner scope reads it: the inheritance-resolved schema,
+ *  the resolver expanding its static `x-telo-schema-from` slots, and the
+ *  declared view, built once. */
+interface KindReach {
+  schema: Record<string, any>;
+  schemaFrom: SchemaFromResolver;
+  declared?: DeclaredReach;
+}
+
+/** A resource's concrete sites as last enumerated, with what they were read over. */
+interface CachedSites {
+  reach: KindReach;
+  data: unknown;
+  sites: ReachSite[];
+}
+
+/** The owner-scope key when no alias table is in play. */
+const CANONICAL_SCOPE = {};
 
 export class DefinitionRegistry {
   constructor() {
@@ -44,12 +67,14 @@ export class DefinitionRegistry {
   private readonly definitionSchemaIds = new Set<string>();
 
   private readonly defs = new Map<string, ResourceDefinition>();
-  private readonly fieldMaps = new Map<string, ReferenceFieldMap>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
   private readonly extendedBy = new Map<string, string[]>();
   /** Memoized inheritance-resolved schemas. `null` records "resolved to
    *  nothing", so a kind with no schema is not re-walked on every resource. */
   private readonly effectiveSchemas = new Map<string, Record<string, unknown> | null>();
+  /** Per kind key, per owner alias scope — cleared with `effectiveSchemas`. */
+  private readonly kindReaches = new Map<string, WeakMap<object, KindReach>>();
+  private readonly resourceSites = new WeakMap<object, CachedSites>();
   /** DEPRECATED module identity table: identity string → canonical module name
    *  ("std/pipeline" → "pipeline"). Serves only the legacy
    *  `<namespace>/<module>#<Kind>` form of `x-telo-ref`, kept resolvable for
@@ -67,12 +92,11 @@ export class DefinitionRegistry {
     const { name, module: mod } = definition.metadata;
     const key = mod ? `${mod}.${name}` : name;
     this.defs.set(key, definition);
-    // Field maps derive from the AUTHOR-FACING (inheritance-resolved) schema, which
-    // depends on the parent — possibly registered after this child. Clear the cache
-    // so any already-computed map recomputes against the now-larger def set; the
-    // maps rebuild lazily on first `getFieldMap` (after all defs are registered).
-    this.fieldMaps.clear();
+    // The AUTHOR-FACING (inheritance-resolved) schema depends on the parent —
+    // possibly registered after this child — so it recomputes lazily against the
+    // now-larger def set.
     this.effectiveSchemas.clear();
+    this.kindReaches.clear();
     // `capability` populates extendedBy for backward-compat with the legacy pattern where
     // a concrete definition overloaded `capability: <AbstractKind>` to mean "implements
     // this abstract." The canonical pattern is `extends` (below). Both populate the index,
@@ -327,8 +351,8 @@ export class DefinitionRegistry {
    * context — is invisible on every child, silently and per consumer. Sharing
    * one memo is what keeps those consumers from drifting apart.
    *
-   * Lazy for the same reason `getFieldMap` is: a child registered before its
-   * parent still sees the inherited half once both are present.
+   * Lazy so a child registered before its parent still sees the inherited
+   * half once both are present.
    */
   effectiveSchema(kind: string): Record<string, unknown> | undefined {
     const cached = this.effectiveSchemas.get(kind);
@@ -353,73 +377,125 @@ export class DefinitionRegistry {
     return resolved ?? (definition.schema as Record<string, unknown> | undefined);
   }
 
-  /** Returns the reference field map for the given kind, computed lazily from the
-   *  kind's AUTHOR-FACING (inheritance-resolved) schema and memoized. Lazy so a
-   *  child registered before its parent still sees the parent's inherited ref
-   *  slots once both are present. */
-  getFieldMap(kind: string): ReferenceFieldMap | undefined {
-    const cached = this.fieldMaps.get(kind);
+  /** The registry key a resource's kind resolves to — the kind as written
+   *  first, then through `scope` (the declaring module's alias table). */
+  private kindKeyOf(kind: string, scope: KindResolver | undefined): string | undefined {
+    if (this.defs.has(kind)) return kind;
+    const resolved = scope?.resolveKind(kind);
+    return resolved && this.defs.has(resolved) ? resolved : undefined;
+  }
+
+  /**
+   * Where a resource's kind reaches (`reference-reach.ts`): the kind's
+   * inheritance-resolved schema, and the resolver that expands its static
+   * `x-telo-schema-from` slots. The kind resolves in the alias scope of the
+   * module that DECLARED the resource; an anchor in the scope of the module that
+   * declared the definition writing it — the resource's kind first, then each
+   * anchor definition for the anchors nested in its own schema. Without
+   * `aliases`, a kind and an anchor are read as canonical. Memoized per kind and
+   * owner scope, anchors per document.
+   */
+  private reachOf(
+    resource: { kind: string; metadata?: { module?: unknown } },
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+  ): KindReach | undefined {
+    const moduleScope = aliases
+      ? moduleAliasScope(resource.metadata, aliases, aliasesByModule)
+      : undefined;
+    const key = this.kindKeyOf(String(resource.kind), moduleScope);
+    if (!key) return undefined;
+    const def = this.defs.get(key)!;
+    const ownerScope = aliases ? moduleAliasScope(def.metadata, aliases, aliasesByModule) : undefined;
+    let byScope = this.kindReaches.get(key);
+    if (!byScope) this.kindReaches.set(key, (byScope = new WeakMap()));
+    const cached = byScope.get(ownerScope ?? CANONICAL_SCOPE);
     if (cached) return cached;
-    const def = this.defs.get(kind);
-    if (!def) return undefined;
-    const schema = effectiveAuthorSchema(def, (k) => this.resolve(k));
-    const map = buildReferenceFieldMap(schema ?? {});
-    this.fieldMaps.set(kind, map);
-    return map;
-  }
 
-  /** Returns the field map for `kind`, falling back to the alias-resolved kind when not found. */
-  getFieldMapForKind(
-    kind: string,
-    aliases?: { resolveKind(k: string): string | undefined },
-  ): ReferenceFieldMap | undefined {
-    const fm = this.getFieldMap(kind);
-    if (fm) return fm;
-    const resolved = aliases?.resolveKind(kind);
-    return resolved ? this.getFieldMap(resolved) : undefined;
-  }
-
-  /** Returns the field map for `resource.kind` with x-telo-schema-from entries replaced
-   *  by their nested ref/scope slots — so Phase 2 inline normalization and Phase 5
-   *  injection see encoders nested behind a schema-from indirection (e.g.
-   *  http-server `Server.notFoundHandler.returns[].content[mime].encoder`).
-   *
-   *  Only static absolute schema-from paths with a dotted alias anchor are expanded
-   *  (e.g. "HttpDispatch.Outcomes/$defs/Returns"). Relative and unqualified absolute
-   *  anchors depend on a sibling property at runtime and stay unexpanded; the
-   *  analyzer's reference validation phase already flags the cases that matter. */
-  expandedFieldMapForResource(
-    resource: ResourceManifest,
-    aliases: AliasResolver,
-    aliasesByModule: Map<string, AliasResolver>,
-  ): ReferenceFieldMap | undefined {
-    // Resolve the resource's OWN kind through its module's alias scope, not the global
-    // aliases. A library-internal resource's kind uses a library-local alias
-    // (e.g. `Ai.AgentStream` in a library that imports `Ai`), which the root/global
-    // resolver doesn't know — using the global scope here left the base field map
-    // unresolved, so Phase-5 injection saw no ref fields and skipped injection.
-    const moduleScope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
-
-    const baseMap = this.getFieldMapForKind(resource.kind, moduleScope);
-    if (!baseMap) return undefined;
-
-    const resolvedKind = moduleScope.resolveKind(resource.kind) ?? resource.kind;
-    const def = this.resolve(resource.kind) ?? this.resolve(resolvedKind);
-    // schema-from anchors resolve in the DEFINITION's module scope (where the anchor
-    // kind is declared), which may differ from the resource's own module.
-    const ownerScope = moduleAliasScope(def?.metadata, aliases, aliasesByModule);
-
-    const expanded: ReferenceFieldMap = new Map();
-    for (const [path, entry] of baseMap) {
-      if (!isSchemaFromEntry(entry)) {
-        expanded.set(path, entry);
-        continue;
+    const schema = (this.effectiveSchema(key) ?? {}) as Record<string, any>;
+    const scopes = new WeakMap<object, KindResolver | undefined>([[schema, ownerScope]]);
+    const anchors = new WeakMap<object, Map<string, ResolvedSchemaNode | null>>();
+    const schemaFrom: SchemaFromResolver = (expression, document) => {
+      let byExpression = anchors.get(document);
+      if (!byExpression) anchors.set(document, (byExpression = new Map()));
+      const known = byExpression.get(expression);
+      if (known !== undefined) return known ?? undefined;
+      const anchor = this.resolveSchemaFromAnchor(expression, scopes.get(document));
+      byExpression.set(expression, anchor ? { document: anchor.document, node: anchor.node } : null);
+      if (!anchor) return undefined;
+      if (!scopes.has(anchor.document)) {
+        scopes.set(
+          anchor.document,
+          aliases ? moduleAliasScope(anchor.definition.metadata, aliases, aliasesByModule) : undefined,
+        );
       }
-      const sub = this.resolveSchemaFromSubMap(entry.schemaFrom, path, ownerScope);
-      if (!sub) continue;
-      for (const [subPath, subEntry] of sub) expanded.set(subPath, subEntry);
+      return { document: anchor.document, node: anchor.node };
+    };
+    const reach: KindReach = { schema, schemaFrom };
+    byScope.set(ownerScope ?? CANONICAL_SCOPE, reach);
+    return reach;
+  }
+
+  /**
+   * Every concrete reference, step, scope and schema-from site of `data` (the
+   * resource itself by default), schema-from slots expanded — the one
+   * enumeration Phase-5 injection, scope creation and every analyzer pass read.
+   * Empty when the kind resolves to no definition.
+   *
+   * Memoized per resource object. A cached list stands while every site still
+   * holds the value it was enumerated over: the passes that rewrite a manifest
+   * (inline extraction, `!ref` resolution, Phase-5 substitution, scope handles)
+   * each replace the value at a site, which is what invalidates it.
+   */
+  referenceSites(
+    resource: ResourceManifest,
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+    data: unknown = resource,
+  ): ReachSite[] {
+    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    if (!reach) return [];
+    const cached = this.resourceSites.get(resource);
+    if (
+      cached &&
+      cached.reach === reach &&
+      cached.data === data &&
+      cached.sites.every(
+        (site) =>
+          site.holder === undefined ||
+          (site.holder as Record<string | number, unknown>)[site.key!] === site.data,
+      )
+    ) {
+      return cached.sites;
     }
-    return expanded;
+    const sites = reachSites(reach.schema, data, reach.schemaFrom, true);
+    this.resourceSites.set(resource, { reach, data, sites });
+    return sites;
+  }
+
+  /** Every concrete position of `data` at or above one of its reference slots
+   *  (`reachPositions`), schema-from slots expanded. Empty when the kind
+   *  resolves to no definition. */
+  referencePositions(
+    resource: ResourceManifest,
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+    data: unknown = resource,
+  ): ReachPosition[] {
+    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    return reach ? reachPositions(reach.schema, data, reach.schemaFrom) : [];
+  }
+
+  /** The patterns a resource's kind declares, schema-from slots expanded, or
+   *  undefined when the kind resolves to no definition. */
+  declaredReachOf(
+    resource: { kind: string; metadata?: { module?: unknown } },
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+  ): DeclaredReach | undefined {
+    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    if (!reach) return undefined;
+    return (reach.declared ??= declaredReach(reach.schema, reach.schemaFrom));
   }
 
   /**
@@ -432,7 +508,7 @@ export class DefinitionRegistry {
    * guessing at one instance's shape.
    *
    * Its own method because a schema-from slot is otherwise INVISIBLE to anything
-   * reading `properties`: the field map needs the nested ref slots, and an IDE
+   * reading `properties`: the reach needs the nested ref slots, and an IDE
    * needs the very same node to offer a key or describe one. Two resolutions of
    * one annotation would eventually disagree about which anchors are static.
    */
@@ -440,6 +516,17 @@ export class DefinitionRegistry {
     schemaFrom: string,
     ownerScope: AliasResolver,
   ): Record<string, any> | undefined {
+    return this.resolveSchemaFromAnchor(schemaFrom, ownerScope)?.node;
+  }
+
+  /** {@link resolveSchemaFromNode}, with the anchor definition and its whole
+   *  schema — the document the anchor's own local `$ref`s resolve against. */
+  private resolveSchemaFromAnchor(
+    schemaFrom: string,
+    ownerScope: KindResolver | undefined,
+  ):
+    | { node: Record<string, any>; document: Record<string, any>; definition: ResourceDefinition }
+    | undefined {
     const isAbsolute = schemaFrom.startsWith("/");
     const expr = isAbsolute ? schemaFrom.slice(1) : schemaFrom;
     const slashIdx = expr.indexOf("/");
@@ -449,26 +536,14 @@ export class DefinitionRegistry {
 
     if (!anchorName.includes(".")) return undefined;
 
-    const targetKind = ownerScope.resolveKind(anchorName);
+    const targetKind = ownerScope ? ownerScope.resolveKind(anchorName) : anchorName;
     if (!targetKind) return undefined;
     const targetDef = this.resolve(targetKind);
     if (!targetDef?.schema) return undefined;
-    const subSchema = navigateJsonPointer(
-      targetDef.schema as Record<string, unknown>,
-      jsonPointer,
-    );
+    const document = targetDef.schema as Record<string, any>;
+    const subSchema = navigateJsonPointer(document, jsonPointer);
     if (!subSchema || typeof subSchema !== "object") return undefined;
-    return subSchema as Record<string, any>;
-  }
-
-  private resolveSchemaFromSubMap(
-    schemaFrom: string,
-    fieldPath: string,
-    ownerScope: AliasResolver,
-  ): ReferenceFieldMap | null {
-    const subSchema = this.resolveSchemaFromNode(schemaFrom, ownerScope);
-    if (!subSchema) return null;
-    return buildFieldMapAtPath(subSchema, fieldPath);
+    return { node: subSchema as Record<string, any>, document, definition: targetDef };
   }
 
   /** The kinds a definition descends from DIRECTLY — the same two edges

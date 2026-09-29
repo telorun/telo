@@ -1,0 +1,117 @@
+# Kinds whose reference slot — or `x-telo-scope` — is written somewhere other
+# than directly in the schema root's `properties`: behind a local `$ref`, in a
+# root `anyOf` branch, under a root `additionalProperties`, and through a
+# recursive `$defs` shape. Each is a Phase-5 injection site, exactly as a plain
+# `properties` slot is.
+kind: Telo.Library
+metadata:
+  name: RefSlotReach
+  version: 1.0.0
+  description: >-
+    Fixture library whose kinds hold references and execution scopes through
+    local $ref, root union branches, open-keyed roots and recursive shapes.
+exports:
+  kinds: [ViaDefs, ViaRootAnyOf, ViaRootMap, ViaRecursion, ScopeViaAnyOf, ScopeViaDefs]
+---
+kind: Telo.Definition
+metadata:
+  name: ViaDefs
+  description: Reports whether the target it holds through a local $ref arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Target
+schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target: { $ref: "#/$defs/Target" }
+  $defs:
+    Target:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: ViaRootAnyOf
+  description: Reports whether the target a root union branch declares arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Target
+schema:
+  type: object
+  anyOf:
+    - required: [target]
+      properties:
+        target:
+          x-telo-ref: { kind: Telo.Invocable, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: ViaRootMap
+  description: Reports whether each target held under an open-keyed root arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Mapped
+schema:
+  type: object
+  additionalProperties:
+    x-telo-ref: { kind: Telo.Invocable, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: ViaRecursion
+  description: Reports whether the target at each depth of a recursive chain arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Chain
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    node: { $ref: "#/$defs/Node" }
+  $defs:
+    Node:
+      type: object
+      additionalProperties: false
+      properties:
+        target:
+          x-telo-ref: { kind: Telo.Invocable, use: call }
+        next: { $ref: "#/$defs/Node" }
+---
+kind: Telo.Definition
+metadata:
+  name: ScopeViaAnyOf
+  description: Invokes one member of the execution scope a root union branch declares.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Scoped
+schema:
+  type: object
+  anyOf:
+    - required: [with, pick]
+      properties:
+        with:
+          type: array
+          x-telo-scope: /pick
+          items: { type: object }
+        pick: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: ScopeViaDefs
+  description: Invokes one member of the execution scope declared through a local $ref.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Scoped
+schema:
+  type: object
+  additionalProperties: false
+  required: [with, pick]
+  properties:
+    with: { $ref: "#/$defs/With" }
+    pick: { type: string }
+  $defs:
+    With:
+      type: array
+      x-telo-scope: /pick
+      items: { type: object }

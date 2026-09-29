@@ -1,0 +1,17 @@
+# Consumes the library's recursive kind. Its analysis is entry-scoped, so the
+# computed reference at depth 2 is invisible here — the kernel refuses it.
+kind: Telo.Application
+metadata:
+  name: TemplateRefComputedChainedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - name: probe
+    invoke: !ref chained
+---
+kind: Lib.Chained
+metadata:
+  name: chained
+target: { kind: Run.Value, value: 1 }

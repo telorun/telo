@@ -1,7 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
-import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
+import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import {
   isInlineResource,
   satisfiesValueBranch,
@@ -626,55 +626,88 @@ export function validateReferences(
   // Phase 3b — x-telo-schema-from validation.
   // For each field with a schemaFrom path expression, resolve the anchor ref to get the
   // concrete kind, navigate the JSON Pointer into that kind's definition schema, and
-  // validate the field value against the resulting sub-schema. Driven off the base map
-  // (un-expanded) so each schema-from slot is seen as its own site.
+  // validate the field value against the resulting sub-schema. A failure the kind alone
+  // decides (a malformed expression, an alias-qualified anchor naming nothing) is
+  // reported once per resource at the declared pattern, whatever the resource wrote; a
+  // failure that turns on a sibling anchor's value, at each concrete site.
+  const reportedSlotFailures = new Set<string>();
+  // The slot's schema comes from the shared reader, which the kernel decodes literals
+  // through at creation. CEL leaves become schema-shaped placeholders and plain-encoded
+  // literals are decoded before AJV runs: a slot anchored at a shared value-shape is
+  // overwhelmingly written as expressions, so validating it raw reports every one of them.
+  const schemaFromContext = (r: ResourceManifest) => ({
+    defs: registry,
+    aliases,
+    aliasesByModule: aliasesByModule ?? new Map(),
+    rootModules: new Set<string>(),
+    typeManifests: resources as Record<string, any>[],
+    // In the reading resource's scope, as the kernel resolves it: a bare
+    // name same module first, an alias through that module's import.
+    resolveTarget: (ref: Record<string, any>) => {
+      if (typeof ref.name !== "string") return undefined;
+      if (typeof ref.alias === "string" && ref.alias !== "Self") {
+        const target = moduleAliasScope(r.metadata, aliases, aliasesByModule).moduleForAlias(
+          ref.alias,
+        );
+        return target === undefined
+          ? undefined
+          : (byModuleName.get(`${target}\0${ref.name}`) as Record<string, any> | undefined);
+      }
+      return resolveScopedName(byNameAll.get(ref.name), moduleOf, moduleOf(r)) as
+        | Record<string, any>
+        | undefined;
+    },
+  });
+  const reportFailure = (r: ResourceManifest, failure: { code: string; message: string; path: string }) => {
+    const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
+    const key = `${resourceLabel}\0${failure.code}\0${failure.message}`;
+    if (reportedSlotFailures.has(key)) return;
+    reportedSlotFailures.add(key);
+    diagnostics.push({
+      severity: DiagnosticSeverity.Error,
+      code: failure.code,
+      source: SOURCE,
+      message: failure.message,
+      data: {
+        resource: { kind: r.kind, name: r.metadata!.name as string },
+        filePath: (r.metadata as { source?: string } | undefined)?.source,
+        path: failure.path,
+      },
+    });
+  };
   visitManifest(
     localResources,
     registry,
     {
+      onResourceEnter: ({ source: r }) => {
+        const declared = registry.declaredReachOf(r, aliases, aliasesByModule);
+        for (const stop of declared?.stops ?? []) {
+          if (stop.viaAnchor) continue;
+          for (const { schemaFrom } of stop.schemaFrom) {
+            if (!schemaFromIsKindDecidable(schemaFrom)) continue;
+            const slot = { fieldPath: stop.path, path: stop.path, value: undefined };
+            for (const site of schemaFromSites(r as Record<string, any>, slot, schemaFrom, schemaFromContext(r))) {
+              if (!isSchemaFromSite(site)) reportFailure(r, site);
+            }
+          }
+        }
+      },
       onSchemaFrom: (e) => {
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
         const resourceData = { kind: r.kind, name: r.metadata!.name as string };
         const filePath = (r.metadata as { source?: string } | undefined)?.source;
-
-        // The slot's schema comes from the shared reader, which the kernel
-        // decodes literals through at creation. CEL leaves become schema-shaped
-        // placeholders and plain-encoded literals are decoded before AJV runs:
-        // a slot anchored at a shared value-shape is overwhelmingly written as
-        // expressions, so validating it raw reports every one of them.
-        const sites = schemaFromSites(r as Record<string, any>, e.fieldPath, e.entry.schemaFrom, {
-          defs: registry,
-          aliases,
-          aliasesByModule: aliasesByModule ?? new Map(),
-          rootModules: new Set(),
-          typeManifests: resources as Record<string, any>[],
-          // In the reading resource's scope, as the kernel resolves it: a bare
-          // name same module first, an alias through that module's import.
-          resolveTarget: (ref) => {
-            if (typeof ref.name !== "string") return undefined;
-            if (typeof ref.alias === "string" && ref.alias !== "Self") {
-              const target = moduleAliasScope(r.metadata, aliases, aliasesByModule).moduleForAlias(
-                ref.alias,
-              );
-              return target === undefined
-                ? undefined
-                : (byModuleName.get(`${target}\0${ref.name}`) as Record<string, any> | undefined);
-            }
-            return resolveScopedName(byNameAll.get(ref.name), moduleOf, moduleOf(r)) as
-              | Record<string, any>
-              | undefined;
-          },
-        });
+        const kindDecidable = schemaFromIsKindDecidable(e.entry.schemaFrom);
+        const sites = schemaFromSites(
+          r as Record<string, any>,
+          { fieldPath: e.fieldPath, path: e.concretePath, value: e.value, holder: e.holder },
+          e.entry.schemaFrom,
+          schemaFromContext(r),
+        );
         for (const site of sites) {
           if (!isSchemaFromSite(site)) {
-            diagnostics.push({
-              severity: DiagnosticSeverity.Error,
-              code: site.code,
-              source: SOURCE,
-              message: site.message,
-              data: { resource: resourceData, filePath, path: site.path },
-            });
+            // A kind-decided failure is the declared half's, reported above.
+            if (!kindDecidable) reportFailure(r, site);
             continue;
           }
           // An enumerated derived slot: the kernel decodes it at creation.
@@ -718,7 +751,7 @@ export function validateReferences(
         }
       },
     },
-    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS, expand: false },
+    { aliases, aliasesByModule, skipKinds: SYSTEM_KINDS },
   );
 
   return diagnostics;

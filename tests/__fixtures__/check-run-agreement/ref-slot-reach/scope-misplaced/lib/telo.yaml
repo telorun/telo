@@ -1,0 +1,62 @@
+# `x-telo-scope` off a named top-level property: nested under an object, on an
+# array item, and on the values of an open-keyed root. There is no one field to
+# stand such a scope up from, so `telo check` refuses each at the annotation and
+# the kernel refuses each definition when it registers it.
+kind: Telo.Library
+metadata:
+  name: ScopeSlotMisplaced
+  version: 1.0.0
+  description: >-
+    Fixture library whose kinds declare an execution scope nested under an
+    object, on an array item and under an open-keyed root.
+exports:
+  kinds: [NestedObject, ArrayItem, RootMap]
+---
+kind: Telo.Definition
+metadata:
+  name: NestedObject
+  description: Declares an execution scope nested under an object.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    outer:
+      type: object
+      properties:
+        with:
+          type: array
+          x-telo-scope: /outer
+          items: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: ArrayItem
+  description: Declares an execution scope on each item of an array.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    groups:
+      type: array
+      items:
+        type: array
+        x-telo-scope: /groups
+        items: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: RootMap
+  description: Declares an execution scope on every value of an open-keyed root.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  additionalProperties:
+    type: array
+    x-telo-scope: /steps
+    items: { type: object }

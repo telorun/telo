@@ -236,17 +236,18 @@ export type {
   PortSlot,
   RowKind,
 } from "./module-graph.js";
-export {
-  buildReferenceFieldMap,
-  isRefEntry,
-  isScopeEntry,
-  satisfiesValueBranch,
-} from "./reference-field-map.js";
+export { satisfiesValueBranch } from "./reference-field-map.js";
+export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
+export { declaredReach, reachSites, siteRefEntry } from "./reference-reach.js";
 export type {
-  ReferenceFieldMap,
-  RefFieldEntry,
-  ValueBranchValidator,
-} from "./reference-field-map.js";
+  DeclaredReach,
+  DeclaredReference,
+  ReachRef,
+  ReachSite,
+  SchemaFromResolver,
+} from "./reference-reach.js";
+export { scopeSlotProblems } from "./validate-scope-slots.js";
+export type { ScopeSlotProblem } from "./validate-scope-slots.js";
 export {
   hasDeclaredUse,
   isRefSlot,
@@ -387,7 +388,6 @@ export {
   entryBoundary,
   navigatePath,
   referenceValueOf,
-  shapeMatches,
   type DeclarationLookup,
   type PeerAliasScope,
   type PeerBinderEnv,

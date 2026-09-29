@@ -15,6 +15,15 @@ import {
   type ModuleGraphDeps,
 } from "../src/module-graph.js";
 
+/** A resource's filled reference sites, as `AnalysisRegistry.moduleGraphDeps`
+ *  reads them. */
+const refSitesOf = (registry: DefinitionRegistry, resource: ResourceManifest) =>
+  registry.referenceSites(resource).flatMap((site) =>
+    site.refs.length > 0
+      ? [{ path: site.path, fieldPath: site.refs[0]!.fieldPath, value: site.data }]
+      : [],
+  );
+
 const connectionDef = {
   kind: "Telo.Definition",
   metadata: { name: "Connection", module: "sql" },
@@ -196,24 +205,17 @@ function fixtureWith(
       const union = resolveThrowsUnion(resource, throwsCtx);
       return { codes: [...union.codes.keys()], unbounded: union.unbounded };
     },
-    refFields: (resource) => {
-      const map = registry.getFieldMap(resource.kind as string);
-      if (!map) return [];
-      const out = [];
-      for (const [path, entry] of map) {
-        if (!("refs" in entry)) continue;
-        const refs = (entry as { refs: string[] }).refs;
-        out.push({
-          path,
-          isArray: (entry as { isArray: boolean }).isArray,
-          refs,
-          capabilities: refs.map(
-            (r) => (byKind.get(r) as { capability?: string } | undefined)?.capability ?? r,
-          ),
-        });
-      }
-      return out;
-    },
+    refFields: (resource) =>
+      (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds }) => ({
+        path,
+        isArray,
+        refs: kinds,
+        capabilities: kinds.map(
+          (r) => (byKind.get(r) as { capability?: string } | undefined)?.capability ?? r,
+        ),
+      })),
+    refSites: (resource) => refSitesOf(registry, resource),
+    refPositions: (resource) => registry.referencePositions(resource),
   };
 
   // The module doc is IN the manifest list, as `flattenForAnalyzer` leaves it:
@@ -770,22 +772,15 @@ describe("where a row's call is written", () => {
           const union = resolveThrowsUnion(resource, throwsCtx);
           return { codes: [...union.codes.keys()], unbounded: union.unbounded };
         },
-        refFields: (resource) => {
-          const map = registry.getFieldMap(resource.kind as string);
-          if (!map) return [];
-          const out = [];
-          for (const [path, entry] of map) {
-            if (!("refs" in entry)) continue;
-            const refs = (entry as { refs: string[] }).refs;
-            out.push({
-              path,
-              isArray: (entry as { isArray: boolean }).isArray,
-              refs,
-              capabilities: refs,
-            });
-          }
-          return out;
-        },
+        refFields: (resource) =>
+          (registry.declaredReachOf(resource)?.references ?? []).map(({ path, isArray, kinds }) => ({
+            path,
+            isArray,
+            refs: kinds,
+            capabilities: kinds,
+          })),
+        refSites: (resource) => refSitesOf(registry, resource),
+        refPositions: (resource) => registry.referencePositions(resource),
       },
       { root, entryModule: "Report" },
     );

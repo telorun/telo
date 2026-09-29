@@ -1,0 +1,11 @@
+# Invokes the library's `viaRecursion`. Its entry-scoped check is silent about the
+# library's resources, so the reference the resource names is refused at run.
+kind: Telo.Application
+metadata:
+  name: RefSlotReachUnresolvedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - name: probe
+    invoke: !ref Lib.viaRecursion

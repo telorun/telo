@@ -10,11 +10,7 @@ import {
 } from "./alias-resolver.js";
 import type { CallGraph } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import {
-  buildReferenceFieldMap,
-  isScopeEntry,
-  resolveFieldValues,
-} from "./reference-field-map.js";
+import { reachSites } from "./reference-reach.js";
 
 const SYSTEM_KINDS = new Set([
   "Telo.Definition",
@@ -199,15 +195,13 @@ export function buildObservedStateIndex(
 
     const schema = resolve(kind)?.schema as Record<string, any> | undefined;
     if (!schema) continue;
-    for (const [path, entry] of buildReferenceFieldMap(schema)) {
-      if (!isScopeEntry(entry)) continue;
-      for (const value of resolveFieldValues(manifest, path)) {
-        for (const scopedEntry of Array.isArray(value) ? value : [value]) {
-          const scopedKind = (scopedEntry as ResourceManifest)?.kind;
-          const scopedName = (scopedEntry as ResourceManifest)?.metadata?.name;
-          if (typeof scopedKind === "string" && typeof scopedName === "string") {
-            record(scopedKind, keyOf(scopedName), true, forwardedFrom, forwardedFrom);
-          }
+    for (const site of reachSites(schema, manifest)) {
+      if (site.scopes.length === 0) continue;
+      for (const scopedEntry of Array.isArray(site.data) ? site.data : [site.data]) {
+        const scopedKind = (scopedEntry as ResourceManifest)?.kind;
+        const scopedName = (scopedEntry as ResourceManifest)?.metadata?.name;
+        if (typeof scopedKind === "string" && typeof scopedName === "string") {
+          record(scopedKind, keyOf(scopedName), true, forwardedFrom, forwardedFrom);
         }
       }
     }

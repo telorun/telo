@@ -11,10 +11,21 @@
  *   unrolled, so a recursive shape stays finite here;
  * - the root's `properties`, its `anyOf` / `oneOf` / `allOf` branches and its
  *   `additionalProperties` are all walked;
- * - it stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body;
+ * - it stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body —
+ *   except that a step list whose `items` node is itself a reference slot
+ *   (directly or through a local `$ref`) has its items walked as any slot is;
  * - a non-local `$ref` is never followed ({@link resolveLocalReference} is the
  *   one place that decides, so widening it is a resolver change);
  * - a pattern keeps EVERY slot any branch declares there.
+ *
+ * Every consumer reads a view of it rather than resolving a pattern against a
+ * value itself: the kernel's Phase-5 substitution and scope creation, inline
+ * extraction, `!ref` resolution and every analyzer pass read the CONCRETE SITES
+ * of one resource (recursion unrolled as deep as its data goes, static
+ * `x-telo-schema-from` slots expanded against the anchor definition's whole
+ * schema); the editor's port list reads the DECLARED patterns; the throws walk
+ * reads the same sites without the expansion. `x-telo-scope` is legal only on a
+ * named top-level property ({@link misplacedScopeSlots}).
  *
  * Browser-safe: no Node built-ins.
  */
@@ -59,6 +70,15 @@ export interface SchemaReach {
   declaredKeys: Map<string, Set<string>>;
   /** True when some pattern holds a step or reference slot. */
   drives: boolean;
+  /** Every `x-telo-scope` node reached, with the pattern it applies at and
+   *  where it is written in `document` (`properties.with`, `$defs.With`). */
+  scopeNodes: ScopeNode[];
+}
+
+export interface ScopeNode {
+  path: string;
+  node: Record<string, any>;
+  location: string;
 }
 
 /** A local reference resolved: the node, and the document ITS references
@@ -178,13 +198,49 @@ function traverse(
     stops: new Map(),
     declaredKeys: new Map(),
     drives: false,
+    scopeNodes: [],
   };
   const walk: Walk = { reach, envelope, recorded: new Map(), onStack: new Map([[node, ""]]) };
-  visitNode(node, "", walk);
+  visitNode(node, "", locationIn(document, node), walk);
   return reach;
 }
 
 const joinKey = (path: string, key: string): string => (path ? `${path}.${key}` : key);
+
+/** Where `node` sits in `document`, found by identity; "" for the root. A node
+ *  not inside the document (a caller-built view) reads as its root. */
+function locationIn(document: Record<string, any>, node: object): string {
+  if (node === document) return "";
+  const seen = new Set<object>();
+  const search = (value: unknown, at: string): string | undefined => {
+    if (!value || typeof value !== "object" || seen.has(value)) return undefined;
+    seen.add(value);
+    if (value === node) return at;
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i++) {
+        const found = search(value[i], `${at}[${i}]`);
+        if (found !== undefined) return found;
+      }
+      return undefined;
+    }
+    for (const [key, child] of Object.entries(value)) {
+      const found = search(child, joinKey(at, key));
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  return search(document, "") ?? "";
+}
+
+/** The location a local `$ref` names in its document. */
+function pointerLocation(ref: string): string {
+  return ref
+    .slice(1)
+    .split("/")
+    .filter((segment) => segment !== "")
+    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"))
+    .join(".");
+}
 
 function firstTime(walk: Walk, path: string, node: object): boolean {
   let nodes = walk.recorded.get(path);
@@ -206,12 +262,13 @@ function stopAt(walk: Walk, path: string): ReachStop {
   return entry;
 }
 
-function visitNode(node: unknown, path: string, walk: Walk): void {
+function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
   if (!node || typeof node !== "object" || Array.isArray(node)) return;
   const schema = node as Record<string, any>;
   if ("x-telo-scope" in schema) {
     if (firstTime(walk, path, schema)) {
       stopAt(walk, path).scopes.push({ scope: schema["x-telo-scope"] });
+      walk.reach.scopeNodes.push({ path, node: schema, location: loc });
     }
     return;
   }
@@ -227,6 +284,12 @@ function visitNode(node: unknown, path: string, walk: Walk): void {
       pathAt(walk, path).steps.push(step);
       walk.reach.drives = true;
     }
+    // A step list whose items are THEMSELVES a reference slot (a boot target: a
+    // bare reference, or an object whose branches hold further slots) is walked
+    // as any slot is; a list of step objects stays a stop.
+    if (itemsAreReferenceSlot(schema.items, walk)) {
+      visitNode(schema.items, `${path}[]`, joinKey(loc, "items"), walk);
+    }
     return;
   }
   const slot = readRefSlot(schema);
@@ -237,48 +300,68 @@ function visitNode(node: unknown, path: string, walk: Walk): void {
     }
     // A slot's branches may be object shapes carrying their OWN nested slots
     // (Application `targets`: a bare ref vs an inline `{ invoke }`).
-    visitVariants(schema, path, walk);
+    visitVariants(schema, path, loc, walk);
     return;
   }
   if (typeof schema.$ref === "string") {
     followLocalRef(schema, path, walk);
     return;
   }
-  if (schema.type === "array" && schema.items) visitNode(schema.items, `${path}[]`, walk);
-  visitProperties(schema, path, walk);
-  visitVariants(schema, path, walk);
-  visitMapValue(schema, path, walk);
+  if (schema.type === "array" && schema.items) {
+    visitNode(schema.items, `${path}[]`, joinKey(loc, "items"), walk);
+  }
+  visitProperties(schema, path, loc, walk);
+  visitVariants(schema, path, loc, walk);
+  visitMapValue(schema, path, loc, walk);
 }
 
-function visitProperties(schema: Record<string, any>, path: string, walk: Walk): void {
+/** True when a step list's `items` node — directly or through a local `$ref` —
+ *  carries a reference slot of its own. */
+function itemsAreReferenceSlot(items: unknown, walk: Walk): boolean {
+  if (!items || typeof items !== "object" || Array.isArray(items)) return false;
+  let node = items as Record<string, any>;
+  if (typeof node.$ref === "string") {
+    const target = resolveLocalReference(node, walk.reach.document);
+    if (!target) return false;
+    node = target.node;
+  }
+  const slot = readRefSlot(node);
+  return !!slot && slot.kinds.length > 0;
+}
+
+function visitProperties(schema: Record<string, any>, path: string, loc: string, walk: Walk): void {
   const properties = schema.properties;
   if (!properties || typeof properties !== "object") return;
   for (const [key, propSchema] of Object.entries(properties)) {
-    visitNode(propSchema, joinKey(path, key), walk);
+    visitNode(propSchema, joinKey(path, key), joinKey(joinKey(loc, "properties"), key), walk);
   }
 }
 
-function visitVariants(schema: Record<string, any>, path: string, walk: Walk): void {
+function visitVariants(schema: Record<string, any>, path: string, loc: string, walk: Walk): void {
   for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
     const variants = schema[variantKey];
     if (!Array.isArray(variants)) continue;
-    for (const variant of variants) {
-      if (variant && typeof variant === "object") visitVariant(variant, path, walk);
-    }
+    variants.forEach((variant, i) => {
+      if (variant && typeof variant === "object") {
+        visitVariant(variant, path, `${joinKey(loc, variantKey)}[${i}]`, walk);
+      }
+    });
   }
 }
 
 /** One branch of a union. Its own root is not a slot — `readRefSlot` already
  *  unioned an `anyOf` of reference branches at the parent — so only what lies
  *  below it is walked, and a `$ref` branch is followed as a node of its own. */
-function visitVariant(variant: Record<string, any>, path: string, walk: Walk): void {
+function visitVariant(variant: Record<string, any>, path: string, loc: string, walk: Walk): void {
   if (typeof variant.$ref === "string") {
     followLocalRef(variant, path, walk);
     return;
   }
-  visitProperties(variant, path, walk);
-  if (variant.type === "array" && variant.items) visitNode(variant.items, `${path}[]`, walk);
-  visitMapValue(variant, path, walk);
+  visitProperties(variant, path, loc, walk);
+  if (variant.type === "array" && variant.items) {
+    visitNode(variant.items, `${path}[]`, joinKey(loc, "items"), walk);
+  }
+  visitMapValue(variant, path, loc, walk);
 }
 
 /** A reference to a node already on the descent records a back-edge to the
@@ -297,13 +380,13 @@ function followLocalRef(node: Record<string, any>, path: string, walk: Walk): vo
   }
   walk.onStack.set(target.node, path);
   try {
-    visitNode(target.node, path, walk);
+    visitNode(target.node, path, pointerLocation(node.$ref as string), walk);
   } finally {
     walk.onStack.delete(target.node);
   }
 }
 
-function visitMapValue(owner: Record<string, any>, path: string, walk: Walk): void {
+function visitMapValue(owner: Record<string, any>, path: string, loc: string, walk: Walk): void {
   const valueSchema = owner.additionalProperties;
   if (!valueSchema || typeof valueSchema !== "object" || Array.isArray(valueSchema)) return;
   const mapPath = joinKey(path, "{}");
@@ -315,7 +398,7 @@ function visitMapValue(owner: Record<string, any>, path: string, walk: Walk): vo
     mapPath,
     new Set(previous ? declared.filter((key) => previous.has(key)) : declared),
   );
-  visitNode(valueSchema, mapPath, walk);
+  visitNode(valueSchema, mapPath, joinKey(loc, "additionalProperties"), walk);
 }
 
 // --- the declared-slot view -------------------------------------------------
@@ -337,6 +420,8 @@ export interface DeclaredStop {
   path: string;
   scopes: ScopeFieldEntry[];
   schemaFrom: SchemaFromFieldEntry[];
+  /** True when a schema-from anchor's schema declares it, not the kind's own. */
+  viaAnchor: boolean;
 }
 
 export interface DeclaredReach {
@@ -377,7 +462,7 @@ export function declaredReach(
     }
     for (const [rel, stop] of reach.stops) {
       const path = joinPattern(base, rel);
-      stops.push({ path, scopes: stop.scopes, schemaFrom: stop.schemaFrom });
+      stops.push({ path, scopes: stop.scopes, schemaFrom: stop.schemaFrom, viaAnchor: base !== "" });
       if (!schemaFrom) continue;
       for (const { schemaFrom: expression } of stop.schemaFrom) {
         const anchor = schemaFrom(expression, reach.document);
@@ -392,6 +477,70 @@ export function declaredReach(
   return { references: [...references.values()], stops };
 }
 
+/** An `x-telo-scope` annotation a kind's schema writes where no scope can be
+ *  stood up: anywhere but a named top-level property of the resource. */
+export interface MisplacedScope {
+  /** Where the annotation is written in the schema (`properties.a.properties.with`). */
+  location: string;
+  /** Why the position is not a named top-level property. */
+  reason: string;
+}
+
+/**
+ * Every `x-telo-scope` annotation `schema` writes outside a named top-level
+ * property — one in the root's `properties` or a root variant's `properties`,
+ * written directly or through a local `$ref`. The kernel stands a scope up at
+ * that one concrete site; a nested object, an array item, a map value, a
+ * recursive shape, the root itself, or a node the root's reach never gets to
+ * (a `$defs` entry reached only through another kind's schema-from) has none.
+ */
+export function misplacedScopeSlots(schema: Record<string, any>): MisplacedScope[] {
+  const reach = reachOfSchema(schema);
+  const recursesToRoot = [...reach.paths.values()].some((at) => at.recurse.includes(""));
+  const legal = new Set<object>();
+  const out: MisplacedScope[] = [];
+  const reported = new Set<string>();
+  const report = (location: string, reason: string) => {
+    if (reported.has(location)) return;
+    reported.add(location);
+    out.push({ location, reason });
+  };
+  for (const { path, node, location } of reach.scopeNodes) {
+    const reason =
+      path === ""
+        ? "it is the resource root itself"
+        : path.includes("{}")
+          ? `it applies to the values of an open-keyed map ('${path}')`
+          : path.includes("[]")
+            ? `it applies to the items of an array ('${path}')`
+            : path.includes(".")
+              ? `it is nested under an object ('${path}')`
+              : recursesToRoot
+                ? "the schema refers back to its own root, so it recurs below the top level"
+                : undefined;
+    if (reason === undefined) legal.add(node);
+    else report(location, reason);
+  }
+  const seen = new Set<object>();
+  const scan = (value: unknown, at: string): void => {
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item, i) => scan(item, `${at}[${i}]`));
+      return;
+    }
+    const node = value as Record<string, unknown>;
+    if ("x-telo-scope" in node && !legal.has(node)) {
+      report(at, "no top-level property of the resource reaches it");
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== "x-telo-scope") scan(child, joinKey(at, key));
+    }
+  };
+  scan(schema, "");
+  return out;
+}
+
 // --- the concrete-site enumeration -----------------------------------------
 
 /** A reference slot at a concrete site, with where it was declared. */
@@ -404,16 +553,67 @@ export interface ReachRef {
    *  at the slot is read against. */
   declaredIn: SchemaReach;
   declaredPath: string;
+  /** True when a schema-from anchor's schema declares the slot. */
+  viaAnchor: boolean;
+  /** The slot's `x-telo-context`, when it declares one. */
+  context?: Record<string, any>;
 }
 
 /** Everything one concrete site of one resource carries, from every branch and
  *  recursion route that reaches it. */
 export interface ReachSite {
   path: string;
+  /** `path` as its segments — a key or an array index each — so a consumer
+   *  naming something after the site never re-parses a key holding a dot. */
+  keys: (string | number)[];
   data: unknown;
+  /** The object or array holding `data`, and its key there — where a value
+   *  written at this site is replaced in place. Absent for the resource root. */
+  holder?: Record<string, unknown> | unknown[];
+  key?: string | number;
   refs: ReachRef[];
   steps: StepSlot[];
   scopes: ScopeFieldEntry[];
+  /** Every `x-telo-schema-from` slot at this site, expanded or not — kept only
+   *  when asked for (`withSchemaFrom`). */
+  schemaFrom: ReachSchemaFrom[];
+}
+
+/** An `x-telo-schema-from` slot at a concrete site. */
+export interface ReachSchemaFrom {
+  entry: SchemaFromFieldEntry;
+  /** The declared pattern, relative to the resource root. */
+  fieldPath: string;
+  /** The document the annotation is written in. */
+  document: Record<string, any>;
+  /** True when a schema-from anchor's schema writes it, not the kind's own. */
+  viaAnchor: boolean;
+}
+
+/** One reference entry standing for every slot at a site: kinds unioned in
+ *  declaration order, and each other fact taken from the first slot that
+ *  declares it, as `readRefSlot` reads the branches of one node. */
+export function siteRefEntry(site: ReachSite): RefFieldEntry {
+  const first = site.refs[0]!;
+  const entry: RefFieldEntry = {
+    refs: [],
+    uses: [],
+    isArray: first.fieldPath.includes("[]"),
+  };
+  const valueBranches: Record<string, any>[] = [];
+  for (const { slot, context } of site.refs) {
+    for (const kind of slot.kinds) if (!entry.refs.includes(kind)) entry.refs.push(kind);
+    for (const use of slot.uses) if (!entry.uses.includes(use)) entry.uses.push(use);
+    if (slot.useCases && !entry.useCases) entry.useCases = slot.useCases;
+    if (slot.inputs !== undefined && entry.inputs === undefined) entry.inputs = slot.inputs;
+    if (context && !entry.context) entry.context = context;
+    if (slot.inline) entry.inline = true;
+    if (slot.throwsThrough) entry.throwsThrough = true;
+    if (slot.outputType && !entry.outputType) entry.outputType = slot.outputType;
+    valueBranches.push(...slot.valueBranches);
+  }
+  if (valueBranches.length > 0) entry.valueBranches = valueBranches;
+  return entry;
 }
 
 /**
@@ -425,45 +625,63 @@ export interface ReachSite {
  * goes, guarded against data that aliases one of its own ancestors. With
  * `schemaFrom`, the anchor of a static schema-from stop is walked at each
  * concrete site of the stop, over the same data; an anchor re-entered with the
- * same value on the current descent is not walked again.
+ * same value on the current descent is not walked again. With `withSchemaFrom`,
+ * each concrete site of an `x-telo-schema-from` slot is a site too.
  */
 export function reachSites(
   schema: Record<string, any>,
   data: unknown,
   schemaFrom?: SchemaFromResolver,
+  withSchemaFrom = false,
 ): ReachSite[] {
-  return enumerateSites(schema, data, { scopes: true, schemaFrom });
+  return enumerateSites(schema, data, { stops: true, schemaFrom, withSchemaFrom });
 }
 
 /** The sites through which a resource drives another — its step and reference
  *  sites, with no schema-from expansion: the reach every throws question asks
  *  over, so none can reach a slot another cannot. */
 export function drivenSites(schema: Record<string, any>, data: unknown): ReachSite[] {
-  return enumerateSites(schema, data, { scopes: false });
+  return enumerateSites(schema, data, { stops: false });
 }
 
 interface SiteOptions {
-  scopes: boolean;
+  /** Keep scope sites. */
+  stops: boolean;
+  /** Keep schema-from sites too. */
+  withSchemaFrom?: boolean;
   schemaFrom?: SchemaFromResolver;
 }
 
 function enumerateSites(
   schema: Record<string, any>,
   data: unknown,
-  { scopes: keepScopes, schemaFrom }: SiteOptions,
+  { stops: keepStops, withSchemaFrom, schemaFrom }: SiteOptions,
 ): ReachSite[] {
   if (data === undefined || data === null) return [];
   const root = reachOfSchema(schema);
-  const followsStops = keepScopes || schemaFrom !== undefined;
+  const followsStops = keepStops || schemaFrom !== undefined;
   if (!root.drives && !(followsStops && root.stops.size > 0)) return [];
   const sites = new Map<string, ReachSite & { from: Set<object> }>();
   const onData = new Set<unknown>([data]);
   const expanded = new Map<unknown, Set<SchemaReach>>();
 
-  const siteAt = (path: string, value: unknown) => {
+  const siteAt = (path: string, keys: (string | number)[], found: Site) => {
     let site = sites.get(path);
     if (!site) {
-      site = { path, data: value, refs: [], steps: [], scopes: [], from: new Set() };
+      site = {
+        path,
+        keys,
+        data: found.value,
+        refs: [],
+        steps: [],
+        scopes: [],
+        schemaFrom: [],
+        from: new Set(),
+      };
+      if (found.holder) {
+        site.holder = found.holder;
+        site.key = found.key;
+      }
       sites.set(path, site);
     }
     return site;
@@ -472,17 +690,19 @@ function enumerateSites(
   const walk = (
     reach: SchemaReach,
     prefix: string,
-    value: unknown,
+    at0: Site,
     base: string,
+    baseKeys: (string | number)[],
     patternBase: string,
   ): void => {
     for (const [declaredPath, at] of reach.paths) {
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
-      for (const found of resolveSites(value, rel, prefix, reach)) {
+      for (const found of resolveSites(at0, rel, prefix, reach)) {
         const path = joinPattern(base, found.path);
+        const keys = [...baseKeys, ...found.keys];
         if (at.steps.length > 0 || at.refs.length > 0) {
-          const site = siteAt(path, found.value);
+          const site = siteAt(path, keys, found);
           for (const step of at.steps) {
             if (site.from.has(step)) continue;
             site.from.add(step);
@@ -491,18 +711,21 @@ function enumerateSites(
           for (const entry of at.refs) {
             if (site.from.has(entry)) continue;
             site.from.add(entry);
-            site.refs.push({
+            const ref: ReachRef = {
               slot: refSlotOfEntry(entry),
               fieldPath: joinPattern(patternBase, declaredPath),
               declaredIn: reach,
               declaredPath,
-            });
+              viaAnchor: reach !== root,
+            };
+            if (entry.context) ref.context = entry.context;
+            site.refs.push(ref);
           }
         }
         if (at.recurse.length === 0) continue;
         if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
         onData.add(found.value);
-        for (const to of at.recurse) walk(reach, to, found.value, path, patternBase);
+        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase);
         onData.delete(found.value);
       }
     }
@@ -510,14 +733,25 @@ function enumerateSites(
     for (const [declaredPath, stop] of reach.stops) {
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
-      for (const found of resolveSites(value, rel, prefix, reach)) {
+      for (const found of resolveSites(at0, rel, prefix, reach)) {
         const path = joinPattern(base, found.path);
-        if (keepScopes && stop.scopes.length > 0) {
-          const site = siteAt(path, found.value);
+        const keys = [...baseKeys, ...found.keys];
+        if (keepStops && (stop.scopes.length > 0 || (withSchemaFrom && stop.schemaFrom.length > 0))) {
+          const site = siteAt(path, keys, found);
           for (const scope of stop.scopes) {
             if (site.from.has(scope)) continue;
             site.from.add(scope);
             site.scopes.push(scope);
+          }
+          for (const entry of withSchemaFrom ? stop.schemaFrom : []) {
+            if (site.from.has(entry)) continue;
+            site.from.add(entry);
+            site.schemaFrom.push({
+              entry,
+              fieldPath: joinPattern(patternBase, declaredPath),
+              document: reach.document,
+              viaAnchor: reach !== root,
+            });
           }
         }
         if (!schemaFrom) continue;
@@ -529,27 +763,131 @@ function enumerateSites(
           if (!entered) expanded.set(found.value, (entered = new Set()));
           if (entered.has(anchored)) continue;
           entered.add(anchored);
-          walk(anchored, "", found.value, path, joinPattern(patternBase, declaredPath));
+          walk(anchored, "", found, path, keys, joinPattern(patternBase, declaredPath));
           entered.delete(anchored);
         }
       }
     }
   };
-  walk(root, "", data, "", "");
+  walk(root, "", { value: data, path: "", keys: [] }, "", [], "");
 
   return [...sites.values()].map(({ from, ...site }) => site);
+}
+
+/** A concrete position of a resource at or above a reference slot. */
+export interface ReachPosition {
+  path: string;
+  value: unknown;
+  /** The declared pattern of a slot the position leads to (or is). */
+  fieldPath: string;
+}
+
+/**
+ * Every concrete position of a resource at or ABOVE one of its reference
+ * slots — the slot itself, and each container on the way to it — recursion
+ * unrolled as deep as the data goes (with the same ancestor-alias guard as
+ * {@link reachSites}) and, with `schemaFrom`, static schema-from slots expanded.
+ * What a value written ABOVE a slot is asked about: an expression there leaves
+ * no concrete site below it, yet it holds the slot's value.
+ */
+export function reachPositions(
+  schema: Record<string, any>,
+  data: unknown,
+  schemaFrom?: SchemaFromResolver,
+): ReachPosition[] {
+  if (data === undefined || data === null) return [];
+  const root = reachOfSchema(schema);
+  const positions = new Map<string, ReachPosition>();
+  const onData = new Set<unknown>([data]);
+  const expanded = new Map<unknown, Set<SchemaReach>>();
+
+  const emit = (reach: SchemaReach, prefix: string, at0: Site, base: string, rel: string, fieldPath: string) => {
+    for (const relPrefix of patternPrefixes(rel)) {
+      for (const found of resolveSites(at0, relPrefix, prefix, reach)) {
+        const path = joinPattern(base, found.path);
+        if (!positions.has(path)) positions.set(path, { path, value: found.value, fieldPath });
+      }
+    }
+  };
+
+  const walk = (reach: SchemaReach, prefix: string, at0: Site, base: string, patternBase: string): void => {
+    for (const [declaredPath, at] of reach.paths) {
+      if (at.refs.length === 0 && at.recurse.length === 0) continue;
+      const rel = relativeFieldPath(declaredPath, prefix);
+      if (rel === undefined) continue;
+      // A back-edge's position leads to the slots below the node it re-enters.
+      const leadsTo =
+        at.refs.length > 0
+          ? declaredPath
+          : [...reach.paths].find(
+              ([pattern, below]) =>
+                below.refs.length > 0 && at.recurse.some((to) => relativeFieldPath(pattern, to) !== undefined),
+            )?.[0];
+      if (leadsTo !== undefined) emit(reach, prefix, at0, base, rel, joinPattern(patternBase, leadsTo));
+      if (at.recurse.length === 0) continue;
+      for (const found of resolveSites(at0, rel, prefix, reach)) {
+        if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
+        onData.add(found.value);
+        const path = joinPattern(base, found.path);
+        for (const to of at.recurse) walk(reach, to, found, path, patternBase);
+        onData.delete(found.value);
+      }
+    }
+    if (!schemaFrom) return;
+    for (const [declaredPath, stop] of reach.stops) {
+      const rel = relativeFieldPath(declaredPath, prefix);
+      if (rel === undefined) continue;
+      for (const { schemaFrom: expression } of stop.schemaFrom) {
+        const anchor = schemaFrom(expression, reach.document);
+        if (!anchor) continue;
+        const anchored = reachOfNode(anchor.document, anchor.node);
+        if (!anchored.drives) continue;
+        for (const found of resolveSites(at0, rel, prefix, reach)) {
+          let entered = expanded.get(found.value);
+          if (!entered) expanded.set(found.value, (entered = new Set()));
+          if (entered.has(anchored)) continue;
+          entered.add(anchored);
+          const path = joinPattern(base, found.path);
+          const anchoredBase = joinPattern(patternBase, declaredPath);
+          emit(reach, prefix, at0, base, rel, anchoredBase);
+          walk(anchored, "", found, path, anchoredBase);
+          entered.delete(anchored);
+        }
+      }
+    }
+  };
+  walk(root, "", { value: data, path: "", keys: [] }, "", "");
+  return [...positions.values()];
+}
+
+/** Every non-empty prefix of a relative pattern, one per step a walk takes:
+ *  `a.b[].c` → `a`, `a.b`, `a.b[]`, `a.b[].c`. */
+function patternPrefixes(rel: string): string[] {
+  const out: string[] = [];
+  let acc = "";
+  for (const part of rel.split(".")) {
+    if (part === "") continue;
+    const key = part.replace(/(\[\])+$/, "");
+    if (key) out.push((acc = joinKey(acc, key)));
+    for (let d = 0; d < (part.length - key.length) / 2; d++) out.push((acc = `${acc}[]`));
+  }
+  return out;
 }
 
 interface Site {
   value: unknown;
   path: string;
+  keys: (string | number)[];
+  holder?: Record<string, unknown> | unknown[];
+  key?: string | number;
 }
 
-/** The values at `rel` below `value`, where `rel` is relative to the pattern
+/** The values at `rel` below `start`, where `rel` is relative to the pattern
  *  `prefix`. A `{}` segment skips the keys the reach records as declared for
- *  that pattern; each `[]` iterates one array level. */
-function resolveSites(value: unknown, rel: string, prefix: string, reach: SchemaReach): Site[] {
-  let sites: Site[] = [{ value, path: "" }];
+ *  that pattern; each `[]` iterates one array level. Paths are relative to
+ *  `start`. */
+function resolveSites(start: Site, rel: string, prefix: string, reach: SchemaReach): Site[] {
+  let sites: Site[] = [{ ...start, path: "", keys: [] }];
   if (rel === "") return sites;
   let field = prefix;
   for (const part of rel.split(".")) {
@@ -561,7 +899,13 @@ function resolveSites(value: unknown, rel: string, prefix: string, reach: Schema
         if (!site.value || typeof site.value !== "object" || Array.isArray(site.value)) continue;
         for (const [key, entry] of Object.entries(site.value as Record<string, unknown>)) {
           if (entry == null || declared?.has(key)) continue;
-          next.push({ value: entry, path: joinKey(site.path, key) });
+          next.push({
+            value: entry,
+            path: joinKey(site.path, key),
+            keys: [...site.keys, key],
+            holder: site.value as Record<string, unknown>,
+            key,
+          });
         }
       }
     } else {
@@ -574,7 +918,15 @@ function resolveSites(value: unknown, rel: string, prefix: string, reach: Schema
           if (!site.value || typeof site.value !== "object") continue;
           const entry = (site.value as Record<string, unknown>)[key];
           if (entry == null) continue;
-          level = [{ value: entry, path: joinKey(site.path, key) }];
+          level = [
+            {
+              value: entry,
+              path: joinKey(site.path, key),
+              keys: [...site.keys, key],
+              holder: site.value as Record<string, unknown>,
+              key,
+            },
+          ];
         } else {
           level = [site];
         }
@@ -582,8 +934,17 @@ function resolveSites(value: unknown, rel: string, prefix: string, reach: Schema
           const items: Site[] = [];
           for (const holder of level) {
             if (!Array.isArray(holder.value)) continue;
-            holder.value.forEach((item, i) => {
-              if (item != null) items.push({ value: item, path: `${holder.path}[${i}]` });
+            const array = holder.value;
+            array.forEach((item, i) => {
+              if (item != null) {
+                items.push({
+                  value: item,
+                  path: `${holder.path}[${i}]`,
+                  keys: [...holder.keys, i],
+                  holder: array,
+                  key: i,
+                });
+              }
             });
           }
           level = items;

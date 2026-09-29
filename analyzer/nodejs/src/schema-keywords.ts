@@ -265,7 +265,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-scope": {
     title: "Execution scope",
     description:
-      "JSON Pointer to a region whose `!ref`s resolve against this field's inline resources, created on entry and torn down on exit.",
+      "JSON Pointer to a region whose `!ref`s resolve against this field's inline resources, created on entry and torn down on exit. Legal only on a named top-level property of the resource.",
     anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
   },
   "x-telo-context": {

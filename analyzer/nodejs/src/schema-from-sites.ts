@@ -6,7 +6,6 @@
  */
 import type { DerivedSlotContext } from "./derived-slots.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { resolveFieldEntries, resolveFieldValues } from "./reference-field-map.js";
 import { navigateJsonPointer } from "./schema-compat.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 
@@ -28,20 +27,45 @@ export interface SchemaFromFailure {
   readonly path: string;
 }
 
+/** One concrete `x-telo-schema-from` site of a resource, as the reach found it. */
+export interface SchemaFromSlotSite {
+  /** The declared pattern, for a message about the slot itself. */
+  readonly fieldPath: string;
+  /** The concrete path and the value written there. */
+  readonly path: string;
+  readonly value: unknown;
+  /** The object holding the value — where a relative anchor's sibling lives. */
+  readonly holder?: Record<string, unknown> | unknown[];
+}
+
 /**
- * One `x-telo-schema-from` field of a resource, resolved per concrete value.
+ * True when every failure an `x-telo-schema-from` expression can raise is
+ * decided by the kind alone — a malformed expression, or an alias-qualified
+ * anchor (`HttpDispatch.Outcomes/$defs/Returns`) — rather than by what a
+ * resource writes at a sibling anchor.
+ */
+export function schemaFromIsKindDecidable(schemaFrom: string): boolean {
+  const expr = schemaFrom.startsWith("/") ? schemaFrom.slice(1) : schemaFrom;
+  const slash = expr.indexOf("/");
+  return slash === -1 || (!schemaFrom.startsWith("/") && expr.slice(0, slash).includes("."));
+}
+
+/**
+ * One `x-telo-schema-from` site of a resource, resolved.
  *
  * Three anchor forms: an alias-qualified kind path resolved in the scope of the
  * kind that declared the slot; a sibling reference whose TARGET declares the
  * pointed field itself (the instance wins); and a sibling reference whose KIND
- * schema holds it.
+ * schema holds it. A relative anchor names a sibling of the slot, an absolute
+ * one a top-level field of the resource.
  */
 export function schemaFromSites(
   resource: Record<string, any>,
-  fieldPath: string,
+  slot: SchemaFromSlotSite,
   schemaFrom: string,
   ctx: DerivedSlotContext,
 ): Array<SchemaFromSite | SchemaFromFailure> {
+  const { fieldPath } = slot;
   const out: Array<SchemaFromSite | SchemaFromFailure> = [];
   const label = `${resource.kind}/${resource.metadata?.name as string}`;
   const isAbsolute = schemaFrom.startsWith("/");
@@ -94,88 +118,77 @@ export function schemaFromSites(
       });
       return out;
     }
-    for (const { value, path } of resolveFieldEntries(resource, fieldPath)) {
-      if (value == null) continue;
-      out.push({
-        path,
-        value,
-        schema: subSchema as Record<string, any>,
-        source: `${anchorName}${jsonPointer}`,
-        form: "anchored",
-      });
-    }
+    if (slot.value == null) return out;
+    out.push({
+      path: slot.path,
+      value: slot.value,
+      schema: subSchema as Record<string, any>,
+      source: `${anchorName}${jsonPointer}`,
+      form: "anchored",
+    });
     return out;
   }
 
-  let anchorPath: string;
-  if (isAbsolute) {
-    anchorPath = anchorName;
-  } else {
-    const lastDot = fieldPath.lastIndexOf(".");
-    anchorPath = lastDot === -1 ? anchorName : fieldPath.slice(0, lastDot + 1) + anchorName;
+  const { value, path } = slot;
+  if (value == null) return out;
+  const enclosing = isAbsolute
+    ? resource
+    : slot.holder && !Array.isArray(slot.holder)
+      ? slot.holder
+      : undefined;
+  const anchorVal = enclosing?.[anchorName];
+  if (!anchorVal || typeof anchorVal !== "object") return out;
+  const ref = anchorVal as Record<string, unknown>;
+  if (typeof ref.kind !== "string") return out;
+  // The instance first, then the kind: a kind whose shape is per instance
+  // declares it as a field, and reading only the definition types every
+  // instance against nothing.
+  const target =
+    typeof ref.name === "string" ? ctx.resolveTarget(ref as Record<string, any>) : undefined;
+  const perInstance =
+    target === undefined
+      ? undefined
+      : navigateJsonPointer(target as Record<string, unknown>, jsonPointer);
+  if (perInstance !== undefined) {
+    const instanceSchema = resolveTypeFieldToSchema(perInstance, ctx.typeManifests);
+    if (instanceSchema) {
+      out.push({
+        path,
+        value,
+        schema: instanceSchema,
+        source: `the schema '${ref.name as string}' declares at '${jsonPointer}'`,
+        form: "instance",
+      });
+      return out;
+    }
   }
-  const anchorValues = resolveFieldValues(resource, anchorPath);
-  if (anchorValues.length === 0) return out;
-  const fieldEntries = resolveFieldEntries(resource, fieldPath);
 
-  for (let i = 0; i < fieldEntries.length; i++) {
-    const { value, path } = fieldEntries[i]!;
-    if (value == null) continue;
-    const anchorVal = isAbsolute ? anchorValues[0] : anchorValues[i];
-    if (!anchorVal || typeof anchorVal !== "object") continue;
-    const ref = anchorVal as Record<string, unknown>;
-    if (typeof ref.kind !== "string") continue;
-
-    // The instance first, then the kind: a kind whose shape is per instance
-    // declares it as a field, and reading only the definition types every
-    // instance against nothing.
-    const target =
-      typeof ref.name === "string" ? ctx.resolveTarget(ref as Record<string, any>) : undefined;
-    const perInstance =
-      target === undefined
-        ? undefined
-        : navigateJsonPointer(target as Record<string, unknown>, jsonPointer);
-    if (perInstance !== undefined) {
-      const instanceSchema = resolveTypeFieldToSchema(perInstance, ctx.typeManifests);
-      if (instanceSchema) {
-        out.push({
-          path,
-          value,
-          schema: instanceSchema,
-          source: `the schema '${ref.name as string}' declares at '${jsonPointer}'`,
-          form: "instance",
-        });
-        continue;
-      }
-    }
-
-    const refResolvedKind = ctx.aliases.resolveKind(ref.kind) ?? ref.kind;
-    const refDef = ctx.defs.resolve(ref.kind) ?? ctx.defs.resolve(refResolvedKind);
-    if (!refDef?.schema) {
-      out.push({
-        code: "SCHEMA_FROM_MISSING_PATH",
-        message: `${label}: x-telo-schema-from at '${path}' → kind '${ref.kind}' has no schema`,
-        path,
-      });
-      continue;
-    }
-    const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
-    if (subSchema === undefined) {
-      out.push({
-        code: "SCHEMA_FROM_MISSING_PATH",
-        message: `${label}: x-telo-schema-from at '${path}' → kind '${ref.kind}' has no schema path '${jsonPointer}'`,
-        path,
-      });
-      continue;
-    }
+  const refResolvedKind = ctx.aliases.resolveKind(ref.kind) ?? ref.kind;
+  const refDef = ctx.defs.resolve(ref.kind) ?? ctx.defs.resolve(refResolvedKind);
+  if (!refDef?.schema) {
     out.push({
+      code: "SCHEMA_FROM_MISSING_PATH",
+      message: `${label}: x-telo-schema-from at '${path}' → kind '${ref.kind}' has no schema`,
       path,
-      value,
-      schema: subSchema as Record<string, any>,
-      source: `${ref.kind}${jsonPointer}`,
-      form: "kind",
     });
+    return out;
   }
+  const subSchema = navigateJsonPointer(refDef.schema, jsonPointer);
+  if (subSchema === undefined) {
+    out.push({
+      code: "SCHEMA_FROM_MISSING_PATH",
+      message: `${label}: x-telo-schema-from at '${path}' → kind '${ref.kind}' has no schema path '${jsonPointer}'`,
+      path,
+    });
+    return out;
+  }
+  out.push({
+    path,
+    value,
+    schema: subSchema as Record<string, any>,
+    source: `${ref.kind}${jsonPointer}`,
+    form: "kind",
+  });
   return out;
 }
 

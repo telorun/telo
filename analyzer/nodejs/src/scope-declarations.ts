@@ -1,13 +1,13 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
-import { isScopeEntry, resolveFieldEntries, type ReferenceFieldMap } from "./reference-field-map.js";
+import type { ReachSite } from "./reference-reach.js";
 
 /**
  * The execution scopes ONE resource declares — the `x-telo-scope` arrays it
- * holds — read off its kind's field map, which is the analyzer's single
- * definition of "scope" (the same one `resolve-ref-sentinels` and
- * `manifest-visitor` read). Inferring a scope from shape instead would give one
- * to any kind that happens to carry an array of named declarations.
+ * holds — read off the concrete sites of its kind's reach, which is the
+ * analyzer's single definition of "scope" (the same one `resolve-ref-sentinels`
+ * and `manifest-visitor` read). Inferring a scope from shape instead would give
+ * one to any kind that happens to carry an array of named declarations.
  *
  * Browser-safe.
  */
@@ -24,26 +24,25 @@ export interface DeclaredScope {
 
 export type ScopeMember = ResourceManifest & { metadata: { name: string } };
 
-/** Every scope `resource` declares, in field-map order. A scope slot left unset
- *  declares nothing: no scope run happens, so nothing is created in one. */
-export function declaredScopes(
-  resource: Record<string, unknown>,
-  fieldMap: ReferenceFieldMap | undefined,
-): DeclaredScope[] {
-  if (!fieldMap) return [];
+/** Every scope a resource declares, from its concrete sites, in reach order. A
+ *  scope slot left unset declares nothing: no scope run happens, so nothing is
+ *  created in one. */
+export function declaredScopes(sites: readonly ReachSite[]): DeclaredScope[] {
   const out: DeclaredScope[] = [];
-  for (const [fieldPath, entry] of fieldMap) {
-    if (!isScopeEntry(entry)) continue;
-    const pointers = Array.isArray(entry.scope) ? entry.scope : [entry.scope];
-    const regions = pointers.map((p) => p.replace(/^\//, "").replace(/\//g, "."));
-    for (const { value, path } of resolveFieldEntries(resource, fieldPath)) {
-      if (Array.isArray(value)) out.push({ path, declarations: value, regions });
+  for (const site of sites) {
+    if (site.scopes.length === 0 || !Array.isArray(site.data)) continue;
+    const regions = new Set<string>();
+    for (const { scope } of site.scopes) {
+      for (const pointer of Array.isArray(scope) ? scope : [scope]) {
+        regions.add(pointer.replace(/^\//, "").replace(/\//g, "."));
+      }
     }
+    out.push({ path: site.path, declarations: site.data, regions: [...regions] });
   }
   return out;
 }
 
-/** True when `path` — a field-map path (`steps[].invoke`) or a concrete one
+/** True when `path` — a pattern (`steps[].invoke`) or a concrete one
  *  (`steps[0].invoke`) — lies inside one of the scope's regions. */
 export function scopeEncloses(scope: DeclaredScope, path: string): boolean {
   return scope.regions.some(

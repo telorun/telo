@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { PeerBinder, type ReferenceValue } from "../src/peer-binding.js";
+import { declaredReach, reachSites } from "../src/reference-reach.js";
 import {
   evaluateResourceRules,
   validateResourceRuleDeclarations,
@@ -35,7 +36,13 @@ function binderOver(declarations: ResourceManifest[]): PeerBinder {
   const byName = new Map(declarations.map((d) => [d.metadata!.name as string, d]));
   return new PeerBinder({
     declarationOf: (r: ReferenceValue) => byName.get(r.name),
-    refSlotsOf: () => ["languages[]"],
+    refSlotsOf: () => declaredReach(schema).references.map((r) => r.path),
+    refSitesOf: (manifest) =>
+      new Map(
+        reachSites(schema, manifest)
+          .filter((site) => site.refs.length > 0)
+          .map((site) => [site.path, site.refs[0]!.fieldPath]),
+      ),
   });
 }
 

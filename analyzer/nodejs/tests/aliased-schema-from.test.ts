@@ -195,6 +195,51 @@ describe("x-telo-schema-from with import-aliased absolute paths", () => {
     expect(missing!.message).toContain("Bogus.Kind");
   });
 
+  it("reports a kind-decided anchor failure once per resource at the declared pattern, written or not", () => {
+    const brokenDef: ResourceManifest = {
+      kind: "Telo.Definition",
+      metadata: { name: "Endpoint", module: "consumer", namespace: "test" },
+      capability: "Telo.Service",
+      schema: {
+        type: "object",
+        properties: {
+          returns: {
+            "x-telo-outcome-list": "returns",
+            "x-telo-schema-from": "Bogus.Kind/$defs/Returns",
+          },
+        },
+      },
+    } as unknown as ResourceManifest;
+    const written = {
+      kind: "Cons.Endpoint",
+      metadata: { name: "Written" },
+      returns: [{ status: 200 }, { status: 404 }],
+    } as unknown as ResourceManifest;
+    const unwritten = { kind: "Cons.Endpoint", metadata: { name: "Unwritten" } } as unknown as ResourceManifest;
+
+    const diagnostics = new StaticAnalyzer().analyze(
+      withSyntheticPositions([
+        userApp,
+        userImportOfConsumer,
+        consumerLibrary,
+        consumerImport,
+        brokenDef,
+        carrierLibrary,
+        carrierDef,
+        written,
+        unwritten,
+      ]),
+    );
+    expect(
+      diagnostics
+        .filter((d) => d.code === "SCHEMA_FROM_MISSING_PATH")
+        .map((d) => [(d.data as any).resource.name, (d.data as any).path]),
+    ).toEqual([
+      ["Written", "returns"],
+      ["Unwritten", "returns"],
+    ]);
+  });
+
   it("blames the unresolved import, not the dependency, when the import has no resolved identity", () => {
     // The loader stamps `resolvedModuleName` once it has read the target's
     // library doc; an import that never resolved carries none. Nothing derives

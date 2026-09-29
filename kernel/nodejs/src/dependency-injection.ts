@@ -1,20 +1,24 @@
-import { ResourceInstance, ResourceManifest, RuntimeError } from "@telorun/sdk";
+import { ResourceInstance, RuntimeError } from "@telorun/sdk";
+
+/** One concrete reference site: the value written there and where it sits. */
+export interface InjectionSite {
+  data: unknown;
+  holder?: Record<string, unknown> | unknown[];
+  key?: string | number;
+}
 
 /**
- * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal,
- * `{}` = map traversal). For each leaf value that looks like a {kind, name}
- * reference, calls getInstance(name) and replaces the value in-place with the
- * returned live ResourceInstance. Values where getInstance returns undefined are
- * left unchanged.
+ * Phase-5 substitution at ONE concrete reference site (the analyzer's reach
+ * enumerates them): a `{kind, name}` reference there is replaced in place with
+ * the live ResourceInstance `getInstance` returns. A value that is not a
+ * reference (an instance already substituted, a value branch) is left as is, as
+ * is a reference `getInstance` does not know.
  */
-export function injectAtPath(
-  resource: ResourceManifest,
-  fieldPath: string,
+export function injectAtSite(
+  site: InjectionSite,
   getInstance: (name: string, alias?: string) => ResourceInstance | undefined,
   isPending?: (name: string) => boolean,
 ): void {
-  const parts = fieldPath.split(".");
-
   // Resolve a {kind, name, alias?} reference to its live instance. A non-`Self` alias is a
   // cross-module reference into an import's published exports; if that import hasn't
   // finished init() yet the instance is absent, so we throw to defer this resource to a
@@ -50,65 +54,10 @@ export function injectAtPath(
     return instance;
   }
 
-  function traverse(obj: unknown, partsLeft: string[]): void {
-    if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
-    const [head, ...rest] = partsLeft;
-
-    // Map iteration: descend into every value of the current object (used for
-    // schema fields with `additionalProperties` like `content[mime]`).
-    if (head === "{}") {
-      const container = obj as Record<string, unknown>;
-      for (const mapKey of Object.keys(container)) {
-        const elem = container[mapKey];
-        if (!elem || typeof elem !== "object") continue;
-        if (rest.length === 0) {
-          const ref = elem as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) container[mapKey] = instance;
-          }
-        } else {
-          traverse(elem, rest);
-        }
-      }
-      return;
-    }
-
-    const isArr = head.endsWith("[]");
-    const key = isArr ? head.slice(0, -2) : head;
-    const container = obj as Record<string, unknown>;
-    const val = container[key];
-    if (val == null) return;
-
-    if (isArr) {
-      if (!Array.isArray(val)) return;
-      for (let i = 0; i < val.length; i++) {
-        const elem = val[i];
-        if (!elem || typeof elem !== "object") continue;
-        if (rest.length === 0) {
-          const ref = elem as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) val[i] = instance;
-          }
-        } else {
-          traverse(elem, rest);
-        }
-      }
-    } else {
-      if (rest.length === 0) {
-        if (val && typeof val === "object" && !Array.isArray(val)) {
-          const ref = val as Record<string, unknown>;
-          if (typeof ref.kind === "string" && typeof ref.name === "string") {
-            const instance = resolveInto(ref);
-            if (instance) container[key] = instance;
-          }
-        }
-      } else {
-        traverse(val, rest);
-      }
-    }
-  }
-
-  traverse(resource, parts);
+  const ref = site.data;
+  if (!site.holder || !ref || typeof ref !== "object" || Array.isArray(ref)) return;
+  const candidate = ref as Record<string, unknown>;
+  if (typeof candidate.kind !== "string" || typeof candidate.name !== "string") return;
+  const instance = resolveInto(candidate);
+  if (instance) (site.holder as Record<string | number, unknown>)[site.key!] = instance;
 }

@@ -6,13 +6,7 @@ import type {
   ResourceInstance,
 } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
-import {
-  buildReferenceFieldMap,
-  effectiveAuthorSchema,
-  isRefEntry,
-  SELF_PATH,
-  type DefResolver,
-} from "@telorun/analyzer";
+import { effectiveAuthorSchema, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { declaringContextOf } from "./declaring-context.js";
 
@@ -168,21 +162,18 @@ export function createInheritedController(
   }
   const base = definition.base;
 
-  // Top-level reference fields on the author-facing schema — resolved to live
-  // instances before `base:` runs so a `!cel "self.<ref>"` passthrough forwards
-  // the live parent instance (e.g. a `client` into an inherited Http.Request).
-  const refFieldPaths: string[] = [];
-  for (const [path, entry] of buildReferenceFieldMap(authorSchema)) {
-    if (isRefEntry(entry) && !path.includes(".") && !path.includes("[")) refFieldPaths.push(path);
-  }
-
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance | null> => {
       const definingContext = declaringContextOf(resource, ctx);
       const self: Record<string, unknown> = { ...resource, name: resource.metadata.name };
-      for (const path of refFieldPaths) {
-        const raw = (resource as Record<string, unknown>)[path];
-        if (raw == null) continue;
+      // Top-level reference sites of the author-facing schema — resolved to live
+      // instances before `base:` runs so a `!cel "self.<ref>"` passthrough
+      // forwards the live parent instance (e.g. a `client` into an inherited
+      // Http.Request).
+      for (const site of reachSites(authorSchema ?? {}, resource)) {
+        if (site.refs.length === 0 || site.keys.length !== 1) continue;
+        const path = String(site.keys[0]);
+        const raw = site.data;
         const live = resolveRefSlot(raw, ctx);
         // A reference that is set but hasn't resolved yet means the dependency
         // isn't initialized — defer via the retry signal, like _createInstance.

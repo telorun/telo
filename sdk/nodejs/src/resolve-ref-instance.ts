@@ -30,7 +30,7 @@ export interface RefResolveContext {
  * common path here is the guard short-circuit.
  *
  * A raw {@link KindRef} still reaches a controller where injection does not
- * reach the slot: a kind whose definition yields no field map, or a ref the
+ * reach the slot: a kind the kernel's analysis registry cannot resolve, or a ref the
  * controller obtained itself via `ctx.ensureKindRef`. Both are gaps worth
  * closing in the kernel — until they are, both shapes must be accepted here, and
  * an aliased ref routes through the import's exported scope because a bare local

@@ -1,0 +1,38 @@
+# `!ref nosuch` at each reference slot a plain `properties` walk never reached:
+# behind a local `$ref`, in a root `anyOf` branch, under a root
+# `additionalProperties`, and at depth 2 of a recursive shape. `telo check`
+# reports each at its concrete path.
+kind: Telo.Library
+metadata:
+  name: RefSlotReachUnresolved
+  version: 1.0.0
+  description: >-
+    Fixture library whose resources name a missing resource at reference slots
+    behind a local $ref, a root union branch, an open-keyed root and a recursive
+    shape.
+imports:
+  Reach: ../../kinds
+exports:
+  resources: [viaDefs, viaRootAnyOf, viaRootMap, viaRecursion]
+---
+kind: Reach.ViaDefs
+metadata:
+  name: viaDefs
+target: !ref nosuch
+---
+kind: Reach.ViaRootAnyOf
+metadata:
+  name: viaRootAnyOf
+target: !ref nosuch
+---
+kind: Reach.ViaRootMap
+metadata:
+  name: viaRootMap
+missing: !ref nosuch
+---
+kind: Reach.ViaRecursion
+metadata:
+  name: viaRecursion
+node:
+  next:
+    target: !ref nosuch

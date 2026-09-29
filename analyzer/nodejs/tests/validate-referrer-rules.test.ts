@@ -2,7 +2,8 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { readReferrerRules, rewriteReferrerRuleKinds } from "../src/referrer-rule.js";
-import { PeerBinder } from "../src/peer-binding.js";
+import { PeerBinder, type PeerBinderEnv } from "../src/peer-binding.js";
+import { declaredReach, reachSites } from "../src/reference-reach.js";
 import {
   evaluateReferrerRules,
   referrerRuleExercised,
@@ -11,6 +12,23 @@ import {
   type Referrer,
   type ReferrerRuleContext,
 } from "../src/validate-referrer-rules.js";
+
+const tableSlot = { "x-telo-ref": { kind: "SQL.Table", use: "dependency" } };
+
+/** A binder environment reading each referrer kind's schema through the reach,
+ *  as the analyzer's own binder does. */
+const reachEnv = (
+  schemas: Record<string, Record<string, any>>,
+): Pick<PeerBinderEnv, "refSlotsOf" | "refSitesOf"> => ({
+  refSlotsOf: (kind) => schemas[kind] && declaredReach(schemas[kind]).references.map((r) => r.path),
+  refSitesOf: (manifest, kind) =>
+    schemas[kind] &&
+    new Map(
+      reachSites(schemas[kind], manifest)
+        .filter((site) => site.refs.length > 0)
+        .map((site) => [site.path, site.refs[0]!.fieldPath]),
+    ),
+});
 
 /** Conditions are written with the `!cel` tag — the strict half reports one that
  *  is not, since untagged it stops being CEL to every surface but evaluation. */
@@ -368,10 +386,18 @@ describe("peer rules", () => {
 
   const peerMatches = (filter: string, kind: string): boolean => filter === kind;
 
-  /** The referrer kind's ref-slot paths — the field map's answer, which is what
-   *  decides which paths hold references. */
-  const SHAPES: Record<string, string[]> = {
-    "SQL.Schema": ["tables[]", "enums[]", "mounts[].mount"],
+  /** The referrer kind's reference slots (`tables[]`, `enums[]`,
+   *  `mounts[].mount`) — the reach's answer, which is what decides which paths
+   *  hold references. */
+  const SCHEMAS: Record<string, Record<string, any>> = {
+    "SQL.Schema": {
+      type: "object",
+      properties: {
+        tables: { type: "array", items: tableSlot },
+        enums: { type: "array", items: tableSlot },
+        mounts: { type: "array", items: { type: "object", properties: { mount: tableSlot } } },
+      },
+    },
   };
 
   const declarations = (...tables: ResourceManifest[]): ReferrerRuleContext => {
@@ -379,7 +405,7 @@ describe("peer rules", () => {
     return {
       peerBinder: new PeerBinder({
         declarationOf: (r) => byName.get(r.name),
-        refSlotsOf: (kind) => SHAPES[kind],
+        ...reachEnv(SCHEMAS),
       }),
     };
   };
@@ -626,8 +652,20 @@ describe("peer rules — declaration validation", () => {
 
 /** The three ways a peer binding was wrong before it consulted the field map. */
 describe("peer rules — binding", () => {
-  const SHAPES: Record<string, string[]> = {
-    "SQL.Schema": ["tables[]", "tables.{}", "notes[].about"],
+  /** `tables[]` or `tables.{}`, and `notes[].about`. */
+  const SCHEMAS: Record<string, Record<string, any>> = {
+    "SQL.Schema": {
+      type: "object",
+      properties: {
+        tables: {
+          anyOf: [
+            { type: "array", items: tableSlot },
+            { type: "object", additionalProperties: tableSlot },
+          ],
+        },
+        notes: { type: "array", items: { type: "object", properties: { about: tableSlot } } },
+      },
+    },
   };
   const table = (config: Record<string, unknown>): ResourceManifest =>
     ({ kind: "SQL.Table", metadata: { name: config.name as string }, ...config }) as unknown as ResourceManifest;
@@ -638,7 +676,7 @@ describe("peer rules — binding", () => {
     return {
       peerBinder: new PeerBinder({
         declarationOf: (r) => byName.get(r.name),
-        refSlotsOf: (kind) => SHAPES[kind],
+        ...reachEnv(SCHEMAS),
       }),
     };
   };

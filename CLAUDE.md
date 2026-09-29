@@ -208,7 +208,7 @@ Inside `Telo.Definition` schema blocks. Each annotation has ONE reader in the an
 
 - `x-telo-eval: "compile" | "runtime"` — when CEL in the field is evaluated. **Every CEL-bearing field must be annotated** (or sit in an `x-telo-context` / step-body / error-context region, or a provider's implicit root eval); otherwise `CEL_IN_NON_EVAL_FIELD`.
 - `x-telo-ref` — a reference slot plus what the declaring resource does with it. Structured form `{ kind, use, inputs? }` (`kind` may be a list; the bare string is legacy). `use`: `schema` | `dependency` | `call` | `detached` | `trigger.inbound` | `trigger.consumer` — when control reaches the target's bound entry points; a set when several hold, a case map `{ by, cases }` when a statically resolvable sibling chooses. Kinds are alias-qualified (`Self.<Kind>`, `Telo.<Kind>`). `throwsThrough: true` carries throws through a `dependency`. Reader: `ref-slot.ts`. References are written only as `!ref <name>` / `!ref <Alias>.<name>`.
-- `x-telo-scope: "/json/pointer"` — an execution scope; resources inside initialize on demand and the controller receives a `ScopeHandle`.
+- `x-telo-scope: "/json/pointer"` — an execution scope, on a named top-level property only; resources inside initialize on demand and the controller receives a `ScopeHandle`.
 - `x-telo-schema-from: "refProp/$defs/Name"` — field schema derived from a sibling ref's definition (polymorphic config).
 - `x-telo-value-schema-from: "<field>"` — the value here must satisfy the type declared at `<field>`; every annotated slot is checked, not only the one that wins at runtime.
 - `x-telo-context: <JSON Schema>` — the CEL context inside a handler field; properties may carry `x-telo-context-from`, `-from-root`, `-from-ref-kind` and `x-telo-context-ref-from`.

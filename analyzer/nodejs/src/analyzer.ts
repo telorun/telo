@@ -137,6 +137,7 @@ import {
   validateRefSlotDeclarations,
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
+import { scopeSlotProblems } from "./validate-scope-slots.js";
 import {
   validateValueTypeSlots,
   type ValueTypeSlotIssue,
@@ -416,11 +417,10 @@ const NO_ENTRY_POINT_CAPABILITIES = new Set([
  * Validate step `invoke` references (e.g. `Run.Sequence`
  * steps).
  *
- * The reference field map deliberately does NOT descend into step `invoke`
- * slots — they sit behind a local `$ref` to the shared step definition, and
- * turning the descent on would make Phase 5 inject live instances there,
- * breaking the invoke dispatch path (see `reference-field-map.ts`). A
- * consequence is that `validateReferences` never sees these slots, so a bad
+ * A schema's reference reach stops at a step body — step `invoke` slots sit in
+ * the shared step grammar, and reaching them would make Phase 5 inject live
+ * instances there, breaking the invoke dispatch path (see
+ * `reference-reach.ts`). A consequence is that `validateReferences` never sees these slots, so a bad
  * step invoke passes `telo check` and only fails at runtime. This pass covers
  * exactly those slots, in two dimensions:
  *   - Existence: an `invoke: !ref <name>` that names a missing instance — or a
@@ -452,8 +452,8 @@ function validateStepInvokeReferences(
   const loadedModules = new Set<string>();
 
   // Also collect names of resources nested inside a manifest tree — notably
-  // `with:`-scoped resources (an `x-telo-scope` region the field map does not
-  // extract to a top-level manifest). A step can invoke one by bare name, so
+  // `with:`-scoped resources (an `x-telo-scope` region the reach stops at and
+  // extraction leaves in place). A step can invoke one by bare name, so
   // omitting them would false-flag a valid `!ref`. Conservative: any nested
   // object carrying both a `kind` and a `metadata.name` is a resource
   // definition; scope visibility is left to the runtime.
@@ -1073,6 +1073,7 @@ export class StaticAnalyzer {
     // `extends` is the canonical first-class form.
     const refConstraintIssues: RefConstraintIssue[] = [];
     const refSlotIssues: RefSlotIssue[] = [];
+    const scopeSlotDiagnostics: AnalysisDiagnostic[] = [];
     const zoneSlotIssues: ZoneSlotIssue[] = [];
     // One place a rule report becomes a diagnostic. The pass decided WHAT and
     // WHERE; this only carries it across to the diagnostic shape.
@@ -1168,6 +1169,19 @@ export class StaticAnalyzer {
       if (!ownModule || rootModules.has(ownModule)) {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
+        for (const problem of scopeSlotProblems(def)) {
+          scopeSlotDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SCOPE_SLOT_MISPLACED",
+            source: SOURCE,
+            message: `${m.kind} ${problem.message}`,
+            data: {
+              resource: { kind: m.kind, name: def.metadata?.name as string },
+              filePath: (def.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
         zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
         // Checked against the MERGED schema, so an `in:` pointer naming an
         // inherited field resolves — which is what lets a rule shared by every
@@ -1361,6 +1375,7 @@ export class StaticAnalyzer {
       // accessor split; `readRefSlot` stays lenient so surfaces keep working
       // mid-migration, and this reports what leniency would silently absorb.
       for (const issue of refSlotIssues) diagnostics.push(refSlotIssueDiagnostic(issue));
+      diagnostics.push(...scopeSlotDiagnostics);
       // The same split for `x-telo-type`. Its reader returns a slot with no
       // entry for a name it does not know, which is what an unrecognized brand
       // used to do SILENTLY — the slot simply lost its identity.
@@ -2457,11 +2472,9 @@ export class StaticAnalyzer {
         }
       }
 
-      // Validate inline resources nested inside this resource's body (e.g. a
-      // Run.Sequence step's `invoke: { kind, ...config }`). These sit at
-      // x-telo-ref slots reached only through local `$ref`s, which the
-      // reference field map intentionally does not follow, so they escape both
-      // inline-extraction and the per-resource schema check above.
+      // Check every inline declaration extraction left in place inside this
+      // resource's step bodies: its kind, whether it can be instantiated, and
+      // its config schema.
       if (definition.schema) {
         // Resolve inline kinds in the parent resource's scope: direct kind
         // first, then the parent module's own aliases (for resources declared
@@ -2703,11 +2716,11 @@ export class StaticAnalyzer {
             // the step grammar, and a reference slot's found through the
             // `x-telo-ref` `inputs:` pointer. A call site the editor can
             // complete is a call site `telo check` validates.
-            const expandedFieldMap = defs.expandedFieldMapForResource(m, aliases, aliasesByModule);
+            const referenceSites = defs.referenceSites(m, aliases, aliasesByModule);
             // What a slot's target must RETURN, beside what it must be given.
             for (const issue of collectReferenceOutputIssues(
               m as Record<string, any>,
-              expandedFieldMap,
+              referenceSites,
               allManifests as Record<string, any>[],
               defs,
               aliases,
@@ -2728,7 +2741,7 @@ export class StaticAnalyzer {
             const inputIssues = [
               ...collectRefInputIssues(
                 m as Record<string, any>,
-                expandedFieldMap,
+                referenceSites,
                 allManifests as Record<string, any>[],
                 defs,
                 aliases,

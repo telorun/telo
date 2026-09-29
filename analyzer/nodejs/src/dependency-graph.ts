@@ -40,10 +40,10 @@ const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
  * A projection of the typed reference graph, not a second walk of the manifest.
  * What this consumer keeps of the full graph:
  *
- * - **Injection sites only.** A site the reference field map reaches is a
+ * - **Injection sites only.** A site the reference reach reaches is a
  *   Phase-5 injection site, so its target must be constructed first — including
  *   `Telo.Application`'s inline `targets[].invoke`, which is step-declared but
- *   injected. A step slot behind a local `$ref` and a value-tree-discovered ref
+ *   injected. A step slot in a step body and a value-tree-discovered ref
  *   resolve at dispatch, so their targets need only exist by the time the step
  *   runs. All can be `use: call` — the difference is the site, never the node
  *   kind or the use.

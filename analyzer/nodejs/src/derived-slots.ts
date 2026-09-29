@@ -31,7 +31,7 @@ import {
 import { assignConcretePath, navigateConcretePath } from "./manifest-path.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { isRefEntry, resolveFieldEntries, type ReferenceFieldMap } from "./reference-field-map.js";
+import { siteRefEntry, type ReachSite } from "./reference-reach.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { isSchemaFromSite, schemaFromSites } from "./schema-from-sites.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
@@ -172,25 +172,25 @@ export function stepCallSites(
  *  pointer, relative to the object enclosing the slot. */
 export function slotCallSites(
   manifest: Record<string, any>,
-  fieldMap: ReferenceFieldMap | undefined,
+  sites: readonly ReachSite[],
   ctx: DerivedSlotContext,
 ): CallSite[] {
   const out: CallSite[] = [];
-  if (!fieldMap) return out;
-  for (const [fieldPath, entry] of fieldMap) {
-    if (!isRefEntry(entry) || !entry.inputs) continue;
-    const pointer = pointerSegments(entry.inputs);
+  for (const site of sites) {
+    if (site.refs.length === 0) continue;
+    const inputs = siteRefEntry(site).inputs;
+    if (!inputs) continue;
+    const pointer = pointerSegments(inputs);
     if (!pointer) continue;
-    for (const { value: invoke, path: slotPath } of resolveFieldEntries(manifest, fieldPath)) {
-      if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
-      const enclosing = slotPath.slice(0, Math.max(0, slotPath.lastIndexOf(".")));
-      const inputsPath = [enclosing, ...pointer].filter(Boolean).join(".");
-      const values = navigateConcretePath(manifest, inputsPath);
-      if (!values || typeof values !== "object" || Array.isArray(values)) continue;
-      out.push(
-        callSite("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
-      );
-    }
+    const invoke = site.data;
+    if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
+    const enclosing = site.path.slice(0, Math.max(0, site.path.lastIndexOf(".")));
+    const inputsPath = [enclosing, ...pointer].filter(Boolean).join(".");
+    const values = navigateConcretePath(manifest, inputsPath);
+    if (!values || typeof values !== "object" || Array.isArray(values)) continue;
+    out.push(
+      callSite("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
+    );
   }
   return out;
 }
@@ -311,7 +311,7 @@ export function derivedSlotsOf(
     ...(schema ? stepCallSites(manifest, schema, ctx) : []),
     ...slotCallSites(
       manifest,
-      ctx.defs.expandedFieldMapForResource(resource, ctx.aliases, ctx.aliasesByModule),
+      ctx.defs.referenceSites(resource, ctx.aliases, ctx.aliasesByModule),
       ctx,
     ),
   ];
@@ -328,7 +328,8 @@ export function derivedSlotsOf(
     ctx.defs,
     {
       onSchemaFrom: (e) => {
-        for (const site of schemaFromSites(manifest, e.fieldPath, e.entry.schemaFrom, ctx)) {
+        const slot = { fieldPath: e.fieldPath, path: e.concretePath, value: e.value, holder: e.holder };
+        for (const site of schemaFromSites(manifest, slot, e.entry.schemaFrom, ctx)) {
           if (isSchemaFromSite(site)) at(site.path, site.value, site.schema);
         }
       },
@@ -337,7 +338,6 @@ export function derivedSlotsOf(
       aliases: ctx.aliases,
       aliasesByModule: ctx.aliasesByModule,
       skipKinds: REF_VALIDATION_SKIP_KINDS,
-      expand: false,
     },
   );
   return out;
