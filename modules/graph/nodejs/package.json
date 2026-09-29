@@ -1,6 +1,6 @@
 {
   "name": "@telorun/graph",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Telo graph module — the Graph.Store / Node / Relationship abstracts, the node, relationship and traversal operations, and the store contract every backend implements.",
   "keywords": [

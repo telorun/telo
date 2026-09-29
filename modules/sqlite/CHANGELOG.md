@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 - 2026-09-29
+### Added
+* An engine schema resource addresses the tables it lists for consumers: its instance renders the qualified, quoted name of a listed table from its own namespace and the engine's quoting (PostgreSQL qualifies with the schema's namespace, SQLite names the bare table), so a consumer reading or writing those tables no longer depends on the connection's search_path. Engine implementers add the new required member to their schema instance.
+* SQLite.Connection enforces declared foreign keys on every host: under Bun, where they were not enforced, a write that violates one is now refused and its onDelete action now runs, as under Node.
+### Fixed
+* A primary-key or identity column now projects non-nullable, as the table creates it: 'nullable' defaults to false on such a column and to true on any other, and 'nullable: true' beside 'identity' is refused as it already was beside 'primaryKey'. A null written for a key column — a seed row, a derived contract such as a graph node key — is a 'telo check' error rather than a database error or, on an SQLite INTEGER PRIMARY KEY, a generated rowid.
+
 ## 0.7.0 - 2026-09-25
 ### Added
 * The SQLite dialect supplies renderCurrentTimeMillis(), the database clock in epoch milliseconds (julianday-based).

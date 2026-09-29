@@ -1,6 +1,0 @@
-modules:
-  modules/sqlite: Added
-  modules/sql: Added
-body: "SQLite.Connection enforces declared foreign keys on every host: under Bun, where
-  they were not enforced, a write that violates one is now refused and its onDelete
-  action now runs, as under Node."
