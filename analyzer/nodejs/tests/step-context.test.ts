@@ -46,10 +46,16 @@ const sequenceDef = {
             type: "array",
             items: { $ref: "#/$defs/step" },
           },
+          throw: { type: "object", additionalProperties: true },
         },
       },
     },
     properties: {
+      finally: {
+        "x-telo-step-context": { invoke: "invoke", outputType: "outputType" },
+        type: "array",
+        items: { $ref: "#/$defs/step" },
+      },
       steps: {
         "x-telo-topology-role": "steps",
         "x-telo-step-context": { invoke: "invoke", outputType: "outputType" },
@@ -160,5 +166,63 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     expect(unknown.length).toBeGreaterThan(0);
     expect(unknown[0].message).toContain("'steps.parseManifest' is not defined");
     expect(unknown[0].message).toContain("doParse");
+  });
+
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+  const celCodes = (manifests: unknown[]) =>
+    new StaticAnalyzer()
+      .analyze(withSyntheticPositions(manifests as ResourceManifest[]))
+      .filter((d) => d.code?.startsWith("CEL_"))
+      .map((d) => `${d.code}: ${d.message}`);
+
+  it("puts `inputs` in scope, typed from the input contract, in a body producing no result", () => {
+    const body = (inputType?: Record<string, any>) => ({
+      kind: "run.Sequence",
+      metadata: { name: "Seq", module: "test" },
+      ...(inputType ? { inputType } : {}),
+      steps: [
+        {
+          name: "check",
+          if: cel("inputs.a == 'x'"),
+          then: [{ name: "refuse", throw: { message: cel("'got ' + inputs.a") } }],
+        },
+      ],
+    });
+    const contract = { type: "object", properties: { a: { type: "string" } }, required: ["a"] };
+
+    expect(celCodes([sequenceDef, body(contract)])).toEqual([]);
+    expect(celCodes([sequenceDef, body()])).toEqual([]);
+
+    const typo = body(contract);
+    (typo.steps[0] as any).if = cel("inputs.typo == 'x'");
+    const codes = celCodes([sequenceDef, typo]);
+    expect(codes).toHaveLength(1);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*inputs\.typo/);
+  });
+
+  it("gives such a body an empty, closed `steps` map", () => {
+    const seq = {
+      kind: "run.Sequence",
+      metadata: { name: "Seq", module: "test" },
+      steps: [{ name: "check", if: cel("steps.missing.result"), then: [] }],
+    };
+    const codes = celCodes([sequenceDef, seq]);
+    expect(codes).toHaveLength(1);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*steps\.missing/);
+  });
+
+  it("types a later step slot's results when an earlier slot produces none", () => {
+    const seq = {
+      kind: "run.Sequence",
+      metadata: { name: "Seq", module: "test" },
+      finally: [{ name: "check", if: cel("steps.made.result != null"), then: [] }],
+      steps: [
+        { name: "made", invoke: { kind: "Some.Sink" } },
+        { name: "use", if: cel("steps.nope.result != null"), then: [] },
+      ],
+    };
+    const codes = celCodes([sequenceDef, seq]);
+    expect(codes).toHaveLength(1);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*steps\.nope/);
   });
 });
