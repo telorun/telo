@@ -9,7 +9,7 @@ import { AliasResolver, scopeResolverForModule, type ModuleScopes } from "./alia
  * anchor — was written against the alias map of the module that DECLARED it. A
  * library writes `kind: Http.Api` through an import the consumer has no reason to
  * have, so resolving it through the entry's table finds nothing, and everything
- * derived from the definition silently goes missing: the field map (Phase-5
+ * derived from the definition silently goes missing: the reference reach (Phase-5
  * injection blind to a forwarded resource's ref slots) and the `x-telo-context`
  * regions (`request` / `result` reported as unknown identifiers on a file the
  * consumer cannot edit).

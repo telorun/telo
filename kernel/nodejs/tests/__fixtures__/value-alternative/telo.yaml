@@ -1,0 +1,52 @@
+# A key one union branch declares a reference slot and a sibling branch a plain
+# string: the string is a value, handed to the controller as written.
+kind: Telo.Application
+metadata:
+  name: ValueAlternative
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: RootUnion
+  description: Holds a target that is either a reference or a plain string, unioned at the schema root.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Received
+schema:
+  type: object
+  anyOf:
+    - properties:
+        target:
+          x-telo-ref: { kind: Telo.Invocable, use: call }
+    - properties:
+        target: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: NestedUnion
+  description: Holds a target that is either a reference or a plain string, unioned one object down.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#ReceivedInner
+schema:
+  type: object
+  properties:
+    inner:
+      type: object
+      anyOf:
+        - properties:
+            target:
+              x-telo-ref: { kind: Telo.Invocable, use: call }
+        - properties:
+            target: { type: string }
+---
+kind: Self.RootUnion
+metadata:
+  name: rootLevel
+target: hello
+---
+kind: Self.NestedUnion
+metadata:
+  name: nested
+inner:
+  target: hello

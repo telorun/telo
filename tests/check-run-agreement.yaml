@@ -204,6 +204,10 @@ targets:
   - !ref scopeSlotMisplacedNestedObjectAtRuntime
   - !ref scopeSlotMisplacedArrayItemAtRuntime
   - !ref scopeSlotMisplacedRootMapAtRuntime
+  - !ref refSlotReachPairedInputsRuns
+  - !ref refSlotReachValueAlternativeRuns
+  - !ref refSlotReachValueConjunct
+  - !ref refSlotReachValueConjunctAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -2047,7 +2051,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
 expect:
   errors: []
-  runFails: "Telo.Definition 'NestedObject' declares `x-telo-scope` at 'schema.properties.outer.properties.with.x-telo-scope'"
+  runFails: "it is nested under an object ('outer.with'). A scope belongs on a named top-level property — one in the schema root's `properties` or in a root `anyOf` / `oneOf` / `allOf` branch's, written directly or through a local `$ref`. Move the annotation there. [ERR_SCOPE_SLOT_MISPLACED]"
 ---
 kind: Assert.Manifest
 metadata:
@@ -2055,7 +2059,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
 expect:
   errors: []
-  runFails: "Telo.Definition 'ArrayItem' declares `x-telo-scope` at 'schema.properties.groups.items.x-telo-scope'"
+  runFails: "it applies to the items of an array ('groups[]'). A scope belongs on a named top-level property — one in the schema root's `properties` or in a root `anyOf` / `oneOf` / `allOf` branch's, written directly or through a local `$ref`. Move the annotation there. [ERR_SCOPE_SLOT_MISPLACED]"
 ---
 kind: Assert.Manifest
 metadata:
@@ -2063,4 +2067,45 @@ metadata:
 source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
 expect:
   errors: []
-  runFails: "Telo.Definition 'RootMap' declares `x-telo-scope` at 'schema.additionalProperties.x-telo-scope'"
+  runFails: "it applies to the values of an open-keyed map ('{}'). A scope belongs on a named top-level property — one in the schema root's `properties` or in a root `anyOf` / `oneOf` / `allOf` branch's, written directly or through a local `$ref`. Move the annotation there. [ERR_SCOPE_SLOT_MISPLACED]"
+---
+# A reference slot paired with an argument map through its own `inputs:`
+# pointer — behind a local `$ref`, in a root `anyOf` branch, under a root
+# `additionalProperties` — is checked at the call site, as a plain slot is: a
+# map supplying an input the slot's kind does not declare checks clean, and the
+# target receives it.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachPairedInputsRuns
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/paired-inputs.yaml
+expect:
+  runs: true
+---
+# A string at a key one union branch declares a reference slot and a sibling
+# branch a string — at the schema root and one object down — is a value.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachValueAlternativeRuns
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-alternative.yaml
+expect:
+  runs: true
+---
+# The same key merely annotated by an `allOf` member is a conjunct, not an
+# alternative: the string is the removed string-reference spelling, refused at
+# the declaring library and, from a silent consumer, where the slot is resolved.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachValueConjunct
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-conjunct/lib/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE_FORM
+      message: "Reach.ValueViaAllOf/conjunct: string reference at 'target' → 'hello' is not supported"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachValueConjunctAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-conjunct/telo.yaml
+expect:
+  errors: []
+  runFails: "'target' must be a `!ref` to a resource satisfying `Telo.Invocable`."

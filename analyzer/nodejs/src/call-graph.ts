@@ -60,7 +60,7 @@ import {
 } from "./ref-slot.js";
 import { isStepSlot } from "./step-slot.js";
 import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
-import { siteRefEntry } from "./reference-reach.js";
+import { enclosingDefault, siteRefEntry, type ReachRef } from "./reference-reach.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { moduleCallSites } from "./cel-access-chains.js";
@@ -142,7 +142,7 @@ export interface StepGraphNode {
    * nowhere else to look. An EMPTY slot is listed for exactly that reason — it
    * is a site an editor can offer to fill, and an edge says nothing about one.
    */
-  refSlots?: { key: string; path: string; kinds: string[]; inline?: boolean }[];
+  refSlots?: { key: string; path: string; kinds: string[]; uses: RefUse[]; inline?: boolean }[];
 }
 
 export type CallGraphNode = ResourceGraphNode | StepGraphNode;
@@ -179,13 +179,13 @@ export interface CallGraphEdge {
   unresolvedReason?: "dynamic" | "absent" | "unmatched";
   /** JSON Pointer to the field carrying this call's arguments, when declared. */
   inputs?: string;
-  /** This site is a Phase-5 injection site — the reference field map reaches
-   *  it, so the kernel puts the live instance into the field before `init()`.
-   *  THE init-order criterion: injection is what forces construct-before-use,
+  /** This site is a Phase-5 injection site — the reference reach reaches it, so
+   *  the kernel puts the live instance into the field before `init()`. THE
+   *  init-order criterion: injection is what forces construct-before-use,
    *  regardless of whether the slot is declared at resource level or inside an
-   *  inline step array (`Telo.Application.targets`). Step slots behind a local
-   *  `$ref` and value-tree-discovered refs are not injection sites — those
-   *  resolve at dispatch. */
+   *  inline step array (`Telo.Application.targets`). Step slots in a step body
+   *  and value-tree-discovered refs are not injection sites — those resolve at
+   *  dispatch. */
   injected?: boolean;
   /** Found by the value-tree scan rather than a declared slot — no schema, no
    *  declared `use` (read conservatively as control-transferring). */
@@ -371,34 +371,17 @@ function schemaDefaultOf(enclosingSchema: Record<string, any> | undefined): Sche
   };
 }
 
-/** The schema node describing the object that ENCLOSES a slot, from the slot's
- *  field-map path (`routes[].handler` → `routes`' item schema). Follows `[]`
- *  into `items` and `{}` into `additionalProperties`, resolving local `$ref`s. */
-function enclosingSchemaOf(
-  rootSchema: Record<string, any>,
-  slotFieldPath: string,
-): Record<string, any> | undefined {
-  const segments = slotFieldPath.split(".");
-  segments.pop(); // the slot itself — we want its parent object
-  let current: Record<string, any> | undefined = rootSchema;
-  for (const segment of segments) {
-    if (!current) return undefined;
-    const bare = segment.replace(/(\[\]|\{\})+$/g, "");
-    let next: Record<string, any> | undefined = propertySchemas(current).find(
-      ([k]) => k === bare,
-    )?.[1];
-    if (!next) return undefined;
-    for (const marker of segment.slice(bare.length).match(/\[\]|\{\}/g) ?? []) {
-      next =
-        marker === "[]"
-          ? (next?.items as Record<string, any> | undefined)
-          : (next?.additionalProperties as Record<string, any> | undefined);
-      next = resolveLocalRef(next, rootSchema);
-      if (!next || typeof next !== "object") return undefined;
+/** A site's selector defaults, read off the reach: the first slot at the site
+ *  whose enclosing object declares one (`enclosingDefault`). */
+function reachDefault(refs: readonly ReachRef[]): SchemaDefault {
+  if (refs.length === 0) return NO_DEFAULT;
+  return (pointer) => {
+    for (const ref of refs) {
+      const value = enclosingDefault(ref, pointer);
+      if (value !== undefined) return value;
     }
-    current = resolveLocalRef(next, rootSchema);
-  }
-  return current;
+    return undefined;
+  };
 }
 
 /**
@@ -451,20 +434,19 @@ function resolveUseAtSite(
 
 /**
  * A slot's use at one concrete site of one resource, for a consumer that walks
- * the kind's schema itself rather than reading the graph's edges.
+ * the resource's reach itself rather than reading the graph's edges.
  *
  * The same rule the graph applies to a resource-level edge — the same enclosing
  * object, the same schema default — so a consumer and an edge cannot disagree
  * about which case of a case map holds. `concretePath` is the site
- * (`routes[0].handler`); `fieldPath` is the declaration it resolved from
- * (`routes[].handler`), which is what the schema default is read against.
+ * (`routes[0].handler`); `ref` is the reach slot it resolved from, whose
+ * enclosing declarations the schema default is read against.
  */
 export function resolveSlotUseAt(
   slot: RefSlot,
   resource: unknown,
-  rootSchema: Record<string, any> | undefined,
+  ref: ReachRef,
   concretePath: string,
-  fieldPath: string,
 ): Pick<CallGraphEdge, "use" | "unresolved" | "unresolvedReason"> {
   const entry: RefFieldEntry = {
     refs: slot.kinds,
@@ -472,10 +454,7 @@ export function resolveSlotUseAt(
     isArray: false,
     ...(slot.useCases ? { useCases: slot.useCases } : {}),
   };
-  const schemaDefault = rootSchema
-    ? schemaDefaultOf(enclosingSchemaOf(rootSchema, fieldPath))
-    : NO_DEFAULT;
-  return resolveUseAtSite(entry, resource, concretePath, schemaDefault);
+  return resolveUseAtSite(entry, resource, concretePath, reachDefault([ref]));
 }
 
 /** A resolved plain reference value (`{kind, name}`, optionally `alias`) — the
@@ -587,7 +566,13 @@ function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
     // exactly like one that dispatches nothing.
     node.refSlots = [
       ...(node.refSlots ?? []),
-      { key, path: `${node.path}.${key}`, kinds: slot.kinds, ...(inline ? { inline: true } : {}) },
+      {
+        key,
+        path: `${node.path}.${key}`,
+        kinds: slot.kinds,
+        uses: possibleUses(slot),
+        ...(inline ? { inline: true } : {}),
+      },
     ];
     const targetName = refTargetName(written);
     if (targetName === undefined) continue;
@@ -895,8 +880,6 @@ export function buildCallGraph(
 
         for (const scopedNode of scopeLocal.values()) {
           // The scoped resource's own ref slots, at its concrete sites.
-          const definition = definitionFor(scopedNode.manifest);
-          const rootSchema = definition?.schema as Record<string, any> | undefined;
           for (const site of registry.referenceSites(
             scopedNode.manifest,
             options.aliases,
@@ -907,14 +890,11 @@ export function buildCallGraph(
             if (targetName === undefined) continue;
             const fieldPath = site.refs[0]!.fieldPath;
             const entry = siteRefEntry(site);
-            const schemaDefault = rootSchema
-              ? schemaDefaultOf(enclosingSchemaOf(rootSchema, fieldPath))
-              : NO_DEFAULT;
             const { use, unresolved, unresolvedReason } = resolveUseAtSite(
               entry,
               scopedNode.manifest,
               site.path,
-              schemaDefault,
+              reachDefault(site.refs),
             );
             const edge: CallGraphEdge = {
               from: scopedNode.id,
@@ -957,12 +937,7 @@ export function buildCallGraph(
         const targetName = refTargetName(event.value);
         if (targetName === undefined) return;
 
-        const definition = definitionFor(event.source);
-        const rootSchema = definition?.schema as Record<string, any> | undefined;
-        const schemaDefault =
-          !event.nested && rootSchema
-            ? schemaDefaultOf(enclosingSchemaOf(rootSchema, event.fieldPath))
-            : NO_DEFAULT;
+        const schemaDefault = reachDefault(event.refs);
         // A shape a contract or signature names (`params[0].schema: !ref Money`)
         // sits in no declared slot, but what it states is known: it names a
         // shape, so it is a `schema` reference rather than an unknown one.
@@ -1105,13 +1080,14 @@ export interface ProjectToPairsOptions {
  * between two parallel edges genuinely does not matter.
  *
  * **Only injection sites order boot, and that is a property of the SITE, never
- * of the node kind.** A site the reference field map reaches is a Phase-5
+ * of the node kind.** A site the reference reach reaches is a Phase-5
  * injection site: the kernel puts the live instance into the field before
  * `init()`, so the target must be constructed first — and that is as true for
  * `Telo.Application`'s inline `targets[].invoke` (a step-declared slot the
- * field map reaches) as for a resource-level `connection:`. A step slot behind
- * a local `$ref` and a value-tree-discovered ref resolve at dispatch instead,
- * so their targets need only exist by the time the step runs. An earlier
+ * reach reaches, its `items` being a reference slot) as for a resource-level
+ * `connection:`. A step slot in a step body and a value-tree-discovered ref
+ * resolve at dispatch instead, so their targets need only exist by the time
+ * the step runs. An earlier
  * revision keyed this on node kind and silently dropped boot targets' inline
  * invoke edges from init order — the regression this comment exists to prevent.
  * A module call orders boot for the injection site's reason: the kernel binds

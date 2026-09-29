@@ -1,0 +1,60 @@
+# A reference slot paired with an argument map through its own `inputs:` pointer
+# — behind a local `$ref`, in a root `anyOf` branch, under a root
+# `additionalProperties` — takes a target requiring an input its kind does not
+# declare: the map supplies it, `telo check` checks it at the call site, and the
+# target receives it.
+kind: Telo.Application
+metadata:
+  name: RefSlotReachPairedInputs
+  version: 1.0.0
+imports:
+  Reach: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Reach.Echo
+metadata:
+  name: needsB
+inputType:
+  type: object
+  required: [b]
+  properties:
+    b: { type: string }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: viaDefs
+    invoke:
+      kind: Reach.PairedViaDefs
+      routes:
+        - handler: !ref needsB
+          inputs: { b: routed }
+  - name: viaRootAnyOf
+    invoke:
+      kind: Reach.PairedViaRootAnyOf
+      handler: !ref needsB
+      inputs: { b: branched }
+  - name: viaRootMap
+    invoke:
+      kind: Reach.PairedViaRootMap
+      first:
+        handler: !ref needsB
+        inputs: { b: keyed }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {
+          'viaDefs': steps.viaDefs.result,
+          'viaRootAnyOf': steps.viaRootAnyOf.result,
+          'viaRootMap': steps.viaRootMap.result
+        }
+      expected:
+        viaDefs: [{ b: routed }]
+        viaRootAnyOf: { b: branched }
+        viaRootMap:
+          first: { b: keyed }

@@ -66,7 +66,7 @@ import { propertySchemas, resolveLocalRef } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
 import { isInlineResource } from "./reference-field-map.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
-import { possibleUses, readRefSlot, type RefUse } from "./ref-slot.js";
+import type { RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
 import { isForwardedShape } from "./forwarded-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
@@ -528,12 +528,14 @@ export function edgeClassOf(use: readonly RefUse[]): EdgeClass {
  *  folds over stubs in tests and over the real registry in a host, and so this
  *  module imports no registry class. */
 export interface ModuleGraphDeps {
-  /** Every reference slot a resource's kind declares, filled or not. */
+  /** Every reference slot a resource's kind declares, filled or not, with the
+   *  union of the uses every slot at the pattern can take. */
   refFields(resource: ResourceManifest): {
     path: string;
     isArray: boolean;
     refs: string[];
     capabilities: string[];
+    uses: RefUse[];
   }[];
   /** Every filled reference site of a resource — its concrete path, the
    *  declared slot (a `refFields` path) it is an occurrence of, and its value. */
@@ -662,46 +664,6 @@ class IdMinter {
       }
     }
   }
-}
-
-/** The schema node at a field-map path, following `[]` into `items` and `{}`
- *  into `additionalProperties`, resolving local `$ref`s along the way. */
-function schemaAt(
-  rootSchema: Record<string, any> | undefined,
-  slotPath: string,
-): Record<string, any> | undefined {
-  if (!rootSchema) return undefined;
-  let current: Record<string, any> | undefined = rootSchema;
-  for (const segment of slotPath.split(".")) {
-    if (!current) return undefined;
-    // A map's key step is its OWN segment (`columns.{}.type`), where an array's
-    // rides the field it belongs to (`mounts[].mount`). Reading only the suffix
-    // form walked into nothing at the first map, so every slot under one was
-    // left with no schema — and a slot with no schema declares no `use`, which
-    // classed a column's typed reference as a control transfer.
-    if (segment === "{}") {
-      current = resolveLocalRef(
-        current.additionalProperties as Record<string, any> | undefined,
-        rootSchema,
-      );
-      continue;
-    }
-    const bare = segment.replace(/(\[\]|\{\})+$/g, "");
-    let next: Record<string, any> | undefined = propertySchemas(current).find(
-      ([k]) => k === bare,
-    )?.[1];
-    for (const marker of segment.slice(bare.length).match(/\[\]|\{\}/g) ?? []) {
-      next = resolveLocalRef(
-        marker === "[]"
-          ? (next?.items as Record<string, any> | undefined)
-          : (next?.additionalProperties as Record<string, any> | undefined),
-        rootSchema,
-      );
-      if (!next || typeof next !== "object") return undefined;
-    }
-    current = resolveLocalRef(next, rootSchema);
-  }
-  return current;
 }
 
 /** Every array field of a kind carrying `x-telo-topology-role: entries`, with
@@ -1024,8 +986,6 @@ export function buildModuleGraph(
   for (const node of nodes) {
     const manifest = node.root ? options.root : manifestById.get(node.id);
     if (!manifest) continue;
-    const definition = deps.definition(node.kind, node.module);
-    const schema = definition?.schema as Record<string, any> | undefined;
     // A slot whose occupancy is DRAWN AS ROWS is not also a port: a route, a
     // boot target and a step are manipulated as the ordered thing they are, and
     // a second rendering of the same occupancy beside it is two controls for
@@ -1033,7 +993,7 @@ export function buildModuleGraph(
     // would otherwise be row-owned only once it had a mount in it, so a fresh
     // server showed both a port and an add control for the same list.
     const rowArrays = new Set(node.rowArrays.map((a) => a.field));
-    node.ports = buildPorts(manifest, deps, schema, rowArrays);
+    node.ports = buildPorts(manifest, deps, rowArrays);
     const throws = deps.throwsOf?.(manifest);
     if (throws && (throws.codes.length > 0 || throws.unbounded)) node.throws = throws;
     // A declaration written at a dispatch site hangs under the row that
@@ -1172,10 +1132,7 @@ export function buildModuleGraph(
       if (node.ownership === "enclosing") continue;
       const manifest = node.root ? options.root : manifestById.get(node.id);
       if (!manifest) continue;
-      const schema = deps.definition(node.kind, node.module)?.schema as
-        | Record<string, any>
-        | undefined;
-      for (const site of forwardSitesOf(manifest, schema, callGraph, callGraphIdOf(node.id), deps)) {
+      for (const site of forwardSitesOf(manifest, callGraph, callGraphIdOf(node.id), deps)) {
         const edge: GraphEdge = {
           id: `${node.id}\0self\0${site.path}`,
           from: node.id,
@@ -1521,7 +1478,6 @@ function inlineRows(
   // reach — the same one a named resource's ports come from, so an inline
   // declaration and an extracted one describe themselves identically.
   const asManifest = { ...site.value, metadata: { name: id } } as unknown as ResourceManifest;
-  const declaredSchema = declared?.schema as Record<string, any> | undefined;
   const declarationSites = deps.refSites(asManifest);
   const declarationPositions = forwarding ? deps.refPositions(asManifest) : [];
   for (const field of deps.refFields(asManifest)) {
@@ -1547,10 +1503,10 @@ function inlineRows(
         // host's own property — what decides whether it is drawn at all.
         slot: `${host.slot}.${field.path}`,
         path,
-        // Read off the DECLARED kind's own schema, exactly as a port's is —
-        // `use` is a property of the slot, and the slot belongs to the kind
-        // written here rather than to the resource hosting it.
-        uses: readUses(schemaAt(declaredSchema, field.path)),
+        // The DECLARED kind's own slot, exactly as a port's is — `use` is a
+        // property of the slot, and the slot belongs to the kind written here
+        // rather than to the resource hosting it.
+        uses: field.uses,
         ...(forward ? { forward } : {}),
       });
     };
@@ -1707,7 +1663,6 @@ function forwardsAt(
  */
 function forwardSitesOf(
   manifest: ResourceManifest,
-  schema: Record<string, any> | undefined,
   callGraph: CallGraph,
   callGraphId: string,
   deps: ModuleGraphDeps,
@@ -1717,7 +1672,7 @@ function forwardSitesOf(
   for (const field of deps.refFields(manifest)) {
     for (const site of forwardsAt(positions, field.path)) {
       if (byPath.has(site.path)) continue;
-      byPath.set(site.path, { ...site, slot: field.path, uses: readUses(schemaAt(schema, field.path)) });
+      byPath.set(site.path, { ...site, slot: field.path, uses: field.uses });
     }
   }
   for (const step of callGraph.steps(callGraphId)) {
@@ -1731,7 +1686,7 @@ function forwardSitesOf(
         path: slot.path,
         self,
         slot: fieldPath,
-        uses: readUses(schemaAt(schema, fieldPath)),
+        uses: slot.uses,
       });
     }
   }
@@ -1969,7 +1924,6 @@ function sitesOf(sites: readonly RefSite[], fieldPath: string): RefSite[] {
 function buildPorts(
   manifest: ResourceManifest,
   deps: ModuleGraphDeps,
-  schema: Record<string, any> | undefined,
   rowArrays: ReadonlySet<string>,
 ): GraphPort[] {
   const fields = deps.refFields(manifest);
@@ -1987,8 +1941,7 @@ function buildPorts(
   const ports: GraphPort[] = [];
   for (const field of fields) {
     if ([...arrayRefBases].some((base) => field.path.startsWith(`${base}[].`))) continue;
-    const slotSchema = schemaAt(schema, field.path);
-    const uses = readUses(slotSchema);
+    const uses = field.uses;
     const slots: PortSlot[] = [];
     for (const { value, path } of sitesOf(filled, field.path)) {
       const target = refName(value);
@@ -2080,22 +2033,6 @@ function appendPathFor(path: string, manifest: ResourceManifest): string | undef
 function containerArrayOf(path: string): string {
   const marker = path.indexOf("[]");
   return marker === -1 ? path : path.slice(0, marker);
-}
-
-/**
- * Declared uses at a slot, through the annotation's ONE reader.
- *
- * It used to hand-parse `slotSchema["x-telo-ref"]`, which sees nothing when the
- * annotation sits in a `oneOf` branch — the sanctioned shape for a slot that
- * unions a value with a reference. A column's `type:` is exactly that, so its
- * `use: schema` read as no declared use at all and the slot was classed (and
- * drawn) as a control transfer. `readRefSlot` unions the branches; `possibleUses`
- * folds a case map's arms in, which is what a PORT wants: the port describes the
- * slot, and which arm holds is decided per site by the call graph.
- */
-function readUses(slotSchema: Record<string, any> | undefined): RefUse[] {
-  const slot = readRefSlot(slotSchema);
-  return slot ? possibleUses(slot) : [];
 }
 
 /** Re-key one call-graph edge onto the boxes a view draws. A step's edge is

@@ -8,7 +8,7 @@ import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
-import { satisfiesValueBranch } from "./reference-field-map.js";
+import { isValueAtSlot } from "./reference-field-map.js";
 import { siteRefEntry } from "./reference-reach.js";
 import { templateBodies } from "./template-body.js";
 import { isSelfForward } from "./template-self-forward.js";
@@ -58,7 +58,7 @@ const DISPATCH_SLOTS = ["invoke", "run", "provide", "mount"] as const;
  *    `!ref` or an inline declaration, never `{ kind, name }` or a bare string
  *    (`INVALID_REFERENCE_FORM`) — and a bare `!ref` names a sibling or a
  *    resource of the defining module (`TEMPLATE_REF_UNKNOWN`). Slots are found
- *    through the nested kind's own field map, resolved in the DEFINING module's
+ *    through the nested kind's own reference reach, resolved in the DEFINING module's
  *    alias scope, since that is where the body's kinds are written.
  *
  * Entry-module-scoped, like every other declaration check: a published
@@ -338,9 +338,7 @@ export function validateTemplateBody(
           );
           continue;
         }
-        const hasValueBranch = (entry.valueBranches?.length ?? 0) > 0;
-        if (hasValueBranch && typeof value !== "object") continue;
-        if (satisfiesValueBranch(value, entry.valueBranches, registry)) continue;
+        if (isValueAtSlot(value, site.refs, entry.valueBranches, registry)) continue;
         if (typeof value === "string") {
           report(
             "INVALID_REFERENCE_FORM",

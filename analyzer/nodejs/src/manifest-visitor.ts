@@ -7,7 +7,7 @@ import {
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { RefFieldEntry, SchemaFromFieldEntry } from "./reference-field-map.js";
-import { siteRefEntry } from "./reference-reach.js";
+import { siteRefEntry, type ReachRef } from "./reference-reach.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
@@ -92,6 +92,8 @@ export interface RefSiteEvent {
   /** The ref constraint — every slot at the site, kinds unioned
    *  (`siteRefEntry`). */
   entry: RefFieldEntry;
+  /** Every reach slot at the site; empty for a value-tree-discovered one. */
+  refs: readonly ReachRef[];
   /** True when the site falls within one of this resource's scope prefixes —
    *  source enclosure, used to scope a ref's candidate set. */
   inScope: boolean;
@@ -343,6 +345,7 @@ export function visitManifest(
               concretePath,
               value: site.data,
               entry: siteRefEntry(site),
+              refs: site.refs,
               inScope,
               visibleScopeManifests,
             });
@@ -383,6 +386,7 @@ export function visitManifest(
           concretePath: path,
           value,
           entry: NESTED_REF_ENTRY,
+          refs: [],
           inScope: false,
           visibleScopeManifests: [],
           nested: true,

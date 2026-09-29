@@ -37,7 +37,7 @@ const DECLARATION_KINDS = new Set([
  *
  *  - a `!ref` sentinel, anywhere — the tag is unambiguous;
  *  - a resolved `{kind, name}`, but ONLY where the declaring kind says a
- *    reference is: a reference slot of its field map, or a step's dispatch slot.
+ *    reference is: one of its reference sites, or a step's dispatch slot.
  *    An object that merely has those keys is data;
  *  - `resources.<name>` in a CEL expression.
  *

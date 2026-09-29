@@ -300,7 +300,7 @@ export function evaluateResourceRules(
    *  rule declaring `resolve:` reports as unbound rather than reading references
    *  as if they were the declarations. */
   binder?: PeerBinder,
-  /** The resource's kind, as the binder's field-map lookup spells it. */
+  /** The resource's kind, as the binder's reference-reach lookup spells it. */
   kind: string = manifest.kind,
 ): ResourceRuleFinding[] {
   const rules = readResourceRules(definitionSchema);

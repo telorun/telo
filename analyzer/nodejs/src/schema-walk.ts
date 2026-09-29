@@ -11,7 +11,7 @@
 import { MANIFEST_SCHEMA_URI, ManifestRootSchema } from "./manifest-schemas.js";
 import type { RefSlot } from "./ref-slot.js";
 import type { StepSlot } from "./step-slot.js";
-import { drivenSites, reachOfSchema, refSlotOfEntry } from "./reference-reach.js";
+import { drivenSites, reachOfSchema, refSlotOfEntry, type ReachRef } from "./reference-reach.js";
 
 /** Resolve a local `$ref` (only `#/$defs/<name>` form) against the root schema.
  *  Non-refs and unresolved refs pass through unchanged. */
@@ -152,11 +152,12 @@ export type DeclaredSlot =
   | { kind: "step"; slots: StepSlot[]; path: string }
   | { kind: "ref"; slots: RefSlot[]; path: string };
 
-/** A reference slot at a site, with the declaration it came from — which is
- *  what a case-map selector's schema default is read against. */
+/** A reference slot at a site, with the reach slot it came from — whose
+ *  enclosing declarations a case-map selector's schema default is read against. */
 export interface DrivenRef {
   slot: RefSlot;
   fieldPath: string;
+  ref: ReachRef;
 }
 
 /** The slots at one concrete site of one resource (`routes[0].handler`): every
@@ -209,7 +210,7 @@ export function forEachDrivenSlot(
     if (site.steps.length > 0 && Array.isArray(site.data)) {
       visit({ kind: "step", slots: site.steps, data: site.data, path: site.path });
     } else if (site.refs.length > 0) {
-      const slots = site.refs.map(({ slot, fieldPath }) => ({ slot, fieldPath }));
+      const slots = site.refs.map((ref) => ({ slot: ref.slot, fieldPath: ref.fieldPath, ref }));
       visit({ kind: "ref", slots, data: site.data, path: site.path });
     }
   }

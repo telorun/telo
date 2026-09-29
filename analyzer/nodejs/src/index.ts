@@ -238,7 +238,7 @@ export type {
 } from "./module-graph.js";
 export { satisfiesValueBranch } from "./reference-field-map.js";
 export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
-export { declaredReach, reachSites, siteRefEntry } from "./reference-reach.js";
+export { reachSites } from "./reference-reach.js";
 export type {
   DeclaredReach,
   DeclaredReference,

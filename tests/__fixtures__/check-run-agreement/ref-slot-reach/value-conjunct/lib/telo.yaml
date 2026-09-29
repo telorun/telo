@@ -1,0 +1,19 @@
+# A string at a reference slot an `allOf` member merely annotates: the member is
+# a conjunct, not an alternative, so the string is the removed string-reference
+# spelling. `telo check` reports it here.
+kind: Telo.Library
+metadata:
+  name: RefSlotReachValueConjunct
+  version: 1.0.0
+  description: >-
+    Fixture library whose resource writes a plain string at a reference slot
+    that an allOf member annotates.
+imports:
+  Reach: ../../kinds
+exports:
+  resources: [conjunct]
+---
+kind: Reach.ValueViaAllOf
+metadata:
+  name: conjunct
+target: hello

@@ -16,7 +16,16 @@
  *   (directly or through a local `$ref`) has its items walked as any slot is;
  * - a non-local `$ref` is never followed ({@link resolveLocalReference} is the
  *   one place that decides, so widening it is a resolver change);
- * - a pattern keeps EVERY slot any branch declares there.
+ * - a pattern keeps EVERY slot any branch declares there, and each slot keeps
+ *   its non-reference alternatives there as value branches.
+ *
+ * Every schema node entered at a pattern is one of its DECLARATIONS, recorded
+ * with the `anyOf` / `oneOf` branches it was entered through. Two declarations
+ * are ALTERNATIVES when they were entered through different branches of one
+ * union, and CONJUNCTS otherwise (the object's own `properties` beside a branch,
+ * the members of an `allOf`, a `$ref` and its target). A slot's value branches
+ * are its alternatives that carry no reference; the object enclosing a slot is
+ * the conjunct declarations one pattern up ({@link ReachRef.enclosing}).
  *
  * Every consumer reads a view of it rather than resolving a pattern against a
  * value itself: the kernel's Phase-5 substitution and scope creation, inline
@@ -73,6 +82,27 @@ export interface SchemaReach {
   /** Every `x-telo-scope` node reached, with the pattern it applies at and
    *  where it is written in `document` (`properties.with`, `$defs.With`). */
   scopeNodes: ScopeNode[];
+  /** Per pattern, every schema node entered there, in the order entered. */
+  declarations: Map<string, Declaration[]>;
+}
+
+/** One `anyOf` / `oneOf` branch a declaration was entered through. */
+export interface BranchChoice {
+  /** The union's branch array, by identity. */
+  union: object;
+  index: number;
+}
+
+/** A schema node entered at a pattern, with the union branches that led to it. */
+export interface Declaration {
+  node: Record<string, any>;
+  branches: readonly BranchChoice[];
+}
+
+/** True when two declarations were entered through different branches of one
+ *  `anyOf` / `oneOf` — a value may satisfy either, never both at once. */
+export function areAlternatives(a: Declaration, b: Declaration): boolean {
+  return a.branches.some((x) => b.branches.some((y) => x.union === y.union && x.index !== y.index));
 }
 
 export interface ScopeNode {
@@ -149,6 +179,33 @@ export function refSlotOfEntry(entry: RefFieldEntry): RefSlot {
   return slot;
 }
 
+const branchDocuments = new WeakMap<object, Record<string, any>>();
+const branchSchemas = new WeakMap<object, Record<string, any>>();
+
+/** A value branch as a schema that compiles on its own: the `$defs` /
+ *  `definitions` of the document its slot was declared in sit beside it, so a
+ *  local `$ref` inside the branch resolves. */
+export function valueBranchSchema(branch: Record<string, any>): Record<string, any> {
+  const document = branchDocuments.get(branch);
+  if (!document || document === branch) return branch;
+  const { $defs, definitions } = document;
+  if ($defs === undefined && definitions === undefined) return branch;
+  let wrapped = branchSchemas.get(branch);
+  if (!wrapped) {
+    wrapped = {
+      allOf: [branch],
+      ...($defs !== undefined ? { $defs } : {}),
+      ...(definitions !== undefined ? { definitions } : {}),
+    };
+    branchSchemas.set(branch, wrapped);
+  }
+  return wrapped;
+}
+
+/** Each reference entry's own declaration, for the enclosing object and the
+ *  value alternatives. */
+const entryDeclarations = new WeakMap<RefFieldEntry, Declaration>();
+
 const resourceReaches = new WeakMap<object, SchemaReach>();
 const enteredReaches = new WeakMap<object, WeakMap<object, SchemaReach>>();
 
@@ -184,6 +241,10 @@ interface Walk {
   recorded: Map<string, Set<object>>;
   /** Each node on the current descent, with the pattern it was entered at. */
   onStack: Map<object, string>;
+  /** The `anyOf` / `oneOf` branches the current descent went through. */
+  branches: BranchChoice[];
+  /** Per pattern, the nodes already recorded as declarations there. */
+  declared: Map<string, Set<object>>;
 }
 
 function traverse(
@@ -199,10 +260,91 @@ function traverse(
     declaredKeys: new Map(),
     drives: false,
     scopeNodes: [],
+    declarations: new Map(),
   };
-  const walk: Walk = { reach, envelope, recorded: new Map(), onStack: new Map([[node, ""]]) };
+  const walk: Walk = {
+    reach,
+    envelope,
+    recorded: new Map(),
+    onStack: new Map([[node, ""]]),
+    branches: [],
+    declared: new Map(),
+  };
   visitNode(node, "", locationIn(document, node), walk);
+  addValueAlternatives(reach);
   return reach;
+}
+
+function declare(walk: Walk, path: string, node: Record<string, any>): Declaration {
+  let nodes = walk.declared.get(path);
+  if (!nodes) walk.declared.set(path, (nodes = new Set()));
+  let list = walk.reach.declarations.get(path);
+  if (!list) walk.reach.declarations.set(path, (list = []));
+  if (nodes.has(node)) return list.find((d) => d.node === node)!;
+  nodes.add(node);
+  const declaration: Declaration = { node, branches: [...walk.branches] };
+  list.push(declaration);
+  return declaration;
+}
+
+/** True when `node`, through its local `$ref` chain, is a reference slot. */
+function isReferenceNode(node: Record<string, any>, document: Record<string, any>): boolean {
+  const seen = new Set<object>();
+  let current: Record<string, any> | undefined = node;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const slot = readRefSlot(current);
+    if (slot && slot.kinds.length > 0) return true;
+    current = typeof current.$ref === "string" ? resolveLocalReference(current, document)?.node : undefined;
+  }
+  return false;
+}
+
+/** Each reference slot takes the non-reference declarations that are its
+ *  alternatives at its pattern as value branches, and every value branch
+ *  records the document it resolves against. */
+function addValueAlternatives(reach: SchemaReach): void {
+  for (const [path, at] of reach.paths) {
+    for (const entry of at.refs) {
+      const own = entryDeclarations.get(entry);
+      const alternatives = own
+        ? (reach.declarations.get(path) ?? []).filter(
+            (d) => areAlternatives(d, own) && !isReferenceNode(d.node, reach.document),
+          )
+        : [];
+      if (alternatives.length > 0) {
+        entry.valueBranches = [...(entry.valueBranches ?? []), ...alternatives.map((d) => d.node)];
+      }
+      for (const branch of entry.valueBranches ?? []) {
+        if (!branchDocuments.has(branch)) branchDocuments.set(branch, reach.document);
+      }
+    }
+  }
+}
+
+/** The pattern of the object enclosing `path`'s value: `routes[].handler` →
+ *  `routes[]`, `targets[]` → the root, `a.{}` → `a`. */
+function enclosingPattern(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return dot === -1 ? "" : path.slice(0, dot);
+}
+
+const enclosingMemo = new WeakMap<RefFieldEntry, Record<string, any>[]>();
+
+/** The conjunct declarations of the object enclosing a slot, in entry order. */
+function enclosingDeclarations(
+  reach: SchemaReach,
+  declaredPath: string,
+  entry: RefFieldEntry,
+): Record<string, any>[] {
+  let out = enclosingMemo.get(entry);
+  if (out) return out;
+  const own = entryDeclarations.get(entry);
+  out = (reach.declarations.get(enclosingPattern(declaredPath)) ?? [])
+    .filter((d) => !own || !areAlternatives(d, own))
+    .map((d) => d.node);
+  enclosingMemo.set(entry, out);
+  return out;
 }
 
 const joinKey = (path: string, key: string): string => (path ? `${path}.${key}` : key);
@@ -265,6 +407,7 @@ function stopAt(walk: Walk, path: string): ReachStop {
 function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
   if (!node || typeof node !== "object" || Array.isArray(node)) return;
   const schema = node as Record<string, any>;
+  const declaration = declare(walk, path, schema);
   if ("x-telo-scope" in schema) {
     if (firstTime(walk, path, schema)) {
       stopAt(walk, path).scopes.push({ scope: schema["x-telo-scope"] });
@@ -295,7 +438,9 @@ function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
   const slot = readRefSlot(schema);
   if (slot && slot.kinds.length > 0) {
     if (firstTime(walk, path, schema)) {
-      pathAt(walk, path).refs.push(refFieldEntryOf(slot, schema, path));
+      const entry = refFieldEntryOf(slot, schema, path);
+      entryDeclarations.set(entry, declaration);
+      pathAt(walk, path).refs.push(entry);
       walk.reach.drives = true;
     }
     // A slot's branches may be object shapes carrying their OWN nested slots
@@ -341,9 +486,14 @@ function visitVariants(schema: Record<string, any>, path: string, loc: string, w
   for (const variantKey of ["oneOf", "anyOf", "allOf"] as const) {
     const variants = schema[variantKey];
     if (!Array.isArray(variants)) continue;
+    const disjunct = variantKey !== "allOf";
     variants.forEach((variant, i) => {
-      if (variant && typeof variant === "object") {
+      if (!variant || typeof variant !== "object") return;
+      if (disjunct) walk.branches.push({ union: variants, index: i });
+      try {
         visitVariant(variant, path, `${joinKey(loc, variantKey)}[${i}]`, walk);
+      } finally {
+        if (disjunct) walk.branches.pop();
       }
     });
   }
@@ -353,6 +503,7 @@ function visitVariants(schema: Record<string, any>, path: string, loc: string, w
  *  unioned an `anyOf` of reference branches at the parent — so only what lies
  *  below it is walked, and a `$ref` branch is followed as a node of its own. */
 function visitVariant(variant: Record<string, any>, path: string, loc: string, walk: Walk): void {
+  declare(walk, path, variant);
   if (typeof variant.$ref === "string") {
     followLocalRef(variant, path, walk);
     return;
@@ -557,6 +708,43 @@ export interface ReachRef {
   viaAnchor: boolean;
   /** The slot's `x-telo-context`, when it declares one. */
   context?: Record<string, any>;
+  /** The schema node declaring the slot. */
+  node: Record<string, any>;
+  /** The conjunct declarations of the object enclosing the slot, in the order
+   *  the reach entered them — never a branch alternative to the slot's own. */
+  enclosing: readonly Record<string, any>[];
+}
+
+/**
+ * The schema `default:` for a pointer relative to the object enclosing a slot
+ * (a `use` case map's selector), read from the enclosing object's conjunct
+ * declarations in the order the reach entered them; the first default found
+ * wins. Undefined when none declares one.
+ */
+export function enclosingDefault(ref: ReachRef, pointer: string): unknown {
+  if (!pointer.startsWith("/")) return undefined;
+  const segments = pointer
+    .slice(1)
+    .split("/")
+    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+  const document = ref.declaredIn.document;
+  for (const declaration of ref.enclosing) {
+    let current: Record<string, any> | undefined = declaration;
+    let value: unknown;
+    for (const segment of segments) {
+      const written: unknown = current?.properties?.[segment];
+      if (!written || typeof written !== "object") {
+        current = undefined;
+        break;
+      }
+      const node = written as Record<string, any>;
+      const target = typeof node.$ref === "string" ? resolveLocalReference(node, document)?.node : undefined;
+      value = node.default !== undefined ? node.default : target?.default;
+      current = target ?? node;
+    }
+    if (current && value !== undefined) return value;
+  }
+  return undefined;
 }
 
 /** Everything one concrete site of one resource carries, from every branch and
@@ -717,6 +905,8 @@ function enumerateSites(
               declaredIn: reach,
               declaredPath,
               viaAnchor: reach !== root,
+              node: entryDeclarations.get(entry)!.node,
+              enclosing: enclosingDeclarations(reach, declaredPath, entry),
             };
             if (entry.context) ref.context = entry.context;
             site.refs.push(ref);

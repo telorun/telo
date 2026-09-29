@@ -347,11 +347,10 @@ function resolveInherited(
     }
     // Several slots at one site are the branches declaring it; any one that
     // hands a failure back counts, since a branch not applying can only add codes.
-    const handsBack = driven.slots.some(({ slot, fieldPath }) =>
-      throwsUses(
-        slot,
-        resolveSlotUseAt(slot, manifest, schema, driven.path, fieldPath).use,
-      ).some(handsFailureBack),
+    const handsBack = driven.slots.some(({ slot, ref }) =>
+      throwsUses(slot, resolveSlotUseAt(slot, manifest, ref, driven.path).use).some(
+        handsFailureBack,
+      ),
     );
     if (handsBack) unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
   });

@@ -424,7 +424,7 @@ export function validateReferences(
   };
 
   // Phase 3 — per-ref validation. The walker supplies each ref site already
-  // resolved against the schema-from-expanded field map, with its source
+  // resolved against the schema-from-expanded reference reach, with its source
   // enclosure (`inScope`) and the scope manifests visible to it — so this
   // handler only validates, it does not re-walk.
   visitManifest(
