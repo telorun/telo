@@ -299,7 +299,7 @@ can name it: a `catches:` entry naming its code is `UNDECLARED_THROW_CODE` at
 
 ### Claiming ahead — `RecordStream.JournalClaim`
 
-`{ key, writer, resume? }` → `{ key, lastId }`. Claims the key for the named `writer`
+`{ key, writer, resume? }` → `{ key, lastId, error }`. Claims the key for the named `writer`
 **without draining anything**, so the key exists — and a reader tails it instead of
 waiting for it — before the work that fills it starts. That is what lets a route answer
 "started" only once the key is there, and a reader it hands the key to never waits on a
@@ -307,15 +307,18 @@ key nobody has written. A `JournalSink` given the same `writer` then adopts it.
 
 | The key | JournalClaim |
 | --- | --- |
-| never written | claimed; `lastId` 0 |
-| open under the same `writer`, heartbeat within its timeout | returned unchanged, with its `lastId` — whether or not a sink has adopted it; nothing is written |
-| finished, failed, or open with a stale heartbeat, by a sink under the same `writer` | returned unchanged, with its `lastId`, `resume` or not — that attempt is over (a stale one is failed as `ERR_JOURNAL_WRITER_LOST` first), and its ending (a failure's recorded error included) stays |
+| never written | claimed; `lastId` 0, `error` null |
+| open under the same `writer`, heartbeat within its timeout | returned unchanged, with its `lastId` and `error` null — whether or not a sink has adopted it; nothing is written |
+| finished, failed, or open with a stale heartbeat, by a sink under the same `writer` | returned unchanged, with its `lastId`, `resume` or not — that attempt is over (a stale one is failed as `ERR_JOURNAL_WRITER_LOST` first), and its ending (a failure's recorded error included) stays; `error` is that recorded error, null for a finished key |
 | open with a heartbeat within its timeout, or finished, under another writer | `ERR_JOURNAL_KEY_BUSY` |
-| failed otherwise, or open with a stale heartbeat | `ERR_JOURNAL_KEY_BUSY`; with `resume: true`, taken over exactly as the sink's `resume` does, its records kept |
+| failed otherwise, or open with a stale heartbeat | `ERR_JOURNAL_KEY_BUSY`; with `resume: true`, taken over exactly as the sink's `resume` does, its records kept, and `error` is the recorded error it took over — `ERR_JOURNAL_WRITER_LOST` for a stale one, failed first |
 | removed | `ERR_JOURNAL_KEY_REMOVED` |
 
 `lastId` is the id of the key's last record at the claim, so the next record the
-adopting sink appends is `lastId + 1`. After a claim that takes a key over, the key is open again at
+adopting sink appends is `lastId + 1`. `error` has the shape of `JournalRead`'s `error`
+and is the failure as it stood at the version the claim acted on: a takeover rewrites
+the key's header to open, so a read after it no longer reports the error it replaced,
+and a read before it may report an error another writer has since replaced. After a claim that takes a key over, the key is open again at
 once: a reader opened before the sink starts tails it and receives the continuation,
 rather than raising the old failure.
 

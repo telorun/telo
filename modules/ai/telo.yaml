@@ -923,6 +923,16 @@ schema:
       type: string
       enum: [feedback, throw]
       default: feedback
+    maxToolResultBytes:
+      title: Max tool result bytes
+      description: >-
+        Bounds the UTF-8 bytes of text each tool result feeds the model, error results
+        included. A longer result keeps its longest whole-character prefix and ends with
+        a line saying how many bytes were cut; media parts are neither counted nor cut,
+        and the result record's output stays whole. Unset: unbounded.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
     toolProviders:
       title: Tool providers
       description: Tool sources mounted into the agent — static lists (Ai.Tools) or runtime discovery (e.g. AiMcp.ToolProvider).
@@ -1093,6 +1103,16 @@ schema:
       type: string
       enum: [feedback, throw]
       default: feedback
+    maxToolResultBytes:
+      title: Max tool result bytes
+      description: >-
+        Bounds the UTF-8 bytes of text each tool result feeds the model, error results
+        included. A longer result keeps its longest whole-character prefix and ends with
+        a line saying how many bytes were cut; media parts are neither counted nor cut,
+        and the result record's output stays whole. Unset: unbounded.
+      type: integer
+      minimum: 1
+      x-telo-eval: compile
     toolProviders:
       title: Tool providers
       description: Tool sources mounted into the agent — static lists (Ai.Tools) or runtime discovery (e.g. AiMcp.ToolProvider).

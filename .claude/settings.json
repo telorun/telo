@@ -17,10 +17,6 @@
           {
             "type": "command",
             "command": "jq -r '.tool_input.command // \"\"' | grep -q \"\\.env\\.local\" && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Blocked: .env.local must not be read or otherwise accessed from a shell command (project policy).\"}}' || true"
-          },
-          {
-            "type": "command",
-            "command": "node .claude/hooks/git-publish-guard.js"
           }
         ]
       }

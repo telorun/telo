@@ -45,6 +45,7 @@ targets:
   - !ref Suite.claimResumeTakesOver
   - !ref Suite.claimSameWriterEnded
   - !ref Suite.claimGoesStale
+  - !ref Suite.claimResumeStale
 ---
 kind: Postgres.Connection
 metadata: { name: db }

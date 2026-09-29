@@ -1,0 +1,7 @@
+modules:
+  modules/ai: Added
+body: Ai.Agent and Ai.AgentStream accept maxToolResultBytes, bounding the UTF-8 bytes of
+  text every tool result (static or MCP, successful or failed) feeds the model; a cut
+  result keeps its longest whole-character prefix and ends with a truncation marker,
+  media parts are never counted or cut, and the tool-result output stays whole. Unset,
+  results are unbounded as before.

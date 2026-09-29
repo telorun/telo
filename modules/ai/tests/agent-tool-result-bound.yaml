@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: AgentToolResultBoundTest
+  version: 1.0.0
+  description: |
+    An agent with `maxToolResultBytes` feeds the model at most that many bytes of a
+    tool's text, cut at a character boundary and followed by the truncation marker,
+    while the tool-result part's `output` keeps what the tool returned whole. The
+    echo model answers with what it was fed, so its text is the model-facing result.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref boundedResult
+---
+kind: Ai.Tools
+metadata: { name: noteTools }
+tools:
+  - tool:
+      kind: Run.Value
+      value:
+        note: "abcdéfgh"
+    name: readNote
+    parameters: { type: object }
+    result: !cel "result.note"
+---
+kind: Run.Sequence
+metadata: { name: boundedResult }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCall: { name: readNote }
+      maxToolResultBytes: 5
+      toolProviders:
+        - provider: !ref noteTools
+    inputs: { prompt: "read the note" }
+  - name: parts
+    invoke:
+      kind: Stream.Collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        toolResult: !cel "steps.parts.result.items.filter(p, p.type == 'tool-result')[0].toolResult"
+        modelSaw: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+      expected:
+        toolResult:
+          toolCallId: echo-call-1
+          name: readNote
+          content: "abcd\n[truncated: 5 of 9 bytes cut; a tool result passes at most 5 bytes to the model]"
+          output: { note: "abcdéfgh" }
+        modelSaw: "abcd\n[truncated: 5 of 9 bytes cut; a tool result passes at most 5 bytes to the model]"

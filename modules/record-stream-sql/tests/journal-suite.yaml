@@ -34,6 +34,7 @@ targets:
   - !ref Suite.claimResumeTakesOver
   - !ref Suite.claimSameWriterEnded
   - !ref Suite.claimGoesStale
+  - !ref Suite.claimResumeStale
 ---
 kind: RecordStreamSql.JournalStore
 metadata: { name: store }

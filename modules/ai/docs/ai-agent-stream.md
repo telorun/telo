@@ -9,7 +9,7 @@ sidebar_label: Ai.AgentStream
 
 `Ai.AgentStream` is the streaming counterpart of [`Ai.Agent`](./ai-agent.md): it stands to `Ai.Agent` as [`Ai.TextStream`](./ai-text-stream.md) stands to [`Ai.Text`](./ai-text.md). Same tool-use loop, same configuration — but instead of returning a buffered object, it forwards the run as a `Stream` on `result.output` (the streaming-Invocable convention), so the assistant's text streams token-by-token and every tool call surfaces the moment it happens.
 
-Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `onToolError`, `toolProviders` — and tool assembly and dispatch are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
+Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `onToolError`, `maxToolResultBytes`, `toolProviders` — and tool assembly and dispatch are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
 
 ## The event stream
 
@@ -153,3 +153,11 @@ With tracing on (a trace sink in the application's `tracing.sinks`, or a debugge
 | `execute_tool <name>` | one tool call | `gen_ai.operation.name`, `gen_ai.tool.name`, `gen_ai.tool.call.id`, `error.type` when it failed |
 
 `chat` and `execute_tool` spans are children of `invoke_agent`, which is a child of the dispatch that started the run. The tool resource's own dispatch span nests under its `execute_tool` span (see [`Ai.Tools`](./ai-tool-provider.md#aitools)). `<model>` is the model resource's published `model` (the provider's model id), else the resource's name. A span that ends because the consumer stopped reading is `cancelled`. No span carries message content, tool arguments or tool results.
+
+With `maxToolResultBytes` set, `content` is bounded — at most that many UTF-8 bytes of text, cut at a character boundary, with media parts untouched — and a cut result ends with the marker
+
+```
+[truncated: <omitted> of <total> bytes cut; a tool result passes at most <limit> bytes to the model]
+```
+
+on its own line (a final text part for a part result). Error results are bounded the same way. `output` is never bounded. The full rules are [`Ai.Agent` → Bounded tool results](./ai-agent.md#bounded-tool-results).
