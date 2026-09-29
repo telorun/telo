@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.0 - 2026-09-29
+### Added
+* An engine schema resource addresses the tables it lists for consumers: its instance renders the qualified, quoted name of a listed table from its own namespace and the engine's quoting (PostgreSQL qualifies with the schema's namespace, SQLite names the bare table), so a consumer reading or writing those tables no longer depends on the connection's search_path. Engine implementers add the new required member to their schema instance.
+* Sql.Schema declares the connection its tables live on, so a consumer holding any engine's schema can read which connection that is.
+* SQLite.Connection enforces declared foreign keys on every host: under Bun, where they were not enforced, a write that violates one is now refused and its onDelete action now runs, as under Node.
+
 ## 0.25.0 - 2026-09-25
 ### Added
 * The SQL dialect gains a required member, renderCurrentTimeMillis(): an SQL expression for the database's current wall-clock time in integer epoch milliseconds, read when the statement runs. It lets a consumer measure ages on the database's one clock rather than each host's. Breaking for third-party SQL backends: a dialect must now supply it, and a consumer that needs it (the SQL journal store) refuses a connection whose dialect lacks it.

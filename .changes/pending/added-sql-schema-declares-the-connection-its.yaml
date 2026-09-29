@@ -1,4 +1,0 @@
-modules:
-  modules/sql: Added
-body: Sql.Schema declares the connection its tables live on, so a consumer holding any
-  engine's schema can read which connection that is.
