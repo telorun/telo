@@ -1,7 +1,0 @@
-modules:
-  modules/record-stream: Added
-body: "RecordStream.JournalClaim reports `error`: the recorded error of the failed key
-  it took over or returned as its own writer's sink ended it, at the version it acted on
-  (ERR_JOURNAL_WRITER_LOST for an open key whose writer went stale, failed first), and
-  null when it created the key or found it open or finished. The output gains a required
-  field."

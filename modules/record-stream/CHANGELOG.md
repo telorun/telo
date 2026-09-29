@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0 - 2026-09-29
+### Added
+* RecordStream.JournalClaim reports `error`: the recorded error of the failed key it took over or returned as its own writer's sink ended it, at the version it acted on (ERR_JOURNAL_WRITER_LOST for an open key whose writer went stale, failed first), and null when it created the key or found it open or finished. The output gains a required field.
+
 ## 0.18.0 - 2026-09-27
 ### Added
 * RecordStream.JournalRead reads a key's state (unknown, open, finished, failed or removed), recorded error, last record id and a page of entries in one snapshot that never waits; a stale writer's key reads as failed with ERR_JOURNAL_WRITER_LOST. RecordStream.JournalClaim claims a key for a named writer without draining anything (same-writer re-claims succeed unchanged; resume takes over a failed or abandoned key), and JournalSink's new writer input adopts such a key: exactly one drain adopts it, and a second sink under the same writer is refused with ERR_JOURNAL_KEY_BUSY before it pulls a record. Journal retention is now optional (omitted, ended keys are kept until removed) and the new markerRetention sets how long a removal marker is kept, defaulting to retention; at least one is required (RECORD_STREAM_RETENTION_MISSING) and neither may be negative (RECORD_STREAM_MARKER_RETENTION_NEGATIVE). Breaking for JournalStore implementations: a store must now return lastId, the id of the key's last record (0 for an empty log and after truncation), in every header from read and scan.

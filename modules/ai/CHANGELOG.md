@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 - 2026-09-29
+### Added
+* Ai.Agent and Ai.AgentStream accept maxToolResultBytes, bounding the UTF-8 bytes of text every tool result (static or MCP, successful or failed) feeds the model; a cut result keeps its longest whole-character prefix and ends with a truncation marker, media parts are never counted or cut, and the tool-result output stays whole. Unset, results are unbounded as before.
+
 ## 0.23.0 - 2026-09-28
 ### Added
 * Ai.AgentStreamPart.toolResult gains an optional output: the tool's own result before its result: mapping, as plain JSON (for an MCP tool, its structured content when present, otherwise its content parts), present whenever error is not true and never sent to the model. Agent runs open trace spans: invoke_agent <name> over the run (ai.agent.steps, summed gen_ai.usage.input_tokens / output_tokens), chat <model> per model call until it finishes (gen_ai.operation.name, gen_ai.request.model, token usage, gen_ai.response.finish_reasons), and execute_tool <name> per tool call (gen_ai.tool.name, gen_ai.tool.call.id, error.type on failure); never message content. Ai.Tools now dispatches each tool through the kernel's traced dispatch, so the tool resource's own span and <name>.Invoked events exist, nested under execute_tool. Requires telo >=0.104.0: the controllers use the runtime's span error-type rule, which older kernels do not provide. Breaking: a step is now one model call everywhere. Ai.Agent's steps gains an entry for the final answering call (empty toolCalls and toolResults), so steps has one entry per model call, and ai.agent.steps on the Agent run finished and Agent stream finished records counts model calls (it previously counted tool-calling turns).

@@ -28,17 +28,17 @@ modules:
     layers:
       manifest: sha256-B-TLPmoKioGxMC0YLdETfh8dCoWRcbrSsQ322lQw1eU
   modules/ai:
-    version: 0.23.0
+    version: 0.24.0
     registry: oci://ghcr.io/telorun
     layers:
-      library/js: sha256--Kam95DHoA2Wf_surl82TAt4nCo0OuKHuzJ-ml5BA9A
-      manifest: sha256-UTblNYa2VjRWkkURWJW1Q0R4Dkc9sqWkMhNkhZ1w3t8
+      library/js: sha256-5zzgQcvcX5cqQU1WvbH73J_V0SpJQ_IF3btdeGW6w04
+      manifest: sha256-W-XJ9GR1WlXIJfmT0pFFMh6BfG6Dac6qL6d1DXaWT50
   modules/ai-mcp:
-    version: 0.18.0
+    version: 0.19.0
     registry: oci://ghcr.io/telorun
     layers:
       controller/js: sha256-mzCmEOt61E5AqOdmN9b4zQsIlxNhLigDHaOiRIH5qU4
-      manifest: sha256-Hb5_sWK7Y3LPst-S2HMpFcK9KCYAvkNtY14s-8bcGWg
+      manifest: sha256-vM-4yF9TThDKfF1AgBwdBpsDZH-J_OFYhbXU087Jllo
   modules/ai-openai:
     version: 0.17.0
     registry: oci://ghcr.io/telorun
@@ -301,11 +301,11 @@ modules:
       controller/js: sha256-G51aOh9DHHq18qWwUokxyOYwFmMely01pNTmcsBuORY
       manifest: sha256-Pn8LuyMQJUGopmfI6ZVd0heMBBx-lZN1v0Q9hS-G-5Q
   modules/openai:
-    version: 0.8.0
+    version: 0.9.0
     registry: oci://ghcr.io/telorun
     layers:
       controller/js: sha256-Hy9JRQb6ZOeuI4_YdKQFYAgltCAFOzyeGShStPGk18k
-      manifest: sha256-T1H3E-0GU14VuA8IIhHENjeEiGh5wZCNnGU0maqwl6M
+      manifest: sha256-esN3aK3panoVFLo4G-l0x9mhyeKZ_hWvPmnDxmA1lc4
   modules/otlp:
     version: 0.6.0
     registry: oci://ghcr.io/telorun
@@ -353,17 +353,17 @@ modules:
       controller/js: sha256-t_Iu4HImm66Duux1-mNvvPV65KOtFdmYfqtN_tqzHHc
       manifest: sha256-SwTjqCgdkY_zyMYqcEUC0o1vfzHQLPSuXKL78n1vXq8
   modules/record-stream:
-    version: 0.18.0
+    version: 0.19.0
     registry: oci://ghcr.io/telorun
     layers:
-      library/js: sha256-ywbs83zh9lDKRZw18PGmARHovqD01ZMAFWWRWcNtQpg
-      manifest: sha256-e-OYjZahDATXKRtbE6v1ncCcAGOyBShgNya1n0GIbbY
+      library/js: sha256-haKOCxPbc39maH8801FAB1ZIlpFGGfErwR9t7qBTy1Q
+      manifest: sha256-OrWYdcME8D1ScwQ4Nz-zFWwwW6I-4lB-SShO6EL1xOM
   modules/record-stream-sql:
-    version: 0.5.0
+    version: 0.6.0
     registry: oci://ghcr.io/telorun
     layers:
       controller/js: sha256-trfvF9cAK9FrPh0BY2GfiCjJkTcBuH_aIcbkZPE6YHM
-      manifest: sha256-ACrHwCShqEMWa2NMV6MebRCs4AvEhQ6O7a-l6l5Bu0E
+      manifest: sha256-NGvGiiKiGhZt_NoGhMrzJtiL13GsywHe7Jy5eYVUuDs
   modules/run:
     version: 0.27.1
     registry: oci://ghcr.io/telorun
