@@ -601,10 +601,10 @@ export class ResourceContextImpl implements ResourceContext {
   ): T {
     // Two things the raw resolver cannot do from a `{ moduleContext }` slice:
     //
-    //  - A `!ref` can reach a controller as the raw SENTINEL. Phase-5 injection is
-    //    field-map-driven, and the field map does not descend into the inline
-    //    declarations inside an `x-telo-scope` array, so a ref slot on a scoped
-    //    resource is not an injection site. (Phase 2.5 does rewrite such a
+    //  - A `!ref` can reach a controller as the raw SENTINEL. Phase-5 injection
+    //    substitutes at the concrete sites of the kind's reach, which stops at an
+    //    `x-telo-scope` array, so a ref slot on a scoped resource is not an
+    //    injection site. (Phase 2.5 does rewrite such a
     //    sentinel to `{kind, name}` when it can name a target, so the shape that
     //    arrives varies — both are accepted.) `ensureKindRef` is the same rescue
     //    the sentinel path already performs for hidden slots.
@@ -691,19 +691,12 @@ export class ResourceContextImpl implements ResourceContext {
       );
     }
 
-    // Stopgap: `!ref <name>` sentinels can reach the controller directly
-    // when the slot is hidden behind a local `$ref: "#/$defs/..."` — the
-    // analyzer's field-map walker descends `oneOf`/`anyOf` variant
-    // properties but intentionally early-returns on `$ref` (see
-    // `analyzer/nodejs/src/reference-field-map.ts`). Enabling the `$ref`
-    // descent regresses the kernel's `<name>.Invoked` event
-    // emission for kinds (notably `Run.Sequence`) whose controllers
-    // call `instance.invoke()` directly on Phase-5-injected instances;
-    // the walker fix needs to land together with routing those callers
-    // through `EvaluationContext.invokeResolved`. Until then, the Node
-    // kernel resolves the sentinel here. Polyglot controllers don't get
-    // this rescue — schemas exercising those hidden slots must use the
-    // legacy string or `{kind, name}` forms for now.
+    // A `!ref <name>` sentinel reaches the controller directly wherever no
+    // concrete reference site holds it — a step body's `invoke:` (the reach
+    // stops at a step body, which is what keeps `<name>.Invoked` emitted) or a
+    // slot inside an `x-telo-scope` array — and Phase 2.5 left it unresolved.
+    // The Node kernel resolves the sentinel here. Polyglot controllers don't get
+    // this rescue.
     if (isRefSentinel(resource)) {
       const source = resource.source;
       const dot = source.indexOf(".");

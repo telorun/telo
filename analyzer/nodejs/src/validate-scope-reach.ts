@@ -4,7 +4,6 @@ import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope } from "./module-alias-scope.js";
-import { isRefEntry, resolveFieldEntries } from "./reference-field-map.js";
 import {
   declaredScopes,
   isScopeMember,
@@ -86,13 +85,13 @@ export function validateScopedNameReach(
         data: { resource, filePath, path },
       });
 
-    /** A declaration's kind, field map and scopes, read in its module's aliases. */
+    /** A declaration's concrete sites, scopes and schema, read in its module's aliases. */
     const shape = (declaration: ResourceManifest) => {
       const view =
         module !== undefined && typeof declaration.metadata?.module !== "string"
           ? ({ ...declaration, metadata: { ...declaration.metadata, module } } as ResourceManifest)
           : declaration;
-      const fieldMap = registry.expandedFieldMapForResource(view, aliases, aliasesByModule);
+      const sites = registry.referenceSites(view, aliases, aliasesByModule, declaration);
       const definition = definitionInScope<ResourceDefinition>(
         registry,
         view.kind,
@@ -101,8 +100,8 @@ export function validateScopedNameReach(
         aliasesByModule,
       );
       return {
-        fieldMap,
-        scopes: declaredScopes(declaration as Record<string, unknown>, fieldMap),
+        sites,
+        scopes: declaredScopes(sites),
         schema: registry.effectiveSchemaOf(definition) as Record<string, any> | undefined,
       };
     };
@@ -122,7 +121,7 @@ export function validateScopedNameReach(
           nextShadowed.delete(name);
         }
       }
-      const { fieldMap, scopes, schema } = shape(declaration);
+      const { sites, scopes, schema } = shape(declaration);
       for (const scope of scopes) {
         for (const member of scope.declarations) {
           if (isScopeMember(member)) nextShadowed.add(member.metadata.name);
@@ -154,14 +153,9 @@ export function validateScopedNameReach(
       });
 
       // A resolved reference, where the kind declares one.
-      if (fieldMap) {
-        for (const [fieldPath, entry] of fieldMap) {
-          if (!isRefEntry(entry)) continue;
-          for (const { value, path } of resolveFieldEntries(declaration, fieldPath)) {
-            if (inScopeArray(path)) continue;
-            test(resolvedLocalName(value), path);
-          }
-        }
+      for (const site of sites) {
+        if (site.refs.length === 0 || inScopeArray(site.path)) continue;
+        test(resolvedLocalName(site.data), site.path);
       }
       if (schema) {
         for (const body of stepBodiesOf(declaration as Record<string, unknown>, schema)) {

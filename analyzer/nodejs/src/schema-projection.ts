@@ -38,7 +38,6 @@
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { LibraryDeclarations } from "./library-declarations.js";
-import { shapeMatches } from "./peer-binding.js";
 import { createAjv } from "./schema-compat.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 
@@ -805,9 +804,9 @@ export interface ProjectionScope {
    *  `declaration`. */
   resolveDefinition(kind: string, declaration?: Record<string, any>): Record<string, any> | undefined;
   /**
-   * The reference slots of `declaration`'s kind — the field map Phase-5
-   * injection injects, `x-telo-schema-from` expansions included, spelled
-   * `tables[]` / `mounts[].mount` / `tables.{}` — with the kind resolved in the
+   * The concrete reference sites of `declaration` — the sites Phase-5 injection
+   * substitutes, `x-telo-schema-from` expansions included, spelled `tables[0]`
+   * / `mounts[1].mount` / `tables.orders` — with its kind resolved in the
    * module scope of `scope` (the declaration itself, or the one an inline
    * declaration is written in). Undefined when the kind resolves to no
    * definition. The ONLY thing that decides whether a value is a reference.
@@ -830,6 +829,7 @@ export interface ProjectionScope {
  *  slots, and each imported library's own declarations. */
 export interface ProjectionModules {
   moduleForAlias(module: string | undefined, alias: string): string | undefined;
+  /** See {@link ProjectionScope.referenceSlots}. */
   referenceSlots(declaration: Record<string, any>, module: string | undefined): readonly string[] | undefined;
   readonly libraries?: LibraryDeclarations;
 }
@@ -1125,8 +1125,8 @@ function concretePath(segments: readonly string[], containers: readonly unknown[
 }
 
 /**
- * Walk `pointer` from `start`. The HOLDER KIND'S FIELD MAP decides where a
- * reference is: a segment after a value at one of its reference slots continues
+ * Walk `pointer` from `start`. The HOLDER'S REFERENCE SITES decide where a
+ * reference is: a segment after a value at one of its reference sites continues
  * inside the declaration that value names, to any depth — each one resolved in
  * the scope of the module that declared the declaration holding it. At any other
  * path a value is data, whatever its shape.
@@ -1167,7 +1167,7 @@ function walk(
     prefix = `${prefix}/${segment}`;
     inner.push(segment);
     const concrete = concretePath(inner, containers);
-    atReference = slots.some((shape) => shapeMatches(concrete, shape));
+    atReference = slots.includes(concrete);
   }
   return { value, holder, inner, atReference, anchor: left ?? prefix };
 }

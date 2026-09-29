@@ -37,13 +37,17 @@ export interface InlineConfigValidator {
 }
 
 /**
- * Validates inline resources nested inside a resource body against their kind's
- * config schema. The per-resource walk in `analyze()` validates a resource's
- * own top-level config; inline resources at `x-telo-ref` slots reachable only
- * through a local `$ref` (notably `Run.Sequence`'s `steps[].invoke`, hidden
- * behind `#/$defs/step`) never reach the reference field map, so they would
- * otherwise escape schema validation — e.g. `invoke: { kind: Console.ReadLine,
- * prompt: "…" }`, where `prompt` belongs in the step's `inputs`, not the config.
+ * Inline extraction replaces two kinds of inline declaration with a reference,
+ * and the per-resource walk checks each one it extracts: one at a reference site
+ * of the kind's reach, and the dispatch target of a named step in a step body.
+ * This pass checks every inline declaration extraction leaves in place: whether
+ * its kind exists, whether it can be instantiated, and its config schema. Those
+ * sit at an `x-telo-ref` slot inside a step body — the target of a step with no
+ * `name`, every target of a body a `base:` mapping forwards other than verbatim
+ * as `self.<field>`, and any reference slot of a step other than its dispatch
+ * field. It also checks, recursively, every inline declaration nested inside one
+ * it checks — e.g. `invoke: { kind: Console.ReadLine, prompt: "…" }`, where
+ * `prompt` belongs in the step's `inputs`, not the config.
  *
  * Walks the manifest data together with its definition schema, resolving local
  * `$ref`s (so step trees of arbitrary depth are covered). At each `x-telo-ref`
@@ -79,8 +83,8 @@ export function validateNestedInlineResources(
   function validateInline(inline: Record<string, any>, path: string): void {
     const kind = inline.kind as string;
     const def = lookupDefinition(kind);
-    // Unknown kind: these `$ref`-hidden slots are invisible to the field-map
-    // driven reference checks too, so nothing else would flag it — report here.
+    // Unknown kind: these step-body slots are invisible to the reach-driven
+    // reference checks too, so nothing else would flag it — report here.
     if (!def) {
       diagnostics.push({
         severity: DiagnosticSeverity.Error,

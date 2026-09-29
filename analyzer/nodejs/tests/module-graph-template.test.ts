@@ -220,6 +220,54 @@ run: !ref flow
     });
   });
 
+  it("reaches a forward at depth 2 of a recursive shape", async () => {
+    const graph = await templateGraphOf(
+      `${LIBRARY}---
+kind: Telo.Definition
+metadata:
+  name: Chain
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/@telorun/fixture@0.1.0#Chain
+schema:
+  type: object
+  properties:
+    node: { $ref: "#/$defs/Node" }
+  $defs:
+    Node:
+      type: object
+      properties:
+        job:
+          x-telo-ref: { kind: Telo.Executable, use: call }
+        next: { $ref: "#/$defs/Node" }
+---
+kind: Telo.Definition
+metadata:
+  name: Deep
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    onDone:
+      x-telo-ref: { kind: Telo.Executable, use: call }
+resources:
+  - kind: Self.Chain
+    metadata: { name: chain }
+    node:
+      next:
+        job: !cel "self.onDone"
+run: !ref chain
+`,
+      "Deep",
+    );
+    const forwarded = graph.nodes.filter((n) => n.ownership === "forwarded");
+    expect(forwarded.map((n) => [n.kind, n.name])).toEqual([["Blue.Deep", "onDone"]]);
+    const chain = graph.nodes.find((n) => n.name === "chain")!.id;
+    expect(graph.edgesTo(forwarded[0]!.id).map((e) => [e.from, e.path, e.toName])).toEqual([
+      [chain, "node.next.job", "self.onDone"],
+    ]);
+  });
+
   it("draws an entry extracted from a sibling's inline declaration as owned by that sibling", async () => {
     const graph = await templateGraphOf(
       LIBRARY.replace(

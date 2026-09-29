@@ -45,6 +45,7 @@ how to read a failure, and the debugging flags — see
 | `CAPABILITY_SHADOWS_EXTENDS` ⚠️ | `capability:` names a user-declared abstract. Capability names a kernel lifecycle role; use `extends:` for a contract. |
 | `PROVIDER_MISSING_IMPLEMENTATION` | A `Telo.Provider` definition needs either `controllers:` or a `provide:` body. |
 | `SCOPE_ENTRY_NOT_INLINE` | Entries in an `x-telo-scope` block must be inline declarations (`kind:` + `metadata.name`), not references. |
+| `SCOPE_SLOT_MISPLACED` | A kind's schema declares `x-telo-scope` somewhere other than a named top-level property — nested under an object, on an array item, under `additionalProperties`, inside a recursive shape or below an `x-telo-schema-from`. Move it onto a property of the schema root (or of a root `anyOf` / `oneOf` / `allOf` branch), written directly or through a local `$ref`. |
 | `SCOPED_NAME_OUT_OF_REACH` | An inline declaration written beside a `with:` block — a step's `invoke: { kind: … }` — names a resource that block declares, by `!ref` or as `resources.<name>` in CEL. The declaration is created where its sequence is, outside the scope, so the name does not reach it. Declare it under `with:` with a name of its own and invoke it with `!ref`. |
 | `EXTENDS_CLOSED_PARENT_ADDS_FIELD` | A child without `base:` declares a field its parent does not have, but the parent closes its schema (`additionalProperties: false`). Without `base:` the child's whole config is forwarded as the parent's, so the field is rejected at creation. Add a `base:` mapping, or drop the field. |
 | `TEMPLATE_DISPATCH_UNKNOWN` | A templated definition's `invoke:` / `run:` / `provide:` / `mount:` is a `!ref` naming no entry in its own `resources:`. The message lists the entries that exist. |
@@ -324,6 +325,7 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_REF_REQUIRED` / `ERR_REF_UNRESOLVED` | A required reference slot is empty, or its `!ref` did not resolve to a live instance. |
 | `ERR_SCOPE_RESOURCE_NOT_FOUND` | A cross-module `!ref Alias.name` did not resolve to an instance the library exports. Check `exports.resources`. |
 | `ERR_SCOPE_ENTRY_NOT_INLINE` | A scope block entry is a reference rather than an inline declaration. |
+| `ERR_SCOPE_SLOT_MISPLACED` | A definition — a dependency's included — declares `x-telo-scope` off a named top-level property; the kernel refuses it when it registers the kind. The runtime twin of `SCOPE_SLOT_MISPLACED`. |
 | `ERR_VISIBILITY_DENIED` | A resource referenced boot context it was not granted. |
 | `ERR_KERNEL_STATE_INVALID` | A kernel operation was called out of order (embedding the kernel directly). |
 | `ERR_RESOURCE_IDENTITY_UNBOUND` | A controller reached `ctx.self` or the zone surface before `create()` returned. Identity is minted at creation; move the access to `init()` or later. |

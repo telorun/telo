@@ -6,15 +6,8 @@ import {
 } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import {
-  isRefEntry,
-  isSchemaFromEntry,
-  isScopeEntry,
-  resolveFieldEntries,
-  resolveFieldValues,
-  type RefFieldEntry,
-  type SchemaFromFieldEntry,
-} from "./reference-field-map.js";
+import type { RefFieldEntry, SchemaFromFieldEntry } from "./reference-field-map.js";
+import { siteRefEntry } from "./reference-reach.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
@@ -29,15 +22,14 @@ import { extractContextsFromSchema, pathMatchesScope } from "./validate-cel-cont
  *
  * Two discovery mechanics ride one per-resource pass:
  *
- * - **Path-driven** — ref / scope / schema-from sites come from the resource's
- *   per-kind field map (`RefSite`, `ScopeBoundary`, `SchemaFromSite`). This is
- *   map iteration resolved against the resource value, not a node-by-node tree
- *   descent; the field map already unifies all three annotation types.
+ * - **Reach-driven** — ref / scope / schema-from sites are the concrete sites of
+ *   the resource's kind's reach (`reference-reach.ts`, `RefSite`,
+ *   `ScopeBoundary`, `SchemaFromSite`), `x-telo-schema-from` slots expanded.
  * - **Value-tree-driven** — compiled and tagged CEL nodes (`!cel`, `!interpolate`, `!sql`) are found by
  *   scanning the resource value tree (`CelSite`). CEL can sit in any string
- *   field, including ones the field map never lists, so its discovery is
- *   fundamentally not path-driven; the field map only supplies the matched
- *   `x-telo-context` schema at the enclosing path.
+ *   field, including ones no slot names, so its discovery is fundamentally not
+ *   slot-driven; the kind's schema only supplies the matched `x-telo-context`
+ *   schema at the enclosing path.
  *
  * Handlers are optional (Babel-style): the walker computes and emits only what
  * the visitor subscribes to, and skips the work behind absent handlers.
@@ -91,22 +83,23 @@ export interface ScopeBoundaryEvent {
 
 export interface RefSiteEvent {
   source: ResourceManifest;
-  /** Field-map path with `[]` / `{}` markers (e.g. `steps[].invoke`). */
+  /** The declared pattern with `[]` / `{}` markers (e.g. `routes[].handler`). */
   fieldPath: string;
   /** Concrete path with `[N]` / map keys, matching `buildPositionIndex` keys. */
   concretePath: string;
   /** The ref value at this concrete site (sentinel, string, or `{kind,name}`). */
   value: unknown;
-  /** The ref constraint (`refs[]`, `isArray`, optional `context`). */
+  /** The ref constraint — every slot at the site, kinds unioned
+   *  (`siteRefEntry`). */
   entry: RefFieldEntry;
-  /** True when `fieldPath` falls within one of this resource's scope prefixes —
+  /** True when the site falls within one of this resource's scope prefixes —
    *  source enclosure, used to scope a ref's candidate set. */
   inScope: boolean;
   /** Scope manifests visible to this ref path (non-empty only when `inScope`). */
   visibleScopeManifests: ResourceManifest[];
-  /** True when the site was found by value-tree scanning rather than the field
-   *  map (only when `discoverNestedRefs` is set) — a ref nested behind a `$ref`
-   *  the field map doesn't descend (e.g. `Run.Sequence` `steps[].invoke`).
+  /** True when the site was found by value-tree scanning rather than the reach
+   *  (only when `discoverNestedRefs` is set) — a ref inside a step body, where
+   *  the reach stops (e.g. `Run.Sequence` `steps[].invoke`).
    *  Nested sites carry no x-telo-ref constraint (`entry.refs` is empty) and no
    *  scope info; `concretePath` still points at the exact location, so consumers
    *  can anchor to it. */
@@ -115,8 +108,13 @@ export interface RefSiteEvent {
 
 export interface SchemaFromSiteEvent {
   source: ResourceManifest;
-  /** Field-map path of the `x-telo-schema-from` slot. */
+  /** The declared pattern of the `x-telo-schema-from` slot. */
   fieldPath: string;
+  /** The concrete site and the value written there. */
+  concretePath: string;
+  value: unknown;
+  /** The object holding the value — where a relative anchor's sibling lives. */
+  holder?: Record<string, unknown> | unknown[];
   entry: SchemaFromFieldEntry;
 }
 
@@ -150,15 +148,16 @@ export interface VisitOptions {
   aliasesByModule?: Map<string, AliasResolver>;
   /** Resource kinds to skip entirely (kind blueprints, import metadata, …). */
   skipKinds?: ReadonlySet<string>;
-  /** When true, ref / scope sites come from the schema-from-expanded field map
-   *  so refs nested behind `x-telo-schema-from` are surfaced. `SchemaFromSite`
-   *  events are always emitted from the base map regardless of this flag. */
+  /** When true, ref sites include the slots an `x-telo-schema-from` anchor's
+   *  schema declares (`notFoundHandler.returns[].content.{}.encoder`) — the
+   *  sites the kernel injects. `SchemaFromSite` events are the kind's own
+   *  schema-from slots either way. */
   expand?: boolean;
   /** When true, additionally discover refs by scanning each resource's value
    *  tree for `!ref` sentinels and `{kind, name}` reference objects — surfacing
-   *  refs the field map never lists because they sit behind a `$ref` it doesn't
-   *  descend (notably `Run.Sequence` step `invoke`s). Emitted as `RefSite`s with
-   *  `nested: true`, deduped against the field-map sites by concrete path.
+   *  refs no reference slot names because they sit in a step body, where the
+   *  reach stops (notably `Run.Sequence` step `invoke`s). Emitted as `RefSite`s
+   *  with `nested: true`, deduped against the reach's sites by concrete path.
    *  Opt-in: the validators / dependency graph must NOT enable it (those refs
    *  are runtime-resolved, not boot dependencies). */
   discoverNestedRefs?: boolean;
@@ -175,8 +174,8 @@ const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], uses: [], isArray: false };
 /** Scans a value tree for ref-shaped values, emitting each with its concrete
  *  path. Recognizes `!ref <name>` sentinels and named `{kind, name}` reference
  *  objects. Other tagged sentinels (`!cel`, `!literal`) and precompiled nodes
- *  are leaves. Path format matches `resolveFieldEntries` / `walkCelExpressions`
- *  (`a.b[0].c`).
+ *  are leaves. Path format matches the reach's concrete sites /
+ *  `walkCelExpressions` (`a.b[0].c`).
  *
  *  Stops at every `{kind, …}` resource boundary: a named ref is emitted, an
  *  inline resource (`{kind}` with no name) is left alone, and **neither is
@@ -261,55 +260,46 @@ export function visitManifest(
 
     visitor.onResourceEnter?.({ source: r, definition });
 
-    // Concrete paths emitted from the field map — so the value-tree scan below
-    // doesn't re-emit a ref the field map already covered.
+    // Concrete paths emitted from the reach — so the value-tree scan below
+    // doesn't re-emit a ref the reach already covered.
     const emittedRefPaths = wantsNested ? new Set<string>() : null;
 
     if (wantsRefs || wantsScope || wantsSchemaFrom) {
-      const baseMap = moduleScope
-        ? registry.getFieldMapForKind(r.kind, moduleScope)
-        : registry.getFieldMap(r.kind);
+      const sites = registry.referenceSites(r, aliases, aliasesByModule);
 
-      // Expanded map drives ref/scope sites when requested; schema-from sites
-      // come from the base map (expansion replaces them with nested refs).
-      const refScopeMap =
-        expand && aliases && aliasesByModule
-          ? registry.expandedFieldMapForResource(r, aliases, aliasesByModule)
-          : baseMap;
-
-      if (refScopeMap && (wantsRefs || wantsScope)) {
+      if (wantsRefs || wantsScope) {
         const manifestsByPointer = new Map<string, ResourceManifest[]>();
         const scopeRefEntries: { path: string; refName: string }[] = [];
         const declarations: { manifest: ResourceManifest; path: string }[] = [];
-        for (const [fieldPath, entry] of refScopeMap) {
-          if (!isScopeEntry(entry)) continue;
+        for (const site of sites) {
+          if (site.scopes.length === 0) continue;
           const raw: ResourceManifest[] = [];
-          for (const fe of resolveFieldEntries(r, fieldPath)) {
-            const items = Array.isArray(fe.value) ? fe.value : [fe.value];
-            items.forEach((v, i) => {
-              if (!v || typeof v !== "object") return;
-              const declarationPath = Array.isArray(fe.value) ? `${fe.path}[${i}]` : fe.path;
-              // A scope entry must be an inline resource definition; a `!ref`
-              // (tagged sentinel or resolved `{kind, name}`) is not — record it
-              // so a static diagnostic flags it instead of registering a
-              // config-less manifest.
-              const rec = v as Record<string, unknown>;
-              if (
-                isRefSentinel(v) ||
-                (typeof rec.kind === "string" && typeof rec.name === "string")
-              ) {
-                scopeRefEntries.push({
-                  path: declarationPath,
-                  refName: isRefSentinel(v) ? v.source : String(rec.name),
-                });
-                return;
-              }
-              raw.push(v as ResourceManifest);
-              declarations.push({ manifest: v as ResourceManifest, path: declarationPath });
-            });
+          const items = Array.isArray(site.data) ? site.data : [site.data];
+          items.forEach((v, i) => {
+            if (!v || typeof v !== "object") return;
+            const declarationPath = Array.isArray(site.data) ? `${site.path}[${i}]` : site.path;
+            // A scope entry must be an inline resource definition; a `!ref`
+            // (tagged sentinel or resolved `{kind, name}`) is not — record it
+            // so a static diagnostic flags it instead of registering a
+            // config-less manifest.
+            const rec = v as Record<string, unknown>;
+            if (
+              isRefSentinel(v) ||
+              (typeof rec.kind === "string" && typeof rec.name === "string")
+            ) {
+              scopeRefEntries.push({
+                path: declarationPath,
+                refName: isRefSentinel(v) ? v.source : String(rec.name),
+              });
+              return;
+            }
+            raw.push(v as ResourceManifest);
+            declarations.push({ manifest: v as ResourceManifest, path: declarationPath });
+          });
+          for (const { scope } of site.scopes) {
+            const pointers = Array.isArray(scope) ? scope : [scope];
+            for (const pointer of pointers) manifestsByPointer.set(pointer, raw);
           }
-          const pointers = Array.isArray(entry.scope) ? entry.scope : [entry.scope];
-          for (const pointer of pointers) manifestsByPointer.set(pointer, raw);
         }
         const scopePrefixes = Array.from(manifestsByPointer.keys()).map(scopePrefixOf);
 
@@ -332,47 +322,56 @@ export function visitManifest(
         }
 
         if (wantsRefs) {
-          for (const [fieldPath, entry] of refScopeMap) {
-            if (!isRefEntry(entry)) continue;
-
-            const inScope = scopePrefixes.some((prefix) => pathUnderPrefix(fieldPath, prefix));
+          for (const reached of sites) {
+            const refs = expand ? reached.refs : reached.refs.filter((ref) => !ref.viaAnchor);
+            if (refs.length === 0 || !reached.data) continue;
+            const site = refs === reached.refs ? reached : { ...reached, refs };
+            const concretePath = site.path;
+            const inScope = scopePrefixes.some((prefix) => pathUnderPrefix(concretePath, prefix));
             const visibleScopeManifests: ResourceManifest[] = [];
             if (inScope) {
               for (const [pointer, manifests] of manifestsByPointer) {
-                if (pathUnderPrefix(fieldPath, scopePrefixOf(pointer))) {
+                if (pathUnderPrefix(concretePath, scopePrefixOf(pointer))) {
                   visibleScopeManifests.push(...manifests);
                 }
               }
             }
-
-            for (const { value, path: concretePath } of resolveFieldEntries(r, fieldPath)) {
-              if (!value) continue;
-              emittedRefPaths?.add(concretePath);
-              visitor.onRef!({
-                source: r,
-                fieldPath,
-                concretePath,
-                value,
-                entry,
-                inScope,
-                visibleScopeManifests,
-              });
-            }
+            emittedRefPaths?.add(concretePath);
+            visitor.onRef!({
+              source: r,
+              fieldPath: site.refs[0]!.fieldPath,
+              concretePath,
+              value: site.data,
+              entry: siteRefEntry(site),
+              inScope,
+              visibleScopeManifests,
+            });
           }
         }
       }
 
-      if (wantsSchemaFrom && baseMap) {
-        for (const [fieldPath, entry] of baseMap) {
-          if (!isSchemaFromEntry(entry)) continue;
-          visitor.onSchemaFrom!({ source: r, fieldPath, entry });
+      // Only a kind's OWN schema-from slots — one an anchor's schema writes is
+      // read by the validation of the value the outer slot holds.
+      if (wantsSchemaFrom) {
+        for (const site of sites) {
+          for (const slot of site.schemaFrom) {
+            if (slot.viaAnchor) continue;
+            visitor.onSchemaFrom!({
+              source: r,
+              fieldPath: slot.fieldPath,
+              concretePath: site.path,
+              value: site.data,
+              holder: site.holder,
+              entry: slot.entry,
+            });
+          }
         }
       }
     }
 
-    // Value-tree-driven nested ref discovery — refs the field map can't reach
-    // because they sit behind a `$ref` it doesn't descend (e.g. Run.Sequence
-    // step `invoke`s). Deduped against the field-map sites by concrete path.
+    // Value-tree-driven nested ref discovery — refs inside a step body, where
+    // the reach stops (e.g. Run.Sequence step `invoke`s). Deduped against the
+    // reach's sites by concrete path.
     // Scanned per top-level field so the resource's own `kind` isn't treated as
     // a resource boundary by `walkRefValues`.
     if (wantsNested) {

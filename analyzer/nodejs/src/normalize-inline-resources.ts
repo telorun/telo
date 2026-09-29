@@ -9,7 +9,8 @@ import {
 } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope } from "./module-alias-scope.js";
-import { isInlineResource, isRefEntry } from "./reference-field-map.js";
+import { isInlineResource } from "./reference-field-map.js";
+import { siteRefEntry, type ReachSite } from "./reference-reach.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import {
   declaredScopes,
@@ -113,7 +114,8 @@ interface Origin {
  * first-class manifest under a deterministic name and replaced in place with
  * `{kind, name}`. Two kinds of slot carry one:
  *
- *  - a REFERENCE slot, found through the kind's field map, named
+ *  - a REFERENCE slot, at a concrete site of the kind's reach
+ *    (`reference-reach.ts`), named
  *    `{parentName}_{pathSegment}[_{itemName|index}]_{fieldName}`
  *    (`TestBasicAddition_steps_AddTwoNumbers_invoke`);
  *  - a STEP's dispatch target, at any nesting depth of a step body, named by
@@ -121,8 +123,8 @@ interface Origin {
  *    under, which is durable identity and so must not move with the extraction.
  *
  * Step slots are found through the kind's step-body annotation and walked with
- * `walkStepArray`, never through the field map: that map is the kernel's Phase-5
- * injection surface, and a step's target resolves at dispatch.
+ * `walkStepArray`: the reach stops at a step body, since a step's target
+ * resolves at dispatch rather than by Phase-5 substitution.
  *
  * Every extracted manifest is queued in turn, so an inline declaration nested in
  * another's slots — a handler inside an inline step target — is extracted too.
@@ -219,14 +221,10 @@ export function normalizeInlineResources(
       current.module !== undefined && moduleOf(resource) === undefined
         ? ({ ...resource, metadata: { ...resource.metadata, module: current.module } } as NamedManifest)
         : resource;
-    // When aliasesByModule is available, use the expanded map so inline refs
-    // hidden behind an x-telo-schema-from indirection (e.g. an encoder inside
-    // an HttpDispatch.Outcomes/$defs/Returns sub-schema) reach extraction.
-    const fieldMap =
-      aliases && aliasesByModule
-        ? registry.expandedFieldMapForResource(view, aliases, aliasesByModule)
-        : registry.getFieldMapForKind(resource.kind, aliases);
-    if (!fieldMap) continue;
+    // The concrete sites, schema-from slots expanded — so an inline encoder
+    // inside an HttpDispatch.Outcomes/$defs/Returns sub-schema reaches
+    // extraction — and recursion unrolled as deep as the data goes.
+    const sites = registry.referenceSites(view, aliases, aliasesByModule, resource);
 
     const parentName = resource.metadata.name;
     const parentModule = moduleOf(view);
@@ -236,7 +234,7 @@ export function normalizeInlineResources(
       moduleGlobals: current.moduleGlobals,
     };
 
-    const scopes = declaredScopes(resource, fieldMap);
+    const scopes = declaredScopes(sites);
     // Queued BEFORE anything is extracted into these arrays: an extraction
     // queues itself, and must not be walked twice. A member is created inside
     // this resource's scope, which is itself created where this resource is.
@@ -258,22 +256,29 @@ export function normalizeInlineResources(
         .filter((scope) => scope.names.length > 0),
     ];
 
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isRefEntry(entry)) continue;
+    const extractedAt: string[] = [];
+    for (const site of sites) {
+      if (site.refs.length === 0) continue;
+      const entry = siteRefEntry(site);
       if (!acceptsInline(resource.kind, entry)) continue;
       if (current.inBody && entry.uses.includes("schema")) continue;
-      const scope = scopes.find((s) => scopeEncloses(s, fieldPath));
-      for (const manifest of extractInlinesAtPath(
+      // A site below one already extracted belongs to that declaration now.
+      if (extractedAt.some((at) => site.path.startsWith(`${at}.`) || site.path.startsWith(`${at}[`))) {
+        continue;
+      }
+      const scope = scopes.find((s) => scopeEncloses(s, site.path));
+      const manifest = extractInlineAt(
         resource,
-        fieldPath,
+        site,
         parentName,
         resource.kind,
         inherit,
-        outsideAt(fieldPath, scope),
+        outsideAt(site.path, scope),
         entry.context,
-      )) {
-        place(manifest, scope?.declarations ?? home, parentModule, current.inBody);
-      }
+      );
+      if (!manifest) continue;
+      extractedAt.push(site.path);
+      place(manifest, scope?.declarations ?? home, parentModule, current.inBody);
     }
 
     if (SYSTEM_KINDS.has(resource.kind)) continue;
@@ -421,120 +426,50 @@ function stepPathSegments(path: string): string[] {
 }
 
 /**
- * Walks `resource` following `fieldPath` (dot notation, `[]` = array traversal).
- * Mutates the resource in-place: replaces each inline value with `{kind, name}`.
- * Returns the extracted manifests.
+ * Extracts the inline declaration a reference site holds, replacing it in place
+ * with `{kind, name}`. The name follows the site: each key, and each array
+ * item's own `name` (its index when it has none).
  */
-function extractInlinesAtPath(
+function extractInlineAt(
   resource: ResourceManifest,
-  fieldPath: string,
+  site: ReachSite,
   parentName: string,
   parentKind: string,
   inherit: Provenance,
   outsideScopes: OutsideScope[],
   invocationContext?: Record<string, any>,
-): ResourceManifest[] {
-  const extracted: ResourceManifest[] = [];
-  const parts = fieldPath.split(".");
-
-  function emit(
-    inline: Record<string, unknown>,
-    nameSegments: string[],
-    concretePath: string,
-  ): string {
-    const name = sanitizeName([parentName, ...nameSegments].join("_"));
-    extracted.push(
-      buildManifest(
-        inline,
-        name,
-        {
-          parentKind,
-          parentName,
-          pathFromParent: concretePath,
-          ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
-        },
-        inherit,
-        invocationContext,
-      ),
-    );
-    return name;
-  }
-
-  function traverse(
-    obj: unknown,
-    partsLeft: string[],
-    nameParts: string[],
-    pathSoFar: string,
-  ): void {
-    if (!obj || typeof obj !== "object" || partsLeft.length === 0) return;
-
-    const [head, ...rest] = partsLeft;
-
-    // Map iteration: descend into every value of the current object (used for
-    // schema fields with `additionalProperties` like `content[mime]`).
-    if (head === "{}") {
-      const container = obj as Record<string, unknown>;
-      for (const mapKey of Object.keys(container)) {
-        const elem = container[mapKey];
-        if (!elem || typeof elem !== "object") continue;
-        const sanitizedKey = sanitizeName(mapKey);
-        const childPath = pathSoFar ? `${pathSoFar}.${mapKey}` : mapKey;
-
-        if (rest.length === 0) {
-          if (isInlineResource(elem as Record<string, unknown>)) {
-            const name = emit(elem as Record<string, unknown>, [...nameParts, sanitizedKey], childPath);
-            container[mapKey] = { kind: (elem as Record<string, unknown>).kind, name };
-          }
-        } else {
-          traverse(elem, rest, [...nameParts, sanitizedKey], childPath);
-        }
-      }
-      return;
-    }
-
-    const isArr = head.endsWith("[]");
-    const key = isArr ? head.slice(0, -2) : head;
-    const container = obj as Record<string, unknown>;
-    const val = container[key];
-    if (val == null) return;
-    const keyPath = pathSoFar ? `${pathSoFar}.${key}` : key;
-
-    if (isArr) {
-      if (!Array.isArray(val)) return;
-      for (let idx = 0; idx < val.length; idx++) {
-        const elem = val[idx];
-        if (!elem || typeof elem !== "object") continue;
-        const elemId =
-          typeof (elem as Record<string, unknown>).name === "string"
-            ? ((elem as Record<string, unknown>).name as string)
-            : String(idx);
-        const childPath = `${keyPath}[${idx}]`;
-
-        if (rest.length === 0) {
-          // Array element itself is the ref slot
-          if (isInlineResource(elem as Record<string, unknown>)) {
-            const name = emit(elem as Record<string, unknown>, [...nameParts, key, elemId], childPath);
-            val[idx] = { kind: (elem as Record<string, unknown>).kind, name };
-          }
-        } else {
-          traverse(elem, rest, [...nameParts, key, elemId], childPath);
-        }
-      }
+): ResourceManifest | undefined {
+  const inline = site.data;
+  if (!inline || typeof inline !== "object" || Array.isArray(inline) || !site.holder) return undefined;
+  if (!isInlineResource(inline as Record<string, unknown>)) return undefined;
+  const nameParts: string[] = [];
+  let value: unknown = resource;
+  for (const key of site.keys) {
+    value = (value as Record<string | number, unknown>)[key];
+    if (typeof key === "number") {
+      const itemName = (value as Record<string, unknown> | undefined)?.name;
+      nameParts.push(typeof itemName === "string" ? itemName : String(key));
     } else {
-      if (rest.length === 0) {
-        // val is the ref slot
-        if (val && typeof val === "object" && !Array.isArray(val) && isInlineResource(val as Record<string, unknown>)) {
-          const name = emit(val as Record<string, unknown>, [...nameParts, key], keyPath);
-          container[key] = { kind: (val as Record<string, unknown>).kind, name };
-        }
-      } else {
-        traverse(val, rest, [...nameParts, key], keyPath);
-      }
+      nameParts.push(key);
     }
   }
-
-  traverse(resource, parts, [], "");
-  return extracted;
+  const name = sanitizeName([parentName, ...nameParts].join("_"));
+  (site.holder as Record<string | number, unknown>)[site.key!] = {
+    kind: (inline as Record<string, unknown>).kind,
+    name,
+  };
+  return buildManifest(
+    inline as Record<string, unknown>,
+    name,
+    {
+      parentKind,
+      parentName,
+      pathFromParent: site.path,
+      ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
+    },
+    inherit,
+    invocationContext,
+  );
 }
 
 function buildManifest(

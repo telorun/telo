@@ -17,7 +17,7 @@ import { inheritedCapability, type ContractDirection, type DefResolver } from ".
 import { resolveContract } from "./invocation-contract.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { isRefEntry, isScopeEntry } from "./reference-field-map.js";
+import type { ReachSite } from "./reference-reach.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
@@ -184,60 +184,34 @@ export class AnalysisRegistry {
   }
 
   /**
-   * Iterates a resource's reference and scope fields as declared by its definition.
-   * Calls onRef for each plain reference field and onScope for each scope field.
-   *
-   * Uses the expanded field map so x-telo-schema-from entries contribute their
-   * nested ref/scope slots — Phase 5 injection sees encoders that live inside a
-   * sub-schema (e.g. Server.notFoundHandler.returns[].content[mime].encoder).
+   * Every concrete reference, step, scope and schema-from site of a resource
+   * (`reference-reach.ts`), `x-telo-schema-from` slots expanded against their
+   * anchor definitions — the sites Phase-5 injection substitutes and scope
+   * creation stands a handle up at, read by the analyzer through the same
+   * enumeration.
    */
-  iterateFieldEntries(
-    resource: ResourceManifest,
-    onRef: (fieldPath: string) => void,
-    onScope: (fieldPath: string) => void,
-  ): void {
-    const fieldMap = this.defs.expandedFieldMapForResource(
-      resource,
-      this.aliases,
-      this.aliasesByModule,
-    );
-    if (!fieldMap) return;
-    for (const [fieldPath, entry] of fieldMap) {
-      if (isScopeEntry(entry)) {
-        onScope(fieldPath);
-        continue;
-      }
-      if (isRefEntry(entry)) {
-        onRef(fieldPath);
-      }
-    }
+  referenceSitesOf(resource: ResourceManifest, data: unknown = resource): ReachSite[] {
+    return this.defs.referenceSites(resource, this.aliases, this.aliasesByModule, data);
   }
 
   /**
    * Returns every reference field a resource's definition declares, with arity
-   * and the capability each slot targets — derived purely from the schema field
-   * map, so it lists slots even when the manifest leaves them empty. Editor
-   * hosts render these as node ports (drag-to-wire for node-capability targets,
-   * inline picker for ambient targets).
+   * and the capability each slot targets — derived purely from the declared
+   * patterns of the kind's reach, so it lists slots even when the manifest
+   * leaves them empty. A pattern several branches declare lists once with its
+   * kinds unioned; a recursive slot lists at its outermost occurrence. Editor
+   * hosts render these as node ports (drag-to-wire for node-capability
+   * targets, inline picker for ambient targets).
    */
   refFieldsForResource(resource: ResourceManifest): RefFieldInfo[] {
-    const fieldMap = this.defs.expandedFieldMapForResource(
-      resource,
-      this.aliases,
-      this.aliasesByModule,
-    );
-    if (!fieldMap) return [];
-    const out: RefFieldInfo[] = [];
-    for (const [path, entry] of fieldMap) {
-      if (!isRefEntry(entry)) continue;
-      out.push({
-        path,
-        isArray: entry.isArray,
-        refs: entry.refs,
-        capabilities: this.capabilitiesForRefs(entry.refs),
-      });
-    }
-    return out;
+    const declared = this.defs.declaredReachOf(resource, this.aliases, this.aliasesByModule);
+    if (!declared) return [];
+    return declared.references.map(({ path, isArray, kinds }) => ({
+      path,
+      isArray,
+      refs: kinds,
+      capabilities: this.capabilitiesForRefs(kinds),
+    }));
   }
 
   /** Base capability an `x-telo-ref` constraint targets. A definition's declared
@@ -456,6 +430,14 @@ export class AnalysisRegistry {
     );
     return {
       refFields: (resource) => this.refFieldsForResource(resource),
+      refPositions: (resource) =>
+        this.defs.referencePositions(resource, this.aliases, this.aliasesByModule),
+      refSites: (resource) =>
+        this.referenceSitesOf(resource).flatMap((site) =>
+          site.refs.length > 0
+            ? [{ path: site.path, fieldPath: site.refs[0]!.fieldPath, value: site.data }]
+            : [],
+        ),
       definition: (kind, module) => this.resolveDefinitionIn(kind, module),
       aliasesForModule: (module) => this.aliases.aliasesFor(module),
       throwsOf: (resource) => {
@@ -499,7 +481,7 @@ export class AnalysisRegistry {
    *  against its own module name. The global alias table knows neither, so
    *  {@link resolveDefinition} silently returns undefined for them and callers
    *  fall back to an un-inherited view. Mirrors the module-scope selection in
-   *  `expandedFieldMapForResource`. */
+   *  `DefinitionRegistry.reachOf`. */
   resolverForDefinition(def: {
     metadata?: { module?: string };
   }): (kind: string) => ResourceDefinition | undefined {

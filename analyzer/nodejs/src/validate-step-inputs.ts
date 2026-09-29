@@ -16,7 +16,7 @@ import {
   type CallSite,
   type DerivedSlotContext,
 } from "./derived-slots.js";
-import type { ReferenceFieldMap } from "./reference-field-map.js";
+import type { ReachSite } from "./reference-reach.js";
 
 export interface StepInputIssue {
   path: string;
@@ -135,14 +135,14 @@ export function collectStepInputIssues(
  */
 export function collectRefInputIssues(
   manifest: Record<string, any>,
-  fieldMap: ReferenceFieldMap | undefined,
+  sites: readonly ReachSite[],
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
 ): StepInputIssue[] {
   const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
-  return slotCallSites(manifest, fieldMap, ctx).flatMap((site) =>
+  return slotCallSites(manifest, sites, ctx).flatMap((site) =>
     checkCallSite(site, manifest, allManifests, defs, aliases, scopes),
   );
 }

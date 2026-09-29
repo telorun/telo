@@ -11,7 +11,6 @@ import {
 } from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { isRefEntry } from "./reference-field-map.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import {
   type ContractDirection,
@@ -53,8 +52,8 @@ export function analyzerContractScope(
 
 /** How a projection hop reads the flattened set: which module an alias names,
  *  through the table of the module that wrote it; a declaration's reference
- *  slots, from the field map Phase-5 injection injects; and each imported
- *  library's own declarations. */
+ *  sites, the ones Phase-5 injection substitutes; and each imported library's
+ *  own declarations. */
 export function projectionModules(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
@@ -71,8 +70,11 @@ export function projectionModules(
     },
     referenceSlots(declaration, module) {
       const view = { ...declaration, metadata: { ...declaration.metadata, module } };
-      const map = defs.expandedFieldMapForResource(view as ResourceManifest, aliases, byModule);
-      return map && [...map].filter(([, entry]) => isRefEntry(entry)).map(([path]) => path);
+      if (!defs.declaredReachOf(view as ResourceManifest, aliases, byModule)) return undefined;
+      return defs
+        .referenceSites(view as ResourceManifest, aliases, byModule, declaration)
+        .filter((site) => site.refs.length > 0)
+        .map((site) => site.path);
     },
   };
 }

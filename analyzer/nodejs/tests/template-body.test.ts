@@ -260,6 +260,43 @@ describe("template body: reference slots inside entries", () => {
     ]);
   });
 
+  it("refuses a computed expression at depth 2 of a recursive shape, at its concrete path", () => {
+    const treeKind = {
+      kind: "Telo.Definition",
+      metadata: { name: "Tree", module: "sql" },
+      capability: "Telo.Mount",
+      schema: {
+        type: "object",
+        properties: { children: { type: "array", items: { $ref: "#/$defs/Node" } } },
+        $defs: {
+          Node: {
+            type: "object",
+            properties: {
+              handler: { "x-telo-ref": { kind: "sql.Query", use: "call" } },
+              children: { type: "array", items: { $ref: "#/$defs/Node" } },
+            },
+          },
+        },
+      },
+    } as unknown as ResourceManifest;
+    const diags = analyze(
+      queryKind,
+      treeKind,
+      template({
+        resources: [
+          {
+            kind: "sql.Tree",
+            metadata: { name: "tree" },
+            children: [{ children: [cel("{'handler': self.handler}")] }],
+          },
+        ],
+      }),
+    );
+    expect(codes(diags, "TEMPLATE_REF_COMPUTED").map((d) => d.data?.path)).toEqual([
+      "resources[0].children[0].children[0]",
+    ]);
+  });
+
   it("accepts a bare `self.<path>` forwarding a whole value that holds references", () => {
     const routerKind = {
       kind: "Telo.Definition",

@@ -10,12 +10,12 @@
  *
  * Four decisions carry the design:
  *
- * - **The FIELD MAP decides what is a reference, never the value's shape.** A
+ * - **The kind's REACH decides what is a reference, never the value's shape.** A
  *   `{kind, name}` object is what a resolved `!ref` looks like, but it is also
  *   author data that happens to carry two common keys — and sniffing for it would
  *   either resolve such data to an unrelated manifest or abort the binding as
- *   unresolved. The referrer kind's ref-slot paths are the authority, and the
- *   caller already holds them.
+ *   unresolved. The referrer's concrete reference sites are the authority, and
+ *   the caller already holds them.
  * - **Entries bind AS WRITTEN, with the references inside them resolved one
  *   level.** A collection's items are not always references — a server's
  *   `mounts:` holds `{mount, prefix}` — so a peer is the declaration where the
@@ -63,7 +63,8 @@
  */
 import type { ResourceManifest } from "@telorun/sdk";
 import { MODULE_PATH_ENGINE } from "@telorun/templating";
-import { isRefEntry } from "./reference-field-map.js";
+import type { KindResolver } from "./module-alias-scope.js";
+import type { DeclaredReach, ReachSite } from "./reference-reach.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import {
   dynamicNode,
@@ -85,12 +86,15 @@ export interface PeerBinderRegistry {
   effectiveSchema(kind: string): Record<string, any> | undefined;
   resolve(kind: string): { kind?: string } | undefined;
   getByExtends(kind: string): { metadata: { module?: string; name?: unknown } }[];
-  getFieldMap(kind: string): Iterable<[string, any]> | undefined;
-  getFieldMapForKind(kind: string, aliases: PeerAliasScope): Iterable<[string, any]> | undefined;
+  declaredReachOf(
+    resource: { kind: string; metadata?: { module?: unknown } },
+    aliases?: KindResolver,
+  ): DeclaredReach | undefined;
+  referenceSites(resource: ResourceManifest, aliases?: KindResolver): ReachSite[];
 }
 
 /** The alias scope a reference is resolved in: `moduleForAlias` for the
- *  declaration lookup, `resolveKind` for the field map it is handed to. */
+ *  declaration lookup, `resolveKind` for the kind whose reach is read. */
 export interface PeerAliasScope {
   moduleForAlias(alias: string): string | undefined;
   resolveKind(kind: string): string | undefined;
@@ -152,11 +156,16 @@ export type DeclarationLookup = (ref: ReferenceValue) => ResourceManifest | unde
  *  only it holds the definition registry and the manifest set. */
 export interface PeerBinderEnv {
   readonly declarationOf: DeclarationLookup;
-  /** The ref-slot field paths a referrer kind declares (`tables[]`,
-   *  `mounts[].mount`, `tables.{}`) — the authority on which paths hold
-   *  references. `undefined` when the kind is not resolvable, which binds
-   *  nothing rather than guessing. */
+  /** The reference patterns a referrer kind declares (`tables[]`,
+   *  `mounts[].mount`, `tables.{}`) — what says whether a collection's entries
+   *  hold references at all, whatever one manifest happens to write.
+   *  `undefined` when the kind is not resolvable, which binds nothing rather
+   *  than guessing. */
   readonly refSlotsOf: (kind: string) => readonly string[] | undefined;
+  /** The concrete reference sites of one manifest of that kind (`tables[2]`,
+   *  `mounts[1].mount`), each with the pattern declaring it — the authority on
+   *  which values ARE references. `undefined` when the kind is not resolvable. */
+  readonly refSitesOf: (manifest: ResourceManifest, kind: string) => ReadonlyMap<string, string> | undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -164,7 +173,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 /** The reference a value holds, in either shape, or `undefined`. Read only at a
- *  path the field map declares to be a reference slot. */
+ *  reference site. */
 export function referenceValueOf(value: unknown): ReferenceValue | undefined {
   if (!isObject(value)) return undefined;
   if (value.__tagged === true && value.engine === "ref" && typeof value.source === "string") {
@@ -181,24 +190,6 @@ export function referenceValueOf(value: unknown): ReferenceValue | undefined {
     };
   }
   return undefined;
-}
-
-/** True when a concrete path is an instance of a field-map shape — `tables[2]`
- *  of `tables[]`, `mounts[1].mount` of `mounts[].mount`, `tables.orders` of
- *  `tables.{}`. A map key containing a dot is not distinguishable here, the same
- *  ambiguity the concrete path itself carries. */
-export function shapeMatches(concrete: string, shape: string): boolean {
-  const c = concrete.split(".");
-  const s = shape.split(".");
-  if (c.length !== s.length) return false;
-  return s.every((segment, i) => {
-    if (segment === "{}") return true;
-    if (segment.endsWith("[]")) {
-      const base = segment.slice(0, -2);
-      return c[i].startsWith(`${base}[`) && /^\[\d+\]$/.test(c[i].slice(base.length));
-    }
-    return segment === c[i];
-  });
 }
 
 /** The concrete path of the ENTRY a slot path sits in, truncated at the first
@@ -238,7 +229,7 @@ export function navigatePath(value: unknown, path: string): unknown {
 
 /**
  * The entry shape a collection's items take — `tables[]` for an array,
- * `tables.{}` for a map — as the field map spells it.
+ * `tables.{}` for a map — as the kind's declared patterns spell it.
  *
  * Chosen by the collection's RUNTIME type rather than by whichever shape the map
  * lists first: the two spell an entry's concrete path differently (`tables[2]`
@@ -254,26 +245,6 @@ function entryShapeOf(
   return shapes.some((shape) => shape === wanted || shape.startsWith(`${wanted}.`))
     ? wanted
     : undefined;
-}
-
-/** Which paths inside one entry hold a reference: the item itself, or the named
- *  properties one level in. */
-function entryRefsOf(
-  shapes: readonly string[],
-  entryShape: string,
-): { itemIsRef: boolean; properties: Set<string> } {
-  const properties = new Set<string>();
-  let itemIsRef = false;
-  for (const shape of shapes) {
-    if (shape === entryShape) {
-      itemIsRef = true;
-      continue;
-    }
-    if (!shape.startsWith(`${entryShape}.`)) continue;
-    const rest = shape.slice(entryShape.length + 1);
-    if (!rest.includes(".")) properties.add(rest);
-  }
-  return { itemIsRef, properties };
 }
 
 /**
@@ -315,14 +286,15 @@ type EntryResult =
   | { readonly ok: false; readonly failure: PeerBindingFailure };
 
 /** One entry with the references INSIDE it resolved — the declaration itself for
- *  a bare `!ref`, or the entry with each declared reference property replaced. */
+ *  a bare `!ref`, or the entry with each reference site one level in replaced.
+ *  `isSite` says which concrete paths are reference sites. */
 function resolveEntry(
   value: unknown,
   at: string,
-  refs: { itemIsRef: boolean; properties: Set<string> },
+  isSite: (path: string) => boolean,
   lookup: DeclarationLookup,
 ): EntryResult {
-  if (refs.itemIsRef) {
+  if (isSite(at)) {
     const reference = referenceValueOf(value);
     // An inline declaration (`{kind, …config}` with no name) is not a reference;
     // it binds as written, exactly as any other non-reference entry does.
@@ -344,7 +316,7 @@ function resolveEntry(
 
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (!refs.properties.has(key)) {
+    if (!isSite(`${at}.${key}`)) {
       // The author's OWN entry data beside the reference (`prefix` next to
       // `mount`) — small, and read directly by a rule, so it is scanned whole.
       const dynamic = findDynamicLeaf(child, `${at}.${key}`);
@@ -412,9 +384,12 @@ export class PeerBinder {
   ): PeerBindingResult {
     const collectionPath = pointerToPath(pointer);
     const shapes = this.env.refSlotsOf(referrerKind);
-    if (!shapes) return { ok: false, failure: { reason: "unknown-shape", at: collectionPath } };
+    const sites = this.env.refSitesOf(referrer, referrerKind);
+    if (!shapes || !sites) {
+      return { ok: false, failure: { reason: "unknown-shape", at: collectionPath } };
+    }
 
-    const resolved = this.collection(referrer, pointer, collectionPath, shapes);
+    const resolved = this.collection(referrer, pointer, collectionPath, shapes, sites);
     if (!resolved.ok) return resolved;
 
     const mine = resolved.entryShape
@@ -427,15 +402,20 @@ export class PeerBinder {
 
     // The edge runs through a DIFFERENT collection than the one `peers:` names
     // (a rule over a schema's `enums:` while my own entry sits in `tables:`), so
-    // the entry is found through the shape this slot path matches.
-    const shape = shapes.find((candidate) => shapeMatches(slotPath, candidate));
-    if (!shape) return { ok: false, failure: { reason: "unknown-shape", at: slotPath } };
+    // the entry is found through the pattern declaring the site this slot path is.
+    const shape = sites.get(slotPath);
+    if (!shape) {
+      // Nothing written at the slot is an absent entry, not an unknown one.
+      if (navigatePath(referrer, slotPath) === undefined) {
+        return { ok: true, binding: { peers, entry: undefined } };
+      }
+      return { ok: false, failure: { reason: "unknown-shape", at: slotPath } };
+    }
     const boundary = entryBoundary(slotPath, shape);
-    const entryShape = entryBoundary(shape, shape);
     const entry = resolveEntry(
       navigatePath(referrer, boundary),
       boundary,
-      entryRefsOf(shapes, entryShape),
+      (path) => sites.has(path),
       this.env.declarationOf,
     );
     if (!entry.ok) return entry;
@@ -455,13 +435,14 @@ export class PeerBinder {
   ): { readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly failure: PeerBindingFailure } {
     const path = pointerToPath(pointer);
     const shapes = this.env.refSlotsOf(kind);
-    if (!shapes) return { ok: false, failure: { reason: "unknown-shape", at: path } };
+    const sites = this.env.refSitesOf(manifest, kind);
+    if (!shapes || !sites) return { ok: false, failure: { reason: "unknown-shape", at: path } };
     const raw = resolvePointer(manifest, pointer);
     if (raw === undefined || raw === null) return { ok: true, value: raw };
-    if (shapes.includes(path)) {
-      return resolveEntry(raw, path, { itemIsRef: true, properties: new Set() }, this.env.declarationOf);
+    if (sites.has(path)) {
+      return resolveEntry(raw, path, (at) => at === path, this.env.declarationOf);
     }
-    const resolved = this.collection(manifest, pointer, path, shapes);
+    const resolved = this.collection(manifest, pointer, path, shapes, sites);
     if (!resolved.ok) return resolved;
     if (Array.isArray(raw)) return { ok: true, value: resolved.values };
     return { ok: true, value: Object.fromEntries(resolved.keys.map((k, i) => [k, resolved.values[i]])) };
@@ -484,6 +465,7 @@ export class PeerBinder {
     pointer: string,
     collectionPath: string,
     shapes: readonly string[],
+    sites: ReadonlyMap<string, string>,
   ): ResolvedCollection {
     let byPointer = this.collections.get(referrer);
     if (!byPointer) {
@@ -493,7 +475,7 @@ export class PeerBinder {
     const cached = byPointer.get(pointer);
     if (cached) return cached;
 
-    const resolved = this.resolveCollection(referrer, pointer, collectionPath, shapes);
+    const resolved = this.resolveCollection(referrer, pointer, collectionPath, shapes, sites);
     byPointer.set(pointer, resolved);
     return resolved;
   }
@@ -503,6 +485,7 @@ export class PeerBinder {
     pointer: string,
     collectionPath: string,
     shapes: readonly string[],
+    sites: ReadonlyMap<string, string>,
   ): ResolvedCollection {
     const raw = resolvePointer(referrer, pointer);
     // An ABSENT collection is an EMPTY one, not an unbindable one — the line
@@ -518,14 +501,13 @@ export class PeerBinder {
     if (!entryShape) {
       return { ok: false, failure: { reason: "unknown-shape", at: collectionPath } };
     }
-    const refs = entryRefsOf(shapes, entryShape);
     const keys = Array.isArray(raw) ? raw.map((_, i) => String(i)) : Object.keys(raw);
     const items = Array.isArray(raw) ? raw : Object.values(raw);
 
     const values: unknown[] = [];
     for (let i = 0; i < items.length; i++) {
       const at = Array.isArray(raw) ? `${collectionPath}[${keys[i]}]` : `${collectionPath}.${keys[i]}`;
-      const resolved = resolveEntry(items[i], at, refs, this.env.declarationOf);
+      const resolved = resolveEntry(items[i], at, (path) => sites.has(path), this.env.declarationOf);
       if (!resolved.ok) return resolved;
       values.push(resolved.value);
     }
@@ -583,7 +565,7 @@ export function bindingFailureReason(failure: PeerBindingFailure): string {
 /**
  * What a peer rule's `peers:` pointer names in the kind its `referrer:` filters
  * to — the strict half's question, answered where the binding vocabulary lives
- * so the checker and the binder read one field map.
+ * so the checker and the binder read one reach.
  *
  * - `unknown` — the referrer kind is not resolvable here; say nothing.
  * - `absent` — the kind declares no such collection.
@@ -637,17 +619,23 @@ export function analyzerPeerBinder(
   };
 
   /**
-   * Which paths of a referrer kind hold references — the field map, which is the
+   * Which paths of a referrer hold references — the kind's reach, which is the
    * authority. A binder that sniffed for `{kind, name}` instead would resolve
    * author data carrying those two keys to an unrelated manifest.
    */
-  const refSlotsOf = (kind: string): string[] | undefined => {
-    const map = registry.getFieldMapForKind(kind, aliases);
-    if (!map) return undefined;
-    return [...map].filter(([, entry]) => isRefEntry(entry)).map(([path]) => path);
+  const refSlotsOf = (kind: string): string[] | undefined =>
+    registry.declaredReachOf({ kind }, aliases)?.references.map((reference) => reference.path);
+  const refSitesOf = (manifest: ResourceManifest, kind: string): Map<string, string> | undefined => {
+    const view = manifest.kind === kind ? manifest : ({ ...manifest, kind } as ResourceManifest);
+    if (!registry.declaredReachOf(view, aliases)) return undefined;
+    const sites = new Map<string, string>();
+    for (const site of registry.referenceSites(view, aliases)) {
+      if (site.refs.length > 0) sites.set(site.path, site.refs[0]!.fieldPath);
+    }
+    return sites;
   };
 
-  return new PeerBinder({ declarationOf, refSlotsOf });
+  return new PeerBinder({ declarationOf, refSlotsOf, refSitesOf });
 }
 
 /**
@@ -684,10 +672,9 @@ export function analyzerPeersTarget(
       const node = schemaAtPointer(schema, pointer);
       if (node === undefined || !isIterableSchema(node)) continue;
       sawCollection = true;
-      const map = registry.getFieldMap(kind);
-      if (!map) continue;
-      for (const [fieldPath, entry] of map) {
-        if (!isRefEntry(entry)) continue;
+      const declared = registry.declaredReachOf({ kind });
+      if (!declared) continue;
+      for (const { path: fieldPath } of declared.references) {
         if (
           fieldPath === `${path}[]` ||
           fieldPath.startsWith(`${path}[].`) ||

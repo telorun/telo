@@ -8,7 +8,8 @@ import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
-import { isRefEntry, resolveFieldEntries, satisfiesValueBranch } from "./reference-field-map.js";
+import { satisfiesValueBranch } from "./reference-field-map.js";
+import { siteRefEntry } from "./reference-reach.js";
 import { templateBodies } from "./template-body.js";
 import { isSelfForward } from "./template-self-forward.js";
 import {
@@ -241,7 +242,7 @@ export function validateTemplateBody(
         typeof entryName === "string" && extracted.has(entryName)
           ? `the inline ${kind}`
           : `the ${kind} entry '${entryName ?? body.prefix}'`;
-      // A step's dispatch target is resolved at dispatch, outside the field map,
+      // A step's dispatch target is resolved at dispatch, outside the reach,
       // so its `!ref` is checked here: a typo would otherwise first fail on the
       // call that reaches it.
       if (body.definition) {
@@ -290,76 +291,76 @@ export function validateTemplateBody(
           }
         }
       }
-      const fieldMap = registry.expandedFieldMapForResource(
-        { ...body.manifest, metadata: { ...(body.manifest.metadata ?? {}), module: meta?.module } },
-        aliases,
-        aliasesByModule,
-      );
-      if (!fieldMap) continue;
-      const computed = new Set<string>();
-      for (const [fieldPath, entry] of fieldMap) {
-        if (!isRefEntry(entry)) continue;
-        for (const site of computedReferenceSites(body.manifest, fieldPath)) {
-          if (computed.has(site.path)) continue;
-          computed.add(site.path);
-          report(
-            "TEMPLATE_REF_COMPUTED",
-            `${body.prefix}.${site.path}`,
-            `'${site.path}: !cel "${site.source}"' on ${label} computes a value that ` +
-              `holds the reference slot '${fieldPath}'. CEL values are data, so the reference ` +
-              `cannot survive the expression. Forward it verbatim with a bare 'self.<path>' ` +
-              `(the whole value, shaped as the slot expects), or write the slot itself as '!ref'.`,
-          );
+      const view = {
+        ...body.manifest,
+        metadata: { ...(body.manifest.metadata ?? {}), module: meta?.module },
+      } as ResourceManifest;
+      // An expression at or ABOVE a slot leaves no value at the slot, so it is
+      // found among the positions leading to one — at every depth of the data.
+      for (const position of registry.referencePositions(view, aliases, aliasesByModule, body.manifest)) {
+        const value = position.value;
+        if (!isTaggedSentinel(value) || value.engine !== CEL_ENGINE || isSelfForward(value.source)) {
+          continue;
         }
-        for (const site of resolveFieldEntries(body.manifest, fieldPath)) {
-          const value = site.value;
-          if (value == null) continue;
-          const path = `${body.prefix}.${site.path}`;
-          if (isTaggedSentinel(value)) {
-            const target = refSentinelTarget(value);
-            if (!target) continue;
-            const { alias, name: refName } = target;
-            if (alias && alias !== "Self") continue;
-            if (reachable.has(refName)) continue;
-            const suggestion = nearestName(
-              refName,
-              [...reachable].filter((name) => !extracted.has(name)),
-            );
-            report(
-              "TEMPLATE_REF_UNKNOWN",
-              path,
-              `'${site.path}: !ref ${value.source}' on ${label} names no sibling ` +
-                `'resources:' entry and no resource of this module. ` +
-                `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
-                (suggestion ? ` Did you mean '${suggestion}'?` : ""),
-              suggestion ? { replacement: suggestion } : undefined,
-            );
-            continue;
-          }
-          const hasValueBranch = (entry.valueBranches?.length ?? 0) > 0;
-          if (hasValueBranch && typeof value !== "object") continue;
-          if (satisfiesValueBranch(value, entry.valueBranches, registry)) continue;
-          if (typeof value === "string") {
+        report(
+          "TEMPLATE_REF_COMPUTED",
+          `${body.prefix}.${position.path}`,
+          `'${position.path}: !cel "${value.source}"' on ${label} computes a value that ` +
+            `holds the reference slot '${position.fieldPath}'. CEL values are data, so the reference ` +
+            `cannot survive the expression. Forward it verbatim with a bare 'self.<path>' ` +
+            `(the whole value, shaped as the slot expects), or write the slot itself as '!ref'.`,
+        );
+      }
+      for (const site of registry.referenceSites(view, aliases, aliasesByModule, body.manifest)) {
+        if (site.refs.length === 0) continue;
+        const entry = siteRefEntry(site);
+        const value = site.data;
+        if (value == null) continue;
+        const path = `${body.prefix}.${site.path}`;
+        if (isTaggedSentinel(value)) {
+          const target = refSentinelTarget(value);
+          if (!target) continue;
+          const { alias, name: refName } = target;
+          if (alias && alias !== "Self") continue;
+          if (reachable.has(refName)) continue;
+          const suggestion = nearestName(
+            refName,
+            [...reachable].filter((name) => !extracted.has(name)),
+          );
+          report(
+            "TEMPLATE_REF_UNKNOWN",
+            path,
+            `'${site.path}: !ref ${value.source}' on ${label} names no sibling ` +
+              `'resources:' entry and no resource of this module. ` +
+              `Siblings: ${written.filter((s) => s !== body.manifest.metadata?.name).join(", ") || "(none)"}.` +
+              (suggestion ? ` Did you mean '${suggestion}'?` : ""),
+            suggestion ? { replacement: suggestion } : undefined,
+          );
+          continue;
+        }
+        const hasValueBranch = (entry.valueBranches?.length ?? 0) > 0;
+        if (hasValueBranch && typeof value !== "object") continue;
+        if (satisfiesValueBranch(value, entry.valueBranches, registry)) continue;
+        if (typeof value === "string") {
+          report(
+            "INVALID_REFERENCE_FORM",
+            path,
+            `string reference at '${site.path}' on the ${kind} entry → '${value}' is not ` +
+              `supported; write it as '!ref ${value}'`,
+            isRefSourceSpelling(value) ? { replacement: value, tag: "ref" } : undefined,
+          );
+          continue;
+        }
+        if (value && typeof value === "object" && !Array.isArray(value)) {
+          const obj = value as Record<string, unknown>;
+          if (typeof obj.name === "string" && extracted.has(obj.name)) continue;
+          if (typeof obj.kind === "string" && obj.name !== undefined) {
             report(
               "INVALID_REFERENCE_FORM",
               path,
-              `string reference at '${site.path}' on the ${kind} entry → '${value}' is not ` +
-                `supported; write it as '!ref ${value}'`,
-              isRefSourceSpelling(value) ? { replacement: value, tag: "ref" } : undefined,
+              `object reference '{ kind, name }' at '${site.path}' on the ${kind} entry is ` +
+                `not supported; write it as '!ref ${describeRefName(obj.name)}'`,
             );
-            continue;
-          }
-          if (value && typeof value === "object" && !Array.isArray(value)) {
-            const obj = value as Record<string, unknown>;
-            if (typeof obj.name === "string" && extracted.has(obj.name)) continue;
-            if (typeof obj.kind === "string" && obj.name !== undefined) {
-              report(
-                "INVALID_REFERENCE_FORM",
-                path,
-                `object reference '{ kind, name }' at '${site.path}' on the ${kind} entry is ` +
-                  `not supported; write it as '!ref ${describeRefName(obj.name)}'`,
-              );
-            }
           }
         }
       }
@@ -387,43 +388,6 @@ function entrySchemaFor(
   };
   entrySchemas.set(author, schema);
   return schema;
-}
-
-/**
- * The `!cel` nodes along a reference field path — the slot itself or any
- * container above it — that are not a bare `self.<path>` forward. The walk stops
- * at the first expression on each branch, since nothing below it is written.
- */
-function computedReferenceSites(
-  manifest: unknown,
-  fieldPath: string,
-): { path: string; source: string }[] {
-  const out: { path: string; source: string }[] = [];
-  const visit = (value: unknown, parts: string[], path: string): void => {
-    if (isTaggedSentinel(value)) {
-      if (value.engine === CEL_ENGINE && !isSelfForward(value.source)) {
-        out.push({ path, source: value.source });
-      }
-      return;
-    }
-    if (parts.length === 0 || !value || typeof value !== "object") return;
-    const [part, ...rest] = parts as [string, ...string[]];
-    const join = (key: string) => (path ? `${path}.${key}` : key);
-    if (part === "{}") {
-      for (const [k, v] of Object.entries(value as Record<string, unknown>)) visit(v, rest, join(k));
-      return;
-    }
-    const isArray = part.endsWith("[]");
-    const key = isArray ? part.slice(0, -2) : part;
-    const child = (value as Record<string, unknown>)[key];
-    if (isArray && Array.isArray(child)) {
-      child.forEach((item, i) => visit(item, rest, `${join(key)}[${i}]`));
-      return;
-    }
-    visit(child, rest, join(key));
-  };
-  visit(manifest, fieldPath.split("."), "");
-  return out;
 }
 
 function describeDynamic(name: unknown): string {

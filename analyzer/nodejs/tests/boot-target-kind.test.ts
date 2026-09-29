@@ -142,3 +142,18 @@ describe("a boot target's kind", () => {
     expect(messages).toEqual([]);
   });
 });
+
+describe("a boot target naming nothing", () => {
+  it("is UNRESOLVED_REFERENCE at the target's own path", () => {
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App" },
+      targets: [makeTaggedSentinel("ref", "nosuch")],
+    } as unknown as ResourceManifest;
+    const unresolved = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([app]))
+      .filter((d) => d.code === "UNRESOLVED_REFERENCE")
+      .map((d) => (d.data as { path?: string }).path);
+    expect(unresolved).toEqual(["targets[0]"]);
+  });
+});

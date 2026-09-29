@@ -1,0 +1,101 @@
+# A reference slot, or an execution scope, reached through a local `$ref`, a
+# root `anyOf` branch, a root `additionalProperties` or a recursive `$defs`
+# shape: a `!ref` there arrives at the controller as the live instance, an
+# inline declaration there is extracted and runs, and a scope there is stood
+# up — at depth 1 and depth 3 of the recursive shape alike.
+kind: Telo.Application
+metadata:
+  name: RefSlotReachApp
+  version: 1.0.0
+imports:
+  Reach: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: five
+value: 5
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: viaDefs
+    invoke: { kind: Reach.ViaDefs, target: !ref five }
+  - name: viaDefsInline
+    invoke: { kind: Reach.ViaDefs, target: { kind: Run.Value, value: 6 } }
+  - name: viaRootAnyOf
+    invoke: { kind: Reach.ViaRootAnyOf, target: !ref five }
+  - name: viaRootAnyOfInline
+    invoke: { kind: Reach.ViaRootAnyOf, target: { kind: Run.Value, value: 7 } }
+  - name: viaRootMap
+    invoke:
+      kind: Reach.ViaRootMap
+      named: !ref five
+      inline: { kind: Run.Value, value: 8 }
+  - name: refShallowInlineDeep
+    invoke:
+      kind: Reach.ViaRecursion
+      node:
+        target: !ref five
+        next:
+          next:
+            target: { kind: Run.Value, value: 9 }
+  - name: inlineShallowRefDeep
+    invoke:
+      kind: Reach.ViaRecursion
+      node:
+        target: { kind: Run.Value, value: 10 }
+        next:
+          next:
+            target: !ref five
+  - name: scopeViaAnyOf
+    invoke:
+      kind: Reach.ScopeViaAnyOf
+      pick: eleven
+      with:
+        - kind: Run.Value
+          metadata: { name: eleven }
+          value: 11
+  - name: scopeViaDefs
+    invoke:
+      kind: Reach.ScopeViaDefs
+      pick: twelve
+      with:
+        - kind: Run.Value
+          metadata: { name: twelve }
+          value: 12
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {
+          'viaDefs': steps.viaDefs.result,
+          'viaDefsInline': steps.viaDefsInline.result,
+          'viaRootAnyOf': steps.viaRootAnyOf.result,
+          'viaRootAnyOfInline': steps.viaRootAnyOfInline.result,
+          'viaRootMap': steps.viaRootMap.result,
+          'refShallowInlineDeep': steps.refShallowInlineDeep.result,
+          'inlineShallowRefDeep': steps.inlineShallowRefDeep.result,
+          'scopeViaAnyOf': steps.scopeViaAnyOf.result,
+          'scopeViaDefs': steps.scopeViaDefs.result
+        }
+      expected:
+        viaDefs: { injected: true, result: 5 }
+        viaDefsInline: { injected: true, result: 6 }
+        viaRootAnyOf: { injected: true, result: 5 }
+        viaRootAnyOfInline: { injected: true, result: 7 }
+        viaRootMap:
+          inline: { injected: true, result: 8 }
+          named: { injected: true, result: 5 }
+        refShallowInlineDeep:
+          - { depth: 1, injected: true, result: 5 }
+          - { depth: 3, injected: true, result: 9 }
+        inlineShallowRefDeep:
+          - { depth: 1, injected: true, result: 10 }
+          - { depth: 3, injected: true, result: 5 }
+        scopeViaAnyOf: { handle: true, result: 11 }
+        scopeViaDefs: { handle: true, result: 12 }

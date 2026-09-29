@@ -28,9 +28,9 @@
  * multigraph down to unique pairs itself, since that is the only consumer for
  * which the distinction genuinely does not matter.
  *
- * **Four discovery mechanics, one graph.** Field-map sites (Phase-5 injection
- * sites — `edge.injected`), schema-driven step slots behind the local `$ref`s
- * the field map deliberately does not descend, a value-tree scan for `!ref`
+ * **Four discovery mechanics, one graph.** Reference sites (Phase-5 injection
+ * sites — `edge.injected`), schema-driven step slots in the step bodies the
+ * reach deliberately stops at, a value-tree scan for `!ref`
  * anywhere else — so a ref in a structure no annotation anticipated is still an
  * edge (with no declared `use`, read conservatively) — and the module calls a
  * resource's expressions make (`edge.moduleCall`). Inline declarations
@@ -59,12 +59,8 @@ import {
   type RefUseCases,
 } from "./ref-slot.js";
 import { isStepSlot } from "./step-slot.js";
-import {
-  isInlineResource,
-  isRefEntry,
-  resolveFieldEntries,
-  type RefFieldEntry,
-} from "./reference-field-map.js";
+import { isInlineResource, type RefFieldEntry } from "./reference-field-map.js";
+import { siteRefEntry } from "./reference-reach.js";
 import { DEPENDENCY_GRAPH_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { moduleCallSites } from "./cel-access-chains.js";
@@ -140,8 +136,8 @@ export interface StepGraphNode {
    * holding a declaration written at the site.
    *
    * Recorded here because this is the one place a step's item schema and its
-   * value are both in hand: a step array's items sit behind a local `$ref`, so
-   * the reference field map deliberately never reaches them, and a consumer
+   * value are both in hand: a step array's items are a step body, where the
+   * reference reach deliberately stops, and a consumer
    * asking "what may this step dispatch to, and where is that written" has
    * nowhere else to look. An EMPTY slot is listed for exactly that reason — it
    * is a site an editor can offer to fill, and an edge says nothing about one.
@@ -568,10 +564,9 @@ function expressionSource(value: unknown): string | undefined {
 /**
  * Emit the edges a single step's own ref slots declare.
  *
- * Read from the step ITEM SCHEMA rather than from the reference field map: a
- * step array's items sit behind a local `$ref`, and the field map deliberately
- * does not descend one (descending it there would turn every step's `invoke`
- * into a Phase-5 injection site). The schema is already in hand here, so the
+ * Read from the step ITEM SCHEMA rather than from the reference reach: a step
+ * array's items are a step body, where the reach deliberately stops (reaching
+ * it would turn every step's `invoke` into a Phase-5 injection site). The schema is already in hand here, so the
  * graph sees these slots at no cost to the kernel's injection surface.
  */
 function emitStepEdges(node: StepGraphNode, ctx: StepWalkContext): void {
@@ -773,7 +768,7 @@ export function buildCallGraph(
    * declared `use` never reaches its edge, and the site degrades to an untyped
    * value-tree edge), and a case map's selector would find no schema `default`
    * (so a slot resolved by an omitted field reads as unresolved). Same scope
-   * selection as `expandedFieldMapForResource`.
+   * selection as the registry's reach.
    */
   const definitionFor = (manifest: ResourceManifest): ResourceDefinition | undefined => {
     const direct = registry.resolve(manifest.kind as string);
@@ -844,14 +839,6 @@ export function buildCallGraph(
   let scopedNames = new Set<string>();
   let scopeLocal = new Map<string, ResourceGraphNode>();
 
-  const fieldMapFor = (manifest: ResourceManifest) => {
-    if (options.aliases && options.aliasesByModule) {
-      return registry.expandedFieldMapForResource(manifest, options.aliases, options.aliasesByModule);
-    }
-    if (options.aliases) return registry.getFieldMapForKind(manifest.kind, options.aliases);
-    return registry.getFieldMap(manifest.kind);
-  };
-
   visitManifest(
     resources,
     registry,
@@ -907,40 +894,41 @@ export function buildCallGraph(
         }
 
         for (const scopedNode of scopeLocal.values()) {
-          // The scoped resource's own ref slots, from its kind's field map.
-          const fieldMap = fieldMapFor(scopedNode.manifest);
-          if (fieldMap) {
-            const definition = definitionFor(scopedNode.manifest);
-            const rootSchema = definition?.schema as Record<string, any> | undefined;
-            for (const [fieldPath, entry] of fieldMap) {
-              if (!isRefEntry(entry)) continue;
-              for (const { value, path } of resolveFieldEntries(scopedNode.manifest, fieldPath)) {
-                const targetName = refTargetName(value);
-                if (targetName === undefined) continue;
-                const schemaDefault = rootSchema
-                  ? schemaDefaultOf(enclosingSchemaOf(rootSchema, fieldPath))
-                  : NO_DEFAULT;
-                const { use, unresolved, unresolvedReason } = resolveUseAtSite(
-                  entry,
-                  scopedNode.manifest,
-                  path,
-                  schemaDefault,
-                );
-                const edge: CallGraphEdge = {
-                  from: scopedNode.id,
-                  toName: targetName,
-                  slot: fieldPath,
-                  path,
-                  use,
-                };
-                const target = resolveScoped(targetName);
-                if (target) edge.to = target.id;
-                if (unresolved) edge.unresolved = unresolved;
-                if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
-                if (entry.inputs !== undefined) edge.inputs = entry.inputs;
-                edges.push(edge);
-              }
-            }
+          // The scoped resource's own ref slots, at its concrete sites.
+          const definition = definitionFor(scopedNode.manifest);
+          const rootSchema = definition?.schema as Record<string, any> | undefined;
+          for (const site of registry.referenceSites(
+            scopedNode.manifest,
+            options.aliases,
+            options.aliasesByModule,
+          )) {
+            if (site.refs.length === 0) continue;
+            const targetName = refTargetName(site.data);
+            if (targetName === undefined) continue;
+            const fieldPath = site.refs[0]!.fieldPath;
+            const entry = siteRefEntry(site);
+            const schemaDefault = rootSchema
+              ? schemaDefaultOf(enclosingSchemaOf(rootSchema, fieldPath))
+              : NO_DEFAULT;
+            const { use, unresolved, unresolvedReason } = resolveUseAtSite(
+              entry,
+              scopedNode.manifest,
+              site.path,
+              schemaDefault,
+            );
+            const edge: CallGraphEdge = {
+              from: scopedNode.id,
+              toName: targetName,
+              slot: fieldPath,
+              path: site.path,
+              use,
+            };
+            const target = resolveScoped(targetName);
+            if (target) edge.to = target.id;
+            if (unresolved) edge.unresolved = unresolved;
+            if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
+            if (entry.inputs !== undefined) edge.inputs = entry.inputs;
+            edges.push(edge);
           }
           // Its step arrays too, resolved scope-local first.
           collectStepsFor(scopedNode, resolveScoped);
@@ -953,9 +941,9 @@ export function buildCallGraph(
         if (!nodes.has(sourceId)) return;
 
         // A site inside a step was already emitted by the step walk, which
-        // reads the step item schema directly. When the FIELD MAP also reaches
-        // it — `Telo.Application`'s inline `targets[].invoke`, unlike
-        // `Run.Sequence`'s `$ref`-hidden `steps[].invoke` — the site is a
+        // reads the step item schema directly. When the REACH also reaches it
+        // — `Telo.Application`'s inline `targets[].invoke`, unlike a
+        // `Run.Sequence` step body's `steps[].invoke` — the site is a
         // Phase-5 injection site, and the existing step edge is stamped so the
         // init-order projection keeps it.
         if (ownerStepOf(stepsByOwner.get(sourceId) ?? [], event.concretePath)) {

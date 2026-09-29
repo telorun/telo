@@ -83,7 +83,7 @@ export function definitionInScope<D>(
  *  `ModuleScopes` already types its map this way so a caller can hand over a
  *  lighter table, and requiring the full `AliasResolver` here would have made
  *  the one site that does (a template body) reach for a cast. */
-interface KindResolver {
+export interface KindResolver {
   resolveKind(kind: string): string | undefined;
 }
 

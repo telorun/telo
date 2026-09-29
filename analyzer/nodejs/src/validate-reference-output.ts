@@ -25,12 +25,7 @@ import {
   resolveContract,
   type ContractScope,
 } from "./invocation-contract.js";
-import {
-  isRefEntry,
-  refSlotOfEntry,
-  resolveFieldEntries,
-  type ReferenceFieldMap,
-} from "./reference-field-map.js";
+import type { ReachSite } from "./reference-reach.js";
 import type { RefSlot } from "./ref-slot.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
@@ -101,25 +96,25 @@ function targetLabel(target: Record<string, any>): string {
 
 export function collectReferenceOutputIssues(
   manifest: Record<string, any>,
-  fieldMap: ReferenceFieldMap | undefined,
+  sites: readonly ReachSite[],
   allManifests: Record<string, any>[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
 ): ReferenceOutputIssue[] {
   const out: ReferenceOutputIssue[] = [];
-  if (!fieldMap) return out;
   const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
-  for (const [fieldPath, entry] of fieldMap) {
-    if (!isRefEntry(entry) || !entry.outputType) continue;
-    const slot = refSlotOfEntry(entry);
-    for (const { value: ref, path } of resolveFieldEntries(manifest, fieldPath)) {
-      if (!ref || typeof ref !== "object" || Array.isArray(ref)) continue;
-      const reference = ref as Record<string, any>;
-      if (typeof reference.kind !== "string") continue;
+  for (const site of sites) {
+    const ref = site.data;
+    if (!ref || typeof ref !== "object" || Array.isArray(ref)) continue;
+    const reference = ref as Record<string, any>;
+    if (typeof reference.kind !== "string") continue;
+    const reported = new Set<string>();
+    for (const { slot } of site.refs) {
+      if (!slot.outputType) continue;
       const target = typeof reference.name === "string" ? ctx.resolveTarget(reference) : reference;
       if (!target) continue;
       const definition = contractScope.resolveIn(reference.kind, readingModule);
@@ -129,13 +124,13 @@ export function collectReferenceOutputIssues(
         defs,
       );
       if (issues.length === 0) continue;
-      out.push({
-        path,
-        message:
-          `${targetLabel(target)} does not return what this slot reads from it. The slot requires ` +
-          `an output of ${JSON.stringify(slot.outputType)}; its declared output contract disagrees: ` +
-          `${issues.join("; ")}.`,
-      });
+      const message =
+        `${targetLabel(target)} does not return what this slot reads from it. The slot requires ` +
+        `an output of ${JSON.stringify(slot.outputType)}; its declared output contract disagrees: ` +
+        `${issues.join("; ")}.`;
+      if (reported.has(message)) continue;
+      reported.add(message);
+      out.push({ path: site.path, message });
     }
   }
   return out;

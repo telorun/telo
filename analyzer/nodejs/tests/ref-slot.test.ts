@@ -8,7 +8,11 @@ import {
   rewriteRefSlotKinds,
   transfersControl,
 } from "../src/ref-slot.js";
-import { buildReferenceFieldMap } from "../src/reference-field-map.js";
+import { declaredReach } from "../src/reference-reach.js";
+
+/** The entry the declared reach records at each pattern. */
+const declaredEntries = (schema: Record<string, any>) =>
+  new Map(declaredReach(schema).references.map((r) => [r.path, r.entries[0]]));
 
 describe("readRefSlot — accepted shapes", () => {
   it("reads the bare string form with no declared use", () => {
@@ -141,9 +145,9 @@ describe("refSlotAnnotation", () => {
   });
 });
 
-describe("buildReferenceFieldMap carries the slot's use", () => {
+describe("the declared reach carries the slot's use", () => {
   it("records uses and the inputs pointer on the entry", () => {
-    const map = buildReferenceFieldMap({
+    const map = declaredEntries({
       properties: {
         store: { "x-telo-ref": { kind: "kv-store.Store", use: "dependency" } },
         invoke: {
@@ -185,8 +189,8 @@ describe("value-or-reference union slots", () => {
     expect(slot.valueBranches).toEqual([]);
   });
 
-  it("carries the branches onto the field map entry", () => {
-    const map = buildReferenceFieldMap({ properties: { columns: { additionalProperties: { properties: { type: columnType } } } } });
+  it("carries the branches onto the declared entry", () => {
+    const map = declaredEntries({ properties: { columns: { additionalProperties: { properties: { type: columnType } } } } });
     expect(map.get("columns.{}.type")).toMatchObject({
       refs: ["Self.Enum"],
       valueBranches: [{ type: "string", title: "Storage class", enum: ["text", "uuid", "bigint"] }],

@@ -140,6 +140,7 @@ targets:
   - !ref templateInputsShapeNestedRuns
   - !ref templateRefComputed
   - !ref templateRefComputedAtRuntime
+  - !ref templateRefComputedChainedAtRuntime
   - !ref templateForwardInvalid
   - !ref templateForwardInvalidAtRuntime
   - !ref throwsCeiling
@@ -193,6 +194,16 @@ targets:
   - !ref projectionNamedContract
   - !ref projectionNamedContractAtRuntime
   - !ref projectionDeclaredOnlyAtCreation
+  - !ref refSlotReachRuns
+  - !ref refSlotReachUnresolved
+  - !ref refSlotReachUnresolvedDefsAtRuntime
+  - !ref refSlotReachUnresolvedRootAnyOfAtRuntime
+  - !ref refSlotReachUnresolvedRootMapAtRuntime
+  - !ref refSlotReachUnresolvedRecursionAtRuntime
+  - !ref scopeSlotMisplaced
+  - !ref scopeSlotMisplacedNestedObjectAtRuntime
+  - !ref scopeSlotMisplacedArrayItemAtRuntime
+  - !ref scopeSlotMisplacedRootMapAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -1173,6 +1184,8 @@ expect:
   errors:
     - code: TEMPLATE_REF_COMPUTED
       message: "holds the reference slot 'routes[].handler'"
+    - code: TEMPLATE_REF_COMPUTED
+      message: "'node.next: !cel \"{'target': self.target}\"' on the Reach.ViaRecursion entry 'chain'"
 ---
 # …and failed by the kernel's CEL evaluation when an instance initializes, from a
 # consumer whose entry-scoped check is silent.
@@ -1182,6 +1195,15 @@ metadata:
 source: ./__fixtures__/check-run-agreement/template-ref-computed/telo.yaml
 expect:
   runFails: "Unsupported type"
+---
+# The depth-2 case: the expression sits at `node.next` of a recursive shape.
+kind: Assert.Manifest
+metadata:
+  name: templateRefComputedChainedAtRuntime
+source: ./__fixtures__/check-run-agreement/template-ref-computed/chained.yaml
+expect:
+  errors: []
+  runFails: "Expression !cel \"{'target': self.target}\" failed: Unsupported type"
 ---
 # A value a template body forwards with a bare `self.<path>` is a field of the
 # ENTRY's kind at boot, so it is checked as one: a forwarded route whose status
@@ -1941,3 +1963,104 @@ source: ./__fixtures__/check-run-agreement/projection-derivation/declared-only.y
 expect:
   errors: []
   runFails: "Run.Sequence ownContract: InvokeError: declared `inputType` could not be projected"
+---
+# A reference slot behind a local `$ref`, in a root `anyOf` branch, under a root
+# `additionalProperties` and at depth 1 and 3 of a recursive shape is a Phase-5
+# injection site: a `!ref` arrives as the live instance, an inline declaration
+# is extracted and runs. A scope in a root `anyOf` branch or behind a `$ref` is
+# stood up and runs its `with:` resources.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachRuns
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/telo.yaml
+expect:
+  runs: true
+---
+# `!ref nosuch` at each of those slots is reported at its concrete path, as at a
+# plain `properties` slot; a consumer invoking each resource fails at run.
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolved
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/lib/telo.yaml
+expect:
+  errors:
+    - code: UNRESOLVED_REFERENCE
+      message: "Reach.ViaDefs/viaDefs: reference at 'target' → resource 'nosuch' not found"
+    - code: UNRESOLVED_REFERENCE
+      message: "Reach.ViaRootAnyOf/viaRootAnyOf: reference at 'target' → resource 'nosuch' not found"
+    - code: UNRESOLVED_REFERENCE
+      message: "Reach.ViaRootMap/viaRootMap: reference at 'missing' → resource 'nosuch' not found"
+    - code: UNRESOLVED_REFERENCE
+      message: "Reach.ViaRecursion/viaRecursion: reference at 'node.next.target' → resource 'nosuch' not found"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolvedDefsAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-defs.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolvedRootAnyOfAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-root-any-of.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolvedRootMapAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-root-map.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+kind: Assert.Manifest
+metadata:
+  name: refSlotReachUnresolvedRecursionAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/unresolved/via-recursion.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+# `x-telo-scope` off a named top-level property — nested under an object, on an
+# array item, under a root `additionalProperties` — has no one field to stand a
+# scope up from. Refused at the annotation, and by the kernel at registration.
+kind: Assert.Manifest
+metadata:
+  name: scopeSlotMisplaced
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/lib/telo.yaml
+expect:
+  errors:
+    - code: SCOPE_SLOT_MISPLACED
+      message: "'NestedObject' declares `x-telo-scope` at 'schema.properties.outer.properties.with.x-telo-scope'"
+    - code: SCOPE_SLOT_MISPLACED
+      message: "'ArrayItem' declares `x-telo-scope` at 'schema.properties.groups.items.x-telo-scope'"
+    - code: SCOPE_SLOT_MISPLACED
+      message: "'RootMap' declares `x-telo-scope` at 'schema.additionalProperties.x-telo-scope'"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeSlotMisplacedNestedObjectAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
+expect:
+  errors: []
+  runFails: "Telo.Definition 'NestedObject' declares `x-telo-scope` at 'schema.properties.outer.properties.with.x-telo-scope'"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeSlotMisplacedArrayItemAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
+expect:
+  errors: []
+  runFails: "Telo.Definition 'ArrayItem' declares `x-telo-scope` at 'schema.properties.groups.items.x-telo-scope'"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeSlotMisplacedRootMapAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-reach/scope-misplaced/telo.yaml
+expect:
+  errors: []
+  runFails: "Telo.Definition 'RootMap' declares `x-telo-scope` at 'schema.additionalProperties.x-telo-scope'"

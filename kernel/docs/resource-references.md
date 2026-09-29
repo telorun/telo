@@ -103,7 +103,9 @@ A ref naming an alias the declaring file never imported does not resolve, and th
 
 **Legacy identity form.** Module versions published before the alias form wrote their constraints as `"<namespace>/<module>#<Kind>"` (`std/http-server#Server`, `telo#Invocable`), resolved through an identity table fed by `metadata.namespace`. Those still resolve, so an already-published dependency keeps working; using the form in a new manifest raises `X_TELO_REF_LEGACY_IDENTITY`. `metadata.namespace` exists for nothing else and is not written by current manifests.
 
-AJV ignores unknown keywords in `strict: false` mode (already the project default), so schemas containing `x-telo-ref` are passed to AJV as-is — no materialization or resolver plugin is needed. The field map builder detects reference slots by checking for the presence of `x-telo-ref` in a schema node.
+AJV ignores unknown keywords in `strict: false` mode (already the project default), so schemas containing `x-telo-ref` are passed to AJV as-is — no materialization or resolver plugin is needed. The reference reach (§9, Phase 1) detects reference slots by checking for the presence of `x-telo-ref` in a schema node.
+
+**Where a slot may be written.** A reference slot is found wherever the kind's schema puts it: directly in the root's `properties`, behind a local `$ref` (`target: { $ref: "#/$defs/Target" }`), inside a root `anyOf` / `oneOf` / `allOf` branch, under a root `additionalProperties` (every key but the declared ones and the resource envelope `kind` / `metadata`), and at every depth of a recursive `$defs` shape — as deep as the resource's data goes. Every site is a Phase-5 injection site, an inline-extraction site and a reference-validation site alike. A non-local `$ref` is never followed, and a step body is not a slot: a step's `invoke:` resolves at dispatch.
 
 ---
 
@@ -360,6 +362,8 @@ The canonical use case is `Telo.Runnable`: start an HTTP server inside the scope
 
 A definition author marks a field as an execution scope using the `x-telo-scope` custom schema keyword. Its value is a JSON Pointer (RFC 6901) declaring where in the parent resource's config the scope is visible — all x-telo-ref resolutions within that path have access to the scoped resources. A scope visible in multiple paths uses an array.
 
+**A scope is declared on a named top-level property only** — a property in the schema root's `properties` or in a root `anyOf` / `oneOf` / `allOf` branch's, written directly or through a local `$ref`. The kernel stands the scope up from that one field of the resource. Anywhere else — nested under an object, on an array item, under `additionalProperties`, inside a recursive shape, below an `x-telo-schema-from` — `telo check` reports `SCOPE_SLOT_MISPLACED` at the annotation, and the kernel refuses the definition when it registers it with `ERR_SCOPE_SLOT_MISPLACED`, so a dependency's kind is refused too.
+
 **JSON Pointer visibility is a prefix match.** A ref slot is considered "within the scope" if its field path, expressed as a JSON Pointer, starts with the declared pointer. For example, `x-telo-scope: /steps` covers `/steps/0/invoke`, `/steps/1/handler`, and any deeper path under `/steps`. Both the analyzer (deciding which refs check the scope when resolving names) and Phase 5 (deciding which ref slots to skip at boot) use this same prefix rule. The field value is an array of resource manifests, including `Telo.Import` entries:
 
 ```yaml
@@ -467,20 +471,20 @@ The analyzer owns all logic that both the kernel and IDE need:
 
 | Export                                          | Used by                                        |
 | ----------------------------------------------- | ---------------------------------------------- |
-| `buildReferenceFieldMap(schema)`                | Kernel (Phase 1), IDE (Section 10 field index) |
+| `reachSites(schema, data, schemaFrom?)` / `declaredReach(schema, schemaFrom?)` | Kernel (Phase 5, scope creation, the inherited-controller path), every analyzer pass, IDE (Section 10 port list) |
 | `normalizeInlineResources(manifests, registry)` | Kernel (Phase 2)                               |
 | `validateReferences(resources, context)`        | Kernel (Phase 3), IDE (diagnostics)            |
 | `buildDependencyGraph(resources, registry)`     | Kernel (Phase 4), `telo check` and the editor (`DEPENDENCY_CYCLE`) |
 
-`buildReferenceFieldMap` detects both `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots), recording them separately in the field map. The scope entry captures the JSON Pointer visibility path alongside the field path, so both the kernel (Phase 5) and the IDE know which fields carry scopes and where those scopes are visible.
+Both read ONE traversal of a kind's schema (the reach, §9 Phase 1), which records `x-telo-ref` nodes (reference slots) and `x-telo-scope` nodes (scope slots) separately; a scope entry carries its JSON Pointer visibility path. `reachSites` enumerates one resource's CONCRETE sites — what the kernel substitutes and what every analyzer pass reads; `declaredReach` lists the kind's PATTERNS — what the editor draws as ports, filled or not. No consumer resolves a pattern against a value itself.
 
 `validateReferences` takes an `AnalysisContext` as its second parameter — the same type already used by `StaticAnalyzer.analyze()`, carrying both `AliasResolver` and `DefinitionRegistry`.
 
-`buildDependencyGraph` takes a `DefinitionRegistry` and fetches each resource's field map from it by kind — the caller does not pre-compute or pass field maps separately.
+`buildDependencyGraph` takes a `DefinitionRegistry` and reads each resource's concrete sites from it — the caller does not pre-compute or pass them separately.
 
 `DefinitionRegistry` is extended in two ways:
 
-1. `register(definition)` runs `buildReferenceFieldMap` and caches the field map alongside the definition — callers never re-traverse.
+1. `referenceSites(resource, aliases?, aliasesByModule?)` returns a resource's concrete sites, its kind resolved in the alias scope of the module that declared it and its static `x-telo-schema-from` slots expanded; `declaredReachOf` returns the patterns. The reach is memoized per kind and owner scope, the site list per resource object.
 2. `getByExtends(abstractKind): ResourceDefinition[]` — returns all definitions that transitively extend the given abstract kind, following the `extends` chain to any depth (equivalent to `instanceof` in OOP). A definition `D` is included if `D.extends === abstractKind`, or if `D.extends` is itself a kind that extends `abstractKind` through any number of hops. The lookup walks the registered inheritance graph at query time. Used by Phase 3 abstract kind validation and the editor dropdown.
 
 ### `@telorun/sdk` — `KindRef<T>`, `Ref()`, `ScopeRef`, and `Scope()`
@@ -567,10 +571,10 @@ The TypeBox schema object can be used directly as the `schema` field in a `Telo.
 
 ### `kernel/nodejs` (kernel-only)
 
-Phase 5 (injection) is kernel-only because it works with live `ResourceInstance` objects that do not exist in the analyzer's domain. The kernel uses the field map from `DefinitionRegistry` to locate both reference fields and scope fields in the resource config, then:
+Phase 5 (injection) is kernel-only because it works with live `ResourceInstance` objects that do not exist in the analyzer's domain. The kernel reads the resource's concrete sites from the analysis registry — the same enumeration `telo check` reads — and at each one:
 
-- Replaces each `{kind, name}` reference value with the resolved live instance.
-- Replaces each scope field's manifest array with a `ScopeHandle` that the controller calls to open the scope at runtime.
+- Substitutes a `{kind, name}` reference value with the resolved live instance, in place.
+- Replaces a scope field's manifest array with a `ScopeHandle` that the controller calls to open the scope at runtime.
 
 Both replacements happen before `init()` is called.
 
@@ -586,14 +590,16 @@ Reference injection is implemented across five sequential phases that span `load
 
 `Telo.Import` resources are resolved during `loadFromConfig`, not lazily during the init loop. Each import's child manifests — including their definitions — are loaded and registered before `start()` is called. `Telo.Import` entries declared inside `x-telo-scope` fields are also resolved eagerly, so all definitions from all scopes are registered and known before Phase 3 validation runs. The scoped resources themselves are not initialized at load time — only their definitions are registered.
 
-### Phase 1 — Field map construction
+### Phase 1 — The reference reach
 
-When a `Telo.Definition` is registered during `loadFromConfig`, `buildReferenceFieldMap` traverses its schema once. It records two kinds of entries:
+A kind's schema is traversed once (memoized per schema object) into its **reach**. The traversal follows a local `$ref` against the document it sits in, walks the root's `properties`, its `anyOf` / `oneOf` / `allOf` branches and its `additionalProperties`, records a reference back to a node already on the descent as a back-edge rather than unrolling it, never follows a non-local `$ref`, and stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body. It records:
 
-- A node containing `x-telo-ref` is a **reference slot**. All `x-telo-ref` values from `anyOf` branches are collected into `refs`.
-- A node containing `x-telo-scope` is a **scope slot**. The JSON Pointer visibility path is recorded alongside the field path.
+- A node containing `x-telo-ref` is a **reference slot**. Every slot any branch declares at one pattern is kept, kinds unioned (a `kind:` list and `anyOf` branches alike).
+- A node containing `x-telo-scope` is a **scope slot**, legal only on a named top-level property (§7). The JSON Pointer visibility path is recorded alongside the field path.
 
-The field map is cached on the `DefinitionRegistry` entry:
+Two views read it. The **declared patterns** (below; a recursive slot is listed at its outermost occurrence). The **concrete sites** of one resource, schema and data in tandem: a `[]` segment iterates an array, a `{}` segment every key its schema does not declare (at the root, never `kind` / `metadata`), a back-edge is followed as deep as the data goes — a datum aliasing one of its own ancestors ends the walk rather than looping — and a static `x-telo-schema-from` slot is expanded by walking the anchor definition's WHOLE schema, entered at the anchor node, in the anchor definition's module alias scope. Each site is visited once with the union of every slot that reaches it.
+
+The declared patterns of a few kinds:
 
 ```text
 fieldPath       → { refs,                                                              isArray }
@@ -606,16 +612,16 @@ handler         → { refs: [Http.Middleware, Js.Script],     false   }
 with            → { scope: "/steps" }
 ```
 
-The `[]` suffix means the field is an array — the kernel iterates each element at injection time.
+The `[]` suffix means the field is an array — a concrete site names one element (`mounts[1].mount`).
 
 ### Phase 2 — Inline resource normalization
 
-After all manifests are loaded and all field maps are built, the kernel normalizes inline resources using a work queue. The queue is initialized with all top-level resources and all resources declared inside `x-telo-scope` fields. Resources are processed in order; newly extracted resources are appended to the queue and processed in the same pass. The queue is drained to empty — nested inline resources (an inline resource whose own slots contain further inline values) are handled automatically because each extracted resource is enqueued immediately.
+After all manifests are loaded and all definitions registered, the kernel normalizes inline resources using a work queue. The queue is initialized with all top-level resources and all resources declared inside `x-telo-scope` fields. Resources are processed in order; newly extracted resources are appended to the queue and processed in the same pass. The queue is drained to empty — nested inline resources (an inline resource whose own slots contain further inline values) are handled automatically because each extracted resource is enqueued immediately.
 
 Two kinds of slot hold an inline declaration (a value with a `kind` and no `name`), and each is extracted as a new manifest that inherits `metadata.module` from its parent and replaces the inline value with `{kind, name}`:
 
-- **A reference slot** of the kind's field map. The name is built from the parent resource name and field path (underscores as separators; array items use the item's `name` field or index).
-- **A step's dispatch target**, found through the kind's step-body slot at any nesting depth (`walkStepArray`), never through the field map — the field map is the Phase-5 injection surface, and a step target resolves at dispatch. The name is `inlineStepTargetName` (`@telorun/sdk`): the owner kind — the kind whose controller runs the body — the owner's name, the step's path and the step's name, which is the name the step engine has always registered it under and so its durable identity. It is stamped `xTeloOrigin.stepTarget`, and carries no declaration pointer.
+- **A reference site** of the resource's reach. The name is built from the parent resource name and the site's path (underscores as separators; array items use the item's `name` field or index).
+- **A step's dispatch target**, found through the kind's step-body slot at any nesting depth (`walkStepArray`), never through the reach — the reach stops at a step body, since a step target resolves at dispatch rather than by Phase-5 substitution. The name is `inlineStepTargetName` (`@telorun/sdk`): the owner kind — the kind whose controller runs the body — the owner's name, the step's path and the step's name, which is the name the step engine has always registered it under and so its durable identity. It is stamped `xTeloOrigin.stepTarget`, and carries no declaration pointer.
 
 Where an extraction is created: a reference slot lying in a region of a scope its owner declares (a sequence's `targets:`) resolves against that scope, so the extraction joins the scope's declaration array and is created per scope run. Everything else — step targets included — is created where its owner is: the global set, or the scope array holding a scope member; never in a scope the owner itself declares, which would make every step target of a sequence with a `with:` block a scoped resource and move its identity. A declaration written inside a scope's region but created outside it records the scope as `xTeloOrigin.outsideScopes`, and a reference from it to a name the scope declares — by `!ref` or as `resources.<name>` in CEL — is reported as `SCOPED_NAME_OUT_OF_REACH`.
 
@@ -625,9 +631,9 @@ After Phase 2 completes, all reference slot values are `{kind, name}` pairs. Inl
 
 ### Phase 3 — Reference validation
 
-After normalization and before any resource is initialized, the kernel validates every reference value against the field maps using `validateReferences`. Each `x-telo-ref` value is parsed directly.
+After normalization and before any resource is initialized, the kernel validates every reference value at its concrete site using `validateReferences`. Each `x-telo-ref` value is parsed directly.
 
-For each reference field, the value must satisfy at least one `ref` entry in the field map (`anyOf` semantics). Per entry, validation dispatches on whether the target is a `Telo.Abstract` or `Telo.Definition`:
+For each reference site, the value must satisfy at least one kind the slots reaching it accept (`anyOf` semantics). Per entry, validation dispatches on whether the target is a `Telo.Abstract` or `Telo.Definition`:
 
 1. **Structural validation** — the reference object has both `kind` and `name` fields of type string.
 2. **Kind validation** — dispatched per ref value:
@@ -667,10 +673,10 @@ Circular dependency detected:
 
 Resources are initialized in topological order. Before a resource's `init()` is called, the kernel:
 
-1. Walks the resource config using the definition's field map.
-2. For each reference slot whose field path does **not** fall within any scope visibility path (prefix match against all `x-telo-scope` entries in the same field map): resolves `{kind, name}` to the live `ResourceInstance` (already initialized, guaranteed by topological order) and replaces the value.
-3. Reference slots whose field path **does** fall within a scope visibility path are skipped — they remain as `{kind, name}` pairs. The controller resolves them at runtime via `ScopeContext.getInstance(name)` after opening the scope.
-4. For each scope slot, replaces the manifest array with a `ScopeHandle` the controller calls to open the scope at runtime.
+1. Reads the resource's concrete sites — the reach's enumeration, not a dotted path the kernel walks itself — so a slot behind a local `$ref`, in a root union branch, under a root `additionalProperties` or at any depth of a recursive shape is reached exactly as a plain `properties` slot is.
+2. At each reference site holding `{kind, name}`: resolves it to the live `ResourceInstance` (already initialized, guaranteed by topological order) and substitutes it in place. A cross-module reference whose import has not published yet, or a local one registered but not initialized, defers the resource to a later pass of the init loop.
+3. A reference naming a scope-local resource names nothing at boot, so it remains a `{kind, name}` pair; the controller resolves it at runtime via `ScopeContext.getInstance(name)` after opening the scope.
+4. At each scope site (a named top-level property, §7), replaces the manifest array with a `ScopeHandle` the controller calls to open the scope at runtime.
 
 The controller receives a config object where singleton reference fields are live instances, scope-path reference fields are untouched `{kind, name}` pairs, and scope fields are `ScopeHandle` objects. Scoped resources are never initialized at this point — they initialize on demand when the controller calls `ScopeHandle.run()`.
 
@@ -678,7 +684,7 @@ The controller receives a config object where singleton reference fields are liv
 
 ## 10. Visual Editor Integration
 
-The visual editor builds a field index once when a definition schema is loaded, reusing the same field map produced in Phase 1:
+The visual editor lists a kind's reference slots from the declared patterns of the same reach (Phase 1) — a pattern several branches declare once, with its kinds unioned:
 
 ```text
 field path              → { refs }
@@ -713,7 +719,7 @@ This is an O(1) registry lookup. No schema traversal happens at interaction time
 
 ### `contexts` / `InvocationContext`
 
-`ResourceDefinition.contexts[]` carries a JSONPath `scope` and `schema` for static invocation context checking. Once reference injection is in place, the `scope` field is redundant — the field map builder derives all call-site paths automatically from `x-telo-ref` nodes in the schema, without authors writing JSONPath manually. The input compatibility check can be performed during Phase 3 using the referenced definition's `inputs` schema directly. `contexts` should be considered for removal once reference injection is complete.
+`ResourceDefinition.contexts[]` carries a JSONPath `scope` and `schema` for static invocation context checking. Once reference injection is in place, the `scope` field is redundant — the reference reach derives all call-site paths automatically from `x-telo-ref` nodes in the schema, without authors writing JSONPath manually. The input compatibility check can be performed during Phase 3 using the referenced definition's `inputs` schema directly. `contexts` should be considered for removal once reference injection is complete.
 
 ### `DefinitionRegistry` vs `ControllerRegistry`
 

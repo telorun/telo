@@ -1,7 +1,7 @@
 /**
  * The module graph — what a module IS, as boxes, rows and classed edges.
  *
- * One fold over the call graph, the reference field map and each kind's own
+ * One fold over the call graph, each kind's reference reach and its own
  * schema, producing the three primitives an editor draws:
  *
  *  - **Box** — a declaration and what it owns. Every resource is a node whatever
@@ -64,7 +64,7 @@ import {
 } from "./call-graph.js";
 import { propertySchemas, resolveLocalRef } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
-import { isInlineResource, resolveFieldEntries } from "./reference-field-map.js";
+import { isInlineResource } from "./reference-field-map.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
 import { possibleUses, readRefSlot, type RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
@@ -535,6 +535,13 @@ export interface ModuleGraphDeps {
     refs: string[];
     capabilities: string[];
   }[];
+  /** Every filled reference site of a resource — its concrete path, the
+   *  declared slot (a `refFields` path) it is an occurrence of, and its value. */
+  refSites(resource: ResourceManifest): { path: string; fieldPath: string; value: unknown }[];
+  /** Every concrete position of a resource at or above one of its reference
+   *  slots — the slot and each container on the way — with the declared slot
+   *  it leads to, recursion unrolled to data depth. */
+  refPositions(resource: ResourceManifest): { path: string; fieldPath: string; value: unknown }[];
   /** The resource's definition, resolved in its declaring module's scope. */
   definition(kind: string, module?: string): ResourceDefinition | undefined;
   /** What invoking this resource can raise. Optional: a host without the
@@ -1510,11 +1517,13 @@ function inlineRows(
   out.rows.push(row);
   rowIdByPath.set(`${node.id}\0${site.path}`, id);
 
-  // The declaration's own reference slots, read through its kind's field map —
-  // the same map a named resource's ports come from, so an inline declaration
-  // and an extracted one describe themselves identically.
+  // The declaration's own reference slots and sites, read through its kind's
+  // reach — the same one a named resource's ports come from, so an inline
+  // declaration and an extracted one describe themselves identically.
   const asManifest = { ...site.value, metadata: { name: id } } as unknown as ResourceManifest;
   const declaredSchema = declared?.schema as Record<string, any> | undefined;
+  const declarationSites = deps.refSites(asManifest);
+  const declarationPositions = forwarding ? deps.refPositions(asManifest) : [];
   for (const field of deps.refFields(asManifest)) {
     const reference = (entryPath: string, target: string, forward?: string[]): void => {
       const path = `${site.path}.${entryPath}`;
@@ -1545,7 +1554,7 @@ function inlineRows(
         ...(forward ? { forward } : {}),
       });
     };
-    for (const entry of resolveFieldEntries(asManifest, field.path)) {
+    for (const entry of sitesOf(declarationSites, field.path)) {
       if (isInlineDeclaration(entry.value)) {
         inlineRows(
           node,
@@ -1562,7 +1571,7 @@ function inlineRows(
       if (target !== undefined) reference(entry.path, target);
     }
     if (!forwarding) continue;
-    for (const forward of forwardSites(site.value, field.path)) {
+    for (const forward of forwardsAt(declarationPositions, field.path)) {
       reference(forward.path, `self.${forward.self.join(".")}`, forward.self);
     }
   }
@@ -1617,9 +1626,10 @@ function weaveInlineRows(
     }
   }
 
+  let manifestSites: RefSite[] | undefined;
   for (const port of node.ports) {
     if (!port.slots.some((slot) => slot.inline)) continue;
-    for (const entry of resolveFieldEntries(manifest, port.slot)) {
+    for (const entry of sitesOf((manifestSites ??= deps.refSites(manifest)), port.slot)) {
       // A site on a slot no row owns — a plain `connection:` on a resource — is
       // left to the port, which already draws it. Only a ROW can host a subtree.
       const rowId =
@@ -1673,41 +1683,19 @@ interface InlineEdgeSeed {
   forward?: string[];
 }
 
-/**
- * Every `self.<path>` forward along a reference field path: at the slot, or at
- * any container above it (`routes: !cel "self.workflows"` forwards every route's
- * `handler`). A forward is a leaf — nothing below one is written.
- */
-function forwardSites(value: unknown, fieldPath: string): { path: string; self: string[] }[] {
+/** The positions at or above one declared slot holding exactly `self.<path>` —
+ *  a value the template instance forwards into the body there. Read off the
+ *  reach's positions, so a forward at any depth of a recursive shape counts. */
+function forwardsAt(
+  positions: readonly { path: string; fieldPath: string; value: unknown }[],
+  fieldPath: string,
+): { path: string; self: string[] }[] {
   const out: { path: string; self: string[] }[] = [];
-  const visit = (current: unknown, parts: readonly string[], path: string): void => {
-    if (path !== "") {
-      const self = selfForwardPath(current);
-      if (self) {
-        out.push({ path, self });
-        return;
-      }
-    }
-    if (parts.length === 0 || !current || typeof current !== "object") return;
-    if (isTaggedSentinel(current) || (current as { __compiled?: unknown }).__compiled) return;
-    const [part, ...rest] = parts as [string, ...string[]];
-    const join = (key: string) => (path ? `${path}.${key}` : key);
-    if (part === "{}") {
-      for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
-        visit(child, rest, join(key));
-      }
-      return;
-    }
-    const isArray = part.endsWith("[]");
-    const key = isArray ? part.slice(0, -2) : part;
-    const child = (current as Record<string, unknown>)[key];
-    if (isArray && Array.isArray(child)) {
-      child.forEach((item, i) => visit(item, rest, `${join(key)}[${i}]`));
-      return;
-    }
-    visit(child, rest, join(key));
-  };
-  visit(value, fieldPath.split("."), "");
+  for (const position of positions) {
+    if (position.fieldPath !== fieldPath) continue;
+    const self = selfForwardPath(position.value);
+    if (self) out.push({ path: position.path, self });
+  }
   return out;
 }
 
@@ -1725,8 +1713,9 @@ function forwardSitesOf(
   deps: ModuleGraphDeps,
 ): { path: string; self: string[]; slot: string; uses: RefUse[] }[] {
   const byPath = new Map<string, { path: string; self: string[]; slot: string; uses: RefUse[] }>();
+  const positions = deps.refPositions(manifest);
   for (const field of deps.refFields(manifest)) {
-    for (const site of forwardSites(manifest, field.path)) {
+    for (const site of forwardsAt(positions, field.path)) {
       if (byPath.has(site.path)) continue;
       byPath.set(site.path, { ...site, slot: field.path, uses: readUses(schemaAt(schema, field.path)) });
     }
@@ -1967,6 +1956,13 @@ function guardOf(entry: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+type RefSite = ReturnType<ModuleGraphDeps["refSites"]>[number];
+
+/** The filled sites of one declared slot, out of a resource's sites. */
+function sitesOf(sites: readonly RefSite[], fieldPath: string): RefSite[] {
+  return sites.filter((site) => site.fieldPath === fieldPath);
+}
+
 /** Every declared reference slot as a port, with its occupancy read off the
  *  manifest — so an empty slot is a port with no filled sites rather than an
  *  absence a view has to infer. */
@@ -1977,6 +1973,7 @@ function buildPorts(
   rowArrays: ReadonlySet<string>,
 ): GraphPort[] {
   const fields = deps.refFields(manifest);
+  const filled = deps.refSites(manifest);
 
   // The `anyOf` sub-shapes of one array-of-refs are ONE slot, not three. A boot
   // target may be written bare, as `{ref, when}` or as an inline invoke step, so
@@ -1993,7 +1990,7 @@ function buildPorts(
     const slotSchema = schemaAt(schema, field.path);
     const uses = readUses(slotSchema);
     const slots: PortSlot[] = [];
-    for (const { value, path } of resolveFieldEntries(manifest, field.path)) {
+    for (const { value, path } of sitesOf(filled, field.path)) {
       const target = refName(value);
       const slot: PortSlot = { path };
       if (target !== undefined) slot.target = target;

@@ -1,11 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
-import {
-  isScopeEntry,
-  resolveFieldEntries,
-  type ReferenceFieldMap,
-} from "./reference-field-map.js";
+import type { KindResolver } from "./module-alias-scope.js";
+import type { ReachSite } from "./reference-reach.js";
 import { REF_RESOLUTION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import {
   isForwardedDeclaration,
@@ -15,13 +12,14 @@ import {
 import { forwardedShapeFieldsOf, KIND_SHAPE_FIELDS } from "./contract-shapes.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 
-/** The slice of the definition registry this pass needs: a kind's field map, from
- *  which the `x-telo-scope` slots are read. */
-export interface ScopeFieldMapSource {
-  getFieldMapForKind(
-    kind: string,
-    aliases?: { resolveKind(k: string): string | undefined },
-  ): ReferenceFieldMap | undefined;
+/** The slice of the definition registry this pass needs: a resource's concrete
+ *  sites, from which its `x-telo-scope` slots are read. */
+export interface ScopeSiteSource {
+  referenceSites(
+    resource: ResourceManifest,
+    aliases?: KindResolver,
+    aliasesByModule?: ReadonlyMap<string, KindResolver>,
+  ): ReachSite[];
 }
 
 /** Resolved ref shape written in place of a `!ref` sentinel. `alias` is set only for
@@ -32,17 +30,17 @@ type ResolvedRef = { kind: string; name: string; alias?: string };
  * Rewrites every `!ref <name>` sentinel in each non-system resource's value tree
  * to `{kind, name}` (local) or `{kind, name, alias}` (cross-module), in place.
  *
- * The walk is value-tree-driven, not field-map-driven: a `!ref` tag is an
+ * The walk is value-tree-driven, not reach-driven: a `!ref` tag is an
  * *explicit* reference marker, so any sentinel found anywhere is unambiguously a
- * reference and is resolved. This reaches sites the field map intentionally does
- * not descend — notably `Run.Sequence` step `invoke`s (behind a local `$ref`)
- * and references nested inside inline definitions — so every downstream consumer
+ * reference and is resolved. This reaches sites the reference reach
+ * intentionally stops before — notably `Run.Sequence` step `invoke`s (in a step
+ * body) and references nested inside inline definitions — so every downstream consumer
  * (Phase-5 injection, the runtime controllers, the analyzer's step-context and
  * dependency passes) sees the uniform `{kind, name}` shape regardless of where
  * the reference was written.
  *
  * Resolving a sentinel here does NOT cause Phase-5 injection: that pass is
- * driven by the field map, which still excludes step `invoke`s, so a resolved
+ * driven by the reach's concrete sites, which exclude step `invoke`s, so a resolved
  * step invoke stays `{kind, name}` and is dispatched through
  * `executeInvokeStep` (preserving `<name>.Invoked` events) rather than
  * being replaced with a live instance.
@@ -78,7 +76,7 @@ export function resolveRefSentinels(
   /** Supplies each kind's `x-telo-scope` slots. Without it a scoped name cannot be
    *  told from a module-level one, and a shadowed `!ref` resolves to the resource
    *  it shadows — so both call sites pass it. */
-  defs?: ScopeFieldMapSource,
+  defs?: ScopeSiteSource,
 ): void {
   resolveReferences(resources, aliases, aliasesByModule, crossModuleTargets, defs, "all");
 }
@@ -103,7 +101,7 @@ function resolveReferences(
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
   crossModuleTargets: ResourceManifest[],
-  defs: ScopeFieldMapSource | undefined,
+  defs: ScopeSiteSource | undefined,
   extent: "all" | "shapes",
 ): void {
   const moduleOf = (r: ResourceManifest): string | undefined =>
@@ -214,19 +212,16 @@ function resolveReferences(
   const declaredInScopes = (
     resource: ResourceManifest,
   ): Map<string, ResourceManifest> | undefined => {
-    const fieldMap = defs?.getFieldMapForKind(resource.kind, aliases);
-    if (!fieldMap) return undefined;
+    if (!defs) return undefined;
     let declared: Map<string, ResourceManifest> | undefined;
-    for (const [fieldPath, entry] of fieldMap) {
-      if (!isScopeEntry(entry)) continue;
-      for (const { value } of resolveFieldEntries(resource, fieldPath)) {
-        for (const element of Array.isArray(value) ? value : [value]) {
-          if (!element || typeof element !== "object" || Array.isArray(element)) continue;
-          const manifest = element as ResourceManifest;
-          const name = (manifest.metadata as { name?: string } | undefined)?.name;
-          if (typeof manifest.kind === "string" && typeof name === "string") {
-            (declared ??= new Map()).set(name, manifest);
-          }
+    for (const site of defs.referenceSites(resource, aliases, aliasesByModule)) {
+      if (site.scopes.length === 0) continue;
+      for (const element of Array.isArray(site.data) ? site.data : [site.data]) {
+        if (!element || typeof element !== "object" || Array.isArray(element)) continue;
+        const manifest = element as ResourceManifest;
+        const name = (manifest.metadata as { name?: string } | undefined)?.name;
+        if (typeof manifest.kind === "string" && typeof name === "string") {
+          (declared ??= new Map()).set(name, manifest);
         }
       }
     }
