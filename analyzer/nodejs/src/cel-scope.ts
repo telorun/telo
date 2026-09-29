@@ -173,6 +173,10 @@ export function manifestRootForResolver(
  *   - `case-map`   — value is an object whose values are step arrays (e.g. cases).
  * No specific Run.Sequence field name is hardcoded; any kind that uses
  * a step body and tags its branch fields with these roles works.
+ *
+ * The context exists whenever the manifest holds a step body, and is an empty
+ * closed map when no step in it produces a result; undefined only when there
+ * is no step body at all.
  */
 export function buildStepContextSchema(
   manifest: Record<string, any>,
@@ -187,6 +191,7 @@ export function buildStepContextSchema(
 
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  let hasStepBody = false;
 
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
     const stepCtx = readStepSlot(fieldSchema);
@@ -201,6 +206,7 @@ export function buildStepContextSchema(
 
     const steps = manifest[fieldName];
     if (!Array.isArray(steps)) continue;
+    hasStepBody = true;
 
     const stepItemSchema = resolveLocalRef(
       fieldSchema.items as Record<string, any> | undefined,
@@ -291,7 +297,7 @@ export function buildStepContextSchema(
     }
   }
 
-  return undefined;
+  return hasStepBody ? { type: "object", properties: {} } : undefined;
 }
 
 export function collectErrorContextScopes(
@@ -499,8 +505,8 @@ export class CelScopeResolver {
 
   constructor(private readonly inputs: CelScopeInputs) {}
 
-  /** The `steps` context schema for the current resource, or undefined when its
-   *  kind declares no step body. Exposed because the step-inputs check needs the
+  /** The `steps` context schema for the current resource, or undefined when it
+   *  holds no step body. Exposed because the step-inputs check needs the
    *  same schema this resource's expressions are typed against — recomputing it
    *  there is how the two would come to disagree. */
   get stepContextSchema(): Record<string, any> | undefined {
