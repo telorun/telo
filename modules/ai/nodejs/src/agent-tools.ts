@@ -14,6 +14,7 @@ import {
   type SpanOpener,
 } from "./agent-spans.js";
 import { isContentPart, isContentParts, type MessageContent } from "./content.js";
+import { boundToolContent } from "./tool-result-bound.js";
 import type {
   AiToolProviderInstance,
   Message,
@@ -179,11 +180,14 @@ export async function assembleTools(
  *  run's span context — and that span's context is what the provider receives, so
  *  cancelling the turn reaches the running tool and the tool's own dispatch nests
  *  under the span. `output` is the tool's result before any mapping the provider
- *  applies, as plain JSON; it is never fed to the model. */
+ *  applies, as plain JSON; it is never fed to the model. `content`, the error string
+ *  included, is bounded by `maxToolResultBytes` (undefined: unbounded); `output`
+ *  never is. */
 export async function dispatchToolCall(
   call: ToolCall,
   dispatch: Map<string, Dispatch>,
   onToolError: "feedback" | "throw",
+  maxToolResultBytes: number | undefined,
   label: string,
   spans: SpanOpener,
   agent: AgentSpanIdentity,
@@ -201,7 +205,7 @@ export async function dispatchToolCall(
     return {
       toolCallId: call.id,
       name: call.name,
-      content: `Error: no such tool "${call.name}".`,
+      content: boundToolContent(`Error: no such tool "${call.name}".`, maxToolResultBytes),
       error: true,
     };
   }
@@ -216,13 +220,18 @@ export async function dispatchToolCall(
     await settleFailure(span, err);
     if (onToolError === "throw" || isCancellationError(err) || isSuspension(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
-    return { toolCallId: call.id, name: call.name, content: `Error: ${message}`, error: true };
+    return {
+      toolCallId: call.id,
+      name: call.name,
+      content: boundToolContent(`Error: ${message}`, maxToolResultBytes),
+      error: true,
+    };
   }
   await span.settle("ok");
   return {
     toolCallId: call.id,
     name: call.name,
-    content: toToolContent(called.result),
+    content: boundToolContent(toToolContent(called.result), maxToolResultBytes),
     // Present on every successful call: a tool that returns nothing produced
     // `null`, which is a value a consumer can read, unlike a missing key.
     output: called.output === undefined ? null : toPlainJson(called.output),

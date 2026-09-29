@@ -21,6 +21,7 @@ import {
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
+import { toolResultByteLimit } from "./tool-result-bound.js";
 import type {
   AiModelInstance,
   CompletionResult,
@@ -47,6 +48,7 @@ interface AiAgentResource {
   maxSteps?: number;
   onMaxSteps?: "throw" | "return";
   onToolError?: "feedback" | "throw";
+  maxToolResultBytes?: number | bigint;
   toolProviders?: ToolProviderEntry[];
 }
 
@@ -79,10 +81,17 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
   /** Tool set assembled lazily on first invoke and cached (list_changed refresh deferred). */
   private assembled?: AssembledTools;
 
+  private readonly maxToolResultBytes: number | undefined;
+
   constructor(
     private readonly resource: AiAgentResource,
     private readonly ctx: ResourceContext,
-  ) {}
+  ) {
+    this.maxToolResultBytes = toolResultByteLimit(
+      resource.maxToolResultBytes,
+      `Ai.Agent "${resource.metadata.name}"`,
+    );
+  }
 
   async invoke(inputs: AiAgentInputs = {}, ctx?: InvokeContext): Promise<AiAgentOutput> {
     const name = this.resource.metadata.name;
@@ -178,6 +187,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
             call,
             dispatch,
             onToolError,
+            this.maxToolResultBytes,
             label,
             this.ctx,
             agent,

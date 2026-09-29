@@ -58,10 +58,13 @@ type KeyState =
   | { state: "failed"; holder: string; drain?: string; error: RecordedError; writerLost: boolean }
   | { state: "removed" };
 
-/** Where a claim leaves a key: its version and the id of its log's last entry. */
-interface Claimed {
+/** Where a claim leaves a key: its version, the id of its log's last entry, and
+ *  the recorded error of the failed key it took over or returned as it ended —
+ *  null when it created the key or found it open. */
+export interface Claimed {
   version: string;
   lastId: number;
+  error: RecordedError | null;
 }
 
 function encodeState(state: KeyState): string {
@@ -133,7 +136,8 @@ export abstract class Journal {
    * so is a key a drain under the same writer already finished or failed, whose
    * ending (and recorded error) stays, `resume` or not, and one that drain left
    * open with a stale heartbeat, which is failed as lost first. Otherwise as
-   * {@link claim}.
+   * {@link claim}. Reports the recorded error of the failed key it took over or
+   * returned, at the version it acted on.
    */
   async reserve(key: string, options: { resume?: boolean; writer: string }): Promise<Claimed> {
     const open = encodeState({ state: "open", holder: options.writer, timeoutMs: this.settings.writerTimeoutMs });
@@ -170,7 +174,7 @@ export abstract class Journal {
   ): Promise<Claimed> {
     while (true) {
       const version = await this.store.putIfAbsent(key, open);
-      if (version !== null) return { version, lastId: 0 };
+      if (version !== null) return { version, lastId: 0, error: null };
       const header = await this.header(key);
       // Deleted between the two calls: the key is free again.
       if (!header) continue;
@@ -181,29 +185,32 @@ export abstract class Journal {
       // which is failed as lost first: that attempt is over, and taking it over
       // again would overwrite how it ended.
       if (drain === undefined && state.holder === holder && state.drain !== undefined && !live) {
-        if (state.state !== "open") return { version: header.version, lastId: header.lastId };
+        if (state.state !== "open") {
+          return { version: header.version, lastId: header.lastId, error: state.state === "failed" ? state.error : null };
+        }
         const failedAt = await this.failLost(key, header.version, state);
         // The writer moved in the meantime: judge the key again.
         if (failedAt === null) continue;
-        return { version: failedAt, lastId: header.lastId };
+        return { version: failedAt, lastId: header.lastId, error: lostError(key) };
       }
       if (live && state.holder === holder) {
-        if (drain === undefined) return { version: header.version, lastId: header.lastId };
+        if (drain === undefined) return { version: header.version, lastId: header.lastId, error: null };
         if (state.drain !== undefined) throw busy(key);
         const adopted = await this.store.compareAndSet(key, header.version, open);
         // The key moved since it was read: judge it again.
         if (adopted === null) continue;
-        return { version: adopted, lastId: header.lastId };
+        return { version: adopted, lastId: header.lastId, error: null };
       }
       if (!resume || state.state === "finished" || live) throw busy(key);
       let failedAt: string | null = header.version;
+      const error = state.state === "failed" ? state.error : lostError(key);
       if (state.state === "open") {
         failedAt = await this.failLost(key, header.version, state);
         // The writer moved in the meantime: judge the key again.
         if (failedAt === null) continue;
       }
       const taken = await this.store.compareAndSet(key, failedAt, open);
-      if (taken !== null) return { version: taken, lastId: header.lastId };
+      if (taken !== null) return { version: taken, lastId: header.lastId, error };
     }
   }
 

@@ -572,7 +572,8 @@ schema:
 # `resume` does. A key already open under the same writer is returned unchanged,
 # adopted or not, and nothing is written; so is a key a sink under the same writer
 # already finished or failed, or left open with a stale heartbeat (failed as lost
-# first), whose ending stays. Nothing heartbeats a
+# first), whose ending stays. The claim reports the recorded error of the failed
+# key it took over or returned. Nothing heartbeats a
 # claim until a sink adopts it, so one never drained goes stale and is failed as
 # ERR_JOURNAL_WRITER_LOST by the next reader or expiry pass.
 kind: Telo.Definition
@@ -582,7 +583,8 @@ metadata:
     Reserves a recorded stream's key for a named writer before any record exists,
     so readers can attach at once and a later writer with the same name continues
     it. Can take over a recording whose writer failed or died, keeping its records.
-    Reports the id of the last record already there.
+    Reports the id of the last record already there, and the recorded error of a
+    failed recording it took over.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalClaimController
@@ -625,12 +627,26 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [key, lastId]
+    required: [key, lastId, error]
     properties:
       key: { type: string }
       lastId:
         type: integer
         description: Id of the key's last record at the claim; 0 when it has none.
+      error:
+        description: >-
+          The recorded error of the failed key the claim took over, or returned as
+          its own writer's sink ended it, at the version the claim acted on —
+          ERR_JOURNAL_WRITER_LOST for an open key whose writer went stale, which
+          the claim failed first. Null when the claim created the key, found it
+          open, or found it finished.
+        type: [object, "null"]
+        additionalProperties: false
+        required: [message]
+        properties:
+          code: { type: string }
+          message: { type: string }
+          data: {}
 schema:
   type: object
   additionalProperties: false

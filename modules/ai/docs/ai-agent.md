@@ -1,5 +1,5 @@
 ---
-description: "Ai.Agent: a tool-use loop over any Ai.Model. Tool providers, maxSteps/onMaxSteps/onToolError, invocation inputs and the steps trace."
+description: "Ai.Agent: a tool-use loop over any Ai.Model. Tool providers, maxSteps/onMaxSteps/onToolError, bounded tool results, invocation inputs and the steps trace."
 sidebar_label: Ai.Agent
 ---
 
@@ -66,6 +66,7 @@ toolProviders:
 | `maxSteps`      | integer         | no       | Max model turns. Default `8`.                                                            |
 | `onMaxSteps`    | `throw\|return` | no       | At the cap without finishing: `throw` raises `ERR_AGENT_MAX_STEPS`; `return` hands back the last turn's text (`finishReason: tool-calls`). Default `throw`. |
 | `onToolError`   | `feedback\|throw`| no      | When a tool throws or the model names an unknown tool: `feedback` records it in `steps` and returns it to the model so it can recover; `throw` aborts. Default `feedback`. A cancelled invocation and a durable suspension are not tool errors: they propagate either way. |
+| `maxToolResultBytes` | integer ≥ 1 | no | Bounds the text each tool result feeds the model — see [Bounded tool results](#bounded-tool-results). Unset: unbounded. |
 | `toolProviders` | array           | no       | Tool sources — see below.                                                                |
 
 ### `toolProviders[]`
@@ -96,6 +97,31 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 - `usage` — token usage summed across every model call in the loop.
 - `finishReason` — from the final turn.
 - `steps` — one entry per model call, the final answering call included (its `toolCalls` and `toolResults` are empty), so `steps` has as many entries as the run made model calls: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and the result's `toolCallId` and the replayed assistant message carry the same one. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+
+## Bounded tool results
+
+`maxToolResultBytes` caps the UTF-8 bytes of text each tool result passes to the model, so one oversized reply (a large file, a long log) cannot fill the agent's context window. It applies to every tool whatever provider serves it — an `Ai.Tools` entry and an MCP tool alike — and to error results (`Error: …`) as well as successful ones. Only text is measured:
+
+- a **string** result longer than the limit keeps its longest prefix of whole characters within the limit;
+- a **content-part** result counts its text parts in order: the part the limit falls in is cut at a character boundary and every later text part is dropped; media parts (images, audio, files) are neither counted nor cut and keep their positions;
+- a result within the limit is passed through unchanged.
+
+A cut result is followed by the marker, exactly:
+
+```
+[truncated: <omitted> of <total> bytes cut; a tool result passes at most <limit> bytes to the model]
+```
+
+(decimal byte counts over the text) — on its own line after the kept text for a string result, or as a final text part for a part result. The marker says what was cut, never how to get the rest: telling the model how to page through a particular tool belongs in the agent's own system prompt. The bound is per agent rather than per tool, because what it protects is the agent's context. The `steps` trace records the bounded `content` — what the model saw — and [`Ai.AgentStream`](./ai-agent-stream.md#tool-results)'s `output` keeps what the tool returned whole.
+
+```yaml
+kind: Ai.Agent
+metadata: { name: Assistant }
+model: !ref Gpt4oMini
+maxToolResultBytes: 32768
+toolProviders:
+  - provider: !ref WorkspaceTools
+```
 
 ## Tracing
 

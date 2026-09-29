@@ -13,3 +13,4 @@ Disregard existing implementation. Do not review code — review the architectur
 - **Visual editing** — Telo manifests must remain visually editable in a GUI editor; solutions must not break declarative structure or introduce constructs that can't be represented visually
 - **Performance** — the init loop, CEL evaluation, and resource resolution must stay fast; solutions must not introduce unnecessary overhead
 - **Static analysis** — YAML manifests must remain statically analyzable; solutions must preserve the ability to validate references, type-check CEL expressions, and detect errors without running the kernel
+- **Scalability** — an app must behave as one app across many replicas (no process-local state that instances must agree on; coordination through shared primitives), keep memory bounded (stream or paginate what can be unbounded), and keep cost linear in manifest size, resource count and load

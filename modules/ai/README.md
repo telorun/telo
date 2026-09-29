@@ -120,6 +120,8 @@ A stream **fails by rejecting**: `finish` is the only terminal part, and a mid-s
 
 Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it advertises tools to the model, executes the ones the model requests, and loops. Tools come from any [`Ai.ToolProvider`](docs/ai-tool-provider.md) — a static [`Ai.Tools`](docs/ai-tool-provider.md#aitools) list, or runtime discovery from an MCP server via [`AiMcp.ToolProvider`](../ai-mcp/README.md). The model contract carries tools additively (`tools` in, `toolCalls` out, the `tool` message role); `Ai.Text`/`Ai.TextStream` never pass tools and are unaffected.
 
+`maxToolResultBytes` on either agent bounds the UTF-8 bytes of text every tool result feeds the model — static and MCP tools alike, error results included — keeping the longest whole-character prefix and ending a cut result with `[truncated: <omitted> of <total> bytes cut; a tool result passes at most <limit> bytes to the model]`; media parts are never counted or cut, and a tool-result's `output` stays whole. Unset, results are unbounded. See [Bounded tool results](docs/ai-agent.md#bounded-tool-results).
+
 ## What is logged
 
 Every completion kind — `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` — logs **token usage and finish reason at `info`**, carrying `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `gen_ai.response.finish_reasons`. Usage is the metered quantity: what a run cost, and why a bill moved. Tracing carries the call's shape but is off unless asked for, and the returned `usage` object is only as visible as whatever the caller does with it.

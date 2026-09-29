@@ -46,6 +46,7 @@ exports:
     - claimResumeTakesOver
     - claimSameWriterEnded
     - claimGoesStale
+    - claimResumeStale
 ---
 kind: RecordStream.Journal
 metadata: { name: journal }
@@ -763,7 +764,8 @@ steps:
 ---
 # A claim by a named writer creates the key with nothing drained; claiming it
 # again under the same writer succeeds unchanged, and a sink given that writer
-# adopts the key and finishes it.
+# adopts the key and finishes it. Neither claim took over a failure, so both
+# report no error.
 kind: Run.Sequence
 metadata: { name: claimAdopted }
 steps:
@@ -791,8 +793,8 @@ steps:
         written: !cel "steps.write.result"
         after: !cel "steps.after.result"
       expected:
-        first: { key: claim-adopted, lastId: 0 }
-        again: { key: claim-adopted, lastId: 0 }
+        first: { key: claim-adopted, lastId: 0, error: null }
+        again: { key: claim-adopted, lastId: 0, error: null }
         written: { key: claim-adopted, count: 2 }
         after:
           state: finished
@@ -833,9 +835,10 @@ steps:
         invoke: !ref Assert.equals
         inputs: { actual: !cel "error.code", expected: ERR_JOURNAL_KEY_REMOVED }
 ---
-# A resuming claim takes a failed key over at once: a reader opened before any
-# sink runs tails the key instead of raising the old failure, and receives what
-# the adopting sink appends after the claimed last id.
+# A resuming claim takes a failed key over at once and reports the error it took
+# over: a reader opened before any sink runs tails the key instead of raising the
+# old failure, and receives what the adopting sink appends after the claimed last
+# id.
 kind: Run.Sequence
 metadata: { name: claimResumeTakesOver }
 steps:
@@ -850,7 +853,7 @@ steps:
         kind: Run.Sequence
         steps:
           - name: boom
-            throw: { code: ERR_TEST_BOOM, message: "the producer failed" }
+            throw: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
     inputs: { input: !cel "steps.turn.result.output" }
   - name: write
     try:
@@ -881,12 +884,17 @@ steps:
     inputs:
       actual: { claimed: !cel "steps.takeOver.result", continuation: !cel "steps.continuation.result.items" }
       expected:
-        claimed: { key: claim-resumed, lastId: 1 }
+        claimed:
+          key: claim-resumed
+          lastId: 1
+          error: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
         continuation: [{ id: 2, data: { n: 3 } }]
 ---
 # A resuming claim under the writer whose own sink already ended the key leaves
 # that ending alone: a finished key stays finished, and a failed one keeps the
-# error its sink recorded, rather than being refused or taken over again.
+# error its sink recorded, rather than being refused or taken over again. The
+# claim reports the ending's error: none for the finished key, the recorded one
+# for the failed key.
 kind: Run.Sequence
 metadata: { name: claimSameWriterEnded }
 steps:
@@ -945,9 +953,12 @@ steps:
         reclaimFailed: !cel "steps.reclaimFailed.result"
         failed: !cel "steps.failed.result"
       expected:
-        reclaimFinished: { key: claim-ended-finished, lastId: 1 }
+        reclaimFinished: { key: claim-ended-finished, lastId: 1, error: null }
         finished: { state: finished, error: null, lastId: 1, entries: [{ id: 1, data: a }] }
-        reclaimFailed: { key: claim-ended-failed, lastId: 1 }
+        reclaimFailed:
+          key: claim-ended-failed
+          lastId: 1
+          error: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
         failed:
           state: failed
           error: { code: ERR_TEST_BOOM, message: "the producer failed", data: { reason: planned } }
@@ -986,6 +997,39 @@ steps:
           data: { key: claim-stale }
         lastId: 0
         entries: []
+---
+# A resuming claim by another writer takes over a claim that went stale while
+# open: it fails the key as abandoned first, then reports that failure as the
+# error it took over.
+kind: Run.Sequence
+metadata: { name: claimResumeStale }
+steps:
+  - name: claimed
+    invoke:
+      kind: RecordStream.JournalClaim
+      journal:
+        kind: RecordStream.Journal
+        store: !ref store
+        retention: "1h"
+        writerTimeout: "100ms"
+    inputs: { key: claim-resume-stale, writer: writer-1 }
+  - name: pastTimeout
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "300ms" }
+  - name: takeOver
+    invoke: !ref claim
+    inputs: { key: claim-resume-stale, writer: writer-2, resume: true }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.takeOver.result"
+      expected:
+        key: claim-resume-stale
+        lastId: 0
+        error:
+          code: ERR_JOURNAL_WRITER_LOST
+          message: "RecordStream.Journal: the writer of key 'claim-resume-stale' stopped sending heartbeats within its timeout, so the key was failed."
+          data: { key: claim-resume-stale }
 ---
 # One claim, one drain: of two sinks under the writer a claim named, the second
 # is started from inside the first's input — after the first adopted the key,

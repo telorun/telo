@@ -134,6 +134,7 @@ async function runBoth(
   plans: CallPlan[],
   tool: AiToolProviderInstance,
   invokeCtx?: InvokeContext,
+  maxToolResultBytes?: number,
 ) {
   const bufferedSeen: Seen = { inputs: [] };
   const agent = await createAgent(
@@ -141,6 +142,7 @@ async function runBoth(
       metadata: { name: "agent" },
       model: bufferedModel(plans, bufferedSeen),
       toolProviders: [{ provider: tool }],
+      maxToolResultBytes,
     },
     ctx,
   );
@@ -157,6 +159,7 @@ async function runBoth(
       metadata: { name: "stream" },
       model: streamingModel(plans, streamSeen),
       toolProviders: [{ provider: tool }],
+      maxToolResultBytes,
     },
     ctx,
   );
@@ -307,6 +310,25 @@ describe("the agent loop", () => {
     const expected = { name: "work", content: "Error: disk full", error: true };
     expect(buffered.result!.steps[0]!.toolResults[0]).toMatchObject(expected);
     expect(streamed.parts.find((p) => p.type === "tool-result")).toMatchObject({ toolResult: expected });
+  });
+
+  it("bounds a failed tool's error result by maxToolResultBytes in both agents", async () => {
+    const { buffered, bufferedSeen, streamed, streamSeen } = await runBoth(
+      toolThenAnswer,
+      provider(async () => {
+        throw new Error("disk full");
+      }),
+      undefined,
+      9,
+    );
+    const content =
+      "Error: di\n[truncated: 7 of 16 bytes cut; a tool result passes at most 9 bytes to the model]";
+    const fed = (seen: Seen) => seen.inputs[1]!.messages.find((m: Message) => m.role === "tool")!.content;
+    expect(buffered.result!.steps[0]!.toolResults[0]).toMatchObject({ content, error: true });
+    expect(streamed.parts.find((p) => p.type === "tool-result")).toMatchObject({
+      toolResult: { content, error: true },
+    });
+    expect([fed(bufferedSeen), fed(streamSeen)]).toEqual([content, content]);
   });
 
   it("carries what a provider's tool returned as the stream part's output, and none on an error", async () => {

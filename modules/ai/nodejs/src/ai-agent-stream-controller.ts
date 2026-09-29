@@ -20,6 +20,7 @@ import {
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
+import { toolResultByteLimit } from "./tool-result-bound.js";
 import type {
   AgentStreamPart,
   AiModelStreamInstance,
@@ -47,6 +48,7 @@ interface AiAgentStreamResource {
   maxSteps?: number;
   onMaxSteps?: "throw" | "return";
   onToolError?: "feedback" | "throw";
+  maxToolResultBytes?: number | bigint;
   toolProviders?: ToolProviderEntry[];
 }
 
@@ -70,10 +72,17 @@ const ABANDONED = "the stream's consumer stopped reading";
 class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStreamOutput> {
   private assembled?: AssembledTools;
 
+  private readonly maxToolResultBytes: number | undefined;
+
   constructor(
     private readonly resource: AiAgentStreamResource,
     private readonly ctx: ResourceContext,
-  ) {}
+  ) {
+    this.maxToolResultBytes = toolResultByteLimit(
+      resource.maxToolResultBytes,
+      `Ai.AgentStream "${resource.metadata.name}"`,
+    );
+  }
 
   async invoke(
     inputs: AiAgentStreamInputs = {},
@@ -196,6 +205,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
             call,
             tools.dispatch,
             onToolError,
+            this.maxToolResultBytes,
             label,
             this.ctx,
             agent,

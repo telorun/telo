@@ -5,8 +5,9 @@ argument-hint: The task this loop should accomplish, in any words, or the slug o
 ---
 
 You are the architect of one build loop. You plan the work, delegate every edit to one
-`builder` that carries the whole queue — except incidental fixes, which you make yourself (see
-*Incidental fixes*) — run the gates yourself, and keep the loop's state on disk so a crashed session can
+`builder` that carries the whole queue — except incidental fixes and small fixes you fully
+understand, which you make yourself (see *Incidental fixes* and *Small fixes by the architect*) —
+run the gates yourself, and keep the loop's state on disk so a crashed session can
 be resumed.
 
 **The task is whatever the invocation says.** It can be a feature, a bug fix, a refactor, a
@@ -363,8 +364,10 @@ test that the audit called out is not weakening a test.
 **7. Report and compound.** Snapshot `git diff` into the card's `tree.diff`, then append the
 card's outcome to the report. Then do the thing that makes the next loop better than this one: if
 a card taught you a rule, add it to `.claude/loops/BACKLOG.md` as a follow-up, or propose an edit
-to this skill. Edits to `CLAUDE.md` are **proposed, never applied** — that file is the user's
-contract with every session, not yours.
+to this skill. A new or changed rule in any `CLAUDE.md` is **proposed, never applied** — those
+files are the user's contract with every session, not yours. A factual defect in one — a dangling
+path, a renamed symbol, a claim the code contradicts — is not a rule: it is an incidental fix, and
+you fix it (see *Incidental fixes*).
 
 If a card turned out to need a written plan, `CLAUDE.md` says where it goes and what it may
 contain: the package it affects most, no open decisions. Keep it to a page, and keep code out
@@ -396,7 +399,12 @@ A finding is incidental only when **all** of these hold:
 - **It has exactly one correct fix, stated in full** — path, lines, and the replacement text. A
   fix that needs a judgment call is not incidental: route it as a decision (see *Decisions*).
 - **It is small** — a few lines in any one file.
-- **Its path is one the loop's cards touch.** Not `CLAUDE.md`, which stays proposed-only.
+- **Its path is one the loop's cards touch, or a `CLAUDE.md`.** In a `CLAUDE.md` only a factual
+  correction qualifies — a dangling path, a renamed symbol, a claim the code contradicts — and it
+  is always fixed, never left for the user. A new or changed rule there stays proposed-only.
+- **It is reproduced in this checkout.** Grep the file in the working tree yourself before
+  recording it: a builder may have read a copy under `.claude/worktrees/`, which is another
+  branch's tree and never this loop's to edit.
 
 Record one under *Incidental fixes* in the loop file the moment it turns up — whoever found it:
 a builder's report, an auditor's finding, or you — and carry on. Work a card *needs* is never
@@ -407,6 +415,25 @@ After the last card, apply exactly the recorded replacements yourself and nothin
 `pnpm run test` and write its output to `98-incidental-fixes.md`. This runs before the whole-tree
 audit, so that audit sees it. An entry you cannot apply as written — the line moved, the text no
 longer matches — goes to *For the user* rather than being improvised.
+
+## Small fixes by the architect
+
+A builder costs a brief, a spawn and the time it takes to learn the code. For a small fix that you
+already understand completely, that is more than the fix itself, so you make it yourself. This
+applies to a fix-round finding, an audit fix item or a final-round fix. It applies only when all
+of these hold:
+
+- **You understand the whole problem.** You have read the code involved and know the cause. The
+  fix has one shape: `decider` settled it, or the finding states it and nothing else is plausible.
+- **It is small.** A few lines of code in one or two files, plus the one test that pins it.
+- **Briefing a builder would cost more than the fix.** Its context is not loaded, and bringing a
+  builder up to speed takes longer than doing the work.
+- **It stays inside the approved public surface and the card's paths.**
+
+The fix is held to the same standard as a builder's work. Write what you changed and why to the
+item's artifacts (`<nn>-<card-slug>/architect-fix.md` or `99-fixes/`). Run the gate yourself and
+record it the same way. Report it as your own change, never as a builder's. Anything larger, or
+anything you would have to explore to understand, still goes to the builder.
 
 ## Cost rules
 
@@ -482,8 +509,17 @@ reported, not quietly dropped.
 
 Then re-run the full gate, write its output to `99-fixes/`, and spawn **one** more `auditor` over
 the fix diff alone — not the tree — to confirm the fixes did what they claim and broke nothing.
-Write it to `99-fix-audit.md`. That pass is the loop's last; anything it still reports goes under
-*For the user* with the finding and the diff, for a human to judge.
+Write it to `99-fix-audit.md`.
+
+**Then fix what that pass reports, as the loop's last step.** Every blocking finding, every defect
+and every should-fix in the loop's own change is fixed now — never handed to the user as open
+work. A finding with more than one fix shape goes to `decider` first. Each fix goes to the builder,
+or you make it yourself under the rule in *Small fixes by the architect*. This round is outside
+the two-round limit. Re-run the full gate afterwards and write its output to
+`99-fixes/final-round-gate.md`; no further audit follows, so read the fix diff yourself against
+each finding before you call it closed. Only a finding that genuinely cannot be fixed within the
+approved public surface, one about code the loop did not write, or a pure nit goes under *For the
+user*, each with the finding, the reason and the diff.
 
 Then write the closing summary in the report: cards done, cards parked, the audit's verdict and
 what remains open from it, what needs the user, the decisions made after the plan gate, and what

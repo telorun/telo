@@ -53,13 +53,19 @@ Then judge, in this order:
    finding. Language-specific files and docs belong under their language directory; parallel
    implementations should share one file path and shape unless the work is genuinely
    language-specific.
-5. **Shortcuts.** A fix treating a symptom, a hacky workaround, a `JS.Script` where a resource
+5. **Scalability.** State kept in process memory that breaks or diverges once the app runs on
+   more than one replica; a map, cache, list or history that grows without a bound or eviction;
+   a payload, result set or file buffered whole where a stream or pagination belongs; per-request
+   or per-invocation work proportional to manifest size; quadratic passes over resources,
+   references or diagnostics; an inbound source with no limit or backpressure. State the size or
+   replica count at which it fails.
+6. **Shortcuts.** A fix treating a symptom, a hacky workaround, a `JS.Script` where a resource
    kind belongs, a schema left open with `additionalProperties: true` for no reason, or code
    added to a file that already carries too many responsibilities. Look for signs the
    implementer fought the design and worked around it.
-6. **Obligations.** Module docs updated, a changeset or release fragment where one is required,
+7. **Obligations.** Module docs updated, a changeset or release fragment where one is required,
    and no major version bump anywhere.
-7. **Scope.** Any edit outside the paths the card was allowed to touch, and a change well past the
+8. **Scope.** Any edit outside the paths the card was allowed to touch, and a change well past the
    card's stated size that the acceptance criteria do not require.
 
 Findings come most severe first, each with the file and line range, what is wrong in one

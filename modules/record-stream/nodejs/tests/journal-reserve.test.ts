@@ -54,15 +54,16 @@ describe("Journal.reserve under a writer whose drain stopped heartbeating", () =
 
     const claimed = await journal.reserve("k", { writer: "w", resume: true });
     const header = (await store.read("k", 0, 0)).header!;
-    expect(claimed).toEqual({ version: header.version, lastId: 1 });
+    const lostError = {
+      code: "ERR_JOURNAL_WRITER_LOST",
+      message:
+        "RecordStream.Journal: the writer of key 'k' stopped sending heartbeats within its timeout, so the key was failed.",
+      data: { key: "k" },
+    };
+    expect(claimed).toEqual({ version: header.version, lastId: 1, error: lostError });
     const failed = {
       state: "failed",
-      error: {
-        code: "ERR_JOURNAL_WRITER_LOST",
-        message:
-          "RecordStream.Journal: the writer of key 'k' stopped sending heartbeats within its timeout, so the key was failed.",
-        data: { key: "k" },
-      },
+      error: lostError,
       lastId: 1,
       entries: [{ id: 1, data: { n: 1 } }],
     };
@@ -85,7 +86,7 @@ describe("Journal.reserve under a writer whose drain stopped heartbeating", () =
     const claimed = await journal.reserve("k", { writer: "w", resume: true });
 
     const header = (await store.read("k", 0, 0)).header!;
-    expect(claimed).toEqual({ version: header.version, lastId: 0 });
+    expect(claimed).toEqual({ version: header.version, lastId: 0, error: null });
     expect((await journal.read("k", 0, 0)).state).toBe("open");
     await drain.append({ n: 1 });
     await drain.finish();
