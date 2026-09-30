@@ -1,5 +1,6 @@
 export {
   buildCelEnvironment,
+  buildCelLanguageEnvironment,
   celBuiltinFunctions,
   deriveSignatures,
   type CelHandlers,
