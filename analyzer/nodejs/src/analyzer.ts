@@ -88,6 +88,7 @@ import { validateZoneViolations } from "./validate-zone-violations.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { buildStepContextSchema, CelScopeResolver, manifestRootForResolver } from "./cel-scope.js";
+import { capabilityExtendsExecutable } from "./executable-capability.js";
 
 // The structural walks and the CEL scope rule moved out of this file — the
 // first so both halves can reach them, the second so the IDE can ask what a
@@ -384,19 +385,6 @@ function isExecutableKind(kind: string, defs: DefinitionRegistry, aliases: Alias
   if (!capability) return true;
   if (capabilityExtendsExecutable(capability, defs)) return true;
   return !NO_ENTRY_POINT_CAPABILITIES.has(capability);
-}
-
-/** Does this capability name `Telo.Executable` or extend it, transitively?
- *  Derived from the abstract hierarchy at call time, never from a name list. */
-function capabilityExtendsExecutable(capability: string, defs: DefinitionRegistry): boolean {
-  let current: string | undefined = capability;
-  const seen = new Set<string>();
-  while (current && !seen.has(current)) {
-    if (current === "Telo.Executable") return true;
-    seen.add(current);
-    current = defs.resolve(current)?.extends as string | undefined;
-  }
-  return false;
 }
 
 /** Kernel-owned capabilities whose contract declares no entry point. */

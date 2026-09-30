@@ -1,0 +1,28 @@
+# A boot target's `when:` and an inline target's `inputs:` read `inputs`, which
+# nothing binds at boot: the kernel evaluates them against `steps` and the root
+# scope only.
+kind: Telo.Application
+metadata:
+  name: ApplicationTargetInputs
+imports:
+  Run: ../../../modules/run
+targets:
+  - ref: !ref pipeline
+    when: !cel "inputs.foo == 'x'"
+  - name: first
+    invoke: !ref pipeline
+    inputs:
+      a: !cel "inputs.foo"
+---
+kind: Run.Sequence
+metadata:
+  name: pipeline
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: string }
+steps:
+  - name: done
+    value: true

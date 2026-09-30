@@ -225,4 +225,162 @@ describe("buildStepContextSchema (control-flow wrappers)", () => {
     expect(codes).toHaveLength(1);
     expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*steps\.nope/);
   });
+
+  it("gives a legacy `x-telo-step-context: { invoke }` body with no outputType the `steps` context", () => {
+    const legacyDef = {
+      ...sequenceDef,
+      schema: {
+        ...(sequenceDef as any).schema,
+        properties: {
+          steps: {
+            "x-telo-step-context": { invoke: "invoke" },
+            type: "array",
+            items: { $ref: "#/$defs/step" },
+          },
+        },
+      },
+    };
+    const seq = {
+      kind: "run.Sequence",
+      metadata: { name: "Seq", module: "test" },
+      steps: [
+        { name: "made", invoke: { kind: "Some.Sink" } },
+        { name: "use", if: cel("steps.made.result != null && steps.nope.result != null"), then: [] },
+      ],
+    };
+    const codes = celCodes([legacyDef, seq]);
+    expect(codes).toHaveLength(1);
+    expect(codes[0]).toMatch(/^CEL_UNKNOWN_FIELD: .*steps\.nope/);
+  });
+});
+
+describe("`inputs` in a step body's scope", () => {
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+  const ref = (source: string) => ({ __tagged: true, engine: "ref", source });
+  const celDiagnostics = (manifests: unknown[]) =>
+    new StaticAnalyzer()
+      .analyze(withSyntheticPositions(manifests as ResourceManifest[]))
+      .filter((d) => d.code?.startsWith("CEL_"))
+      .map((d) => ({ code: d.code, path: (d.data as { path?: string }).path }));
+  const readsInputs = (kind: string, extra: Record<string, unknown> = {}) => ({
+    kind,
+    metadata: { name: "body" },
+    steps: [{ name: "check", if: cel("inputs.a == 'x'"), then: [] }],
+    ...extra,
+  });
+  const withCapability = (capability: string, name = "Sequence") => ({
+    ...sequenceDef,
+    metadata: { name, module: "run" },
+    capability,
+  });
+
+  const scriptDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Script", module: "javascript" },
+    capability: "Telo.Invocable",
+    outputType: {
+      type: "object",
+      properties: { n: { type: "integer" } },
+      additionalProperties: false,
+    },
+    schema: { type: "object", additionalProperties: true },
+  };
+  const script = { kind: "javascript.Script", metadata: { name: "script" } };
+  const pipeline = readsInputs("run.Sequence", { metadata: { name: "pipeline" } });
+
+  it("is never in an Application's scope: not at a boot target's when:, an inline target's inputs:, or a sink's when:", () => {
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App" },
+      logging: {
+        sinks: [{ sink: { kind: "Telo.ConsoleSink" }, when: cel("inputs.foo == 'x'") }],
+      },
+      targets: [
+        { ref: ref("pipeline"), when: cel("inputs.foo == 'x'") },
+        { name: "first", invoke: ref("script"), inputs: { a: cel("inputs.foo") } },
+      ],
+    };
+    const found = celDiagnostics([app, sequenceDef, scriptDef, pipeline, script]);
+    expect(found).toEqual(
+      expect.arrayContaining([
+        { code: "CEL_UNKNOWN_IDENTIFIER", path: "targets[0].when" },
+        { code: "CEL_UNKNOWN_IDENTIFIER", path: "targets[1].inputs.a" },
+        { code: "CEL_UNKNOWN_IDENTIFIER", path: "logging.sinks[0].when" },
+      ]),
+    );
+    expect(found).toHaveLength(3);
+  });
+
+  it("leaves an Application's named inline target typing `steps.<name>.result`", () => {
+    const app = {
+      kind: "Telo.Application",
+      metadata: { name: "App" },
+      targets: [
+        { name: "first", invoke: ref("script") },
+        {
+          invoke: ref("script"),
+          inputs: {
+            n: cel("steps.first.result.n"),
+            typo: cel("steps.first.result.typo"),
+            nope: cel("steps.nope.result"),
+          },
+        },
+      ],
+    };
+    expect(celDiagnostics([app, scriptDef, script])).toEqual([
+      { code: "CEL_UNKNOWN_FIELD", path: "targets[1].inputs.typo" },
+      { code: "CEL_UNKNOWN_FIELD", path: "targets[1].inputs.nope" },
+    ]);
+  });
+
+  it("stays in scope for an `extends` child that inherits a Runnable capability without restating it", () => {
+    const child = {
+      kind: "Telo.Definition",
+      metadata: { name: "Pipeline", module: "lib" },
+      extends: "run.Sequence",
+      schema: { type: "object" },
+    };
+    expect(celDiagnostics([sequenceDef, child, readsInputs("lib.Pipeline")])).toEqual([]);
+  });
+
+  it("is out of scope for a Service-capability kind", () => {
+    expect(
+      celDiagnostics([withCapability("Telo.Service"), readsInputs("run.Sequence")]),
+    ).toEqual([{ code: "CEL_UNKNOWN_IDENTIFIER", path: "steps[0].if" }]);
+  });
+
+  it("follows the ENTRY kind's capability inside a template body", () => {
+    const template = {
+      kind: "Telo.Definition",
+      metadata: { name: "Op", module: "lib" },
+      capability: "Telo.Invocable",
+      schema: { type: "object" },
+      resources: [
+        readsInputs("run.Daemon", { metadata: { name: "daemon" } }),
+        readsInputs("run.Sequence", { metadata: { name: "sequence" } }),
+      ],
+      invoke: ref("sequence"),
+    };
+    // An entry's context is closed (`self` is declared), so the missing root
+    // reads as an unknown field of it.
+    expect(
+      celDiagnostics([sequenceDef, withCapability("Telo.Service", "Daemon"), template]),
+    ).toEqual([{ code: "CEL_UNKNOWN_FIELD", path: "resources[0].steps[0].if" }]);
+  });
+
+  it("is out of scope at a compile-eval field of an Invocable kind", () => {
+    const def = {
+      ...withCapability("Telo.Invocable"),
+      schema: {
+        ...(sequenceDef as any).schema,
+        properties: {
+          ...(sequenceDef as any).schema.properties,
+          label: { type: "string", "x-telo-eval": "compile" },
+        },
+      },
+    };
+    expect(
+      celDiagnostics([def, readsInputs("run.Sequence", { label: cel("inputs.a") })]),
+    ).toEqual([{ code: "CEL_UNKNOWN_IDENTIFIER", path: "label" }]);
+  });
 });

@@ -164,6 +164,7 @@ targets:
   - !ref targetWhenGatedAtRuntime
   - !ref targetWhenInvoke
   - !ref targetWhenInvokeAtRuntime
+  - !ref applicationTargetInputs
   - !ref stepPredicate
   - !ref stepPredicateAtRuntime
   - !ref compileResultAtCreation
@@ -1732,6 +1733,19 @@ source: ./__fixtures__/check-run-agreement/predicates/target-when-invoke-dyn.yam
 expect:
   errors: []
   runFails: "The predicate at 'targets[0].when' must evaluate to a boolean"
+---
+# `inputs` at an Application's boot targets: the kernel evaluates `when:` and an
+# inline target's `inputs:` against `steps` and the root scope, never `inputs`.
+kind: Assert.Manifest
+metadata:
+  name: applicationTargetInputs
+source: ./__fixtures__/check-run-agreement/application-target-inputs.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "unknown identifier 'inputs'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "unknown identifier 'inputs'"
 ---
 kind: Assert.Manifest
 metadata:
