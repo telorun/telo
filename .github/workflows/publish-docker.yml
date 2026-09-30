@@ -3,7 +3,7 @@ name: Publish Docker Images
 # Three triggers:
 #  * push:main        → dev images. The kernel image publishes sha-tagged
 #                       slim variants only (amd64-only). Application artifacts
-#                       (docker-runner) are not npm-gated, so they publish both
+#                       (docker-runner, hub-web) are not npm-gated, so they publish both
 #                       `:latest` and `:sha-<short>` on every push.
 #                       authoring-agent publishes an immutable `:<version>-slim`
 #                       per agent release (release-owned metadata.version) plus
@@ -30,6 +30,7 @@ on:
       - "apps/k8s-runner/**"
       - "packages/runner-core/**"
       - "apps/hub/**"
+      - "apps/hub-web/**"
       - "apps/authoring-agent/**"
       - "modules/**"
       - "cli/**"
@@ -480,6 +481,58 @@ jobs:
           tags: ${{ steps.imgtags.outputs.tags }}
           cache-from: type=gha,scope=runner
           cache-to: type=gha,mode=max,scope=runner
+
+  hub-web:
+    name: Build telorun/hub-web
+    # Same gating as docker-runner: every push builds :latest and :sha-*, and
+    # the "chore(release): version packages" commit — the one that moves the
+    # version — is built on the post-publish `release: true` path instead.
+    if: |
+      inputs.release ||
+      (github.event_name == 'push' &&
+       !contains(github.event.head_commit.message, 'chore(release): version packages'))
+    needs: context
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # HEAD^ needed to detect a package.json version bump
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Compute hub-web image tags
+        id: imgtags
+        env:
+          SHORT_SHA: ${{ needs.context.outputs.short-sha }}
+        run: |
+          # Always publish :latest and the per-commit :sha-*. Add an immutable
+          # :<version> tag only when apps/hub-web's package.json version actually
+          # moved in this commit, as the hub job does for its metadata.version.
+          NOW=$(jq -r .version apps/hub-web/package.json)
+          PREV=$(git show HEAD^:apps/hub-web/package.json 2>/dev/null | jq -r .version 2>/dev/null || true)
+          {
+            echo 'tags<<EOF'
+            echo "telorun/hub-web:latest"
+            echo "telorun/hub-web:sha-${SHORT_SHA}"
+            if [ -n "$NOW" ] && [ "$NOW" != "null" ] && [ "$NOW" != "$PREV" ]; then
+              echo "telorun/hub-web:${NOW}"
+            fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build & push hub-web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/hub-web/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.imgtags.outputs.tags }}
+          cache-from: type=gha,scope=hub-web
+          cache-to: type=gha,mode=max,scope=hub-web
 
   k8s-runner:
     name: Build telorun/k8s-runner

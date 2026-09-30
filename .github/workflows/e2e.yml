@@ -22,10 +22,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Brings up the discovery-hub stack (db=pgvector, storage, embedder, hub) via
-  # docker-compose and runs `apps/hub/test-suite-e2e.yaml` against the live HTTP
-  # + MCP surface. The embedder is a self-hosted embeddinggemma-300m sidecar, so
-  # the suite exercises the full semantic (vector) ranking path, not just lexical.
+  # `pnpm run test:e2e:hub` — the same command a developer runs — stands up a
+  # fresh discovery-hub stack (db=pgvector, storage, embedder, hub, and hub-web on
+  # its production target) under a compose project of its own, waits for the
+  # hub's first tracking pass, runs `apps/hub/test-suite-e2e.yaml` then
+  # `apps/hub-web/test-suite-e2e.yaml`, and tears the stack down. The hub suite's
+  # integration tests run against the stack's own db, through the `DB_*` the
+  # command supplies — this job sets none. The embedder is
+  # a self-hosted embeddinggemma-300m sidecar, so the suite exercises the full
+  # semantic (vector) ranking path, not just lexical.
   hub:
     name: Hub E2E
     runs-on: ubuntu-latest
@@ -65,110 +70,16 @@ jobs:
       - name: Check hub manifest
         run: pnpm run check apps/hub/telo.yaml
 
-      # The container no longer reaches into the workspace — the tracker uses the
+      # The containers no longer reach into the workspace — the tracker uses the
       # `telo` the base image ships. This build is kept as a compile check for
-      # the host-side e2e suite below.
+      # the host-side e2e suites.
       - name: Build workspace packages
         run: pnpm -r run build
 
-      - name: Bring up hub stack
-        run: |
-          mkdir -p apps/hub/.telo
-          # Generous wait-timeout: the embedder pulls the TEI image and downloads
-          # the embeddinggemma-300m ONNX weights on first boot before it is healthy.
-          docker compose up -d --build --wait --wait-timeout 420 db storage embedder hub \
-            || { echo "::group::hub stack failed to come up"; \
-                 docker compose ps -a; docker compose logs --no-color; \
-                 echo "::endgroup::"; exit 1; }
-
-      - name: Wait for the first tracking pass to finish
-        run: |
-          # The hub is healthy well before its first tracking pass finishes, and
-          # the pass walks SEED_REFS in order. Waiting only on "some vector rows
-          # exist" let the suite start after the first ref embedded, so
-          # assertions about a ref late in the seed (console is last) raced the
-          # tracker and saw an index holding only its earlier entries.
-          #
-          # Waiting on `last_tracked_at` alone is the same mistake one level up,
-          # and it let this race back in: that column is stamped when a ref's
-          # pass ENDS — success or failure — by a different step than the one
-          # that writes the kind rows, so the gate can pass over an index holding
-          # a fraction of them. The suite then fails on an assertion diff about
-          # search results rather than on "the index is not ready", which is what
-          # it actually saw.
-          #
-          # So wait on what the assertions READ, and read it the way the hub
-          # does: every search path joins `rk.version = m.latest_version`, so a
-          # module is queryable only once its LATEST version's kinds are in.
-          # Counting kinds at any version is not the same test and passed over
-          # exactly this — `console` carries 40 kind rows across its versions and
-          # 4 at its latest, `run` 104 and 7 — so a gate counting rows saw both
-          # as ready while a search for either returned nothing. A module that
-          # defines no kind (a `tesseract-lang/*` model pack) is ready once its
-          # exported resources are in at its latest version instead. Plus at
-          # least one embedding, for the semantic assertion.
-          # And treat a recorded `last_error` as a hard failure rather than as a
-          # ref that finished — a failed ingest satisfies `last_tracked_at` and
-          # would otherwise be reported, minutes later, as a mysteriously empty
-          # search. Expected count comes from the hub's own environment, so
-          # editing SEED_REFS never leaves this gate behind.
-          expected=$(docker compose exec -T hub printenv SEED_REFS | jq 'length' 2>/dev/null || echo "")
-          if ! [ "${expected:-0}" -gt 0 ] 2>/dev/null; then
-            echo "::error::could not read SEED_REFS from the hub container"
-            exit 1
-          fi
-          echo "seeded refs: $expected"
-          psql() { docker compose exec -T db psql -U postgres -d hub -tAc "$1" 2>/dev/null | tr -d '[:space:]'; }
-          for i in $(seq 1 60); do
-            failed=$(psql "SELECT count(*) FROM modules WHERE last_error IS NOT NULL" || echo 0)
-            if [ "${failed:-0}" -gt 0 ]; then
-              echo "::error::$failed seeded ref(s) failed to ingest"
-              docker compose exec -T db psql -U postgres -d hub \
-                -c "SELECT ref, last_error FROM modules WHERE last_error IS NOT NULL ORDER BY ref"
-              docker compose logs --no-color hub
-              exit 1
-            fi
-            total=$(psql "SELECT count(*) FROM modules" || echo 0)
-            indexed=$(psql "SELECT count(*) FROM modules m WHERE coalesce(m.latest_version, '') <> '' AND (EXISTS (SELECT 1 FROM resource_kinds rk WHERE rk.module_id = m.id AND rk.version = m.latest_version) OR EXISTS (SELECT 1 FROM module_resources mr WHERE mr.module_id = m.id AND mr.version = m.latest_version))" || echo 0)
-            kinds=$(psql "SELECT count(*) FROM resource_kinds rk JOIN modules m ON m.id = rk.module_id AND m.latest_version = rk.version" || echo 0)
-            vectors=$(psql "SELECT count(*) FROM resource_vectors" || echo 0)
-            echo "modules: ${indexed:-0}/${total:-0} queryable of $expected seeded; kinds at latest: ${kinds:-0}; resource_vectors: ${vectors:-0}"
-            if [ "${total:-0}" -ge "$expected" ] && [ "${indexed:-0}" -ge "$expected" ] \
-               && [ "${vectors:-0}" -gt 0 ]; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::hub never indexed a LATEST-version kind or exported resource for every seeded ref"
-          docker compose exec -T db psql -U postgres -d hub \
-            -c "SELECT m.ref, m.latest_version, m.last_tracked_at, m.last_error,
-                       count(rk.*) FILTER (WHERE rk.version = m.latest_version) AS kinds_at_latest,
-                       count(rk.*) AS kinds_any_version
-                  FROM modules m LEFT JOIN resource_kinds rk ON rk.module_id = m.id
-                 GROUP BY m.id, m.ref, m.latest_version, m.last_tracked_at, m.last_error
-                 ORDER BY m.ref" || true
-          docker compose logs --no-color hub embedder
-          exit 1
-
-      # `--debug` writes the run's event log (`.telo.debug.jsonl` beside the suite
-      # manifest); both it and the console output are uploaded when a run fails.
-      - name: Run hub e2e suite
-        shell: bash
-        run: |
-          set -o pipefail
-          mkdir -p e2e-logs
-          # Not `pnpm exec`: it puts a RELATIVE `./node_modules/.bin` first on PATH,
-          # and Bun's spawn stops at it with ENOENT for a child whose working
-          # directory differs — a test's `bun …/telo.ts` then cannot start.
-          export PATH="$PWD/node_modules/.bin:$PATH"
-          bun ./cli/nodejs/bin/telo.ts --debug ./apps/hub/test-suite-e2e.yaml 2>&1 | tee e2e-logs/hub-suite.log
-
-      - name: Dump stack logs on failure
-        if: failure()
-        run: |
-          mkdir -p e2e-logs
-          docker compose ps -a
-          docker compose logs --no-color | tee e2e-logs/hub-stack.log
+      # On failure the suites' output and the stack's logs are in `e2e-logs/`;
+      # `--debug` writes each suite's event log (`.telo.debug.jsonl`) beside it.
+      - name: Run hub e2e
+        run: pnpm run test:e2e:hub
 
       - name: Upload logs on failure
         if: failure()
@@ -181,10 +92,7 @@ jobs:
           path: |
             e2e-logs/
             apps/hub/.telo.debug.jsonl
-
-      - name: Stop hub stack
-        if: always()
-        run: docker compose down -v
+            apps/hub-web/.telo.debug.jsonl
 
   # The two interactive examples — `agent-console` and `chat-console` — driven
   # through real conversations against a real model. They are here rather than in
@@ -260,7 +168,9 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p e2e-logs
-          # Not `pnpm exec` — see the hub step.
+          # Not `pnpm exec`: it puts a RELATIVE `./node_modules/.bin` first on PATH,
+          # and Bun's spawn stops at it with ENOENT for a child whose working
+          # directory differs — a test's `bun …/telo.ts` then cannot start.
           export PATH="$PWD/node_modules/.bin:$PATH"
           bun ./cli/nodejs/bin/telo.ts --debug ./examples/test-suite-live.yaml 2>&1 | tee e2e-logs/live-examples.log
 
@@ -373,7 +283,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p e2e-logs
-          # Not `pnpm exec` — see the hub step.
+          # Not `pnpm exec` — see the live example step.
           export PATH="$PWD/node_modules/.bin:$PATH"
           bun ./cli/nodejs/bin/telo.ts --debug ./apps/authoring-agent/test-suite-e2e.yaml 2>&1 | tee e2e-logs/authoring-agent.log
 

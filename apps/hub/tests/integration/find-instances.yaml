@@ -12,9 +12,9 @@ metadata:
     with the rest folded in as `siblings`.
 
     NEEDS A LIVE POSTGRES WITH PGVECTOR (the search library's vector arm runs for
-    every query) — the docker-compose `db` service, reached through DB_HOST,
-    DB_PORT, DB_USER, DB_PASSWORD and DB_NAME. Run by the hub's own suite
-    (`pnpm run test:e2e:hub`). The embedder is a local stand-in returning a fixed
+    every query) — a database `pnpm run test:e2e:hub` supplies from its own
+    stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
+    developer's database. Run only by the hub's own suite through that command. The embedder is a local stand-in returning a fixed
     three-dimension vector, and the manifest bucket is never read.
 imports:
   Http: ../../../../modules/http-server

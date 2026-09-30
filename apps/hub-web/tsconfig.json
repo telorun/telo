@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
+    "types": ["node", "vite/client"],
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -11,12 +11,13 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": false,
     "jsx": "react-jsx",
-    "incremental": true,
+    "rootDirs": [".", "./.react-router/types"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./app/*"]
     }
   },
-  "include": ["src/vite-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.mts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["app/**/*", ".react-router/types/**/*", "*.ts"],
+  "exclude": ["node_modules", "build"]
 }

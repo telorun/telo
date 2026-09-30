@@ -1,0 +1,17 @@
+# Layered over docker-compose.yml by `pnpm run test:e2e:hub` (scripts/hub-e2e.mjs),
+# under a compose project of its own. Not for use by hand.
+
+services:
+  db:
+    # The database dies with the container, so every run starts empty.
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql
+    # Published on loopback only, on a host port Docker assigns: the hub suite's
+    # integration tests reach it from the host through the DB_* the e2e command
+    # reads back, and no fixed host port can collide with another stack.
+    ports: !override
+      - target: 5432
+        host_ip: 127.0.0.1
+  storage:
+    ports: !reset []

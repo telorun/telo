@@ -1,11 +1,11 @@
 import { ArrowUpRight } from "lucide-react";
+import { Link } from "react-router";
 
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { DeprecationNotice, RuntimeBadges } from "@/Badges";
 import { KindPopover, ResourcePopover } from "@/KindPopover";
 import { CopyButton } from "@/CopyButton";
-import { moduleDisplayName, refToPath, shortCapability } from "@/module-ref";
-import { navigate } from "@/routing";
+import { moduleDisplayName, modulePagePath, shortCapability } from "@/module-ref";
 import type { ModuleHit } from "@/api";
 
 /**
@@ -29,7 +29,7 @@ export function ModulePreview({ hit }: { hit: ModuleHit }) {
     hit.matchedKinds.filter((k) => k.entry !== "instance").map((k) => k.kind),
   );
   const otherKinds = hit.exportedKinds.filter((k) => !matched.has(k.kind));
-  const path = refToPath(m.ref);
+  const path = modulePagePath(m.ref);
 
   return (
     <div className="flex flex-col gap-5">
@@ -59,17 +59,14 @@ export function ModulePreview({ hit }: { hit: ModuleHit }) {
         />
       )}
 
-      <a
-        href={path}
-        onClick={(e) => {
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-          e.preventDefault();
-          navigate(path);
-        }}
-        className="flex items-center gap-1 self-start text-sm text-primary underline-offset-4 hover:underline"
-      >
-        Open full page <ArrowUpRight className="size-3.5" />
-      </a>
+      {path && (
+        <Link
+          to={path}
+          className="flex items-center gap-1 self-start text-sm text-primary underline-offset-4 hover:underline"
+        >
+          Open full page <ArrowUpRight className="size-3.5" />
+        </Link>
+      )}
 
       <section className="flex flex-col gap-2">
         <PanelTitle>Import it</PanelTitle>

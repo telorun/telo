@@ -2,7 +2,9 @@
 /node_modules
 
 # build output
+/build
 /dist
+/.react-router
 
 # misc
 .DS_Store

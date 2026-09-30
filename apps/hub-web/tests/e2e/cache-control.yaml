@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: HubWebE2ECacheControl
+  version: 1.0.0
+  description: |
+    End-to-end test of hub-web's Cache-Control policy on a live hub-web at
+    http://localhost:8050: a 200 page, a 404, the sitemap index and a shard,
+    and `robots.txt`, compared as one table.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref cacheControl_MatchesPolicy
+---
+kind: Run.Sequence
+metadata: { name: cacheControl_MatchesPolicy }
+steps:
+  - name: page
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/console/
+      method: GET
+  - name: notFound
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/e2e-nonexistent-module/
+      method: GET
+  - name: sitemapIndex
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/sitemap.xml
+      method: GET
+  - name: sitemapShard
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/sitemaps/modules-0.xml
+      method: GET
+  - name: robots
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/robots.txt
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {
+          'page': [steps.page.result.status, steps.page.result.headers['cache-control']],
+          'notFound': [steps.notFound.result.status, steps.notFound.result.headers['cache-control']],
+          'sitemapIndex': [steps.sitemapIndex.result.status, steps.sitemapIndex.result.headers['cache-control']],
+          'sitemapShard': [steps.sitemapShard.result.status, steps.sitemapShard.result.headers['cache-control']],
+          'robots': [steps.robots.result.status, steps.robots.result.headers['cache-control']]
+        }
+      expected:
+        page: [200, "public, max-age=60, stale-if-error=86400"]
+        notFound: [404, no-cache]
+        sitemapIndex: [200, no-cache]
+        sitemapShard: [200, no-cache]
+        robots: [200, "public, max-age=3600"]
+    invoke:
+      kind: Assert.Equals

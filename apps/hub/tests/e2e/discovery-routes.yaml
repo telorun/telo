@@ -8,7 +8,8 @@ metadata:
     (the `oci://ghcr.io/telorun/*` set in docker-compose `SEED_REFS`, which is
     what a fresh database contains — assert only on those, never on a ref some
     other test registers). Covers /health, per-resource and per-module
-    search, /refs typeahead, and /module/versions including its 404 path.
+    search, /refs typeahead, /module/versions including its 404 path, and the
+    /modules catalogue listing and its paging.
 imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
@@ -33,6 +34,9 @@ targets:
   - !ref searchResources_BroadensWhenCategoryExcludesEverything
   - !ref searchResources_CarriesCategoryFacet
   - !ref searchModules_RejectsUnknownCategory
+  - !ref modules_ListsExactlyTheRefsModuleAnswers
+  - !ref modules_PagesChainByNext
+  - !ref modules_RejectsInvalidLimit
 ---
 kind: Run.Sequence
 metadata: { name: health }
@@ -812,3 +816,149 @@ steps:
       expected: 400
     invoke:
       kind: Assert.Equals
+---
+# GET /modules lists exactly the refs GET /module answers 200 for — local refs
+# and tesseract-lang packs included, since both routes read one predicate. Only
+# the seeded refs are compared, never a ref registered by hand into the stack.
+kind: Run.Sequence
+metadata: { name: modules_ListsExactlyTheRefsModuleAnswers }
+steps:
+  - name: seeded
+    value:
+      - oci://ghcr.io/telorun/kv-store
+      - oci://ghcr.io/telorun/kv-store-redis
+      - oci://ghcr.io/telorun/kv-store-memory
+      - oci://ghcr.io/telorun/timer
+      - oci://ghcr.io/telorun/scheduler
+      - oci://ghcr.io/telorun/run
+      - ./modules/ocr
+      - ./modules/tesseract-model
+      - ./modules/tesseract
+      - ./modules/tesseract-lang/pol
+      - ./modules/tesseract-lang/deu
+      - ./modules/tesseract-lang/fra
+      - oci://ghcr.io/telorun/console
+  - name: list
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/modules
+      method: GET
+  - name: probe
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.refs"
+      steps:
+        - name: detail
+          invoke:
+            kind: HttpClient.Request
+            url: http://localhost:8040/module
+            method: GET
+          inputs:
+            query:
+              ref: !cel "string(item)"
+      outputs:
+        ref: !cel "string(item)"
+        found: !cel "steps.detail.result.status == 200"
+        latestVersion: !cel "steps.detail.result.status == 200 ? steps.detail.result.body.module.latestVersion : ''"
+    inputs:
+      refs: !cel "steps.seeded.result"
+  - name: assert
+    inputs:
+      actual:
+        status: !cel "steps.list.result.status"
+        next: !cel "steps.list.result.body.next"
+        listed: !cel >-
+          steps.list.result.body.modules
+            .filter(m, m.ref in steps.seeded.result)
+            .map(m, {'ref': m.ref, 'latestVersion': m.latestVersion})
+        ascending: !cel >-
+          enumerate(steps.list.result.body.modules).all(e,
+            e.index == 0 || steps.list.result.body.modules[e.index - 1].seq < e.value.seq)
+      expected:
+        status: 200
+        next: null
+        # Ordered as /modules orders them, so the comparison is of sets.
+        listed: !cel >-
+          steps.list.result.body.modules
+            .filter(m, m.ref in steps.probe.result.filter(p, p.found).map(p, p.ref))
+            .map(m, {'ref': m.ref,
+                     'latestVersion': steps.probe.result.filter(p, p.ref == m.ref)[0].latestVersion})
+        ascending: true
+    invoke: { kind: Assert.Equals }
+  - name: nothingMissing
+    inputs:
+      actual: !cel >-
+        steps.probe.result.filter(p, p.found)
+          .filter(p, !(p.ref in steps.list.result.body.modules.map(m, m.ref)))
+      expected: []
+    invoke: { kind: Assert.Equals }
+---
+# Walking /modules two at a time yields the full listing page by page: each page
+# is the next two entries past the cursor, `next` is the page's last seq while
+# pages are full, and the walk ends on the page whose `next` is null.
+kind: Run.Sequence
+metadata: { name: modules_PagesChainByNext }
+steps:
+  - name: full
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/modules
+      method: GET
+  - name: walk
+    invoke:
+      kind: Run.Loop
+      condition: !cel "previous == null || previous.page.result.body.next != null"
+      maxIterations: 1000
+      steps:
+        - name: cursor
+          value: !cel "previous == null ? 0 : previous.page.result.body.next"
+        - name: page
+          invoke:
+            kind: HttpClient.Request
+            url: http://localhost:8040/modules
+            method: GET
+          inputs:
+            query:
+              after: !cel "string(steps.cursor.result)"
+              limit: "2"
+        - name: check
+          inputs:
+            actual:
+              status: !cel "steps.page.result.status"
+              body: !cel "steps.page.result.body"
+            expected:
+              status: 200
+              body:
+                modules: !cel >-
+                  enumerate(inputs.full.filter(m, m.seq > steps.cursor.result))
+                    .filter(e, e.index < 2).map(e, e.value)
+                next: !cel >-
+                  size(inputs.full.filter(m, m.seq > steps.cursor.result)) >= 2
+                    ? inputs.full.filter(m, m.seq > steps.cursor.result)[1].seq
+                    : null
+          invoke: { kind: Assert.Equals }
+      outputs:
+        finished: !cel "steps.page.result.body.next == null"
+    inputs:
+      full: !cel "steps.full.result.body.modules"
+  - name: assert
+    inputs:
+      actual: !cel "steps.walk.result.finished"
+      expected: true
+    invoke: { kind: Assert.Equals }
+---
+# `limit` is bounded by the route's query schema, so an out-of-range page size is
+# the caller's mistake rather than an empty or unbounded page.
+kind: Run.Sequence
+metadata: { name: modules_RejectsInvalidLimit }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/modules?limit=0
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 400
+    invoke: { kind: Assert.Equals }

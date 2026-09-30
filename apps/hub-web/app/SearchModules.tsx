@@ -1,5 +1,6 @@
 import * as React from "react";
 import { AlertCircle, Loader2, Search } from "lucide-react";
+import { useSearchParams } from "react-router";
 
 import { Input } from "@/components/ui/input";
 import {
@@ -12,9 +13,10 @@ import {
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { RuntimeBadges } from "@/Badges";
 import { KindPopover } from "@/KindPopover";
+import { useHubOrigins } from "@/hub-origins";
 import { ModulePreview } from "@/ModulePreview";
-import { moduleDisplayName, refToPath } from "@/module-ref";
-import { navigate } from "@/routing";
+import { ModuleLink } from "@/ModuleLink";
+import { moduleDisplayName, modulePagePath } from "@/module-ref";
 import {
   fetchCategories,
   PAGE_SIZE,
@@ -40,40 +42,26 @@ type State =
   | { kind: "ready"; hits: ModuleHit[]; total: number }
   | { kind: "failed"; error: string };
 
-/** Query and category are mirrored into the URL so a search — or a browse of
- *  one category — is shareable and survives a reload, without pulling in a
- *  router for a two-view app. */
-function paramFromUrl(name: string): string {
-  return new URLSearchParams(window.location.search).get(name) ?? "";
-}
-
-function syncUrl(query: string, category: string) {
-  const url = new URL(window.location.href);
-  for (const [name, value] of [
-    ["q", query],
-    ["category", category],
-  ]) {
-    if (value) url.searchParams.set(name, value);
-    else url.searchParams.delete(name);
-  }
-  window.history.replaceState(null, "", url);
-}
-
 /** Identity of a hit — a module is unique by ref. */
 function hitKey(hit: ModuleHit): string {
   return hit.module.ref;
 }
 
 export function SearchModules() {
-  const [query, setQuery] = React.useState(() => paramFromUrl("q"));
-  const [category, setCategory] = React.useState(() => paramFromUrl("category"));
+  // Query and category are mirrored into the URL so a search — or a browse of
+  // one category — is shareable and survives a reload. Read through the router,
+  // so the server render and hydration start from the same values.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = React.useState(() => searchParams.get("q") ?? "");
+  const [category, setCategory] = React.useState(() => searchParams.get("category") ?? "");
+  const { browserApiOrigin } = useHubOrigins();
   const [facets, setFacets] = React.useState<CategoryFacet[]>([]);
   const [state, setState] = React.useState<State>({ kind: "loading" });
   const [selectedRef, setSelectedRef] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
-    fetchCategories(controller.signal)
+    fetchCategories(browserApiOrigin, controller.signal)
       .then(setFacets)
       .catch(() => {
         // The facet is an optional narrowing — an unreachable hub is already
@@ -81,14 +69,14 @@ export function SearchModules() {
         // double-reporting the same outage.
       });
     return () => controller.abort();
-  }, []);
+  }, [browserApiOrigin]);
 
   React.useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setState({ kind: "loading" });
       try {
-        const result = await searchModules(query, category, controller.signal);
+        const result = await searchModules(browserApiOrigin, query, category, controller.signal);
         setState(
           result.ok
             ? { kind: "ready", hits: result.hits, total: result.total }
@@ -103,9 +91,26 @@ export function SearchModules() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, category]);
+  }, [browserApiOrigin, query, category]);
 
-  React.useEffect(() => syncUrl(query, category), [query, category]);
+  React.useEffect(() => {
+    if ((searchParams.get("q") ?? "") === query && (searchParams.get("category") ?? "") === category) {
+      return;
+    }
+    setSearchParams(
+      (params) => {
+        for (const [name, value] of [
+          ["q", query],
+          ["category", category],
+        ]) {
+          if (value) params.set(name, value);
+          else params.delete(name);
+        }
+        return params;
+      },
+      { replace: true, preventScrollReset: true },
+    );
+  }, [query, category, searchParams, setSearchParams]);
 
   const hits = state.kind === "ready" ? state.hits : [];
   // The URL carries the slug; prose should read back the label an author wrote.
@@ -195,19 +200,7 @@ export function SearchModules() {
               key={hitKey(hit)}
               className="rounded-lg border border-transparent px-3 py-2 transition-colors hover:bg-muted/60 has-focus-visible:bg-muted/60"
             >
-              {/* Left-click previews in the panel — scanning candidates is the
-                  common case, and a navigation per module makes it expensive.
-                  It stays a real anchor so the URL is honest and cmd/middle-click
-                  still opens the full page in a new tab. */}
-              <a
-                href={refToPath(hit.module.ref)}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                  e.preventDefault();
-                  setSelectedRef(hitKey(hit));
-                }}
-                className="flex w-full flex-col gap-0.5 text-left outline-none focus-visible:underline"
-              >
+              <HitOpener moduleRef={hit.module.ref} onPreview={() => setSelectedRef(hitKey(hit))}>
                 <span className="flex w-full items-baseline gap-x-3">
                   <span className="truncate font-medium">{moduleDisplayName(hit.module)}</span>
                   <span className="shrink-0 font-mono text-xs text-muted-foreground">
@@ -254,7 +247,7 @@ export function SearchModules() {
                     {hit.module.description}
                   </span>
                 )}
-              </a>
+              </HitOpener>
 
               {/* Outside the anchor: these are buttons, and nesting interactive
                   elements inside a link is invalid and breaks keyboard order. */}
@@ -280,19 +273,14 @@ export function SearchModules() {
                 <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 pt-1 text-xs text-muted-foreground">
                   <span>Implemented by:</span>
                   {hit.implementations.map((i) => (
-                    <a
+                    <ModuleLink
                       key={i.ref}
-                      href={refToPath(i.ref)}
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                        e.preventDefault();
-                        navigate(refToPath(i.ref));
-                      }}
+                      moduleRef={i.ref}
                       title={i.ref}
                       className="font-medium text-foreground underline-offset-2 hover:underline"
                     >
                       {moduleDisplayName(i)}
-                    </a>
+                    </ModuleLink>
                   ))}
                 </p>
               )}
@@ -303,19 +291,14 @@ export function SearchModules() {
                     {hit.siblings.length} more like this:
                   </span>
                   {hit.siblings.map((s) => (
-                    <a
+                    <ModuleLink
                       key={s.ref}
-                      href={refToPath(s.ref)}
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                        e.preventDefault();
-                        navigate(refToPath(s.ref));
-                      }}
+                      moduleRef={s.ref}
                       title={s.description || s.ref}
                       className="font-mono underline-offset-2 hover:text-foreground hover:underline"
                     >
                       {s.matchedKinds[0]?.name ?? moduleDisplayName(s)}
-                    </a>
+                    </ModuleLink>
                   ))}
                 </p>
               )}
@@ -335,6 +318,44 @@ export function SearchModules() {
         </SheetContent>
       </Sheet>
     </div>
+  );
+}
+
+/** A result row's opener. Left-click previews in the panel — scanning
+ *  candidates is the common case, and a navigation per module makes it
+ *  expensive. A module with a page stays a real anchor, so the URL is honest and
+ *  cmd/middle-click still opens the full page in a new tab; one without a page
+ *  only previews. */
+function HitOpener({
+  moduleRef,
+  onPreview,
+  children,
+}: {
+  moduleRef: string;
+  onPreview: () => void;
+  children: React.ReactNode;
+}) {
+  const path = modulePagePath(moduleRef);
+  const className = "flex w-full flex-col gap-0.5 text-left outline-none focus-visible:underline";
+  if (!path) {
+    return (
+      <button type="button" onClick={onPreview} className={className}>
+        {children}
+      </button>
+    );
+  }
+  return (
+    <a
+      href={path}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onPreview();
+      }}
+      className={className}
+    >
+      {children}
+    </a>
   );
 }
 

@@ -32,7 +32,7 @@
     "check:controller-protocol": "node scripts/check-controller-protocol.mjs",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:integration": "bun ./cli/nodejs/bin/telo.ts ./test-suite-integration.yaml",
-    "test:e2e:hub": "bun ./cli/nodejs/bin/telo.ts ./apps/hub/test-suite-e2e.yaml",
+    "test:e2e:hub": "node scripts/hub-e2e.mjs",
     "test:e2e:authoring-agent": "bun ./cli/nodejs/bin/telo.ts ./apps/authoring-agent/test-suite-e2e.yaml",
     "test:node": "node ./cli/nodejs/bin/telo.mjs ./test-suite.yaml",
     "test:node:windows": "node ./cli/nodejs/bin/telo.mjs ./test-suite-windows.yaml",

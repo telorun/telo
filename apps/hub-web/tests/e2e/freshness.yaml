@@ -1,0 +1,112 @@
+kind: Telo.Application
+metadata:
+  name: HubWebE2EFreshness
+  version: 1.0.0
+  description: |
+    End-to-end test that hub-web serves what the hub knows NOW: a module
+    registered while hub-web is running gets its page and its sitemap entry with
+    no rebuild and no restart. Uses `oci://ghcr.io/telorun/log`, which is
+    reserved for this test — never seeded, never registered by another test.
+    Reads hub-web at http://localhost:8050 and the hub at http://localhost:8040.
+imports:
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Html: oci://ghcr.io/telorun/html@0.2.0#sha256-PPZZulIQWK-b7rBOXSENSCkvMKRIfNiD4lPFm43Al40
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref freshness_RegisteredModuleAppears
+---
+# What one side of the check reads: the module's page status, whether shard 0
+# lists it, and what the hub says about its registration.
+kind: Run.Sequence
+metadata: { name: observeLog }
+steps:
+  - name: page
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/log/
+      method: GET
+  - name: shard
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/sitemaps/modules-0.xml
+      method: GET
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: !cel "steps.shard.result.body"
+  - name: read
+    invoke:
+      kind: Html.Extraction
+      fields:
+        locs: { selector: loc, type: text, many: true }
+    inputs:
+      document: !cel "steps.parse.result"
+  - name: registration
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/register/status?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Flog
+      method: GET
+outputs:
+  page: !cel "steps.page.result.status"
+  listed: !cel "'http://hub.telo.localhost:8060/module/oci/ghcr.io/telorun/log/' in steps.read.result.fields.locs"
+  registration: !cel "steps.registration.result.body.status"
+---
+kind: Run.Sequence
+metadata: { name: freshness_RegisteredModuleAppears }
+steps:
+  - name: before
+    invoke: !ref observeLog
+  # Failing here means the stack was not fresh: this hub has seen the module
+  # before. Run the suite only through `pnpm run test:e2e:hub`, which stands up
+  # a new stack every time.
+  - name: assertBefore
+    inputs:
+      actual: !cel "steps.before.result"
+      expected:
+        page: 404
+        listed: false
+        registration: unknown
+    invoke:
+      kind: Assert.Equals
+  - name: register
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8040/register
+      method: POST
+      # The ref is validated synchronously: two origin round trips, each a `telo`
+      # subprocess doing an anonymous OCI token handshake.
+      timeout: 30000
+      body:
+        ref: oci://ghcr.io/telorun/log
+  # Bounded, and the assertion stays outside the loop: an exhausted loop just
+  # stops, so an assertion inside it would never run when the module never
+  # becomes ready.
+  - name: poll
+    invoke:
+      kind: Run.Loop
+      maxIterations: 60
+      condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 2s
+        - name: status
+          invoke:
+            kind: HttpClient.Request
+            url: http://localhost:8040/register/status?ref=oci%3A%2F%2Fghcr.io%2Ftelorun%2Flog
+            method: GET
+            timeout: 10000
+  - name: after
+    invoke: !ref observeLog
+  - name: assertAfter
+    inputs:
+      actual: !cel "steps.after.result"
+      expected:
+        page: 200
+        listed: true
+        registration: ready
+    invoke:
+      kind: Assert.Equals
