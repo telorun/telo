@@ -1,0 +1,101 @@
+# What the engine returns: each result's title, URL and `content` as the snippet
+# ("" when absent), in rank order. `publishedDate` is Python's isoformat — with no
+# offset it is UTC, microseconds are read, a bare date is midnight UTC, and a
+# null, unreadable or impossible one is left out rather than failing the call. A
+# result without a URL is dropped; a URL is returned exactly as reported, even
+# when it is not ASCII or not percent-encoded.
+kind: Telo.Application
+metadata:
+  name: SearxngResultMappingTest
+  version: 1.0.0
+imports:
+  SearXNG: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref resultMapping
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18841" }
+---
+kind: Run.Value
+metadata: { name: canned }
+value:
+  results:
+    - { title: Naive, url: "https://a.example/", content: naive, publishedDate: "2026-01-02T03:04:05" }
+    - { title: Micro, url: "https://b.example/", content: micro, publishedDate: "2026-01-02T03:04:05.123456" }
+    - { title: Offset, url: "https://c.example/", content: offset, publishedDate: "2026-01-02T05:04:05+02:00" }
+    - { title: Zulu, url: "https://d.example/", content: zulu, publishedDate: "2026-01-02T03:04:05Z" }
+    - { title: Absent, url: "https://e.example/", content: null, publishedDate: null }
+    - { title: Prose, url: "https://f.example/", content: prose, publishedDate: yesterday }
+    - { url: "https://g.example/" }
+    - { title: Day, url: "https://h.example/", content: day, publishedDate: "2026-01-02" }
+    - { title: Impossible, url: "https://i.example/", content: impossible, publishedDate: "2026-02-30T00:00:00" }
+    - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", content: iri }
+    - { title: Space, url: "https://example.com/a b", content: space }
+    - { title: No URL, content: dropped }
+---
+kind: Run.Sequence
+metadata: { name: resultMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeSearxng }
+    routes:
+      - request:
+          path: /search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            when: !cel "request.query.pageno == '1'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "result"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { results: [] }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18841
+    mounts:
+      - path: /
+        mount: !ref FakeSearxng
+targets:
+  - !ref FakeServer
+steps:
+  - name: search
+    invoke: !ref engine
+    inputs: { query: dates }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # Instants compared as their RFC 3339 text.
+      actual: !cel >-
+        {'results': steps.search.result.results.map(r, has(r.publishedAt)
+            ? {'title': r.title, 'url': r.url, 'snippet': r.snippet, 'publishedAt': string(r.publishedAt)}
+            : {'title': r.title, 'url': r.url, 'snippet': r.snippet}),
+         'more': has(steps.search.result.nextCursor)}
+      expected:
+        results:
+          - { title: Naive, url: "https://a.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05.000Z" }
+          - { title: Micro, url: "https://b.example/", snippet: micro, publishedAt: "2026-01-02T03:04:05.123Z" }
+          - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05.000Z" }
+          - { title: Zulu, url: "https://d.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05.000Z" }
+          - { title: Absent, url: "https://e.example/", snippet: "" }
+          - { title: Prose, url: "https://f.example/", snippet: prose }
+          - { title: "", url: "https://g.example/", snippet: "" }
+          - { title: Day, url: "https://h.example/", snippet: day, publishedAt: "2026-01-02T00:00:00.000Z" }
+          - { title: Impossible, url: "https://i.example/", snippet: impossible }
+          - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
+          - { title: Space, url: "https://example.com/a b", snippet: space }
+        more: false

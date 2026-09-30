@@ -1,0 +1,255 @@
+kind: Telo.Library
+metadata:
+  name: Exa
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: >-
+    Web search through the Exa Search API, a neural search engine for AI
+    applications: ranked results with title, URL, highlighted excerpts and
+    publication date for a query, with location, recency and content-moderation
+    settings. Up to 100 results per query, sliced with an opaque cursor.
+    Authenticated with an API key on a configurable HTTP client.
+imports:
+  WebSearch: ../web-search
+  Http: ../http-client
+  Run: ../run
+exports:
+  kinds:
+    - WebSearchEngine
+---
+# A templated engine over `POST /search`. Exa returns one ranked list of at most
+# 100 results and cannot page, so the 100 are the whole reachable window: a
+# position is an offset into it, each call requests the slice plus one probe
+# result (`windowRequest`) and returns the slice (`windowSlice`).
+kind: Telo.Definition
+metadata:
+  name: WebSearchEngine
+  description: >-
+    Searches the web through the Exa Search API. Returns at most the requested
+    number of ranked results with title, URL, highlighted excerpts and publication
+    date, reaching the first 100, and a cursor while more remain. Sends country as
+    the user's location and recency as a start date; denied access, rate limits,
+    exhausted credits and failures are distinct errors.
+capability: Telo.Invocable
+extends: WebSearch.Engine
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The cursor is malformed, was issued by another engine, or was issued for a
+        different query, language, country or freshness.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: >-
+        Exa answered 401 (the API key is invalid) or 403 FEATURE_DISABLED (the key's
+        plan does not include the request).
+    ERR_SEARCH_RATE_LIMITED:
+      description: Exa answered 429.
+    ERR_SEARCH_QUOTA_EXCEEDED:
+      description: Exa answered 402 — the account's credits or budget are used up.
+    ERR_SEARCH_FAILED:
+      description: >-
+        Exa was unreachable, answered with any other error, or answered with a body
+        that is not its search response.
+schema:
+  type: object
+  required: [request]
+  additionalProperties: false
+  properties:
+    request:
+      title: Request
+      description: >-
+        The HTTP request Exa is reached through. Its client's `baseUrl` is
+        `https://api.exa.ai`, and its credential an `Http.ApiKeyHeader` with header
+        `x-api-key`.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    safeSearch:
+      title: Safe search
+      description: Exa's content moderation, sent as `moderation`.
+      type: boolean
+      default: false
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: search
+    inputType: !ref WebSearch.Query
+    outputType: !ref WebSearch.Results
+    steps:
+      - name: cursor
+        value: !cel "WebSearch.openCursor('exa', inputs, '^(0|[1-9][0-9]?)$', '0')"
+      - name: refuse
+        if: !cel "!steps.cursor.result.valid"
+        then:
+          - name: invalidCursor
+            throw:
+              code: ERR_INVALID_INPUT
+              message: !cel "steps.cursor.result.message"
+      # Without `count`, everything reachable from the offset.
+      - name: window
+        value:
+          offset: !cel "int(steps.cursor.result.position)"
+          count: !cel "has(inputs.count) ? inputs.count : 100"
+      # Exa takes any ISO 3166-1 alpha-2 location and has no language parameter.
+      # Recency is the start of the window as an ISO 8601 date-time.
+      - name: current
+        invoke: !ref page
+        inputs:
+          body: !cel >-
+            compact({
+              'query': inputs.query,
+              'numResults': WebSearch.windowRequest(steps.window.result.offset, steps.window.result.count, 100),
+              'contents': {'highlights': true},
+              'moderation': self.safeSearch,
+              'userLocation': has(inputs.country) ? inputs.country : null,
+              'startPublishedDate': has(inputs.freshness)
+                ? dyn(string(WebSearch.freshnessStart(inputs.freshness, now()))) : null
+            })
+      - name: slice
+        value: !cel >-
+          WebSearch.windowSlice(steps.current.result.results, steps.window.result.offset, steps.window.result.count)
+      - name: shaped
+        value: !cel >-
+          steps.slice.result.next == null
+            ? {'results': steps.slice.result.items}
+            : {'results': steps.slice.result.items, 'nextCursor': WebSearch.sealCursor('exa', inputs, string(steps.slice.result.next))}
+    outputs: !cel "steps.shaped.result"
+  # One request, mapped onto the contract's result shape; every failure is raised
+  # here as a contract code.
+  - kind: Run.Sequence
+    metadata:
+      name: page
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [body]
+        additionalProperties: false
+        properties:
+          body: { type: object }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [results]
+        additionalProperties: false
+        properties:
+          results: { type: array }
+    steps:
+      - name: fetch
+        try:
+          - name: http
+            invoke: !cel "self.request"
+            inputs:
+              url: /search
+              method: POST
+              body: !cel "inputs.body"
+              responseType: json
+        catch:
+          # A client declaring `throwOnHttpError` raises the status instead of
+          # returning it; it is read from the error and mapped like any other.
+          - name: unreachable
+            if: !cel "error.code != 'ERR_HTTP_STATUS'"
+            then:
+              - name: transportFailed
+                throw:
+                  code: ERR_SEARCH_FAILED
+                  message: !interpolate "The request to Exa failed: ${{ error.message }}"
+          - name: raised
+            value:
+              status: !cel "int(error.data.status)"
+              body: !cel "'body' in error.data ? error.data.body : null"
+      - name: response
+        value: !cel >-
+          'http' in steps
+            ? {'status': steps.http.result.status, 'body': steps.http.result.body}
+            : {'status': steps.raised.result.status, 'body': steps.raised.result.body}
+      # Exa's error body is `{requestId, error, tag}`. A client raising on the
+      # status hands it over as text, which is searched rather than parsed: it may
+      # be cut short.
+      - name: failure
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            type(body) == type({})
+              ? {
+                  'tag': 'tag' in body ? string(body.tag) : '',
+                  'error': 'error' in body ? string(body.error) : ''
+                }
+              : type(body) == type('')
+                ? {
+                    'tag': cel.bind(g, regexGroups(body, '"tag"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : ''),
+                    'error': cel.bind(g, regexGroups(body, '"error"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : '')
+                  }
+                : {'tag': '', 'error': ''})
+      - name: outcome
+        value: !cel >-
+          steps.response.result.status == 200 ? 'ok' :
+          steps.response.result.status == 401 ||
+            (steps.response.result.status == 403 && steps.failure.result.tag == 'FEATURE_DISABLED') ? 'denied' :
+          steps.response.result.status == 402 ? 'quota' :
+          steps.response.result.status == 429 ? 'limited' : 'failed'
+      - name: status
+        switch: !cel "steps.outcome.result"
+        cases:
+          ok: []
+          denied:
+            - name: accessDenied
+              throw:
+                code: ERR_SEARCH_ACCESS_DENIED
+                message: !cel >-
+                  'Exa refused access (HTTP ' + string(steps.response.result.status) +
+                  (steps.failure.result.tag != '' ? ' ' + steps.failure.result.tag : '') + ')' +
+                  (steps.failure.result.error != '' ? ': ' + steps.failure.result.error : '')
+          quota:
+            - name: creditsUsed
+              throw:
+                code: ERR_SEARCH_QUOTA_EXCEEDED
+                message: !cel >-
+                  'The Exa credits or budget are used up' +
+                  (steps.failure.result.error != '' ? ': ' + steps.failure.result.error : '')
+          limited:
+            - name: limited
+              throw:
+                code: ERR_SEARCH_RATE_LIMITED
+                message: !cel >-
+                  'Exa asks the caller to slow down' +
+                  (steps.failure.result.error != '' ? ': ' + steps.failure.result.error : '')
+        default:
+          - name: failed
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: !cel >-
+                'Exa answered HTTP ' + string(steps.response.result.status) +
+                (steps.failure.result.tag != '' ? ' ' + steps.failure.result.tag : '') +
+                (steps.failure.result.error != '' ? ': ' + steps.failure.result.error : '')
+      - name: readable
+        if: !cel >-
+          !(type(steps.response.result.body) == type({}) && 'results' in steps.response.result.body &&
+            type(steps.response.result.body.results) == type([]))
+        then:
+          - name: unreadable
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: Exa answered 200 with a body that is not its search response.
+      # A result without a string URL is dropped before positions are counted.
+      # The snippet is the highlights joined with " [...] ". A `publishedDate` the
+      # shared reader cannot read as a date is left out rather than failing the call.
+      - name: mapped
+        value: !cel >-
+          steps.response.result.body.results
+            .filter(r, type(r) == type({}) && 'url' in r && type(r.url) == type(''))
+            .map(r, cel.bind(at,
+              WebSearch.readPublishedAt('publishedDate' in r && type(r.publishedDate) == type('') ? r.publishedDate : null),
+              cel.bind(base, {
+                  'title': 'title' in r && type(r.title) == type('') ? r.title : '',
+                  'url': r.url,
+                  'snippet': 'highlights' in r && type(r.highlights) == type([])
+                    ? r.highlights.filter(h, type(h) == type('')).join(' [...] ') : ''
+                },
+                at == null ? base : merge(base, {'publishedAt': at}))))
+    outputs:
+      results: !cel "steps.mapped.result"
+invoke: !ref search
+inputs: !cel "inputs"

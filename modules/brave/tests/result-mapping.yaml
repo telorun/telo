@@ -1,0 +1,104 @@
+# What the engine returns: each web result's title, URL and `description` as the
+# snippet ("" when absent), in rank order. `page_age` without an offset is UTC
+# and a bare date is midnight UTC; a null or unreadable one is left out rather
+# than failing the call. A result without a URL is dropped, a URL is returned
+# exactly as reported, and a response with no `web` section has no results.
+kind: Telo.Application
+metadata:
+  name: BraveResultMappingTest
+  version: 1.0.0
+imports:
+  Brave: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref resultMapping
+---
+kind: Brave.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18847" }
+---
+kind: Run.Value
+metadata: { name: canned }
+value:
+  query: { more_results_available: false }
+  web:
+    results:
+      - { title: Naive, url: "https://a.example/", description: naive, page_age: "2026-01-02T03:04:05" }
+      - { title: Offset, url: "https://b.example/", description: offset, page_age: "2026-01-02T05:04:05+02:00" }
+      - { title: Zulu, url: "https://c.example/", description: zulu, page_age: "2026-01-02T03:04:05.250Z" }
+      - { title: Absent, url: "https://d.example/", page_age: null }
+      - { title: Prose, url: "https://e.example/", description: prose, page_age: "2 days ago" }
+      - { url: "https://f.example/" }
+      - { title: Day, url: "https://g.example/", description: day, page_age: "2026-01-02" }
+      - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", description: iri }
+      - { title: Space, url: "https://example.com/a b", description: space }
+      - { title: No URL, description: dropped }
+---
+kind: Run.Sequence
+metadata: { name: resultMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeBrave }
+    routes:
+      - request:
+          path: /res/v1/web/search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            when: !cel "request.query.q == 'dates'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "result"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { type: search, query: { more_results_available: false } }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18847
+    mounts:
+      - path: /
+        mount: !ref FakeBrave
+targets:
+  - !ref FakeServer
+steps:
+  - name: dates
+    invoke: !ref engine
+    inputs: { query: dates }
+  - name: noWeb
+    invoke: !ref engine
+    inputs: { query: nothing }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # Instants compared as their RFC 3339 text.
+      actual:
+        - !cel >-
+          {'results': steps.dates.result.results.map(r, has(r.publishedAt)
+              ? {'title': r.title, 'url': r.url, 'snippet': r.snippet, 'publishedAt': string(r.publishedAt)}
+              : {'title': r.title, 'url': r.url, 'snippet': r.snippet}),
+           'more': has(steps.dates.result.nextCursor)}
+        - !cel "steps.noWeb.result"
+      expected:
+        - results:
+            - { title: Naive, url: "https://a.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05.000Z" }
+            - { title: Offset, url: "https://b.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05.000Z" }
+            - { title: Zulu, url: "https://c.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05.250Z" }
+            - { title: Absent, url: "https://d.example/", snippet: "" }
+            - { title: Prose, url: "https://e.example/", snippet: prose }
+            - { title: "", url: "https://f.example/", snippet: "" }
+            - { title: Day, url: "https://g.example/", snippet: day, publishedAt: "2026-01-02T00:00:00.000Z" }
+            - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
+            - { title: Space, url: "https://example.com/a b", snippet: space }
+          more: false
+        - results: []

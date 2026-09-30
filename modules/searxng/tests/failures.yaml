@@ -1,0 +1,153 @@
+# Every failure is a contract code, whatever the client's settings, and the raw
+# HTTP status never escapes: 403 — the instance's JSON output disabled — is
+# ERR_SEARCH_ACCESS_DENIED naming `search.formats`, 429 is
+# ERR_SEARCH_RATE_LIMITED, and any other status, a body that is not SearXNG's
+# JSON results, and an unreachable instance are ERR_SEARCH_FAILED. A client with
+# `throwOnHttpError` maps the same way.
+kind: Telo.Application
+metadata:
+  name: SearxngFailuresTest
+  version: 1.0.0
+imports:
+  SearXNG: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref failures
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18844" }
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: throwingEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18844", throwOnHttpError: true }
+---
+# Nothing listens on this port.
+kind: SearXNG.WebSearchEngine
+metadata: { name: unreachableEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18845", timeout: 2000 }
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: failures }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeSearxng }
+    routes:
+      - request:
+          path: /search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 403
+            when: !cel "request.query.q == 'denied'"
+            content:
+              text/plain:
+                body: Forbidden
+          - status: 429
+            when: !cel "request.query.q == 'limited'"
+            content:
+              text/plain:
+                body: Too Many Requests
+          - status: 500
+            when: !cel "request.query.q == 'broken'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { error: search error }
+          - status: 200
+            when: !cel "request.query.q == 'html'"
+            content:
+              text/html:
+                body: "<html><body>results</body></html>"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { query: other }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18844
+    mounts:
+      - path: /
+        mount: !ref FakeSearxng
+targets:
+  - !ref FakeServer
+steps:
+  - name: outcomes
+    invoke:
+      kind: Run.Projection
+      collection:
+        - { engine: plain, query: denied }
+        - { engine: plain, query: limited }
+        - { engine: plain, query: broken }
+        - { engine: plain, query: html }
+        - { engine: plain, query: other }
+        - { engine: throwing, query: denied }
+        - { engine: throwing, query: limited }
+        - { engine: throwing, query: broken }
+        - { engine: unreachable, query: anything }
+      steps:
+        - name: attempt
+          try:
+            - name: pick
+              switch: !cel "item.engine"
+              cases:
+                plain:
+                  - name: plainSearch
+                    invoke: !ref engine
+                    inputs: { query: !cel "item.query" }
+                throwing:
+                  - name: throwingSearch
+                    invoke: !ref throwingEngine
+                    inputs: { query: !cel "item.query" }
+              default:
+                - name: unreachableSearch
+                  invoke: !ref unreachableEngine
+                  inputs: { query: !cel "item.query" }
+          catch:
+            - name: caught
+              value:
+                code: !cel "error.code"
+                message: !cel >-
+                  error.message.startsWith('The request to SearXNG failed: ')
+                    ? 'The request to SearXNG failed: …' : error.message
+      outputs: !cel "steps.caught.result"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.outcomes.result"
+      expected:
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "SearXNG answered 403: the instance does not serve JSON results. Add `json` to `search.formats` in its settings.yml."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: SearXNG answered 429; its limiter asks the caller to slow down.
+        - code: ERR_SEARCH_FAILED
+          message: "SearXNG answered HTTP 500: search error"
+        - code: ERR_SEARCH_FAILED
+          message: SearXNG answered 200 with a body that is not its JSON results.
+        - code: ERR_SEARCH_FAILED
+          message: SearXNG answered 200 with a body that is not its JSON results.
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "SearXNG answered 403: the instance does not serve JSON results. Add `json` to `search.formats` in its settings.yml."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: SearXNG answered 429; its limiter asks the caller to slow down.
+        # The client hands the body over as text.
+        - code: ERR_SEARCH_FAILED
+          message: 'SearXNG answered HTTP 500: {"error":"search error"}'
+        - code: ERR_SEARCH_FAILED
+          message: "The request to SearXNG failed: …"

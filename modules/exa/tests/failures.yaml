@@ -1,0 +1,195 @@
+# Every failure is a contract code, whatever the client's settings, and the raw
+# HTTP status never escapes: 401 and 403 FEATURE_DISABLED are
+# ERR_SEARCH_ACCESS_DENIED, 402 is ERR_SEARCH_QUOTA_EXCEEDED, 429 is
+# ERR_SEARCH_RATE_LIMITED, and anything else — a 400 from the engine's own
+# mapping, 403 PROHIBITED_CONTENT, a 5xx — a body that is not Exa's search
+# response, and an unreachable API are ERR_SEARCH_FAILED. A client with
+# `throwOnHttpError` maps the same way.
+kind: Telo.Application
+metadata:
+  name: ExaFailuresTest
+  version: 1.0.0
+imports:
+  Exa: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref failures
+---
+kind: Exa.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18868" }
+---
+kind: Exa.WebSearchEngine
+metadata: { name: throwingEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18868", throwOnHttpError: true }
+---
+# Nothing listens on this port.
+kind: Exa.WebSearchEngine
+metadata: { name: unreachableEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18869", timeout: 2000 }
+---
+kind: Run.Value
+metadata: { name: errors }
+value:
+  badKey: { status: 401, tag: INVALID_API_KEY, error: Invalid API key. }
+  disabled: { status: 403, tag: FEATURE_DISABLED, error: This feature is not enabled for your plan. }
+  prohibited: { status: 403, tag: PROHIBITED_CONTENT, error: The query was blocked by content moderation. }
+  credits: { status: 402, tag: NO_MORE_CREDITS, error: You have run out of credits. }
+  limited: { status: 429, tag: RATE_LIMIT_EXCEEDED, error: Too many requests. }
+  invalid: { status: 400, tag: INVALID_NUM_RESULTS, error: numResults is out of range. }
+  overloaded: { status: 503, tag: SERVICE_OVERLOADED, error: The service is overloaded. }
+---
+kind: Run.Sequence
+metadata: { name: failures }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeExa }
+    routes:
+      - request:
+          path: /search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref errors
+        returns:
+          - status: 401
+            when: !cel "request.body.query == 'badKey'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result.badKey.error, 'tag': result.badKey.tag}"
+          - status: 403
+            when: !cel "request.body.query in ['disabled', 'prohibited']"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result[request.body.query].error, 'tag': result[request.body.query].tag}"
+          - status: 402
+            when: !cel "request.body.query == 'credits'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result.credits.error, 'tag': result.credits.tag}"
+          - status: 429
+            when: !cel "request.body.query == 'limited'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result.limited.error, 'tag': result.limited.tag}"
+          - status: 400
+            when: !cel "request.body.query == 'invalid'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result.invalid.error, 'tag': result.invalid.tag}"
+          - status: 503
+            when: !cel "request.body.query == 'overloaded'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'requestId': 'r', 'error': result.overloaded.error, 'tag': result.overloaded.tag}"
+          - status: 200
+            when: !cel "request.body.query == 'html'"
+            content:
+              text/html:
+                body: "<html><body>results</body></html>"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { requestId: r }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18868
+    mounts:
+      - path: /
+        mount: !ref FakeExa
+targets:
+  - !ref FakeServer
+steps:
+  - name: outcomes
+    invoke:
+      kind: Run.Projection
+      collection:
+        - { engine: plain, query: badKey }
+        - { engine: plain, query: disabled }
+        - { engine: plain, query: prohibited }
+        - { engine: plain, query: credits }
+        - { engine: plain, query: limited }
+        - { engine: plain, query: invalid }
+        - { engine: plain, query: overloaded }
+        - { engine: plain, query: html }
+        - { engine: plain, query: other }
+        - { engine: throwing, query: disabled }
+        - { engine: throwing, query: credits }
+        - { engine: throwing, query: limited }
+        - { engine: throwing, query: prohibited }
+        - { engine: unreachable, query: anything }
+      steps:
+        - name: attempt
+          try:
+            - name: pick
+              switch: !cel "item.engine"
+              cases:
+                plain:
+                  - name: plainSearch
+                    invoke: !ref engine
+                    inputs: { query: !cel "item.query" }
+                throwing:
+                  - name: throwingSearch
+                    invoke: !ref throwingEngine
+                    inputs: { query: !cel "item.query" }
+              default:
+                - name: unreachableSearch
+                  invoke: !ref unreachableEngine
+                  inputs: { query: !cel "item.query" }
+          catch:
+            - name: caught
+              value:
+                code: !cel "error.code"
+                message: !cel >-
+                  error.message.startsWith('The request to Exa failed: ')
+                    ? 'The request to Exa failed: …' : error.message
+      outputs: !cel "steps.caught.result"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.outcomes.result"
+      expected:
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Exa refused access (HTTP 401 INVALID_API_KEY): Invalid API key."
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Exa refused access (HTTP 403 FEATURE_DISABLED): This feature is not enabled for your plan."
+        - code: ERR_SEARCH_FAILED
+          message: "Exa answered HTTP 403 PROHIBITED_CONTENT: The query was blocked by content moderation."
+        - code: ERR_SEARCH_QUOTA_EXCEEDED
+          message: "The Exa credits or budget are used up: You have run out of credits."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: "Exa asks the caller to slow down: Too many requests."
+        - code: ERR_SEARCH_FAILED
+          message: "Exa answered HTTP 400 INVALID_NUM_RESULTS: numResults is out of range."
+        - code: ERR_SEARCH_FAILED
+          message: "Exa answered HTTP 503 SERVICE_OVERLOADED: The service is overloaded."
+        - code: ERR_SEARCH_FAILED
+          message: Exa answered 200 with a body that is not its search response.
+        - code: ERR_SEARCH_FAILED
+          message: Exa answered 200 with a body that is not its search response.
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Exa refused access (HTTP 403 FEATURE_DISABLED): This feature is not enabled for your plan."
+        - code: ERR_SEARCH_QUOTA_EXCEEDED
+          message: "The Exa credits or budget are used up: You have run out of credits."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: "Exa asks the caller to slow down: Too many requests."
+        - code: ERR_SEARCH_FAILED
+          message: "Exa answered HTTP 403 PROHIBITED_CONTENT: The query was blocked by content moderation."
+        - code: ERR_SEARCH_FAILED
+          message: "The request to Exa failed: …"

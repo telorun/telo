@@ -1,0 +1,374 @@
+kind: Telo.Library
+metadata:
+  name: WebSearch
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data]
+  description: >-
+    Web search over any engine: send a query with optional language, country and
+    recency hints and get ranked results with title, URL, snippet and publication
+    date, plus an opaque cursor for the next page. Shared failure codes cover bad
+    input, denied access, rate limits, exhausted quota and engine failures, so
+    callers never depend on one provider.
+exports:
+  kinds:
+    - Engine
+  resources:
+    - Query
+    - Results
+    - sealCursor
+    - openCursor
+    - resolveHint
+    - freshnessStart
+    - windowRequest
+    - windowSlice
+    - readPublishedAt
+---
+# The engine-neutral contract. Anything that should accept any web search engine
+# types its slot against this abstract; an engine module extends it and is chosen
+# where the application declares the engine.
+#
+# There is deliberately no timeout code: a caller bounds a call with the step's
+# `timeout:`.
+kind: Telo.Abstract
+metadata:
+  name: Engine
+  description: >-
+    Searches the web for one query and returns at most the requested number of
+    results in rank order, each with title, URL, snippet and reported date, plus a
+    cursor while more results are reachable. Language, country and recency are
+    hints applied where possible. Bad input, denied access,
+    rate limits, exhausted quota and failures are distinct errors.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The call was outside the contract: a malformed cursor, one issued by another
+        engine, or one issued for different search inputs.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: >-
+        The engine refused the credentials or has the requested access disabled.
+        Retrying will not help until the configuration changes.
+    ERR_SEARCH_RATE_LIMITED:
+      description: >-
+        The engine asked the caller to slow down. Retrying later may succeed.
+    ERR_SEARCH_QUOTA_EXCEEDED:
+      description: >-
+        The account's plan or credit limit is exhausted. Retrying will not help until
+        the quota is renewed.
+    ERR_SEARCH_FAILED:
+      description: >-
+        The engine failed, was unreachable, or answered with something the
+        implementation could not read. The message carries the engine's own detail.
+inputType: !ref Query
+outputType: !ref Results
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Query
+  description: >-
+    One web search request: the query text as the engine's own syntax accepts it,
+    how many results to return at most, an opaque cursor from an earlier call, and
+    optional language, country and recency hints. A call may return fewer results
+    than asked for; follow the cursor until it is absent to read everything.
+schema:
+  type: object
+  required: [query]
+  additionalProperties: false
+  properties:
+    query:
+      type: string
+      minLength: 1
+      description: >-
+        The query, passed to the engine as written, including any operators its own
+        syntax accepts (`site:`, quotes).
+    count:
+      type: integer
+      minimum: 1
+      description: >-
+        At most this many results. Fewer are returned when the engine's per-request
+        maximum or the window it can reach is smaller.
+    cursor:
+      type: string
+      description: >-
+        The `nextCursor` of an earlier call with the same query, language, country
+        and freshness. Opaque, and valid only for the kind of engine that issued it.
+    language:
+      type: string
+      description: >-
+        A BCP 47 language tag the results should be in. A hint: an engine maps it to
+        its own vocabulary or leaves it out.
+    country:
+      type: string
+      pattern: "^[A-Z]{2}$"
+      description: >-
+        An ISO 3166-1 alpha-2 country the results should be relevant to. A hint: an
+        engine maps it to its own vocabulary or leaves it out.
+    freshness:
+      type: string
+      enum: [day, week, month, year]
+      description: >-
+        Prefer results published within this recent window. A hint: an engine
+        forwards the narrowest filter it has that still covers the whole window, and
+        results are not guaranteed to fall inside it.
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Results
+  description: >-
+    One slice of web search results in rank order, each with title, URL, snippet
+    and the publication date the engine reports, plus a cursor present exactly when
+    more results are reachable. A slice may be shorter than asked for, or empty,
+    while a cursor is present.
+schema:
+  type: object
+  required: [results]
+  additionalProperties: false
+  properties:
+    results:
+      type: array
+      description: The results, best first.
+      items:
+        type: object
+        required: [title, url, snippet]
+        additionalProperties: false
+        properties:
+          title:
+            type: string
+          url:
+            type: string
+            description: >-
+              The page's URL exactly as the engine reports it: absolute, but neither
+              normalized nor percent-encoded, so it may be an IRI.
+          snippet:
+            type: string
+            description: An excerpt of the page, empty when the engine has none.
+          publishedAt:
+            x-telo-type: Telo.Timestamp
+            description: The date the engine reports for the page, when it reports one.
+    nextCursor:
+      type: string
+      description: >-
+        Present exactly when the engine can reach more results after this slice for
+        the same inputs; pass it back as `cursor`. Absent when there are none.
+---
+# Private: the digest binding a cursor to the inputs it was issued for. Each
+# present field is length-prefixed, so no two input sets encode alike; `~` marks
+# an absent one. `count` and `cursor` are excluded, so a cursor stays valid under
+# any `count`.
+kind: Telo.Function
+metadata:
+  name: queryDigest
+  description: The first 16 hex digits of the SHA-256 of a query's query, language, country and freshness.
+params:
+  - name: query
+    schema: !ref Query
+returns:
+  schema: { type: string, pattern: "^[0-9a-f]{16}$" }
+body: !cel >-
+  sha256(
+    string(size(query.query)) + ':' + query.query +
+    (has(query.language) ? string(size(query.language)) + ':' + lower(query.language) : '~') +
+    (has(query.country) ? string(size(query.country)) + ':' + query.country : '~') +
+    (has(query.freshness) ? string(size(query.freshness)) + ':' + query.freshness : '~')
+  ).substring(0, 16)
+---
+kind: Telo.Function
+metadata:
+  name: sealCursor
+  description: >-
+    Builds the cursor an engine returns as nextCursor: the engine id, a digest of
+    the search inputs it answers, and the engine's own position, joined by dots.
+    Pair it with the cursor opener, which checks all three when the cursor comes
+    back.
+params:
+  - name: engine
+    schema: { type: string, pattern: "^[a-z][a-z0-9]*$" }
+  - name: query
+    schema: !ref Query
+  - name: position
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "engine + '.' + Self.queryDigest(query) + '.' + position"
+---
+kind: Telo.Function
+metadata:
+  name: openCursor
+  description: >-
+    Reads the cursor a search call carries. With none, returns the engine's start
+    position. Otherwise checks it was issued by this engine, for these search
+    inputs, and holds a position the engine's anchored pattern accepts; when not,
+    returns valid false with a message naming the cause for the engine to raise.
+params:
+  - name: engine
+    schema: { type: string, pattern: "^[a-z][a-z0-9]*$" }
+  - name: query
+    schema: !ref Query
+  - name: positionPattern
+    schema: { type: string, format: regex }
+  - name: start
+    schema: { type: string }
+returns:
+  schema:
+    type: object
+    required: [valid, position, message]
+    additionalProperties: false
+    properties:
+      valid: { type: boolean }
+      position: { type: string }
+      message: { type: string }
+body: !cel >-
+  !has(query.cursor) ? {'valid': true, 'position': start, 'message': ''} :
+  cel.bind(parts, query.cursor.split('.'),
+    size(parts) != 3 || parts[0] != engine
+      ? {'valid': false, 'position': '', 'message': 'The cursor was not issued by the ' + engine + ' engine.'} :
+    parts[1] != Self.queryDigest(query)
+      ? {'valid': false, 'position': '', 'message': 'The cursor was issued for a different query, language, country or freshness; it is valid only with the inputs it was issued for.'} :
+    !parts[2].matches(positionPattern)
+      ? {'valid': false, 'position': '', 'message': 'The cursor holds a position the ' + engine + ' engine cannot read.'}
+      : {'valid': true, 'position': parts[2], 'message': ''})
+---
+kind: Telo.Function
+metadata:
+  name: resolveHint
+  description: >-
+    Maps a language or country hint onto an engine's own vocabulary through a
+    table: an exact match first, then the BCP 47 primary subtag, both ignoring
+    case. Returns null for no hint or no match, so the engine leaves the
+    parameter out rather than sending a value it does not understand.
+params:
+  - name: hint
+    schema: { type: string }
+    nullable: true
+  - name: table
+    schema:
+      type: object
+      additionalProperties: { type: string }
+# The nullable result is written as a union: the kernel refuses a function whose
+# top-level result schema is `nullable: true` or a `type` list.
+returns:
+  schema:
+    anyOf:
+      - { type: string }
+      - { type: "null" }
+body: !cel >-
+  hint == null ? null :
+  cel.bind(exact, keys(table).filter(k, lower(k) == lower(hint)),
+    size(exact) > 0 ? table[exact[0]] :
+    cel.bind(primary, keys(table).filter(k, lower(k) == lower(hint).split('-')[0]),
+      size(primary) > 0 ? table[primary[0]] : null))
+---
+kind: Telo.Function
+metadata:
+  name: freshnessStart
+  description: >-
+    The start of a recency window: the given instant minus one day, week, 31 days
+    or 366 days, so the window always covers the whole calendar period. For an
+    engine whose recency filter takes a start date; pass the current time.
+params:
+  - name: freshness
+    schema: { type: string, enum: [day, week, month, year] }
+  - name: at
+    schema: { x-telo-type: Telo.Timestamp }
+returns:
+  schema: { x-telo-type: Telo.Timestamp }
+body: !cel "at - duration({'day': '24h', 'week': '168h', 'month': '744h', 'year': '8784h'}[freshness])"
+---
+kind: Telo.Function
+metadata:
+  name: windowRequest
+  description: >-
+    How many results to request from an engine that returns one ranked list per
+    request and cannot page: enough to cover the slice plus one more that reveals
+    whether anything follows, capped at the engine's per-request maximum.
+params:
+  - name: offset
+    schema: { type: integer, minimum: 0 }
+  - name: count
+    schema: { type: integer, minimum: 1 }
+  - name: window
+    schema: { type: integer, minimum: 1 }
+returns:
+  schema: { type: integer }
+body: !cel "offset + count + 1 < window ? offset + count + 1 : window"
+---
+kind: Telo.Function
+metadata:
+  name: windowSlice
+  description: >-
+    Cuts at most count items from a list starting at an offset, and reports the
+    offset of the next item when one exists beyond the slice, or null when the
+    slice reaches the end. An offset past the end yields an empty slice.
+params:
+  - name: items
+    schema: { type: array }
+  - name: offset
+    schema: { type: integer, minimum: 0 }
+  - name: count
+    schema: { type: integer, minimum: 1 }
+returns:
+  schema:
+    type: object
+    required: [items, next]
+    additionalProperties: false
+    properties:
+      items: { type: array }
+      next: { type: [integer, "null"] }
+body: !cel >-
+  cel.bind(from, offset < size(items) ? offset : size(items),
+    cel.bind(to, from + count < size(items) ? from + count : size(items),
+      {'items': slice(items, from, to), 'next': to < size(items) ? dyn(to) : null}))
+---
+kind: Telo.Function
+metadata:
+  name: readPublishedAt
+  description: >-
+    Reads a publication date an engine reports into an instant: an RFC 3339 or ISO
+    8601 date-time (no offset means UTC), a bare date (midnight UTC) or an HTTP
+    date. Returns null for anything else, for an impossible calendar date and for
+    an instant outside the representable range, so an engine leaves the date out
+    rather than failing the call.
+params:
+  - name: text
+    schema: { type: string }
+    nullable: true
+# The nullable result is written as a union: the kernel refuses a function whose
+# top-level result schema is `nullable: true` or a `type` list.
+returns:
+  schema:
+    anyOf:
+      - { x-telo-type: Telo.Timestamp }
+      - { type: "null" }
+# The calendar is checked here rather than left to `timestamp()`, which rolls an
+# impossible date such as February 30 over into the next month.
+body: !cel >-
+  text == null ? null :
+  cel.bind(iso, regexGroups(text, '^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[Tt]([0-9]{2}):([0-9]{2}):([0-9]{2})(\\.[0-9]{1,9})?([Zz]|[+-][0-9]{2}:[0-9]{2})?)?$'),
+  cel.bind(imf, regexGroups(text, '^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-9]{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$'),
+  cel.bind(f,
+    size(iso) > 0
+      ? [iso[0], iso[1], iso[2],
+         iso[3] == '' ? '00' : iso[3], iso[4] == '' ? '00' : iso[4], iso[5] == '' ? '00' : iso[5],
+         iso[6], iso[7] == '' ? 'Z' : upper(iso[7])]
+      : size(imf) > 0
+        ? [imf[2],
+           {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04', 'May': '05', 'Jun': '06',
+            'Jul': '07', 'Aug': '08', 'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}[imf[1]],
+           imf[0], imf[3], imf[4], imf[5], '', 'Z']
+        : [],
+  size(f) == 0 ? null :
+  cel.bind(y, int(f[0]), cel.bind(mo, int(f[1]), cel.bind(d, int(f[2]),
+  cel.bind(minutes, int(f[3]) * 60 + int(f[4]),
+  cel.bind(offset, f[7] == 'Z' ? 0 :
+      (f[7].startsWith('-') ? -1 : 1) * (int(f[7].substring(1, 3)) * 60 + int(f[7].substring(4, 6))),
+    y < 1 || mo < 1 || mo > 12 || d < 1 ||
+    d > (mo == 2 ? (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) ? 29 : 28) : mo in [4, 6, 9, 11] ? 30 : 31) ||
+    int(f[3]) > 23 || int(f[4]) > 59 || int(f[5]) > 59 ||
+    (f[7] != 'Z' && (int(f[7].substring(1, 3)) > 23 || int(f[7].substring(4, 6)) > 59)) ||
+    (y == 1 && mo == 1 && d == 1 && minutes < offset) ||
+    (y == 9999 && mo == 12 && d == 31 && minutes - offset >= 1440)
+      ? null
+      : dyn(timestamp(f[0] + '-' + f[1] + '-' + f[2] + 'T' + f[3] + ':' + f[4] + ':' + f[5] + f[6] + f[7]))))))))))

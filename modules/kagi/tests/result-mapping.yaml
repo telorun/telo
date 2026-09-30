@@ -1,0 +1,104 @@
+# What the engine returns: each result's title, URL and snippet ("" when
+# absent), in rank order. `time` is read as an ISO 8601 date or date-time — one
+# without an offset is UTC — and a null or unreadable one is left out rather than
+# failing the call. A result without a URL is dropped, a URL is returned exactly
+# as reported, and a response with no `search` list has no results.
+kind: Telo.Application
+metadata:
+  name: KagiResultMappingTest
+  version: 1.0.0
+imports:
+  Kagi: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref resultMapping
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18853" }
+---
+kind: Run.Value
+metadata: { name: canned }
+value:
+  meta: { id: test }
+  data:
+    search:
+      - { title: Zulu, url: "https://a.example/", snippet: zulu, time: "2026-01-02T03:04:05Z" }
+      - { title: Naive, url: "https://b.example/", snippet: naive, time: "2026-01-02T03:04:05" }
+      - { title: Offset, url: "https://c.example/", snippet: offset, time: "2026-01-02T05:04:05+02:00" }
+      - { title: Day, url: "https://d.example/", snippet: day, time: "2026-01-02" }
+      - { title: Absent, url: "https://e.example/", time: null }
+      - { title: Prose, url: "https://f.example/", snippet: prose, time: last week }
+      - { url: "https://g.example/" }
+      - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
+      - { title: Space, url: "https://example.com/a b", snippet: space }
+      - { title: No URL, snippet: dropped }
+---
+kind: Run.Sequence
+metadata: { name: resultMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeKagi }
+    routes:
+      - request:
+          path: /api/v1/search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            when: !cel "request.body.query == 'dates' && request.body.page == 1"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "result"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { meta: { id: test }, data: {} }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18853
+    mounts:
+      - path: /
+        mount: !ref FakeKagi
+targets:
+  - !ref FakeServer
+steps:
+  - name: dates
+    invoke: !ref engine
+    inputs: { query: dates }
+  - name: noList
+    invoke: !ref engine
+    inputs: { query: nothing }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # Instants compared as their RFC 3339 text.
+      actual:
+        - !cel >-
+          {'results': steps.dates.result.results.map(r, has(r.publishedAt)
+              ? {'title': r.title, 'url': r.url, 'snippet': r.snippet, 'publishedAt': string(r.publishedAt)}
+              : {'title': r.title, 'url': r.url, 'snippet': r.snippet}),
+           'more': has(steps.dates.result.nextCursor)}
+        - !cel "steps.noList.result"
+      expected:
+        - results:
+            - { title: Zulu, url: "https://a.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05.000Z" }
+            - { title: Naive, url: "https://b.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05.000Z" }
+            - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05.000Z" }
+            - { title: Day, url: "https://d.example/", snippet: day, publishedAt: "2026-01-02T00:00:00.000Z" }
+            - { title: Absent, url: "https://e.example/", snippet: "" }
+            - { title: Prose, url: "https://f.example/", snippet: prose }
+            - { title: "", url: "https://g.example/", snippet: "" }
+            - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
+            - { title: Space, url: "https://example.com/a b", snippet: space }
+          more: false
+        - results: []

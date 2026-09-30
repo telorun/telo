@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: Shapes
+  version: 1.0.0
+exports:
+  resources: [Query]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Query
+schema:
+  type: object
+  required: [term]
+  additionalProperties: false
+  properties:
+    term: { type: string }

@@ -1,0 +1,181 @@
+# Every failure is a contract code, whatever the client's settings, and the raw
+# HTTP status never escapes: 401, 403 and a 400 `general.invalid_token` are
+# ERR_SEARCH_ACCESS_DENIED, 429 is ERR_SEARCH_RATE_LIMITED, and any other error —
+# another 400 from the engine's own mapping included — a body that is not
+# Kagi's search response, and an unreachable API are ERR_SEARCH_FAILED. A client
+# with `throwOnHttpError` maps the same way.
+kind: Telo.Application
+metadata:
+  name: KagiFailuresTest
+  version: 1.0.0
+imports:
+  Kagi: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref failures
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18856" }
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: throwingEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18856", throwOnHttpError: true }
+---
+# Nothing listens on this port.
+kind: Kagi.WebSearchEngine
+metadata: { name: unreachableEngine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18857", timeout: 2000 }
+---
+kind: Run.Value
+metadata: { name: errors }
+value:
+  badToken: { status: 400, code: general.invalid_token, message: Invalid token. }
+  noAuth: { status: 401, code: general.unauthorized, message: Missing authorization. }
+  address: { status: 403, code: general.forbidden, message: IP address not authorized. }
+  limited: { status: 429, code: general.rate_limited, message: Too many requests. }
+  badRequest: { status: 400, code: search.invalid_filter, message: Invalid filter. }
+  broken: { status: 500, code: general.internal, message: Internal error. }
+---
+kind: Run.Sequence
+metadata: { name: failures }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeKagi }
+    routes:
+      - request:
+          path: /api/v1/search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref errors
+        returns:
+          - status: 400
+            when: !cel "request.body.query in ['badToken', 'badRequest']"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'errors': [result[request.body.query]]}"
+          - status: 401
+            when: !cel "request.body.query == 'noAuth'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'errors': [result.noAuth]}"
+          - status: 403
+            when: !cel "request.body.query == 'address'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'errors': [result.address]}"
+          - status: 429
+            when: !cel "request.body.query == 'limited'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'errors': [result.limited]}"
+          - status: 500
+            when: !cel "request.body.query == 'broken'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "{'errors': [result.broken]}"
+          - status: 200
+            when: !cel "request.body.query == 'html'"
+            content:
+              text/html:
+                body: "<html><body>results</body></html>"
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { meta: { id: test } }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18856
+    mounts:
+      - path: /
+        mount: !ref FakeKagi
+targets:
+  - !ref FakeServer
+steps:
+  - name: outcomes
+    invoke:
+      kind: Run.Projection
+      collection:
+        - { engine: plain, query: badToken }
+        - { engine: plain, query: noAuth }
+        - { engine: plain, query: address }
+        - { engine: plain, query: limited }
+        - { engine: plain, query: badRequest }
+        - { engine: plain, query: broken }
+        - { engine: plain, query: html }
+        - { engine: plain, query: other }
+        - { engine: throwing, query: badToken }
+        - { engine: throwing, query: limited }
+        - { engine: throwing, query: badRequest }
+        - { engine: unreachable, query: anything }
+      steps:
+        - name: attempt
+          try:
+            - name: pick
+              switch: !cel "item.engine"
+              cases:
+                plain:
+                  - name: plainSearch
+                    invoke: !ref engine
+                    inputs: { query: !cel "item.query" }
+                throwing:
+                  - name: throwingSearch
+                    invoke: !ref throwingEngine
+                    inputs: { query: !cel "item.query" }
+              default:
+                - name: unreachableSearch
+                  invoke: !ref unreachableEngine
+                  inputs: { query: !cel "item.query" }
+          catch:
+            - name: caught
+              value:
+                code: !cel "error.code"
+                message: !cel >-
+                  error.message.startsWith('The request to Kagi failed: ')
+                    ? 'The request to Kagi failed: …' : error.message
+      outputs: !cel "steps.caught.result"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.outcomes.result"
+      expected:
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Kagi refused access (HTTP 400): Invalid token."
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Kagi refused access (HTTP 401): Missing authorization."
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Kagi refused access (HTTP 403): IP address not authorized."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: "Kagi answered 429: the request rate or the account usage is over its limit: Too many requests."
+        - code: ERR_SEARCH_FAILED
+          message: "Kagi answered HTTP 400: search.invalid_filter Invalid filter."
+        - code: ERR_SEARCH_FAILED
+          message: "Kagi answered HTTP 500: general.internal Internal error."
+        - code: ERR_SEARCH_FAILED
+          message: Kagi answered 200 with a body that is not its search response.
+        - code: ERR_SEARCH_FAILED
+          message: Kagi answered 200 with a body that is not its search response.
+        - code: ERR_SEARCH_ACCESS_DENIED
+          message: "Kagi refused access (HTTP 400): Invalid token."
+        - code: ERR_SEARCH_RATE_LIMITED
+          message: "Kagi answered 429: the request rate or the account usage is over its limit: Too many requests."
+        - code: ERR_SEARCH_FAILED
+          message: "Kagi answered HTTP 400: search.invalid_filter Invalid filter."
+        - code: ERR_SEARCH_FAILED
+          message: "The request to Kagi failed: …"

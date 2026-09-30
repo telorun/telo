@@ -1,0 +1,359 @@
+kind: Telo.Library
+metadata:
+  name: Brave
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: >-
+    Web search through the Brave Search API, an independent web index: ranked
+    results with title, URL, snippet and page age for a query, with country,
+    language, recency and safe-search settings, paging with an opaque cursor.
+    Authenticated with a subscription token on a configurable HTTP client.
+imports:
+  WebSearch: ../web-search
+  Http: ../http-client
+  Run: ../run
+exports:
+  kinds:
+    - WebSearchEngine
+---
+# A templated engine over `GET /res/v1/web/search`. Every request asks for 20
+# results at an `offset` counted in pages of 20 (0–9); a position is
+# `<offset>-<skip>`. A call makes one request and returns items of that page from
+# `skip`, at most `count`. The next position is the rest of the page, else the
+# next page when Brave reports more results and the offset is below 9.
+kind: Telo.Definition
+metadata:
+  name: WebSearchEngine
+  description: >-
+    Searches the web through the Brave Search API. Returns at most the requested
+    number of ranked results with title, URL, snippet and page age, and a cursor
+    while Brave reports more. Maps country and language hints onto Brave's codes
+    and recency onto its freshness filter; a rejected token, rate limits, an
+    exhausted quota and failures are distinct errors.
+capability: Telo.Invocable
+extends: WebSearch.Engine
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The cursor is malformed, was issued by another engine, or was issued for a
+        different query, language, country or freshness.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: Brave rejected the subscription token (SUBSCRIPTION_TOKEN_INVALID).
+    ERR_SEARCH_RATE_LIMITED:
+      description: Brave answered 429 RATE_LIMITED.
+    ERR_SEARCH_QUOTA_EXCEEDED:
+      description: Brave answered QUOTA_LIMITED — the plan's monthly quota is used up.
+    ERR_SEARCH_FAILED:
+      description: >-
+        Brave was unreachable, answered with any other error, or answered with a body
+        that is not its search response.
+schema:
+  type: object
+  required: [request]
+  additionalProperties: false
+  properties:
+    request:
+      title: Request
+      description: >-
+        The HTTP request Brave is reached through. Its client's `baseUrl` is
+        `https://api.search.brave.com`, and its credential an `Http.ApiKeyHeader`
+        with header `X-Subscription-Token`.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    safeSearch:
+      title: Safe search
+      description: Brave's explicit-content filter, sent as `safesearch`.
+      type: string
+      enum: ["off", moderate, strict]
+      default: moderate
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: search
+    inputType: !ref WebSearch.Query
+    outputType: !ref WebSearch.Results
+    steps:
+      # The 37 countries Brave's `country` parameter accepts; any other is left out.
+      - name: countries
+        value:
+          "AR": "AR"
+          "AU": "AU"
+          "AT": "AT"
+          "BE": "BE"
+          "BR": "BR"
+          "CA": "CA"
+          "CL": "CL"
+          "DK": "DK"
+          "FI": "FI"
+          "FR": "FR"
+          "DE": "DE"
+          "GR": "GR"
+          "HK": "HK"
+          "IN": "IN"
+          "ID": "ID"
+          "IT": "IT"
+          "JP": "JP"
+          "KR": "KR"
+          "MY": "MY"
+          "MX": "MX"
+          "NL": "NL"
+          "NZ": "NZ"
+          "NO": "NO"
+          "CN": "CN"
+          "PL": "PL"
+          "PT": "PT"
+          "PH": "PH"
+          "RU": "RU"
+          "SA": "SA"
+          "ZA": "ZA"
+          "ES": "ES"
+          "SE": "SE"
+          "CH": "CH"
+          "TW": "TW"
+          "TR": "TR"
+          "GB": "GB"
+          "US": "US"
+      # The values Brave's `search_lang` accepts. Matching ignores case, so
+      # `en-GB` finds `en-gb`; `no` is Norwegian, which Brave spells `nb`.
+      - name: languages
+        value:
+          "ar": "ar"
+          "eu": "eu"
+          "bn": "bn"
+          "bg": "bg"
+          "ca": "ca"
+          "zh-hans": "zh-hans"
+          "zh-hant": "zh-hant"
+          "hr": "hr"
+          "cs": "cs"
+          "da": "da"
+          "nl": "nl"
+          "en": "en"
+          "en-gb": "en-gb"
+          "et": "et"
+          "fi": "fi"
+          "fr": "fr"
+          "gl": "gl"
+          "de": "de"
+          "el": "el"
+          "gu": "gu"
+          "he": "he"
+          "hi": "hi"
+          "hu": "hu"
+          "is": "is"
+          "it": "it"
+          "ja": "ja"
+          "jp": "jp"
+          "kn": "kn"
+          "ko": "ko"
+          "lv": "lv"
+          "lt": "lt"
+          "ms": "ms"
+          "ml": "ml"
+          "mr": "mr"
+          "nb": "nb"
+          "pl": "pl"
+          "pt-br": "pt-br"
+          "pt-pt": "pt-pt"
+          "pa": "pa"
+          "ro": "ro"
+          "ru": "ru"
+          "sr": "sr"
+          "sk": "sk"
+          "sl": "sl"
+          "es": "es"
+          "sv": "sv"
+          "ta": "ta"
+          "te": "te"
+          "th": "th"
+          "tr": "tr"
+          "uk": "uk"
+          "vi": "vi"
+          "no": "nb"
+      - name: cursor
+        value: !cel "WebSearch.openCursor('brave', inputs, '^[0-9]-(1?[0-9])$', '0-0')"
+      - name: refuse
+        if: !cel "!steps.cursor.result.valid"
+        then:
+          - name: invalidCursor
+            throw:
+              code: ERR_INVALID_INPUT
+              message: !cel "steps.cursor.result.message"
+      - name: position
+        value:
+          offset: !cel "int(steps.cursor.result.position.split('-')[0])"
+          skip: !cel "int(steps.cursor.result.position.split('-')[1])"
+      - name: current
+        invoke: !ref page
+        inputs:
+          params: !cel >-
+            compact({
+              'q': inputs.query,
+              'count': '20',
+              'offset': string(steps.position.result.offset),
+              'safesearch': self.safeSearch,
+              'country': WebSearch.resolveHint(has(inputs.country) ? inputs.country : null, steps.countries.result),
+              'search_lang': WebSearch.resolveHint(has(inputs.language) ? inputs.language : null, steps.languages.result),
+              'freshness': has(inputs.freshness) ? dyn({'day': 'pd', 'week': 'pw', 'month': 'pm', 'year': 'py'}[inputs.freshness]) : null
+            })
+      - name: slice
+        value: !cel >-
+          WebSearch.windowSlice(
+            steps.current.result.results,
+            steps.position.result.skip,
+            has(inputs.count) ? inputs.count : size(steps.current.result.results) + 1)
+      # Offset 9 is the deepest page Brave serves.
+      - name: next
+        value: !cel >-
+          steps.slice.result.next != null
+            ? string(steps.position.result.offset) + '-' + string(steps.slice.result.next)
+            : steps.current.result.more && steps.position.result.offset < 9
+              ? string(steps.position.result.offset + 1) + '-0'
+              : ''
+      - name: shaped
+        value: !cel >-
+          steps.next.result == ''
+            ? {'results': steps.slice.result.items}
+            : {'results': steps.slice.result.items, 'nextCursor': WebSearch.sealCursor('brave', inputs, steps.next.result)}
+    outputs: !cel "steps.shaped.result"
+  # One request, mapped onto the contract's result shape plus Brave's "more
+  # results" flag; every failure is raised here as a contract code.
+  - kind: Run.Sequence
+    metadata:
+      name: page
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [params]
+        additionalProperties: false
+        properties:
+          params:
+            type: object
+            additionalProperties: { type: string }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [results, more]
+        additionalProperties: false
+        properties:
+          results: { type: array }
+          more: { type: boolean }
+    steps:
+      - name: fetch
+        try:
+          - name: http
+            invoke: !cel "self.request"
+            inputs:
+              url: /res/v1/web/search
+              method: GET
+              query: !cel "inputs.params"
+              responseType: json
+        catch:
+          # A client declaring `throwOnHttpError` raises the status instead of
+          # returning it; it is read from the error and mapped like any other.
+          - name: unreachable
+            if: !cel "error.code != 'ERR_HTTP_STATUS'"
+            then:
+              - name: transportFailed
+                throw:
+                  code: ERR_SEARCH_FAILED
+                  message: !interpolate "The request to Brave failed: ${{ error.message }}"
+          - name: raised
+            value:
+              status: !cel "int(error.data.status)"
+              body: !cel "'body' in error.data ? error.data.body : null"
+      - name: response
+        value: !cel >-
+          'http' in steps
+            ? {'status': steps.http.result.status, 'body': steps.http.result.body}
+            : {'status': steps.raised.result.status, 'body': steps.raised.result.body}
+      # Brave's error body is `{type: "ErrorResponse", error: {code, detail, status}}`.
+      # A client raising on the status hands it over as text, which is searched
+      # rather than parsed: it may be cut short.
+      - name: failure
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            type(body) == type({}) && 'error' in body && type(body.error) == type({})
+              ? {
+                  'code': 'code' in body.error ? string(body.error.code) : '',
+                  'detail': 'detail' in body.error ? string(body.error.detail) : ''
+                }
+              : type(body) == type('')
+                ? {
+                    'code': cel.bind(g, regexGroups(body, '"code"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : ''),
+                    'detail': cel.bind(g, regexGroups(body, '"detail"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : '')
+                  }
+                : {'code': '', 'detail': ''})
+      - name: outcome
+        value: !cel >-
+          steps.response.result.status == 200 ? 'ok' :
+          steps.failure.result.code == 'SUBSCRIPTION_TOKEN_INVALID' ? 'denied' :
+          steps.failure.result.code == 'QUOTA_LIMITED' ? 'quota' :
+          steps.response.result.status == 429 ? 'limited' : 'failed'
+      - name: status
+        switch: !cel "steps.outcome.result"
+        cases:
+          ok: []
+          denied:
+            - name: tokenRejected
+              throw:
+                code: ERR_SEARCH_ACCESS_DENIED
+                message: !interpolate "Brave rejected the subscription token: ${{ steps.failure.result.detail }}"
+          quota:
+            - name: quotaUsed
+              throw:
+                code: ERR_SEARCH_QUOTA_EXCEEDED
+                message: !interpolate "Brave's quota is used up: ${{ steps.failure.result.detail }}"
+          limited:
+            - name: limited
+              throw:
+                code: ERR_SEARCH_RATE_LIMITED
+                message: !interpolate "Brave asks the caller to slow down: ${{ steps.failure.result.detail }}"
+        default:
+          - name: failed
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: !cel >-
+                'Brave answered HTTP ' + string(steps.response.result.status) +
+                (steps.failure.result.code != ''
+                  ? ': ' + steps.failure.result.code + ' ' + steps.failure.result.detail : '')
+      - name: readable
+        if: !cel "!(type(steps.response.result.body) == type({}) && 'query' in steps.response.result.body)"
+        then:
+          - name: unreadable
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: Brave answered 200 with a body that is not its search response.
+      # No `web` section means no web results. A result without a string URL is
+      # dropped before positions are counted; a `page_age` the shared reader
+      # cannot read as a date is left out rather than failing the call.
+      - name: mapped
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            ('web' in body && type(body.web) == type({}) && 'results' in body.web &&
+              type(body.web.results) == type([]) ? body.web.results : [])
+              .filter(r, type(r) == type({}) && 'url' in r && type(r.url) == type(''))
+              .map(r, cel.bind(at,
+                WebSearch.readPublishedAt('page_age' in r && type(r.page_age) == type('') ? r.page_age : null),
+                cel.bind(base, {
+                    'title': 'title' in r && type(r.title) == type('') ? r.title : '',
+                    'url': r.url,
+                    'snippet': 'description' in r && type(r.description) == type('') ? r.description : ''
+                  },
+                  at == null ? base : merge(base, {'publishedAt': at})))))
+      - name: more
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            type(body.query) == type({}) && 'more_results_available' in body.query &&
+              body.query.more_results_available == true)
+    outputs:
+      results: !cel "steps.mapped.result"
+      more: !cel "steps.more.result"
+invoke: !ref search
+inputs: !cel "inputs"

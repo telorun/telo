@@ -1,0 +1,87 @@
+# What the engine returns: each result's title ("" when absent or null), URL and
+# its highlights joined with " [...] " as the snippet ("" when there are none),
+# in rank order. `publishedDate` is read as an ISO 8601 date or date-time; a null
+# or unreadable one is left out rather than failing the call. A result without a
+# URL is dropped, and a URL is returned exactly as reported.
+kind: Telo.Application
+metadata:
+  name: ExaResultMappingTest
+  version: 1.0.0
+imports:
+  Exa: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref resultMapping
+---
+kind: Exa.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18865" }
+---
+kind: Run.Value
+metadata: { name: canned }
+value:
+  requestId: test
+  results:
+    - { title: Zulu, url: "https://a.example/", publishedDate: "2025-03-11T17:00:00.000Z", highlights: [first part, second part] }
+    - { title: Day, url: "https://b.example/", publishedDate: "2025-03-11", highlights: [one] }
+    - { title: Absent, url: "https://c.example/", publishedDate: null }
+    - { title: Prose, url: "https://d.example/", publishedDate: March 2025, highlights: [] }
+    - { title: null, url: "https://e.example/", author: someone }
+    - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", highlights: [iri] }
+    - { title: Space, url: "https://example.com/a b", highlights: [space] }
+    - { title: No URL, highlights: [dropped] }
+---
+kind: Run.Sequence
+metadata: { name: resultMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeExa }
+    routes:
+      - request:
+          path: /search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel "result"
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18865
+    mounts:
+      - path: /
+        mount: !ref FakeExa
+targets:
+  - !ref FakeServer
+steps:
+  - name: dates
+    invoke: !ref engine
+    inputs: { query: dates }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # Instants compared as their RFC 3339 text.
+      actual: !cel >-
+        {'results': steps.dates.result.results.map(r, has(r.publishedAt)
+            ? {'title': r.title, 'url': r.url, 'snippet': r.snippet, 'publishedAt': string(r.publishedAt)}
+            : {'title': r.title, 'url': r.url, 'snippet': r.snippet}),
+         'more': has(steps.dates.result.nextCursor)}
+      expected:
+        results:
+          - { title: Zulu, url: "https://a.example/", snippet: "first part [...] second part", publishedAt: "2025-03-11T17:00:00.000Z" }
+          - { title: Day, url: "https://b.example/", snippet: one, publishedAt: "2025-03-11T00:00:00.000Z" }
+          - { title: Absent, url: "https://c.example/", snippet: "" }
+          - { title: Prose, url: "https://d.example/", snippet: "" }
+          - { title: "", url: "https://e.example/", snippet: "" }
+          - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
+          - { title: Space, url: "https://example.com/a b", snippet: space }
+        more: false

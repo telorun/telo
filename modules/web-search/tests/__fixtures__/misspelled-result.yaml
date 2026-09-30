@@ -1,0 +1,38 @@
+# A library that accepts any web search engine: it imports only the contract and
+# takes the engine from its importer.
+kind: Telo.Library
+metadata:
+  name: EngineNeutralConsumer
+  version: 1.0.0
+imports:
+  WebSearch: ../..
+  Run: ../../../run
+resources:
+  engine: { kind: WebSearch.Engine }
+exports:
+  resources:
+    - firstPage
+---
+kind: Run.Sequence
+metadata: { name: firstPage }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [topic]
+    properties:
+      topic: { type: string, minLength: 1 }
+steps:
+  - name: search
+    invoke: !ref engine
+    inputs:
+      query: !cel "inputs.topic"
+      count: 5
+      language: en
+      country: FI
+      freshness: week
+outputs:
+  titles: !cel "steps.search.result.results.map(r, r.title + ': ' + r.snippet)"
+  links: !cel "steps.search.result.results.map(r, r.url)"
+  dated: !cel "steps.search.result.results.filter(r, has(r.publishedAt)).map(r, string(r.publishedAt))"
+  next: !cel "has(steps.search.result.nextCursr) ? steps.search.result.nextCursr : ''"

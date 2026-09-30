@@ -22,7 +22,7 @@
  */
 
 import type { Invocable } from "./capabilities/invokable.js";
-import type { InvokeContext } from "./cancellation.js";
+import { isCancellationError, type InvokeContext } from "./cancellation.js";
 import type { CompiledValue } from "./compiled-value.js";
 import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
@@ -510,12 +510,16 @@ export class StepEngine {
     try {
       await this.executeSteps(step.try, steps, scope, extraCtx, invokeCtx, stepPath(path, "try"));
     } catch (err) {
-      // `try:` must NOT catch a suspension. The signal unwinds to the workflow
-      // that owns the run; absorbing it here would run the `catch:` branch and
-      // then continue, converting a park into a completed step and duplicating
-      // every effect after it. The latch would catch that at the boundary, but
-      // a hard error is a worse answer than simply not swallowing it.
+      // A suspension, and a cancellation of THIS invocation, unwind past `try:`
+      // untouched, running neither `catch:` nor `finally:`. A suspension belongs
+      // to the workflow that owns the run: absorbing it would turn a park into a
+      // completed step and duplicate every effect after it. A live cancellation
+      // belongs to whoever cancelled: absorbing it would disguise a step
+      // `timeout:` or a stopped run as this body's own failure. The code alone
+      // is not enough — an `ERR_INVOKE_CANCELLED` raised while this invocation
+      // runs on (a recorded failure re-raised) is data, and is caught.
       if (isSuspension(err)) throw err;
+      if (isCancellationError(err) && invokeCtx?.cancellation.isCancelled) throw err;
       tryFailed = true;
       tryError = err;
     }

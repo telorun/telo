@@ -1,0 +1,56 @@
+# A cursor carries the engine id, a digest of the inputs it answers and the
+# engine's own position. The digest is pinned to fixed values, so a change to its
+# encoding — which would invalidate every cursor in flight — fails here.
+kind: Telo.Application
+metadata:
+  name: WebSearchCursorTest
+  version: 1.0.0
+imports:
+  WebSearch: ..
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref cursor
+---
+kind: Run.Sequence
+metadata:
+  name: cursor
+steps:
+  - name: sealed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "WebSearch.sealCursor('searxng', {'query': 'rust async', 'language': 'en-US', 'country': 'FI', 'freshness': 'week'}, '3-7')"
+        # Lowercased language, and neither `count` nor `cursor` enters the digest.
+        - !cel "WebSearch.sealCursor('searxng', {'query': 'rust async', 'language': 'EN-us', 'country': 'FI', 'freshness': 'week', 'count': 5, 'cursor': 'x'}, '3-7')"
+        - !cel "WebSearch.sealCursor('brave', {'query': 'rust async'}, '0-0')"
+      expected:
+        - searxng.dd83f99303d83c5a.3-7
+        - searxng.dd83f99303d83c5a.3-7
+        - brave.b0e09fb373f8cd1a.0-0
+  - name: opened
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        # No cursor: the engine's start position.
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        # A cursor this engine issued for these inputs.
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'count': 3, 'cursor': 'searxng.b0e09fb373f8cd1a.12-4'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        # Another engine's cursor, and text that is no cursor at all.
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'cursor': 'brave.b0e09fb373f8cd1a.0-0'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'cursor': 'garbage'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        # Issued for other inputs: a different freshness.
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'freshness': 'day', 'cursor': 'searxng.b0e09fb373f8cd1a.2-0'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        # A non-numeric and an overflowing position.
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'cursor': 'searxng.b0e09fb373f8cd1a.x-0'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+        - !cel "WebSearch.openCursor('searxng', {'query': 'rust async', 'cursor': 'searxng.b0e09fb373f8cd1a.99999999999999999999-0'}, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+      expected:
+        - { valid: true, position: 1-0, message: "" }
+        - { valid: true, position: 12-4, message: "" }
+        - { valid: false, position: "", message: The cursor was not issued by the searxng engine. }
+        - { valid: false, position: "", message: The cursor was not issued by the searxng engine. }
+        - valid: false
+          position: ""
+          message: The cursor was issued for a different query, language, country or freshness; it is valid only with the inputs it was issued for.
+        - { valid: false, position: "", message: The cursor holds a position the searxng engine cannot read. }
+        - { valid: false, position: "", message: The cursor holds a position the searxng engine cannot read. }

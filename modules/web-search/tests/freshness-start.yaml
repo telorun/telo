@@ -1,0 +1,28 @@
+# A recency window starts one day, week, 31 days or 366 days before the instant
+# given, so it covers any calendar day, week, month or year ending there.
+kind: Telo.Application
+metadata:
+  name: WebSearchFreshnessStartTest
+  version: 1.0.0
+imports:
+  WebSearch: ..
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref freshnessStart
+---
+kind: Run.Sequence
+metadata:
+  name: freshnessStart
+steps:
+  - name: starts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        ['day', 'week', 'month', 'year'].map(f,
+          string(WebSearch.freshnessStart(f, timestamp('2026-03-01T12:00:00Z'))))
+      expected:
+        - "2026-02-28T12:00:00.000Z"
+        - "2026-02-22T12:00:00.000Z"
+        - "2026-01-29T12:00:00.000Z"
+        - "2025-02-28T12:00:00.000Z"

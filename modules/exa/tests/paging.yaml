@@ -1,0 +1,114 @@
+# Slicing Exa's one ranked list. A call requests the slice plus one probe
+# result, up to Exa's maximum of 100, and returns the slice; the probe is what
+# shows more remain. Nothing past the 100th result is reachable, and the cursor
+# stays valid under any `count`.
+kind: Telo.Application
+metadata:
+  name: ExaPagingTest
+  version: 1.0.0
+imports:
+  Exa: ..
+  WebSearch: ../../web-search
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref paging
+---
+kind: Exa.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18866" }
+---
+# More results than Exa's maximum exist for `deep`; the mock serves as many as
+# `numResults` asks for.
+kind: Run.Value
+metadata: { name: canned }
+value:
+  paging: [a1, a2, a3, a4, a5, a6, a7]
+  deep: !cel "range(105).map(i, 'd' + string(i + 1))"
+---
+kind: Run.Sequence
+metadata: { name: paging }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeExa }
+    routes:
+      - request:
+          path: /search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel >-
+                  {'results': request.body.query in result
+                    ? cel.bind(all, result[request.body.query],
+                        slice(all, 0, int(request.body.numResults) < size(all) ? int(request.body.numResults) : size(all))
+                          .map(t, {'title': t, 'url': 'https://example.com/' + t, 'highlights': [t]}))
+                    : []}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18866
+    mounts:
+      - path: /
+        mount: !ref FakeExa
+targets:
+  - !ref FakeServer
+steps:
+  - name: first
+    invoke: !ref engine
+    inputs: { query: paging, count: 3 }
+  - name: second
+    invoke: !ref engine
+    inputs: { query: paging, count: 3, cursor: !cel "steps.first.result.nextCursor" }
+  - name: third
+    invoke: !ref engine
+    inputs: { query: paging, count: 3, cursor: !cel "steps.second.result.nextCursor" }
+  - name: anyCount
+    invoke: !ref engine
+    inputs: { query: paging, count: 10, cursor: !cel "steps.first.result.nextCursor" }
+  - name: noCount
+    invoke: !ref engine
+    inputs: { query: paging }
+  # The window ends at the 100th result.
+  - name: deepFirst
+    invoke: !ref engine
+    inputs: { query: deep, count: 90 }
+  - name: deepSecond
+    invoke: !ref engine
+    inputs: { query: deep, count: 20, cursor: !cel "steps.deepFirst.result.nextCursor" }
+  - name: nothing
+    invoke: !ref engine
+    inputs: { query: nothing, count: 3 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.first.result"
+        - !cel "steps.second.result"
+        - !cel "steps.third.result"
+        - !cel "steps.anyCount.result"
+        - !cel "steps.noCount.result"
+        - !cel "steps.deepFirst.result.nextCursor"
+        - !cel "steps.deepSecond.result"
+        - !cel "steps.nothing.result"
+      expected: !cel >-
+        cel.bind(item, ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t}),
+        cel.bind(deep, range(100).map(i, 'd' + string(i + 1)).map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t}),
+          [
+            {'results': slice(item, 0, 3), 'nextCursor': WebSearch.sealCursor('exa', {'query': 'paging'}, '3')},
+            {'results': slice(item, 3, 6), 'nextCursor': WebSearch.sealCursor('exa', {'query': 'paging'}, '6')},
+            {'results': slice(item, 6, 7)},
+            {'results': slice(item, 3, 7)},
+            {'results': item},
+            WebSearch.sealCursor('exa', {'query': 'deep'}, '90'),
+            {'results': slice(deep, 90, 100)},
+            {'results': []}
+          ]))

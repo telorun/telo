@@ -40,6 +40,23 @@ puts a converter in a module another moved elsewhere.
 
 Everything below applies to each question in the set.
 
+## Domain lenses
+
+A lens is the rubric for one domain of decision — data modeling, naming, and so on — kept as one
+file per domain in `.claude/decider-lenses/`. The domains that exist are the files there; list
+them before deciding.
+
+- **Classify first.** Name each question's domain. A question may touch several; read every lens
+  that matches, and only those. When none matches, decide with the generic ranking alone.
+- **A lens ranks, the goals veto.** The goals in step 2 of How to decide still disqualify. Among the
+  options that pass them, the lens's principles and consequences decide.
+- **Settle a lens's distinguishing questions yourself**, from the question and the codebase. They
+  are never put to the caller.
+- **A lens adds to the horizon test and to Verify.** Its futures join the generic ones; its checks
+  are what the decision's Verify draws from.
+- **Lenses that pull against each other** on one question are reconciled inside the decision, as
+  related questions are.
+
 ## Drivers that do not count
 
 These are never a reason to pick an option, never a tie-breaker, and never a reason to reject one:
@@ -99,8 +116,8 @@ An option is disqualified, whatever it saves, if it does any of the following:
       not count.
    8. Actionable errors that point at the manifest.
 3. **Run the horizon test on each option.** Would a second transport, a Rust kernel, the visual
-   editor, a third consumer, a second replica, or a manifest a hundred times larger force us to
-   undo it? If yes, it fails.
+   editor, a third consumer, a second replica, a manifest a hundred times larger, or any future
+   an applied lens adds force us to undo it? If yes, it fails.
 4. **Repair before discarding.** When an option fails on one point but its core is sound, amend
    it: keep the core and change the part that fails. Then run the ranking and the horizon test
    again on the amended form.
@@ -137,6 +154,7 @@ paths.
 
 - **Decision** — one sentence, labelled *as given* (name the option), *amended* (name the option)
   or *new*.
+- **Lens** — the lenses applied, or *none*.
 - **Amendment** — only when amended: what changed from the given option and which failure the
   change removes.
 - **Why** — the constraint that decides it, stated once.

@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: TryPassesCancellationTest
+  version: 1.0.0
+  description: |
+    A `try:` step lets a cancellation of its own invocation through untouched:
+    neither its `catch:` nor its `finally:` runs. So a caller's step `timeout:`
+    on a target that guards its own work with `try:` still fails the caller
+    with ERR_STEP_TIMEOUT, rather than with whatever the target's `catch:`
+    would have turned the cancellation into.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  Timer: ../modules/timer
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: bounded
+    try:
+      # Guards a wait far longer than the caller's bound. Either branch running
+      # would replace the cancellation with its own code.
+      - name: call
+        invoke:
+          kind: Run.Sequence
+          steps:
+            - name: guard
+              try:
+                - name: wait
+                  invoke: { kind: Timer.Delay }
+                  inputs: { duration: 5s }
+              catch:
+                - name: catchRan
+                  throw: { code: ERR_CATCH_RAN, message: the catch branch ran }
+              finally:
+                - name: finallyRan
+                  throw: { code: ERR_FINALLY_RAN, message: the finally branch ran }
+        timeout: 100
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: assertTimedOut
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.caught.result"
+      expected: ERR_STEP_TIMEOUT
