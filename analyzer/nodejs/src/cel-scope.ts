@@ -34,7 +34,14 @@ import {
   buildTypedCelEnvironment,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
-import { type ContractDirection, effectiveAuthorSchema } from "./extends-resolution.js";
+import { celEvalModeAt, type CelEvalSites, kindCelEvalSites } from "./eval-paths.js";
+import { capabilityExtendsExecutable } from "./executable-capability.js";
+import {
+  type ContractDirection,
+  type DefResolver,
+  effectiveAuthorSchema,
+  inheritedCapability,
+} from "./extends-resolution.js";
 import {
   analyzerContractScope,
   PERMISSIVE_CONTRACT,
@@ -202,7 +209,6 @@ export function buildStepContextSchema(
     // Optional: the field a step uses to produce a result without dispatching.
     // Only a kind that declares one has pure steps at all.
     const valueField = stepCtx.value;
-    if (!invokeField || !outputTypeField) continue;
 
     const steps = manifest[fieldName];
     if (!Array.isArray(steps)) continue;
@@ -268,19 +274,22 @@ export function buildStepContextSchema(
       const invokedDef = invokedKind
         ? contractScope.resolveIn(invokedKind, readingModule)
         : undefined;
+      // Without an output-type field the composer allows no per-instance
+      // narrowing, so only the invoked kind's contract types the result.
       const outputSchema = resolveContract(
-        outputTypeField as ContractDirection,
-        invokedManifest,
+        (outputTypeField ?? "outputType") as ContractDirection,
+        outputTypeField ? invokedManifest : undefined,
         invokedDef,
         contractScope,
       )?.schema;
-      const derived = outputSchema
-        ? undefined
-        : valueDerivedContract(
-            invokedManifest,
-            defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
-            outputTypeField,
-          );
+      const derived =
+        outputSchema || !outputTypeField
+          ? undefined
+          : valueDerivedContract(
+              invokedManifest,
+              defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
+              outputTypeField,
+            );
       stepProperties[name] = {
         type: "object",
         properties: {
@@ -298,6 +307,20 @@ export function buildStepContextSchema(
   }
 
   return hasStepBody ? { type: "object", properties: {} } : undefined;
+}
+
+/** Where a resource of this kind receives call arguments: undefined unless its
+ *  effective capability is in the `Telo.Executable` lineage; otherwise its eval
+ *  sites, since a compile-eval field is resolved before any call exists. */
+function callArgumentSites(
+  definition: ResourceDefinition | undefined,
+  defs: DefinitionRegistry,
+  resolveDef: DefResolver,
+): CelEvalSites | undefined {
+  if (!definition) return undefined;
+  const capability = inheritedCapability(definition, resolveDef);
+  if (capability === undefined || !capabilityExtendsExecutable(capability, defs)) return undefined;
+  return kindCelEvalSites(definition, resolveDef);
 }
 
 export function collectErrorContextScopes(
@@ -493,11 +516,14 @@ export class CelScopeResolver {
     manifest: Record<string, any>;
     stepContext: Record<string, any> | undefined;
     inputsSchema: Record<string, any> | undefined;
+    argumentSites: CelEvalSites | undefined;
     errorScopes: Map<string, Record<string, any>>;
   }> = [];
   /** The input contract a step body's `inputs` is typed from, when the
    *  resource or its kind declares one. */
   private inputsSchema: Record<string, any> | undefined;
+  /** Set only when the resource's kind receives call arguments. */
+  private argumentSites: CelEvalSites | undefined;
   /** The enclosing definition's `self` schema, resolved once per resource. A
    *  template body's contexts resolve against the BODY, so `self` — the one
    *  binding anchored on the definition — is substituted before they do. */
@@ -550,7 +576,11 @@ export class CelScopeResolver {
       : undefined;
     this.errorScopes = collectErrorContextScopes(authorSchema);
     const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests as Record<string, any>[]);
-    this.inputsSchema = this.stepContext
+    const resolveDef = contractScope.resolveDefinition;
+    this.argumentSites = this.stepContext
+      ? callArgumentSites(definition, defs, resolveDef)
+      : undefined;
+    this.inputsSchema = this.argumentSites
       ? resolveContract("inputType", m as Record<string, any>, definition, contractScope)?.schema
       : undefined;
     this.selfSchema =
@@ -583,12 +613,16 @@ export class CelScopeResolver {
             scopes,
           )
         : undefined;
+      const argumentSites = stepContext
+        ? callArgumentSites(body.definition, defs, resolveDef)
+        : undefined;
       return {
         prefix: body.prefix,
         scopePrefix: body.scopePrefix,
         manifest: body.manifest as Record<string, any>,
         stepContext,
-        inputsSchema: stepContext
+        argumentSites,
+        inputsSchema: argumentSites
           ? resolveContract(
               "inputType",
               body.manifest as Record<string, any>,
@@ -697,25 +731,23 @@ export class CelScopeResolver {
     if (stepContext) {
       const base = matched ?? { type: "object", properties: {}, additionalProperties: true };
       const declaredInputs = inBody ? inBody.inputsSchema : this.inputsSchema;
+      const argumentSites = inBody ? inBody.argumentSites : this.argumentSites;
+      const localPath = inBody ? path.slice(inBody.prefix.length + 1) : path;
+      const argumentsBound =
+        argumentSites !== undefined && celEvalModeAt(argumentSites, localPath) !== "compile";
       matched = {
         ...base,
         properties: {
-          // `inputs` is in scope beside `steps` wherever a step body runs — the
-          // step engine evaluates a step against the enclosing kind's own
-          // arguments, which is what `steps[0].inputs.x` reads. Modelled here
-          // because it was modelled NOWHERE: the step context is open, so a
-          // chain through it was never checked and the name's absence went
-          // unnoticed until something asked whether the root existed.
-          //
-          // Typed from the resolved input contract — the one the kernel binds
-          // and validates every call against — so a misspelled argument is the
-          // same `CEL_UNKNOWN_FIELD` a misspelled request field is. It wins over
-          // a caller's view of the slot (a route's open `inputs`), since the
-          // contract is what every call is validated against. Open only where
-          // no contract is declared.
-          inputs: { type: "object", additionalProperties: true },
+          // `inputs` is in scope beside `steps` only where a call's arguments
+          // exist: a kind in the `Telo.Executable` lineage, at a site evaluated
+          // per call rather than at compile time. Typed from the resolved input
+          // contract the kernel binds and validates every call against, so a
+          // misspelled argument is `CEL_UNKNOWN_FIELD`; it wins over a caller's
+          // view of the slot (a route's open `inputs`). Open only where no
+          // contract is declared.
+          ...(argumentsBound ? { inputs: { type: "object", additionalProperties: true } } : {}),
           ...(base.properties ?? {}),
-          ...(declaredInputs ? { inputs: declaredInputs } : {}),
+          ...(argumentsBound && declaredInputs ? { inputs: declaredInputs } : {}),
           steps: stepContext,
         },
       };

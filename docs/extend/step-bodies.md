@@ -93,7 +93,8 @@ a durable journal records a step's target by.
 `executeSteps` takes the accumulator it fills (`steps.<name>.result`), an
 optional `ScopeContext`, the extra CEL variables your kind binds, and the
 `InvokeContext` you were invoked with — forwarding the last one is what makes a
-retry backoff inside the body interruptible.
+retry backoff inside the body interruptible. `telo check` puts `inputs` in scope
+only for an Invocable or Runnable composer.
 
 ## One slot, not two
 
