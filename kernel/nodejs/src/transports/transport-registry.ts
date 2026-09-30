@@ -53,6 +53,25 @@ export class TransportRegistry {
     return this.require(ref).digest(ref);
   }
 
+  /** Refuse author annotations the transport owning `destination` cannot
+   *  write. Throws when no transport owns the destination. */
+  checkAuthoredAnnotations(
+    destination: string,
+    annotations: Readonly<Record<string, string>>,
+  ): void {
+    this.require(destination).checkAuthoredAnnotations(annotations);
+  }
+
+  /** The complete annotation set publishing `manifest` to `destination` writes.
+   *  Throws when no transport owns the destination. */
+  publishedAnnotations(
+    destination: string,
+    manifest: string,
+    annotations: Readonly<Record<string, string>>,
+  ): Record<string, string> {
+    return this.require(destination).publishedAnnotations(manifest, annotations);
+  }
+
   /** Publish `bundle` to `destination` via the transport its scheme selects.
    *  Throws when no transport owns the destination. */
   publish(

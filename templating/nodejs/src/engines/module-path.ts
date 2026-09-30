@@ -34,6 +34,6 @@ export const modulePathEngine: TemplatingEngine = {
 
   fileClaims(source): readonly EngineFileClaim[] {
     const { path } = normalizeModulePath(source);
-    return path ? [{ path, directory: true }] : [];
+    return path ? [{ path, directory: true, notFoundCode: "MODULE_PATH_NOT_FOUND" }] : [];
   },
 };

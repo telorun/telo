@@ -96,7 +96,7 @@ imports:
       vectorRemove: !ref vectorRemove
       shellHost: !ref localShell
     variables:
-      teloBin: !cel "variables.teloBin"
+      teloCommand: !cel "variables.teloCommand"
       ingestRev: !cel "variables.ingestRev"
   Registry:
     source: ./hub-registry.yaml
@@ -106,7 +106,7 @@ imports:
       shellHost: !ref localShell
       scheduleIngest: !ref Ingest.scheduleIngest
     variables:
-      teloBin: !cel "variables.teloBin"
+      teloCommand: !cel "variables.teloCommand"
       ingestRev: !cel "variables.ingestRev"
       allowLocalRefs: !cel "variables.allowLocalRefs"
 ports:
@@ -158,12 +158,17 @@ variables:
   ingestRev:
     env: INGEST_REV
     type: integer
-    default: 5
-  # Path of the telo CLI the origin reads shell out to (`telo` on PATH by default).
-  teloBin:
-    env: TELO_BIN
-    type: string
-    default: telo
+    default: 6
+  # The command the origin reads run, as a JSON array: a program and its leading
+  # arguments (e.g. '["telo"]'). It must be the telo that runs this hub, so the
+  # `telo module manifest --json` contract ingest reads is this hub's own
+  # generation — the development image points it at the checkout's CLI.
+  teloCommand:
+    env: TELO_COMMAND
+    type: array
+    items: { type: string }
+    minItems: 1
+    default: [telo]
   # Self-hosted embeddinggemma-300m server, OpenAI-compatible /embeddings API.
   # The `/v1` base URL the embedding controller appends `/embeddings` to.
   embedderBaseUrl:
@@ -467,11 +472,23 @@ routes:
                 it; without this filter a caller composing for one kernel is
                 offered kinds it cannot run. Kinds with no controllers at all are
                 portable and always match. Empty means no filter.
+            entry:
+              type: array
+              items: { type: string, enum: [kind, instance, application] }
+              minItems: 1
+              default: [kind, instance]
+              description: >-
+                Entry types to rank, repeatable (`entry=kind&entry=application`):
+                `kind`, `instance`, `application`. Omitted means kinds and
+                instances; an application is opt-in, since it is run rather than
+                imported. A `runtime` filter cannot be combined with
+                `application`.
     handler: !ref Search.searchResources
     inputs:
       q: !cel "request.query.q"
       category: !cel "request.query.category"
       runtime: !cel "request.query.runtime"
+      entry: !cel "request.query.entry"
     returns:
       - status: 200
         content:
@@ -491,6 +508,16 @@ routes:
         content:
           application/json:
             body:
+              error: !cel "error.message"
+      # An application's runtime reach is not indexed, so a runtime filter over
+      # applications has no answer to give; an unknown entry type is refused by
+      # the query schema before it gets here, and mapped for any other caller.
+      - status: 400
+        when: !cel "error.code == 'ERR_RUNTIME_FILTER_UNSUPPORTED' || error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
               error: !cel "error.message"
       # The embedding and vector backends declare no throw list, so anything
       # else is a server fault: return only the code, never an upstream message.
@@ -528,6 +555,17 @@ routes:
                 module matches when that kernel runs at least one of its kinds —
                 the hit's `runtime.full` says whether it covers all of them.
                 Empty means no filter.
+            entry:
+              type: array
+              items: { type: string, enum: [kind, instance, application] }
+              minItems: 1
+              default: [kind, instance]
+              description: >-
+                Entry types to rank, repeatable (`entry=kind&entry=application`):
+                `kind`, `instance`, `application`. Omitted means kinds and
+                instances; an application is opt-in, since it is run rather than
+                imported. A `runtime` filter cannot be combined with
+                `application`.
             limit:
               type: integer
               default: 20
@@ -542,6 +580,7 @@ routes:
       runtime: !cel "request.query.runtime"
       limit: !cel "request.query.limit"
       offset: !cel "request.query.offset"
+      entry: !cel "request.query.entry"
     returns:
       - status: 200
         content:
@@ -561,6 +600,16 @@ routes:
           application/json:
             body:
               error: !cel "error.message"
+      # An application's runtime reach is not indexed, so a runtime filter over
+      # applications has no answer to give; an unknown entry type is refused by
+      # the query schema before it gets here, and mapped for any other caller.
+      - status: 400
+        when: !cel "error.code == 'ERR_RUNTIME_FILTER_UNSUPPORTED' || error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: !cel "error.message"
       - status: 500
         content:
           application/json:
@@ -575,9 +624,24 @@ routes:
   - request:
       path: /categories
       method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            entry:
+              type: array
+              items: { type: string, enum: [kind, instance, application] }
+              minItems: 1
+              default: [kind, instance]
+              description: >-
+                Entry types whose categories to list, repeatable: `kind`,
+                `instance`, `application`. A category is listed when an entry of a
+                requested type declares it, and `modules` counts modules with such
+                an entry. Omitted means kinds and instances.
     handler: !ref Search.categoryVocabulary
     inputs:
       category: ""
+      entry: !cel "request.query.entry"
     returns:
       - status: 200
         content:
@@ -586,6 +650,16 @@ routes:
               categories: !cel >-
                 result.categories.map(c, {'category': c.category, 'label': c.label,
                                           'modules': c.modules, 'kinds': c.kinds})
+    catches:
+      # The query schema refuses an unknown entry type first; this maps it for
+      # any other way in.
+      - status: 400
+        when: !cel "error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: !cel "error.message"
 
   # Every kind that implements a given contract, across module boundaries — the
   # derived grouping axis. A backend is discoverable from the abstract it
@@ -733,6 +807,7 @@ routes:
               kinds: !cel "result.kinds"
               exportedResources: !cel "result.exportedResources"
               versions: !cel "result.versions"
+              application: !cel "result.application"
       # One 404 for both "never registered" and "no such version": the caller's
       # next move is the same either way, and distinguishing them would leak
       # which refs are tracked.
@@ -909,6 +984,12 @@ entries:
       instantiates; each hit carries its capability and description, the
       kernels that can load it, and the owning module's exact location ref +
       version.
+      Pass `entry` to choose what is ranked: `kind`, `instance` and
+      `application`, default `[kind, instance]`. An `application` hit is a
+      runnable application, never written in `imports:` — you run it by pinned
+      ref (`telo run oci://…@<version>#<pin>`, the pin from
+      `list_module_versions`) or stand it up with `App.Instance`; its
+      `application` field lists the variables, secrets and ports it asks for.
       Follow up with `get_module_manifest(ref)` to read the full schemas.
     argumentsSchema:
       type: object
@@ -938,7 +1019,19 @@ entries:
             `rust`). Telo is polyglot and a kind's controllers decide which
             kernels can host it, so without this you may be offered a kind the
             target kernel cannot load. Kinds with no controllers are portable and
-            always match. Omit unless the caller named a runtime.
+            always match. Omit unless the caller named a runtime. Cannot be
+            combined with `application` in `entry`: an application's reach is
+            not indexed.
+        entry:
+          type: array
+          items: { type: string, enum: [kind, instance, application] }
+          minItems: 1
+          default: [kind, instance]
+          description: >-
+            Entry types to rank together: `kind` (a kind to declare), `instance`
+            (a ready-made instance to reference) and `application` (a runnable
+            application to run by pinned ref, never to import). Default
+            `[kind, instance]`.
       required: [query]
       additionalProperties: false
     handler: !ref Search.searchResources
@@ -946,6 +1039,7 @@ entries:
       q: !cel "request.arguments.query"
       category: !cel "request.arguments.?category.orValue('')"
       runtime: !cel "request.arguments.?runtime.orValue('')"
+      entry: !cel "request.arguments.?entry.orValue(['kind', 'instance'])"
     result:
       content:
         - type: text
@@ -963,6 +1057,14 @@ entries:
         error:
           code: -32602
           message: !cel "error.message"
+      # MCP arguments are not validated against `argumentsSchema`, so an unknown
+      # entry type reaches the handler and is refused there.
+      - when: !cel "error.code == 'ERR_RUNTIME_FILTER_UNSUPPORTED' || error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        error:
+          code: -32602
+          message: !cel "error.message"
+          data:
+            code: !cel "error.code"
       - error:
           code: -32603
           message: !cel "'search failed: ' + error.code"
@@ -973,8 +1075,8 @@ entries:
     description: |
       Fetch the raw `telo.yaml` for a tracked module by its location ref
       (e.g. `oci://ghcr.io/acme/telo-s3`). The response
-      contains the `Telo.Library` and `Telo.Definition` docs that fully
-      describe the module's public surface. `version` defaults to `latest`
+      contains the root `Telo.Library` or `Telo.Application` document and the
+      `Telo.Definition` docs that fully describe the module's public surface. `version` defaults to `latest`
       (the latest tracked version).
     argumentsSchema:
       type: object
@@ -1012,7 +1114,9 @@ entries:
       location ref: description, license, repository, publisher, deprecation,
       runtime reach, every EXPORTED kind (with capability, description,
       `extends` and runtime reach), every exported instance, and the full
-      version list. `version` defaults to the latest tracked version. Use this
+      version list. For an application, `application` lists the variables,
+      secrets and ports it declares (null for a library), and it has no kinds,
+      instances or indexed runtime reach. `version` defaults to the latest tracked version. Use this
       for facts; use `get_module_manifest` when you need the exact schema to
       author against.
     argumentsSchema:
@@ -1035,7 +1139,8 @@ entries:
           text: !cel >-
             result.found
               ? json({'module': result.module, 'kinds': result.kinds,
-                      'exportedResources': result.exportedResources, 'versions': result.versions})
+                      'exportedResources': result.exportedResources, 'versions': result.versions,
+                      'application': result.application})
               : json({'error': 'Module not tracked', 'ref': request.arguments.ref})
       isError: !cel "!result.found"
 
@@ -1137,10 +1242,19 @@ entries:
           type: string
           default: ""
           description: "Optional slug or label to check against the vocabulary; omit to list every category."
+        entry:
+          type: array
+          items: { type: string, enum: [kind, instance, application] }
+          minItems: 1
+          default: [kind, instance]
+          description: >-
+            Entry types whose categories to list: a category is listed when an
+            entry of one of them declares it. Default `[kind, instance]`.
       additionalProperties: false
     handler: !ref Search.categoryVocabulary
     inputs:
       category: !cel "request.arguments.?category.orValue('')"
+      entry: !cel "request.arguments.?entry.orValue(['kind', 'instance'])"
     result:
       content:
         - type: text
@@ -1148,6 +1262,13 @@ entries:
             json({'categories': result.categories.map(c, {'category': c.category, 'label': c.label,
                                                           'modules': c.modules, 'kinds': c.kinds,
                                                           'selected': c.selected})})
+    catches:
+      - when: !cel "error.code == 'ERR_UNKNOWN_ENTRY_TYPE'"
+        error:
+          code: -32602
+          message: !cel "error.message"
+          data:
+            code: !cel "error.code"
 
   # suggest_module_refs — fuzzy ref typeahead, not semantic search: resolves a
   # half-remembered or misspelled ref to the exact one registered with the hub.
@@ -1194,16 +1315,19 @@ instructions: !literal |
   - https://telo.run/cel.md — CEL function reference.
 
   ## Tools
-  - `search_resources(query, category?)` — find what can do a job: resource
-    KINDS to declare and ready-made INSTANCES to reference, ranked together
-    (`entry: kind | instance`). Each hit carries its `name` (`Bucket`, `pol`),
+  - `search_resources(query, category?, entry?)` — find what can do a job:
+    resource KINDS to declare and ready-made INSTANCES to reference, ranked
+    together (`entry: kind | instance`); pass `entry` including `application`
+    to find runnable APPLICATIONS too, which are run by pinned ref or with
+    `App.Instance` and never imported. Each hit carries its `name` (`Bucket`, `pol`),
     the `kind` it is or instantiates, its capability/description, and the owning
     module's exact location ref + version. Search UNFILTERED first:
     `category` is an open, author-declared vocabulary, a guessed slug is
     rejected outright, and a wrong-but-real one hides the answer. Every response
     lists the real slugs under `categories`, so one call teaches you the set.
     Write a kind hit as `<YourAlias>.<name>`; reference an instance hit as
-    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`.
+    `!ref <YourAlias>.<name>` or call it as `<YourAlias>.<name>(…)`. An
+    application hit's `application` lists the inputs it asks for.
   - `get_module_manifest(ref, version?)` — read a tracked module's `telo.yaml`
     by location ref. Its `Telo.Definition` docs are JSON Schemas: the EXACT
     field shapes you must produce. `version` defaults to `latest`.

@@ -35,6 +35,8 @@ Nearest-neighbour query. Vector-only: embed the query text first (e.g. with [`Em
 - **Output**: `{ matches: [{ id, score, metadata?, vector? }] }` (higher `score` = closer)
 - **Config**: `store`, `topK` (default 10), `includeVectors` (default false)
 
+`metadataFilter` is applied **before** the `topK` cut: the result is the `topK` nearest entries among those the filter admits, best first, so an entry the filter excludes never takes a match's place. It holds `min(topK, matching)` entries — fewer only when fewer entries match, or when a backend searching an approximate index reaches the scan bound it documents.
+
 ```yaml
 kind: VectorStore.Match
 metadata: { name: Search }
@@ -80,6 +82,7 @@ These are what make the shared abstract honest:
 
 - The operator set is capped at the **intersection** of what all intended backends can push down natively. Flat metadata keys only — no dotted/nested paths, regex, or `$exists` in v1, since those don't translate uniformly across pgvector / qdrant / weaviate.
 - A backend that receives an operator it cannot translate **throws** a structured error — it never silently ignores it, and never falls back to in-memory post-filtering (which would diverge from another backend on `topK` / pagination).
+- A match filters **before** it takes its `topK`: an entry the filter excludes never takes a match's place, results come best first, and a result holds `min(topK, matching)` entries unless a backend on an approximate index reaches the scan bound it documents.
 - Each backend module documents its operator → native mapping table.
 
 The grammar is declared once as a `Type.JsonSchema` named `MetadataFilter` and referenced by both `Match` and `Removal` via `$ref: "telo://Self/MetadataFilter"`, so the single definition stays the source of truth (see the [`type` module](../../type/README.md#referencing-a-type-from-another-schema-ref)).
@@ -112,3 +115,4 @@ steps:
 ## Available backends
 
 - [`VectorStoreMemory.Store`](../../vector-store-memory/README.md) — in-process cosine / dot / euclidean index for development and tests.
+- [`VectorStorePgvector.Store`](../../vector-store-pgvector/README.md) — a table in PostgreSQL with pgvector, searched through an HNSW index.

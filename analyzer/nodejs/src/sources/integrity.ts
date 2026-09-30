@@ -29,6 +29,20 @@ export class IntegrityError extends Error {
   }
 }
 
+/** The origin answered that the manifest does not exist (404 / 410) — a
+ *  distinct type so a caller can tell "not published there" from a transport
+ *  failure without reading the message. */
+export class ManifestNotFoundError extends Error {
+  constructor(
+    message: string,
+    readonly url: string,
+    readonly status: 404 | 410,
+  ) {
+    super(message);
+    this.name = "ManifestNotFoundError";
+  }
+}
+
 /** Split a trailing integrity fragment off a ref/URL. Returns the bare ref in
  *  `base` (safe to build fetch URLs and cache paths from) and the fragment in
  *  `integrity` (e.g. `sha256-<base64url>`), or `undefined` when absent. */
@@ -137,9 +151,11 @@ export async function verifiedFetch(
 ): Promise<{ bytes: Uint8Array; text: string }> {
   const response = await fetch(fetchUrl);
   if (!response.ok) {
-    throw new Error(
-      `Failed to fetch manifest ${describe}: ${response.status} ${response.statusText} (${fetchUrl})`,
-    );
+    const message = `Failed to fetch manifest ${describe}: ${response.status} ${response.statusText} (${fetchUrl})`;
+    if (response.status === 404 || response.status === 410) {
+      throw new ManifestNotFoundError(message, fetchUrl, response.status);
+    }
+    throw new Error(message);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   const text = new TextDecoder().decode(bytes);

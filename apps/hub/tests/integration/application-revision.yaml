@@ -1,0 +1,428 @@
+kind: Telo.Application
+metadata:
+  name: HubApplicationRevisionTest
+  version: 1.0.0
+  description: |
+    A version the ingest pipeline wrote at revision 5 — its root kind not
+    recorded, an application's own kind stored as exported — is left alone by a
+    revision-5 pass and corrected by the first revision-6 one: the root kind is
+    recorded as `Application`, the kind is no longer exported, the declared
+    contract is stored, and the application is an `entry=application` search hit
+    that no default search returns. A secret declaring `default:` leaves its
+    value in none of the contract rows, `/module`'s `application` or a search hit.
+
+    The module is seeded as a `./` local ref, so the ingest reads the fixture off
+    `__fixtures__/` through the workspace CLI. The embedder and the
+    manifest bucket are local stand-ins.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR — a database `pnpm run test:e2e:hub`
+    supplies from its own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD
+    and DB_NAME, never a developer's database. Run only by the hub's own suite
+    through that command.
+imports:
+  Http: ../../../../modules/http-server
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  Postgres: oci://ghcr.io/telorun/postgres@0.5.0#sha256-9E683hTHR4FanCOcARsIWhZtRf2F7WF7_9dNHjFeA98
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  OpenAI: oci://ghcr.io/telorun/openai@0.7.0#sha256-01EFC7E_2pNVDqweIr4iJWFJ5Os1KS4DCX8JOYox2RM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.13.0#sha256-_AtSLXds1fvlZcL19p1lLUT__diUVe92-Z_RvYjdD9Y
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # The workspace CLI, from this directory: the telo whose `--json` payload
+      # carries `application`.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts]
+      ingestRev: 6
+  Search:
+    source: ../../hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+  Catalog:
+    source: ../../hub-catalog.yaml
+    resources:
+      connection: !ref db
+      bucketGet: !ref getManifest
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref test
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# The origin reads run in the fixtures directory, so the local ref `./hello-app`
+# is read from there.
+kind: Shell.LocalHost
+metadata:
+  name: localShell
+cwd: !module-path __fixtures__
+---
+kind: S3.Bucket
+metadata:
+  name: standInBucket
+bucketName: fixture-bucket
+endpoint: http://127.0.0.1:8988
+forcePathStyle: true
+accessKeyId: fixture
+secretAccessKey: fixture
+---
+kind: S3.Put
+metadata:
+  name: putManifest
+bucketRef: !ref standInBucket
+---
+kind: S3.Get
+metadata:
+  name: getManifest
+bucketRef: !ref standInBucket
+---
+kind: OpenAI.EmbeddingModel
+metadata:
+  name: standInEmbedder
+model: stand-in
+request:
+  kind: HttpClient.Request
+  client:
+    kind: HttpClient.Client
+    baseUrl: http://127.0.0.1:8988
+---
+kind: Embedding.Passage
+metadata:
+  name: embedPassage
+model: !ref standInEmbedder
+---
+kind: Embedding.Query
+metadata:
+  name: embedQuery
+model: !ref standInEmbedder
+---
+kind: VectorStorePgvector.Store
+metadata:
+  name: vectorIndex
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: resource_vectors
+---
+kind: VectorStore.Record
+metadata:
+  name: vectorUpsert
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata:
+  name: vectorRemove
+store: !ref vectorIndex
+---
+kind: VectorStore.Match
+metadata:
+  name: vectorMatch
+store: !ref vectorIndex
+topK: 5
+---
+# The embedder and the manifest bucket, on one port: a fixed vector for every
+# passage and query, and a bucket that accepts every put.
+kind: Http.Api
+metadata:
+  name: standInApi
+routes:
+  - request: { path: /embeddings, method: POST }
+    handler:
+      kind: Run.Value
+      value:
+        data:
+          - embedding: [1.0, 0.0, 0.0]
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      path: /fixture-bucket/*
+      method: PUT
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: Http.Server
+    metadata: { name: StandIns }
+    host: 127.0.0.1
+    port: 8988
+    contentTypeParsers:
+      - contentType: text/yaml
+        stream: true
+    mounts:
+      - path: /
+        mount: !ref standInApi
+targets:
+  - !ref StandIns
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE id = 9301
+  # What the revision-5 pipeline left for an application seeded from disk: the
+  # version with no root kind, and the application's own kind stored exported.
+  - name: seedModule
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version)
+        VALUES (9301, './hello-app', 'local', '1.0.0')
+  - name: seedVersion
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, description, manifest_key,
+           categories, category_labels, runtimes_asked)
+        VALUES (9301, '1.0.0', 'sha256-fixture', 'HelloFixtureApp',
+                'Greets every visitor by name over HTTP.',
+                'local/hello-app/1.0.0/telo.yaml',
+                ARRAY['testing'], ARRAY['Testing'], TRUE)
+  - name: seedKind
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO resource_kinds (module_id, version, name, capability, exported, description, portable)
+        VALUES (9301, '1.0.0', 'Greeter', 'Telo.Invocable', TRUE, 'Composes one greeting.', TRUE)
+  # The attempt counter is what a run id is minted from, and a durable run id is
+  # never reused — so each run of this test starts its count from the clock
+  # rather than from 1, whose runs an earlier run of the test already burnt.
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest
+          (module_id, version, digest, ingest_rev, attempt, claimed_at, completed_at)
+        VALUES (9301, '1.0.0', 'sha256-fixture', 5, EXTRACT(EPOCH FROM NOW())::int, NOW(), NOW())
+  - name: claimAtRev5
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: "9301"
+      version: 1.0.0
+      digest: sha256-fixture
+      rev: 5
+  - name: beforeRows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.root_kind AS "rootKind", rk.exported
+        FROM module_versions mv
+        JOIN resource_kinds rk ON rk.module_id = mv.module_id AND rk.version = mv.version
+        WHERE mv.module_id = 9301
+  - name: assertRev5LeavesIt
+    inputs:
+      actual:
+        claimed: !cel "steps.claimAtRev5.result.claimed"
+        rows: !cel "steps.beforeRows.result.rows"
+      expected:
+        claimed: false
+        rows:
+          - rootKind: null
+            exported: true
+    invoke:
+      kind: Assert.Equals
+  - name: claimAtRev6
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: "9301"
+      version: 1.0.0
+      digest: sha256-fixture
+      rev: 6
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: "9301"
+      ref: ./hello-app
+      version: 1.0.0
+      digest: sha256-fixture
+      latestVersion: 1.0.0
+      attempt: !cel "steps.claimAtRev6.result.attempt"
+  # Bounded: one ingest is a CLI read, a bucket put and an embedding call. The
+  # last reading leaves the loop, so an ingest that never completes fails on what
+  # it showed rather than passing because the assertion never ran.
+  - name: await
+    invoke:
+      kind: Run.Loop
+      maxIterations: 60
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 1s
+        - name: state
+          invoke: !ref query
+          inputs:
+            sql: >-
+              SELECT completed_at IS NOT NULL AS completed
+              FROM version_ingest WHERE module_id = 9301 AND version = '1.0.0'
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+  - name: afterRows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT mv.root_kind AS "rootKind", rk.exported, vi.ingest_rev AS "ingestRev",
+               vi.last_error AS "lastError"
+        FROM module_versions mv
+        JOIN resource_kinds rk ON rk.module_id = mv.module_id AND rk.version = mv.version
+        JOIN version_ingest vi ON vi.module_id = mv.module_id AND vi.version = mv.version
+        WHERE mv.module_id = 9301
+  - name: asApplication
+    invoke: !ref Search.searchResources
+    inputs:
+      q: greets visitors
+      category: ""
+      runtime: ""
+      entry: [application]
+  - name: byDefault
+    invoke: !ref Search.searchResources
+    inputs:
+      q: greets visitors
+      category: ""
+      runtime: ""
+      entry: [kind, instance]
+  - name: detail
+    invoke: !ref Catalog.moduleDetail
+    inputs:
+      ref: ./hello-app
+      version: ""
+  - name: assertRev6CorrectsIt
+    inputs:
+      actual:
+        claimed: !cel "steps.claimAtRev6.result.claimed"
+        completed: !cel "steps.await.result.completed"
+        rows: !cel "steps.afterRows.result.rows"
+        applicationHits: !cel >-
+          steps.asApplication.result.hits.filter(h, h.module.ref == './hello-app')
+            .map(h, [h.entry, h.name, h.kind, h.kindRef, h.capability])
+        defaultHits: !cel >-
+          steps.byDefault.result.hits.filter(h, h.module.ref == './hello-app').size()
+        detail:
+          kinds: !cel "steps.detail.result.kinds"
+          exportedResources: !cel "steps.detail.result.exportedResources"
+          runtime: !cel "steps.detail.result.module.runtime"
+          application: !cel "steps.detail.result.application"
+      expected:
+        claimed: true
+        completed: true
+        rows:
+          - rootKind: Application
+            exported: false
+            ingestRev: 6
+            lastError: ""
+        applicationHits:
+          - [application, HelloFixtureApp, Application, "", ""]
+        defaultHits: 0
+        detail:
+          kinds: []
+          exportedResources: []
+          runtime: null
+          application:
+            variables:
+              - name: greeting
+                description: The word each greeting opens with.
+                required: false
+                env: GREETING
+                default: hello
+                arg: { form: flag, flag: greeting, short: g }
+                schema: { type: string, minLength: 1 }
+            secrets:
+              - name: apiToken
+                description: Token presented to the upstream directory.
+                required: false
+                env: API_TOKEN
+                schema: { type: string }
+            ports:
+              - name: http
+                description: ""
+                required: false
+                env: PORT
+                default: 8080
+                arg: null
+                protocol: tcp
+    invoke:
+      kind: Assert.Equals
+  # A secret's `default:` is a value, and no value of a secret is indexed.
+  - name: contractRows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT row_to_json(i)::text AS row FROM application_inputs i WHERE i.module_id = 9301
+  - name: assertSecretValueNowhere
+    inputs:
+      actual:
+        rows: !cel "steps.contractRows.result.rows.exists(r, r.row.contains('fixture-secret-default-value'))"
+        detail: !cel "json(steps.detail.result.application).contains('fixture-secret-default-value')"
+        hits: !cel "json(steps.asApplication.result.hits).contains('fixture-secret-default-value')"
+      expected:
+        rows: false
+        detail: false
+        hits: false
+    invoke:
+      kind: Assert.Equals

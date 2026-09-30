@@ -78,7 +78,9 @@ describe("include engines", () => {
     // Which artifact layer the file belongs in is packaging's vocabulary, not
     // this package's — the analyzer assigns it, alongside the roles it already
     // assigns for controller candidates.
-    expect(includeTextEngine.fileClaims?.("./assets/bg.svg")).toEqual([{ path: "assets/bg.svg" }]);
+    expect(includeTextEngine.fileClaims?.("./assets/bg.svg")).toEqual([
+      { path: "assets/bg.svg", notFoundCode: "INCLUDE_FILE_NOT_FOUND" },
+    ]);
   });
 
   it("claim nothing for a path analyze rejects, so publish reports it once", () => {

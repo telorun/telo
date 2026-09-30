@@ -18,6 +18,8 @@ imports:
 targets:
   - !ref searchResources_ReturnsKindHits
   - !ref searchResources_CarriesCategoryVocabulary
+  - !ref searchResources_RefusesRuntimeForApplications
+  - !ref searchResources_RefusesUnknownEntryType
   - !ref getModule_ReturnsTrackedModuleFacts
   - !ref listModuleVersions_ReturnsPinnedVersions
   - !ref findImplementations_ListsKvStoreBackends
@@ -129,6 +131,70 @@ steps:
         foundRunLoop: true
     invoke:
       kind: Assert.Equals
+---
+# Same refusal as the HTTP route: an application's runtime reach is not indexed.
+# The call must fail — reaching the step after it is itself the failure.
+kind: Run.Sequence
+metadata: { name: searchResources_RefusesRuntimeForApplications }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: search_resources
+          arguments:
+            query: agent
+            runtime: rust
+            entry: [application]
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: search_resources answered a runtime filter over applications
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            code: !cel "error.code"
+            rpcCode: !cel "error.data.code"
+            teloCode: !cel "error.data.data.code"
+          expected:
+            code: ERR_MCP_JSON_RPC_ERROR
+            rpcCode: -32602
+            teloCode: ERR_RUNTIME_FILTER_UNSUPPORTED
+        invoke:
+          kind: Assert.Equals
+---
+# A tool's arguments are not validated against its `argumentsSchema`, so an
+# unknown entry type reaches the search — which refuses it rather than answering
+# with the empty set it would otherwise select.
+kind: Run.Sequence
+metadata: { name: searchResources_RefusesUnknownEntryType }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: search_resources
+          arguments:
+            query: delay
+            entry: [kinds]
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: search_resources answered an unknown entry type
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            rpcCode: !cel "error.data.code"
+            teloCode: !cel "error.data.data.code"
+          expected:
+            rpcCode: -32602
+            teloCode: ERR_UNKNOWN_ENTRY_TYPE
+        invoke:
+          kind: Assert.Equals
 ---
 # get_module mirrors GET /module: keyed facts about the seeded timer module,
 # not ranked hits — the kind list carries its Delay kind either way.

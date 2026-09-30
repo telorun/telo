@@ -3,7 +3,9 @@ import {
   isOciRef,
   manifestCacheKey,
   ociManifestCacheCoords,
+  readApplicationContract,
   readNativeEntries,
+  type ApplicationContract,
   sha256Base64Url,
   splitIntegrity,
   urlManifestCacheCoords,
@@ -226,10 +228,12 @@ async function integrityForRef(ref: string, log: Logger): Promise<string | null>
   }
 }
 
-/** What `telo module manifest --json` prints. The hub's tracker reads all five:
- *  `manifest` is cached to the bucket at `cacheKey`, `integrity` becomes the
- *  import pin it serves per version, and `runtime` is stored as the runtime and
- *  language facets without the consumer parsing a single PURL. */
+/** What `telo module manifest --json` prints. The hub's tracker reads the first
+ *  five: `manifest` is cached to the bucket at `cacheKey`, `integrity` becomes
+ *  the import pin it serves per version, and `runtime` is stored as the runtime
+ *  and language facets without the consumer parsing a single PURL.
+ *  `application` is an Application's declared inputs, so a surface offering to
+ *  run it learns them from the manifest. */
 export interface ManifestJsonPayload {
   ref: string;
   /** Deterministic hub cache key, or `null` for a ref with no cache location. */
@@ -239,6 +243,9 @@ export interface ManifestJsonPayload {
   integrity: string | null;
   /** Which kernels can host each kind, and the module-level roll-up. */
   runtime: ModuleRuntimeReport;
+  /** The declared `variables` / `secrets` / `ports` of a `Telo.Application`;
+   *  `null` for a library. No secret's value is ever carried. */
+  application: ApplicationContract | null;
 }
 
 /** Build the `--json` payload for an already-resolved manifest.
@@ -256,12 +263,14 @@ export async function buildManifestJsonPayload(
   // A local module has neither: no cache location, and no transport whose
   // verification a pin would be checked against.
   const local = localManifestPath(ref) !== null;
+  const docs = parseDocs(text);
   return {
     ref,
     cacheKey: local ? null : cacheKeyForRef(ref, text),
     manifest: text,
     integrity: local ? null : await integrityForRef(ref, log),
-    runtime: extractKindRuntimes(parseDocs(text), log),
+    runtime: extractKindRuntimes(docs, log),
+    application: readApplicationContract(findModuleDoc(docs)?.toJSON()),
   };
 }
 
@@ -511,7 +520,7 @@ export function moduleCommand(yargs: Argv): Argv {
               .option("json", {
                 type: "boolean",
                 default: false,
-                describe: "Emit { ref, cacheKey, manifest, integrity, runtime } as JSON",
+                describe: "Emit { ref, cacheKey, manifest, integrity, runtime, application } as JSON",
               }),
           async (argv) => {
             await runManifest(argv as any);

@@ -1,0 +1,553 @@
+kind: Telo.Application
+metadata:
+  name: HubApplicationSearchIsolationTest
+  version: 1.0.0
+  description: |
+    Registering applications changes nothing a default search returns. A
+    library's kinds are searched; then more than 60 applications nearer to the
+    query than any of those kinds are registered, and the default
+    `/search/resources` and `/search/modules` answers — hits and scores — are the
+    same as before, while a search asking for applications returns them. And an
+    application's module decides a category's label only when applications are
+    asked for.
+
+    The vectors sit behind an HNSW index at a size where the planner uses it —
+    150,000 filler vectors farther from the query than every hit — and the test
+    asserts the plan, so it cannot pass by the planner choosing an exact scan. A
+    lookup that filtered by entry type only after the index had handed over its
+    `hnsw.ef_search` nearest would find nothing but applications there.
+
+    The library and one application are ingested from `./` local refs, read off
+    `__fixtures__/` through the workspace CLI; the other applications are seeded
+    as rows and vectors. The embedder and the manifest bucket are local
+    stand-ins; the vectors live in a table of this test's own, so no other test's
+    vectors take part in the ranking. The vector store is the in-repo
+    `vector-store-pgvector`, whose match honours the filter before its topK.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR >= 0.8.0 — a database
+    `pnpm run test:e2e:hub` supplies from its own stack through DB_HOST, DB_PORT,
+    DB_USER, DB_PASSWORD and DB_NAME, never a developer's database. Run only by
+    the hub's own suite through that command.
+imports:
+  Http: ../../../../modules/http-server
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  Postgres: oci://ghcr.io/telorun/postgres@0.5.0#sha256-9E683hTHR4FanCOcARsIWhZtRf2F7WF7_9dNHjFeA98
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  OpenAI: oci://ghcr.io/telorun/openai@0.7.0#sha256-01EFC7E_2pNVDqweIr4iJWFJ5Os1KS4DCX8JOYox2RM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStorePgvector: ../../../../modules/vector-store-pgvector
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # The workspace CLI, from this directory: the telo whose `--json` payload
+      # carries `application`.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts]
+      ingestRev: 6
+  Search:
+    source: ../../hub-search.yaml
+    resources:
+      connection: !ref db
+      embedQuery: !ref embedQuery
+      vectorMatch: !ref vectorMatch
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref seedFiller
+  - !ref defaultSearchUnmoved
+  - !ref labelVote
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# The origin reads run in the fixtures directory, so a local ref such as
+# `./isolation-lib` is read from there.
+kind: Shell.LocalHost
+metadata:
+  name: localShell
+cwd: !module-path __fixtures__
+---
+kind: S3.Put
+metadata:
+  name: putManifest
+bucketRef:
+  kind: S3.Bucket
+  bucketName: fixture-bucket
+  endpoint: http://127.0.0.1:8989
+  forcePathStyle: true
+  accessKeyId: fixture
+  secretAccessKey: fixture
+---
+kind: OpenAI.EmbeddingModel
+metadata:
+  name: standInEmbedder
+model: stand-in
+request:
+  kind: HttpClient.Request
+  client:
+    kind: HttpClient.Client
+    baseUrl: http://127.0.0.1:8989
+---
+kind: Embedding.Passage
+metadata:
+  name: embedPassage
+model: !ref standInEmbedder
+---
+kind: Embedding.Query
+metadata:
+  name: embedQuery
+model: !ref standInEmbedder
+---
+kind: VectorStorePgvector.Store
+metadata:
+  name: vectorIndex
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: isolation_vectors
+---
+kind: VectorStore.Record
+metadata:
+  name: vectorUpsert
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata:
+  name: vectorRemove
+store: !ref vectorIndex
+---
+kind: VectorStore.Match
+metadata:
+  name: vectorMatch
+store: !ref vectorIndex
+topK: 50
+---
+# The embedder and the manifest bucket, on one port. The query and the
+# application's passage embed to the same direction; the library's two kinds lie
+# further from it, each at a distance of its own, so the application is the
+# nearest neighbour of the query.
+kind: Http.Api
+metadata:
+  name: standInApi
+routes:
+  - request:
+      path: /embeddings
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            input: { type: array, items: { type: string } }
+          required: [input]
+    handler:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            texts: { type: array, items: { type: string } }
+          required: [texts]
+      value:
+        data: !cel >-
+          inputs.texts.map(t, {'embedding':
+            t.contains('QuillwortPress') ? [0.8, 0.6, 0.0]
+              : t.contains('QuillwortSieve') ? [0.6, 0.8, 0.0]
+              : [1.0, 0.0, 0.0]})
+    inputs:
+      texts: !cel "request.body.input"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request:
+      path: /fixture-bucket/*
+      method: PUT
+      schema:
+        body:
+          x-telo-type: { name: Telo.Stream }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+# Ingests one fixture module, seeded as a `./` local ref, and waits until its
+# rows and its vectors are written.
+kind: Run.Sequence
+metadata:
+  name: ingestFixture
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      moduleId: { type: string }
+      ref: { type: string }
+    required: [moduleId, ref]
+steps:
+  - name: seedModule
+    invoke: !ref exec
+    inputs:
+      sql: INSERT INTO modules (id, ref, transport) VALUES ($1::bigint, $2, 'local')
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.ref"
+  # The attempt counter is what a run id is minted from, and a durable run id is
+  # never reused — so each run of this test starts its count from the clock
+  # rather than from 1, whose runs an earlier run of the test already burnt.
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, attempt, completed_at)
+        VALUES ($1::bigint, '1.0.0', EXTRACT(EPOCH FROM NOW())::int, NOW())
+      bindings:
+        - !cel "inputs.moduleId"
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      version: 1.0.0
+      digest: sha256-fixture
+      rev: 6
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+      ref: !cel "inputs.ref"
+      version: 1.0.0
+      digest: sha256-fixture
+      latestVersion: 1.0.0
+      attempt: !cel "steps.claim.result.attempt"
+  # Bounded; the last reading leaves the loop, so an ingest that never completes
+  # fails on what it showed rather than passing because the assertion never ran.
+  - name: await
+    invoke:
+      kind: Run.Loop
+      maxIterations: 60
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 1s
+        - name: state
+          invoke: !ref query
+          inputs:
+            # The version is recorded complete before its vectors are written,
+            # so the run is done only once every entry has its vector.
+            sql: >-
+              SELECT vi.completed_at IS NOT NULL
+                       AND (SELECT COUNT(*) FROM isolation_vectors v
+                            WHERE v.metadata->>'module_id' = $1)
+                           = (SELECT COUNT(*) FROM search_entries e
+                              WHERE e.module_id = $1::bigint) AS completed,
+                     COALESCE(vi.last_error, '') AS "lastError"
+              FROM version_ingest vi WHERE vi.module_id = $1::bigint AND vi.version = '1.0.0'
+            bindings:
+              - !cel "inputs.moduleId"
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+        lastError: !cel "steps.state.result.rows[0].lastError"
+    inputs:
+      moduleId: !cel "inputs.moduleId"
+outputs:
+  completed: !cel "steps.await.result.completed"
+  lastError: !cel "steps.await.result.lastError"
+---
+# Filler vectors: enough that the planner walks the HNSW index, all farther from
+# the query than every hit, and matching no search entry. The index is dropped for
+# the load and rebuilt once, by the store in `defaultSearchUnmoved`'s scope —
+# maintaining it row by row makes the load minutes long.
+kind: Run.Sequence
+metadata:
+  name: seedFiller
+steps:
+  - name: dropIndex
+    invoke: !ref exec
+    inputs:
+      sql: DROP INDEX IF EXISTS isolation_vectors_embedding_idx
+  - name: empty
+    invoke: !ref exec
+    inputs:
+      sql: TRUNCATE isolation_vectors
+  - name: load
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO isolation_vectors (id, embedding, metadata)
+        SELECT 'filler:' || i, ('[0.5,1,' || (0.00001 * i)::text || ']')::vector,
+               '{"entry":"kind","module_id":"filler"}'::jsonb
+        FROM generate_series(1, 150000) AS i
+---
+# What a default search returns for the query, restricted to this test's modules.
+kind: Run.Sequence
+metadata:
+  name: defaultSearch
+steps:
+  - name: resources
+    invoke: !ref Search.searchResources
+    inputs:
+      q: quillwort
+      category: ""
+      runtime: ""
+      entry: [kind, instance]
+  - name: modules
+    invoke: !ref Search.searchModules
+    inputs:
+      q: quillwort
+      category: ""
+      runtime: ""
+      limit: 20
+      offset: 0
+      entry: [kind, instance]
+outputs:
+  resources: !cel >-
+    steps.resources.result.hits.filter(h, h.module.ref.startsWith('./isolation-'))
+      .map(h, {'entry': h.entry, 'name': h.name, 'score': h.score})
+  modules: !cel >-
+    steps.modules.result.hits.filter(h, h.module.ref.startsWith('./isolation-'))
+      .map(h, {'ref': h.module.ref, 'score': h.score,
+               'matched': h.matchedKinds.map(k, [k.name, k.score])})
+---
+kind: Run.Sequence
+metadata:
+  name: defaultSearchUnmoved
+with:
+  - kind: Http.Server
+    metadata: { name: StandIns }
+    host: 127.0.0.1
+    port: 8989
+    contentTypeParsers:
+      - contentType: text/yaml
+        stream: true
+    mounts:
+      - path: /
+        mount: !ref standInApi
+  # Its start-up rebuilds the index `seedFiller` dropped.
+  - kind: VectorStorePgvector.Store
+    metadata: { name: rebuiltIndex }
+    connection: !ref db
+    dimensions: 3
+    metric: cosine
+    table: isolation_vectors
+targets:
+  - !ref StandIns
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE id IN (9321, 9322) OR id BETWEEN 9340 AND 9409
+  # A vector outlives its module's rows, and an earlier run's application
+  # vector would already be in place before this run's application is ingested.
+  - name: resetVectors
+    invoke: !ref vectorRemove
+    inputs:
+      metadataFilter:
+        module_id: { $in: ["9321", "9322"] }
+  - name: library
+    invoke: !ref ingestFixture
+    inputs:
+      moduleId: "9321"
+      ref: ./isolation-lib
+  - name: before
+    invoke: !ref defaultSearch
+  - name: application
+    invoke: !ref ingestFixture
+    inputs:
+      moduleId: "9322"
+      ref: ./isolation-app
+  # 70 more applications, each nearer to the query than every kind.
+  - name: nearbyModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version)
+        SELECT 9339 + i, 'oci://example.test/nearby-app-' || i, 'oci', '1.0.0'
+        FROM generate_series(1, 70) AS i
+  - name: nearbyVersions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, description, manifest_key, root_kind)
+        SELECT 9339 + i, '1.0.0', 'sha256-nearby', 'NearbyApp' || i, 'A nearby application.',
+               'oci/example.test/nearby-app-' || i || '/1.0.0/telo.yaml', 'Application'
+        FROM generate_series(1, 70) AS i
+  - name: nearbyVectors
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO isolation_vectors (id, embedding, metadata)
+        SELECT 'a:' || (9339 + i) || ':1.0.0', ('[1,' || (0.001 * i)::text || ',0]')::vector,
+               jsonb_build_object('entry', 'application', 'module_id', (9339 + i)::text,
+                                  'version', '1.0.0', 'name', 'NearbyApp' || i)
+        FROM generate_series(1, 70) AS i
+  - name: analyze
+    invoke: !ref exec
+    inputs:
+      sql: ANALYZE isolation_vectors
+  # The statement a default search's vector lookup runs, with the query inlined.
+  - name: plan
+    invoke: !ref query
+    inputs:
+      sql: >-
+        EXPLAIN SELECT id, metadata, (embedding <=> '[1,0,0]'::vector) AS distance
+        FROM "isolation_vectors"
+        WHERE ((metadata->'entry' = ANY(ARRAY['"kind"'::jsonb, '"instance"'::jsonb])))
+        ORDER BY embedding <=> '[1,0,0]'::vector LIMIT 50
+  - name: after
+    invoke: !ref defaultSearch
+  - name: everyEntry
+    invoke: !ref Search.searchResources
+    inputs:
+      q: quillwort
+      category: ""
+      runtime: ""
+      entry: [kind, instance, application]
+  - name: assert
+    inputs:
+      actual:
+        ingested:
+          - !cel "[steps.library.result.completed, steps.library.result.lastError]"
+          - !cel "[steps.application.result.completed, steps.application.result.lastError]"
+        usesIndex: !cel >-
+          steps.plan.result.rows.exists(r, r['QUERY PLAN'].contains('isolation_vectors_embedding_idx'))
+        after: !cel "steps.after.result"
+        # The applications ARE nearer: asked for, they are returned, the ingested
+        # one first.
+        firstHit: !cel "[steps.everyEntry.result.hits[0].entry, steps.everyEntry.result.hits[0].name]"
+        nearbyReturned: !cel >-
+          steps.everyEntry.result.hits.exists(h, h.entry == 'application' && h.name.startsWith('NearbyApp'))
+        # Both kinds were found before; their order rests on the index's recall.
+        beforeFound: !cel >-
+          [
+            steps.before.result.resources.exists(h, h.name == 'QuillwortPress'),
+            steps.before.result.resources.exists(h, h.name == 'QuillwortSieve')
+          ]
+      expected:
+        ingested:
+          - [true, ""]
+          - [true, ""]
+        usesIndex: true
+        after: !cel "steps.before.result"
+        firstHit: [application, QuillwortApp]
+        nearbyReturned: true
+        beforeFound: [true, true]
+    invoke:
+      kind: Assert.Equals
+---
+# One library labels the category `Quillwort`, two applications `QUILLWORT`. By
+# default the applications do not vote, so the library's label stands; asked
+# for, the applications outvote it.
+kind: Run.Sequence
+metadata:
+  name: labelVote
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE id IN (9331, 9332, 9333)
+  - name: seedModules
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport, latest_version) VALUES
+          (9331, 'oci://example.test/label-lib', 'oci', '1.0.0'),
+          (9332, 'oci://example.test/label-app-a', 'oci', '1.0.0'),
+          (9333, 'oci://example.test/label-app-b', 'oci', '1.0.0')
+  - name: seedVersions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO module_versions
+          (module_id, version, digest, module_name, manifest_key, categories, category_labels, root_kind)
+        VALUES
+          (9331, '1.0.0', 'sha256-label', 'LabelLib', 'oci/example.test/label-lib/1.0.0/telo.yaml',
+           ARRAY['quillwort'], ARRAY['Quillwort'], 'Library'),
+          (9332, '1.0.0', 'sha256-label', 'LabelAppA', 'oci/example.test/label-app-a/1.0.0/telo.yaml',
+           ARRAY['quillwort'], ARRAY['QUILLWORT'], 'Application'),
+          (9333, '1.0.0', 'sha256-label', 'LabelAppB', 'oci/example.test/label-app-b/1.0.0/telo.yaml',
+           ARRAY['quillwort'], ARRAY['QUILLWORT'], 'Application')
+  - name: seedKind
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO resource_kinds
+          (module_id, version, name, capability, exported, description, portable, categories, category_labels)
+        VALUES (9331, '1.0.0', 'Labeller', 'Telo.Invocable', TRUE, 'Labels things.', TRUE,
+                ARRAY['quillwort'], ARRAY['Quillwort'])
+  - name: byDefault
+    invoke: !ref Search.categoryVocabulary
+    inputs:
+      category: ""
+      entry: [kind, instance]
+  - name: withApplications
+    invoke: !ref Search.categoryVocabulary
+    inputs:
+      category: ""
+      entry: [kind, instance, application]
+  - name: assert
+    inputs:
+      actual:
+        byDefault: !cel "steps.byDefault.result.categories.filter(c, c.category == 'quillwort')"
+        withApplications: !cel "steps.withApplications.result.categories.filter(c, c.category == 'quillwort')"
+      expected:
+        byDefault:
+          - { category: quillwort, label: Quillwort, modules: 1, kinds: 1, selected: false }
+        withApplications:
+          - { category: quillwort, label: QUILLWORT, modules: 3, kinds: 1, selected: false }
+    invoke:
+      kind: Assert.Equals

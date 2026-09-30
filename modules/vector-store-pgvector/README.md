@@ -11,7 +11,7 @@
 
 ## Requirements
 
-The referenced connection must point at a PostgreSQL server with the [pgvector](https://github.com/pgvector/pgvector) extension available (e.g. the `pgvector/pgvector` images). The backend runs `CREATE EXTENSION IF NOT EXISTS vector` on init, which needs a role permitted to create the extension.
+The referenced connection must point at a PostgreSQL server with **pgvector ≥ 0.8.0** available (e.g. the `pgvector/pgvector` images). The backend runs `CREATE EXTENSION IF NOT EXISTS vector` on init, which needs a role permitted to create the extension, and then refuses to start on an older extension, naming the installed version: install pgvector 0.8.0 or later on the server and run `ALTER EXTENSION vector UPDATE` in the database. The connection must be a `Postgres.Connection` (a match opens its own transaction through it).
 
 ## Kinds
 
@@ -40,6 +40,12 @@ The referenced connection must point at a PostgreSQL server with the [pgvector](
 | `$and` / `$or` / `$not` | recursive compose |
 
 An unsupported operator throws rather than silently matching, preserving parity with the other backends.
+
+## Filtered matches
+
+Every match runs as an iterative HNSW index scan in strict distance order (`hnsw.iterative_scan = strict_order`), so the filter is applied as the index is walked and the walk continues until `topK` rows have matched. An entry the filter excludes never takes a match's place, and a `topK` above `hnsw.ef_search` (40 by default) is met — a plain HNSW scan would stop at its `ef_search` candidates and filter those, returning fewer rows or none. The setting is `SET LOCAL` in a transaction around the match statement, so it never outlives the statement; inside a caller's `Sql.Transaction` the match joins that transaction and restores the caller's value afterwards.
+
+The walk is bounded by `hnsw.max_scan_tuples` (20,000 by default): a filter so selective that fewer than `topK` of the first 20,000 entries visited match returns fewer than `topK` rows. Raise the bound on the server (`ALTER DATABASE … SET hnsw.max_scan_tuples = …`) if a filter needs it. When the planner estimates a sequential scan cheaper — usually on a small table — the match is exact.
 
 ## Example
 

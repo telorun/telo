@@ -30,6 +30,7 @@ targets:
   - !ref module_UnknownVersionReturns404
   - !ref searchResources_RejectsUnknownRuntime
   - !ref searchResources_AcceptsKnownRuntime
+  - !ref searchResources_RefusesRuntimeForApplications
   - !ref searchResources_RejectsUnknownCategory
   - !ref searchResources_BroadensWhenCategoryExcludesEverything
   - !ref searchResources_CarriesCategoryFacet
@@ -610,7 +611,9 @@ steps:
                 type: array
                 minItems: 1
                 items: { type: string, minLength: 1 }
-            required: [module, kinds, exportedResources, versions]
+              # A library declares no application contract.
+              application: { const: null }
+            required: [module, kinds, exportedResources, versions, application]
         required: [status, body]
 ---
 # One 404 covers both "never registered" and "no such version": the caller's
@@ -705,6 +708,31 @@ steps:
               hits: { type: array }
             required: [runtime, hits]
         required: [status, body]
+---
+# An application's runtime reach depends on its whole import closure, which the
+# hub does not index — so a runtime filter over applications is refused rather
+# than answered with a guess.
+kind: Run.Sequence
+metadata: { name: searchResources_RefusesRuntimeForApplications }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: HitRuntimeWithApplications }
+      url: "http://localhost:8040/search/resources?q=agent&runtime=rust&entry=application"
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'body': steps.hit.result.body}"
+      expected:
+        status: 400
+        body:
+          code: ERR_RUNTIME_FILTER_UNSUPPORTED
+          error: >-
+            the hub does not index an application's runtime reach — it depends on
+            its whole import closure
+    invoke:
+      kind: Assert.Equals
 ---
 # The category facet is open and author-declared, so it cannot be an enum the way
 # `runtime` is — the guard is a lookup against the declared slugs instead. It has

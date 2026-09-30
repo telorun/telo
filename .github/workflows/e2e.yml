@@ -70,9 +70,9 @@ jobs:
       - name: Check hub manifest
         run: pnpm run check apps/hub/telo.yaml
 
-      # The containers no longer reach into the workspace — the tracker uses the
-      # `telo` the base image ships. This build is kept as a compile check for
-      # the host-side e2e suites.
+      # The hub container mounts the checkout and runs its CLI, both for the hub
+      # itself and for every origin read. This build is kept as a compile check
+      # for the host-side e2e suites.
       - name: Build workspace packages
         run: pnpm -r run build
 

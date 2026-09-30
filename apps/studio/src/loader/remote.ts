@@ -1,9 +1,15 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   HttpSource,
+  ManifestNotFoundError,
+  describeSelector,
   flattenLoadedModule,
+  isOciRef,
+  ociManifestCacheCoords,
+  parseLayerIndex,
+  splitIntegrity,
 } from "@telorun/analyzer";
-import type { ManifestSource } from "@telorun/analyzer";
+import type { LoadedModule, ManifestSource } from "@telorun/analyzer";
 import type { ImportKind, WorkspaceAdapter } from "../model";
 import { moduleParseError, parseModuleDocument } from "../yaml-document";
 import { LocalStorageAdapter } from "./adapters/local-storage";
@@ -14,12 +20,13 @@ import { normalizePath, pathDirname, pathRelative } from "./paths";
 // ---------------------------------------------------------------------------
 // Remote manifest open — the "Open in Telo Studio" entry point.
 //
-// A link of the form `<editor>/?open=<url>` fetches a single manifest over
-// HTTP and copies it into an in-browser virtual workspace under
-// `/workspace/apps/<slug>/telo.yaml`, where it is edited purely locally. The
-// manifest's imports resolve from that local copy (registry refs via the
-// registry adapters); we deliberately copy only the one file, so relative
-// imports surface as honest unresolved-import diagnostics.
+// A link of the form `<editor>/?open=<location>` reads a manifest and copies it
+// into an in-browser virtual workspace under `/workspace/apps/<slug>/telo.yaml`,
+// where it is edited purely locally. The location is an http(s) URL (fetched
+// with its same-origin relative cascade) or a pinned published ref
+// `oci://host/repo@version#sha256-…`, read through the manifest-cache sources
+// imports resolve through — the browser cannot reach an OCI registry, so only
+// the manifest is copied.
 // ---------------------------------------------------------------------------
 
 /** Query-string key carrying the URL of the manifest to open. */
@@ -74,6 +81,17 @@ export interface RemoteImportPlan {
   /** Non-fatal notices — e.g. `files:` glob entries that can't be enumerated
    *  over a raw URL, or an asset that failed to fetch. */
   warnings: string[];
+  /** Set when the root is a published `oci://` artifact: the copy holds its
+   *  manifest alone, and these are the payload layers its `layers:` index
+   *  declares that are not copied. */
+  published: { uncopiedLayers: string[] } | null;
+}
+
+/** Options for {@link buildRemoteImportPlan}. */
+export interface RemoteImportOptions {
+  /** The page URL's fragment (`location.hash`). An unencoded `#` in the `open`
+   *  value ends the query there, so a pin arriving here is reported as such. */
+  pageFragment?: string;
 }
 
 /** A `files:` entry is a glob when it carries any gitignore metacharacter or a
@@ -184,7 +202,7 @@ export async function fetchRemoteManifest(url: string): Promise<RemoteManifest> 
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(
-      `Unsupported manifest URL scheme "${parsed.protocol}" — only http and https links can be opened.`,
+      `Unsupported manifest URL scheme "${parsed.protocol}" — only http and https links and pinned oci:// refs can be opened.`,
     );
   }
 
@@ -203,7 +221,13 @@ export async function fetchRemoteManifest(url: string): Promise<RemoteManifest> 
     );
   }
 
-  const text = await response.text();
+  return describeRootManifest(url, await response.text());
+}
+
+/** Parses a root manifest's text and resolves its destination in the virtual
+ *  workspace. Throws when it is not YAML, declares no Application/Library, or
+ *  has no usable `metadata.name`. */
+function describeRootManifest(url: string, text: string): RemoteManifest {
   const doc = parseModuleDocument(url, text);
   const parseError = moduleParseError(doc);
   if (parseError) {
@@ -313,7 +337,12 @@ export async function buildRemoteImportPlan(
   rootUrl: string,
   adapter: WorkspaceAdapter,
   registryAdapters: ManifestSource[] = [],
+  options: RemoteImportOptions = {},
 ): Promise<RemoteImportPlan> {
+  if (isOciRef(rootUrl)) {
+    return buildPublishedImportPlan(rootUrl, adapter, registryAdapters, options);
+  }
+
   // Validates the URL scheme + that the root is an Application/Library, and
   // gives us the slug / root destination path.
   const root = await fetchRemoteManifest(rootUrl);
@@ -370,6 +399,97 @@ export async function buildRemoteImportPlan(
     files,
     errors,
     warnings,
+    published: null,
+  };
+}
+
+const PUBLISHED_REF_FORM = "oci://<host>/<repo>@<version>#sha256-<pin>";
+
+/** Opens a published artifact by pinned ref: the root is read through the same
+ *  sources imports resolve through (the manifest cache, verified against the
+ *  pin) and copied verbatim as the one plan file. Its imports are not copied;
+ *  they resolve live from the copy like any other workspace import. */
+async function buildPublishedImportPlan(
+  ref: string,
+  adapter: WorkspaceAdapter,
+  registryAdapters: ManifestSource[],
+  options: RemoteImportOptions,
+): Promise<RemoteImportPlan> {
+  const { integrity } = splitIntegrity(ref);
+  const coords = ociManifestCacheCoords(ref);
+  if (!integrity) {
+    const fragment = (options.pageFragment ?? "").replace(/^#/, "");
+    if (fragment.startsWith("sha256-")) {
+      throw new Error("the pin arrived as the page fragment — percent-encode `#` as `%23`");
+    }
+  }
+  if (!integrity || !coords) {
+    throw new Error(
+      `Studio opens a published application only by version and pin: ${PUBLISHED_REF_FORM}`,
+    );
+  }
+  const repoRef = `oci://${coords.host}/${coords.path}`;
+
+  const loader = createEditorLoader(new HttpSource(), registryAdapters);
+  let rootModule: LoadedModule;
+  try {
+    rootModule = await loader.loadModule(ref);
+  } catch (err) {
+    if (err instanceof ManifestNotFoundError) {
+      throw new Error(
+        `${err.url} has no copy of ${repoRef}@${coords.version} (HTTP ${err.status}). ` +
+          `Studio reads published applications through the hub's manifest cache, which holds ` +
+          `only versions a hub has ingested — register ${repoRef} with the hub and open this ` +
+          `link again once the hub reports it ready.`,
+      );
+    }
+    throw err;
+  }
+
+  const root = describeRootManifest(ref, rootModule.owner.text);
+  const rootDocs = flattenLoadedModule(rootModule);
+  const rootParsed = buildParsedManifest(rootModule.owner.source, rootDocs);
+  const rootDoc = rootDocs.find(
+    (m) => m?.kind === "Telo.Application" || m?.kind === "Telo.Library",
+  );
+
+  const warnings: string[] = [];
+  let uncopiedLayers: string[] = [];
+  const rawLayers = (rootDoc as { layers?: unknown } | undefined)?.layers;
+  if (rawLayers !== undefined) {
+    try {
+      uncopiedLayers = parseLayerIndex(rawLayers).map((layer) =>
+        layer.selector ? `${layer.role} ${describeSelector(layer.selector)}` : layer.role,
+      );
+    } catch (err) {
+      warnings.push(
+        `The manifest's layers: index could not be read, so the uncopied payload is not listed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  const files: PlanFile[] = [
+    { url: ref, destPath: root.destPath, text: root.text, isRoot: true, exists: false },
+  ];
+  await markExisting(adapter, files);
+
+  return {
+    rootUrl: ref,
+    name: rootParsed.metadata.name,
+    kind: rootParsed.kind,
+    description: rootParsed.metadata.description ?? null,
+    imports: rootParsed.imports.map((i) => ({
+      name: i.name,
+      source: i.source,
+      importKind: i.importKind,
+    })),
+    rootDestPath: root.destPath,
+    files,
+    errors: [],
+    warnings,
+    published: { uncopiedLayers },
   };
 }
 

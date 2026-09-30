@@ -1,5 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { type SqlConnection, resolveSqlConnection } from "@telorun/sql";
+import { CompiledQuery, type Kysely } from "kysely";
 import type {
   MetadataFilter,
   QueryOptions,
@@ -29,6 +30,38 @@ const METRICS: Record<Metric, { op: string; opclass: string; score: (d: number) 
 
 const TABLE_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** Iterative index scans (`hnsw.iterative_scan`) arrived in pgvector 0.8.0. */
+const MIN_PGVECTOR = [0, 8, 0] as const;
+
+/** Parses pgvector's `extversion` (`0.8.0`) into numeric parts; `undefined`
+ *  for a string it cannot read. */
+function parseExtensionVersion(raw: string): number[] | undefined {
+  const parts = raw.split(".");
+  if (parts.length < 2 || parts.some((p) => !/^\d+$/.test(p))) return undefined;
+  return parts.map(Number);
+}
+
+function versionAtLeast(version: number[], minimum: readonly number[]): boolean {
+  for (let i = 0; i < minimum.length; i++) {
+    const part = version[i] ?? 0;
+    if (part !== minimum[i]) return part > minimum[i];
+  }
+  return true;
+}
+
+/** Makes the match statement an iterative HNSW scan in strict distance order:
+ *  the metadata filter is applied as the index is walked, and the walk goes on
+ *  until the LIMIT is met or `hnsw.max_scan_tuples` is reached, so an excluded
+ *  row never takes a match's place and a LIMIT above `hnsw.ef_search` is met. */
+const SCAN_SETTINGS = "SELECT set_config('hnsw.iterative_scan', 'strict_order', true)";
+
+type MatchRow = {
+  id: string;
+  metadata: Record<string, unknown>;
+  distance: number;
+  embedding?: string;
+};
+
 /** pgvector text literal — `[1,2,3]`, bound as a param and cast `::vector`. */
 function toVectorLiteral(vector: number[]): string {
   return `[${vector.join(",")}]`;
@@ -49,13 +82,18 @@ function parseVectorLiteral(raw: string): number[] {
  * configured metric; higher `score` is always better.
  */
 class PgvectorStore implements ResourceInstance, VectorStoreHandle {
+  private readonly name: string;
   private readonly connection: SqlConnection;
+  /** A match opens its own transaction on it, to scope its scan settings. */
+  private readonly kysely: Kysely<any>;
   private readonly metric: Metric;
   private readonly table: string;
   readonly dimensions: number;
 
-  constructor(resource: StoreResource, connection: SqlConnection) {
+  constructor(resource: StoreResource, connection: SqlConnection, kysely: Kysely<any>) {
+    this.name = resource.metadata.name;
     this.connection = connection;
+    this.kysely = kysely;
     this.metric = resource.metric ?? "cosine";
     this.dimensions = resource.dimensions;
     const table = resource.table ?? "vectors";
@@ -72,6 +110,7 @@ class PgvectorStore implements ResourceInstance, VectorStoreHandle {
   async init(): Promise<void> {
     const { opclass } = METRICS[this.metric];
     await this.connection.execute("CREATE EXTENSION IF NOT EXISTS vector");
+    await this.assertPgvectorVersion();
     await this.connection.execute(
       `CREATE TABLE IF NOT EXISTS ${this.quotedTable} (` +
         `id TEXT PRIMARY KEY, ` +
@@ -82,6 +121,28 @@ class PgvectorStore implements ResourceInstance, VectorStoreHandle {
       `CREATE INDEX IF NOT EXISTS "${this.table}_embedding_idx" ` +
         `ON ${this.quotedTable} USING hnsw (embedding ${opclass})`,
     );
+  }
+
+  /** A match relies on iterative index scans; an older extension would ignore
+   *  the setting and silently return fewer, or the wrong, rows. */
+  private async assertPgvectorVersion(): Promise<void> {
+    const result = await this.connection.execute<{ extversion: string }>(
+      "SELECT extversion FROM pg_extension WHERE extname = 'vector'",
+    );
+    const installed = result.rows[0]?.extversion;
+    if (installed === undefined) {
+      throw new Error(
+        `VectorStorePgvector.Store '${this.name}': the vector extension is not installed in this database after CREATE EXTENSION.`,
+      );
+    }
+    const version = parseExtensionVersion(installed);
+    if (!version || !versionAtLeast(version, MIN_PGVECTOR)) {
+      throw new Error(
+        `VectorStorePgvector.Store '${this.name}': pgvector ${installed} is installed, but this store requires pgvector >=${MIN_PGVECTOR.join(".")} ` +
+          `(iterative index scans, so a filtered match returns the true nearest rows). Install pgvector 0.8.0 or later on the server and run ` +
+          `ALTER EXTENSION vector UPDATE in this database.`,
+      );
+    }
   }
 
   private assertDimensions(vector: number[]): void {
@@ -134,19 +195,42 @@ class PgvectorStore implements ResourceInstance, VectorStoreHandle {
       `FROM ${this.quotedTable} ` +
       (filter ? `WHERE ${filter.sql} ` : "") +
       `ORDER BY embedding ${op} $1::vector LIMIT ${limitP}`;
-    const result = await this.connection.execute<{
-      id: string;
-      metadata: Record<string, unknown>;
-      distance: number;
-      embedding?: string;
-    }>(sql, params);
-    const matches: VectorMatch[] = result.rows.map((row) => {
+    const rows = this.connection.hasOpenTransaction()
+      ? await this.matchInOpenTransaction(sql, params)
+      : await this.matchInOwnTransaction(sql, params);
+    const matches: VectorMatch[] = rows.map((row) => {
       const match: VectorMatch = { id: row.id, score: score(Number(row.distance)) };
       if (row.metadata && Object.keys(row.metadata).length > 0) match.metadata = row.metadata;
       if (opts.includeVectors && row.embedding) match.vector = parseVectorLiteral(row.embedding);
       return match;
     });
     return { matches };
+  }
+
+  /** The scan settings are `SET LOCAL` (`set_config(…, true)`), so they end with
+   *  this transaction and never reach the pooled session. */
+  private async matchInOwnTransaction(sql: string, params: unknown[]): Promise<MatchRow[]> {
+    return this.kysely.transaction().execute(async (trx) => {
+      await trx.executeQuery(CompiledQuery.raw(SCAN_SETTINGS));
+      const result = await trx.executeQuery<MatchRow>(CompiledQuery.raw(sql, params));
+      return result.rows;
+    });
+  }
+
+  /** Inside the caller's transaction the match joins it, as every statement of
+   *  this store does, and the caller's setting is restored after the match so it
+   *  does not outlive the statement. A failed match aborts that transaction,
+   *  which discards the setting with it. */
+  private async matchInOpenTransaction(sql: string, params: unknown[]): Promise<MatchRow[]> {
+    const previous = await this.connection.execute<{ setting: string }>(
+      "SELECT current_setting('hnsw.iterative_scan') AS setting",
+    );
+    await this.connection.execute(SCAN_SETTINGS);
+    const result = await this.connection.execute<MatchRow>(sql, params);
+    await this.connection.execute("SELECT set_config('hnsw.iterative_scan', $1, true)", [
+      previous.rows[0]!.setting,
+    ]);
+    return result.rows;
   }
 
   async delete(opts: { ids?: string[]; metadataFilter?: MetadataFilter }): Promise<{
@@ -208,5 +292,10 @@ export async function create(
       `VectorStorePgvector.Store '${resource.metadata.name}': 'connection' must reference an Sql.Connection.`,
     );
   }
-  return new PgvectorStore(resource, connection);
+  if (!connection.kysely) {
+    throw new Error(
+      `VectorStorePgvector.Store '${resource.metadata.name}': 'connection' exposes no kysely instance — a match needs one to scope its index-scan settings to its own transaction. Use a Postgres.Connection.`,
+    );
+  }
+  return new PgvectorStore(resource, connection, connection.kysely);
 }

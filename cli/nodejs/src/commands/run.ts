@@ -21,7 +21,7 @@ import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
 import { DebugServer } from "../debug-server.js";
 import { resolveEnvFiles } from "../env-files.js";
-import { createLogger, formatDiagnostics, type Logger } from "../logger.js";
+import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { canOpenBrowser, openBrowser } from "../open-browser.js";
 import { outErrLine, output } from "../output.js";
 import { StartupProfiler, writeStartupProfile } from "../startup-profile.js";
@@ -555,24 +555,6 @@ async function persistManifestCache(
       ),
     );
   }
-}
-
-/** Count the errors a reader actually has to act on: entries the kernel marked
- *  `derived` are shadows of another failure, and an entry that only wraps a
- *  nested context (an import) counts as whatever failed inside it. Never
- *  reports zero for a real failure — a wrapper whose children are all derived
- *  still counts as one. */
-function countRootErrors(diagnostics: RuntimeDiagnostic[]): number {
-  let count = 0;
-  for (const d of diagnostics) {
-    if (d.severity === "warning") continue;
-    const fromChildren = d.children?.length ? countRootErrors(d.children) : 0;
-    // A collapsed entry contributes nothing itself, but a nested context it
-    // wraps still carries its own root causes.
-    if (d.derived) count += fromChildren;
-    else count += fromChildren || 1;
-  }
-  return count;
 }
 
 /** Format an error as diagnostics on the terminal. Returns the non-warning

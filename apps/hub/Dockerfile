@@ -11,12 +11,17 @@ ARG TELO_NODE_VERSION=latest
 # would be testing the registry rather than the tree. `hub-web` and `pages`
 # already mount the repo for the same reason.
 #
-# The image's own CLI stays on PATH and is what `TELO_BIN` points at: the origin
-# reads shell out to it for `telo module versions|digest|manifest` against
-# THIRD-PARTY modules, which is a released-CLI job and much cheaper to spawn.
+# The origin reads — `telo module versions|digest|manifest` — run the tree's
+# telo too, for the same reason: ingest reads the `--json` contract of the CLI
+# it spawns, so a released CLI one generation behind the hub would report a
+# payload the hub cannot index (an application's `application` field, above
+# all). `TELO_COMMAND` names the checkout's bun and CLI entry by absolute path,
+# since the reads run from the working directory like everything else.
 FROM telorun/node:${TELO_NODE_VERSION}-slim as development
 
 WORKDIR /telo
+
+ENV TELO_COMMAND='["/telo/node_modules/.bin/bun","/telo/cli/nodejs/bin/telo.ts"]'
 
 RUN corepack enable
 

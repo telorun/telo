@@ -18,7 +18,8 @@ import {
 import { pushableLayers } from "../bundle/built-layers.js";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
 import { describePartition } from "../bundle/partition-layers.js";
-import { describeDrift, findPayloadDrift } from "../bundle/payload-drift.js";
+import { checkPublishedPin, describePinMove } from "../bundle/payload-drift.js";
+import { parseAnnotationFlags } from "../publish-annotations.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
 import type { BumpLevel, ParsedController } from "../publishers/interface.js";
@@ -299,14 +300,23 @@ function indent(text: string): string {
 // Main per-manifest publish
 // ---------------------------------------------------------------------------
 
+/** What one manifest's publish produced: whether it succeeded, and the complete
+ *  annotation set it pushed (or would push, under `--dry-run`) once that set was
+ *  known. */
+interface PublishOutcome {
+  ok: boolean;
+  annotations?: Record<string, string>;
+}
+
 async function publishOne(
   filePath: string,
   destination: string,
   bump: BumpLevel | undefined,
   dryRun: boolean,
   skipControllers: boolean,
+  authoredAnnotations: Readonly<Record<string, string>>,
   log: Logger,
-): Promise<boolean> {
+): Promise<PublishOutcome> {
   // A directory argument resolves to its telo.yaml — standard Telo path
   // resolution, matching `run` / `check` (LocalFileSource stats a dir → telo.yaml).
   try {
@@ -315,7 +325,7 @@ async function publishOne(
     }
   } catch {
     outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
-    return false;
+    return { ok: false };
   }
 
   let content: string;
@@ -323,7 +333,7 @@ async function publishOne(
     content = fs.readFileSync(filePath, "utf-8");
   } catch {
     outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
-    return false;
+    return { ok: false };
   }
 
   const manifestDir = path.dirname(filePath);
@@ -350,7 +360,7 @@ async function publishOne(
 
     if (!fs.existsSync(ctrl.localPath)) {
       step(log, "publish", log.error("error") + `  local_path not found: ${ctrl.localPath}`);
-      return false;
+      return { ok: false };
     }
 
     // Bump
@@ -382,7 +392,7 @@ async function publishOne(
             .map((l) => `      ${l}`)
             .join("\n"),
         );
-        return false;
+        return { ok: false };
       }
     }
 
@@ -455,14 +465,14 @@ async function publishOne(
       log.err.error("error") +
         `  Failed to load manifest for analysis: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return false;
+    return { ok: false };
   }
   // A parse failure yields a mangled manifest tree; analyzing it would drown the
   // real error under spurious schema violations. Report the parse diagnostics
   // and stop before analysis — mirrors the kernel's load-time short-circuit.
   if (analysisGraph.parseDiagnostics.length > 0) {
     formatAnalysisDiagnostics(analysisGraph.parseDiagnostics, analysisGraph, log, filePath);
-    return false;
+    return { ok: false };
   }
   const analysisManifests = flattenForAnalyzer(analysisGraph);
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests, {
@@ -470,7 +480,7 @@ async function publishOne(
   });
   const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisGraph, log, filePath);
   if (errorCount > 0) {
-    return false;
+    return { ok: false };
   }
   // Some diagnostics are warnings while a manifest merely runs and fatal the
   // moment it is published. Descriptive metadata is the case: nothing reads
@@ -487,7 +497,7 @@ async function publishOne(
         `(reported as warnings above). These fields describe the module to everyone who finds it, ` +
         `and this version's copy of them cannot be changed once published.`,
     );
-    return false;
+    return { ok: false };
   }
   stepOk(log, "check", "static analysis passed");
 
@@ -499,7 +509,7 @@ async function publishOne(
   // publisher's CI, and a wrong one hands a consumer a confusing failure instead
   // of a clear one, which is the exact outcome the mechanism exists to remove.
   if (!(await verifyDeclaredRequirements(filePath, analysisGraph, log))) {
-    return false;
+    return { ok: false };
   }
 
   // Build exactly what will be pushed, through the shared payload builder — the
@@ -519,7 +529,7 @@ async function publishOne(
     }).payload(filePath, destination);
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-    return false;
+    return { ok: false };
   }
   content = payload.manifest;
   const partition = payload.partition;
@@ -542,7 +552,7 @@ async function publishOne(
             `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
             `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
         );
-        return false;
+        return { ok: false };
       }
     }
 
@@ -551,33 +561,49 @@ async function publishOne(
       await verifyImportPins(payload, log);
     } catch (err) {
       outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-      return false;
+      return { ok: false };
     }
   }
 
 
-  // Bytes, not a ledger: if this version is already published and its payload
-  // differs from what we just built, some dependency changed underneath it and
-  // `metadata.version` has to move. Runs before the push (and on --dry-run) so
-  // the release fails while it is still a fixable working copy.
+  // The pin, not a ledger: a version already published must be republished
+  // byte-for-byte or not at all, because every import pinned to it verifies
+  // against its telo.yaml. Runs before the push (and on --dry-run) so the
+  // release fails while it is still a fixable working copy.
   const version = readOwnerVersion(content);
   if (version) {
-    let drift;
+    let check;
     try {
-      drift = await findPayloadDrift(destination, version, layers);
+      check = await checkPublishedPin(destination, version, content, layers);
     } catch (err) {
       // A registry that could not answer is not a pass. Fail the publish and say
       // why, rather than shipping on the assumption that nothing changed.
       outErrLine(
         log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
       );
-      return false;
+      return { ok: false };
     }
-    if (drift && drift.length > 0) {
-      outErrLine(log.err.error("error") + `  ${describeDrift(destination, version, drift)}`);
-      return false;
+    if (check.status === "moved") {
+      outErrLine(log.err.error("error") + `  ${describePinMove(destination, version, check)}`);
+      return { ok: false };
     }
-    if (drift) stepOk(log, "payload", `matches the published ${version}`);
+    if (check.status === "identical") {
+      stepOk(log, "manifest", `identical to the published ${version} (${check.pin})`);
+    }
+  }
+
+  // The complete set the push writes: what the transport derives from
+  // `metadata`, plus exactly this invocation's annotations.
+  let annotations: Record<string, string>;
+  try {
+    annotations = defaultTransportRegistry().publishedAnnotations(
+      destination,
+      content,
+      authoredAnnotations,
+    );
+  } catch (err) {
+    outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
+    return { ok: false };
   }
 
   // A module whose controller is delivered from npm has to push that tarball
@@ -590,7 +616,7 @@ async function publishOne(
       const skew = describeVersionSkew(pkg, version);
       if (skew) {
         outErrLine(log.err.error("error") + `  ${skew}`);
-        return false;
+        return { ok: false };
       }
       if (await isPublished(pkg.name, pkg.packageVersion)) {
         stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} already published`);
@@ -608,7 +634,7 @@ async function publishOne(
             `  npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
             `${err instanceof Error ? err.message : String(err)}`,
         );
-        return false;
+        return { ok: false };
       }
       stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} published`);
     }
@@ -616,11 +642,13 @@ async function publishOne(
 
   if (dryRun) {
     for (const line of describePartition(partition)) stepDry(log, "layer", line);
+    for (const [key, value] of Object.entries(annotations)) stepDry(log, "annotate", `${key}=${value}`);
     stepDry(log, "push", destination);
-    return true;
+    return { ok: true, annotations };
   }
 
   for (const line of describePartition(partition)) stepOk(log, "layer", line);
+  for (const [key, value] of Object.entries(annotations)) stepOk(log, "annotate", `${key}=${value}`);
 
   // The transport pushes each layer as its own blob, injects the resulting
   // `layers:` index into the manifest, and pushes the manifest layer last.
@@ -630,6 +658,7 @@ async function publishOne(
       destination,
       { manifest: content, layers: pushableLayers(layers) },
       {
+        annotations: authoredAnnotations,
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>
           outErrLine(
             `    ${"retry".padEnd(STEP_WIDTH)}${log.err.warn(reason)}  attempt ${attempt}/${maxAttempts - 1}, ` +
@@ -639,11 +668,11 @@ async function publishOne(
     );
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-    return false;
+    return { ok: false };
   }
 
   stepOk(log, "push", `${result.label} → ${result.url}`);
-  return true;
+  return { ok: true, annotations };
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +704,8 @@ export async function publish(argv: {
   bump?: BumpLevel;
   dryRun: boolean;
   skipControllers: boolean;
+  /** Every `--annotation` occurrence; yargs yields one string for a single use. */
+  annotation?: string | string[];
 }): Promise<void> {
   if (argv.bump && argv.skipControllers) {
     outErrLine("error: --bump and --skip-controllers are mutually exclusive");
@@ -710,24 +741,40 @@ export async function publish(argv: {
     process.exit(1);
   }
 
+  // Before anything is built or fetched: a refused annotation is a typo in the
+  // command line, and finding it after a full build wastes the build.
+  let authoredAnnotations: Record<string, string>;
+  try {
+    authoredAnnotations = parseAnnotationFlags(
+      argv.annotation === undefined ? [] : [argv.annotation].flat(),
+    );
+    defaultTransportRegistry().checkAuthoredAnnotations(destination, authoredAnnotations);
+  } catch (err) {
+    outErrLine(`error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+
   const log = createLogger(false);
   let failed = false;
   const published: string[] = [];
   const failures: string[] = [];
+  const annotations: Record<string, Record<string, string>> = {};
   for (const p of paths) {
     const filePath = path.resolve(process.cwd(), p);
     const relPath = path.relative(process.cwd(), filePath);
     outLine(`\nPublishing ${log.dim(relPath)}${log.dim(` → ${destination}`)}`);
-    const ok = await publishOne(
+    const outcome = await publishOne(
       filePath,
       destination,
       argv.bump,
       argv.dryRun,
       argv.skipControllers,
+      authoredAnnotations,
       log,
     );
-    (ok ? published : failures).push(relPath);
-    if (!ok) failed = true;
+    (outcome.ok ? published : failures).push(relPath);
+    if (outcome.annotations) annotations[relPath] = outcome.annotations;
+    if (!outcome.ok) failed = true;
   }
   outLine("");
   outEmit({
@@ -736,6 +783,7 @@ export async function publish(argv: {
     dryRun: argv.dryRun ?? false,
     published,
     failed: failures,
+    annotations,
   });
   // `process.exitCode`, not `process.exit()`: the structured payload was just
   // written, and on a pipe `write` is asynchronous while `exit` does not flush. A
@@ -767,6 +815,13 @@ export function publishCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe: "Show what would happen without making any changes",
+        })
+        .option("annotation", {
+          type: "string",
+          requiresArg: true,
+          describe:
+            "Write <key>=<value> onto the pushed OCI manifest (repeatable; a reverse-domain key). " +
+            "Replaces the annotations a republish carried; the ones telo derives from metadata are refused",
         })
         .option("skip-controllers", {
           type: "boolean",

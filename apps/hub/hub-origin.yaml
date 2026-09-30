@@ -35,10 +35,15 @@ resources:
     kind: Shell.LocalHost
     description: Where the telo CLI runs.
 variables:
-  # Path of the telo CLI these reads shell out to (`telo` on PATH by default).
-  teloBin:
-    type: string
-    default: telo
+  # The command these reads run: a program and its leading arguments, to which
+  # each read appends its own. `["telo"]` by default; the composition root binds
+  # the telo that runs the hub, so the CLI contract read here is the hub's own
+  # generation.
+  teloCommand:
+    type: array
+    items: { type: string }
+    minItems: 1
+    default: [telo]
 exports:
   resources:
     - pinnedRef
@@ -103,12 +108,7 @@ steps:
   - name: run
     invoke: !ref teloCli
     inputs:
-      args:
-        - !cel "variables.teloBin"
-        - module
-        - versions
-        - !cel "inputs.ref"
-        - --json
+      args: !cel "variables.teloCommand + ['module', 'versions', inputs.ref, '--json']"
       timeoutMs: 120000
   - name: parsed
     if: !cel "steps.run.result.exitCode == 0"
@@ -162,12 +162,7 @@ steps:
   - name: run
     invoke: !ref teloCli
     inputs:
-      args:
-        - !cel "variables.teloBin"
-        - module
-        - digest
-        - !cel "steps.pinned.result"
-        - --json
+      args: !cel "variables.teloCommand + ['module', 'digest', steps.pinned.result, '--json']"
       timeoutMs: 60000
   - name: parsed
     if: !cel "steps.run.result.exitCode == 0"
@@ -220,12 +215,7 @@ steps:
   - name: run
     invoke: !ref teloCli
     inputs:
-      args:
-        - !cel "variables.teloBin"
-        - module
-        - manifest
-        - !cel "steps.pinned.result"
-        - --json
+      args: !cel "variables.teloCommand + ['module', 'manifest', steps.pinned.result, '--json']"
       timeoutMs: 120000
   - name: parsed
     if: !cel "steps.run.result.exitCode == 0"

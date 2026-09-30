@@ -1,0 +1,25 @@
+# A library as the hub indexes one, for a search the application beside it
+# (`isolation-app`) must not disturb: two kinds, each matching the query term
+# `quillwort`.
+kind: Telo.Library
+metadata:
+  name: QuillwortLib
+  version: 1.0.0
+  description: Quillwort tools for the search isolation test.
+  categories: [Testing]
+---
+kind: Telo.Definition
+metadata:
+  name: QuillwortPress
+  description: Presses quillwort leaves.
+capability: Telo.Invocable
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: QuillwortSieve
+  description: Sieves quillwort seeds.
+capability: Telo.Invocable
+schema:
+  type: object

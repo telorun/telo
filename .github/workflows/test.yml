@@ -307,7 +307,7 @@ jobs:
     # something was not up — which is exactly what mixing these in would cost.
     services:
       postgres:
-        image: postgres:18
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

@@ -113,12 +113,14 @@ export interface LoadedGraph {
    *  error for a major mismatch). Surfaced alongside `analyze()` diagnostics by
    *  every consumer (CLI, editor, VS Code). */
   versionDiagnostics: AnalysisDiagnostic[];
-  /** `MODULE_PATH_NOT_FOUND` for every `!module-path` in the ENTRY's own module
-   *  (owner + partials) that names nothing — asked of the source at load, since
+  /** One diagnostic per tagged file claim that names nothing (`!include-text` /
+   *  `!include-bytes` → `INCLUDE_FILE_NOT_FOUND`, `!module-path` →
+   *  `MODULE_PATH_NOT_FOUND`), in the entry and every module it reaches through
+   *  a filesystem-path import — asked of each module's source at load, since
    *  existence needs a filesystem and analysis runs without one. A path at or
    *  above a module file the module's `sources:` stages counts as present. Empty
-   *  when the entry's source cannot answer (`ManifestSource.exists`). */
-  modulePathDiagnostics: AnalysisDiagnostic[];
+   *  for a module whose source cannot answer (`ManifestSource.exists`). */
+  moduleFileDiagnostics: AnalysisDiagnostic[];
   /** YAML parse failures aggregated from every file's `parseErrors`. A file
    *  that fails to parse yields a mangled `toJSON()` projection, so these are
    *  fatal Error diagnostics — surfaced alongside `analyze()` output by every

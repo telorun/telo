@@ -2241,6 +2241,25 @@ export function Editor() {
                     </li>
                   ))}
                 </ul>
+                {pendingImport.plan.published && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This copy holds the published manifest alone — the browser cannot reach the
+                    registry
+                    {pendingImport.plan.published.uncopiedLayers.length > 0
+                      ? ", so these payload layers are not copied:"
+                      : "."}
+                  </p>
+                )}
+                {pendingImport.plan.published &&
+                  pendingImport.plan.published.uncopiedLayers.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {pendingImport.plan.published.uncopiedLayers.map((layer) => (
+                        <li key={layer} className="break-all">
+                          <code>{layer}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
               </div>
               {pendingImport.plan.errors.length > 0 && (
                 <div>

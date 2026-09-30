@@ -505,6 +505,136 @@ migrations:
          AND ((mr.kind_is_own AND ok.module_id = mr.module_id AND ok.version = mr.version)
               OR (NOT mr.kind_is_own AND ok.module_id = om.id AND ok.version = om.latest_version))
         WHERE mr.kind <> ''
+  # Applications: a runnable root is a module like any other — ref, versions, pins,
+  # digests and cached manifest — and is found by what it asks of whoever runs it.
+  #
+  # `root_kind` is the version's root document kind, `Library` or `Application`,
+  # written by ingest alone, from the manifest. NULL means NOT RECORDED — a row
+  # ingested before the column existed — and every reader treats it as not an
+  # application. It is never backfilled with a guess and never made NOT NULL:
+  # the ingest revision that writes it re-ingests every tracked version.
+  #
+  # `application_inputs` is the declared contract, one row per `variables:` /
+  # `secrets:` / `ports:` entry, stored as `telo module manifest --json` reports
+  # it: the binding as real columns, the value schema and the default opaque. A
+  # secret has no default row value and a type-only schema, so no secret value
+  # is ever stored.
+  "20260930090000_AddApplications":
+    statements:
+      - ALTER TABLE module_versions ADD COLUMN root_kind TEXT
+      - |
+        CREATE TABLE application_inputs (
+          module_id     BIGINT NOT NULL,
+          version       TEXT NOT NULL,
+          block         TEXT NOT NULL,
+          name          TEXT NOT NULL,
+          -- Declaration order within the block.
+          ordinal       INTEGER NOT NULL,
+          description   TEXT NOT NULL DEFAULT '',
+          required      BOOLEAN NOT NULL,
+          env           TEXT NOT NULL DEFAULT '',
+          -- NULL when the entry binds no command-line argument.
+          arg_form      TEXT,
+          arg_flag      TEXT,
+          arg_short     TEXT,
+          arg_position  INTEGER,
+          -- Ports only.
+          protocol      TEXT,
+          default_value JSONB,
+          schema        JSONB,
+          PRIMARY KEY (module_id, version, block, name),
+          FOREIGN KEY (module_id, version)
+            REFERENCES module_versions(module_id, version) ON DELETE CASCADE
+        )
+      # The contract object, in the shape `telo module manifest --json` reports
+      # as `application` — defined once for `/module` and search hits. NULL for a
+      # version not recorded as an application.
+      - |
+        CREATE FUNCTION application_contract(mid BIGINT, ver TEXT) RETURNS JSON
+        LANGUAGE sql STABLE STRICT AS $$
+          SELECT CASE WHEN mv.root_kind = 'Application' THEN json_build_object(
+            'variables', (SELECT COALESCE(json_agg(json_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env, 'default', i.default_value,
+                'arg', CASE i.arg_form
+                         WHEN 'flag' THEN json_build_object('form', 'flag', 'flag', i.arg_flag,
+                                                            'short', i.arg_short)
+                         WHEN 'position' THEN json_build_object('form', 'position',
+                                                                'position', i.arg_position)
+                       END,
+                'schema', i.schema) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'variables'),
+            'secrets', (SELECT COALESCE(json_agg(json_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env, 'schema', i.schema) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'secrets'),
+            'ports', (SELECT COALESCE(json_agg(json_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env, 'default', i.default_value,
+                'arg', CASE i.arg_form
+                         WHEN 'flag' THEN json_build_object('form', 'flag', 'flag', i.arg_flag,
+                                                            'short', i.arg_short)
+                         WHEN 'position' THEN json_build_object('form', 'position',
+                                                                'position', i.arg_position)
+                       END,
+                'protocol', i.protocol) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'ports')
+          ) END
+          FROM module_versions mv
+          WHERE mv.module_id = mid AND mv.version = ver
+        $$
+      # The third search arm. An application is embedded from its name and
+      # description and matched lexically over those plus every declared input's
+      # name, env binding and description — never a value. Its categories are its
+      # module's; its runtime reach is not indexed (it depends on the whole import
+      # closure), so it carries none.
+      - |
+        CREATE OR REPLACE VIEW search_entries AS
+        SELECT 'k:' || rk.id AS id, 'kind' AS entry, rk.module_id, rk.version,
+               rk.name, rk.name AS kind, m.ref AS kind_ref,
+               rk.capability, rk.description, rk.categories, rk.category_labels,
+               rk.extends_kind, rk.extends_ref, rk.runtimes, rk.languages, rk.portable,
+               rk.deprecated_reason, rk.replaced_by_kind, rk.replaced_by_ref,
+               rk.search || COALESCE(ck.search, ''::tsvector) AS search
+        FROM resource_kinds rk
+        JOIN modules m ON m.id = rk.module_id
+        LEFT JOIN modules cm ON rk.extends_ref <> '' AND cm.ref = rk.extends_ref
+        LEFT JOIN resource_kinds ck
+          ON ck.module_id = cm.id AND ck.version = cm.latest_version AND ck.name = rk.extends_kind
+        WHERE rk.exported
+        UNION ALL
+        SELECT 'i:' || mr.id, 'instance', mr.module_id, mr.version,
+               mr.name, mr.kind, mr.kind_ref,
+               COALESCE(ok.capability, ''), mr.description,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.categories ELSE mv.categories END,
+               CASE WHEN mr.kind_is_own AND ok.id IS NOT NULL THEN ok.category_labels ELSE mv.category_labels END,
+               '', '', COALESCE(ok.runtimes, '{}'), COALESCE(ok.languages, '{}'),
+               COALESCE(ok.portable, TRUE),
+               '', '', '',
+               to_tsvector('english', mr.name || ' ' || mr.kind || ' ' || mr.description)
+        FROM module_resources mr
+        JOIN module_versions mv ON mv.module_id = mr.module_id AND mv.version = mr.version
+        LEFT JOIN modules om ON NOT mr.kind_is_own AND mr.kind_ref <> '' AND om.ref = mr.kind_ref
+        LEFT JOIN resource_kinds ok
+          ON ok.name = mr.kind
+         AND ((mr.kind_is_own AND ok.module_id = mr.module_id AND ok.version = mr.version)
+              OR (NOT mr.kind_is_own AND ok.module_id = om.id AND ok.version = om.latest_version))
+        WHERE mr.kind <> ''
+        UNION ALL
+        SELECT 'a:' || mv.module_id || ':' || mv.version, 'application', mv.module_id, mv.version,
+               mv.module_name, 'Application', '',
+               '', mv.description, mv.categories, mv.category_labels,
+               '', '', '{}', '{}', FALSE,
+               mv.deprecated_reason, '', mv.replaced_by,
+               to_tsvector('english', mv.module_name || ' ' || mv.description || ' ' ||
+                 COALESCE((SELECT string_agg(i.name || ' ' || i.env || ' ' || i.description, ' ')
+                           FROM application_inputs i
+                           WHERE i.module_id = mv.module_id AND i.version = mv.version), ''))
+        FROM module_versions mv
+        WHERE mv.root_kind = 'Application'
 ---
 # CLAIM — the single statement that decides a version is due and mints the
 # identity of the attempt that will ingest it.
