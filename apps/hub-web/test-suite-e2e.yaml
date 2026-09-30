@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: HubWebE2ESuite
+  version: 1.0.0
+  description: |
+    End-to-end suite for the hub site. The `tests/e2e/` tests hit a live hub-web
+    at http://localhost:8050 serving the `production` build, reading the hub at
+    http://localhost:8040, with `SITE_ORIGIN` http://hub.telo.localhost:8060.
+    Run only through `pnpm run test:e2e:hub`, which stands up a fresh stack,
+    waits for the hub's first tracking pass over its seeded refs, runs the hub's
+    suite and then this one, and tears the stack down. Pointed at a long-running
+    development stack it is unsupported: the freshness test needs a hub that has
+    never seen `oci://ghcr.io/telorun/log`.
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include
+    description: Glob pattern selecting the test manifests to run, relative to this file.
+    default:
+    - "tests/e2e/*.yaml"
+  exclude:
+    type: array
+    items: { type: string }
+    arg: exclude
+    description: Glob pattern excluding test manifests, relative to this file.
+    default:
+    - "**/__fixtures__/**"
+  filter:
+    type: string
+    arg: { position: 0 }
+    description: Run only the tests whose path contains this text.
+    default: ""
+  concurrency:
+    type: integer
+    minimum: 1
+    arg: concurrency
+    description: How many tests run at once.
+    default: 3
+imports:
+  Test: ../../modules/test
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata:
+  name: runAll
+include: !cel "variables.include"
+exclude: !cel "variables.exclude"
+filter: !cel "variables.filter"
+concurrency: !cel "variables.concurrency"

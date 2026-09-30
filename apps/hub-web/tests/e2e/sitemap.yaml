@@ -1,0 +1,102 @@
+kind: Telo.Application
+metadata:
+  name: HubWebE2ESitemap
+  version: 1.0.0
+  description: |
+    End-to-end tests for what hub-web serves crawlers, on a live hub-web at
+    http://localhost:8050 whose `SITE_ORIGIN` is http://hub.telo.localhost:8060:
+    the sitemap index, shard 0, and `robots.txt`. Assert only on the seeded refs
+    (docker-compose `SEED_REFS`), never on a ref some other test registers.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Html: oci://ghcr.io/telorun/html@0.2.0#sha256-PPZZulIQWK-b7rBOXSENSCkvMKRIfNiD4lPFm43Al40
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref sitemapIndex_ListsShardZero
+  - !ref sitemapShard_ListsSeededOciRefs
+  - !ref robots_NamesSitemap
+---
+# Every module a fresh stack holds has a `seq` inside shard 0.
+kind: Run.Sequence
+metadata: { name: sitemapIndex_ListsShardZero }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/sitemap.xml
+      method: GET
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: !cel "steps.hit.result.body"
+  - name: read
+    invoke:
+      kind: Html.Extraction
+      fields:
+        locs: { selector: loc, type: text, many: true }
+    inputs:
+      document: !cel "steps.parse.result"
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'locs': steps.read.result.fields.locs}"
+      expected:
+        status: 200
+        locs:
+          - http://hub.telo.localhost:8060/sitemaps/modules-0.xml
+    invoke:
+      kind: Assert.Equals
+---
+# Containment rather than equality: a module another test registers joins the
+# shard too. Skipping refs without a page is covered by hub-web's unit tests.
+kind: Run.Sequence
+metadata: { name: sitemapShard_ListsSeededOciRefs }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/sitemaps/modules-0.xml
+      method: GET
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: !cel "steps.hit.result.body"
+  - name: read
+    invoke:
+      kind: Html.Extraction
+      fields:
+        locs: { selector: loc, type: text, many: true }
+    inputs:
+      document: !cel "steps.parse.result"
+  - name: assert
+    inputs:
+      actual: !cel >-
+        {
+          'status': steps.hit.result.status,
+          'seededMissing': [
+            'kv-store', 'kv-store-redis', 'kv-store-memory', 'timer', 'scheduler', 'run', 'console'
+          ].map(name, 'http://hub.telo.localhost:8060/module/oci/ghcr.io/telorun/' + name + '/')
+            .filter(url, !(url in steps.read.result.fields.locs))
+        }
+      expected:
+        status: 200
+        seededMissing: []
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: robots_NamesSitemap }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/robots.txt
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'body': steps.hit.result.body}"
+      expected:
+        status: 200
+        body: "User-agent: *\nAllow: /\nSitemap: http://hub.telo.localhost:8060/sitemap.xml\n"
+    invoke:
+      kind: Assert.Equals

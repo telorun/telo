@@ -1,7 +1,6 @@
-/** The hub's dynamic API origin. Defaults to the production read/register plane
- *  (telo.sh); point at the docker-compose hub for local dev via
- *  VITE_HUB_API=http://localhost:8040. */
-export const HUB_API = import.meta.env.VITE_HUB_API ?? "https://telo.sh";
+/** The browser's hub client: every call the page makes from the reader's
+ *  browser, against the origin the server hands it (`HUB_BROWSER_API_ORIGIN`).
+ *  The module page's own read is the server's, in the hub reader. */
 
 export type RegisterResult =
   | { ok: true; ref: string }
@@ -11,10 +10,10 @@ export type RegisterResult =
  *  resolves to a real Telo module and, on success, records it and schedules the
  *  indexing — so a 202 means ACCEPTED, not searchable. A bad ref comes back as a
  *  400 with an inline reason. Poll {@link registrationStatus} for the rest. */
-export async function registerModule(ref: string): Promise<RegisterResult> {
+export async function registerModule(origin: string, ref: string): Promise<RegisterResult> {
   let res: Response;
   try {
-    res = await fetch(`${HUB_API}/register`, {
+    res = await fetch(`${origin}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ref }),
@@ -83,7 +82,10 @@ const asCount = (v: unknown): number => (typeof v === "number" && Number.isFinit
  *  `unavailable` — never a claim about the module. A 404 IS the hub answering,
  *  and its body carries `status: unknown` like every other reply, so it is read
  *  the same way. */
-export async function registrationStatus(ref: string): Promise<RegistrationStatus> {
+export async function registrationStatus(
+  origin: string,
+  ref: string,
+): Promise<RegistrationStatus> {
   const unavailable: RegistrationStatus = {
     ref,
     status: "unavailable",
@@ -94,7 +96,7 @@ export async function registrationStatus(ref: string): Promise<RegistrationStatu
     nextAttemptAt: "",
   };
   try {
-    const res = await fetch(`${HUB_API}/register/status?ref=${encodeURIComponent(ref)}`);
+    const res = await fetch(`${origin}/register/status?ref=${encodeURIComponent(ref)}`);
     const data: unknown = await res.json().catch(() => null);
     if (typeof data !== "object" || data === null) return unavailable;
     const d = data as Record<string, unknown>;
@@ -263,6 +265,7 @@ export const PAGE_SIZE = 30;
  *  listing, so the page has something to show on first load and the facet
  *  narrows it without a separate endpoint. */
 export async function searchModules(
+  origin: string,
   query: string,
   category: string,
   signal?: AbortSignal,
@@ -272,7 +275,7 @@ export async function searchModules(
 
   let res: Response;
   try {
-    res = await fetch(`${HUB_API}/search/modules?${params}`, {
+    res = await fetch(`${origin}/search/modules?${params}`, {
       headers: { accept: "application/json" },
       signal,
     });
@@ -305,8 +308,11 @@ export interface CategoryFacet {
 /** The categories that exist, derived by the hub from what modules declare —
  *  there is no fixed vocabulary to hardcode here. A failure yields an empty
  *  list: the filter is an optional narrowing, so search still works without it. */
-export async function fetchCategories(signal?: AbortSignal): Promise<CategoryFacet[]> {
-  const res = await fetch(`${HUB_API}/categories`, {
+export async function fetchCategories(
+  origin: string,
+  signal?: AbortSignal,
+): Promise<CategoryFacet[]> {
+  const res = await fetch(`${origin}/categories`, {
     headers: { accept: "application/json" },
     signal,
   });
@@ -314,26 +320,6 @@ export async function fetchCategories(signal?: AbortSignal): Promise<CategoryFac
   const data: unknown = await res.json().catch(() => ({}));
   const categories = (data as { categories?: unknown }).categories;
   return Array.isArray(categories) ? (categories as CategoryFacet[]) : [];
-}
-
-/** Every version the hub has tracked for a ref, newest first. The detail pane
- *  shows more than a search hit carries, which only names the latest version.
- *
- *  The route returns `{version, integrity}` per entry — the import pin an editor
- *  writes on upgrade. Only the names are wanted here, so the pin is dropped at
- *  the boundary rather than carried into a list that never renders it. */
-export async function fetchModuleVersions(ref: string, signal?: AbortSignal): Promise<string[]> {
-  const res = await fetch(`${HUB_API}/module/versions?ref=${encodeURIComponent(ref)}`, {
-    headers: { accept: "application/json" },
-    signal,
-  });
-  if (!res.ok) return [];
-  const data: unknown = await res.json().catch(() => ({}));
-  const versions = (data as { versions?: unknown }).versions;
-  if (!Array.isArray(versions)) return [];
-  return versions
-    .map((entry) => (entry as { version?: unknown }).version)
-    .filter((v): v is string => typeof v === "string");
 }
 
 export interface ModuleInfo extends ModuleRef {
@@ -351,59 +337,6 @@ export interface ModulePage {
   versions: string[];
 }
 
-export type ModulePageResult =
-  | { ok: true; page: ModulePage }
-  | { ok: false; error: string };
-
-/** Everything a module page renders, in one call.
- *
- *  Distinct from a search hit: keyed by ref rather than ranked, able to serve a
- *  non-latest version, and carrying the full kind list. A page built from
- *  `/search/modules` would need three round trips and still could not address
- *  an older version. */
-export async function fetchModule(
-  ref: string,
-  version: string,
-  signal?: AbortSignal,
-): Promise<ModulePageResult> {
-  const params = new URLSearchParams({ ref });
-  if (version) params.set("version", version);
-
-  let res: Response;
-  try {
-    res = await fetch(`${HUB_API}/module?${params}`, {
-      headers: { accept: "application/json" },
-      signal,
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    return { ok: false, error: err instanceof Error ? err.message : "network error" };
-  }
-
-  const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: errorMessage(data, res.status) };
-  const page = data as Partial<ModulePage>;
-  // Check the two fields the page cannot render without, rather than trusting
-  // the cast: everything else has a sensible empty rendering, but a missing ref
-  // or version would produce a broken import snippet and a version picker that
-  // navigates nowhere — a wrong page rather than an error.
-  const module = page.module;
-  if (typeof module?.ref !== "string" || typeof module?.version !== "string") {
-    return { ok: false, error: "unexpected response from the hub" };
-  }
-  return {
-    ok: true,
-    page: {
-      module,
-      kinds: Array.isArray(page.kinds) ? page.kinds : [],
-      exportedResources: Array.isArray(page.exportedResources) ? page.exportedResources : [],
-      versions: Array.isArray(page.versions)
-        ? page.versions.filter((v): v is string => typeof v === "string")
-        : [],
-    },
-  };
-}
-
 /** One ready-made instance of a kind, exported by some module — a language
  *  model pack, say, which the hub lists under the kind it instantiates rather
  *  than as a search result of its own. */
@@ -414,6 +347,7 @@ export interface KindInstance {
 }
 
 export async function fetchInstances(
+  origin: string,
   ref: string,
   kind: string,
   signal?: AbortSignal,
@@ -421,7 +355,7 @@ export async function fetchInstances(
   const params = new URLSearchParams({ ref, kind });
   let res: Response;
   try {
-    res = await fetch(`${HUB_API}/instances?${params}`, {
+    res = await fetch(`${origin}/instances?${params}`, {
       headers: { accept: "application/json" },
       signal,
     });

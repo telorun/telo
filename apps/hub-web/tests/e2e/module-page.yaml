@@ -1,0 +1,103 @@
+kind: Telo.Application
+metadata:
+  name: HubWebE2EModulePage
+  version: 1.0.0
+  description: |
+    End-to-end tests for a module's page on a live hub-web at
+    http://localhost:8050, whose `SITE_ORIGIN` is
+    http://hub.telo.localhost:8060. A seeded module renders a 200 page with its
+    head and heading; the slashless path redirects to the canonical one keeping
+    the query; an unknown ref and an unknown `?version=` are 404s.
+imports:
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Html: oci://ghcr.io/telorun/html@0.2.0#sha256-PPZZulIQWK-b7rBOXSENSCkvMKRIfNiD4lPFm43Al40
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref modulePage_RendersSeededModule
+  - !ref modulePage_SlashlessRedirectsKeepingQuery
+  - !ref modulePage_UnknownRefReturns404
+  - !ref modulePage_UnknownVersionReturns404
+---
+# The canonical is the site's own origin, never the request's host.
+kind: Run.Sequence
+metadata: { name: modulePage_RendersSeededModule }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/console/
+      method: GET
+  - name: parse
+    invoke: { kind: Html.JsonTree }
+    inputs:
+      html: !cel "steps.hit.result.body"
+  - name: head
+    invoke:
+      kind: Html.Extraction
+      fields:
+        title: { selector: title, type: text }
+        canonical: { selector: "link[rel=canonical]", type: attr, attr: href }
+        heading: { selector: h1, type: text }
+    inputs:
+      document: !cel "steps.parse.result"
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'head': steps.head.result.fields}"
+      expected:
+        status: 200
+        head:
+          title: Console — Telo Hub
+          canonical: http://hub.telo.localhost:8060/module/oci/ghcr.io/telorun/console/
+          heading: Console
+    invoke:
+      kind: Assert.Equals
+---
+# Declared successful so the client returns the 301 rather than following it.
+kind: Run.Sequence
+metadata: { name: modulePage_SlashlessRedirectsKeepingQuery }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/console?version=0.17.0
+      method: GET
+      success: [301]
+  - name: assert
+    inputs:
+      actual: !cel "{'status': steps.hit.result.status, 'location': steps.hit.result.headers.location}"
+      expected:
+        status: 301
+        location: /module/oci/ghcr.io/telorun/console/?version=0.17.0
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: modulePage_UnknownRefReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/e2e-nonexistent-module/
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 404
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: modulePage_UnknownVersionReturns404 }
+steps:
+  - name: hit
+    invoke:
+      kind: HttpClient.Request
+      url: http://localhost:8050/module/oci/ghcr.io/telorun/console/?version=0.0.0-nope
+      method: GET
+  - name: assert
+    inputs:
+      actual: !cel "steps.hit.result.status"
+      expected: 404
+    invoke:
+      kind: Assert.Equals

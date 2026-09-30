@@ -1,5 +1,7 @@
 # Runtime artifacts
 tmp/
+# Stack logs `scripts/hub-e2e.mjs` writes when a local run fails.
+/e2e-logs
 *.db
 # authoring-agent writes into a process-cwd-relative ./workspace (e.g. the repo
 # root when tests run from there); its output is scratch, never committed.

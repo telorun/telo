@@ -56,6 +56,9 @@ services:
       # OCR does reaches the implementation. The `tesseract-lang/*` ones export one model each and define no
       # kind, so they are what the instance axis (`/instances`,
       # `find_instances`) lists under `tesseract-model`'s `Language` kind.
+      # `oci://ghcr.io/telorun/log` is RESERVED for the hub-web freshness test
+      # (apps/hub-web/tests/e2e), which asserts it is unknown before registering
+      # it: never seed it here, and never register it from another test.
       SEED_REFS: '["oci://ghcr.io/telorun/kv-store","oci://ghcr.io/telorun/kv-store-redis","oci://ghcr.io/telorun/kv-store-memory","oci://ghcr.io/telorun/timer","oci://ghcr.io/telorun/scheduler","oci://ghcr.io/telorun/run","./modules/ocr","./modules/tesseract-model","./modules/tesseract","./modules/tesseract-lang/pol","./modules/tesseract-lang/deu","./modules/tesseract-lang/fra","oci://ghcr.io/telorun/console"]'
       ALLOW_LOCAL_REFS: "true"
       # Self-hosted embeddinggemma-300m sidecar, OpenAI-compatible /embeddings.
@@ -124,19 +127,34 @@ services:
         condition: service_healthy
 
   hub-web:
-    image: node:24-slim
-    command: 'sh -c "corepack enable && exec pnpm run --filter @telorun/hub-web dev"'
-    init: true
+    image: telorun/hub-web:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      dockerfile: ./apps/hub-web/Dockerfile
+      target: ${HUB_WEB_TARGET:-development}
+    # The repository, mounted where the `development` stage runs `server.mjs`
+    # from. The `production` stage runs from `/app` and never reads it.
     volumes:
       - .:/telo
-    working_dir: /telo
+    # The host user, so Vite's caches and generated types in the checkout are
+    # never root-owned.
+    user: ${UID:-1000}:${GID:-1000}
+    ports:
+      - "${HUB_WEB_PORT:-8050}:8050"
     environment:
-      # Embedded into the Vite client bundle served to the USER'S browser, which
-      # cannot resolve compose service names. The Caddy proxy routes
-      # `telo.localhost:8060` to the hub API service (see Caddyfile), so the
-      # registration form POSTs there cross-origin — mirroring prod (hub.telo.run
-      # SPA → telo.sh API).
-      VITE_HUB_API: http://telo.localhost:${PROXY_PORT:-8060}
+      # The hub the server reads, over the compose network.
+      HUB_API_ORIGIN: http://hub:8040
+      # Handed to the USER'S browser, which cannot resolve compose service
+      # names; the proxy routes `telo.localhost:8060` to the hub (see Caddyfile).
+      HUB_BROWSER_API_ORIGIN: http://telo.localhost:${PROXY_PORT:-8060}
+      SITE_ORIGIN: http://hub.telo.localhost:${PROXY_PORT:-8060}
+      PORT: 8050
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8050/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+      start_period: 5s
     depends_on:
       hub:
         condition: service_healthy

@@ -1,39 +1,35 @@
 import * as React from "react";
 import { PackagePlus, Search } from "lucide-react";
+import { Link } from "react-router";
 
+import type { Route } from "./+types/home";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ModulePage } from "@/ModulePage";
+import { canonicalLink, HOME_DESCRIPTION, HOME_TITLE } from "@/module-head";
 import { RegisterModule } from "@/RegisterModule";
 import { SearchModules } from "@/SearchModules";
-import { navigate, useRoute } from "@/routing";
 
-export function App() {
-  const route = useRoute();
+export const meta: Route.MetaFunction = ({ matches }) => [
+  { title: HOME_TITLE },
+  { name: "description", content: HOME_DESCRIPTION },
+  canonicalLink(matches[0].loaderData.siteOrigin, "/"),
+];
 
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 px-6 py-12">
-      {route.name === "module" ? (
-        <ModulePage moduleRef={route.ref} version={route.version} />
-      ) : (
-        <Home />
-      )}
-    </main>
-  );
+export function headers(): HeadersInit {
+  return { "Cache-Control": "public, max-age=60, stale-if-error=86400" };
 }
 
-function Home() {
+export default function Home() {
   const [tab, setTab] = React.useState("find");
 
   return (
     <>
       <header className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => navigate("/")}
+        <Link
+          to="/"
           className="self-start text-sm font-medium tracking-wide text-muted-foreground uppercase"
         >
           Telo Hub
-        </button>
+        </Link>
         <h1 className="text-2xl font-semibold tracking-tight">
           Find a module, on any host
         </h1>

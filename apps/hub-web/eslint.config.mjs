@@ -1,9 +1,9 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 
 const eslintConfig = defineConfig([
-  globalIgnores(["dist/**", "build/**"]),
+  globalIgnores(["build/**", ".react-router/**"]),
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["app/**/*.{ts,tsx}"],
   },
 ]);
 

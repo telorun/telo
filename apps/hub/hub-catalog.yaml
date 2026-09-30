@@ -34,6 +34,7 @@ resources:
 exports:
   resources:
     - moduleManifestText
+    - trackedModules
     - moduleDetail
     - moduleVersionList
     - implementations
@@ -90,6 +91,61 @@ steps:
 outputs:
   text: !cel "steps.decode.result.text"
 ---
+# THE definition of a module the catalog answers for: one whose latest version's
+# row exists. `/module` and `/modules` both read it, so the listing and the keyed
+# read can never disagree about which refs exist. `seq` is the row id — assigned
+# once and never reused — so paging by it is stable while rows are added.
+kind: Run.Sequence
+metadata:
+  name: trackedModules
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      # '' means every ref.
+      ref: { type: string }
+      after: { type: integer, minimum: 0 }
+      limit: { type: integer, minimum: 1 }
+    required: [ref, after, limit]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      modules:
+        type: array
+        items:
+          type: object
+          properties:
+            ref: { type: string }
+            latestVersion: { type: string }
+            seq: { type: integer }
+          required: [ref, latestVersion, seq]
+      next: { type: [integer, "null"] }
+    required: [modules, next]
+steps:
+  - name: rows
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT m.ref, m.latest_version AS "latestVersion", m.id::int AS seq
+        FROM modules m
+        JOIN module_versions lv ON lv.module_id = m.id AND lv.version = m.latest_version
+        WHERE ($1 = '' OR m.ref = $1) AND m.id > $2
+        ORDER BY m.id
+        LIMIT $3
+      bindings:
+        - !cel "inputs.ref"
+        - !cel "inputs.after"
+        - !cel "inputs.limit"
+outputs:
+  modules: !cel "steps.rows.result.rows"
+  next: !cel >-
+    steps.rows.result.rows.size() == inputs.limit
+      ? steps.rows.result.rows[steps.rows.result.rows.size() - 1].seq
+      : null
+---
 # Everything a module page renders, in one call. Without it a page needs three
 # round trips (search by ref, versions, implementations) and still cannot address
 # a non-latest version.
@@ -116,6 +172,12 @@ outputType:
       versions: { type: array }
     required: [found, module, kinds, exportedResources, versions]
 steps:
+  - name: tracked
+    invoke: !ref trackedModules
+    inputs:
+      ref: !cel "inputs.ref"
+      after: 0
+      limit: 1
   - name: row
     invoke: !ref query
     inputs:
@@ -192,7 +254,7 @@ steps:
         - !cel "inputs.ref"
         - !cel "inputs.version"
 outputs:
-  found: !cel "steps.row.result.rows.size() > 0"
+  found: !cel "steps.tracked.result.modules.size() > 0 && steps.row.result.rows.size() > 0"
   # Same nesting as a `/search/*` hit's `module`, so a page reached from a search
   # result and one reached by URL render off one shape.
   module: !cel >-

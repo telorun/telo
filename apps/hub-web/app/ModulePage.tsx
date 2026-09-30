@@ -1,95 +1,44 @@
 import * as React from "react";
-import {
-  AlertCircle,
-  ArrowLeft,
-  ChevronRight,
-  GitBranch,
-  Globe,
-  Loader2,
-  Scale,
-} from "lucide-react";
+import { ArrowLeft, ChevronRight, GitBranch, Globe, Loader2, Scale } from "lucide-react";
+import { Link } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DeprecationNotice, RuntimeBadges } from "@/Badges";
 import { CopyButton } from "@/CopyButton";
+import { useHubOrigins } from "@/hub-origins";
 import { ResourcePopover } from "@/KindPopover";
 import {
   fetchInstances,
-  fetchModule,
   type KindInfo,
   type KindInstance,
   type ModulePage as ModulePageData,
 } from "@/api";
-import { moduleDisplayName, moduleLabel, refToPath, shortCapability } from "@/module-ref";
-import { navigate } from "@/routing";
-
-type State =
-  | { kind: "loading" }
-  | { kind: "ready"; page: ModulePageData }
-  | { kind: "failed"; error: string };
+import { ModuleLink } from "@/ModuleLink";
+import { moduleDisplayName, shortCapability } from "@/module-ref";
 
 /** A module's own page, reachable by URL.
  *
- *  Everything here comes from one `/module` call. The alternative — reusing a
- *  search hit — cannot address a non-latest version and carries only the kinds
- *  that matched a query, which is the wrong content for a page whose subject is
- *  the module itself. */
-export function ModulePage({ moduleRef, version }: { moduleRef: string; version: string }) {
-  const [state, setState] = React.useState<State>({ kind: "loading" });
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    setState({ kind: "loading" });
-    fetchModule(moduleRef, version, controller.signal)
-      .then((result) =>
-        setState(
-          result.ok ? { kind: "ready", page: result.page } : { kind: "failed", error: result.error },
-        ),
-      )
-      .catch(() => {
-        // Superseded by a newer request, which owns the state.
-      });
-    return () => controller.abort();
-  }, [moduleRef, version]);
-
+ *  Everything here comes from one `/module` read, done by the server before the
+ *  page renders. The alternative — reusing a search hit — cannot address a
+ *  non-latest version and carries only the kinds that matched a query, which is
+ *  the wrong content for a page whose subject is the module itself. `pagePath`
+ *  is the module's own page, which its version links address. */
+export function ModulePage({ page, pagePath }: { page: ModulePageData; pagePath: string }) {
   return (
     <div className="flex flex-col gap-6">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="self-start -ml-2"
-        onClick={() => navigate("/")}
-      >
-        <ArrowLeft className="size-3.5" /> All modules
+      <Button variant="ghost" size="sm" className="self-start -ml-2" asChild>
+        <Link to="/">
+          <ArrowLeft className="size-3.5" /> All modules
+        </Link>
       </Button>
 
-      {state.kind === "loading" && (
-        <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading {moduleLabel(moduleRef)}…
-        </p>
-      )}
-
-      {state.kind === "failed" && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm"
-        >
-          <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="font-medium">Module unavailable</span>
-            <span className="break-all text-muted-foreground">{state.error}</span>
-            <code className="mt-1 font-mono text-xs break-all">{moduleRef}</code>
-          </div>
-        </div>
-      )}
-
-      {state.kind === "ready" && <ModuleBody page={state.page} />}
+      <ModuleBody page={page} pagePath={pagePath} />
     </div>
   );
 }
 
-function ModuleBody({ page }: { page: ModulePageData }) {
+function ModuleBody({ page, pagePath }: { page: ModulePageData; pagePath: string }) {
   const m = page.module;
   const pinned = `${m.ref}@${m.version}`;
   const isOlder = Boolean(m.latestVersion) && m.version !== m.latestVersion;
@@ -105,13 +54,12 @@ function ModuleBody({ page }: { page: ModulePageData }) {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">v{m.version}</span>
           {isOlder && (
-            <button
-              type="button"
-              onClick={() => navigate(refToPath(m.ref))}
+            <Link
+              to={pagePath}
               className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary underline-offset-2 hover:underline"
             >
               latest is v{m.latestVersion}
-            </button>
+            </Link>
           )}
           <RuntimeBadges runtime={m.runtime} />
           {m.categories?.map((c) => (
@@ -217,10 +165,11 @@ function ModuleBody({ page }: { page: ModulePageData }) {
           <ul className="flex flex-wrap gap-1.5">
             {page.versions.map((v) => (
               <li key={v}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(v === m.latestVersion ? refToPath(m.ref) : `${refToPath(m.ref)}?version=${v}`)
+                <Link
+                  to={
+                    v === m.latestVersion
+                      ? pagePath
+                      : `${pagePath}?${new URLSearchParams({ version: v })}`
                   }
                   aria-current={v === m.version ? "true" : undefined}
                   className={`rounded px-1.5 py-0.5 font-mono text-xs transition-colors ${
@@ -230,7 +179,7 @@ function ModuleBody({ page }: { page: ModulePageData }) {
                   }`}
                 >
                   {v}
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -259,13 +208,12 @@ function KindRow({ kind }: { kind: KindInfo }) {
       {kind.reexported && kind.ref && (
         <p className="text-xs text-muted-foreground">
           Re-exported from{" "}
-          <button
-            type="button"
-            onClick={() => navigate(refToPath(kind.ref!))}
+          <ModuleLink
+            moduleRef={kind.ref}
             className="font-mono underline-offset-2 hover:text-foreground hover:underline"
           >
             {kind.ref}
-          </button>
+          </ModuleLink>
         </p>
       )}
 
@@ -315,6 +263,7 @@ function KindInstances({ ownerRef, kind, count }: { ownerRef: string; kind: stri
   const [open, setOpen] = React.useState(false);
   const [state, setState] = React.useState<InstancesState>({ kind: "idle" });
   const controller = React.useRef<AbortController | null>(null);
+  const { browserApiOrigin } = useHubOrigins();
 
   React.useEffect(() => () => controller.current?.abort(), []);
 
@@ -323,7 +272,7 @@ function KindInstances({ ownerRef, kind, count }: { ownerRef: string; kind: stri
     if (!next || state.kind !== "idle") return;
     controller.current = new AbortController();
     setState({ kind: "loading" });
-    fetchInstances(ownerRef, kind, controller.current.signal)
+    fetchInstances(browserApiOrigin, ownerRef, kind, controller.current.signal)
       .then((result) =>
         setState(
           result.ok
@@ -357,13 +306,12 @@ function KindInstances({ ownerRef, kind, count }: { ownerRef: string; kind: stri
               <li key={`${i.module.ref}/${i.name}`} className="flex flex-wrap items-baseline gap-x-2 text-xs">
                 <code className="font-mono font-medium">{i.name}</code>
                 {i.description && <span className="text-muted-foreground">{i.description}</span>}
-                <button
-                  type="button"
-                  onClick={() => navigate(refToPath(i.module.ref))}
+                <ModuleLink
+                  moduleRef={i.module.ref}
                   className="font-mono text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 >
                   {i.module.ref}
-                </button>
+                </ModuleLink>
               </li>
             ))}
           </ul>

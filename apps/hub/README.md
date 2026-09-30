@@ -108,6 +108,7 @@ being linearized into a chain.
 | ready-made instances of a kind | `GET /instances?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
 | `telo module versions <ref>` | `GET /module/versions?ref=…` |
+| the whole catalogue (sitemaps) | `GET /modules?after=…&limit=…` (every ref `/module` answers for, paged by `seq`) |
 | register a module | `POST /register` (`{ ref }` → validate + schedule, `202`; open, no auth) |
 | poll a registration | `GET /register/status?ref=` |
 | MCP (`search_resources`, `get_module_manifest`, `get_module`, `list_module_versions`, `find_implementations`, `find_instances`, `list_categories`, `suggest_module_refs`) | `POST /mcp` |
@@ -119,6 +120,10 @@ mirrors `GET /implementations`, `find_instances` mirrors `GET /instances`,
 `list_categories` mirrors `GET /categories`,
 and `suggest_module_refs` mirrors `GET /refs` — same handler, same shape,
 reached as a tool instead of a query string.
+
+`GET /modules` is deliberately HTTP-only: listing the whole catalogue is a crawler / site-build read that no
+manifest-authoring agent needs, and `search_resources` and `suggest_module_refs`
+already answer discovery.
 
 **Kinds and instances are searched the same way.** What search ranks is every
 exported kind and every exported instance (`exports.resources`), as one set
@@ -334,6 +339,25 @@ not address an older version. Both "never registered" and "no such version"
 return one 404 — the caller's next move is the same, and separating them would
 leak which refs are tracked.
 
+### `GET /modules`
+
+The complete catalogue, for building sitemaps: `{ modules: [{ ref,
+latestVersion, seq }], next }`. It lists exactly the refs `GET /module` answers
+for — both read one definition of a tracked module (its latest version's row
+exists) — with `latestVersion` the value `/module` reports. Search cannot serve
+this: it folds pack modules into `siblings` and caps its candidates, and `/refs`
+stops at 20.
+
+`seq` is the module row's id: assigned once at registration, never changed or
+reused. Entries are ascending by `seq` and strictly greater than `after`
+(default `0`); `limit` is 1–1000 (default 1000), and anything outside either
+range is a `400`. `next` is the page's last `seq` when the page is full and
+`null` otherwise, so a caller passes it back as `after` until it is `null`.
+
+A module that becomes ready later appears at its own `seq`, which may be lower
+than a page already read — so a sitemap shard re-read later may contain more
+modules than it did.
+
 ## Configuration
 
 | Env | Purpose |
@@ -430,9 +454,9 @@ arriving), `ready`, `failed`, or `unknown`.
 The reconcile pass remains the **reconciler**: it picks up new versions,
 re-pushed digests, and any module whose first ingest failed.
 
-The browser-facing registration form is a separate static SPA,
-[`apps/hub-web`](../hub-web) (deployed to GitHub Pages at `hub.telo.run`), which
-POSTs to this verb cross-origin.
+The browser-facing registration form is part of [`apps/hub-web`](../hub-web), the
+request-time site at `hub.telo.run`; the reader's browser POSTs to this verb
+cross-origin.
 
 ### `url` transport — weaker guarantees
 
@@ -524,8 +548,23 @@ everything, once.
 
 ## Tests
 
-End-to-end suite (needs the compose `hub` up and its first tracking pass done):
+The hub's end-to-end suite (`apps/hub/test-suite-e2e.yaml`) and hub-web's run
+only through one command, locally and in CI alike:
 
 ```sh
-pnpm run telo apps/hub/test-suite-e2e.yaml
+pnpm run test:e2e:hub
 ```
+
+It always runs on a fresh stack. It refuses to start while port 8040 or 8050 is
+taken (a running development stack, typically) rather than attach to it — those
+are the only two ports it refuses; brings `db`, `storage`, `embedder`, `hub` and
+`hub-web` (production target) up under a compose project of its own,
+`telo-hub-e2e`, with the database on storage that dies with the stack and
+published on a loopback port Docker assigns, handed to the hub suite (its
+`tests/integration/` tests) as `DB_HOST` / `DB_PORT` / `DB_USER` /
+`DB_PASSWORD` / `DB_NAME`; waits for the hub's first tracking pass over `SEED_REFS`;
+runs the hub's suite and then hub-web's; fails if hub-web's process restarted
+during the run; and always tears the stack down with its volumes. On failure
+the suites' output and the stack's logs are written to `e2e-logs/`. Pointing a
+suite at the development stack is unsupported: the suites assume a hub that has
+seen nothing but its seeds.

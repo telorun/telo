@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, Loader2, PackagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { useHubOrigins } from "@/hub-origins";
 import {
   registerModule,
   registrationStatus,
@@ -34,6 +35,7 @@ export function RegisterModule() {
   const [ref, setRef] = React.useState("");
   const [agreed, setAgreed] = React.useState(false);
   const [status, setStatus] = React.useState<Status>({ kind: "idle" });
+  const { browserApiOrigin } = useHubOrigins();
 
   const trimmed = ref.trim();
   const submitting = status.kind === "submitting";
@@ -43,7 +45,7 @@ export function RegisterModule() {
     event.preventDefault();
     if (!canSubmit) return;
     setStatus({ kind: "submitting" });
-    const result = await registerModule(trimmed);
+    const result = await registerModule(browserApiOrigin, trimmed);
     setStatus({ kind: "done", result });
   }
 
@@ -57,7 +59,7 @@ export function RegisterModule() {
     let cancelled = false;
     let polls = 0;
     const tick = async () => {
-      const progress = await registrationStatus(acceptedRef);
+      const progress = await registrationStatus(browserApiOrigin, acceptedRef);
       if (cancelled) return;
       polls += 1;
       // A settled status stops the poll; `unavailable` does NOT — the hub being
@@ -75,7 +77,7 @@ export function RegisterModule() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [acceptedRef]);
+  }, [acceptedRef, browserApiOrigin]);
 
   return (
     <div className="flex flex-col gap-6">

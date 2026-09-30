@@ -660,6 +660,47 @@ routes:
               query: !cel "request.query.q"
               refs: !cel "result.refs"
 
+  # The whole catalogue — every ref `/module` answers for — paged by `seq`, the
+  # module row's id. What a sitemap is built from: search folds packs into
+  # `siblings` and caps its candidates, and `/refs` stops at 20.
+  - request:
+      path: /modules
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            after:
+              type: integer
+              default: 0
+              minimum: 0
+              description: "Return modules whose seq is greater than this; the previous page's `next`."
+            limit:
+              type: integer
+              default: 1000
+              minimum: 1
+              maximum: 1000
+              description: "Page size."
+    handler: !ref Catalog.trackedModules
+    inputs:
+      ref: ""
+      after: !cel "request.query.after"
+      limit: !cel "request.query.limit"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              modules: !cel "result.modules"
+              next: !cel "result.next"
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+              error: listing failed
+
   # Everything a module page renders, in one call. `/search/*` answers "which
   # module should I use"; this answers "tell me about this one", which a search
   # hit cannot: it is keyed by ref rather than ranked, serves a specific version
@@ -727,9 +768,10 @@ routes:
             body:
               error: Module not tracked
 
-  # Open, unauthenticated self-service registration (the apps/hub-web SPA on
-  # hub.telo.run POSTs here cross-origin). Validates the ref resolves to a real
-  # Telo module and, on success, records it and schedules its first ingest.
+  # Open, unauthenticated self-service registration (the reader's browser on
+  # hub.telo.run, served by apps/hub-web, POSTs here cross-origin). Validates
+  # the ref resolves to a real Telo module and, on success, records it and
+  # schedules its first ingest.
   #
   # 202, not 200: indexing is asynchronous now, so "accepted" is the honest
   # claim and `GET /register/status?ref=` is what says when it is searchable.
