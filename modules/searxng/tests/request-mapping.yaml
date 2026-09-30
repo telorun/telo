@@ -1,0 +1,100 @@
+# What the engine sends: `GET /search` with the query, `format=json`, the page, the
+# configured safe-search level, the language hint resolved through the engine's
+# table (exact, then primary subtag, else left out) and the recency hint as
+# `time_range`. The mock echoes the query parameters it received as the title.
+kind: Telo.Application
+metadata:
+  name: SearxngRequestMappingTest
+  version: 1.0.0
+imports:
+  SearXNG: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref requestMapping
+---
+kind: Http.Request
+metadata: { name: request }
+client: { kind: Http.Client, baseUrl: "http://localhost:18840" }
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: strict }
+request: !ref request
+safeSearch: strict
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: moderate }
+request: !ref request
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: unfiltered }
+request: !ref request
+safeSearch: "off"
+---
+kind: Run.Value
+metadata: { name: echo }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: requestMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeSearxng }
+    routes:
+      - request:
+          path: /search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref echo
+        returns:
+          - status: 200
+            when: !cel "request.query.pageno == '1'"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  results:
+                    - title: !cel "json(request.query)"
+                      url: https://echo.example/
+                      content: echo
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { results: [] }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18840
+    mounts:
+      - path: /
+        mount: !ref FakeSearxng
+targets:
+  - !ref FakeServer
+steps:
+  # Every hint mapped: the language matched exactly, ignoring case.
+  - name: allHints
+    invoke: !ref strict
+    inputs: { query: rust async, language: en-us, country: FI, freshness: week }
+  # The language through its primary subtag; the default safe-search level.
+  - name: primarySubtag
+    invoke: !ref moderate
+    inputs: { query: rust async, language: pt-AO }
+  # A language with no entry is left out, as is the country, which SearXNG has
+  # no parameter for.
+  - name: unmapped
+    invoke: !ref unfiltered
+    inputs: { query: rust async, language: tlh, country: FI }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "parseJson(steps.allHints.result.results[0].title)"
+        - !cel "parseJson(steps.primarySubtag.result.results[0].title)"
+        - !cel "parseJson(steps.unmapped.result.results[0].title)"
+      expected:
+        - { q: rust async, format: json, pageno: "1", safesearch: "2", language: en-US, time_range: week }
+        - { q: rust async, format: json, pageno: "1", safesearch: "1", language: pt }
+        - { q: rust async, format: json, pageno: "1", safesearch: "0" }

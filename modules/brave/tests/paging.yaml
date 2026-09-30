@@ -1,0 +1,115 @@
+# Paging over Brave's offsets (pages of 20, offset 0–9). A call returns items of
+# the page its cursor names, from where the previous call stopped, at most
+# `count`, in one request. A cursor is issued while that page has items left,
+# else for the next offset when Brave reports more results — never past offset
+# 9. The cursor stays valid under any `count`.
+kind: Telo.Application
+metadata:
+  name: BravePagingTest
+  version: 1.0.0
+imports:
+  Brave: ..
+  WebSearch: ../../web-search
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref paging
+---
+kind: Brave.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18848" }
+---
+# Offset 9 reports more results: the engine must still issue no cursor there.
+kind: Run.Value
+metadata: { name: canned }
+value:
+  "0": { items: [a1, a2, a3, a4, a5], more: true }
+  "1": { items: [b1, b2, b3], more: false }
+  "9": { items: [z1], more: true }
+---
+kind: Run.Sequence
+metadata: { name: paging }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeBrave }
+    routes:
+      - request:
+          path: /res/v1/web/search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel >-
+                  request.query.q == 'paging' && request.query.offset in result
+                    ? {'query': {'more_results_available': result[request.query.offset].more},
+                       'web': {'results': result[request.query.offset].items.map(t,
+                         {'title': t, 'url': 'https://example.com/' + t, 'description': t})}}
+                    : {'query': {'more_results_available': false}}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18848
+    mounts:
+      - path: /
+        mount: !ref FakeBrave
+targets:
+  - !ref FakeServer
+steps:
+  - name: first
+    invoke: !ref engine
+    inputs: { query: paging, count: 2 }
+  - name: second
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.first.result.nextCursor" }
+  # The slice ends offset 0, and Brave reports more.
+  - name: third
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.second.result.nextCursor" }
+  # The slice ends offset 1, and Brave reports no more.
+  - name: fourth
+    invoke: !ref engine
+    inputs: { query: paging, count: 5, cursor: !cel "steps.third.result.nextCursor" }
+  - name: anyCount
+    invoke: !ref engine
+    inputs: { query: paging, count: 10, cursor: !cel "steps.first.result.nextCursor" }
+  - name: wholePage
+    invoke: !ref engine
+    inputs: { query: paging }
+  - name: lastOffset
+    invoke: !ref engine
+    inputs: { query: paging, cursor: !cel "WebSearch.sealCursor('brave', {'query': 'paging'}, '9-0')" }
+  - name: nothing
+    invoke: !ref engine
+    inputs: { query: nothing, count: 3 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.first.result"
+        - !cel "steps.second.result"
+        - !cel "steps.third.result"
+        - !cel "steps.fourth.result"
+        - !cel "steps.anyCount.result"
+        - !cel "steps.wholePage.result"
+        - !cel "steps.lastOffset.result"
+        - !cel "steps.nothing.result"
+      expected: !cel >-
+        cel.bind(item, ['a1', 'a2', 'a3', 'a4', 'a5', 'b1', 'b2', 'b3', 'z1'].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t}),
+          [
+            {'results': [item[0], item[1]], 'nextCursor': WebSearch.sealCursor('brave', {'query': 'paging'}, '0-2')},
+            {'results': [item[2], item[3]], 'nextCursor': WebSearch.sealCursor('brave', {'query': 'paging'}, '0-4')},
+            {'results': [item[4]], 'nextCursor': WebSearch.sealCursor('brave', {'query': 'paging'}, '1-0')},
+            {'results': [item[5], item[6], item[7]]},
+            {'results': [item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('brave', {'query': 'paging'}, '1-0')},
+            {'results': [item[0], item[1], item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('brave', {'query': 'paging'}, '1-0')},
+            {'results': [item[8]]},
+            {'results': []}
+          ])

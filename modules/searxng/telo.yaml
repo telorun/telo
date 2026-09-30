@@ -1,0 +1,317 @@
+kind: Telo.Library
+metadata:
+  name: SearXNG
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: >-
+    Web search through a self-hosted SearXNG metasearch instance: queries its JSON
+    API with language, recency and safe-search settings and returns ranked results
+    with title, URL, snippet and publication date, paging with an opaque cursor. No
+    API key; the instance is reached through a configurable HTTP client.
+imports:
+  WebSearch: ../web-search
+  Http: ../http-client
+  Run: ../run
+exports:
+  kinds:
+    - WebSearchEngine
+---
+# A templated engine: the whole mapping is the `search` sequence below, reaching
+# the instance through the request the application supplies. It declares no
+# contract of its own — `search` is typed by the contract's named shapes, and
+# the abstract's contract is what every call is checked against.
+#
+# Paging: a position is `<pageno>-<skip>`. A call returns items only from the page
+# its position names, from `skip`, at most `count`. When the slice reaches the end
+# of a non-empty page, the next page is read (never returned) to decide whether a
+# cursor is issued, so a call makes at most two requests.
+kind: Telo.Definition
+metadata:
+  name: WebSearchEngine
+  description: >-
+    Searches the web through a SearXNG instance's JSON API. Returns at most the
+    requested number of ranked results with title, URL, snippet and publication
+    date, and a cursor while further pages hold results. Maps the language hint to
+    the instance's codes and the recency hint to its time range; a denied JSON
+    format, rate limiting and failures are distinct errors.
+capability: Telo.Invocable
+extends: WebSearch.Engine
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The cursor is malformed, was issued by another engine, or was issued for a
+        different query, language, country or freshness.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: >-
+        The instance answered 403: its JSON output is not enabled. Add `json` to
+        `search.formats` in the instance's `settings.yml`.
+    ERR_SEARCH_RATE_LIMITED:
+      description: The instance's limiter answered 429.
+    ERR_SEARCH_FAILED:
+      description: >-
+        The instance was unreachable, answered with any other status, or answered
+        with a body that is not SearXNG's JSON results.
+schema:
+  type: object
+  required: [request]
+  additionalProperties: false
+  properties:
+    request:
+      title: Request
+      description: >-
+        The HTTP request the instance is reached through. Its client's `baseUrl` is
+        the instance's root (without a trailing slash); timeouts and retries are
+        the client's.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    safeSearch:
+      title: Safe search
+      description: How strictly the instance filters explicit results.
+      type: string
+      enum: ["off", moderate, strict]
+      default: moderate
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: search
+    inputType: !ref WebSearch.Query
+    outputType: !ref WebSearch.Results
+    steps:
+      # BCP 47 tags onto the codes SearXNG accepts
+      # (`^[a-z]{2,3}(-[a-zA-Z]{2})?$`). A tag not listed resolves through its
+      # primary subtag, and one with no entry at all is left out of the request.
+      - name: languages
+        value:
+          ar: ar
+          bg: bg
+          ca: ca
+          cs: cs
+          da: da
+          de: de
+          de-AT: de-AT
+          de-CH: de-CH
+          de-DE: de-DE
+          el: el
+          en: en
+          en-AU: en-AU
+          en-CA: en-CA
+          en-GB: en-GB
+          en-IE: en-IE
+          en-IN: en-IN
+          en-NZ: en-NZ
+          en-US: en-US
+          es: es
+          es-AR: es-AR
+          es-ES: es-ES
+          es-MX: es-MX
+          et: et
+          fi: fi
+          fr: fr
+          fr-BE: fr-BE
+          fr-CA: fr-CA
+          fr-CH: fr-CH
+          fr-FR: fr-FR
+          he: he
+          hi: hi
+          hr: hr
+          hu: hu
+          id: id
+          it: it
+          ja: ja
+          ko: ko
+          lt: lt
+          lv: lv
+          nb: nb
+          nl: nl
+          nl-BE: nl-BE
+          nl-NL: nl-NL
+          "no": nb
+          pl: pl
+          pt: pt
+          pt-BR: pt-BR
+          pt-PT: pt-PT
+          ro: ro
+          ru: ru
+          sk: sk
+          sl: sl
+          sv: sv
+          th: th
+          tr: tr
+          uk: uk
+          vi: vi
+          zh: zh
+          zh-CN: zh-CN
+          zh-HK: zh-HK
+          zh-TW: zh-TW
+      - name: cursor
+        value: !cel "WebSearch.openCursor('searxng', inputs, '^[1-9][0-9]{0,3}-(0|[1-9][0-9]{0,3})$', '1-0')"
+      - name: refuse
+        if: !cel "!steps.cursor.result.valid"
+        then:
+          - name: invalidCursor
+            throw:
+              code: ERR_INVALID_INPUT
+              message: !cel "steps.cursor.result.message"
+      - name: position
+        value:
+          page: !cel "int(steps.cursor.result.position.split('-')[0])"
+          skip: !cel "int(steps.cursor.result.position.split('-')[1])"
+      # Every page request carries the same parameters but `pageno`; a hint with
+      # no SearXNG form is left out. `country` has no SearXNG parameter.
+      - name: params
+        value: !cel >-
+          compact({
+            'q': inputs.query,
+            'format': 'json',
+            'safesearch': {'off': '0', 'moderate': '1', 'strict': '2'}[self.safeSearch],
+            'language': WebSearch.resolveHint(has(inputs.language) ? inputs.language : null, steps.languages.result),
+            'time_range': has(inputs.freshness) ? inputs.freshness : null
+          })
+      - name: current
+        invoke: !ref page
+        inputs:
+          params: !cel "merge(steps.params.result, {'pageno': string(steps.position.result.page)})"
+      - name: slice
+        value: !cel >-
+          WebSearch.windowSlice(
+            steps.current.result.results,
+            steps.position.result.skip,
+            has(inputs.count) ? inputs.count : size(steps.current.result.results) + 1)
+      # The slice reached the end of a non-empty page: whether a cursor is issued
+      # depends on the next page holding anything. 9999 is the last page a
+      # position can name.
+      - name: atPageEnd
+        if: !cel >-
+          steps.slice.result.next == null &&
+          size(steps.current.result.results) > 0 &&
+          steps.position.result.page < 9999
+        then:
+          - name: following
+            invoke: !ref page
+            inputs:
+              params: !cel "merge(steps.params.result, {'pageno': string(steps.position.result.page + 1)})"
+      - name: next
+        value: !cel >-
+          steps.slice.result.next != null
+            ? string(steps.position.result.page) + '-' + string(steps.slice.result.next)
+            : 'following' in steps && size(steps.following.result.results) > 0
+              ? string(steps.position.result.page + 1) + '-0'
+              : ''
+      - name: shaped
+        value: !cel >-
+          steps.next.result == ''
+            ? {'results': steps.slice.result.items}
+            : {'results': steps.slice.result.items, 'nextCursor': WebSearch.sealCursor('searxng', inputs, steps.next.result)}
+    outputs: !cel "steps.shaped.result"
+  # One page of results, mapped onto the contract's result shape; every failure
+  # is raised here as a contract code.
+  - kind: Run.Sequence
+    metadata:
+      name: page
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [params]
+        additionalProperties: false
+        properties:
+          params:
+            type: object
+            additionalProperties: { type: string }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [results]
+        additionalProperties: false
+        properties:
+          results: { type: array }
+    steps:
+      - name: fetch
+        try:
+          - name: http
+            invoke: !cel "self.request"
+            inputs:
+              url: /search
+              method: GET
+              query: !cel "inputs.params"
+              responseType: json
+        catch:
+          # A client declaring `throwOnHttpError` raises the status instead of
+          # returning it; it is read from the error and mapped like any other.
+          - name: unreachable
+            if: !cel "error.code != 'ERR_HTTP_STATUS'"
+            then:
+              - name: transportFailed
+                throw:
+                  code: ERR_SEARCH_FAILED
+                  message: !interpolate "The request to SearXNG failed: ${{ error.message }}"
+          - name: raised
+            value:
+              status: !cel "int(error.data.status)"
+              body: !cel "'body' in error.data ? error.data.body : null"
+      - name: response
+        value: !cel >-
+          'http' in steps
+            ? {'status': steps.http.result.status, 'body': steps.http.result.body}
+            : {'status': steps.raised.result.status, 'body': steps.raised.result.body}
+      - name: status
+        switch: !cel "string(steps.response.result.status)"
+        cases:
+          "200": []
+          "403":
+            - name: jsonDisabled
+              throw:
+                code: ERR_SEARCH_ACCESS_DENIED
+                message: >-
+                  SearXNG answered 403: the instance does not serve JSON results. Add
+                  `json` to `search.formats` in its settings.yml.
+          "429":
+            - name: limited
+              throw:
+                code: ERR_SEARCH_RATE_LIMITED
+                message: SearXNG answered 429; its limiter asks the caller to slow down.
+        default:
+          - name: failed
+            throw:
+              code: ERR_SEARCH_FAILED
+              # The instance's own words: its JSON `error`, or the text of the body.
+              message: !cel >-
+                'SearXNG answered HTTP ' + string(steps.response.result.status) +
+                (type(steps.response.result.body) == type({}) && 'error' in steps.response.result.body
+                  ? ': ' + string(steps.response.result.body.error)
+                  : type(steps.response.result.body) == type('') && steps.response.result.body != ''
+                    ? ': ' + steps.response.result.body : '')
+      - name: readable
+        if: !cel >-
+          !(type(steps.response.result.body) == type({}) && 'results' in steps.response.result.body &&
+            type(steps.response.result.body.results) == type([]))
+        then:
+          - name: unreadable
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: SearXNG answered 200 with a body that is not its JSON results.
+      # A result without a string URL cannot be returned and is dropped before
+      # positions are counted, so a position names the same item on every call.
+      # `publishedDate` is Python's isoformat, which the shared reader reads (no
+      # offset means UTC); one it cannot read is left out rather than failing.
+      - name: mapped
+        value: !cel >-
+          steps.response.result.body.results
+            .filter(r, type(r) == type({}) && 'url' in r && type(r.url) == type(''))
+            .map(r, cel.bind(at,
+              WebSearch.readPublishedAt('publishedDate' in r && type(r.publishedDate) == type('') ? r.publishedDate : null),
+              cel.bind(base, {
+                  'title': 'title' in r && type(r.title) == type('') ? r.title : '',
+                  'url': r.url,
+                  'snippet': 'content' in r && type(r.content) == type('') ? r.content : ''
+                },
+                at == null ? base : merge(base, {'publishedAt': at}))))
+    outputs:
+      results: !cel "steps.mapped.result"
+invoke: !ref search
+inputs: !cel "inputs"

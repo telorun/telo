@@ -1,0 +1,40 @@
+kind: Telo.Application
+metadata:
+  name: WebSearchEngineNeutralConsumerTest
+  version: 1.0.0
+imports:
+  Assert: ../../assert
+targets:
+  - !ref consumerChecksClean
+  - !ref misspelledInputIsRefused
+  - !ref misspelledResultIsRefused
+---
+# A library typing its slot against the contract checks clean: the query and the
+# results are typed at the call site.
+kind: Assert.Manifest
+metadata:
+  name: consumerChecksClean
+source: ./__fixtures__/engine-neutral-consumer.yaml
+expect: {}
+---
+# The same library passing `freshnes`: the query is closed, so the argument is a
+# check error rather than one every engine refuses at run time.
+kind: Assert.Manifest
+metadata:
+  name: misspelledInputIsRefused
+source: ./__fixtures__/misspelled-input.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'freshnes' is not allowed"
+---
+# The same library reading `nextCursr`: the results are typed, so the misspelled
+# field is a check error rather than a null at run time.
+kind: Assert.Manifest
+metadata:
+  name: misspelledResultIsRefused
+source: ./__fixtures__/misspelled-result.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'steps.search.result.nextCursr' is not defined (available: results, nextCursor)"

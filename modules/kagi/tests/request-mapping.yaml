@@ -1,0 +1,101 @@
+# What the engine sends: `POST /api/v1/search` with the query, the page, the
+# configured safe-search flag, the country hint as `filters.region` and the
+# recency hint as `filters.after` — the day before the window starts, so the
+# whole window is covered. No language and no `limit` are ever sent. The mock
+# echoes the body it received as the title.
+kind: Telo.Application
+metadata:
+  name: KagiRequestMappingTest
+  version: 1.0.0
+imports:
+  Kagi: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref requestMapping
+---
+kind: Http.Request
+metadata: { name: request }
+client: { kind: Http.Client, baseUrl: "http://localhost:18852" }
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: safe }
+request: !ref request
+safeSearch: true
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: unfiltered }
+request: !ref request
+---
+kind: Run.Value
+metadata: { name: echo }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: requestMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeKagi }
+    routes:
+      - request:
+          path: /api/v1/search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref echo
+        returns:
+          - status: 200
+            when: !cel "request.body.page == 1"
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  data:
+                    search:
+                      - title: !cel "json(request.body)"
+                        url: https://echo.example/
+                        snippet: echo
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { data: { search: [] } }
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18852
+    mounts:
+      - path: /
+        mount: !ref FakeKagi
+targets:
+  - !ref FakeServer
+steps:
+  # A week is 168 hours; the filter starts the day before. The date is taken
+  # before the call and again at the assertion, and either is accepted, so a run
+  # crossing UTC midnight does not fail.
+  - name: windowEve
+    value: !cel "dateIn(now() - duration('192h'))"
+  - name: allHints
+    invoke: !ref safe
+    inputs: { query: rust async, language: en, country: FI, freshness: week }
+  - name: noHints
+    invoke: !ref unfiltered
+    inputs: { query: rust async, count: 3 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "parseJson(steps.allHints.result.results[0].title)"
+        - !cel "parseJson(steps.noHints.result.results[0].title)"
+      expected:
+        - query: rust async
+          safe_search: true
+          page: 1
+          filters:
+            region: FI
+            after: !cel >-
+              cel.bind(sent, parseJson(steps.allHints.result.results[0].title).filters.after,
+                sent in [steps.windowEve.result, dateIn(now() - duration('192h'))]
+                  ? sent : dateIn(now() - duration('192h')))
+        - { query: rust async, safe_search: false, page: 1 }

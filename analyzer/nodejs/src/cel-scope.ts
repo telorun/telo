@@ -50,6 +50,7 @@ import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-in
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
+import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
 import { inferredResultSchema } from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
@@ -548,7 +549,23 @@ export class CelScopeResolver {
       : undefined;
     this.selfSchema =
       m.kind === "Telo.Definition" ? buildSelfSchema(m as Record<string, any>, defs, aliases) : undefined;
-    this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((body) => {
+    const declaringModule = (m.metadata as { module?: string } | undefined)?.module;
+    this.bodyScopes = templateBodies(m, defs, aliases, scopes).map((template) => {
+      // A body entry is authoring data, so a named contract is still a `!ref`;
+      // it is read in the canonical form a registered resource carries.
+      const inputType = (template.manifest as Record<string, any>).inputType;
+      const body =
+        inputType === undefined
+          ? template
+          : {
+              ...template,
+              manifest: {
+                ...template.manifest,
+                inputType: withCanonicalRefSentinels(inputType, declaringModule, (alias) =>
+                  contractScope.projectionModules?.moduleForAlias(declaringModule, alias),
+                ),
+              } as ResourceManifest,
+            };
       const bodySchema = defs.effectiveSchemaOf(body.definition) as Record<string, any> | undefined;
       const stepContext = bodySchema
         ? buildStepContextSchema(

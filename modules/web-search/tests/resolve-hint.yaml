@@ -1,0 +1,34 @@
+# A hint resolves through an engine's table: an exact match first, then the BCP 47
+# primary subtag, both ignoring case; anything else, and no hint, is null.
+kind: Telo.Application
+metadata:
+  name: WebSearchResolveHintTest
+  version: 1.0.0
+imports:
+  WebSearch: ..
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref resolveHint
+---
+kind: Run.Sequence
+metadata:
+  name: resolveHint
+steps:
+  - name: table
+    value:
+      en: en
+      en-GB: en-GB
+      pt-BR: pt-BR
+  - name: resolved
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "WebSearch.resolveHint('en-GB', steps.table.result)"
+        - !cel "WebSearch.resolveHint('EN-gb', steps.table.result)"
+        - !cel "WebSearch.resolveHint('en-US', steps.table.result)"
+        - !cel "WebSearch.resolveHint('en-Latn-US', steps.table.result)"
+        - !cel "WebSearch.resolveHint('pt', steps.table.result)"
+        - !cel "WebSearch.resolveHint('fi', steps.table.result)"
+        - !cel "WebSearch.resolveHint(null, steps.table.result)"
+      expected: [en-GB, en-GB, en, en, null, null, null]

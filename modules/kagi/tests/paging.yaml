@@ -1,0 +1,115 @@
+# Paging over Kagi's numbered pages (1–10). A call returns items of the page its
+# cursor names, from where the previous call stopped, at most `count`. A cursor
+# is issued while that page has items left, or — when the slice ends the page —
+# when the next page holds anything. Page 10 has no successor, so it is never
+# followed. The cursor stays valid under any `count`, and `limit` is never sent.
+kind: Telo.Application
+metadata:
+  name: KagiPagingTest
+  version: 1.0.0
+imports:
+  Kagi: ..
+  WebSearch: ../../web-search
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref paging
+---
+kind: Kagi.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18854" }
+---
+# Page 11 has items so that reading it would show; a request carrying `limit`
+# gets nothing.
+kind: Run.Value
+metadata: { name: canned }
+value:
+  "1": [a1, a2, a3, a4, a5]
+  "2": [b1, b2, b3]
+  "10": [z1]
+  "11": [y1]
+---
+kind: Run.Sequence
+metadata: { name: paging }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeKagi }
+    routes:
+      - request:
+          path: /api/v1/search
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel >-
+                  {'data': {'search':
+                    request.body.query == 'paging' && !('limit' in request.body) &&
+                      string(int(request.body.page)) in result
+                      ? result[string(int(request.body.page))].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t})
+                      : []}}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18854
+    mounts:
+      - path: /
+        mount: !ref FakeKagi
+targets:
+  - !ref FakeServer
+steps:
+  - name: first
+    invoke: !ref engine
+    inputs: { query: paging, count: 2 }
+  - name: second
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.first.result.nextCursor" }
+  - name: third
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.second.result.nextCursor" }
+  - name: fourth
+    invoke: !ref engine
+    inputs: { query: paging, count: 5, cursor: !cel "steps.third.result.nextCursor" }
+  - name: anyCount
+    invoke: !ref engine
+    inputs: { query: paging, count: 10, cursor: !cel "steps.first.result.nextCursor" }
+  - name: wholePage
+    invoke: !ref engine
+    inputs: { query: paging }
+  - name: lastPage
+    invoke: !ref engine
+    inputs: { query: paging, cursor: !cel "WebSearch.sealCursor('kagi', {'query': 'paging'}, '10-0')" }
+  - name: nothing
+    invoke: !ref engine
+    inputs: { query: nothing, count: 3 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.first.result"
+        - !cel "steps.second.result"
+        - !cel "steps.third.result"
+        - !cel "steps.fourth.result"
+        - !cel "steps.anyCount.result"
+        - !cel "steps.wholePage.result"
+        - !cel "steps.lastPage.result"
+        - !cel "steps.nothing.result"
+      expected: !cel >-
+        cel.bind(item, ['a1', 'a2', 'a3', 'a4', 'a5', 'b1', 'b2', 'b3', 'z1'].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t}),
+          [
+            {'results': [item[0], item[1]], 'nextCursor': WebSearch.sealCursor('kagi', {'query': 'paging'}, '1-2')},
+            {'results': [item[2], item[3]], 'nextCursor': WebSearch.sealCursor('kagi', {'query': 'paging'}, '1-4')},
+            {'results': [item[4]], 'nextCursor': WebSearch.sealCursor('kagi', {'query': 'paging'}, '2-0')},
+            {'results': [item[5], item[6], item[7]]},
+            {'results': [item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('kagi', {'query': 'paging'}, '2-0')},
+            {'results': [item[0], item[1], item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('kagi', {'query': 'paging'}, '2-0')},
+            {'results': [item[8]]},
+            {'results': []}
+          ])

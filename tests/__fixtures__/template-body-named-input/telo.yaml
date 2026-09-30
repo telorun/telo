@@ -1,0 +1,48 @@
+# Template body entries whose input contract is a named shape — the module's own
+# and one an imported library exports — type `inputs` as the inline form does.
+kind: Telo.Application
+metadata:
+  name: TemplateBodyNamedInput
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+  Shapes: ./shapes
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Search
+schema:
+  type: object
+  required: [query]
+  additionalProperties: false
+  properties:
+    query: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+schema: { type: object }
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: local
+    inputType: !ref Search
+    steps:
+      - name: typo
+        value: !cel "inputs.quer"
+      - name: declared
+        value: !cel "inputs.query"
+    outputs: !cel "steps.declared.result"
+  - kind: Run.Sequence
+    metadata:
+      name: imported
+    inputType: !ref Shapes.Query
+    steps:
+      - name: typo
+        value: !cel "inputs.trm"
+      - name: declared
+        value: !cel "inputs.term"
+    outputs: !cel "steps.declared.result"
+invoke: !ref local
+inputs: !cel "inputs"

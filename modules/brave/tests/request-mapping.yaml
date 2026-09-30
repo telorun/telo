@@ -1,0 +1,102 @@
+# What the engine sends: `GET /res/v1/web/search` with the query, `count=20`, the
+# offset, the configured safe-search level, the country and language hints in
+# Brave's own codes (left out when Brave has none) and the recency hint as its
+# freshness code. The mock echoes the query parameters it received as the title.
+kind: Telo.Application
+metadata:
+  name: BraveRequestMappingTest
+  version: 1.0.0
+imports:
+  Brave: ..
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref requestMapping
+---
+kind: Http.Request
+metadata: { name: request }
+client: { kind: Http.Client, baseUrl: "http://localhost:18846" }
+---
+kind: Brave.WebSearchEngine
+metadata: { name: strict }
+request: !ref request
+safeSearch: strict
+---
+kind: Brave.WebSearchEngine
+metadata: { name: moderate }
+request: !ref request
+---
+kind: Brave.WebSearchEngine
+metadata: { name: unfiltered }
+request: !ref request
+safeSearch: "off"
+---
+kind: Run.Value
+metadata: { name: echo }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: requestMapping }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeBrave }
+    routes:
+      - request:
+          path: /res/v1/web/search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref echo
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  query: { more_results_available: false }
+                  web:
+                    results:
+                      - title: !cel "json(request.query)"
+                        url: https://echo.example/
+                        description: echo
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18846
+    mounts:
+      - path: /
+        mount: !ref FakeBrave
+targets:
+  - !ref FakeServer
+steps:
+  # Every hint mapped: the language matched ignoring case.
+  - name: allHints
+    invoke: !ref strict
+    inputs: { query: rust async, language: en-GB, country: FI, freshness: week }
+  # The language through its primary subtag; a country Brave does not list is
+  # left out; the default safe-search level.
+  - name: primarySubtag
+    invoke: !ref moderate
+    inputs: { query: rust async, language: de-AT, country: EE, freshness: year }
+  # `no` is Norwegian, which Brave spells `nb`.
+  - name: norwegian
+    invoke: !ref unfiltered
+    inputs: { query: rust async, language: "no", country: "NO" }
+  # A language with no Brave form is left out.
+  - name: unmapped
+    invoke: !ref unfiltered
+    inputs: { query: rust async, language: pt }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "parseJson(steps.allHints.result.results[0].title)"
+        - !cel "parseJson(steps.primarySubtag.result.results[0].title)"
+        - !cel "parseJson(steps.norwegian.result.results[0].title)"
+        - !cel "parseJson(steps.unmapped.result.results[0].title)"
+      expected:
+        - { q: rust async, count: "20", offset: "0", safesearch: strict, country: FI, search_lang: en-gb, freshness: pw }
+        - { q: rust async, count: "20", offset: "0", safesearch: moderate, search_lang: de, freshness: py }
+        - { q: rust async, count: "20", offset: "0", safesearch: "off", country: "NO", search_lang: nb }
+        - { q: rust async, count: "20", offset: "0", safesearch: "off" }

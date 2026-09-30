@@ -1,0 +1,271 @@
+kind: Telo.Library
+metadata:
+  name: Kagi
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: >-
+    Web search through the Kagi Search API, an ad-free paid search service: ranked
+    results with title, URL, snippet and date for a query, with region, recency and
+    safe-search settings, paging with an opaque cursor. Authenticated with an API
+    token on a configurable HTTP client.
+imports:
+  WebSearch: ../web-search
+  Http: ../http-client
+  Run: ../run
+exports:
+  kinds:
+    - WebSearchEngine
+---
+# A templated engine over `POST /api/v1/search`. Kagi serves pages 1–10 of a size
+# it decides; the engine never sends `limit`. A position is `<page>-<skip>`: a
+# call returns items of that page from `skip`, at most `count`. When the slice
+# reaches the end of a non-empty page below 10, the next page is read (never
+# returned) to decide whether a cursor is issued, so a call makes at most two
+# requests.
+kind: Telo.Definition
+metadata:
+  name: WebSearchEngine
+  description: >-
+    Searches the web through the Kagi Search API. Returns at most the requested
+    number of ranked results with title, URL, snippet and date, and a cursor while
+    further pages hold results. Sends the country hint as a region filter and the
+    recency hint as a start date; a rejected token, rate or usage limits and
+    failures are distinct errors.
+capability: Telo.Invocable
+extends: WebSearch.Engine
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The cursor is malformed, was issued by another engine, or was issued for a
+        different query, language, country or freshness.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: >-
+        Kagi rejected the token (400 `general.invalid_token`, 401) or the caller's
+        address (403).
+    ERR_SEARCH_RATE_LIMITED:
+      description: >-
+        Kagi answered 429, which it uses both for the request rate and for exhausted
+        usage.
+    ERR_SEARCH_FAILED:
+      description: >-
+        Kagi was unreachable, answered with any other error, or answered with a body
+        that is not its search response.
+schema:
+  type: object
+  required: [request]
+  additionalProperties: false
+  properties:
+    request:
+      title: Request
+      description: >-
+        The HTTP request Kagi is reached through. Its client's `baseUrl` is
+        `https://kagi.com`, and its credential an `Http.BearerToken` holding the API
+        token.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    safeSearch:
+      title: Safe search
+      description: Kagi's explicit-content filter, sent as `safe_search`.
+      type: boolean
+      default: false
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: search
+    inputType: !ref WebSearch.Query
+    outputType: !ref WebSearch.Results
+    steps:
+      - name: cursor
+        value: !cel "WebSearch.openCursor('kagi', inputs, '^([1-9]|10)-(0|[1-9][0-9]{0,3})$', '1-0')"
+      - name: refuse
+        if: !cel "!steps.cursor.result.valid"
+        then:
+          - name: invalidCursor
+            throw:
+              code: ERR_INVALID_INPUT
+              message: !cel "steps.cursor.result.message"
+      - name: position
+        value:
+          page: !cel "int(steps.cursor.result.position.split('-')[0])"
+          skip: !cel "int(steps.cursor.result.position.split('-')[1])"
+      # Kagi takes any ISO 3166-1 alpha-2 region and has no language parameter.
+      # Recency is a start date; the day before the window's start keeps the whole
+      # window inside the filter whether Kagi reads `after` inclusively or not.
+      - name: body
+        value: !cel >-
+          cel.bind(filters, compact({
+              'region': has(inputs.country) ? inputs.country : null,
+              'after': has(inputs.freshness)
+                ? dyn(dateIn(WebSearch.freshnessStart(inputs.freshness, now()) - duration('24h')))
+                : null
+            }),
+            size(filters) > 0
+              ? {'query': inputs.query, 'safe_search': self.safeSearch, 'filters': filters}
+              : {'query': inputs.query, 'safe_search': self.safeSearch})
+      - name: current
+        invoke: !ref page
+        inputs:
+          body: !cel "merge(steps.body.result, {'page': steps.position.result.page})"
+      - name: slice
+        value: !cel >-
+          WebSearch.windowSlice(
+            steps.current.result.results,
+            steps.position.result.skip,
+            has(inputs.count) ? inputs.count : size(steps.current.result.results) + 1)
+      # Page 10 is the last Kagi serves.
+      - name: atPageEnd
+        if: !cel >-
+          steps.slice.result.next == null &&
+          size(steps.current.result.results) > 0 &&
+          steps.position.result.page < 10
+        then:
+          - name: following
+            invoke: !ref page
+            inputs:
+              body: !cel "merge(steps.body.result, {'page': steps.position.result.page + 1})"
+      - name: next
+        value: !cel >-
+          steps.slice.result.next != null
+            ? string(steps.position.result.page) + '-' + string(steps.slice.result.next)
+            : 'following' in steps && size(steps.following.result.results) > 0
+              ? string(steps.position.result.page + 1) + '-0'
+              : ''
+      - name: shaped
+        value: !cel >-
+          steps.next.result == ''
+            ? {'results': steps.slice.result.items}
+            : {'results': steps.slice.result.items, 'nextCursor': WebSearch.sealCursor('kagi', inputs, steps.next.result)}
+    outputs: !cel "steps.shaped.result"
+  # One page of results, mapped onto the contract's result shape; every failure
+  # is raised here as a contract code.
+  - kind: Run.Sequence
+    metadata:
+      name: page
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [body]
+        additionalProperties: false
+        properties:
+          body: { type: object }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [results]
+        additionalProperties: false
+        properties:
+          results: { type: array }
+    steps:
+      - name: fetch
+        try:
+          - name: http
+            invoke: !cel "self.request"
+            inputs:
+              url: /api/v1/search
+              method: POST
+              body: !cel "inputs.body"
+              responseType: json
+        catch:
+          # A client declaring `throwOnHttpError` raises the status instead of
+          # returning it; it is read from the error and mapped like any other.
+          - name: unreachable
+            if: !cel "error.code != 'ERR_HTTP_STATUS'"
+            then:
+              - name: transportFailed
+                throw:
+                  code: ERR_SEARCH_FAILED
+                  message: !interpolate "The request to Kagi failed: ${{ error.message }}"
+          - name: raised
+            value:
+              status: !cel "int(error.data.status)"
+              body: !cel "'body' in error.data ? error.data.body : null"
+      - name: response
+        value: !cel >-
+          'http' in steps
+            ? {'status': steps.http.result.status, 'body': steps.http.result.body}
+            : {'status': steps.raised.result.status, 'body': steps.raised.result.body}
+      # Kagi's error body is `{errors: [{code, message}]}`. A client raising on
+      # the status hands it over as text, which is searched rather than parsed:
+      # it may be cut short.
+      - name: failure
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            type(body) == type({}) && 'errors' in body && type(body.errors) == type([]) &&
+            size(body.errors) > 0 && type(body.errors[0]) == type({})
+              ? {
+                  'code': 'code' in body.errors[0] ? string(body.errors[0].code) : '',
+                  'message': 'message' in body.errors[0] ? string(body.errors[0].message) : ''
+                }
+              : type(body) == type('')
+                ? {
+                    'code': cel.bind(g, regexGroups(body, '"code"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : ''),
+                    'message': cel.bind(g, regexGroups(body, '"message"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : '')
+                  }
+                : {'code': '', 'message': ''})
+      - name: outcome
+        value: !cel >-
+          steps.response.result.status == 200 ? 'ok' :
+          steps.response.result.status in [401, 403] ||
+            (steps.response.result.status == 400 && steps.failure.result.code == 'general.invalid_token') ? 'denied' :
+          steps.response.result.status == 429 ? 'limited' : 'failed'
+      - name: status
+        switch: !cel "steps.outcome.result"
+        cases:
+          ok: []
+          denied:
+            - name: tokenRejected
+              throw:
+                code: ERR_SEARCH_ACCESS_DENIED
+                message: !cel >-
+                  'Kagi refused access (HTTP ' + string(steps.response.result.status) + ')' +
+                  (steps.failure.result.message != '' ? ': ' + steps.failure.result.message : '')
+          limited:
+            - name: limited
+              throw:
+                code: ERR_SEARCH_RATE_LIMITED
+                message: !cel >-
+                  'Kagi answered 429: the request rate or the account usage is over its limit' +
+                  (steps.failure.result.message != '' ? ': ' + steps.failure.result.message : '')
+        default:
+          - name: failed
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: !cel >-
+                'Kagi answered HTTP ' + string(steps.response.result.status) +
+                (steps.failure.result.code != ''
+                  ? ': ' + steps.failure.result.code + ' ' + steps.failure.result.message : '')
+      - name: readable
+        if: !cel >-
+          !(type(steps.response.result.body) == type({}) && 'data' in steps.response.result.body &&
+            type(steps.response.result.body.data) == type({}))
+        then:
+          - name: unreadable
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: Kagi answered 200 with a body that is not its search response.
+      # A result without a string URL is dropped before positions are counted.
+      # A `time` the shared reader cannot read as a date is left out rather than
+      # failing the call.
+      - name: mapped
+        value: !cel >-
+          cel.bind(data, steps.response.result.body.data,
+            ('search' in data && type(data.search) == type([]) ? data.search : [])
+              .filter(r, type(r) == type({}) && 'url' in r && type(r.url) == type(''))
+              .map(r, cel.bind(at,
+                WebSearch.readPublishedAt('time' in r && type(r.time) == type('') ? r.time : null),
+                cel.bind(base, {
+                    'title': 'title' in r && type(r.title) == type('') ? r.title : '',
+                    'url': r.url,
+                    'snippet': 'snippet' in r && type(r.snippet) == type('') ? r.snippet : ''
+                  },
+                  at == null ? base : merge(base, {'publishedAt': at})))))
+    outputs:
+      results: !cel "steps.mapped.result"
+invoke: !ref search
+inputs: !cel "inputs"

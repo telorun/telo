@@ -11,6 +11,7 @@ imports:
   Assert: ../modules/assert
 targets:
   - !ref reportsEachGap
+  - !ref typesNamedBodyInputs
 ---
 kind: Assert.Manifest
 metadata:
@@ -24,3 +25,16 @@ expect:
       message: "'result.totl' is not defined (available: greeting, total, subtotalRan)"
     - code: CEL_TYPE_ERROR
       message: "no such overload: double + int"
+---
+# A template body entry whose `inputType` names a shape — the module's own or an
+# imported library's — types `inputs` exactly as an inline contract does.
+kind: Assert.Manifest
+metadata:
+  name: typesNamedBodyInputs
+source: ./__fixtures__/template-body-named-input/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.quer' is not defined (available: query)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.trm' is not defined (available: term)"

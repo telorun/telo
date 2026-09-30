@@ -1,0 +1,47 @@
+# For an engine that returns one ranked list per request: how many to request
+# (the slice plus one probe, capped at the engine's maximum), and how to cut the
+# slice and learn whether anything follows it.
+kind: Telo.Application
+metadata:
+  name: WebSearchWindowTest
+  version: 1.0.0
+imports:
+  WebSearch: ..
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref window
+---
+kind: Run.Sequence
+metadata:
+  name: window
+steps:
+  - name: requested
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "WebSearch.windowRequest(0, 5, 20)"
+        - !cel "WebSearch.windowRequest(10, 9, 20)"
+        - !cel "WebSearch.windowRequest(10, 10, 20)"
+        - !cel "WebSearch.windowRequest(15, 10, 20)"
+      expected: [6, 20, 20, 20]
+  - name: sliced
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        # Something follows the slice.
+        - !cel "WebSearch.windowSlice(['a', 'b', 'c', 'd', 'e'], 1, 2)"
+        # The slice reaches the end exactly, and runs past it.
+        - !cel "WebSearch.windowSlice(['a', 'b', 'c', 'd', 'e'], 3, 2)"
+        - !cel "WebSearch.windowSlice(['a', 'b', 'c', 'd', 'e'], 3, 10)"
+        # An offset at and past the end.
+        - !cel "WebSearch.windowSlice(['a', 'b', 'c'], 3, 2)"
+        - !cel "WebSearch.windowSlice(['a', 'b', 'c'], 7, 2)"
+        - !cel "WebSearch.windowSlice([], 0, 1)"
+      expected:
+        - { items: [b, c], next: 3 }
+        - { items: [d, e], next: null }
+        - { items: [d, e], next: null }
+        - { items: [], next: null }
+        - { items: [], next: null }
+        - { items: [], next: null }

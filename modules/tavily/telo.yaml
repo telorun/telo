@@ -1,0 +1,412 @@
+kind: Telo.Library
+metadata:
+  name: Tavily
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data, Transport]
+  description: >-
+    Web search through the Tavily Search API, built for AI agents and retrieval:
+    ranked results with title, URL, content snippet and publication date for a
+    query, with language, country, recency and safe-search settings. Up to 20
+    results per query, sliced with an opaque cursor. Authenticated with an API key
+    on a configurable HTTP client.
+imports:
+  WebSearch: ../web-search
+  Http: ../http-client
+  Run: ../run
+exports:
+  kinds:
+    - WebSearchEngine
+---
+# A templated engine over `POST /search`. Tavily returns one ranked list of at
+# most 20 results and cannot page, so the 20 are the whole reachable window: a
+# position is an offset into it, each call requests the slice plus one probe
+# result (`windowRequest`) and returns the slice (`windowSlice`).
+kind: Telo.Definition
+metadata:
+  name: WebSearchEngine
+  description: >-
+    Searches the web through the Tavily Search API. Returns at most the requested
+    number of ranked results with title, URL, content snippet and publication date,
+    reaching the first 20, and a cursor while more of them remain. Maps language,
+    country and recency hints onto Tavily's parameters; a rejected key, rate limits,
+    exhausted plan limits and failures are distinct errors.
+capability: Telo.Invocable
+extends: WebSearch.Engine
+throws:
+  codes:
+    ERR_INVALID_INPUT:
+      description: >-
+        The cursor is malformed, was issued by another engine, or was issued for a
+        different query, language, country or freshness.
+    ERR_SEARCH_ACCESS_DENIED:
+      description: Tavily answered 401 — the API key is missing or invalid.
+    ERR_SEARCH_RATE_LIMITED:
+      description: Tavily answered 429.
+    ERR_SEARCH_QUOTA_EXCEEDED:
+      description: Tavily answered 432 or 433 — the plan's or the pay-as-you-go limit is reached.
+    ERR_SEARCH_FAILED:
+      description: >-
+        Tavily was unreachable, answered with any other error, or answered with a
+        body that is not its search response.
+schema:
+  type: object
+  required: [request]
+  additionalProperties: false
+  properties:
+    request:
+      title: Request
+      description: >-
+        The HTTP request Tavily is reached through. Its client's `baseUrl` is
+        `https://api.tavily.com`, and its credential an `Http.BearerToken` holding
+        the API key.
+      x-telo-ref:
+        kind: Http.Request
+        use: call
+    safeSearch:
+      title: Safe search
+      description: Tavily's explicit-content filter, sent as `safe_search`.
+      type: boolean
+      default: false
+resources:
+  - kind: Run.Sequence
+    metadata:
+      name: search
+    inputType: !ref WebSearch.Query
+    outputType: !ref WebSearch.Results
+    steps:
+      # ISO 3166-1 alpha-2 onto the country names Tavily accepts. `congo` is left
+      # out: Tavily has one name for two countries.
+      - name: countries
+        value:
+          "AD": "andorra"
+          "AE": "united arab emirates"
+          "AF": "afghanistan"
+          "AL": "albania"
+          "AM": "armenia"
+          "AO": "angola"
+          "AR": "argentina"
+          "AT": "austria"
+          "AU": "australia"
+          "AZ": "azerbaijan"
+          "BA": "bosnia and herzegovina"
+          "BB": "barbados"
+          "BD": "bangladesh"
+          "BE": "belgium"
+          "BF": "burkina faso"
+          "BG": "bulgaria"
+          "BH": "bahrain"
+          "BI": "burundi"
+          "BJ": "benin"
+          "BN": "brunei"
+          "BO": "bolivia"
+          "BR": "brazil"
+          "BS": "bahamas"
+          "BT": "bhutan"
+          "BW": "botswana"
+          "BY": "belarus"
+          "BZ": "belize"
+          "CA": "canada"
+          "CF": "central african republic"
+          "CH": "switzerland"
+          "CL": "chile"
+          "CM": "cameroon"
+          "CN": "china"
+          "CO": "colombia"
+          "CR": "costa rica"
+          "CU": "cuba"
+          "CV": "cape verde"
+          "CY": "cyprus"
+          "CZ": "czech republic"
+          "DE": "germany"
+          "DJ": "djibouti"
+          "DK": "denmark"
+          "DO": "dominican republic"
+          "DZ": "algeria"
+          "EC": "ecuador"
+          "EE": "estonia"
+          "EG": "egypt"
+          "ER": "eritrea"
+          "ES": "spain"
+          "ET": "ethiopia"
+          "FI": "finland"
+          "FJ": "fiji"
+          "FR": "france"
+          "GA": "gabon"
+          "GB": "united kingdom"
+          "GE": "georgia"
+          "GH": "ghana"
+          "GM": "gambia"
+          "GN": "guinea"
+          "GQ": "equatorial guinea"
+          "GR": "greece"
+          "GT": "guatemala"
+          "HN": "honduras"
+          "HR": "croatia"
+          "HT": "haiti"
+          "HU": "hungary"
+          "ID": "indonesia"
+          "IE": "ireland"
+          "IL": "israel"
+          "IN": "india"
+          "IQ": "iraq"
+          "IR": "iran"
+          "IS": "iceland"
+          "IT": "italy"
+          "JM": "jamaica"
+          "JO": "jordan"
+          "JP": "japan"
+          "KE": "kenya"
+          "KG": "kyrgyzstan"
+          "KH": "cambodia"
+          "KM": "comoros"
+          "KP": "north korea"
+          "KR": "south korea"
+          "KW": "kuwait"
+          "KZ": "kazakhstan"
+          "LB": "lebanon"
+          "LI": "liechtenstein"
+          "LK": "sri lanka"
+          "LR": "liberia"
+          "LS": "lesotho"
+          "LT": "lithuania"
+          "LU": "luxembourg"
+          "LV": "latvia"
+          "LY": "libya"
+          "MA": "morocco"
+          "MC": "monaco"
+          "MD": "moldova"
+          "ME": "montenegro"
+          "MG": "madagascar"
+          "MK": "north macedonia"
+          "ML": "mali"
+          "MM": "myanmar"
+          "MN": "mongolia"
+          "MR": "mauritania"
+          "MT": "malta"
+          "MU": "mauritius"
+          "MV": "maldives"
+          "MW": "malawi"
+          "MX": "mexico"
+          "MY": "malaysia"
+          "MZ": "mozambique"
+          "NA": "namibia"
+          "NE": "niger"
+          "NG": "nigeria"
+          "NI": "nicaragua"
+          "NL": "netherlands"
+          "NO": "norway"
+          "NP": "nepal"
+          "NZ": "new zealand"
+          "OM": "oman"
+          "PA": "panama"
+          "PE": "peru"
+          "PG": "papua new guinea"
+          "PH": "philippines"
+          "PK": "pakistan"
+          "PL": "poland"
+          "PT": "portugal"
+          "PY": "paraguay"
+          "QA": "qatar"
+          "RO": "romania"
+          "RS": "serbia"
+          "RU": "russia"
+          "RW": "rwanda"
+          "SA": "saudi arabia"
+          "SD": "sudan"
+          "SE": "sweden"
+          "SG": "singapore"
+          "SI": "slovenia"
+          "SK": "slovakia"
+          "SN": "senegal"
+          "SO": "somalia"
+          "SS": "south sudan"
+          "SV": "el salvador"
+          "SY": "syria"
+          "TD": "chad"
+          "TG": "togo"
+          "TH": "thailand"
+          "TJ": "tajikistan"
+          "TM": "turkmenistan"
+          "TN": "tunisia"
+          "TR": "turkey"
+          "TT": "trinidad and tobago"
+          "TW": "taiwan"
+          "TZ": "tanzania"
+          "UA": "ukraine"
+          "UG": "uganda"
+          "US": "united states"
+          "UY": "uruguay"
+          "UZ": "uzbekistan"
+          "VE": "venezuela"
+          "VN": "vietnam"
+          "YE": "yemen"
+          "ZA": "south africa"
+          "ZM": "zambia"
+          "ZW": "zimbabwe"
+      - name: cursor
+        value: !cel "WebSearch.openCursor('tavily', inputs, '^(0|[1-9]|1[0-9])$', '0')"
+      - name: refuse
+        if: !cel "!steps.cursor.result.valid"
+        then:
+          - name: invalidCursor
+            throw:
+              code: ERR_INVALID_INPUT
+              message: !cel "steps.cursor.result.message"
+      # Without `count`, everything reachable from the offset.
+      - name: window
+        value:
+          offset: !cel "int(steps.cursor.result.position)"
+          count: !cel "has(inputs.count) ? inputs.count : 20"
+      # The language is its BCP 47 primary subtag when that is a two-letter
+      # ISO 639-1 code, else left out.
+      - name: current
+        invoke: !ref page
+        inputs:
+          body: !cel >-
+            compact({
+              'query': inputs.query,
+              'topic': 'general',
+              'search_depth': 'basic',
+              'include_published_date': true,
+              'include_answer': false,
+              'include_raw_content': false,
+              'max_results': WebSearch.windowRequest(steps.window.result.offset, steps.window.result.count, 20),
+              'safe_search': self.safeSearch,
+              'language': has(inputs.language) && lower(inputs.language).split('-')[0].matches('^[a-z]{2}$')
+                ? dyn(lower(inputs.language).split('-')[0]) : null,
+              'country': WebSearch.resolveHint(has(inputs.country) ? inputs.country : null, steps.countries.result),
+              'time_range': has(inputs.freshness) ? inputs.freshness : null
+            })
+      - name: slice
+        value: !cel >-
+          WebSearch.windowSlice(steps.current.result.results, steps.window.result.offset, steps.window.result.count)
+      - name: shaped
+        value: !cel >-
+          steps.slice.result.next == null
+            ? {'results': steps.slice.result.items}
+            : {'results': steps.slice.result.items, 'nextCursor': WebSearch.sealCursor('tavily', inputs, string(steps.slice.result.next))}
+    outputs: !cel "steps.shaped.result"
+  # One request, mapped onto the contract's result shape; every failure is raised
+  # here as a contract code.
+  - kind: Run.Sequence
+    metadata:
+      name: page
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [body]
+        additionalProperties: false
+        properties:
+          body: { type: object }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [results]
+        additionalProperties: false
+        properties:
+          results: { type: array }
+    steps:
+      - name: fetch
+        try:
+          - name: http
+            invoke: !cel "self.request"
+            inputs:
+              url: /search
+              method: POST
+              body: !cel "inputs.body"
+              responseType: json
+        catch:
+          # A client declaring `throwOnHttpError` raises the status instead of
+          # returning it; it is read from the error and mapped like any other.
+          - name: unreachable
+            if: !cel "error.code != 'ERR_HTTP_STATUS'"
+            then:
+              - name: transportFailed
+                throw:
+                  code: ERR_SEARCH_FAILED
+                  message: !interpolate "The request to Tavily failed: ${{ error.message }}"
+          - name: raised
+            value:
+              status: !cel "int(error.data.status)"
+              body: !cel "'body' in error.data ? error.data.body : null"
+      - name: response
+        value: !cel >-
+          'http' in steps
+            ? {'status': steps.http.result.status, 'body': steps.http.result.body}
+            : {'status': steps.raised.result.status, 'body': steps.raised.result.body}
+      # Tavily's error body is `{detail: {error}}`, or a validation failure's
+      # `{detail: [{msg}]}`. A client raising on the status hands it over as text,
+      # which is searched rather than parsed: it may be cut short.
+      - name: detail
+        value: !cel >-
+          cel.bind(body, steps.response.result.body,
+            type(body) == type({}) && 'detail' in body && type(body.detail) == type({}) && 'error' in body.detail
+              ? string(body.detail.error)
+              : type(body) == type({}) && 'detail' in body && type(body.detail) == type([])
+                ? body.detail.filter(d, type(d) == type({}) && 'msg' in d).map(d, string(d.msg)).join('; ')
+                : type(body) == type('')
+                  ? cel.bind(g, regexGroups(body, '"(?:error|msg)"\\s*:\\s*"([^"]*)"'), size(g) > 0 ? g[0] : '')
+                  : '')
+      - name: status
+        switch: !cel "string(steps.response.result.status)"
+        cases:
+          "200": []
+          "401":
+            - name: keyRejected
+              throw:
+                code: ERR_SEARCH_ACCESS_DENIED
+                message: !cel "'Tavily rejected the API key' + (steps.detail.result != '' ? ': ' + steps.detail.result : '')"
+          "429":
+            - name: limited
+              throw:
+                code: ERR_SEARCH_RATE_LIMITED
+                message: !cel "'Tavily asks the caller to slow down' + (steps.detail.result != '' ? ': ' + steps.detail.result : '')"
+          "432":
+            - name: planLimit
+              throw:
+                code: ERR_SEARCH_QUOTA_EXCEEDED
+                message: !cel "'The Tavily plan limit is reached' + (steps.detail.result != '' ? ': ' + steps.detail.result : '')"
+          "433":
+            - name: payAsYouGoLimit
+              throw:
+                code: ERR_SEARCH_QUOTA_EXCEEDED
+                message: !cel "'The Tavily pay-as-you-go limit is reached' + (steps.detail.result != '' ? ': ' + steps.detail.result : '')"
+        default:
+          - name: failed
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: !cel >-
+                'Tavily answered HTTP ' + string(steps.response.result.status) +
+                (steps.detail.result != '' ? ': ' + steps.detail.result : '')
+      - name: readable
+        if: !cel >-
+          !(type(steps.response.result.body) == type({}) && 'results' in steps.response.result.body &&
+            type(steps.response.result.body.results) == type([]))
+        then:
+          - name: unreadable
+            throw:
+              code: ERR_SEARCH_FAILED
+              message: Tavily answered 200 with a body that is not its search response.
+      # A result without a string URL is dropped before positions are counted.
+      # A `published_date` the shared reader cannot read as a date is left out
+      # rather than failing the call.
+      - name: mapped
+        value: !cel >-
+          steps.response.result.body.results
+            .filter(r, type(r) == type({}) && 'url' in r && type(r.url) == type(''))
+            .map(r, cel.bind(at,
+              WebSearch.readPublishedAt('published_date' in r && type(r.published_date) == type('') ? r.published_date : null),
+              cel.bind(base, {
+                  'title': 'title' in r && type(r.title) == type('') ? r.title : '',
+                  'url': r.url,
+                  'snippet': 'content' in r && type(r.content) == type('') ? r.content : ''
+                },
+                at == null ? base : merge(base, {'publishedAt': at}))))
+    outputs:
+      results: !cel "steps.mapped.result"
+invoke: !ref search
+inputs: !cel "inputs"

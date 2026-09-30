@@ -1,0 +1,117 @@
+# Paging over SearXNG's numbered pages. A call returns items from the one page
+# its cursor names, from where the previous call stopped, at most `count`. A
+# cursor is issued while that page has items left, or — when the slice ends the
+# page — when the next page holds anything. The cursor stays valid under any
+# `count`; an empty page, and page 9999, end the results.
+kind: Telo.Application
+metadata:
+  name: SearxngPagingTest
+  version: 1.0.0
+imports:
+  SearXNG: ..
+  WebSearch: ../../web-search
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref paging
+---
+kind: SearXNG.WebSearchEngine
+metadata: { name: engine }
+request:
+  kind: Http.Request
+  client: { kind: Http.Client, baseUrl: "http://localhost:18842" }
+---
+# Page 10000 has items so that reading it would show: no position names it, so
+# the engine must never ask for it.
+kind: Run.Value
+metadata: { name: canned }
+value:
+  "1": [a1, a2, a3, a4, a5]
+  "2": [b1, b2, b3]
+  "9999": [z1]
+  "10000": [y1]
+---
+kind: Run.Sequence
+metadata: { name: paging }
+with:
+  - kind: Server.Api
+    metadata: { name: FakeSearxng }
+    routes:
+      - request:
+          path: /search
+          method: GET
+          schema:
+            query: { type: object, additionalProperties: true }
+        handler: !ref canned
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: !cel >-
+                  {'results': request.query.q == 'paging' && request.query.pageno in result
+                    ? result[request.query.pageno].map(t, {'title': t, 'url': 'https://example.com/' + t, 'content': t})
+                    : []}
+  - kind: Server.Server
+    metadata: { name: FakeServer }
+    port: 18842
+    mounts:
+      - path: /
+        mount: !ref FakeSearxng
+targets:
+  - !ref FakeServer
+steps:
+  - name: first
+    invoke: !ref engine
+    inputs: { query: paging, count: 2 }
+  - name: second
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.first.result.nextCursor" }
+  # The slice ends page 1, and page 2 holds items.
+  - name: third
+    invoke: !ref engine
+    inputs: { query: paging, count: 2, cursor: !cel "steps.second.result.nextCursor" }
+  # The slice ends page 2, and page 3 is empty.
+  - name: fourth
+    invoke: !ref engine
+    inputs: { query: paging, count: 5, cursor: !cel "steps.third.result.nextCursor" }
+  # The first cursor under a larger count.
+  - name: anyCount
+    invoke: !ref engine
+    inputs: { query: paging, count: 10, cursor: !cel "steps.first.result.nextCursor" }
+  # No count: the rest of the page.
+  - name: wholePage
+    invoke: !ref engine
+    inputs: { query: paging }
+  - name: lastPage
+    invoke: !ref engine
+    inputs: { query: paging, cursor: !cel "WebSearch.sealCursor('searxng', {'query': 'paging'}, '9999-0')" }
+  - name: nothing
+    invoke: !ref engine
+    inputs: { query: nothing, count: 3 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.first.result"
+        - !cel "steps.second.result"
+        - !cel "steps.third.result"
+        - !cel "steps.fourth.result"
+        - !cel "steps.anyCount.result"
+        - !cel "steps.wholePage.result"
+        - !cel "steps.lastPage.result"
+        - !cel "steps.nothing.result"
+      expected: !cel >-
+        cel.bind(item, ['a1', 'a2', 'a3', 'a4', 'a5', 'b1', 'b2', 'b3', 'z1'].map(t, {'title': t, 'url': 'https://example.com/' + t, 'snippet': t}),
+          [
+            {'results': [item[0], item[1]], 'nextCursor': WebSearch.sealCursor('searxng', {'query': 'paging'}, '1-2')},
+            {'results': [item[2], item[3]], 'nextCursor': WebSearch.sealCursor('searxng', {'query': 'paging'}, '1-4')},
+            {'results': [item[4]], 'nextCursor': WebSearch.sealCursor('searxng', {'query': 'paging'}, '2-0')},
+            {'results': [item[5], item[6], item[7]]},
+            {'results': [item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('searxng', {'query': 'paging'}, '2-0')},
+            {'results': [item[0], item[1], item[2], item[3], item[4]], 'nextCursor': WebSearch.sealCursor('searxng', {'query': 'paging'}, '2-0')},
+            {'results': [item[8]]},
+            {'results': []}
+          ])

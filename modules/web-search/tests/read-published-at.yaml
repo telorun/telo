@@ -1,0 +1,85 @@
+# A reported date is read into an instant in three forms — RFC 3339 / ISO 8601
+# date-time (no offset means UTC), bare date (midnight UTC) and HTTP date — and
+# is null for anything else, an impossible calendar date (never rolled over into
+# the next month) and an instant outside the representable range.
+kind: Telo.Application
+metadata:
+  name: WebSearchReadPublishedAtTest
+  version: 1.0.0
+imports:
+  WebSearch: ..
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref readPublishedAt
+---
+kind: Run.Sequence
+metadata:
+  name: readPublishedAt
+steps:
+  - name: read
+    invoke: { kind: Assert.Equals }
+    inputs:
+      # Instants compared as their RFC 3339 text.
+      actual: !cel >-
+        [
+          '2026-01-02T03:04:05Z',
+          '2026-01-02T03:04:05',
+          '2026-01-02T03:04:05.123456789Z',
+          '2026-01-02t03:04:05z',
+          '2026-01-02T05:04:05+02:00',
+          '2026-01-01T22:04:05-05:00',
+          '2026-01-02',
+          'Tue, 11 Mar 2025 17:00:00 GMT',
+          '2024-02-29',
+          '2000-02-29T00:00:00Z',
+          '2023-02-29',
+          '2100-02-29',
+          '2026-02-30T00:00:00Z',
+          '2026-04-31',
+          '2026-13-01',
+          '2026-01-02T24:00:00Z',
+          '2026-01-02T03:60:00Z',
+          '2026-01-02T03:04:60Z',
+          '2026-01-02T03:04:05+24:00',
+          '0000-06-01',
+          '0001-01-01T00:00:00Z',
+          '0001-01-01T00:30:00+01:00',
+          '9999-12-31T23:59:59Z',
+          '9999-12-31T23:00:00-01:00',
+          '2026-01-02 03:04:05',
+          'Tue, 11 Foo 2025 17:00:00 GMT',
+          'yesterday',
+          ''
+        ].map(t, cel.bind(v, WebSearch.readPublishedAt(t), v == null ? null : dyn(string(v))))
+        + [WebSearch.readPublishedAt(null)]
+      expected:
+        - "2026-01-02T03:04:05.000Z"
+        - "2026-01-02T03:04:05.000Z"
+        - "2026-01-02T03:04:05.123Z"
+        - "2026-01-02T03:04:05.000Z"
+        - "2026-01-02T03:04:05.000Z"
+        - "2026-01-02T03:04:05.000Z"
+        - "2026-01-02T00:00:00.000Z"
+        - "2025-03-11T17:00:00.000Z"
+        - "2024-02-29T00:00:00.000Z"
+        - "2000-02-29T00:00:00.000Z"
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null
+        - "0001-01-01T00:00:00.000Z"
+        - null
+        - "9999-12-31T23:59:59.000Z"
+        - null
+        - null
+        - null
+        - null
+        - null
+        - null

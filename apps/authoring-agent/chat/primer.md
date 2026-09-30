@@ -370,6 +370,37 @@ with `pageSegmentation: autoOsd`. A PDF is rasterized first (`PDF.Rasterizer`),
 one page per call. Bound a call with the step's `timeout:`; the recognizer's
 own `maxRecognitionTime` only protects its workers.
 
+Searching the web is `web-search`: type a slot that should accept any engine
+against `WebSearch.Engine` (`oci://ghcr.io/telorun/web-search`), and declare an
+engine only where it is chosen — `SearXNG.WebSearchEngine` (a self-hosted
+instance, no key; its `settings.yml` must list `json` in `search.formats`),
+`Brave.WebSearchEngine`, `Kagi.WebSearchEngine`, `Tavily.WebSearchEngine` or
+`Exa.WebSearchEngine`, each its own module (`oci://ghcr.io/telorun/<name>`).
+Every engine takes a required `request: { kind: Http.Request, client: … }` whose
+`Http.Client` carries the `baseUrl` and the key: Brave
+`https://api.search.brave.com` with `Http.ApiKeyHeader` header
+`X-Subscription-Token`, Kagi `https://kagi.com` with `Http.BearerToken`, Tavily
+`https://api.tavily.com` with `Http.BearerToken`, Exa `https://api.exa.ai` with
+`Http.ApiKeyHeader` header `x-api-key`. `safeSearch` is engine configuration in
+the engine's own vocabulary (`off|moderate|strict` for SearXNG and Brave, a
+boolean for the others), never an input. A call takes `query` plus optional
+`count`, `cursor`, `language` (BCP 47), `country` (ISO alpha-2, uppercase) and
+`freshness` (`day|week|month|year`) and returns `results[]` of
+`{ title, url, snippet, publishedAt? }` and `nextCursor?` — `url` exactly as the
+engine reports it (it may be an IRI; encode it where an ASCII URI is needed) and
+`publishedAt` the date the engine reports, when it reads as one. The hints are never
+refused: an engine maps each to its own form or leaves it out, so they do not
+guarantee anything. A slice may hold fewer than `count` results, or none, while
+`nextCursor` is present — to read further, pass `nextCursor` back as `cursor`
+with the same inputs and loop until `nextCursor` is absent; a cursor from
+another engine or other inputs is `ERR_INVALID_INPUT`. Failures are the
+contract's five codes (`ERR_INVALID_INPUT`, `ERR_SEARCH_ACCESS_DENIED`,
+`ERR_SEARCH_RATE_LIMITED`, `ERR_SEARCH_QUOTA_EXCEEDED`, `ERR_SEARCH_FAILED`).
+Engines are plain Telo — a templated kind over `Http.Request` with no
+controller — and a new one is written the same way, from the seven `WebSearch.*`
+functions for cursors, hints, recency windows, slicing and reading reported
+dates.
+
 Outbound auth is a credential on an `Http.Client`, never an `apiKey` field you
 invent: `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover the
 static cases and inherit the 401 re-acquire-and-retry.

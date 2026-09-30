@@ -128,6 +128,57 @@ run: !ref body
     ]);
   });
 
+  it("types `inputs` of a template body entry whose contract IS a named shape, local or imported", async () => {
+    const files = {
+      "/remote/telo.yaml": `kind: Telo.Library
+metadata: { name: Remote, version: 0.1.0 }
+exports:
+  resources: [Query]
+---
+kind: Telo.JsonSchema
+metadata: { name: Query }
+schema:
+  type: object
+  additionalProperties: false
+  properties: { term: { type: string } }
+`,
+      [URL_]: KINDS.replace(
+        "metadata: { name: Shapes, version: 0.1.0 }",
+        "metadata: { name: Shapes, version: 0.1.0 }\nimports: { Remote: ../remote/telo.yaml }",
+      ) +
+        `---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Runnable
+schema: { type: object }
+resources:
+  - kind: Self.Flow
+    metadata: { name: local }
+    inputType: !ref Local
+    steps:
+      - name: typo
+        value: !cel "inputs.b"
+      - name: declared
+        value: !cel "inputs.a"
+  - kind: Self.Flow
+    metadata: { name: imported }
+    inputType: !ref Remote.Query
+    steps:
+      - name: typo
+        value: !cel "inputs.trm"
+      - name: declared
+        value: !cel "inputs.term"
+run: !ref local
+`,
+    };
+    const graph = await new Loader([source(files)]).loadGraph(URL_, { desugarImports: true });
+    const diagnostics = new StaticAnalyzer().analyze(flattenForAnalyzer(graph));
+    expect(unknownFields(diagnostics)).toEqual([
+      expect.stringContaining("'inputs.b' is not defined (available: a)"),
+      expect.stringContaining("'inputs.trm' is not defined (available: term)"),
+    ]);
+  });
+
   it("types `steps.<name>.result` when the invoked output contract nests one", async () => {
     const { diagnostics } = await analyze(`---
 kind: Self.Flow
