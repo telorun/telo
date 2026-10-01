@@ -157,7 +157,6 @@ import {
   celTypeSatisfiesJsonSchema,
   checkSchemaCompatibility,
   unionBranches,
-  inlineNamedShapes,
   navigateSchemaToExprPath,
   resolveRefIn,
   fittingUnionBranches,
@@ -661,10 +660,11 @@ export interface CelValueSlot {
  *  "no matching overload" used to survive next to the diagnostic that explained
  *  it. What this walk supplies is the half the engine cannot know: the declared
  *  type of the slot the value flows into. The comparison happens once both are
- *  in hand (`reportCelReturnMismatches`). A reference is followed on the way
- *  down — a document-local one against the document the walk is in, a named
- *  shape through `external`, which makes that shape the document — and each
- *  slot's schema is returned as the shape it names (`referenced-shape.ts`). */
+ *  in hand (`judgeSlot`, the join after the CEL walk). A reference is followed
+ *  on the way down — a document-local one against the root of the document the
+ *  walk is in, a named shape through `external`, which makes that shape the
+ *  document — and each slot's schema is returned as the shape it names, read
+ *  against that same root (`referenced-shape.ts`). */
 function collectCelValueSlots(
   data: unknown,
   schema: Record<string, any>,
@@ -673,15 +673,19 @@ function collectCelValueSlots(
 ): CelValueSlot[] {
   return declaredCelSlots(data, schema, path, schema, external).map((slot) => ({
     path: slot.path,
-    schema: shapeNamedBy(slot.schema, [slot.root], external),
+    schema: namedSlotShape(slot, external),
   }));
 }
 
 /** A pure-CEL leaf with the schema node declared for it, as written, and the
- *  root of the document that node sits in. */
+ *  root of the document that node sits in. With no root the schema is already
+ *  the shape it names. */
 interface DeclaredCelSlot extends CelValueSlot {
-  readonly root: Record<string, any>;
+  readonly root?: Record<string, any>;
 }
+
+const namedSlotShape = (slot: DeclaredCelSlot, external: ExternalSchemaResolver) =>
+  slot.root ? shapeNamedBy(slot.schema, slot.root, external) : slot.schema;
 
 function declaredCelSlots(
   data: unknown,
@@ -723,10 +727,10 @@ function declaredCelSlots(
           continue;
         }
         // Each alternative is read in its own document before they are joined.
-        const union = {
-          anyOf: held.map((slot) => shapeNamedBy(slot.schema, [slot.root], external)),
-        };
-        slots.push({ path: slotPath, schema: union, root: union });
+        slots.push({
+          path: slotPath,
+          schema: { anyOf: held.map((slot) => namedSlotShape(slot, external)) },
+        });
       }
       return slots;
     }
@@ -3161,8 +3165,18 @@ export class StaticAnalyzer {
           const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
           if (chain) {
             // Read as the shape it names: a reference at a hop or at the tail
-            // is followed, so what a producer declares behind one is judged.
-            const produced = navigateDeclaredChain(chainContext, chain, namedShape);
+            // is followed, so what a producer declares behind one is judged. A
+            // step chain is read off the step map itself, where each result is
+            // the document its target declared; the context is a copy of it,
+            // in which no pointer can be traced to its document.
+            const produced =
+              celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT)
+                ? navigateDeclaredChain(
+                    celStepContextSchema,
+                    chain.slice(STEPS_ROOT.length),
+                    namedShape,
+                  )
+                : navigateDeclaredChain(chainContext, chain, namedShape);
             // An undeclared step result is typed by the permissive fallback: an
             // absence of a claim, not a producer saying `object`. Asked of the
             // step map itself, because the context is a copy of it.
@@ -3290,11 +3304,11 @@ export class StaticAnalyzer {
       const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
       if (type === undefined) return undefined;
       // A field whose value IS a callable's result is held to the declared
-      // result rather than to its own schema, which cannot know it.
-      const declaredResult = declaredResultSchemaAt(slot.schema, slot.manifest, (schema) =>
-        inlineNamedShapes(schema, namedShape),
+      // result rather than to its own schema, which cannot know it. The declared
+      // result is a document of its own.
+      const result = declaredResultSchemaAt(slot.schema, slot.manifest, (schema) =>
+        shapeNamedBy(schema, schema, namedShape),
       );
-      const result = declaredResult && shapeNamedBy(declaredResult, [declaredResult], namedShape);
       const target = result ?? slot.schema;
       const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
       const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";

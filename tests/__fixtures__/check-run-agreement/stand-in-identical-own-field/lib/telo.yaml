@@ -1,0 +1,39 @@
+# The same pair at a resource's own field evaluated per call: nothing expands
+# it at creation, so the written duplicate is refused where the resource is
+# validated — by `telo check` here, and by the kernel at creation for a
+# consumer.
+kind: Telo.Library
+metadata:
+  name: StandInIdenticalOwnField
+imports:
+  Run: ../../../../../modules/run
+variables:
+  word: { type: string }
+exports:
+  resources: [thing]
+---
+kind: Telo.Definition
+metadata:
+  name: Thing
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    tags:
+      type: array
+      uniqueItems: true
+      x-telo-eval: runtime
+      items: { type: string }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.tags"
+---
+kind: Self.Thing
+metadata:
+  name: thing
+tags:
+  - !cel "variables.word"
+  - !cel "variables.word"

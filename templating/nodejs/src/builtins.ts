@@ -1,3 +1,4 @@
+import type { Environment } from "@marcbachmann/cel-js";
 import { celEngine } from "./engines/cel.js";
 import { includeBytesEngine, includeTextEngine } from "./engines/include.js";
 import { interpolateEngine } from "./engines/interpolate.js";
@@ -57,6 +58,17 @@ export function producedTypeOf(engineName: string): Record<string, unknown> | un
 export function celExpressionsOf(engineName: string, source: string): string[] {
   const regions = defaultRegistry().get(engineName)?.expressionRegions?.(source) ?? [];
   return regions.map((r) => source.slice(r.start, r.end));
+}
+
+/**
+ * Whether a tagged scalar's text, written twice in one value, means one value
+ * both times — false for a tag whose engine gives no such verdict.
+ *
+ * The single reader of `TemplatingEngine.repeatable`, so a consumer comparing
+ * two tagged scalars never recognises a tag by name.
+ */
+export function repeatableSource(engineName: string, source: string, celEnv: Environment): boolean {
+  return defaultRegistry().get(engineName)?.repeatable?.(source, celEnv) ?? false;
 }
 
 let defaultRegistryCache: TemplatingEngineRegistry | undefined;

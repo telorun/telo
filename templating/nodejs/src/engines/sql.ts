@@ -1,7 +1,13 @@
 import { isParameterizedSql, type CompiledValue, type ParameterizedSql } from "@telorun/sdk";
 import { literalFragments } from "../cel/interpolation-holes.js";
 import type { TemplatingEngine } from "../engine.js";
-import { analyzeHoles, compileHoles, holeRegions, requireHoles } from "./hole-analysis.js";
+import {
+  analyzeHoles,
+  compileHoles,
+  holeRegions,
+  holesRepeatable,
+  requireHoles,
+} from "./hole-analysis.js";
 
 export { isParameterizedSql, type ParameterizedSql };
 
@@ -44,5 +50,9 @@ export const sqlEngine: TemplatingEngine = {
 
   expressionRegions(source) {
     return holeRegions(source);
+  },
+
+  repeatable(source, celEnv) {
+    return holesRepeatable(source, celEnv);
   },
 };

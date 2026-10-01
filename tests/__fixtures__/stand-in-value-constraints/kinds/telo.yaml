@@ -6,7 +6,7 @@ metadata:
 imports:
   Run: ../../../../modules/run
 exports:
-  kinds: [Timed, Waiting]
+  kinds: [Timed, Waiting, Retrying, Branched, Tagged]
 ---
 kind: Telo.Definition
 metadata:
@@ -51,3 +51,85 @@ resources:
     metadata:
       name: echo
     value: !cel "self.wait"
+---
+# A union whose alternatives each default their own discriminator: deciding the
+# union applies neither default, so the value fits the alternative it names.
+kind: Telo.Definition
+metadata:
+  name: Retrying
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    retry:
+      x-telo-eval: compile
+      oneOf:
+        - type: object
+          required: [after]
+          additionalProperties: false
+          properties:
+            mode: { type: string, enum: [fixed], default: fixed }
+            after: { type: string, pattern: "^\\d+s$" }
+        - type: object
+          required: [base]
+          additionalProperties: false
+          properties:
+            mode: { type: string, enum: [backoff], default: backoff }
+            base: { type: string, pattern: "^\\d+s$" }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.retry"
+---
+# A closed alternative after one that defaults a member the value does not carry.
+kind: Telo.Definition
+metadata:
+  name: Branched
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    cfg:
+      x-telo-eval: compile
+      anyOf:
+        - type: object
+          required: [kind]
+          additionalProperties: false
+          properties:
+            kind: { const: a }
+            extra: { type: string, default: d }
+            t: { type: string, pattern: "^\\d+s$" }
+        - type: object
+          required: [kind]
+          additionalProperties: false
+          properties:
+            kind: { const: b }
+            t: { type: string, pattern: "^\\d+s$" }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.cfg"
+---
+# An own field that is a list of unique items.
+kind: Telo.Definition
+metadata:
+  name: Tagged
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    tags:
+      type: array
+      uniqueItems: true
+      x-telo-eval: compile
+      items: { type: string }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.tags"

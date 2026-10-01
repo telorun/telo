@@ -8,10 +8,11 @@ metadata:
     the produced type for `!interpolate`. A correct value at a slot declaring
     `minLength`, `pattern` or `format` therefore checks and runs, at the entry
     and through an import (where the kernel's create-time validation is the
-    judge) — as does one at a union whose branches are all references, and
-    several in a list of unique items — while a string tag at an integer slot, a
-    `!literal` violating a pattern and two equal literals beside stand-ins are
-    still refused.
+    judge) — as does one at a union whose branches are all references or each
+    default a member, and several different ones in a list of unique items —
+    while a string tag at an integer slot, a `!literal` violating a pattern, two
+    equal literals beside stand-ins and one deterministic expression written
+    twice in a list of unique items are still refused.
 imports:
   Assert: ../modules/assert
 targets:
@@ -22,6 +23,8 @@ targets:
   - !ref interpolateIntoIntegerField
   - !ref literalViolatingPattern
   - !ref literalDuplicateBesideStandIns
+  - !ref identicalExpressionsArgument
+  - !ref identicalExpressionsField
 ---
 kind: Assert.Manifest
 metadata:
@@ -81,3 +84,21 @@ expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "/tags must NOT have duplicate items (items ## 2 and 3 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: identicalExpressionsArgument
+source: ./__fixtures__/stand-in-value-constraints/unique-items-identical-call-site.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: identicalExpressionsField
+source: ./__fixtures__/stand-in-value-constraints/unique-items-identical-own-field.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"

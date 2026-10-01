@@ -11,6 +11,27 @@
  * each names the schema node that raised it, which is what lets the judge find
  * the next union without reading a path.
  *
+ * The contract:
+ *
+ * 1. Asked about the WHOLE schema: every finding, located, as the host
+ *    validates. A host whose validation fills `default:`s runs that validation
+ *    to completion first ({@link SchemaNodeValidatorOptions.fillDefaults}), so
+ *    the findings describe the value with those defaults in it.
+ * 2. Asked about a NODE inside it: every finding the node raises when evaluated
+ *    inside its own document, located, with no default applied and nothing
+ *    written. A validator ignores a `default:` inside a union when it runs the
+ *    whole schema and applies it when a branch is compiled alone, so the
+ *    instance must apply none — a branch judged alone would otherwise write its
+ *    defaults into the value the next branch is judged against.
+ * 3. It answers "cannot" (`undefined`) only for a node that lies in no document
+ *    it holds.
+ * 4. Anything else is thrown: a located node that cannot be registered or
+ *    compiled where it stands is a defect, never a "cannot".
+ *
+ * Whole and node findings come off ONE instance, because the judge matches a
+ * branch's finding to the whole schema's by the node that raised it: two
+ * instances holding two copies of a document would reproduce nothing.
+ *
  * Browser-safe; the analyzer's registry and the kernel's validator each hold
  * one over an instance of their own.
  */
@@ -22,12 +43,13 @@ type NodeValidate = ((data: unknown, context?: any) => unknown) & {
 };
 
 /** The part of a validator instance this reads. It must report every error and
- *  the node behind each (`allErrors`, `verbose`). */
+ *  the node behind each (`allErrors`, `verbose`), and apply no default. */
 export interface NodeValidatingAjv {
   addSchema(schema: any, key?: string, meta?: boolean, validateSchema?: any): unknown;
   getSchema(keyRef: string): unknown;
   readonly schemas: Record<string, unknown>;
   readonly refs: Record<string, unknown>;
+  readonly opts: { readonly useDefaults?: unknown };
 }
 
 interface NodePlace {
@@ -42,55 +64,72 @@ export interface SchemaNodeValidatorOptions {
   canonical?: (schema: object) => object;
   /** Runs a compiled validator the way the host runs its own. */
   run?: (validate: (data: unknown, context?: any) => unknown, value: unknown) => unknown;
+  /** The host's own whole-schema validation where that fills `default:`s: run
+   *  to completion over `value`, writing them into it, before the whole
+   *  schema's findings are raised. Absent on a host that fills none. */
+  fillDefaults?: (schema: object, value: unknown) => void;
 }
 
 export class SchemaNodeValidator {
   private readonly places = new WeakMap<object, NodePlace>();
   private readonly indexed = new WeakSet<object>();
-  private readonly validators = new WeakMap<object, NodeValidate | null>();
+  private readonly validators = new WeakMap<object, NodeValidate>();
   private documents = 0;
 
   constructor(
     private readonly ajv: NodeValidatingAjv,
     private readonly options: SchemaNodeValidatorOptions = {},
-  ) {}
+  ) {
+    if (ajv.opts.useDefaults) {
+      throw new Error(
+        "A schema node validator needs an instance that applies no default: a union branch " +
+          "validated alone would write its defaults into the value it is asked about.",
+      );
+    }
+  }
 
   /**
    * The judge's seam over one validated schema: `schema` itself is a document
    * of its own, and any other node must lie in a document this validator holds.
    */
   findingsFor(schema: object): SchemaNodeFindings {
-    return (node, value) => this.validate(node, value, node === schema);
+    return (node, value) => {
+      if (node !== schema) return this.validate(node, value, false);
+      this.options.fillDefaults?.(schema, value);
+      return this.validate(node, value, true);
+    };
   }
 
   /**
    * Every finding `node` raises against `value`, or `undefined` when the node
-   * cannot be compiled where it stands. Compiled once per node.
+   * lies in no held document. Compiled once per node.
    */
   private validate(node: object, value: unknown, whole: boolean): LocatedFinding[] | undefined {
     let validate = this.validators.get(node);
-    if (validate === undefined) {
-      validate = this.compile(node, whole) ?? null;
+    if (!validate) {
+      const place = whole ? (this.places.get(node) ?? this.hold(node)) : this.placeOf(node);
+      if (!place) return undefined;
+      validate = this.compile(place);
       this.validators.set(node, validate);
     }
-    if (!validate) return undefined;
     const run = this.options.run;
     const valid = run ? run(validate, value) : validate(value);
     return valid ? [] : [...(validate.errors ?? [])];
   }
 
-  private compile(node: object, whole: boolean): NodeValidate | undefined {
-    // A schema the instance refuses, or a node in no held document, yields no
-    // validator, and the judge then keeps every finding of the union it asked
-    // about.
+  private compile(place: NodePlace): NodeValidate {
+    let validate: unknown;
     try {
-      const place = whole ? (this.places.get(node) ?? this.hold(node)) : this.placeOf(node);
-      if (!place) return undefined;
-      const validate = this.ajv.getSchema(place.pointer ? `${place.key}#${place.pointer}` : place.key);
-      return typeof validate === "function" ? (validate as NodeValidate) : undefined;
-    } catch {
-      return undefined;
+      validate = this.ajv.getSchema(place.pointer ? `${place.key}#${place.pointer}` : place.key);
+    } catch (cause) {
+      throw new Error(`${describePlace(place)} does not compile where it stands: ${reasonOf(cause)}`, {
+        cause,
+      });
     }
+    if (typeof validate !== "function") {
+      throw new Error(`${describePlace(place)} resolves to no schema the validator can compile.`);
+    }
+    return validate as NodeValidate;
   }
 
   private placeOf(node: object): NodePlace | undefined {
@@ -108,10 +147,13 @@ export class SchemaNodeValidator {
   /** Registers a whole schema as a document of its own. */
   private hold(schema: object): NodePlace {
     const document = this.options.canonical ? this.options.canonical(schema) : schema;
-    const key = `telo://stand-in/${this.documents++}`;
-    this.ajv.addSchema(document, key, undefined, false);
-    this.index(document, key);
-    const place = { key, pointer: "" };
+    const place = { key: `telo://stand-in/${this.documents++}`, pointer: "" };
+    try {
+      this.ajv.addSchema(document, place.key, undefined, false);
+    } catch (cause) {
+      throw new Error(`${describePlace(place)} cannot be registered: ${reasonOf(cause)}`, { cause });
+    }
+    this.index(document, place.key);
     this.places.set(schema, place);
     return place;
   }
@@ -135,4 +177,14 @@ export class SchemaNodeValidator {
     };
     walk(document, "");
   }
+}
+
+function describePlace(place: NodePlace): string {
+  return place.pointer
+    ? `Schema node '#${place.pointer}' of document '${place.key}', asked about on its own to judge a stand-in,`
+    : `The schema held as document '${place.key}', validated to judge a stand-in,`;
+}
+
+function reasonOf(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

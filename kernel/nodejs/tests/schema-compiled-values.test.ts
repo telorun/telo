@@ -142,7 +142,7 @@ describe("stripCompiledValues", () => {
     expect(out.b.url).toBeNull();
   });
 
-  it("records each stand-in by JSON Pointer and class", () => {
+  it("records each stand-in by JSON Pointer, with its class and identity", () => {
     const interpolated = { ...(cel("${{ s }}s") as object), engine: "interpolate" };
     const standIns = new Map();
     stripCompiledValues(
@@ -152,9 +152,11 @@ describe("stripCompiledValues", () => {
       undefined,
       standIns,
     );
-    expect([...standIns]).toEqual([
-      ["/url", "computed"],
-      ["/a~1b/0", "produced"],
+    expect(
+      [...standIns].map(([pointer, standIn]) => [pointer, standIn.class, standIn.identity]),
+    ).toEqual([
+      ["/url", "computed", undefined],
+      ["/a~1b/0", "produced", { tag: "interpolate", text: "${{ s }}s", repeatable: true }],
     ]);
   });
 });

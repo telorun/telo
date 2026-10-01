@@ -25,10 +25,14 @@
  *   OWN and judging that branch's findings by these same rules. A validator's
  *   flat error list cannot say which branch — if any — raised a finding inside a
  *   referenced shape, so nothing is attributed by reading it: a finding is the
- *   union's only when a branch validated alone reproduces it.
+ *   union's only when a branch validated alone reproduces it. A branch is judged
+ *   with no `default:` applied and nothing written: defaults reach the value
+ *   only from the host's whole-schema validation, so a branch requiring a member
+ *   it merely defaults is not satisfied, as it is not for a literal.
  * - **A content keyword** (`uniqueItems`, `const`, `enum`) raised at a value that
  *   CONTAINS a stand-in compares placeholders, so it is decided on the parts the
- *   author wrote.
+ *   author wrote — and, for `uniqueItems`, on stand-ins that are the same
+ *   repeatable expression written twice.
  *
  * The judge runs on RAW validator errors, before union reduction collapses them
  * into issues. Shared by every analyzer substitution site and by the kernel's
@@ -42,25 +46,61 @@ import {
   isRefSentinel,
   isTaggedSentinel,
   producedTypeOf,
+  repeatableSource,
 } from "@telorun/templating";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type { AjvErrorLike } from "./schema-error-report.js";
 
 export type StandInClass = "computed" | "produced";
 
+/**
+ * What makes two stand-ins the same expression: the tag, its text, and whether
+ * that text is REPEATABLE — means one value wherever it is written twice in one
+ * value. The verdict is the tag's engine's, on the text alone, asked when first
+ * read.
+ */
+export interface StandInIdentity {
+  readonly tag: string;
+  readonly text: string;
+  readonly repeatable: boolean;
+}
+
+/** One stand-in: what its tag guarantees, and — where the tag and its text are
+ *  known — which expression it stands for. */
+export interface StandIn {
+  readonly class: StandInClass;
+  readonly identity?: StandInIdentity;
+}
+
 /** Every stand-in substituted into one value, keyed by its JSON Pointer from the
  *  validated root — the form an AJV `instancePath` takes. */
-export type StandIns = Map<string, StandInClass>;
+export type StandIns = Map<string, StandIn>;
 
-/** What a tagged or compiled value is to validation: a stand-in of a class (with
- *  the produced type, for a produced one), or the plain value its engine already
+/** What a tagged or compiled value is to validation: a stand-in (with the
+ *  produced type, for a produced one), or the plain value its engine already
  *  resolved it to. */
 export type StandInReading =
-  | { readonly kind: "stand-in"; readonly class: "computed" }
-  | { readonly kind: "stand-in"; readonly class: "produced"; readonly produced: Record<string, any> }
+  | (StandIn & { readonly kind: "stand-in"; readonly class: "computed" })
+  | (StandIn & {
+      readonly kind: "stand-in";
+      readonly class: "produced";
+      readonly produced: Record<string, any>;
+    })
   | { readonly kind: "value"; readonly value: unknown };
 
 let compileEnv: ReturnType<typeof buildCelEnvironment> | undefined;
+
+function identityOf(tag: string, text: string): StandInIdentity {
+  let verdict: boolean | undefined;
+  return {
+    tag,
+    text,
+    get repeatable() {
+      compileEnv ??= buildCelEnvironment();
+      return (verdict ??= repeatableSource(tag, text, compileEnv));
+    },
+  };
+}
 
 /**
  * Classify a tagged sentinel or a compiled value, or undefined for anything else
@@ -71,15 +111,22 @@ let compileEnv: ReturnType<typeof buildCelEnvironment> | undefined;
  * asked to compile — a plain result is a value resolved now (`!literal`), a
  * marker or compiled value is one that exists only after load. The class is then
  * whether the engine declares a produced type.
+ *
+ * The identity is read off the same two facts in both forms — the tag and the
+ * text as written — never off what compiling resolved, which a tagged sentinel
+ * does not carry: `telo check` and the kernel must call the same pair equal.
  */
 export function readStandIn(value: unknown): StandInReading | undefined {
   let engineName: string | undefined;
+  let text: string | undefined;
   if (isCompiledValue(value)) {
     const engine = (value as { engine?: unknown }).engine;
     engineName = typeof engine === "string" ? engine : undefined;
+    text = typeof value.source === "string" ? value.source : undefined;
   } else if (isTaggedSentinel(value)) {
     if (isRefSentinel(value)) return undefined;
     engineName = value.engine;
+    text = value.source;
     const engine = defaultRegistry().get(value.engine);
     if (engine && !engine.expressionRegions) {
       compileEnv ??= buildCelEnvironment();
@@ -92,9 +139,13 @@ export function readStandIn(value: unknown): StandInReading | undefined {
     return undefined;
   }
   const produced = engineName === undefined ? undefined : producedTypeOf(engineName);
+  const identity =
+    engineName === undefined || text === undefined
+      ? {}
+      : { identity: identityOf(engineName, text) };
   return produced
-    ? { kind: "stand-in", class: "produced", produced: produced as Record<string, any> }
-    : { kind: "stand-in", class: "computed" };
+    ? { kind: "stand-in", class: "produced", produced: produced as Record<string, any>, ...identity }
+    : { kind: "stand-in", class: "computed", ...identity };
 }
 
 /** Findings judged on a value's CONTENT, which a produced stand-in does not have
@@ -142,7 +193,10 @@ export interface LocatedFinding extends AjvErrorLike {
 /**
  * Every finding `node` raises against `value`, validated inside the document
  * that declares `node` so its own `#/…` references resolve, each finding located.
- * `undefined` when the node cannot be validated on its own.
+ * Asked about the judged schema itself, the findings are the host's own
+ * whole-schema validation's — whatever defaults that fills are in `value` when
+ * it returns; asked about a node inside it, no default is applied and nothing is
+ * written. `undefined` when the node lies in no document the validator holds.
  */
 export type SchemaNodeFindings = (
   node: object,
@@ -157,7 +211,7 @@ export interface StandInJudgment {
   /** The schema it was validated against. */
   schema: Record<string, any>;
   /** Every stand-in in `value`, by JSON Pointer. */
-  standIns: ReadonlyMap<string, StandInClass>;
+  standIns: ReadonlyMap<string, StandIn>;
   validate: SchemaNodeFindings;
 }
 
@@ -173,11 +227,11 @@ function isUnion(error: AjvErrorLike): boolean {
 
 /** True when a stand-in excuses this finding: it sits at or below a computed
  *  stand-in, or at or below a produced one and is judged on content. */
-function excused(error: AjvErrorLike, standIns: ReadonlyMap<string, StandInClass>): boolean {
+function excused(error: AjvErrorLike, standIns: ReadonlyMap<string, StandIn>): boolean {
   const valueLevel = VALUE_CONSTRAINT_KEYWORDS.has(error.keyword ?? "") || isAmbiguousOneOf(error);
   let path: string | undefined = error.instancePath ?? "";
   while (path !== undefined) {
-    const standIn = standIns.get(path);
+    const standIn = standIns.get(path)?.class;
     if (standIn === "computed" || (standIn === "produced" && valueLevel)) return true;
     path = path === "" ? undefined : path.slice(0, Math.max(0, path.lastIndexOf("/")));
   }
@@ -257,13 +311,16 @@ function plainFinding(finding: LocatedFinding): AjvErrorLike {
  * finding and the findings its branches reproduce are dropped — counted, so a
  * finding raised once more than the branches reproduce (a sibling reference to
  * the shape a branch names) is kept that once. An unsatisfied union keeps its
- * findings, minus those individually excused. A union the validator does not
- * locate is kept with everything raised around it.
+ * findings, minus those individually excused. A union whose node lies in no
+ * document the validator holds is kept with everything raised around it.
  *
  * `uniqueItems`, `const` and `enum` at a value CONTAINING a stand-in are decided
- * on the written parts: `uniqueItems` stands only for two equal items neither of
- * which is or holds a stand-in, and names that pair; `const` / `enum` only when
- * no allowed value agrees with what was written.
+ * on the written parts. `uniqueItems` stands for two items EQUAL AS WRITTEN, and
+ * names that pair: their literal parts are equal and, wherever one holds a
+ * stand-in, the other holds a stand-in of the same tag with character-identical
+ * repeatable text. A stand-in beside a literal, two different texts, two tags or
+ * an unrepeatable text are never equal — the runtime judges those. `const` /
+ * `enum` stand only when no allowed value agrees with what was written.
  */
 export function withoutStandInFindings(
   errors: readonly LocatedFinding[] | null | undefined,
@@ -273,16 +330,89 @@ export function withoutStandInFindings(
   const { standIns } = judgment;
   if (standIns.size === 0) return [...errors];
 
+  // Every path with a stand-in beneath it, built for the first content finding.
+  let holders: Set<string> | undefined;
   const holdsStandIn = (path: string): boolean => {
-    for (const pointer of standIns.keys()) if (pointer.startsWith(`${path}/`)) return true;
-    return false;
+    if (!holders) {
+      holders = new Set();
+      for (const pointer of standIns.keys()) {
+        for (let end = pointer.lastIndexOf("/"); end >= 0; ) {
+          const parent = pointer.slice(0, end);
+          if (holders.has(parent)) break;
+          holders.add(parent);
+          end = parent.lastIndexOf("/");
+        }
+      }
+    }
+    return holders.has(path);
   };
-  const isOrHoldsStandIn = (path: string): boolean => standIns.has(path) || holdsStandIn(path);
+
+  // The engine's verdict, asked once per (tag, text) in this judgment.
+  const repeatable = new Map<string, boolean>();
+  const instanceIds = new WeakMap<object, number>();
+  let nextInstanceId = 0;
+  /**
+   * A canonical rendering of a value as written: two values with one key are
+   * equal for every value their stand-ins could take. A stand-in renders as its
+   * identity; a value holding one with no identity, or an unrepeatable one, has
+   * no key and equals nothing.
+   */
+  const writtenKey = (value: unknown, path: string): string | undefined => {
+    const standIn = standIns.get(path);
+    if (standIn) {
+      const identity = standIn.identity;
+      if (!identity) return undefined;
+      const key = `!${JSON.stringify(identity.tag)}${JSON.stringify(identity.text)}`;
+      let verdict = repeatable.get(key);
+      if (verdict === undefined) repeatable.set(key, (verdict = identity.repeatable));
+      return verdict ? key : undefined;
+    }
+    if (Array.isArray(value)) {
+      const items: string[] = [];
+      for (let i = 0; i < value.length; i++) {
+        const item = writtenKey(value[i], `${path}/${i}`);
+        if (item === undefined) return undefined;
+        items.push(item);
+      }
+      return `[${items.join(",")}]`;
+    }
+    if (isPlainObject(value)) {
+      const members: string[] = [];
+      for (const name of Object.keys(value).sort()) {
+        const member = writtenKey(value[name], `${path}/${escapeSegment(name)}`);
+        if (member === undefined) return undefined;
+        members.push(`${JSON.stringify(name)}:${member}`);
+      }
+      return `{${members.join(",")}}`;
+    }
+    if (typeof value === "string") return JSON.stringify(value);
+    if (value !== null && (typeof value === "object" || typeof value === "function")) {
+      // An instance is equal only to itself.
+      let id = instanceIds.get(value);
+      if (id === undefined) instanceIds.set(value, (id = nextInstanceId++));
+      return `@${id}`;
+    }
+    return `${typeof value}:${String(value)}`;
+  };
+
+  /** The last two items of `written` that are equal as written, or `undefined`. */
+  const writtenDuplicate = (written: readonly unknown[], path: string): [number, number] | undefined => {
+    const seen = new Map<string, number>();
+    let pair: [number, number] | undefined;
+    for (let i = 0; i < written.length; i++) {
+      const key = writtenKey(written[i], `${path}/${i}`);
+      if (key === undefined) continue;
+      const earlier = seen.get(key);
+      if (earlier !== undefined) pair = [earlier, i];
+      seen.set(key, i);
+    }
+    return pair;
+  };
 
   /** Whether `allowed` is what `written` could become: equal where the author
    *  wrote a value, anything of the stand-in's kind where they did not. */
   const agrees = (written: unknown, allowed: unknown, path: string): boolean => {
-    const standIn = standIns.get(path);
+    const standIn = standIns.get(path)?.class;
     if (standIn === "computed") return true;
     if (standIn === "produced") return sameKind(written, allowed);
     if (Array.isArray(written)) {
@@ -319,18 +449,14 @@ export function withoutStandInFindings(
       return allowed.some((value) => agrees(written, value, path)) ? undefined : finding;
     }
     if (!Array.isArray(written)) return finding;
-    for (let i = written.length; i--; ) {
-      if (isOrHoldsStandIn(`${path}/${i}`)) continue;
-      for (let j = i; j--; ) {
-        if (isOrHoldsStandIn(`${path}/${j}`) || !sameValue(written[i], written[j])) continue;
-        return {
-          ...finding,
-          params: { i, j },
-          message: `must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
-        };
-      }
-    }
-    return undefined;
+    const pair = writtenDuplicate(written, path);
+    if (!pair) return undefined;
+    const [j, i] = pair;
+    return {
+      ...finding,
+      params: { i, j },
+      message: `must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
+    };
   };
 
   const nodeIds = new WeakMap<object, number>();
@@ -369,6 +495,7 @@ export function withoutStandInFindings(
     for (const branch of branches) {
       if (branch === null || typeof branch !== "object") return undefined;
       const raised = judgment.validate(branch, value);
+      // The branch lies in no held document: the union is kept, never guessed at.
       if (!raised) return undefined;
       const findings = raised.map((finding) => ({
         ...finding,
@@ -390,8 +517,21 @@ export function withoutStandInFindings(
     return verdict;
   };
 
+  /** Where each finding sits, by what makes two findings one, ascending. */
+  const positionsByKey = (findings: readonly LocatedFinding[]): Map<string, number[]> => {
+    const positions = new Map<string, number[]>();
+    findings.forEach((finding, index) => {
+      const key = findingKey(finding);
+      const at = positions.get(key);
+      if (at) at.push(index);
+      else positions.set(key, [index]);
+    });
+    return positions;
+  };
+
   const surviving = (findings: readonly LocatedFinding[]): LocatedFinding[] => {
     const live: (LocatedFinding | undefined)[] = [...findings];
+    let positions: Map<string, number[]> | undefined;
     // Outermost first: a validator reports a union after everything its
     // branches raised, nested unions included.
     for (let k = live.length - 1; k >= 0; k--) {
@@ -400,15 +540,15 @@ export function withoutStandInFindings(
       const verdict = verdictOf(union);
       if (!verdict?.satisfied) continue;
       live[k] = undefined;
-      const owed = new Map(verdict.reproduced);
-      for (let j = k - 1; j >= 0; j--) {
-        const candidate = live[j];
-        if (!candidate) continue;
-        const candidateId = findingKey(candidate);
-        const count = owed.get(candidateId) ?? 0;
-        if (count === 0) continue;
-        owed.set(candidateId, count - 1);
-        live[j] = undefined;
+      positions ??= positionsByKey(findings);
+      // What the branches reproduce is dropped nearest the union first. Unions
+      // are met in descending order, so a position at or past this one is never
+      // asked for again, and one a list still holds below it is live.
+      for (const [key, count] of verdict.reproduced) {
+        const at = positions.get(key);
+        if (!at) continue;
+        while (at.length > 0 && at[at.length - 1]! >= k) at.pop();
+        for (let owed = count; owed > 0 && at.length > 0; owed--) live[at.pop()!] = undefined;
       }
     }
     const out: LocatedFinding[] = [];
@@ -424,8 +564,9 @@ export function withoutStandInFindings(
     errors.every((error) => !isUnion(error) || typeof error.parentSchema === "object")
       ? errors
       : judgment.validate(judgment.schema, judgment.value);
-  // No located twin of the list: nothing is attributed to a union, so every
-  // union stays, with what was raised around it.
+  // No located twin of the list — the schema lies in no held document: nothing
+  // is attributed to a union, so every union stays, with what was raised around
+  // it.
   const judged = located && located.length > 0 ? located : errors;
   return surviving(judged).map(plainFinding);
 }

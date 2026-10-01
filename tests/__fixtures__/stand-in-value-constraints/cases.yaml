@@ -104,6 +104,26 @@ metadata:
   name: interpolatedWait
 wait: !interpolate "${{ variables.seconds }}s"
 ---
+kind: Kinds.Retrying
+metadata:
+  name: interpolatedRetry
+retry:
+  base: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Branched
+metadata:
+  name: interpolatedBranch
+cfg:
+  kind: b
+  t: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Tagged
+metadata:
+  name: distinctTags
+tags:
+  - !cel "'a-' + variables.word"
+  - !cel "'b-' + variables.word"
+---
 kind: Run.Sequence
 metadata:
   name: standIns
@@ -153,3 +173,9 @@ steps:
     invoke: !ref literalTimeout
   - name: wait
     invoke: !ref interpolatedWait
+  - name: retry
+    invoke: !ref interpolatedRetry
+  - name: branch
+    invoke: !ref interpolatedBranch
+  - name: tagged
+    invoke: !ref distinctTags

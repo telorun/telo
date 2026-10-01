@@ -92,8 +92,9 @@ function isConfigAtRefSlot(value: unknown): boolean {
  *  arbitrarily deep and routinely cyclic — walking one overflows the stack
  *  instead of producing a diagnostic, and there is nothing inside it to strip.
  *
- *  `standIns`, when given, receives each stand-in by JSON Pointer and class —
- *  the record the analyzer's `withoutStandInFindings` judges a failure against. */
+ *  `standIns`, when given, receives each stand-in by JSON Pointer, with its
+ *  class and identity as the analyzer's one reader gives them — the record
+ *  `withoutStandInFindings` judges a failure against. */
 export function stripCompiledValues(
   v: unknown,
   schema: Record<string, unknown> = {},
@@ -138,7 +139,7 @@ export function stripCompiledValues(
     // `!interpolate` at an integer slot is refused here as it is statically.
     const reading = isCompiledValue(value) ? readStandIn(value) : undefined;
     if (reading?.kind === "stand-in") {
-      standIns?.set(pointer, reading.class);
+      standIns?.set(pointer, reading);
       return reading.class === "produced"
         ? producedPlaceholder(reading.produced, resolved as Record<string, any>)
         : celPlaceholderForSchema(resolved as Record<string, any>);

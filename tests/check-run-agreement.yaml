@@ -73,6 +73,12 @@ targets:
   - !ref standInSiblingOwnFieldAtRuntime
   - !ref standInSiblingCallSite
   - !ref standInSiblingCallSiteAtRuntime
+  - !ref standInBranchDefault
+  - !ref standInBranchDefaultAtRuntime
+  - !ref standInIdenticalCallSite
+  - !ref standInIdenticalCallSiteAtRuntime
+  - !ref standInIdenticalOwnField
+  - !ref standInIdenticalOwnFieldAtRuntime
   - !ref celArgumentType
   - !ref celArgumentTypeAtRuntime
   - !ref celArgumentNullable
@@ -1566,6 +1572,62 @@ source: ./__fixtures__/check-run-agreement/stand-in-sibling-call-site/telo.yaml
 expect:
   # The message of `ERR_INPUT_INVALID`.
   runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"cfg\":{\"a\":\"5s\"}}. Error: /cfg is missing required property 'b'"
+---
+# A `default:` inside a union alternative is never applied when the union is
+# decided, so an alternative requiring a member it merely defaults is not
+# satisfied by a stand-in that otherwise fits it.
+kind: Assert.Manifest
+metadata:
+  name: standInBranchDefault
+source: ./__fixtures__/check-run-agreement/stand-in-branch-default/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/retry matches no alternative — expected one with 'mode', or a integer"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInBranchDefaultAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-branch-default/telo.yaml
+expect:
+  runFails: "Error: /retry matches no alternative — expected one with 'mode', or a integer [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
+---
+# One deterministic expression written twice in a list of unique items is a
+# duplicate as written — in a call's argument…
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalCallSite
+source: ./__fixtures__/check-run-agreement/stand-in-identical-call-site/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalCallSiteAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-identical-call-site/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"tags\":[\"abc\",\"abc\"]}. Error: /tags must NOT have duplicate items"
+---
+# …and at a resource's own field evaluated per call, which nothing expands at
+# creation.
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalOwnField
+source: ./__fixtures__/check-run-agreement/stand-in-identical-own-field/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalOwnFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-identical-own-field/telo.yaml
+expect:
+  runFails: "Error: /tags must NOT have duplicate items (items ## 0 and 1 are identical) [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
 ---
 # A `!cel` argument is held to the target's declared inputType by its type:
 # a string where the contract declares an integer…

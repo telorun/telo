@@ -68,6 +68,7 @@ export {
   createDefaultRegistry,
   defaultRegistry,
   producedTypeOf,
+  repeatableSource,
 } from "./builtins.js";
 export type {
   AnalyzeEnv,

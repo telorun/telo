@@ -11,12 +11,13 @@
  *
  *  - a NAMED SHAPE (`telo:<module>/<Type>`) through the registry the caller
  *    supplies; what lies beneath it is that shape's own document;
- *  - a DOCUMENT-LOCAL pointer (`#/$defs/Row`) against the document that DECLARES
- *    it. A CEL context is assembled from declared documents embedded whole (a
- *    step's `result` IS its target's outputType, a named shape is inlined where
- *    it was referenced), so the declaring document is the nearest enclosing node
- *    at which the pointer resolves — never the assembled root, under which two
- *    producers may each declare the same `$defs` name differently.
+ *  - a DOCUMENT-LOCAL pointer (`#`, `#/$defs/Row`) against the root of the
+ *    document that DECLARES it, which every walk here carries beside the node it
+ *    is at. The root is never searched for: the caller supplies it, following a
+ *    named shape makes that shape the root, and a node recorded with
+ *    {@link declaredDocument} is its own. A pointer met where no root is known
+ *    names nothing here — it is read as what is written beside it, so it claims
+ *    nothing rather than a guess.
  *
  * A reference already being expanded is left as written, which keeps a
  * recursive shape finite and reads as a node that says nothing.
@@ -26,10 +27,11 @@ import { REFERENCE_KEYS, type ExternalSchemaResolver } from "./schema-compat.js"
 
 type Schema = Record<string, any>;
 
-/** A schema node with the nodes enclosing it, outermost first, itself last. */
-interface Entered {
+/** A schema node and the root of the document that declares it — undefined
+ *  where nothing says which document that is. */
+interface Declared {
   schema: Schema;
-  enclosing: readonly Schema[];
+  root: Schema | undefined;
 }
 
 const SCHEMA_KEYS: ReadonlySet<string> = new Set([
@@ -48,6 +50,27 @@ const VALUE_TYPE_KEY = "x-telo-type";
 
 const isSchema = (value: unknown): value is Schema =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+const declaredDocuments = new WeakSet<Schema>();
+
+/**
+ * Records `root` as the root of a declared document, and returns it.
+ *
+ * Called where a schema assembled from several declarations embeds one of them
+ * whole — a step's `result` is its target's output contract — because only that
+ * site knows the node is a document of its own: the pointers beneath it mean
+ * that document, whatever it is embedded in.
+ */
+export function declaredDocument<T extends Schema>(root: T): T {
+  declaredDocuments.add(root);
+  return root;
+}
+
+/** `node` reached from a document whose root is `root`. */
+const declaredAt = (node: Schema, root: Schema | undefined): Declared => ({
+  schema: node,
+  root: declaredDocuments.has(node) ? node : root,
+});
 
 /** The schema nodes directly beneath `node`. A value type's object form carries
  *  its type arguments as schema nodes too. */
@@ -77,39 +100,34 @@ function holdsReference(node: Schema): boolean {
   return holds;
 }
 
-/** What the reference at `node` names, with the nodes enclosing THAT — or
- *  undefined when it names nothing this can resolve. */
+/** What is written beside a reference: the node without the reference itself. */
+const besideReference = (node: Schema): Schema =>
+  Object.fromEntries(Object.entries(node).filter(([key]) => !REFERENCE_KEYS.has(key)));
+
+/** What the reference at `node` names, in a document whose root is `root` — or
+ *  undefined when it names nothing this can resolve. A document-local pointer
+ *  with no known root names what is written beside it, and nothing more. */
 function referenced(
   node: Schema,
-  enclosing: readonly Schema[],
+  root: Schema | undefined,
   external: ExternalSchemaResolver | undefined,
-): Entered | undefined {
+): Declared | undefined {
   const ref = node.$ref as string;
   if (!ref.startsWith("#")) {
     const target = external?.(ref);
-    return target ? { schema: target, enclosing: [target] } : undefined;
+    return target ? { schema: target, root: target } : undefined;
   }
-  const candidates = [...enclosing, node];
-  for (let i = candidates.length - 1; i >= 0; i--) {
-    const target = resolveSchemaPointer(candidates[i]!, ref);
-    if (!isSchema(target)) continue;
-    const declaring = candidates.slice(0, i + 1);
-    return { schema: target, enclosing: target === candidates[i] ? declaring : [...declaring, target] };
-  }
-  return undefined;
+  if (!root) return { schema: besideReference(node), root };
+  const target = resolveSchemaPointer(root, ref);
+  return isSchema(target) ? { schema: target, root } : undefined;
 }
 
-/** `node` with every reference it IS followed; what it holds beneath is left. */
-function enter(
-  node: Schema,
-  enclosing: readonly Schema[],
-  external: ExternalSchemaResolver | undefined,
-): Entered {
-  let at: Entered = { schema: node, enclosing: [...enclosing, node] };
+/** `at` with every reference it IS followed; what it holds beneath is left. */
+function enter(at: Declared, external: ExternalSchemaResolver | undefined): Declared {
   const followed = new Set<Schema>();
   while (typeof at.schema.$ref === "string" && !followed.has(at.schema)) {
     followed.add(at.schema);
-    const next = referenced(at.schema, at.enclosing.slice(0, -1), external);
+    const next = referenced(at.schema, at.root, external);
     if (!next) break;
     at = next;
   }
@@ -118,17 +136,18 @@ function enter(
 
 function expand(
   node: unknown,
-  enclosing: readonly Schema[],
+  enclosingRoot: Schema | undefined,
   external: ExternalSchemaResolver | undefined,
   open: ReadonlySet<Schema>,
 ): unknown {
   if (!isSchema(node) || !holdsReference(node)) return node;
+  const { root } = declaredAt(node, enclosingRoot);
   if (typeof node.$ref === "string") {
-    const target = referenced(node, enclosing, external);
+    const target = referenced(node, root, external);
     if (!target || open.has(target.schema)) return node;
     const named = expand(
       target.schema,
-      target.enclosing.slice(0, -1),
+      target.root,
       external,
       new Set(open).add(target.schema),
     ) as Schema;
@@ -136,8 +155,7 @@ function expand(
     const siblings = Object.entries(node).filter(([key]) => !REFERENCE_KEYS.has(key));
     return siblings.length === 0 ? named : { ...named, ...Object.fromEntries(siblings) };
   }
-  const here = [...enclosing, node];
-  const beneath = (value: unknown) => expand(value, here, external, open);
+  const beneath = (value: unknown) => expand(value, root, external, open);
   const out: Schema = {};
   for (const [key, value] of Object.entries(node)) {
     if (SCHEMA_KEYS.has(key)) {
@@ -155,20 +173,16 @@ function expand(
 
 /**
  * `schema` with every reference at or beneath it replaced by the shape it
- * names. `enclosing` is the nodes `schema` sits in, outermost first — its
- * document's root at least; a schema holding no reference is returned as it is.
+ * names. `root` is the root of the document that declares `schema` — `schema`
+ * itself for a whole document, undefined where that is not known; a schema
+ * holding no reference is returned as it is.
  */
 export function shapeNamedBy(
   schema: Schema,
-  enclosing: readonly Schema[],
+  root: Schema | undefined,
   external?: ExternalSchemaResolver,
 ): Schema {
-  return expand(
-    schema,
-    enclosing.filter((node) => node !== schema),
-    external,
-    new Set(),
-  ) as Schema;
+  return expand(schema, root, external, new Set()) as Schema;
 }
 
 const CHAIN_SEGMENT = /^([a-zA-Z_][a-zA-Z0-9_]*)((?:\[\d+\])*)$/;
@@ -180,21 +194,25 @@ const CHAIN_SEGMENT = /^([a-zA-Z_][a-zA-Z0-9_]*)((?:\[\d+\])*)$/;
  * `navigateSchemaToExprPath` with references read: one is followed at every hop
  * and the tail is returned as the shape it names. A union reached before the
  * chain ends is returned as that union, as there.
+ *
+ * `context` is assembled from several declarations, so it is no document's
+ * root: the chain enters one where it reaches a node recorded with
+ * {@link declaredDocument}, or follows a named shape.
  */
 export function navigateDeclaredChain(
   context: Schema,
   chain: string,
   external?: ExternalSchemaResolver,
 ): Schema | undefined {
-  // The node as written and the nodes enclosing it: the tail is named from
-  // there, so keywords written beside a reference stay on the shape.
-  let written: Entered = { schema: context, enclosing: [context] };
-  let at = enter(context, [], external);
+  // The node as written: the tail is named from there, so keywords written
+  // beside a reference stay on the shape.
+  let written = declaredAt(context, undefined);
+  let at = enter(written, external);
   const step = (node: Schema) => {
-    written = { schema: node, enclosing: [...at.enclosing, node] };
-    at = enter(node, at.enclosing, external);
+    written = declaredAt(node, at.root);
+    at = enter(written, external);
   };
-  const named = () => shapeNamedBy(written.schema, written.enclosing, external);
+  const named = () => shapeNamedBy(written.schema, written.root, external);
   if (!chain) return named();
   for (const part of chain.split(".")) {
     if (at.schema.anyOf || at.schema.oneOf) return named();

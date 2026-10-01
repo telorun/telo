@@ -55,6 +55,7 @@ import { moduleCallNamesOf } from "./module-call-names.js";
 import { inlineNamedShapes } from "./schema-compat.js";
 import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-index.js";
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
+import { declaredDocument } from "./referenced-shape.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
@@ -290,10 +291,12 @@ export function buildStepContextSchema(
               defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
               outputTypeField,
             );
+      // The target's contract is embedded whole: a document of its own.
+      const contract = outputSchema && declaredDocument(outputSchema);
       stepProperties[name] = {
         type: "object",
         properties: {
-          result: outputSchema ?? derived ?? PERMISSIVE_CONTRACT,
+          result: contract ?? derived ?? PERMISSIVE_CONTRACT,
         },
       };
     });

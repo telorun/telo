@@ -980,10 +980,10 @@ export function undeclaredKeySchema(
  *  `undefined`s — and a caller that stopped counting one short simply got the
  *  old blind behaviour, silently. Two of them did. */
 export interface SubstituteOptions {
-  /** Receives every stand-in substituted, by JSON Pointer and class. A stand-in
-   *  is not what the author wrote, so a caller validating the result passes this
-   *  record to the validator, which drops the findings it excuses
-   *  (`withoutStandInFindings`). */
+  /** Receives every stand-in substituted, by JSON Pointer, with its class and
+   *  identity. A stand-in is not what the author wrote, so a caller validating
+   *  the result passes this record to the validator, which drops the findings
+   *  it excuses (`withoutStandInFindings`). */
   standIns?: StandIns;
   /** JSON Pointer of `data` within the validated root, for `standIns`. */
   pointer?: string;
@@ -1034,7 +1034,7 @@ export function substituteCelFields(
   const reading = readStandIn(data);
   if (reading?.kind === "value") return reading.value;
   if (reading) {
-    standIns?.set(pointer, reading.class);
+    standIns?.set(pointer, reading);
     return reading.class === "produced"
       ? producedPlaceholder(reading.produced, resolved)
       : celPlaceholderForSchema(resolved);

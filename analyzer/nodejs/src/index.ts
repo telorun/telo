@@ -454,7 +454,9 @@ export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
 export type {
   LocatedFinding,
   SchemaNodeFindings,
+  StandIn,
   StandInClass,
+  StandInIdentity,
   StandInJudgment,
   StandInReading,
   StandIns,

@@ -1,0 +1,36 @@
+# One deterministic expression written twice in a list of unique items: both
+# items are whatever it evaluates to, so the pair is a duplicate as written.
+# `telo check` reports it at the call site, and the kernel refuses the value at
+# dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: StandInIdenticalCallSite
+imports:
+  Run: ../../../../../modules/run
+variables:
+  word: { type: string }
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: tagged
+    invoke: !ref consume
+    inputs:
+      tags:
+        - !cel "variables.word"
+        - !cel "variables.word"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      tags: { type: array, uniqueItems: true, items: { type: string } }
+value: { ok: true }

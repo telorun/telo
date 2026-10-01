@@ -7,7 +7,7 @@ import {
   moduleCallArgumentChains,
   validateChainAgainstSchema,
 } from "../cel/analyze.js";
-import { compileExpression } from "../cel/compile.js";
+import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import { auditCalls, explainUnresolved } from "../cel/diagnose.js";
 import {
   moduleCallNodes,
@@ -316,5 +316,9 @@ export const celEngine: TemplatingEngine = {
 
   expressionRegions(source) {
     return [{ start: 0, end: source.length }];
+  },
+
+  repeatable(source, celEnv) {
+    return repeatableExpression(source, celEnv);
   },
 };

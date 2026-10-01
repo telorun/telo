@@ -2194,7 +2194,9 @@ export class Kernel implements IKernel {
     } catch (error) {
       // A failure may be about a stand-in, which says nothing about what the
       // author wrote — and the first error hides every one after it. Judged
-      // again on the whole error set, excusing what the analyzer excuses.
+      // again on the whole error set, excusing what the analyzer excuses. The
+      // whole schema is asked first: that fills every default into `stripped`,
+      // and no branch judged after it fills another.
       const findings =
         error instanceof SchemaValidationError && standIns.size > 0
           ? this.sharedSchemaValidator.findingsFor(configSchema)

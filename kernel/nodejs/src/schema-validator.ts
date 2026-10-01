@@ -53,16 +53,25 @@ import {
 
 const Ajv = AjvModule.default ?? AjvModule;
 
-/** A validator instance with every Telo keyword, the formats and the shared
- *  manifest root. `locating` is the failure path's twin of the primary one:
- *  every error, each naming the schema node that raised it. */
-function createValidatorAjv(locating: boolean): InstanceType<typeof Ajv> {
+/**
+ * A validator instance with every Telo keyword, the formats and the shared
+ * manifest root.
+ *
+ * - `primary` stops at the first error and fills defaults: the one every
+ *   validation runs on.
+ * - `filling` is its failure-path twin, run to completion: every default the
+ *   primary one would have filled had it not stopped.
+ * - `locating` reports every error, each naming the schema node that raised it,
+ *   and fills NO default: it also validates a union branch on its own, where a
+ *   default the whole schema ignores would be applied and written.
+ */
+function createValidatorAjv(role: "primary" | "filling" | "locating"): InstanceType<typeof Ajv> {
   const ajv = new Ajv({
     strict: false,
-    allErrors: locating,
-    verbose: locating,
+    allErrors: role !== "primary",
+    verbose: role === "locating",
     removeAdditional: false,
-    useDefaults: true,
+    useDefaults: role !== "locating",
     // Required for `standaloneCode` extraction — tells AJV to keep the
     // generated validator's source available rather than wrapping it
     // through `new Function`. The cost at compile time is negligible.
@@ -272,18 +281,27 @@ export class SchemaValidator {
   }
 
   constructor() {
-    this.ajv = createValidatorAjv(false);
+    this.ajv = createValidatorAjv("primary");
   }
 
   addSchema(name: string, schema: object): void {
     registerOnce(this.ajv, name, schema);
-    if (this.locating) registerOnce(this.locating.ajv, name, schema);
+    if (this.failurePath) {
+      registerOnce(this.failurePath.filling, name, schema);
+      registerOnce(this.failurePath.locating, name, schema);
+    }
     this.rawSchemas.set(name, schema);
   }
 
-  /** The instance {@link findingsFor} validates on: created on the first
-   *  failure that needs it, holding every shape registered so far. */
-  private locating: { ajv: InstanceType<typeof Ajv>; nodes: SchemaNodeValidator } | undefined;
+  /** The instances {@link findingsFor} validates on: created on the first
+   *  failure that needs them, holding every shape registered so far. */
+  private failurePath:
+    | {
+        filling: InstanceType<typeof Ajv>;
+        locating: InstanceType<typeof Ajv>;
+        nodes: SchemaNodeValidator;
+      }
+    | undefined;
 
   /**
    * Validation of `schema`, or of any node of it, that reports every error —
@@ -292,24 +310,47 @@ export class SchemaValidator {
    *
    * For the failure path alone: a first error may be about a stand-in, which
    * hides whatever follows it, so a caller excusing stand-in findings needs the
-   * whole set, and decides a union by asking each branch on its own. Compiled
-   * once per node and kept in memory; never persisted, since nothing warms it
-   * and a run that validates cleanly never compiles it.
+   * whole set, and decides a union by asking each branch on its own.
+   *
+   * Asked about `schema` itself, it first fills every default {@link compile}'s
+   * validator fills, INTO `value` — that one stopped at its first error, and a
+   * `required` member a later default supplies must not read as missing — and
+   * so must be asked about it before any node. Asked about a node, it applies
+   * no default and writes nothing: a validator ignores a `default:` inside a
+   * union when it runs the whole schema and applies it to a branch compiled
+   * alone, which would hand the next branch a key the author never wrote.
+   *
+   * Compiled once per node and kept in memory; never persisted, since nothing
+   * warms it and a run that validates cleanly never compiles it.
    */
   findingsFor(schema: object): SchemaNodeFindings {
-    if (!this.locating) {
-      const ajv = createValidatorAjv(true);
-      for (const [name, raw] of this.rawSchemas) registerOnce(ajv, name, raw);
-      const nodes = new SchemaNodeValidator(ajv, {
+    if (!this.failurePath) {
+      const filling = createValidatorAjv("filling");
+      const locating = createValidatorAjv("locating");
+      for (const [name, raw] of this.rawSchemas) {
+        registerOnce(filling, name, raw);
+        registerOnce(locating, name, raw);
+      }
+      const fills = new WeakMap<object, ValidateFunction>();
+      const nodes = new SchemaNodeValidator(locating, {
         canonical: (whole) => this.canonicalSchema(whole),
         run: (validate, value) => {
           const { view, context } = bigIntView(value);
           return validate(view, context);
         },
+        fillDefaults: (whole, value) => {
+          let fill = fills.get(whole);
+          if (!fill) fills.set(whole, (fill = filling.compile(this.canonicalSchema(whole))));
+          // The fills land in the view; merged back so the judge reads them, as
+          // a passing validation hands them to its caller.
+          const { view, context } = bigIntView(value);
+          fill(view, context);
+          if (view !== value) mergeFilledDefaults(value, view);
+        },
       });
-      this.locating = { ajv, nodes };
+      this.failurePath = { filling, locating, nodes };
     }
-    return this.locating.nodes.findingsFor(schema);
+    return this.failurePath.nodes.findingsFor(schema);
   }
 
   getSchema(name: string): object | undefined {
