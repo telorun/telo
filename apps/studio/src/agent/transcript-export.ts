@@ -1,11 +1,12 @@
 import { transcriptFromTurns } from "./records";
-import type { AgentIdentity, AssistantMessage, Conversation, TurnRecords } from "./types";
+import type { AgentIdentity, AssistantMessage, Conversation, FileChange, TurnRecords } from "./types";
 
 /**
  * A conversation exported by the client, composed from `GET /conversations/{id}`
  * and the records route. JSON is lossless — the records route's turns verbatim,
- * which fold back into the same transcript; Markdown is for reading, and carries
- * what the model received rather than any tool's structured `output`.
+ * each with its `summary` and `revert`, which fold back into the same
+ * transcript; Markdown is for reading, and carries what the model received
+ * rather than any tool's structured `output`, then what the turn changed.
  */
 
 export interface ConversationExport {
@@ -78,6 +79,30 @@ function agentSection(reply: AssistantMessage | undefined, turn: TurnRecords): s
   return out;
 }
 
+function lineCounts(change: FileChange): string {
+  return change.added === null || change.removed === null ? "" : ` (+${change.added} −${change.removed})`;
+}
+
+/** What the turn changed, checked and ran, and what a revert of it did. Empty
+ *  for a turn still running and for an agent that keeps no summaries. */
+function changesSection(turn: TurnRecords): string[] {
+  const { summary, revert } = turn;
+  if (!summary && !revert) return [];
+  const lines: string[] = [];
+  if (summary) {
+    if (summary.files === null) lines.push("- Files: not recorded for this turn");
+    else if (summary.files.length === 0) lines.push("- Files: none");
+    for (const file of summary.files ?? []) lines.push(`- ${file.status} \`${file.path}\`${lineCounts(file)}`);
+    if (summary.check) lines.push(`- Check: ${summary.check}`);
+    for (const run of summary.runs) lines.push(`- Ran \`${run.path}\`: exit ${run.exitCode}`);
+  }
+  if (revert) {
+    lines.push(`- Reverted ${revert.revertedAt}`);
+    for (const file of revert.files) lines.push(`  - ${file.outcome} \`${file.path}\``);
+  }
+  return ["### Changes", lines.join("\n")];
+}
+
 export function exportMarkdown(conversation: Conversation, turns: TurnRecords[]): string {
   const blocks: string[] = [
     `# ${conversation.title ?? "Untitled"}`,
@@ -95,7 +120,7 @@ export function exportMarkdown(conversation: Conversation, turns: TurnRecords[])
       [undefined, undefined],
     );
     blocks.push("## You", user ?? "");
-    blocks.push("## Agent", ...agentSection(reply, turn));
+    blocks.push("## Agent", ...agentSection(reply, turn), ...changesSection(turn));
   }
   return blocks.join("\n\n") + "\n";
 }

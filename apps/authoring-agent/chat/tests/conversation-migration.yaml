@@ -9,10 +9,13 @@ metadata:
     its id and lists with its first turn's start as `createdAt`, its latest
     activity as `updatedAt`, the model its turns ran on, two messages per turn
     and every token its journal reports, newest activity first; its records
-    read as before.
+    read as before. Every legacy turn stays a turn from before checkpoints
+    existed: its summary reports its usage and `files: null`, its changes read
+    `files: null` and `revert: null`, and reverting it is refused 409
+    ERR_TURN_NOT_CHECKPOINTED.
 imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
-  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  Fs: ../../../../modules/fs
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
@@ -227,9 +230,20 @@ steps:
         - name: records
           invoke: { kind: HttpClient.Request }
           inputs: { url: http://127.0.0.1:18535/conversations/0190a000-0000-7000-8000-00000000a001/records }
+        - name: changes
+          invoke: { kind: HttpClient.Request }
+          inputs: { url: http://127.0.0.1:18535/chat/0190a000-0000-7000-8000-00000000b003/changes }
+        - name: revert
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18535/chat/0190a000-0000-7000-8000-00000000b003/revert
+            method: POST
       outputs:
         conversations: !cel "steps.list.result.body.conversations"
         records: !cel "steps.records.result.body.turns.map(t, [t.turnId, t.status, size(t.records)])"
+        summaries: !cel "steps.records.result.body.turns.map(t, [t.summary.files, t.summary.usage.totalTokens, t.revert])"
+        changes: !cel "[steps.changes.result.status, steps.changes.result.body]"
+        revert: !cel "[steps.revert.result.status, steps.revert.result.body.code]"
   - name: migrated
     invoke: { kind: Assert.Equals }
     inputs:
@@ -257,3 +271,8 @@ steps:
         records:
           - [ 0190a000-0000-7000-8000-00000000b001, finished, 4 ]
           - [ 0190a000-0000-7000-8000-00000000b002, finished, 4 ]
+        summaries:
+          - [ null, 15, null ]
+          - [ null, 15, null ]
+        changes: [ 200, { files: null, revert: null } ]
+        revert: [ 409, ERR_TURN_NOT_CHECKPOINTED ]

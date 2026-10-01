@@ -57,6 +57,10 @@ against nested ones, an `output` array against `choices`, named events against
 `[DONE]`-terminated chunks. Under one kind, `reasoning` would be a field that is
 sometimes a hard 400.
 
+All four chat kinds send the model contract's `toolChoice` as `tool_choice`: `none`
+keeps the tools in the request and forbids a new call, which is what an agent's
+concluding call asks for.
+
 Prefer the completions pair for everything else, and for every OpenAI-**compatible**
 endpoint: Azure OpenAI, Ollama, vLLM, Groq and OpenRouter serve `/chat/completions`, and
 almost none serve `/v1/responses`.

@@ -1,0 +1,34 @@
+# Input shapes another library's kinds name through an import alias. Both type
+# their `context` node from a location: `MisplacedInput` says `reader`, which a
+# kind declaring `readers` cannot hold a value at; `CallerInput` says `readers`.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaSharedShapes
+  version: 1.0.0
+  description: >-
+    Fixture library exporting input shapes that type a node from a location in
+    whichever kind names them.
+exports:
+  resources: [MisplacedInput, CallerInput]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: MisplacedInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      default: {}
+      x-telo-value-schema-from: /reader/*/contextType
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CallerInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      default: {}
+      x-telo-value-schema-from: /readers/*/contextType

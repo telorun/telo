@@ -1,0 +1,48 @@
+# Arguments every reader's declared type accepts, written and computed: the
+# check is clean and each call returns.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaOwnDefsAccepted
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: inlineType
+    invoke: !ref Kinds.inlineCaller
+    inputs:
+      context: { turnId: "t1" }
+  - name: namedType
+    invoke: !ref Kinds.namedCaller
+    inputs:
+      context: { turnId: "t1" }
+  - name: bothTypes
+    invoke: !ref Kinds.bothCaller
+    inputs:
+      context: { label: "seven", count: 7 }
+  - name: selfReference
+    invoke: !ref Kinds.selfCaller
+    inputs:
+      context: { turnId: "t1", parent: { turnId: "t0" } }
+  - name: inlineTypeComputed
+    invoke: !ref Kinds.inlineCaller
+    inputs:
+      context:
+        turnId: !cel "dyn('t1')"
+  - name: namedTypeComputed
+    invoke: !ref Kinds.namedCaller
+    inputs:
+      context:
+        turnId: !cel "dyn('t1')"
+  - name: bothTypesComputed
+    invoke: !ref Kinds.bothCaller
+    inputs:
+      context:
+        label: !cel "dyn('seven')"
+        count: !cel "dyn(7)"

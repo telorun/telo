@@ -1,0 +1,36 @@
+# Literal arguments each reader's declared type refuses, through the reference
+# inside that type: this application's own `telo check` reports every call.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaOwnDefsLiteralRefused
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: inlineType
+    invoke: !ref Kinds.inlineCaller
+    inputs:
+      context: { turnId: 42 }
+  - name: namedType
+    invoke: !ref Kinds.namedCaller
+    inputs:
+      context: { turnId: 42 }
+  - name: firstOfTwo
+    invoke: !ref Kinds.bothCaller
+    inputs:
+      context: { label: 7, count: 7 }
+  - name: secondOfTwo
+    invoke: !ref Kinds.bothCaller
+    inputs:
+      context: { label: "seven", count: "seven" }
+  - name: selfReference
+    invoke: !ref Kinds.selfCaller
+    inputs:
+      context: { turnId: "t1", parent: { turnId: 42 } }

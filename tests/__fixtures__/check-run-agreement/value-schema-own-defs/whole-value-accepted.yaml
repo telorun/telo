@@ -1,0 +1,46 @@
+# A whole `context` computed by one expression, for each reader's declared type:
+# the check is clean and each call returns.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaWholeValueAccepted
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+# A reader whose declared type requires a member, with no definitions of its own.
+kind: Kinds.Reader
+metadata:
+  name: plainReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+---
+kind: Kinds.Caller
+metadata:
+  name: plainCaller
+readers:
+  - !ref plainReader
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: plainType
+    invoke: !ref plainCaller
+    inputs:
+      context: !cel "dyn({'turnId': 't1'})"
+  - name: inlineType
+    invoke: !ref Kinds.inlineCaller
+    inputs:
+      context: !cel "dyn({'turnId': 't1'})"
+  - name: namedType
+    invoke: !ref Kinds.namedCaller
+    inputs:
+      context: !cel "dyn({'turnId': 't1'})"

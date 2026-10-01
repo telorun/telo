@@ -1,0 +1,29 @@
+# A model call choosing about tools while offering none. The contract admits
+# `toolChoice` only beside `tools`, so the kernel refuses the call at dispatch.
+kind: Telo.Library
+metadata:
+  name: ToolChoiceWithoutTools
+imports:
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+exports:
+  resources: [callWithToolChoiceOnly]
+---
+# Reaching the model at all would fail the run with this code instead.
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+failOn:
+  message: "hello"
+  code: ERR_MODEL_REACHED
+  reason: the model received a request
+---
+kind: Run.Sequence
+metadata: { name: callWithToolChoiceOnly }
+steps:
+  - name: call
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: "hello"
+      toolChoice: none

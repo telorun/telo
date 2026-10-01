@@ -18,7 +18,7 @@ import { openAgentStream, type AgentStreamError, type AgentStreamHandle } from "
 import { ownWorkspace } from "./agent-workspace";
 import { launchAgentSession, type LaunchedAgent } from "./launch";
 import { TermsRequiredError, type RunnerTerms } from "../run/types";
-import { reconcile, seedDelta, pullFile } from "./sync";
+import { applyReverted, reconcile, seedDelta, pullFile, sharedEditorFile, type RevertedTurn } from "./sync";
 import {
   applyRecord,
   applyTurnError,
@@ -48,6 +48,9 @@ import type {
   ConversationPage,
   JournalRecord,
   ToolResult,
+  TurnChanges,
+  TurnRevert,
+  TurnSummary,
   WorkspaceBridge,
 } from "./types";
 
@@ -55,6 +58,9 @@ import type {
  *  conversation moved on since the transcript was read — it has been re-read,
  *  and the action is to be asked again against it. */
 export type TurnActionOutcome = "done" | "changed" | "failed";
+
+/** The message a turn that spent its step budget is continued with. */
+export const CONTINUE_MESSAGE = "Continue.";
 
 /** A conversation exported for download. */
 export interface ConversationDownload {
@@ -113,6 +119,29 @@ interface AgentContextValue {
   /** Which conversation surfaces the agent serves: truncation and branching
    *  count only alongside `conversations`. */
   features: { conversations: boolean; truncation: boolean; branching: boolean };
+  /** Which turn surfaces the agent serves, each on its own. */
+  turnFeatures: {
+    /** Per-call diffs on the file tools' cards, and a turn's changes as diffs. */
+    changes: boolean;
+    revert: boolean;
+    summary: boolean;
+    /** A spent step budget ends in a wrap-up the user may continue from. */
+    conclusion: boolean;
+  };
+  /** The editor's file for a path the agent named, or null when it names none
+   *  — a path the sync does not share, one outside the workspace, or any path
+   *  with no workspace registered. */
+  editorFile: (path: string) => string | null;
+  /** What `turnId` changed on balance, as diffs. Rejects with the agent's
+   *  refusal, its code in the message. */
+  turnChanges: (turnId: string) => Promise<TurnChanges>;
+  /** Put back what `turnId` changed. Rejects with the agent's refusal, its code
+   *  in the message. The editor's files then follow the recorded revert as they
+   *  follow any other. */
+  revertTurn: (turnId: string) => Promise<void>;
+  /** Per reverted turn, the restored paths the editor's copy was left as it is
+   *  for: it holds neither what the turn left nor what the revert restored. */
+  revertKept: ReadonlyMap<string, readonly string[]>;
   /** The open conversation as the agent last reported it; null for a draft and
    *  with an agent that does not serve conversations. */
   conversation: Conversation | null;
@@ -275,6 +304,13 @@ function waitForTurnEnd(baseUrl: string, token: string | undefined, turnId: stri
   });
 }
 
+/** What a turn's failed convergence onto a recorded revert reads as. */
+function revertApplyError(err: unknown): Error {
+  return new Error(`The editor's files could not be brought in line with the revert: ${message(err)}`);
+}
+
+const NO_EXCLUDED_PATHS: ReadonlySet<string> = new Set();
+
 const AgentContext = createContext<AgentContextValue | null>(null);
 
 export function useAgent(): AgentContextValue {
@@ -349,6 +385,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   unsentRef.current = unsent;
 
   const bridgeRef = useRef<WorkspaceBridge | null>(null);
+  // The same two as state, for what is derived from them at render.
+  const [bridge, setBridge] = useState<WorkspaceBridge | null>(null);
+  const [coResident, setCoResident] = useState<CoResidentAgent | null>(null);
   const streamRef = useRef<AgentStreamHandle | null>(null);
   const assistantIdRef = useRef<string | null>(null);
   // Set while an accepted abort waits for the turn's cancellation to end its
@@ -535,8 +574,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const togglePanel = useCallback(() => setPanelOpen((o) => !o), []);
   const setOverrideUrl = useCallback((url: string) => setOverrideUrlState(url), []);
   const setOverrideToken = useCallback((token: string) => setOverrideTokenState(token), []);
-  const registerWorkspace = useCallback((bridge: WorkspaceBridge | null) => {
-    bridgeRef.current = bridge;
+  const registerWorkspace = useCallback((next: WorkspaceBridge | null) => {
+    bridgeRef.current = next;
+    setBridge(next);
   }, []);
   const setRunner = useCallback((base: string | null) => {
     runnerBaseRef.current = base;
@@ -548,6 +588,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const setCoResidentAgent = useCallback((agent: CoResidentAgent | null) => {
     const appeared = agent !== null && coResidentRef.current?.baseUrl !== agent.baseUrl;
     coResidentRef.current = agent;
+    setCoResident(agent);
     refreshIdentityRef.current();
     if (appeared) onCoResidentRef.current();
   }, []);
@@ -593,6 +634,96 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   // the conversation, and whatever else changed it meanwhile is read now.
   const afterTurnRef = useRef<() => void>(() => undefined);
 
+  // ── convergence ─────────────────────────────────────────────────────────────
+  // One at a time: a seed, a reconcile and the apply of a recorded revert each
+  // read both sides and then write one, so two interleaved would act on a
+  // snapshot the other has already made stale.
+  const convergenceRef = useRef<Promise<unknown>>(Promise.resolve());
+  const serialized = useCallback(<T,>(work: () => Promise<T>): Promise<T> => {
+    const run = convergenceRef.current.then(work, work);
+    convergenceRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
+
+  // ── reverts the agent recorded ──────────────────────────────────────────────
+  // The editor's files follow a recorded revert whoever asked for it — this
+  // client, or another seen on a records read. Each is applied once per
+  // `revertedAt` in a session; the marker is set only once the apply completed,
+  // so a failed one stays pending for the next read and the next seed.
+  const appliedRevertsRef = useRef(new Map<string, string>());
+  const pendingRevertsRef = useRef(new Map<string, RevertedTurn & { revertedAt: string }>());
+  const [revertKept, setRevertKept] = useState<ReadonlyMap<string, readonly string[]>>(() => new Map());
+  const revertErrorRef = useRef<string | null>(null);
+
+  const noteRevert = useCallback(
+    (turn: string, summary: TurnSummary | null | undefined, revert: TurnRevert | null | undefined) => {
+      const pending = pendingRevertsRef.current;
+      if (!revert || !summary?.files || appliedRevertsRef.current.get(turn) === revert.revertedAt) {
+        pending.delete(turn);
+        return;
+      }
+      const recorded = new Map(summary.files.map((file) => [file.path, file]));
+      pending.set(turn, {
+        turnId: turn,
+        revertedAt: revert.revertedAt,
+        files: revert.files.flatMap((file) => {
+          const change = recorded.get(file.path);
+          return file.outcome === "restored" && change
+            ? [{ path: file.path, before: change.before, after: change.after }]
+            : [];
+        }),
+      });
+    },
+    [],
+  );
+
+  const applyPendingReverts = useCallback(async (workspace: AgentWorkspace, editor: WorkspaceBridge) => {
+    const turns = [...pendingRevertsRef.current.values()];
+    if (turns.length === 0) return;
+    let kept: Map<string, string[]>;
+    try {
+      kept = await applyReverted(workspace, editor, turns);
+    } catch (err) {
+      throw revertApplyError(err);
+    }
+    for (const turn of turns) {
+      appliedRevertsRef.current.set(turn.turnId, turn.revertedAt);
+      if (pendingRevertsRef.current.get(turn.turnId)?.revertedAt === turn.revertedAt) {
+        pendingRevertsRef.current.delete(turn.turnId);
+      }
+    }
+    setRevertKept((prev) => {
+      const next = new Map(prev);
+      for (const [turn, paths] of kept) {
+        if (paths.length > 0) next.set(turn, paths);
+        else next.delete(turn);
+      }
+      return next;
+    });
+    const failedBefore = revertErrorRef.current;
+    if (failedBefore) {
+      revertErrorRef.current = null;
+      setError((current) => (current === failedBefore ? null : current));
+    }
+  }, []);
+
+  // Never under this client's own turn: its end-of-turn reconcile converges
+  // everything, and the read that follows finds the editor in line.
+  const convergeReverts = useCallback(
+    async (workspace: AgentWorkspace) => {
+      const editor = bridgeRef.current;
+      if (!editor || pendingRevertsRef.current.size === 0 || turnIdRef.current || lockedRef.current) return;
+      try {
+        await serialized(() => applyPendingReverts(workspace, editor));
+      } catch (err) {
+        const said = message(err);
+        revertErrorRef.current = said;
+        setError(said);
+      }
+    },
+    [applyPendingReverts, serialized],
+  );
+
   const endTurn = useCallback(async () => {
     const bridge = bridgeRef.current;
     const workspace = workspaceRef.current;
@@ -604,7 +735,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     afterTurnRef.current();
     if (bridge && workspace) {
       try {
-        await reconcile(workspace, bridge);
+        await serialized(() => reconcile(workspace, bridge));
       } catch (err) {
         // The next turn re-seeds, but the user must know the editor may be
         // showing stale files right now.
@@ -613,7 +744,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         );
       }
     }
-  }, []);
+  }, [serialized]);
 
   // A cancellation this client did not ask for — another client's Stop, or the
   // agent shutting down — is told apart by the turn's status as the records
@@ -787,7 +918,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           setStatus("seeding");
           const workspace = workspaceRef.current;
           if (!workspace) throw new Error("No agent workspace is reachable.");
-          await seedDelta(workspace, bridge);
+          // A recorded revert not applied yet comes first: seeding over it would
+          // push the editor's stale copies back onto the restored files.
+          await serialized(async () => {
+            await applyPendingReverts(workspace, bridge);
+            await seedDelta(workspace, bridge);
+          });
           if (superseded()) return;
           const convId = await conversationForSend();
           if (superseded()) return;
@@ -850,7 +986,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [client, conversationForSend, ensureAgent, attachStream, invalidateLaunched, updateAssistant, abortUnattached],
+    [
+      client,
+      conversationForSend,
+      ensureAgent,
+      attachStream,
+      invalidateLaunched,
+      updateAssistant,
+      abortUnattached,
+      applyPendingReverts,
+      serialized,
+    ],
   );
 
   const send = useCallback(
@@ -893,7 +1039,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       void (async () => {
         try {
           setStatus("seeding");
-          await seedDelta(agent.workspace, bridge);
+          await serialized(async () => {
+            await applyPendingReverts(agent.workspace, bridge);
+            await seedDelta(agent.workspace, bridge);
+          });
           if (superseded()) {
             setStatus("idle");
             return;
@@ -927,7 +1076,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [abortUnattached, attachStream, client, invalidateLaunched, reachableAgent, updateAssistant, selectAgent],
+    [
+      abortUnattached,
+      attachStream,
+      client,
+      invalidateLaunched,
+      reachableAgent,
+      updateAssistant,
+      selectAgent,
+      applyPendingReverts,
+      serialized,
+    ],
   );
 
   /**
@@ -1004,8 +1163,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       const turns = await readConversation((cursor) => agentClient.records(convId, cursor));
       if (conversationIdRef.current !== convId || turnIdRef.current) return "skipped";
       setMessages((prev) => [...transcriptFromTurns(turns), ...prev.filter((m) => m.local)]);
+      pendingRevertsRef.current.clear();
+      for (const turn of turns) noteRevert(turn.turnId, turn.summary, turn.revert);
       const last = turns[turns.length - 1];
-      if (last?.status !== "running") return "loaded";
+      if (last?.status !== "running") {
+        void convergeReverts(agent.workspace);
+        return "loaded";
+      }
       selectAgent(agent);
       assistantIdRef.current = last.turnId;
       turnIdRef.current = last.turnId;
@@ -1028,7 +1192,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       setError(`Failed to read the conversation from the agent: ${message(err)}`);
       return "failed";
     }
-  }, [attachStream, reachableAgent, selectAgent]);
+  }, [attachStream, convergeReverts, noteRevert, reachableAgent, selectAgent]);
   onCoResidentRef.current = () => {
     void loadTranscript();
   };
@@ -1050,6 +1214,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       setStatus("idle");
       stoppingRef.current = false;
       staleRef.current = false;
+      pendingRevertsRef.current.clear();
       if (!keepUnsent) setUnsent(null);
       if (id) void loadTranscript();
     },
@@ -1306,7 +1471,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   }, [loadTranscript, reachableAgent, setConversationMeta]);
 
   afterTurnRef.current = () => {
-    const stale = staleRef.current;
+    // A turn's summary is state on the turn, not a record of its stream: an
+    // agent that keeps one is read again once the turn has ended.
+    const stale = staleRef.current || hasFeature(identityRef.current, AGENT_FEATURES.turnSummary);
     staleRef.current = false;
     void pollConversation().then((reloaded) => {
       if (stale && !reloaded) void loadTranscript();
@@ -1513,6 +1680,40 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     [actionFailed, reachableAgent, showOwned, supersedeResolution],
   );
 
+  // ── a turn's changes ────────────────────────────────────────────────────────
+  const turnChanges = useCallback(
+    (turn: string) => agentClientOrThrow().client.turnChanges(turn),
+    [agentClientOrThrow],
+  );
+
+  const revertTurn = useCallback(
+    async (turn: string) => {
+      const id = conversationIdRef.current;
+      const { agent, client: c } = agentClientOrThrow();
+      const { revert, revision } = await c.revertTurn(turn);
+      if (conversationIdRef.current !== id) return;
+      const reply = messagesRef.current.find((m): m is AssistantMessage => m.id === turn && m.role === "assistant");
+      updateAssistant(turn, (m) => ({ ...m, revert }));
+      // This client's own change: the poll has nothing to re-read for it.
+      const current = conversationRef.current;
+      if (current && revision !== undefined) setConversationMeta({ ...current, revision });
+      noteRevert(turn, reply?.summary, revert);
+      await convergeReverts(agent.workspace);
+    },
+    [agentClientOrThrow, convergeReverts, noteRevert, setConversationMeta, updateAssistant],
+  );
+
+  // The paths the sync shares are this side's rule, composed in front of the
+  // editor's mapping; which paths are excluded follows the agent in use.
+  const editorFile = useCallback(
+    (path: string) => {
+      if (!bridge) return null;
+      const excludedPaths = !overrideUrl && coResident ? coResident.workspace.excludedPaths : NO_EXCLUDED_PATHS;
+      return sharedEditorFile({ excludedPaths }, bridge, path);
+    },
+    [bridge, coResident, overrideUrl],
+  );
+
   useEffect(
     () => () => {
       streamRef.current?.close();
@@ -1562,6 +1763,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       truncation: conversationsOn && hasFeature(identity, AGENT_FEATURES.truncation),
       branching: conversationsOn && hasFeature(identity, AGENT_FEATURES.branching),
     },
+    turnFeatures: {
+      changes: hasFeature(identity, AGENT_FEATURES.turnChanges),
+      revert: hasFeature(identity, AGENT_FEATURES.turnRevert),
+      summary: hasFeature(identity, AGENT_FEATURES.turnSummary),
+      conclusion: hasFeature(identity, AGENT_FEATURES.turnConclusion),
+    },
+    editorFile,
+    turnChanges,
+    revertTurn,
+    revertKept,
     conversation,
     draft: workspaceOpen && conversationId === null,
     listConversations,

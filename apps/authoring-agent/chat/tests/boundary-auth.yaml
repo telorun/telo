@@ -16,7 +16,7 @@ metadata:
     agent emits none.
 imports:
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
-  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  Fs: ../../../../modules/fs
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
   Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
@@ -59,6 +59,8 @@ collection:
   - { method: GET, path: /chat/t/events }
   - { method: POST, path: /chat/t/abort }
   - { method: POST, path: /chat/t/continue }
+  - { method: GET, path: /chat/t/changes }
+  - { method: POST, path: /chat/t/revert }
   - { method: GET, path: /conversations/c/records }
   - { method: POST, path: /conversations }
   - { method: GET, path: /conversations }
@@ -262,6 +264,8 @@ steps:
                 - { route: GET /chat/t/events, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /chat/t/abort, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /chat/t/continue, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: GET /chat/t/changes, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
+                - { route: POST /chat/t/revert, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /conversations/c/records, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: POST /conversations, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
                 - { route: GET /conversations, status: 401, code: ERR_UNAUTHENTICATED, challenge: Bearer }
@@ -282,6 +286,8 @@ steps:
                 - { route: GET /chat/t/events, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/abort, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/continue, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
+                - { route: GET /chat/t/changes, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
+                - { route: POST /chat/t/revert, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: GET /conversations/c/records, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
                 - { route: POST /conversations, status: 201, code: null, challenge: null }
                 - { route: GET /conversations, status: 200, code: null, challenge: null }
@@ -302,14 +308,14 @@ steps:
               health: [ 200, { status: up } ]
               guardedCapabilities:
                 auth: bearer
-                features: [conversations, conversation-truncation, conversation-branching]
+                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion]
                 manifestRuns: true
               guardedReady: [ 200, { ready: true, reasons: [] } ]
               openCapabilities:
                 agent: { name: AuthoringAgent, versioned: true }
                 prompt: { id: !cel "sha256(steps.primer.result.content)" }
                 auth: none
-                features: [conversations, conversation-truncation, conversation-branching]
+                features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion]
                 manifestRuns: false
                 keys: [agent, auth, features, manifestRuns, prompt]
               # Fixed messages: the probe's own error, which names a path on the

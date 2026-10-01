@@ -59,6 +59,8 @@ export interface AgentInputs {
   messages?: Message[];
   system?: string;
   options?: Record<string, unknown>;
+  /** Caller data handed to every tool dispatch; the kernel fills `{}` when omitted. */
+  context?: Record<string, unknown>;
 }
 
 /** The manifest-level agent config the prelude reads (system prompt + base options). */
@@ -179,7 +181,8 @@ export async function assembleTools(
  *  The call runs under an `execute_tool <name>` span opened on `ctx` — the agent
  *  run's span context — and that span's context is what the provider receives, so
  *  cancelling the turn reaches the running tool and the tool's own dispatch nests
- *  under the span. `output` is the tool's result before any mapping the provider
+ *  under the span. `context` is the agent's caller data, handed to the provider
+ *  for its tools to read. `output` is the tool's result before any mapping the provider
  *  applies, as plain JSON; it is never fed to the model. `content`, the error string
  *  included, is bounded by `maxToolResultBytes` (undefined: unbounded); `output`
  *  never is. */
@@ -192,6 +195,7 @@ export async function dispatchToolCall(
   spans: SpanOpener,
   agent: AgentSpanIdentity,
   ctx: InvokeContext | undefined,
+  context: Record<string, unknown>,
 ): Promise<ToolResultRecord> {
   const span = await openToolSpan(spans, ctx, agent, { name: call.name, callId: call.id });
   const target = dispatch.get(call.name);
@@ -212,9 +216,14 @@ export async function dispatchToolCall(
   let called: { output: unknown; result: unknown };
   try {
     called = target.provider.callToolWithOutput
-      ? await target.provider.callToolWithOutput(target.bareName, call.arguments, span.context)
+      ? await target.provider.callToolWithOutput(
+          target.bareName,
+          call.arguments,
+          span.context,
+          context,
+        )
       : await target.provider
-          .callTool(target.bareName, call.arguments, span.context)
+          .callTool(target.bareName, call.arguments, span.context, context)
           .then((output) => ({ output, result: output }));
   } catch (err) {
     await settleFailure(span, err);

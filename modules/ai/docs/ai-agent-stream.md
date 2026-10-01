@@ -1,5 +1,5 @@
 ---
-description: "Ai.AgentStream: a streaming tool-use loop over any Ai.ModelStream. Same config as Ai.Agent, but emits a Stream of Ai.AgentStreamPart records — deltas, tool calls with stable ids, per-call usage, tool results with the tool's own output, provider state and a terminal finish — for live SSE, and traces the run."
+description: "Ai.AgentStream: a streaming tool-use loop over any Ai.ModelStream. Same config as Ai.Agent, but emits a Stream of Ai.AgentStreamPart records — deltas, tool calls with stable ids, per-call usage, tool results with the tool's own output, provider state and a terminal finish marked when the step budget ended the run — for live SSE, and traces the run."
 sidebar_label: Ai.AgentStream
 ---
 
@@ -9,7 +9,7 @@ sidebar_label: Ai.AgentStream
 
 `Ai.AgentStream` is the streaming counterpart of [`Ai.Agent`](./ai-agent.md): it stands to `Ai.Agent` as [`Ai.TextStream`](./ai-text-stream.md) stands to [`Ai.Text`](./ai-text.md). Same tool-use loop, same configuration — but instead of returning a buffered object, it forwards the run as a `Stream` on `result.output` (the streaming-Invocable convention), so the assistant's text streams token-by-token and every tool call surfaces the moment it happens.
 
-Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `onToolError`, `maxToolResultBytes`, `toolProviders` — and tool assembly and dispatch are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
+Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxSteps`, `onMaxSteps`, `conclusionPrompt`, `onToolError`, `maxToolResultBytes`, `toolProviders` — and tool assembly and dispatch are literally shared code, so the two agents never diverge on tool semantics. Only the output shape differs.
 
 ## The event stream
 
@@ -24,7 +24,7 @@ Its schema is identical to `Ai.Agent` — `model`, `system`, `options`, `maxStep
 | `provider-state`  | `providerState`                                     | Opaque provider state, forwarded as produced (see below).              |
 | `step-finish`     | `usage`, `finishReason`                             | One model call ended: that call's usage and finish reason.             |
 | `tool-result`     | `toolResult: { toolCallId, name, content, output?, error? }` | A tool the agent executed: `content` is what the model was told, `output` what the tool returned. `error: true` on a failed call. |
-| `finish`          | `usage`, `finishReason`                             | Terminal — the usage of every call summed.                              |
+| `finish`          | `usage`, `finishReason`, `limit?`                   | Terminal — the usage of every call summed; `limit: max-steps` when the step budget ended the run. |
 
 For a run that calls one tool and then answers, the order is:
 
@@ -33,7 +33,7 @@ tool-call(id) · step-finish(u1) · tool-result(id) · text-delta… · step-fin
 ```
 
 - **`step-finish`** closes each model call when its stream ends and **before** that call's tools run, so a consumer can account for spend call by call — including a run that is cancelled or fails later. A call interrupted by a cancellation before its provider's `finish` reports none; one whose `finish` arrived reports it even when the cancellation lands first.
-- **`finish`** is the only terminator, and its `usage` is the sum of the `step-finish` usages.
+- **`finish`** is the only terminator, and its `usage` is the sum of the `step-finish` usages. It carries `limit: max-steps` when the run ended because `maxSteps` was reached (`onMaxSteps: return` or `conclude`) and no `limit` when the model finished on its own; `finishReason` stays the last model call's own reason.
 - **Tool call ids** are fixed where the call is first seen: the `tool-call` part, the assistant message replayed to the next model call, and the `tool-result`'s `toolCallId` all carry the same one. A model that supplies none gets a generated `call_<uuid>`, unique across calls, runs and processes, so a stored transcript never has two calls under one id.
 - The `tool-result` record is `Ai.Agent`'s `steps[].toolResults` record plus `output` (see [Tool results](#tool-results)), so a streaming consumer is never a poorer signal than the buffered trace.
 
@@ -111,7 +111,7 @@ data: {"usage":{"promptTokens":400,"completionTokens":48,"totalTokens":448,"unit
 
 ## Invocation inputs
 
-`prompt` xor `messages`, `system` and `options`, as for [`Ai.Agent`](./ai-agent.md#invocation-inputs), plus:
+`prompt` xor `messages`, `system`, `options` and `context` — the caller data the tools read, typed by the mounted providers' `contextType` — as for [`Ai.Agent`](./ai-agent.md#invocation-inputs), plus:
 
 | Field           | Type | Purpose                                                                             |
 | --------------- | ---- | ----------------------------------------------------------------------------------- |
@@ -123,11 +123,12 @@ The loop runs lazily as the consumer pulls the stream, and each tool call is a r
 
 ## Terminal & error semantics
 
-These mirror [`Ai.Agent`](./ai-agent.md#maxsteps-and-error-handling). A failure never becomes a record: it **rejects** the iteration, so `catches:`, a throws union and a `try:` step see it. Parts already emitted still reach the consumer, and an encoder frames the rejection for the wire.
+These mirror [`Ai.Agent`](./ai-agent.md#when-the-step-budget-runs-out). A failure never becomes a record: it **rejects** the iteration, so `catches:`, a throws union and a `try:` step see it. Parts already emitted still reach the consumer, and an encoder frames the rejection for the wire.
 
 - **`onToolError: feedback`** (default) — a failed tool emits a `tool-result` with `error: true`; the loop continues so the model can react.
 - **`onToolError: throw`** — the tool's error rejects the iteration.
-- **`onMaxSteps: return`** — a terminal `finish` with the last call's `finishReason`.
+- **`onMaxSteps: return`** — a terminal `finish` with the last call's `finishReason` and `limit: max-steps`.
+- **`onMaxSteps: conclude`** — one more model call beyond `maxSteps`, declaring the same tools but forbidden to use one (`toolChoice: none`) and ending with `conclusionPrompt` as a user message. Its text and reasoning parts are emitted like any call's and closed by a `step-finish`; a tool call it returns anyway is neither emitted nor run. Then the terminal `finish`, with `limit: max-steps` and that call's usage in the total.
 - **`onMaxSteps: throw`** (default) — rejects with `ERR_AGENT_MAX_STEPS`.
 - A model stream that ends without a `finish` part rejects with `ERR_CONTRACT_VIOLATION`.
 

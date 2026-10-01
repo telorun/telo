@@ -1,0 +1,156 @@
+# Kinds whose `context` input is typed by what the readers they hold declare
+# (`x-telo-value-schema-from` inside `inputType`), with readers whose declared
+# type is a document of its own: it names its `$defs`, or itself, by `#…`
+# references that must resolve against that type and not against the caller's
+# contract.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaOwnDefs
+  version: 1.0.0
+  description: >-
+    Fixture library whose readers declare the caller data they read as types
+    carrying their own definitions, and callers typed by those readers.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [inlineCaller, namedCaller, bothCaller, selfCaller]
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    contextType:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { read: true }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      context:
+        type: object
+        default: {}
+        x-telo-value-schema-from: /readers/*/contextType
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        x-telo-ref: { kind: Self.Reader, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body
+---
+# An inline type naming its own `$defs`.
+kind: Self.Reader
+metadata:
+  name: inlineReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { $ref: "#/$defs/Id" }
+    $defs:
+      Id: { type: string }
+---
+# The same type, declared as a named shape.
+kind: Telo.JsonSchema
+metadata:
+  name: TurnContext
+schema:
+  type: object
+  required: [turnId]
+  properties:
+    turnId: { $ref: "#/$defs/Id" }
+  $defs:
+    Id: { type: string }
+---
+kind: Self.Reader
+metadata:
+  name: namedReader
+contextType: !ref TurnContext
+---
+# Two types each declaring `$defs/Id`, with different meanings.
+kind: Self.Reader
+metadata:
+  name: textIdReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [label]
+    properties:
+      label: { $ref: "#/$defs/Id" }
+    $defs:
+      Id: { type: string }
+---
+kind: Self.Reader
+metadata:
+  name: numberIdReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [count]
+    properties:
+      count: { $ref: "#/$defs/Id" }
+    $defs:
+      Id: { type: integer }
+---
+# A type that references itself.
+kind: Self.Reader
+metadata:
+  name: selfReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+      parent: { $ref: "#" }
+---
+kind: Self.Caller
+metadata:
+  name: inlineCaller
+readers:
+  - !ref inlineReader
+---
+kind: Self.Caller
+metadata:
+  name: namedCaller
+readers:
+  - !ref namedReader
+---
+kind: Self.Caller
+metadata:
+  name: bothCaller
+readers:
+  - !ref textIdReader
+  - !ref numberIdReader
+---
+kind: Self.Caller
+metadata:
+  name: selfCaller
+readers:
+  - !ref selfReader

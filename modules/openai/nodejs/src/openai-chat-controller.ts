@@ -268,6 +268,10 @@ abstract class OpenaiBase {
         ? { response_format: toChatResponseFormat(input.responseFormat) }
         : {}),
       ...toOpenAiParams(mergeOptions(this.resource.options, input.options)),
+      // The contract's own switch, after the options so it is what the call
+      // says: `none` keeps the tools declared — the conversation's earlier calls
+      // stay valid — and forbids a new one.
+      ...(tools && input.toolChoice ? { tool_choice: input.toolChoice } : {}),
       stream,
       ...(stream ? { stream_options: { include_usage: true } } : {}),
     };

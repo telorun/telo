@@ -1,0 +1,197 @@
+# Caller data reaching an agent's tools. A provider declares the `context` its
+# mappings read (`contextType`); the agent mounting it requires that of its own
+# `context` input — every mounted provider's — and hands the value to each tool
+# dispatch. A provider declaring none constrains nothing.
+kind: Telo.Application
+metadata:
+  name: AgentContextTest
+  version: 1.0.0
+  description: Typed caller data flows from an agent's `context` input into its tools' mappings.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref toolReceivesCallerContext
+  - !ref everyProviderConstrainsContext
+  - !ref undeclaredProviderAcceptsAnyContext
+  - !ref undeclaredContextRefused
+  - !ref missingContextRefused
+  - !ref missingContextRefusedAtRuntime
+  - !ref missingSessionIdRefused
+  - !ref missingSessionIdRefusedAtRuntime
+---
+kind: Run.Value
+metadata: { name: recorder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      id: { type: string }
+value:
+  id: !cel "inputs.id"
+---
+kind: Ai.Tools
+metadata: { name: turnTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+tools:
+  - tool: !ref recorder
+    name: record
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.turnId"
+---
+kind: Ai.Tools
+metadata: { name: sessionTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [sessionId]
+    properties:
+      sessionId: { type: string }
+tools:
+  - tool: !ref recorder
+    name: record_session
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.sessionId"
+---
+# Declares no `contextType`, as a provider discovering its tools at runtime does.
+kind: Ai.Tools
+metadata: { name: undeclaredTools }
+tools:
+  - tool: !ref recorder
+    name: record
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: "fixed"
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+emitToolCall:
+  name: record
+---
+kind: Ai.Agent
+metadata: { name: turnAgent }
+model: !ref echo
+toolProviders:
+  - provider: !ref turnTools
+---
+kind: Ai.Agent
+metadata: { name: turnAndSessionAgent }
+model: !ref echo
+toolProviders:
+  - provider: !ref turnTools
+  - provider: !ref sessionTools
+---
+kind: Ai.Agent
+metadata: { name: undeclaredAgent }
+model: !ref echo
+toolProviders:
+  - provider: !ref undeclaredTools
+---
+# The tool's `inputs:` maps `id: context.turnId`; its result is what the echo
+# model answers with on the second turn.
+kind: Run.Sequence
+metadata: { name: toolReceivesCallerContext }
+steps:
+  - name: call
+    invoke: !ref turnAgent
+    inputs:
+      prompt: "go"
+      context:
+        turnId: "turn-7"
+  - name: assertText
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: '{"id":"turn-7"}'
+    invoke:
+      kind: Assert.Equals
+---
+# Two providers, two declared types: a `context` satisfying both is accepted.
+kind: Run.Sequence
+metadata: { name: everyProviderConstrainsContext }
+steps:
+  - name: call
+    invoke: !ref turnAndSessionAgent
+    inputs:
+      prompt: "go"
+      context:
+        turnId: "turn-7"
+        sessionId: "session-3"
+  - name: assertText
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: '{"id":"turn-7"}'
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: undeclaredProviderAcceptsAnyContext }
+steps:
+  - name: call
+    invoke: !ref undeclaredAgent
+    inputs:
+      prompt: "go"
+      context:
+        anything: 1
+  - name: assertText
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: '{"id":"fixed"}'
+    invoke:
+      kind: Assert.Equals
+---
+# A mapping reading a field of `context` with no `contextType` declared.
+kind: Assert.Manifest
+metadata: { name: undeclaredContextRefused }
+source: ./__fixtures__/agent-context-untyped/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ai.Tools/untypedTools: !cel: 'context.turnId' is not defined"
+---
+# An agent called without the `context` its provider requires: refused where the
+# call is written, and — from a consumer whose check is silent — by the bound
+# contract (`ERR_INPUT_INVALID`, matched by its message) rather than by the model
+# fixture, which fails any request it receives.
+kind: Assert.Manifest
+metadata: { name: missingContextRefused }
+source: ./__fixtures__/agent-context/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/context is missing required property 'turnId'"
+---
+kind: Assert.Manifest
+metadata: { name: missingContextRefusedAtRuntime }
+source: ./__fixtures__/agent-context-app.yaml
+expect:
+  errors: []
+  runFails: "AI.Agent/turnAgent: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{}}. Error: /context is missing required property 'turnId'"
+---
+# An agent mounting a second provider, called with a `context` holding only the
+# first one's data: refused the same two ways.
+kind: Assert.Manifest
+metadata: { name: missingSessionIdRefused }
+source: ./__fixtures__/agent-context-session/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/context is missing required property 'sessionId'"
+---
+kind: Assert.Manifest
+metadata: { name: missingSessionIdRefusedAtRuntime }
+source: ./__fixtures__/agent-context-session-app.yaml
+expect:
+  errors: []
+  runFails: "AI.Agent/turnAndSessionAgent: inputs do not satisfy the declared inputType: Invalid value passed: {\"prompt\":\"hello\",\"context\":{\"turnId\":\"turn-7\"}}. Error: /context is missing required property 'sessionId'"

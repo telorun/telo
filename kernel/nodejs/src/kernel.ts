@@ -33,7 +33,12 @@ import {
   type ContractValidatorFactory,
   resolveBoundContract,
 } from "./invocation-contract-binding.js";
-import { readProjectionRef, scopeSlotProblems, type ProjectionScope } from "@telorun/analyzer";
+import {
+  readProjectionRef,
+  scopeSlotProblems,
+  type NamedContractShape,
+  type ProjectionScope,
+} from "@telorun/analyzer";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -2373,6 +2378,21 @@ export class Kernel implements IKernel {
     rootModules: () => new Set(this._appName ? [this._appName] : []),
     typeDeclarations: () => this.typeDeclarations(),
   };
+
+  /**
+   * The named shape a contract field of `holder` names — in whichever module
+   * declares it, `extends` parents folded — read from the declarations the load
+   * holds, so it answers before any shape is created or any import initialized.
+   */
+  resolveNamedContractShape(
+    typeField: unknown,
+    holder: Record<string, any>,
+  ): NamedContractShape | undefined {
+    return this.registry.namedShapeOf(typeField, holder, {
+      rootModules: this.literalDecodingHost.rootModules(),
+      typeManifests: this.typeDeclarations(),
+    });
+  }
 
   /** Every declaration a named type resolves against: the analyzed set plus each
    *  module's own documents, since a library's internal shapes are not forwarded. */

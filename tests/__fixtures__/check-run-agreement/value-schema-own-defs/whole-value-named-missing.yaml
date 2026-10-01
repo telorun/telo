@@ -1,0 +1,22 @@
+# A whole `context` computed by one expression, which lacks the member the type
+# requires, against a named shape naming its own definitions: this application's
+# check cannot judge it, and the contract the kernel binds refuses the call when
+# it is dispatched.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaWholeValueNamedMissing
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: call
+    invoke: !ref Kinds.namedCaller
+    inputs:
+      context: !cel "dyn({})"

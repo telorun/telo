@@ -4,6 +4,8 @@ import type {
   AssistantMessage,
   ChatMessage,
   CheckDiagnostic,
+  DiffHunk,
+  FileChange,
   JournalRecord,
   ToolCall,
   ToolResult,
@@ -33,23 +35,34 @@ export function turnOfUserMessage(messageId: string): string | null {
 }
 
 /** The fields the panel reads from a tool result's structured `output` — the
- *  tool's result before the agent rendered it into text for the model:
- *  write_file / edit_file / telo_check carry `{ path, checkExitCode,
- *  checkReport: { diagnostics } | null, … }`. Absent fields read as absent. */
+ *  tool's result before the agent rendered it into text for the model. A card
+ *  is chosen by which of them are present, never by the tool's name: a write or
+ *  an edit carries `{ path, checkExitCode, checkReport: { diagnostics } | null,
+ *  changes, hunks }`, a check the first three, a file removal `changes`, a
+ *  command `{ exitCode, output, messages }`. Absent fields read as absent. */
 export function toolOutputFields(result: ToolResult | undefined): {
   path?: string;
   checkExitCode?: number;
   diagnostics?: CheckDiagnostic[];
+  changes?: FileChange[];
+  hunks?: DiffHunk[] | null;
+  run?: { exitCode: number; output: string; messages: string };
 } {
   const output = result?.output;
-  if (!output || typeof output !== "object") return {};
-  const { path, checkExitCode, checkReport } = output as Record<string, unknown>;
+  if (!output || typeof output !== "object" || Array.isArray(output)) return {};
+  const fields = output as Record<string, unknown>;
+  const { path, checkExitCode, checkReport, changes, hunks, exitCode, messages } = fields;
   const diagnostics =
     checkReport && typeof checkReport === "object" ? (checkReport as { diagnostics?: unknown }).diagnostics : undefined;
   return {
-    path: typeof path === "string" ? path : undefined,
+    ...(typeof path === "string" ? { path } : {}),
     checkExitCode: typeof checkExitCode === "number" ? checkExitCode : undefined,
     diagnostics: Array.isArray(diagnostics) ? (diagnostics as CheckDiagnostic[]) : undefined,
+    ...(Array.isArray(changes) ? { changes: changes as FileChange[] } : {}),
+    ...(Array.isArray(hunks) ? { hunks: hunks as DiffHunk[] } : hunks === null && "hunks" in fields ? { hunks: null } : {}),
+    ...(typeof exitCode === "number" && typeof fields.output === "string"
+      ? { run: { exitCode, output: fields.output, messages: typeof messages === "string" ? messages : "" } }
+      : {}),
   };
 }
 
@@ -131,7 +144,7 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
     case "tool-result": {
       const result = (part as { toolResult?: ToolResult }).toolResult;
       if (!result) return messages;
-      const { checkExitCode, diagnostics } = toolOutputFields(result);
+      const { checkExitCode, diagnostics, ...structured } = toolOutputFields(result);
       return withAssistant(messages, turnId, (m) => ({
         ...m,
         parts: settleToolCall(m.parts, result, (tool) => ({
@@ -140,6 +153,8 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
           output: result.content,
           checkExitCode,
           diagnostics,
+          ...("output" in result ? { structured: result.output } : {}),
+          ...structured,
         })),
       }));
     }
@@ -161,8 +176,15 @@ function fold(messages: ChatMessage[], turnId: string, record: JournalRecord): C
         parts: [...m.parts, { kind: "title-error", error: { code: error.code, message: String(error.message ?? "") } }],
       }));
     }
-    case "finish":
-      return withAssistant(messages, turnId, (m) => ({ ...m, pending: false, completed: true }));
+    case "finish": {
+      const limit = (part as { limit?: unknown }).limit;
+      return withAssistant(messages, turnId, (m) => ({
+        ...m,
+        pending: false,
+        completed: true,
+        ...(typeof limit === "string" ? { limit } : {}),
+      }));
+    }
     default:
       // `provider-state` is the model's own replay material, and a completed
       // `content-part` repeats what its deltas already showed: nothing to render.
@@ -208,7 +230,8 @@ export function describeTurnError(error: TurnError): string {
 
 /** Fold whole turns, as the records route reports them: every record, then the
  *  turn's status — a running turn stays pending, a failed one carries its error,
- *  an aborted one is stopped. */
+ *  an aborted one is stopped — and its summary and recorded revert, which are
+ *  state on the turn rather than records of it. */
 export function transcriptFromTurns(turns: TurnRecords[]): ChatMessage[] {
   let messages: ChatMessage[] = [];
   for (const turn of turns) {
@@ -216,6 +239,14 @@ export function transcriptFromTurns(turns: TurnRecords[]): ChatMessage[] {
     if (turn.status === "failed" && turn.error) messages = applyTurnError(messages, turn.turnId, turn.error);
     else if (turn.status === "aborted") messages = applyTurnStopped(messages, turn.turnId);
     else if (turn.status === "finished") messages = withAssistant(messages, turn.turnId, (m) => ({ ...m, pending: false }));
+    const { summary, revert } = turn;
+    if (summary || revert) {
+      messages = withAssistant(messages, turn.turnId, (m) => ({
+        ...m,
+        ...(summary ? { summary } : {}),
+        ...(revert ? { revert } : {}),
+      }));
+    }
   }
   return messages;
 }

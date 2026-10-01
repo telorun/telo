@@ -1,0 +1,697 @@
+kind: Telo.Application
+metadata:
+  name: ChatWorkspaceLease
+  version: 1.0.0
+  description: |
+    The workspace write lease, over the agent's routes and offline against the
+    provider stub: the agent's file tools, POST /workspace and each batch of a
+    revert take the same lease, so none of them acts on a file between another's
+    read and its write, and whoever finds it held waits for it.
+
+    Two races, judged by where they end. A revert of sixty paths — three
+    holds — racing sixty pushes that each write X to one of them, either side
+    sent again when refused as busy, ends with X in every file and every path
+    reported `restored` or `skipped`: a path is restored before its push or
+    skipped after it, never restored over it. An `edit_file` racing a push to
+    the same file ends with the pushed content alone or with the edit applied
+    to it, never with the edit applied to what the push replaced.
+
+    Two cases with the lease held on purpose. The holder is a push whose
+    `write` list names a marker file, then a named pipe the test made in the
+    workspace, then more paths: POST /workspace writes its entries in order, so
+    the push stops inside its hold at the pipe until the test reads the pipe.
+    A revert and a push issued while it holds the lease wait, and both answer
+    200 at once when it lets go — the revert reporting the path the holder
+    wrote `skipped`, the push written over the holder's. A holder that takes
+    the lease between two holds of a revert of five hundred paths, and keeps
+    it, outlasts every wait: that revert answers 503 ERR_WORKSPACE_BUSY with
+    the paths it had restored recorded on its turn; a second push answers 503
+    and writes nothing; the first revert of another turn answers 503 and
+    leaves that turn unreverted and its conversation's `revision` where it
+    was; a `write_file` call returns an error leading with ERR_WORKSPACE_BUSY
+    and writes nothing; and the holder answers 200 once the pipe is read.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: ../../../../modules/fs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspace, emptied before each run.
+  scratch:
+    env: CHAT_TEST_WORKSPACE_LEASE_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/workspace-lease
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+# Minutes: the holder's request is answered only once the test reads its pipe,
+# and nothing here is judged by how long an answer takes.
+timeout: 600000
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+# Commands run in the test's workspace: making a named pipe, reading it.
+kind: Shell.Command
+metadata: { name: inWorkspace }
+host:
+  kind: Shell.LocalHost
+  cwd: !cel "variables.scratch"
+---
+kind: Run.Sequence
+metadata: { name: push }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [write]
+    properties:
+      write:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18547/workspace
+      method: POST
+      body:
+        write: !cel "inputs.write"
+outputs:
+  status: !cel "steps.post.result.status"
+  code: !cel "has(steps.post.result.body.code) ? steps.post.result.body.code : null"
+---
+# A push that is applied: one refused because the lease stayed held (503) is
+# an error, so the step invoking this sends it again — what a client does.
+kind: Run.Sequence
+metadata: { name: applied }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [write]
+    properties:
+      write:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: attempt
+    invoke: !ref push
+    inputs: { write: !cel "inputs.write" }
+  - name: busy
+    if: !cel "steps.attempt.result.status != 200"
+    then:
+      - name: again
+        throw:
+          code: ERR_TEST_PUSH_NOT_APPLIED
+          message: !cel "'The push answered ' + string(steps.attempt.result.status) + '.'"
+---
+# The gated holder: a push that takes the lease, writes `<gate>.marker`, then
+# stops at the named pipe `<gate>.pipe` until the pipe is read, then writes
+# `rest` and lets the lease go.
+kind: Run.Sequence
+metadata: { name: hold }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [gate, rest]
+    properties:
+      gate: { type: string }
+      rest:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: held
+    invoke: !ref push
+    inputs:
+      write: !cel >-
+        [{'path': inputs.gate + '.marker', 'content': 'held\n'}, {'path': inputs.gate + '.pipe', 'content': 'go\n'}]
+          + inputs.rest
+outputs:
+  status: !cel "steps.held.result.status"
+---
+# Lets a holder go: reads its pipe — after `pause` seconds — and removes the
+# pipe, which is how the scenario's way out knows it was read.
+kind: Run.Sequence
+metadata: { name: release }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [gate, pause]
+    properties:
+      gate: { type: string }
+      pause: { type: integer }
+steps:
+  - name: read
+    invoke: !ref inWorkspace
+    inputs:
+      args:
+        - sh
+        - -c
+        - !cel "'sleep ' + string(inputs.pause) + ' && cat ' + inputs.gate + '.pipe && rm ' + inputs.gate + '.pipe'"
+      timeoutMs: 300000
+outputs:
+  read: !cel "steps.read.result.stdout"
+---
+# A scenario's way out, whatever happened in it: a pipe still there was not
+# read, so a holder is — or will be — stopped at it; it is read here.
+kind: Run.Sequence
+metadata: { name: letGo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [gate]
+    properties:
+      gate: { type: string }
+steps:
+  - name: drain
+    invoke: !ref inWorkspace
+    inputs:
+      args:
+        - sh
+        - -c
+        - !cel >-
+          'if [ -p ' + inputs.gate + '.pipe ]; then timeout 60 cat ' + inputs.gate + '.pipe > /dev/null; rm -f '
+            + inputs.gate + '.pipe; fi; true'
+---
+# Starts a turn of scripted tool calls in a conversation of its own.
+kind: Run.Sequence
+metadata: { name: begin }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [directive, calls]
+    properties:
+      directive: { type: string }
+      calls:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: conversation
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18547/conversations, method: POST }
+  - name: start
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18547/chat
+      method: POST
+      body:
+        conversationId: !cel "steps.conversation.result.body.id"
+        message: !cel "inputs.directive + ' STUB_CALLS:' + base64Encode(json(inputs.calls))"
+outputs:
+  conversationId: !cel "string(steps.conversation.result.body.id)"
+  turnId: !cel "string(steps.start.result.body.turnId)"
+---
+# Waits for a turn to end: its event stream read to its last frame.
+kind: Run.Sequence
+metadata: { name: ended }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 300000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18547/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: all
+    timeout: 300000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.get.result.body"
+---
+kind: Run.Sequence
+metadata: { name: revert }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18547/chat/${{ inputs.turnId }}/revert"
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+  code: !cel "has(steps.post.result.body.code) ? steps.post.result.body.code : null"
+  outcome: !cel >-
+    steps.post.result.status == 200
+      ? steps.post.result.body.revert.files.map(f, f.path + ' ' + f.outcome) : []
+---
+# A revert that ran to its end: one refused because the lease stayed held
+# (503) is an error, so the step invoking this sends it again.
+kind: Run.Sequence
+metadata: { name: reverted }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: attempt
+    invoke: !ref revert
+    inputs: { turnId: !cel "inputs.turnId" }
+  - name: busy
+    if: !cel "steps.attempt.result.status == 503"
+    then:
+      - name: again
+        throw:
+          code: ERR_TEST_REVERT_BUSY
+          message: The revert answered 503.
+outputs:
+  status: !cel "steps.attempt.result.status"
+  outcome: !cel "steps.attempt.result.outcome"
+---
+kind: Fs.TreeSnapshot
+metadata: { name: onDisk }
+cwd: !cel "variables.scratch"
+---
+# Fails until something exists at a path under the test's scratch directory.
+kind: Run.Sequence
+metadata: { name: exists }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: look
+    invoke: !ref onDisk
+    inputs:
+      paths: !cel "[inputs.path]"
+  - name: notYet
+    if: !cel "size(steps.look.result.missing) > 0"
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_THERE_YET
+          message: !cel "'Nothing exists at ' + inputs.path + ' yet.'"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18546 }
+targets: [ !ref stub ]
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18547 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18546/v1
+            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: seed
+          invoke: !ref push
+          inputs:
+            write: !cel >-
+              range(60).map(i, {'path': 'race/p' + string(i) + '.txt', 'content': 'before ' + string(i) + '\n'})
+              + [{'path': 'q.txt', 'content': 'alpha\n'}, {'path': 'slow/target.txt', 'content': 'orig\n'}]
+              + range(500).map(i, {'path': 'many/f' + string(i) + '.txt', 'content': 'many\n'})
+        - name: pipes
+          invoke: !ref inWorkspace
+          inputs:
+            args: [mkfifo, waits.pipe, exhausts.pipe]
+        # ── a revert racing pushes to the paths it restores ──────────────────
+        - name: removed
+          invoke: !ref begin
+          inputs:
+            directive: do it
+            calls:
+              - { name: delete_file, arguments: { path: race, recursive: true } }
+        - name: removedEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.removed.result.turnId" }
+        # Sixty paths are three holds. Either side refused as busy is sent
+        # again: only where the race ends is judged.
+        - name: raced
+          invoke:
+            kind: Run.Projection
+            collection: [ revert, push ]
+            concurrency: 2
+            steps:
+              - name: side
+                if: !cel "item == 'revert'"
+                then:
+                  - name: reverted
+                    retry: { attempts: 100, initialDelay: 50, factor: 1, jitter: none }
+                    invoke: !ref reverted
+                    inputs: { turnId: !cel "inputs.turnId" }
+                else:
+                  - name: pushes
+                    invoke:
+                      kind: Run.Iteration
+                      collection: !cel "inputs.write"
+                      steps:
+                        - name: one
+                          retry: { attempts: 100, initialDelay: 50, factor: 1, jitter: none }
+                          invoke: !ref applied
+                          inputs: { write: !cel "[item]" }
+                    inputs:
+                      write: !cel "inputs.write"
+            outputs:
+              outcome: !cel "has(steps.reverted) ? steps.reverted.result.outcome : []"
+          inputs:
+            turnId: !cel "steps.removed.result.turnId"
+            write: !cel "range(60).map(i, {'path': 'race/p' + string(i) + '.txt', 'content': 'X\\n'})"
+        - name: afterRace
+          invoke: !ref onDisk
+          inputs:
+            paths: [ race ]
+        # ── an edit racing a push to the same file ───────────────────────────
+        - name: edit
+          invoke: !ref begin
+          inputs:
+            directive: do it
+            calls:
+              - { name: edit_file, arguments: { path: q.txt, oldString: alpha, newString: beta } }
+        - name: pushOver
+          retry: { attempts: 100, initialDelay: 50, factor: 1, jitter: none }
+          invoke: !ref applied
+          inputs:
+            write:
+              - { path: q.txt, content: "alpha v2\n" }
+        - name: editEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.edit.result.turnId" }
+        - name: afterEdit
+          invoke: !ref call
+          inputs: { url: "http://127.0.0.1:18547/workspace/file?path=q.txt" }
+        # ── a revert and a push issued while the lease is held ───────────────
+        - name: target
+          invoke: !ref begin
+          inputs:
+            directive: do it
+            calls:
+              - { name: delete_file, arguments: { path: slow/target.txt } }
+        - name: targetEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.target.result.turnId" }
+        # The holder stops at its pipe holding the lease. Once its marker is
+        # there, the revert and the push are issued and find the lease held;
+        # the pipe is read a second later, which only gives them time to get
+        # that far. Neither is sent twice.
+        - name: waits
+          try:
+            - name: waited
+              invoke:
+                kind: Run.Projection
+                collection: [ holder, revert, push, release ]
+                concurrency: 4
+                steps:
+                  - name: side
+                    if: !cel "item == 'holder'"
+                    then:
+                      - name: held
+                        invoke: !ref hold
+                        inputs:
+                          gate: waits
+                          rest:
+                            - { path: slow/target.txt, content: "holder\n" }
+                            - { path: slow/both.txt, content: "holder\n" }
+                    else:
+                      - name: holding
+                        retry: { attempts: 6000, initialDelay: 50, factor: 1, jitter: none }
+                        invoke: !ref exists
+                        inputs: { path: waits.marker }
+                      - name: contender
+                        if: !cel "item == 'revert'"
+                        then:
+                          - name: reverted
+                            invoke: !ref revert
+                            inputs: { turnId: !cel "inputs.turnId" }
+                        elseif:
+                          - if: !cel "item == 'push'"
+                            then:
+                              - name: pushed
+                                invoke: !ref push
+                                inputs:
+                                  write: [ { path: slow/both.txt, content: "contender\n" } ]
+                        else:
+                          - name: released
+                            invoke: !ref release
+                            inputs: { gate: waits, pause: 1 }
+                outputs:
+                  answer: !cel >-
+                    has(steps.held) ? [dyn(steps.held.result.status)]
+                      : has(steps.reverted) ? [dyn(steps.reverted.result.status), steps.reverted.result.outcome]
+                      : has(steps.pushed) ? [dyn(steps.pushed.result.status)]
+                      : [dyn(steps.released.result.read)]
+              inputs:
+                turnId: !cel "steps.target.result.turnId"
+          finally:
+            - name: waitsOut
+              invoke: !ref letGo
+              inputs: { gate: waits }
+        - name: afterWait
+          invoke: !ref onDisk
+          inputs:
+            paths: [ slow ]
+        - name: verifyWaits
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              raced:
+                outcome: !cel >-
+                  cel.bind(o, steps.raced.result[0].outcome,
+                    [size(o), o.all(f, f.startsWith('race/p') && (f.endsWith(' restored') || f.endsWith(' skipped')))])
+                files: !cel >-
+                  [size(steps.afterRace.result.files), steps.afterRace.result.files.all(f, f.hash == sha256('X\n'))]
+              edit: !cel "steps.afterEdit.result.body.content in ['alpha v2\\n', 'beta v2\\n']"
+              waited:
+                answers: !cel "steps.waited.result.map(r, r.answer)"
+                files: !cel >-
+                  steps.afterWait.result.files.map(f, f.path + ' '
+                    + (f.hash == sha256('holder\n') ? 'holder' : f.hash == sha256('contender\n') ? 'contender' : 'other'))
+            expected:
+              raced:
+                outcome: [ 60, true ]
+                files: [ 60, true ]
+              edit: true
+              waited:
+                answers:
+                  - [ 200 ]
+                  - [ 200, [ slow/target.txt skipped ] ]
+                  - [ 200 ]
+                  - [ "go\n" ]
+                files: [ slow/both.txt contender, slow/target.txt holder ]
+        # ── a lease taken between two holds of a revert, and kept ────────────
+        - name: many
+          invoke: !ref begin
+          inputs:
+            directive: do it
+            calls:
+              - { name: delete_file, arguments: { path: many, recursive: true } }
+        - name: manyEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.many.result.turnId" }
+        - name: other
+          invoke: !ref begin
+          inputs:
+            directive: do it
+            calls:
+              - { name: write_file, arguments: { path: other.txt, content: "other\n" } }
+        - name: otherEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.other.result.turnId" }
+        - name: otherBefore
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.other.result.conversationId }}" }
+        # The revert of five hundred paths is twenty holds. The holder is
+        # issued once the first path is back, gets the lease in a pause between
+        # two of them and stops at its pipe. Once its marker is there, a second
+        # push, the first revert of another turn and a turn calling write_file
+        # are issued. The pipe is read only after those three and the long
+        # revert have all answered.
+        - name: exhausts
+          try:
+            - name: busy
+              invoke:
+                kind: Run.Projection
+                collection: [ holder, others ]
+                concurrency: 2
+                steps:
+                  - name: side
+                    if: !cel "item == 'holder'"
+                    then:
+                      - name: started
+                        retry: { attempts: 6000, initialDelay: 20, factor: 1, jitter: none }
+                        invoke: !ref exists
+                        inputs: { path: many/f0.txt }
+                      - name: held
+                        invoke: !ref hold
+                        inputs:
+                          gate: exhausts
+                          rest:
+                            - { path: held.txt, content: "held\n" }
+                    else:
+                      - name: refused
+                        invoke:
+                          kind: Run.Projection
+                          collection: [ long, push, revert, tool ]
+                          concurrency: 4
+                          steps:
+                            - name: contender
+                              if: !cel "item == 'long'"
+                              then:
+                                - name: reverted
+                                  invoke: !ref revert
+                                  inputs: { turnId: !cel "inputs.longTurnId" }
+                              else:
+                                - name: holding
+                                  retry: { attempts: 6000, initialDelay: 50, factor: 1, jitter: none }
+                                  invoke: !ref exists
+                                  inputs: { path: exhausts.marker }
+                                - name: behind
+                                  if: !cel "item == 'push'"
+                                  then:
+                                    - name: pushed
+                                      invoke: !ref push
+                                      inputs:
+                                        write: [ { path: late.txt, content: "late\n" } ]
+                                  elseif:
+                                    - if: !cel "item == 'revert'"
+                                      then:
+                                        - name: reverted
+                                          invoke: !ref revert
+                                          inputs: { turnId: !cel "inputs.otherTurnId" }
+                                  else:
+                                    - name: writing
+                                      invoke: !ref begin
+                                      inputs:
+                                        directive: do it
+                                        calls:
+                                          - { name: write_file, arguments: { path: tool.txt, content: "tool\n" } }
+                                    - name: writingEnd
+                                      invoke: !ref ended
+                                      inputs: { turnId: !cel "steps.writing.result.turnId" }
+                                    - name: written
+                                      invoke: !ref call
+                                      inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.writing.result.conversationId }}/records" }
+                          outputs:
+                            answer: !cel >-
+                              has(steps.reverted) ? [dyn(steps.reverted.result.status), steps.reverted.result.code]
+                                : has(steps.pushed) ? [dyn(steps.pushed.result.status), steps.pushed.result.code]
+                                : steps.written.result.body.turns[0].records.filter(r, r.data.type == 'tool-result')
+                                    .map(r, [dyn(has(r.data.toolResult.error) && r.data.toolResult.error),
+                                      string(r.data.toolResult.content).startsWith('Error: ERR_WORKSPACE_BUSY: ')])
+                        inputs:
+                          longTurnId: !cel "inputs.longTurnId"
+                          otherTurnId: !cel "inputs.otherTurnId"
+                      # What the refused callers left, while the lease is still held.
+                      - name: absent
+                        invoke: !ref onDisk
+                        inputs:
+                          paths: [ late.txt, tool.txt, held.txt ]
+                      - name: released
+                        invoke: !ref release
+                        inputs: { gate: exhausts, pause: 0 }
+                outputs:
+                  holder: !cel "has(steps.held) ? dyn(steps.held.result.status) : null"
+                  refused: !cel "has(steps.refused) ? steps.refused.result.map(r, r.answer) : []"
+                  absent: !cel "has(steps.absent) ? steps.absent.result.missing : []"
+              inputs:
+                longTurnId: !cel "steps.many.result.turnId"
+                otherTurnId: !cel "steps.other.result.turnId"
+          finally:
+            - name: exhaustsOut
+              invoke: !ref letGo
+              inputs: { gate: exhausts }
+        - name: afterBusy
+          invoke: !ref onDisk
+          inputs:
+            paths: [ late.txt, tool.txt, held.txt ]
+        - name: manyRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.many.result.conversationId }}/records" }
+        - name: otherRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.other.result.conversationId }}/records" }
+        - name: otherAfter
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18547/conversations/${{ steps.other.result.conversationId }}" }
+        - name: verifyExhausts
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              holder: !cel "steps.busy.result[0].holder"
+              refused: !cel "steps.busy.result[1].refused"
+              absentWhileHeld: !cel "steps.busy.result[1].absent"
+              absentAfter: !cel "steps.afterBusy.result.missing"
+              # The long revert's turn: some of its paths, not all, each restored.
+              recorded: !cel >-
+                cel.bind(r, steps.manyRecords.result.body.turns[0].revert,
+                  [r != null && size(r.files) > 0, r != null && size(r.files) < 500,
+                   r != null && r.files.all(f, f.outcome == 'restored')])
+              # The other turn: never reverted, its conversation unchanged.
+              unreverted: !cel >-
+                [steps.otherRecords.result.body.turns[0].revert,
+                 steps.otherAfter.result.body.revision == steps.otherBefore.result.body.revision]
+            expected:
+              holder: 200
+              refused:
+                - [ 503, ERR_WORKSPACE_BUSY ]
+                - [ 503, ERR_WORKSPACE_BUSY ]
+                - [ 503, ERR_WORKSPACE_BUSY ]
+                - [ [ true, true ] ]
+              absentWhileHeld: [ late.txt, tool.txt, held.txt ]
+              absentAfter: [ late.txt, tool.txt ]
+              recorded: [ true, true, true ]
+              unreverted: [ null, true ]

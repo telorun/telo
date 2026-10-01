@@ -359,7 +359,8 @@ function collectionBindingWithheld(
  * - `x-telo-context-from-root`: navigates `manifestRoot.<path>` and **replaces** the
  *   annotated node's schema with the resolved value. Used on individual property
  *   schemas (e.g. `properties.self`) where the resolved value is a single variable's
- *   full schema, not a property map.
+ *   full schema, not a property map. When the path holds nothing, the node keeps
+ *   the schema keywords it declares itself (none: untyped).
  *
  *   Example: `properties.self.x-telo-context-from-root: "schema"` reads
  *   `manifestRoot.schema` and uses it as the schema of the `self` CEL variable.
@@ -544,8 +545,19 @@ export function resolveContextAnnotations(
         }
       }
     }
-    // Untyped (`dyn`) so an unresolved type never produces a false-positive CEL
-    // diagnostic; an open object would still type as `map` and refuse `acc + x`.
+    // The root path holds nothing: the node keeps the schema keywords it
+    // declares itself, so a kind can say what the variable is when the field is
+    // left out. One declaring none is untyped (`dyn`), so an unresolved type
+    // never produces a false-positive CEL diagnostic; an open object would
+    // still type as `map` and refuse `acc + x`.
+    if (fromRoot && navigatePath(manifestRoot, fromRoot.split("/")) == null) {
+      const {
+        "x-telo-context-from-root": _fromRoot,
+        "x-telo-context-from-ref-kind": _fromRefKind,
+        ...own
+      } = schema;
+      return own;
+    }
     return {};
   }
 

@@ -1041,6 +1041,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/graph-sql/nodejs:
     dependencies:
@@ -1999,6 +2002,28 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  modules/text-diff/nodejs:
+    dependencies:
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/timer/nodejs:
     devDependencies:
@@ -7753,6 +7778,10 @@ packages:
 
   diff@7.0.0:
     resolution: {integrity: sha512-PJWHUb1RFevKCwaFA9RlG5tCd+FO5iRh9A8HEtkmBH2Li03iJriB6m6JIN4rGz3K3JLawI7/veA1xzRKP6ISBw==}
+    engines: {node: '>=0.3.1'}
+
+  diff@8.0.4:
+    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
   dir-glob@3.0.1:
@@ -18877,6 +18906,8 @@ snapshots:
   dfa@1.2.0: {}
 
   diff@7.0.0: {}
+
+  diff@8.0.4: {}
 
   dir-glob@3.0.1:
     dependencies:

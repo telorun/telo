@@ -1,3 +1,5 @@
+import { celPlaceholderForSchema } from "@telorun/analyzer";
+import Ajv from "ajv";
 import { describe, expect, it } from "vitest";
 import { stripCompiledValues } from "../src/schema-compiled-values.js";
 
@@ -140,5 +142,48 @@ describe("stripCompiledValues", () => {
     const out = stripCompiledValues({ a: shared, b: shared }, { type: "object" }) as any;
     expect(out.a.url).toBeNull();
     expect(out.b.url).toBeNull();
+  });
+
+  it("stands a computed list in by the shape its items name, as telo check does", () => {
+    const part = {
+      type: "object",
+      additionalProperties: false,
+      required: ["role", "text"],
+      properties: { role: { type: "string", enum: ["user", "system"] }, text: { type: "string" } },
+    };
+    const schema = {
+      type: "object",
+      additionalProperties: false,
+      required: ["parts"],
+      properties: { parts: { type: "array", minItems: 1, items: { $ref: "telo:Held/Part" } } },
+    };
+    const external = (ref: string) => (ref === "telo:Held/Part" ? part : undefined);
+    const config = { parts: cel("variables.parts") };
+
+    const stripped = stripCompiledValues(config, schema, undefined, external);
+
+    const ajv = new Ajv({ strict: false });
+    ajv.addSchema(part, "telo:Held/Part");
+    expect(ajv.validate(schema, stripped)).toBe(true);
+    expect(stripped).toEqual({
+      parts: celPlaceholderForSchema(schema.properties.parts, { root: schema, external }),
+    });
+  });
+
+  it("stands a computed value in by its node's constraints when the declared default does not fit", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        context: { type: "object", default: {}, allOf: [{ $ref: "#/$defs/Turn" }] },
+      },
+      $defs: {
+        Turn: { type: "object", required: ["turnId"], properties: { turnId: { type: "string" } } },
+      },
+    };
+
+    const stripped = stripCompiledValues({ context: cel("variables.context") }, schema);
+
+    expect(stripped).toEqual({ context: { turnId: "" } });
+    expect(new Ajv({ strict: false }).validate(schema, stripped)).toBe(true);
   });
 });

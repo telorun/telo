@@ -24,6 +24,11 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
     }
     if (this.shouldCallTool(input)) {
       const plan = this.resource.emitToolCall!;
+      // A call told to answer without a tool still gets its text here, before the
+      // tool call the fixture returns regardless.
+      if (input.toolChoice === "none") {
+        yield { type: "text-delta", delta: this.buildEchoText(input) };
+      }
       yield {
         type: "tool-call",
         toolCall: { id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} },
@@ -37,7 +42,7 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
     if (this.resource.emitProviderState !== undefined) {
       yield { type: "provider-state", providerState: this.resource.emitProviderState };
     }
-    const text = this.buildEchoText(input.messages);
+    const text = this.buildEchoText(input);
     const failAfter = this.resource.failAfterDeltas;
     let emitted = 0;
     // One delta per code point, so a consumer sees several chunks.

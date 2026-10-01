@@ -1172,6 +1172,79 @@ function walk(
   return { value, holder, inner, atReference, anchor: left ?? prefix };
 }
 
+/** A value a location reaches, and the declaration it is written in. */
+export interface DeclarationValue {
+  readonly value: unknown;
+  readonly holder: Record<string, any>;
+}
+
+/**
+ * Every value `segments` reaches from `consumer`, by the rule {@link walk}
+ * follows: a segment after a value at one of the holder's reference sites
+ * continues inside the declaration that value names, resolved in the scope of
+ * the module that declared the holder. A `*` segment ranges over every item of a
+ * list. A branch that reaches nothing — an absent field, a reference that does
+ * not resolve here, a library's resource input — contributes nothing.
+ */
+export function declarationValuesAt(
+  consumer: Record<string, any>,
+  segments: readonly string[],
+  scope: ProjectionScope,
+): DeclarationValue[] {
+  const run: Derivation = { scope, consumer };
+  const out: DeclarationValue[] = [];
+  const start: Holder = { declaration: consumer, scope: consumer };
+  // A consumer whose reference sites cannot be read still holds its own fields:
+  // nothing in it is crossed, and every path is read as data.
+  const ownSlots = referenceSlotsOf(start, [], run, "");
+  const slots = isFailure(ownSlots) ? [] : ownSlots;
+
+  const reach = (
+    holder: Holder,
+    value: unknown,
+    inner: readonly string[],
+    containers: readonly unknown[],
+    holderSlots: readonly string[],
+    atReference: boolean,
+    rest: readonly string[],
+  ): void => {
+    if (rest.length === 0) {
+      if (value !== undefined) out.push({ value, holder: holder.declaration });
+      return;
+    }
+    if (atReference) {
+      const next = followReference(value, holder, inner, "", run);
+      if (isFailure(next)) return;
+      const nextSlots = referenceSlotsOf(next, [], run, "");
+      if (isFailure(nextSlots)) return;
+      reach(next, next.declaration, [], [], nextSlots, false, rest);
+      return;
+    }
+    const [segment, ...tail] = rest;
+    const into = (key: string): void => {
+      const nextInner = [...inner, key];
+      const nextContainers = [...containers, value];
+      reach(
+        holder,
+        (value as Record<string, unknown>)[key],
+        nextInner,
+        nextContainers,
+        holderSlots,
+        holderSlots.includes(concretePath(nextInner, nextContainers)),
+        tail,
+      );
+    };
+    if (segment === "*") {
+      if (Array.isArray(value)) value.forEach((item, index) => into(String(index)));
+      return;
+    }
+    if (isObject(value)) into(segment!);
+  };
+
+  reach(start, consumer, [], [], slots, false, segments);
+  return out;
+}
+
 function referenceSlotsOf(
   holder: Holder,
   inner: readonly string[],

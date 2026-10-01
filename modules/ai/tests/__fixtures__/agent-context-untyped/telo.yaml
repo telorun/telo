@@ -1,0 +1,29 @@
+# A tool mapping reading caller data its provider never declared: with no
+# `contextType`, `context` is an empty object, so a field of it does not exist.
+kind: Telo.Application
+metadata:
+  name: AgentContextUntyped
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  Run: ../../../../run
+---
+kind: Run.Value
+metadata: { name: recorder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      id: { type: string }
+value:
+  id: !cel "inputs.id"
+---
+kind: Ai.Tools
+metadata: { name: untypedTools }
+tools:
+  - tool: !ref recorder
+    name: record
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.turnId"

@@ -11,10 +11,12 @@ metadata:
     that calls the model, runs the tools it asks for, and replays their results until
     it settles. Tools wrap ordinary resources, exposed as a static list or discovered
     at runtime.
-# The controller bundle imports `errorTypeOf` from the kernel's `@telorun/sdk`,
-# which no kernel before 0.104.0 provides.
+# An agent's `context` input is typed by `x-telo-value-schema-from` inside its
+# contract, which no runtime before 0.107.0 derives: an older one reads the file
+# and leaves the caller data its tool providers declare unchecked, and refuses a
+# model call whose `messages` is computed.
 requires:
-  telo: ">=0.104.0"
+  telo: ">=0.107.0"
 imports:
   Run: ../run
   Stream: ../stream
@@ -67,13 +69,11 @@ schema:
         - type: string
         - type: array
           minItems: 1
-          items:
-            $ref: "telo://Self/ContentPart"
+          items: !ref ContentPart
     toolCalls:
       description: On an assistant turn, the calls the model asked for.
       type: array
-      items:
-        $ref: "telo://Self/ToolCall"
+      items: !ref ToolCall
     toolCallId:
       description: On a tool turn, which requested call this is the result of.
       type: string
@@ -153,9 +153,8 @@ schema:
     mediaType:
       type: string
       description: The media part's IANA media type, e.g. `image/png`.
-    toolCall:
-      description: The call a `tool-call` part carries.
-      $ref: "telo://Self/ToolCall"
+    # The call a `tool-call` part carries.
+    toolCall: !ref ToolCall
     citation:
       description: What a `citation` part points at.
       type: object
@@ -215,7 +214,8 @@ schema:
 # only the loop knows. `step-finish` closes EACH model call with that call's usage
 # and finish reason, when its stream ends and before its tools run — a call a
 # cancellation interrupts before its `finish` reports none. `tool-result` reports a tool the agent ran.
-# `finish` is the one terminator, carrying the usage of every call summed. A
+# `finish` is the one terminator, carrying the usage of every call summed and, when
+# the step budget ended the run, `limit: max-steps`. A
 # `tool-call` keeps its id for the whole run: the assistant message that replays it
 # and the `tool-result` answering it carry the same one. A `tool-result` carries
 # both what the model saw (`content`) and what the tool returned (`output`), so a
@@ -264,6 +264,13 @@ schema:
     finishReason:
       description: Why the call (`step-finish`) or the run (`finish`) ended.
       $ref: "telo://Self/FinishReason"
+    limit:
+      description: >-
+        On the terminal `finish`, the bound that ended the run: `max-steps` when the
+        step budget ran out before the model finished. Absent when the model finished
+        on its own.
+      type: string
+      enum: [max-steps]
     toolResult:
       description: What a `tool-result` part carries — the executed call's result.
       type: object
@@ -396,8 +403,7 @@ inputType:
       messages:
         type: array
         minItems: 1
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       options:
         type: object
         additionalProperties: true
@@ -416,6 +422,13 @@ inputType:
               type: object
               additionalProperties: true
               description: JSON Schema for the tool's arguments, as the model is told them.
+      toolChoice:
+        type: string
+        enum: [auto, none]
+        description: >-
+          Whether this call may ask for a tool. `auto`, the meaning when absent, leaves
+          it to the model; `none` asks for an answer without requesting a tool, while
+          `tools` stay declared so the calls already in `messages` remain valid.
       providerState:
         description: >-
           Opaque state a previous turn produced, replayed verbatim. This is what lets
@@ -426,6 +439,9 @@ inputType:
         type: object
         additionalProperties: true
         description: The shape the answer must take, e.g. a JSON schema the provider enforces.
+    # A choice about tools means nothing on a call that offers none.
+    dependencies:
+      toolChoice: [tools]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -491,8 +507,7 @@ inputType:
       messages:
         type: array
         minItems: 1
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       options:
         type: object
         additionalProperties: true
@@ -508,10 +523,19 @@ inputType:
             parameters:
               type: object
               additionalProperties: true
+      toolChoice:
+        type: string
+        enum: [auto, none]
+        description: >-
+          Whether this call may ask for a tool. `auto`, the meaning when absent, leaves
+          it to the model; `none` asks for an answer without requesting a tool, while
+          `tools` stay declared so the calls already in `messages` remain valid.
       providerState: {}
       responseFormat:
         type: object
         additionalProperties: true
+    dependencies:
+      toolChoice: [tools]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -561,8 +585,7 @@ inputType:
       prompt: { type: string }
       messages:
         type: array
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -646,8 +669,7 @@ inputType:
       prompt: { type: string }
       messages:
         type: array
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       system: { type: string }
       options: { type: object, additionalProperties: true }
     additionalProperties: false
@@ -723,7 +745,8 @@ metadata:
   description: >-
     Exposes a fixed list of resources as tools an agent can call, each declaring the
     JSON Schema of the arguments the model must produce. Optional CEL maps those
-    arguments into the call and shapes its result back into the model's context.
+    arguments, and typed data from the agent's caller, into the call and shapes its
+    result back into the model's context.
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
@@ -731,6 +754,16 @@ controllers:
 schema:
   type: object
   properties:
+    contextType:
+      title: Context type
+      description: >-
+        The shape of the caller data the tools' `inputs:` mappings read as `context` —
+        a named type reference or an inline type definition. An agent mounting this
+        provider requires its own `context` input to satisfy it. Without it `context`
+        is empty, so a mapping reading a field of it is refused.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
     tools:
       title: Tools
       description: The tools this provider exposes.
@@ -763,8 +796,9 @@ schema:
           inputs:
             title: Inputs mapping
             description: |
-              Optional CEL mapping from the model's `arguments` into the invocable's
-              input. Omit to forward `arguments` verbatim.
+              Optional CEL mapping into the invocable's input, from the model's
+              `arguments` and from `context` — the data the agent's caller passed,
+              typed by `contextType`. Omit to forward `arguments` verbatim.
             type: object
             additionalProperties: true
             x-telo-context:
@@ -772,6 +806,13 @@ schema:
               properties:
                 arguments:
                   x-telo-context-from: "parameters/properties"
+                # Typed by the declared `contextType`; with none declared the
+                # node's own keywords stand, a closed empty object.
+                context:
+                  type: object
+                  properties: {}
+                  additionalProperties: false
+                  x-telo-context-from-root: contextType
           result:
             title: Result mapping
             description: |
@@ -826,8 +867,9 @@ metadata:
   name: Agent
   description: >-
     Runs a tool-use loop: calls the model, executes the tools it requests, replays the
-    results, and repeats until the model finishes or a step bound is reached. Returns
-    the final text with accumulated usage and a per-step trace.
+    results, and repeats until the model finishes or a step bound is reached — where it
+    fails, returns, or asks the model for a closing answer. Returns the final text with
+    accumulated usage and a per-step trace; typed caller data reaches the tools.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController
@@ -860,10 +902,17 @@ inputType:
       prompt: { type: string }
       messages:
         type: array
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       system: { type: string }
       options: { type: object, additionalProperties: true }
+      context:
+        description: >-
+          Data from the caller for the tools to read: each mounted provider's `inputs:`
+          mappings see it as `context`, and it must satisfy the `contextType` of every
+          provider that declares one. Never sent to the model.
+        type: object
+        default: {}
+        x-telo-value-schema-from: /toolProviders/*/provider/contextType
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -876,6 +925,12 @@ outputType:
         $ref: "telo://Self/Usage"
       finishReason:
         $ref: "telo://Self/FinishReason"
+      limit:
+        description: >-
+          The bound that ended the run: `max-steps` when the step budget ran out
+          before the model finished. Absent when the model finished on its own.
+        type: string
+        enum: [max-steps]
       steps:
         type: array
         items:
@@ -909,12 +964,30 @@ schema:
       type: integer
       minimum: 1
       default: 8
+      x-telo-eval: compile
     onMaxSteps:
       title: On max steps
-      description: throw → raise ERR_AGENT_MAX_STEPS; return → hand back the last turn's text.
+      description: >-
+        What happens when `maxSteps` turns pass without the model finishing. throw →
+        raise ERR_AGENT_MAX_STEPS; return → hand back the last turn's text; conclude →
+        make one more model call that may not use a tool, ending with
+        `conclusionPrompt`, and hand back its answer. `return` and `conclude` mark the
+        result `limit: max-steps`.
       type: string
-      enum: [throw, return]
+      enum: [throw, return, conclude]
       default: throw
+    conclusionPrompt:
+      title: Conclusion prompt
+      description: >-
+        The final user message of the call `onMaxSteps: conclude` makes. Only legal
+        with `conclude`.
+      type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+      default: >-
+        You have reached the limit of steps for this run and can call no more tools.
+        Using only what you have learned so far, write your final answer now: say what
+        is done, what is not done, and what the next step would be.
     onToolError:
       title: On tool error
       description: >-
@@ -967,6 +1040,12 @@ schema:
         additionalProperties: false
   required: [model]
   additionalProperties: false
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.conclusionPrompt) || (has(self.onMaxSteps) && self.onMaxSteps == 'conclude')"
+      code: AI_CONCLUSION_PROMPT_UNUSED
+      message: >-
+        sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only
+        by the concluding call, so it would never be used.
   examples:
     - model: !ref Gpt4oMini
       system: |
@@ -1026,14 +1105,21 @@ inputType:
       prompt: { type: string }
       messages:
         type: array
-        items:
-          $ref: "telo://Self/Message"
+        items: !ref Message
       system: { type: string }
       options: { type: object, additionalProperties: true }
       providerState:
         description: >-
           Opaque state a previous run's `provider-state` part carried, handed
           unchanged to the first model call.
+      context:
+        description: >-
+          Data from the caller for the tools to read: each mounted provider's `inputs:`
+          mappings see it as `context`, and it must satisfy the `contextType` of every
+          provider that declares one. Never sent to the model.
+        type: object
+        default: {}
+        x-telo-value-schema-from: /toolProviders/*/provider/contextType
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -1084,15 +1170,31 @@ schema:
       type: integer
       minimum: 1
       default: 8
+      x-telo-eval: compile
     onMaxSteps:
       title: On max steps
       description: >-
-        throw → raise ERR_AGENT_MAX_STEPS, rejecting the iteration so a `catch:` or a
-        route's `catches:` can name it; return → emit a terminal finish with the last
-        turn's finishReason.
+        What happens when `maxSteps` turns pass without the model finishing. throw →
+        raise ERR_AGENT_MAX_STEPS, rejecting the iteration so a `catch:` or a route's
+        `catches:` can name it; return → emit a terminal finish with the last turn's
+        finishReason; conclude → make one more model call that may not use a tool,
+        ending with `conclusionPrompt`, and emit its parts before the terminal finish.
+        `return` and `conclude` mark that finish `limit: max-steps`.
       type: string
-      enum: [throw, return]
+      enum: [throw, return, conclude]
       default: throw
+    conclusionPrompt:
+      title: Conclusion prompt
+      description: >-
+        The final user message of the call `onMaxSteps: conclude` makes. Only legal
+        with `conclude`.
+      type: string
+      contentMediaType: text/markdown
+      x-telo-widget: code
+      default: >-
+        You have reached the limit of steps for this run and can call no more tools.
+        Using only what you have learned so far, write your final answer now: say what
+        is done, what is not done, and what the next step would be.
     onToolError:
       title: On tool error
       description: >-
@@ -1147,6 +1249,12 @@ schema:
         additionalProperties: false
   required: [model]
   additionalProperties: false
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.conclusionPrompt) || (has(self.onMaxSteps) && self.onMaxSteps == 'conclude')"
+      code: AI_CONCLUSION_PROMPT_UNUSED
+      message: >-
+        sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only
+        by the concluding call, so it would never be used.
   examples:
     - model: !ref Gpt4oMini
       system: |

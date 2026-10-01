@@ -385,7 +385,12 @@ function buildSession(args: BuildSessionArgs): RunSession {
             );
             if (!res.ok) throw new Error(await describeFailure(res, "read the workspace"));
             const body = (await res.json()) as { files?: WorkspaceFileEntry[] };
-            return Array.isArray(body.files) ? body.files : [];
+            // No list is not an empty workspace: read as one, the sync would
+            // delete the editor's files.
+            if (!Array.isArray(body.files)) {
+              throw new Error("Couldn't read the workspace — runner returned no file list.");
+            }
+            return body.files;
           },
           async readWorkspaceFile(path: string): Promise<string> {
             const res = await fetchWithTimeout(

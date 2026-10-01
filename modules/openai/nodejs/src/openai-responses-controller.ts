@@ -369,6 +369,8 @@ abstract class ResponsesBase {
       ...(tools ? { tools } : {}),
       ...(this.resource.reasoning ? { reasoning: this.resource.reasoning } : {}),
       ...params,
+      // After the options, so the call's own choice is what is sent.
+      ...(tools && input.toolChoice ? { tool_choice: input.toolChoice } : {}),
       ...(text ? { text } : {}),
       ...(stream ? { stream: true } : {}),
     };

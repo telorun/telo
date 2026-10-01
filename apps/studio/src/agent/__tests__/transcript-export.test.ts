@@ -76,6 +76,46 @@ describe("conversation export", () => {
     expect(md).not.toContain('"output"');
   });
 
+  it("carries each turn's summary and revert: verbatim in JSON, as a Changes block in Markdown", () => {
+    const summarized: TurnRecords = {
+      ...turns[0],
+      summary: {
+        files: [
+          { path: "a.yaml", status: "created", before: null, after: "a1", added: 12, removed: 0, firstLine: 1, checkExitCode: 0 },
+          { path: "logo.png", status: "deleted", before: "b2", after: null, added: null, removed: null, firstLine: null, checkExitCode: null },
+        ],
+        check: "clean",
+        runs: [{ path: "tests/telo.yaml", exitCode: 1 }],
+        usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+      },
+      revert: {
+        revertedAt: "2026-09-30T10:00:00.000Z",
+        files: [
+          { path: "a.yaml", status: "created", outcome: "restored" },
+          { path: "logo.png", status: "deleted", outcome: "skipped" },
+        ],
+      },
+    };
+
+    const doc = JSON.parse(exportJson(agent, conversation, [summarized])) as ConversationExport;
+    expect(doc.turns[0].summary).toEqual(summarized.summary);
+    expect(doc.turns[0].revert).toEqual(summarized.revert);
+
+    expect(exportMarkdown(conversation, [summarized])).toContain(
+      [
+        "### Changes",
+        "",
+        "- created `a.yaml` (+12 −0)",
+        "- deleted `logo.png`",
+        "- Check: clean",
+        "- Ran `tests/telo.yaml`: exit 1",
+        "- Reverted 2026-09-30T10:00:00.000Z",
+        "  - restored `a.yaml`",
+        "  - skipped `logo.png`",
+      ].join("\n"),
+    );
+  });
+
   it("leaves a failed summarization and an unapplied title out of every section, the turn's error line reporting it", () => {
     const failed: TurnRecords = {
       turnId: "t3",

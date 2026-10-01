@@ -26,6 +26,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   analyzerContractScope,
   resolveContract,
+  valueSchemaHostOf,
   type ResolvedContract,
 } from "./invocation-contract.js";
 import { assignConcretePath, navigateConcretePath } from "./manifest-path.js";
@@ -40,7 +41,12 @@ import { dispatchTargetOf } from "./template-body.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { REF_VALIDATION_SKIP_KINDS } from "./system-kinds.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
-import { resolveScopeValues, valueSchemaSlots } from "./value-schema-slot.js";
+import {
+  resolveScopeValues,
+  valueSchemaSlots,
+  valueSchemaTypes,
+  type ValueSchemaHost,
+} from "./value-schema-slot.js";
 
 /** What resolving a site needs from its host. */
 export interface DerivedSlotContext {
@@ -267,20 +273,42 @@ export function templateCallSite(
   };
 }
 
-/** Every `x-telo-value-schema-from` slot, with the type its field names. A field
- *  naming no type opts out. */
+/** What reading a value slot's location needs: the manifests a named type
+ *  resolves against, and — for a location crossing a reference — the host that
+ *  follows it. Without one a location stays inside the resource. */
+export interface ValueSchemaSiteContext {
+  readonly typeManifests: Record<string, any>[];
+  readonly valueSchemaHost?: ValueSchemaHost;
+}
+
+/** A host for a caller holding no module scope: no path is a reference site, so
+ *  a location is read off the resource alone. */
+function resourceLocalHost(typeManifests: Record<string, any>[]): ValueSchemaHost {
+  return {
+    scope: {
+      resolveManifest: () => undefined,
+      resolveDefinition: () => undefined,
+      referenceSlots: () => [],
+    },
+    typeSchemaOf: (value) => resolveTypeFieldToSchema(value, typeManifests),
+  };
+}
+
+/** Every `x-telo-value-schema-from` slot, with each type its location names. A
+ *  location naming no type opts out. */
 export function valueSchemaSites(
   manifest: Record<string, any>,
   defSchema: Record<string, any> | undefined,
-  ctx: Pick<DerivedSlotContext, "typeManifests">,
+  ctx: ValueSchemaSiteContext,
 ): ValueSchemaSite[] {
   if (!defSchema) return [];
+  const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.typeManifests);
   const out: ValueSchemaSite[] = [];
   for (const { scope, from } of valueSchemaSlots(defSchema)) {
-    const schema = resolveTypeFieldToSchema(manifest[from], ctx.typeManifests);
-    if (!schema || typeof schema !== "object") continue;
-    for (const { path, value } of resolveScopeValues(manifest, scope)) {
-      out.push({ path, value, schema, from });
+    for (const schema of valueSchemaTypes(manifest, from, host)) {
+      for (const { path, value } of resolveScopeValues(manifest, scope)) {
+        out.push({ path, value, schema, from });
+      }
     }
   }
   return out;
@@ -320,7 +348,8 @@ export function derivedSlotsOf(
   for (const call of calls) {
     if (call.contract) at(call.path, call.values, call.contract.schema);
   }
-  for (const site of valueSchemaSites(manifest, schema, ctx)) {
+  const valueSchemaHost = valueSchemaHostOf(contractScopeOf(ctx));
+  for (const site of valueSchemaSites(manifest, schema, { typeManifests: ctx.typeManifests, valueSchemaHost })) {
     at(site.path, site.value, site.schema);
   }
   visitManifest(

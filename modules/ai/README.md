@@ -21,10 +21,10 @@ Model access for Telo — defines the `Ai.Model` and `Ai.ImageModel` abstracts e
 | `Ai.Buffered` | Presents an `Ai.ModelStream` as an `Ai.Model`, folding its parts into one answer. |
 | `Ai.Text` | Buffered single-turn call over any `Ai.Model`. |
 | `Ai.TextStream` | Streaming counterpart over any `Ai.ModelStream`; returns `{ output: Stream<StreamPart> }`. |
-| `Ai.Agent` | Tool-use loop over any `Ai.Model` — calls tools, replays results, loops to a final answer. |
+| `Ai.Agent` | Tool-use loop over any `Ai.Model` — calls tools, replays results, loops to a final answer; typed caller context for its tools, and a step budget that can end in a concluding answer. |
 | `Ai.AgentStream` | The same loop, streaming its parts as it goes — each model call's usage, every tool call under a stable id, each tool's result beside what the model was told, and provider state. |
 | `Ai.ToolProvider` | Abstract contract every agent tool source implements (`listTools` + `callTool`). |
-| `Ai.Tools` | Built-in `Ai.ToolProvider`: a static list of tools, each wrapping any `Telo.Invocable`. |
+| `Ai.Tools` | Built-in `Ai.ToolProvider`: a static list of tools, each wrapping any `Telo.Invocable`, with a declared type for the caller context their mappings read. |
 | `Ai.ImageModel` | Abstract contract every image provider implements (`invoke`, declared in the manifest). |
 | `Ai.Image` | Buffered image generation and editing delegating to any `Ai.ImageModel` implementation. |
 
@@ -120,13 +120,19 @@ A stream **fails by rejecting**: `finish` is the only terminal part, and a mid-s
 
 Tool use / function calling is provided by [`Ai.Agent`](docs/ai-agent.md): it advertises tools to the model, executes the ones the model requests, and loops. Tools come from any [`Ai.ToolProvider`](docs/ai-tool-provider.md) — a static [`Ai.Tools`](docs/ai-tool-provider.md#aitools) list, or runtime discovery from an MCP server via [`AiMcp.ToolProvider`](../ai-mcp/README.md). The model contract carries tools additively (`tools` in, `toolCalls` out, the `tool` message role); `Ai.Text`/`Ai.TextStream` never pass tools and are unaffected.
 
+**Caller context.** Either agent takes a `context` input — data its caller knows and the model must not choose, such as the id of the turn being served. A provider's tools read it in their `inputs:` mapping (`turnId: !cel "context.turnId"`), and the provider declares its shape as `contextType`; the agent's `context` must then satisfy every mounted provider's declaration, checked by `telo check` at the call and at invoke before any model call. See [Caller context](docs/ai-agent.md#caller-context). The module declares `requires: telo: ">=0.107.0"`, the first runtime that derives this contract and that accepts a model call whose `messages` is computed; an older one reports `MODULE_REQUIRES_NEWER_RUNTIME`.
+
+**The step budget.** `maxSteps` bounds the model calls of a run, and `onMaxSteps` says what reaching it means: `throw` (`ERR_AGENT_MAX_STEPS`), `return` the last turn, or `conclude` — one more call that declares the tools but may not use one (`toolChoice: none`) and ends with `conclusionPrompt`, so a run that ran out of steps still ends with an answer. A result the budget ended carries `limit: max-steps`. See [When the step budget runs out](docs/ai-agent.md#when-the-step-budget-runs-out).
+
+**Tool choice.** A model call may carry `toolChoice: none` beside its `tools`: answer without requesting one, with the tools still declared so the conversation's earlier calls stay valid. See [`Ai.Model`](docs/ai-model.md#toolchoice--a-call-that-may-not-use-a-tool).
+
 `maxToolResultBytes` on either agent bounds the UTF-8 bytes of text every tool result feeds the model — static and MCP tools alike, error results included — keeping the longest whole-character prefix and ending a cut result with `[truncated: <omitted> of <total> bytes cut; a tool result passes at most <limit> bytes to the model]`; media parts are never counted or cut, and a tool-result's `output` stays whole. Unset, results are unbounded. See [Bounded tool results](docs/ai-agent.md#bounded-tool-results).
 
 ## What is logged
 
 Every completion kind — `Ai.Text`, `Ai.TextStream`, `Ai.Agent` and `Ai.AgentStream` — logs **token usage and finish reason at `info`**, carrying `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` and `gen_ai.response.finish_reasons`. Usage is the metered quantity: what a run cost, and why a bill moved. Tracing carries the call's shape but is off unless asked for, and the returned `usage` object is only as visible as whatever the caller does with it.
 
-Both agents report the **aggregate across every turn** plus `ai.agent.steps` — the model calls the run made, the answering call included — since a per-turn figure would understate an agent that looped eight times. An agent that hits `maxSteps` with `onMaxSteps: return` logs at `warn`: the truncated answer is handed back as an ordinary result — a value, or a terminal `finish` frame — so nothing else marks that it never converged.
+Both agents report the **aggregate across every turn** plus `ai.agent.steps` — the model calls the run made, the answering call included — since a per-turn figure would understate an agent that looped eight times. An agent that hits `maxSteps` with `onMaxSteps: return` logs at `warn`: the last turn is handed back as it stands — a value, or a terminal `finish` frame — marked `limit: max-steps`. One that concludes logs its totals at `info`, with `ai.agent.max_steps`.
 
 A streamed run reports when its terminal part is reached, so a consumer that abandons the stream produces no record — correctly, since no usage was ever reported. One `info` per completion means a 1,000-completion batch is 1,000 records; that is the intended trade for usage being visible by default, and `logging.sampling` bounds it if you need it to.
 

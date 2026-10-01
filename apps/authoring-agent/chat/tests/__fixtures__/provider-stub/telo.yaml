@@ -22,7 +22,10 @@ metadata:
       - a message containing STUB_FAIL is refused with 400 — with
         STUB_FAIL_ONCE, only until a request carries a continued turn's note
         (`TURN CONTINUED: the previous attempt`; the system prompt names the
-        marker alone), so a continued turn completes;
+        marker alone), so a continued turn completes; a message containing
+        STUB_BREAK is refused with 400 once the request carries a tool result,
+        likewise until a request carries a continued turn's note — a turn that
+        fails after its tools ran;
       - a message containing STUB_SLOW is held until a test calls POST
         /release (which releases every request received so far) or the agent
         abandons the request, so a test can act while a turn is running — and
@@ -32,6 +35,9 @@ metadata:
       - a message containing `STUB_CALLS:<base64 of a JSON list of
         {name, arguments}>` asks for exactly those tool calls, and the request
         that carries their results gets a text reply;
+      - a message containing STUB_LOOP asks for one `list_dir` call on every
+        request, until one forbids tools (`tool_choice: "none"`), which gets
+        the text reply `stub wrap-up`;
       - anything else gets a text reply.
     Every reply carries a reasoning item, so the agent records provider state.
     Every request body is kept, in order, and GET /requests returns them — what
@@ -124,8 +130,10 @@ steps:
   - name: refused
     if: !cel >-
       steps.kind.result == 'agent'
-        ? steps.request.result.contains('STUB_FAIL')
-          && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt'))
+        ? (steps.request.result.contains('STUB_FAIL')
+            && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt')))
+          || (steps.request.result.contains('STUB_BREAK') && steps.request.result.contains('function_call_output')
+            && !steps.request.result.contains('TURN CONTINUED: the previous attempt'))
         : steps.obeys.result.fail
     then:
       - name: refuse
@@ -180,6 +188,12 @@ steps:
           ? steps.scripted.result.map(c, {'type': 'response.output_item.done',
               'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
                        'name': c.name, 'arguments': json(c.arguments)}})
+      : steps.request.result.contains('STUB_LOOP')
+          ? ('tool_choice' in inputs.body && inputs.body.tool_choice == 'none'
+              ? [{'type': 'response.output_text.delta', 'delta': 'stub wrap-up'}]
+              : [{'type': 'response.output_item.done',
+                  'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
+                           'name': 'list_dir', 'arguments': '{}'}}])
       : steps.request.result.contains('STUB_TOOL') && !steps.request.result.contains('function_call_output')
           ? [{'type': 'response.output_item.done',
               'item': {'type': 'function_call', 'id': 'fc_stub', 'call_id': 'call_' + uuidv4(),

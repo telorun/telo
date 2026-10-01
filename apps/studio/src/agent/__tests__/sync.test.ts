@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reconcile, seedDelta } from "../sync";
+import { applyReverted, reconcile, seedDelta } from "../sync";
 import type { AgentWorkspace, TreeFile, WorkspaceBridge } from "../types";
 
 /** A workspace surface over an in-memory tree, so a test asserts on what the
@@ -47,6 +47,7 @@ function fakeBridge(
       for (const w of writes) files.set(w.path, w.content);
       for (const d of deletes) files.delete(d);
     },
+    editorFile: () => null,
   };
 }
 
@@ -128,6 +129,105 @@ describe("reconcile", () => {
         "telo-workspace.yaml",
       ]),
       bridge,
+    );
+    expect(bridge.applied).toEqual([]);
+  });
+});
+
+describe("applyReverted", () => {
+  // Content-as-hash, as above: a digest is the content it stands for.
+  const revertOf = (path: string, before: string | null, after: string | null) => [
+    { turnId: "t1", files: [{ path, before, after }] },
+  ];
+  // A second file, so the tree is not empty.
+  const other = { "other.yaml": "o" };
+
+  it("does nothing, and reports nothing, where the workspace does not hold what the revert restored", async () => {
+    const bridge = fakeBridge({ "a.yaml": "after", ...other });
+    const kept = await applyReverted(fakeWorkspace({ "a.yaml": "later", ...other }), bridge, revertOf("a.yaml", "before", "after"));
+    expect(bridge.applied).toEqual([]);
+    expect(kept.get("t1")).toEqual([]);
+  });
+
+  it("does nothing where the editor already holds what the revert restored", async () => {
+    const bridge = fakeBridge({ "a.yaml": "before", ...other });
+    const kept = await applyReverted(fakeWorkspace({ "a.yaml": "before", ...other }), bridge, revertOf("a.yaml", "before", "after"));
+    expect(bridge.applied).toEqual([]);
+    expect(kept.get("t1")).toEqual([]);
+  });
+
+  it("replaces an editor copy still holding what the turn left with the workspace's content", async () => {
+    const bridge = fakeBridge({ "a.yaml": "after", ...other });
+    const kept = await applyReverted(fakeWorkspace({ "a.yaml": "before", ...other }), bridge, revertOf("a.yaml", "before", "after"));
+    expect(bridge.applied).toEqual([{ writes: ["a.yaml"], deletes: [] }]);
+    expect(await bridge.readFile("a.yaml")).toBe("before");
+    expect(kept.get("t1")).toEqual([]);
+  });
+
+  it("leaves an editor copy holding anything else, and reports its path as kept", async () => {
+    const bridge = fakeBridge({ "a.yaml": "my edit", ...other });
+    const kept = await applyReverted(fakeWorkspace({ "a.yaml": "before", ...other }), bridge, revertOf("a.yaml", "before", "after"));
+    expect(bridge.applied).toEqual([]);
+    expect(kept.get("t1")).toEqual(["a.yaml"]);
+  });
+
+  it("deletes a file the turn created whose editor copy still holds what the turn left", async () => {
+    const bridge = fakeBridge({ "new.yaml": "after", ...other });
+    await applyReverted(fakeWorkspace(other), bridge, revertOf("new.yaml", null, "after"));
+    expect(bridge.applied).toEqual([{ writes: [], deletes: ["new.yaml"] }]);
+  });
+
+  it("writes back a file the turn deleted that the editor does not have", async () => {
+    const bridge = fakeBridge(other);
+    await applyReverted(fakeWorkspace({ "gone.yaml": "before", ...other }), bridge, revertOf("gone.yaml", "before", null));
+    expect(bridge.applied).toEqual([{ writes: ["gone.yaml"], deletes: [] }]);
+    expect(await bridge.readFile("gone.yaml")).toBe("before");
+  });
+
+  it("on an empty tree, deletes a created file still holding what the turn left and keeps an edited one, which alone is seeded back", async () => {
+    const workspace = fakeWorkspace({});
+    const bridge = fakeBridge({ "p.yaml": "after", "q.yaml": "my edit" });
+
+    const kept = await applyReverted(workspace, bridge, [
+      {
+        turnId: "t1",
+        files: [
+          { path: "p.yaml", before: null, after: "after" },
+          { path: "q.yaml", before: null, after: "after" },
+        ],
+      },
+    ]);
+
+    expect(bridge.applied).toEqual([{ writes: [], deletes: ["p.yaml"] }]);
+    expect(kept.get("t1")).toEqual(["q.yaml"]);
+
+    await seedDelta(workspace, bridge);
+    expect(workspace.applied).toEqual([{ write: ["q.yaml"], remove: [] }]);
+  });
+
+  it("on an empty tree, leaves a modified file alone and reports nothing: the workspace does not hold what was restored", async () => {
+    const bridge = fakeBridge({ "r.yaml": "after" });
+    const kept = await applyReverted(fakeWorkspace({}), bridge, revertOf("r.yaml", "before", "after"));
+    expect(bridge.applied).toEqual([]);
+    expect(kept.get("t1")).toEqual([]);
+  });
+
+  it("on an empty tree, does nothing for a file the turn deleted that the editor does not have", async () => {
+    const bridge = fakeBridge({});
+    const kept = await applyReverted(fakeWorkspace({}), bridge, revertOf("s.yaml", "before", null));
+    expect(bridge.applied).toEqual([]);
+    expect(kept.get("t1")).toEqual([]);
+  });
+
+  it("rejects, changing nothing, when the workspace's tree cannot be read", async () => {
+    const workspace = fakeWorkspace({});
+    workspace.tree = async () => {
+      throw new Error("GET /workspace failed (500)");
+    };
+    const bridge = fakeBridge({ "p.yaml": "after" });
+
+    await expect(applyReverted(workspace, bridge, revertOf("p.yaml", null, "after"))).rejects.toThrow(
+      "GET /workspace failed (500)",
     );
     expect(bridge.applied).toEqual([]);
   });

@@ -42,7 +42,7 @@ imports:
       # The repo's own CLI, relative to the workspace the tools run in.
       teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
   App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
-  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  Fs: ../../../../modules/fs
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU

@@ -2,7 +2,11 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import { resolveReferenceTarget } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
+import {
+  analyzerContractScope,
+  resolveContract,
+  withContractDefaults,
+} from "./invocation-contract.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import { checkSchemaCompatibility, navigateSchemaToExprPath } from "./schema-compat.js";
@@ -40,6 +44,15 @@ const missingRequired = (issue: { message: string }): boolean =>
 function containerOf(path: string): string {
   const dot = path.lastIndexOf(".");
   return dot === -1 ? "" : path.slice(0, dot);
+}
+
+/** `path`, or — when it lies at or inside a property a default filled — the
+ *  container the author wrote that the default was filled into. */
+function writtenAncestor(path: string, filled: readonly string[]): string {
+  const inside = filled
+    .filter((f) => path === f || path.startsWith(`${f}.`) || path.startsWith(`${f}[`))
+    .sort((a, b) => a.length - b.length)[0];
+  return inside === undefined ? path : containerOf(inside);
 }
 
 const declarationsByName = new WeakMap<object, Map<string, ResourceManifest[]>>();
@@ -244,11 +257,24 @@ function checkCallSite(
     }
   }
 
-  for (const issue of defs.validateResourceConfig(substituted, contract.schema)) {
+  // The target receives its declared defaults for whatever the call leaves out,
+  // so the arguments are judged with them filled, as the kernel's binding does.
+  const filled: string[] = [];
+  const effective = withContractDefaults(
+    substituted,
+    contract.schema,
+    (ref) => defs.schemaForId(ref),
+    (path) => filled.push(path),
+  );
+  for (const issue of defs.validateResourceConfig(effective, contract.schema)) {
     if (celPaths.has(issue.path)) continue;
     // A missing-required issue names the property that ISN'T there, so anchoring
-    // on it finds no node. Anchor on the container that should have held it.
-    const anchor = missingRequired(issue) ? containerOf(issue.path) : issue.path;
+    // on it finds no node. Anchor on the container that should have held it —
+    // and, for a finding inside a filled default, on the map the author wrote.
+    const anchor = writtenAncestor(
+      missingRequired(issue) ? containerOf(issue.path) : issue.path,
+      filled,
+    );
     out.push({
       path: anchor ? `${site.path}.${anchor}` : site.path,
       targetLabel,

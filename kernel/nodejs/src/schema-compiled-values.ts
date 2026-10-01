@@ -126,16 +126,19 @@ export function stripCompiledValues(
     const nodeRoot = here.root;
 
     // The analyzer's stand-in, so a value `telo check` accepts is one the kernel
-    // accepts: two builders drift (a `minLength` the other ignores).
+    // accepts: two builders drift (a `minLength` the other ignores). It is given
+    // the resolver and the document this node sits in, so a slot whose items or
+    // required members name a shape stands in as that shape.
     // A tag whose produced type is a constant of the tag (`!interpolate` is
     // always a string) stands in as THAT type, so `!interpolate` at an integer
     // slot is refused here as it is statically.
     if (isCompiledValue(value)) {
       const engine = (value as { engine?: unknown }).engine;
       const produced = typeof engine === "string" ? producedTypeOf(engine) : undefined;
+      const references = { root: nodeRoot as Record<string, any>, external };
       return produced
-        ? producedPlaceholder(produced as Record<string, any>, resolved as Record<string, any>)
-        : celPlaceholderForSchema(resolved as Record<string, any>);
+        ? producedPlaceholder(produced as Record<string, any>, resolved as Record<string, any>, references)
+        : celPlaceholderForSchema(resolved as Record<string, any>, references);
     }
     // A slot the schema declares as a reference is never config when it HOLDS a
     // reference: a `{kind, name}` ref or the live instance Phase 5 replaced it

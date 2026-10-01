@@ -1,0 +1,127 @@
+kind: Telo.Library
+metadata:
+  name: TextDiff
+  version: "0.1.0"
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Data]
+  description: >-
+    Compare two texts line by line: how many lines were added and removed, and the
+    changes grouped into hunks with surrounding context — a unified diff as
+    structured data rather than text. For showing what an edit changed, summarizing
+    a change set or reviewing generated text. Inputs over a size limit are reported
+    as not comparable instead of being diffed.
+exports:
+  kinds:
+    - LineDiff
+  resources:
+    - lineDiff
+---
+kind: Telo.Definition
+metadata:
+  name: LineDiff
+  description: >-
+    Compares a before and an after text by lines and returns the counts of added
+    and removed lines plus hunks: each a run of changes with its unchanged
+    neighbours and its line ranges on both sides. A final line lacking a newline is
+    marked. When either text exceeds the configured byte limit the result says it
+    is not comparable and carries no counts or hunks.
+capability: Telo.Callable
+deterministic: true
+params:
+  - name: before
+    schema: { type: string }
+  - name: after
+    schema: { type: string }
+returns:
+  schema:
+    type: object
+    additionalProperties: false
+    required: [ comparable, added, removed, hunks ]
+    properties:
+      comparable:
+        description: False when either text is over `maxInputBytes`; the other fields are then null.
+        type: boolean
+      added:
+        description: Lines present in `after` and not in `before`.
+        type: [ integer, "null" ]
+        minimum: 0
+      removed:
+        description: Lines present in `before` and not in `after`.
+        type: [ integer, "null" ]
+        minimum: 0
+      hunks:
+        description: The changes in order, each with its context. Empty when the texts are equal.
+        type: [ array, "null" ]
+        items:
+          type: object
+          additionalProperties: false
+          required: [ oldStart, oldLines, newStart, newLines, lines ]
+          properties:
+            oldStart:
+              description: >-
+                1-based number of the hunk's first line in `before`. When the hunk
+                holds no line of `before`, the line it follows (0 at the start).
+              type: integer
+              minimum: 0
+            oldLines:
+              description: How many lines of `before` the hunk spans — its context and removed lines.
+              type: integer
+              minimum: 0
+            newStart:
+              description: >-
+                1-based number of the hunk's first line in `after`. When the hunk
+                holds no line of `after`, the line it follows (0 at the start).
+              type: integer
+              minimum: 0
+            newLines:
+              description: How many lines of `after` the hunk spans — its context and added lines.
+              type: integer
+              minimum: 0
+            lines:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [ op, text ]
+                properties:
+                  op:
+                    description: Whether the line is unchanged, only in `after`, or only in `before`.
+                    type: string
+                    enum: [ context, added, removed ]
+                  text:
+                    description: The line, without its newline.
+                    type: string
+                  noNewline:
+                    description: Present, and true, on a text's final line when no newline ends it.
+                    type: boolean
+controllers:
+  - pkg:telo/local/js?path=./nodejs/text-diff.mjs&local_path=./nodejs/src/index.ts#LineDiff
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    contextLines:
+      title: Context lines
+      description: Unchanged lines kept on each side of a change.
+      type: integer
+      minimum: 0
+      default: 3
+    maxInputBytes:
+      title: Max input bytes
+      description: >-
+        The most UTF-8 bytes either text may hold. A call with a larger one returns
+        `comparable: false` without comparing.
+      type: integer
+      minimum: 0
+      default: 262144
+  examples:
+    - contextLines: 3
+      maxInputBytes: 262144
+---
+kind: Self.LineDiff
+metadata:
+  name: lineDiff
+  description: >-
+    Line diff of two texts with three lines of context around each change, for
+    texts of up to 256 KiB each; a larger one is reported as not comparable.

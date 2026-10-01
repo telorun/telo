@@ -1,0 +1,10 @@
+# Runs the library's model call that sets `toolChoice` and offers no tools. This
+# consumer's entry-scoped check is silent about the library's call site, so the
+# model's bound contract is what refuses it.
+kind: Telo.Application
+metadata:
+  name: ToolChoiceWithoutToolsApp
+imports:
+  Lib: ./tool-choice-without-tools
+targets:
+  - !ref Lib.callWithToolChoiceOnly

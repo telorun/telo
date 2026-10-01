@@ -1,0 +1,42 @@
+# A kind whose contract names a location its schema cannot hold a value at: the
+# schema declares `readers`, the annotation says `reader`. Nothing could ever be
+# written there, so the node would be typed from nothing.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind types an input from a location its own schema
+    does not declare.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      context:
+        type: object
+        default: {}
+        x-telo-value-schema-from: /reader/*/contextType
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

@@ -114,6 +114,9 @@ export interface ModelInvokeInput {
   messages: Message[];
   options?: Record<string, unknown>;
   tools?: ToolDefinition[];
+  /** Whether the call may ask for a tool; absent means `auto`. `none` asks for an
+   *  answer without one while `tools` stay declared. Legal only beside `tools`. */
+  toolChoice?: "auto" | "none";
   /** Opaque state a previous turn produced, replayed verbatim so reasoning
    *  survives a tool loop. Never inspected here. */
   providerState?: unknown;
@@ -159,9 +162,11 @@ export interface ToolResultRecord {
  *  streaming deliverable, declared as `Ai.AgentStreamPart`. A superset of the
  *  model-facing `StreamPart`: `step-finish` closes each model call with that
  *  call's usage, `tool-result` reports a tool the agent executed, and `finish` —
- *  the only terminator — carries the usage of every call summed. */
+ *  the only terminator — carries the usage of every call summed, plus `limit`
+ *  when the step budget ended the run. */
 export type AgentStreamPart =
-  | StreamPart
+  | Exclude<StreamPart, { type: "finish" }>
+  | { type: "finish"; usage: Usage; finishReason: FinishReason; limit?: "max-steps" }
   | { type: "step-finish"; usage: Usage; finishReason: FinishReason }
   | { type: "tool-result"; toolResult: ToolResultRecord };
 
@@ -299,15 +304,23 @@ export interface ToolDescriptor {
 export interface AiToolProviderInstance {
   listTools(): Promise<ToolDescriptor[]> | ToolDescriptor[];
   /** `ctx` is the agent invocation's context: a provider hands it to whatever
-   *  runs the tool, so cancelling the turn stops the tool too. */
-  callTool(name: string, args: Record<string, unknown>, ctx?: InvokeContext): Promise<unknown>;
+   *  runs the tool, so cancelling the turn stops the tool too. `context` is the
+   *  data the agent's caller passed for the tools to read. */
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    ctx?: InvokeContext,
+    context?: Record<string, unknown>,
+  ): Promise<unknown>;
   /** The same call, returning the tool's own result (`output`) beside what goes
    *  to the model (`result`), for a provider that maps one into the other. An
-   *  agent prefers it; without it, the one value `callTool` returns is both. */
+   *  agent prefers it; without it, the one value `callTool` returns is both.
+   *  `context` is the agent's caller data, for a provider whose tools read it. */
   callToolWithOutput?(
     name: string,
     args: Record<string, unknown>,
     ctx?: InvokeContext,
+    context?: Record<string, unknown>,
   ): Promise<{ output: unknown; result: unknown }>;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
