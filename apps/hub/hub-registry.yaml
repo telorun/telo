@@ -12,7 +12,7 @@ metadata:
   description: >-
     Validates a submitted module ref, records it, and schedules its first ingest:
     the anti-abuse gate, the shape gate that keeps a local path off the CLI, and
-    the confirmation that the ref really serves an importable Telo library.
+    the confirmation that the ref really serves a Telo library or application.
 requires:
   # `resources:` inputs on a library.
   telo: ">=0.83.0"
@@ -33,7 +33,7 @@ imports:
     resources:
       shellHost: !ref shellHost
     variables:
-      teloBin: !cel "variables.teloBin"
+      teloCommand: !cel "variables.teloCommand"
 resources:
   connection:
     kind: Postgres.Connection
@@ -52,12 +52,15 @@ resources:
       one place — two derivations of one identity eventually disagree about which
       attempt a run is.
 variables:
-  teloBin:
-    type: string
-    default: telo
+  # Forwarded to the origin reader: the command its reads run.
+  teloCommand:
+    type: array
+    items: { type: string }
+    minItems: 1
+    default: [telo]
   ingestRev:
     type: integer
-    default: 5
+    default: 6
   # Whether a `./`-relative local path may be registered through `registerModule`
   # (the seed list). A development setting: a local module is read off the hub's
   # own disk. `registerAndValidate` refuses one whatever this says.
@@ -221,15 +224,13 @@ steps:
             inputs:
               ref: !cel "inputs.ref"
               version: !cel "steps.versions.result.latest"
-      # Only a Telo.Library is registerable. An Application is a runnable root
-      # that cannot be imported at all, so it defines no importable kinds —
-      # registering one would create a module row that indexes zero resource
-      # kinds and never surfaces in search. Reject it up front with a reason
-      # instead of silently storing an empty record.
+      # A module root is a Telo.Library (indexed by its exports) or a
+      # Telo.Application (indexed by its declared contract). Anything else is
+      # refused with a reason rather than stored as a record indexing nothing.
       - name: register
         if: !cel >-
           'manifest' in steps && steps.manifest.result.ok
-            && steps.manifest.result.docs[0].kind == 'Telo.Library'
+            && steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application']
         then:
           - name: insert
             invoke: !ref registerModule
@@ -310,7 +311,8 @@ outputs:
                   ? 'no published versions for ' + inputs.ref
                   : (!steps.manifest.result.ok
                       ? 'not a readable Telo module: ' + steps.manifest.result.error
-                      : (steps.manifest.result.docs[0].kind != 'Telo.Library'
-                          ? 'only a Telo.Library can be registered — ' + inputs.ref + ' is a '
-                              + steps.manifest.result.docs[0].kind + ', which cannot be imported'
+                      : (!(steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application'])
+                          ? 'the root document of ' + inputs.ref + ' is '
+                              + steps.manifest.result.docs[0].kind
+                              + '; only a Telo.Library or Telo.Application can be registered'
                           : '')))))

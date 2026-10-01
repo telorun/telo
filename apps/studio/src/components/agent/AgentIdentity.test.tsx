@@ -65,7 +65,8 @@ describe("agent identity", () => {
       identity: { name: "A", version: "1", promptId: "p", auth: "bearer", features: ["conversations", "later-thing"] },
     };
     expect(text(<UnsupportedFeatures identity={partial} />)).toBe(
-      "Not supported by this agent:Retry, edit & resend, delete from hereBranching a conversation",
+      "Not supported by this agent:Retry, edit & resend, delete from hereBranching a conversation" +
+        "Diffs of what a turn changedReverting a turn's changesA summary of each turnContinuing after the step limit",
     );
     expect(text(<UnsupportedFeatures identity={{ state: "unavailable" }} />)).toContain(
       "Conversation list, search and export",

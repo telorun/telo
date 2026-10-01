@@ -9,7 +9,7 @@ import {
   resolveEntryDir,
   writeManifestCache,
 } from "@telorun/kernel";
-import type { ModuleArtifact, SiblingLibraryMap } from "@telorun/kernel";
+import type { ModuleArtifact, RuntimeDiagnostic, SiblingLibraryMap } from "@telorun/kernel";
 import type { ResourceManifest } from "@telorun/sdk";
 import * as path from "path";
 import { pathToFileURL } from "url";
@@ -20,7 +20,7 @@ import {
   parsePlatformTarget,
   warmModuleLayers,
 } from "../bundle/warm-layers.js";
-import { createLogger, type Logger } from "../logger.js";
+import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, output } from "../output.js";
 
 
@@ -80,32 +80,43 @@ function collectControllerJobs(manifests: ResourceManifest[]): ControllerJob[] {
  *
  * Runs the same offline `kernel.load` the runtime uses (LocalFileSource +
  * LocalManifestCacheSource, same registry URL) in `analyzeOnly` mode, so the
- * stamp's content signature matches byte-for-byte at run time. Best-effort:
- * a failure here (e.g. a manifest that fails analysis) is surfaced as a
- * warning but does not fail the install — the runtime re-validates and
- * reports the real error there.
+ * stamp's content signature matches byte-for-byte at run time. A manifest that
+ * fails here fails the install: the tree an install produces is what an image
+ * boots from, and a warning in a build log is one nobody reads — the image
+ * would ship and fail on its first start.
  */
 async function warmAnalysisCache(
   entryPath: string,
   entryDir: string,
+  displayPath: string,
   log: Logger,
   cacheRoot: string,
-): Promise<void> {
+): Promise<boolean> {
   const manifestsDir = path.join(cacheRoot, "manifests");
+  const kernel = new Kernel({
+    sources: [new LocalFileSource(), new LocalManifestCacheSource(entryDir, manifestsDir)],
+  });
   try {
-    const kernel = new Kernel({
-      sources: [new LocalFileSource(), new LocalManifestCacheSource(entryDir, manifestsDir)],
-    });
     await kernel.load(entryPath, { analyzeOnly: true, cacheDir: cacheRoot });
-    outLine(
-      `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
-    );
   } catch (err) {
-    outErrLine(
-      `  ${log.err.warn("⚠")}  analysis cache not warmed: ` +
-        (err instanceof Error ? err.message : String(err)),
-    );
+    const attached = (err as { diagnostics?: RuntimeDiagnostic[] })?.diagnostics;
+    const diagnostics: RuntimeDiagnostic[] = attached?.length
+      ? attached
+      : [
+          {
+            message: err instanceof Error ? err.message : String(err),
+            code: (err as { code?: string })?.code,
+          },
+        ];
+    formatDiagnostics(diagnostics, log, displayPath, kernel.getLoadedGraph());
+    const errorCount = countRootErrors(diagnostics);
+    outErrLine(`\n${log.err.error(`${errorCount} error${errorCount !== 1 ? "s" : ""}`)}`);
+    return false;
   }
+  outLine(
+    `  ${log.ok("✓")}  warmed analysis cache in ${log.dim(path.relative(process.cwd(), manifestsDir))}`,
+  );
+  return true;
 }
 
 async function installOne(
@@ -215,7 +226,9 @@ async function installOne(
 
   if (jobs.length === 0) {
     outLine(log.ok("✓") + `  ${displayPath}: no controllers to install`);
-    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, log, cacheRoot);
+    if (entryDir && cacheRoot) {
+      return warmAnalysisCache(entryPath, entryDir, displayPath, log, cacheRoot);
+    }
     return true;
   }
 
@@ -271,7 +284,9 @@ async function installOne(
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   if (failed === 0) {
     outLine(`\n${log.ok("✓")}  ${jobs.length} installed in ${elapsed}s`);
-    if (entryDir && cacheRoot) await warmAnalysisCache(entryPath, entryDir, log, cacheRoot);
+    if (entryDir && cacheRoot) {
+      return warmAnalysisCache(entryPath, entryDir, displayPath, log, cacheRoot);
+    }
     return true;
   }
   outLine(

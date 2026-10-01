@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: RunnerWithSharedDirectory
+  version: 1.0.0
+  description: |
+    Boots the runner with two repository slugs mapped to one directory and
+    fails once it has exited, so the runner's own refusal is on this run's
+    stderr.
+imports:
+  App: ../../../../../modules/app
+  Run: ../../../../../modules/run
+  Timer: ../../../../../modules/timer
+targets:
+  - !ref runner
+  - !ref awaitExit
+---
+kind: App.Instance
+metadata: { name: runner }
+source: ../../../telo.yaml
+awaitStart: false
+variables:
+  serverUrl: http://127.0.0.1:18769
+  runnerName: r1
+  repos:
+    alpha: !module-path ./repo
+    beta: !module-path ./repo
+  permissionMode: plan
+---
+kind: Run.Sequence
+metadata: { name: awaitExit }
+steps:
+  - name: wait
+    invoke:
+      kind: Run.Loop
+      condition: !cel "resources.runner.status.exitCode == null"
+      maxIterations: 200
+      steps:
+        - name: pause
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 50ms }
+  - name: exited
+    throw:
+      code: ERR_RUNNER_EXITED
+      message: !cel "'The runner exited with ' + string(resources.runner.status.exitCode) + '.'"

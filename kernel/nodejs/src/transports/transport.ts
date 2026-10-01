@@ -39,6 +39,10 @@ export interface PublishResult {
 export interface PublishOptions {
   /** Bearer token for registries that require auth. */
   token?: string;
+  /** Author annotations written onto the artifact beside the ones the transport
+   *  derives from `metadata`. The pushed set is exactly those two — it replaces
+   *  whatever the published artifact carried, never merges with it. */
+  annotations?: Readonly<Record<string, string>>;
   /** Notified before each backoff sleep on a transient push failure, so the
    *  caller can surface retry progress. */
   onRetry?: (info: {
@@ -169,6 +173,20 @@ export interface Transport {
    *  Returns `[]` for an empty layer set; throws when this transport cannot
    *  publish payload layers at all. */
   layerIndex(layers: readonly PayloadLayer[]): Promise<ArtifactLayer[]>;
+
+  /** Refuse author annotations this transport cannot write: every one, when it
+   *  writes none; a key it derives from `metadata` itself, naming the field to
+   *  set instead. Reads no manifest, so a caller checks before building
+   *  anything. Never drops an annotation it cannot write. */
+  checkAuthoredAnnotations(annotations: Readonly<Record<string, string>>): void;
+
+  /** The complete annotation set {@link publish} writes for `manifest`: the keys
+   *  derived from its `metadata`, plus exactly `annotations`. Throws what
+   *  {@link checkAuthoredAnnotations} throws. */
+  publishedAnnotations(
+    manifest: string,
+    annotations: Readonly<Record<string, string>>,
+  ): Record<string, string>;
 
   /** Push `bundle` to `destination` (a base ref / repo whose scheme this
    *  transport owns), pinning the payload and writing the transport-native

@@ -1,0 +1,205 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalWebhook
+  version: 1.0.0
+  description: |
+    A product's webhook is delivered through the outbox by the relay, never by
+    the request. With the receiver down, the first attempt fails and its error is
+    recorded on the product; once the receiver is up the retry delivers the
+    `plan.submitted` payload. A revision's delivery fails, the server is stopped,
+    and a server restarted on the same DB_FILE delivers `plan.revised`. The
+    product lists every attempt, the failures with their errors.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/webhook
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18746, throwOnHttpError: true }
+---
+# The product's delivery record: attempts so far, newest first, and rows owed.
+kind: Run.Sequence
+metadata: { name: deliveries }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: /api/review/products }
+outputs:
+  attempts: !cel "steps.get.result.body.products[0].deliveries.map(d, [d.event, d.error == null ? 'delivered' : 'failed', d.error == null || string(d.error) != ''])"
+  pending: !cel "int(steps.get.result.body.products[0].pendingDeliveries)"
+---
+kind: Run.Loop
+metadata: { name: awaitAttempts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [count]
+    properties:
+      count: { type: integer }
+condition: !cel "previous == null || size(previous.read.result.attempts) < inputs.count"
+maxIterations: 150
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 100ms }
+  - name: read
+    invoke: !ref deliveries
+outputs:
+  attempts: !cel "steps.read.result.attempts"
+  pending: !cel "steps.read.result.pending"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: first
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18746 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme, webhookUrl: "http://127.0.0.1:18747/hook" } }
+        - name: repo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: submit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-1, title: Ship it, body: "## S1 ship" }
+        # Nothing is sent inside the request: the relay has not ticked yet.
+        - name: afterSubmit
+          invoke: !ref deliveries
+        - name: failed
+          invoke: !ref awaitAttempts
+          inputs: { count: 1 }
+        - name: receiverUp
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: App.Instance
+                metadata: { name: receiver }
+                source: ./__fixtures__/webhook-receiver/telo.yaml
+                ports: { http: 18747 }
+            targets: [ !ref receiver ]
+            steps:
+              - name: delivered
+                invoke: !ref awaitAttempts
+                inputs: { count: 2 }
+              - name: received
+                invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:18747/received" }
+            outputs:
+              received: !cel "steps.received.result.body.received"
+        - name: revise
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + string(steps.submit.result.body.planId) + '/revisions'"
+            method: POST
+            body: { body: "## S1 ship carefully", summary: Carefully., base: !cel "string(steps.submit.result.body.hash)" }
+        - name: revisedFailed
+          invoke: !ref awaitAttempts
+          inputs: { count: 3 }
+      outputs:
+        planId: !cel "string(steps.submit.result.body.planId)"
+        firstHash: !cel "string(steps.submit.result.body.hash)"
+        secondHash: !cel "string(steps.revise.result.body.hash)"
+        afterSubmit: !cel "steps.afterSubmit.result"
+        failed: !cel "steps.failed.result"
+        received: !cel "steps.receiverUp.result.received"
+        revisedFailed: !cel "steps.revisedFailed.result"
+  - name: restarted
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: receiver }
+          source: ./__fixtures__/webhook-receiver/telo.yaml
+          ports: { http: 18747 }
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18746 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref receiver, !ref server ]
+      steps:
+        - name: delivered
+          invoke: !ref awaitAttempts
+          inputs: { count: 4 }
+        - name: received
+          invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:18747/received" }
+      outputs:
+        delivered: !cel "steps.delivered.result"
+        received: !cel "steps.received.result.body.received"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        afterSubmit: !cel "steps.first.result.afterSubmit"
+        failed: !cel "steps.first.result.failed"
+        received: !cel "steps.first.result.received"
+        revisedFailed: !cel "steps.first.result.revisedFailed.attempts"
+        delivered: !cel "steps.restarted.result.delivered"
+        receivedAfterRestart: !cel "steps.restarted.result.received"
+      expected:
+        afterSubmit: { attempts: [], pending: 1 }
+        failed: { attempts: [[plan.submitted, failed, true]], pending: 1 }
+        received:
+          - event: plan.submitted
+            planId: !cel "steps.first.result.planId"
+            title: Ship it
+            product: acme
+            repo: api
+            revision: { seq: 1, hash: !cel "steps.first.result.firstHash" }
+            path: !cel "'/plans/' + steps.first.result.planId"
+        revisedFailed:
+          - [plan.revised, failed, true]
+          - [plan.submitted, delivered, true]
+          - [plan.submitted, failed, true]
+        delivered:
+          attempts:
+            - [plan.revised, delivered, true]
+            - [plan.revised, failed, true]
+            - [plan.submitted, delivered, true]
+            - [plan.submitted, failed, true]
+          pending: 0
+        receivedAfterRestart:
+          - event: plan.revised
+            planId: !cel "steps.first.result.planId"
+            title: Ship it
+            product: acme
+            repo: api
+            revision: { seq: 2, hash: !cel "steps.first.result.secondHash" }
+            path: !cel "'/plans/' + steps.first.result.planId"

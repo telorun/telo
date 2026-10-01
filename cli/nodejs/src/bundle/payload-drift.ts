@@ -3,6 +3,7 @@ import {
   layerDigestKey,
   parseLayerIndex,
   selectorKey,
+  sha256Base64Url,
   type ArtifactLayer,
   type ArtifactSelector,
   type LayerDigests,
@@ -11,22 +12,16 @@ import { computeFilesIntegrity, defaultTransportRegistry } from "@telorun/kernel
 import { parseAllDocuments } from "yaml";
 
 /**
- * Does the payload we are about to publish differ from what is already published
- * at this `metadata.version`?
+ * Would publishing move the pin of a version that is already published?
  *
- * Bundling moves a module's dependency coupling from load time to build time. It
- * does not remove it: once `codec` — or `fastify`, or a transitive dependency the
- * lockfile alone moved — is copied into a module's bundle, that module's bytes
- * have changed while nothing under its own directory has. No path-scoped rule and
- * no version ledger can see that, so a fix silently ships to nobody.
- *
- * The artifact already carries the exact answer. Each layer's `integrity` is a
- * framing-independent digest of its contents, so comparing the layer we just
- * built against the one published under the same version decides the question
- * from the bytes themselves — it fires for a shared-library fix, a lockfile bump
- * and a sibling source edit alike, and it cannot fire spuriously, because
- * identical bytes hash identically.
+ * A consumer's import pin is a hash of `telo.yaml` and nothing else, so the
+ * question is decided by that hash: identical bytes pass (a re-push), anything
+ * else is refused. The payload layers are compared only to say WHAT moved — a
+ * bundle inlines its dependencies, so a shared-library fix or a lockfile bump
+ * moves a layer's `integrity` while touching nothing under the module's own
+ * directory, and naming that layer is what points the author at the cause.
  */
+/** One payload layer whose `integrity` differs from the published index. */
 export interface LayerDrift {
   role: string;
   selector?: string;
@@ -60,35 +55,36 @@ function describeKey(role: string, selector?: ArtifactSelector): string {
 const NOT_FOUND = /\b404\b|not found|MANIFEST_UNKNOWN|NAME_UNKNOWN/i;
 
 /**
- * Read the `layers:` index off an already-published manifest, or `null` when
- * nothing is published at that ref.
+ * The `telo.yaml` published at `ref`, read from the registry itself (never a
+ * cache), or `null` when nothing is published there.
  *
  * A ref that does not resolve is not an error: a new version has no predecessor.
  * **Anything else is.** A 401, a 5xx or a DNS failure says nothing about whether
- * the payload changed, and answering "no drift" to a question the registry
- * refused to answer would turn a byte-equality gate into a no-op during exactly
+ * the published version would change, and answering "unchanged" to a question
+ * the registry refused to answer would turn the gate into a no-op during exactly
  * the kind of incident where a release is most likely to ship something wrong.
  * Those propagate and fail the publish.
  */
-async function readPublishedLayers(ref: string): Promise<ArtifactLayer[] | null> {
+async function readPublishedManifest(ref: string): Promise<string | null> {
   const transport = defaultTransportRegistry().forRef(ref);
   if (!transport) {
-    throw new Error(
-      `Cannot verify the published payload of '${ref}': no transport owns that ref.`,
-    );
+    throw new Error(`Cannot read the published manifest of '${ref}': no transport owns that ref.`);
   }
-  let text: string;
   try {
-    ({ text } = await transport.source.read(ref));
+    return (await transport.source.read(ref)).text;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (NOT_FOUND.test(message)) return null;
     throw new Error(
-      `Cannot verify whether '${ref}' is already published with a different payload: ${message}. ` +
-        `Publishing without that answer could ship changed bytes at an unchanged version — ` +
+      `Cannot verify whether '${ref}' is already published with a different pin: ${message}. ` +
+        `Publishing without that answer could move the pin of a published version — ` +
         `resolve the registry error and retry.`,
     );
   }
+}
+
+/** The `layers:` index a manifest's module doc declares; `[]` when none. */
+function layerIndexOf(text: string, ref: string): ArtifactLayer[] {
   for (const doc of parseAllDocuments(text)) {
     const json = doc.toJSON() as { kind?: string; layers?: unknown } | null;
     if (json?.kind !== "Telo.Application" && json?.kind !== "Telo.Library") continue;
@@ -111,29 +107,21 @@ export async function readPublishedDigests(
   destination: string,
   version: string,
 ): Promise<LayerDigests | null> {
-  const published = await readPublishedLayers(`${destination}@${version}`);
-  if (published === null) return null;
+  const ref = `${destination}@${version}`;
+  const text = await readPublishedManifest(ref);
+  if (text === null) return null;
   const digests: Record<string, string> = {};
-  for (const layer of published) {
+  for (const layer of layerIndexOf(text, ref)) {
     digests[layerDigestKey(layer.role, layer.selector)] = layer.integrity;
   }
   return digests;
 }
 
-/**
- * Compare the built payload against the published one at the same version.
- *
- * Returns `null` when nothing is published at that ref — a new version, so there
- * is nothing to disagree with. Returns an empty array when the payloads match.
- */
-export async function findPayloadDrift(
-  destination: string,
-  version: string,
+/** What the built payload's layers change against a published index. */
+async function layerDrift(
+  published: readonly ArtifactLayer[],
   built: readonly BuiltLayer[],
-): Promise<LayerDrift[] | null> {
-  const published = await readPublishedLayers(`${destination}@${version}`);
-  if (published === null) return null;
-
+): Promise<LayerDrift[]> {
   const publishedByKey = new Map<string, ArtifactLayer>();
   for (const layer of published) publishedByKey.set(layerKey(layer.role, layer.selector), layer);
 
@@ -152,7 +140,7 @@ export async function findPayloadDrift(
       });
     }
   }
-  // A layer that was published and is no longer built is drift too — the payload
+  // A layer that was published and is no longer built moved too — the payload
   // shrank, which changes what a consumer receives just as much as a byte edit.
   for (const [key, layer] of publishedByKey) {
     if (seen.has(key)) continue;
@@ -161,22 +149,68 @@ export async function findPayloadDrift(
   return drift;
 }
 
-/** The message shown when the gate fires. It names the version to bump, because
- *  that — not a re-push — is the fix: overwriting a published tag would change
- *  what an existing pinned import resolves to. */
-export function describeDrift(moduleRef: string, version: string, drift: LayerDrift[]): string {
-  const lines = drift.map((entry) => {
-    if (!entry.built) return `  ${entry.role}: published, no longer built`;
-    if (!entry.published) return `  ${entry.role}: newly built, not in the published artifact`;
-    return `  ${entry.role}: ${entry.published} → ${entry.built}`;
-  });
+async function manifestPin(text: string): Promise<string> {
+  return `sha256-${await sha256Base64Url(new TextEncoder().encode(text))}`;
+}
+
+/** How the manifest about to be pushed relates to the one already published at
+ *  its `metadata.version`. */
+export type PublishedPinCheck =
+  | { status: "unpublished" }
+  | { status: "identical"; pin: string }
+  | { status: "moved"; publishedPin: string; builtPin: string; drift: LayerDrift[] };
+
+/**
+ * Compare the pin of the `telo.yaml` about to be pushed against the pin of the
+ * one published at the same version.
+ *
+ * The pin is what every consumer verifies, so it is the thing that must not
+ * move: comparing payload layers alone let a manifest-only change (a
+ * description, an import, a re-serialization) republish a version under a new
+ * pin, and a module with no payload was never compared at all. The layers are
+ * compared only to explain what moved.
+ */
+export async function checkPublishedPin(
+  destination: string,
+  version: string,
+  manifest: string,
+  built: readonly BuiltLayer[],
+): Promise<PublishedPinCheck> {
+  const ref = `${destination}@${version}`;
+  const published = await readPublishedManifest(ref);
+  if (published === null) return { status: "unpublished" };
+  const [publishedPin, builtPin] = await Promise.all([manifestPin(published), manifestPin(manifest)]);
+  if (publishedPin === builtPin) return { status: "identical", pin: builtPin };
+  return {
+    status: "moved",
+    publishedPin,
+    builtPin,
+    drift: await layerDrift(layerIndexOf(published, ref), built),
+  };
+}
+
+/** The refusal shown when the pin would move. It names the version to publish
+ *  under instead, because a re-push is exactly what must not happen: every
+ *  import pinned to the published version would stop verifying. */
+export function describePinMove(
+  destination: string,
+  version: string,
+  moved: Extract<PublishedPinCheck, { status: "moved" }>,
+): string {
+  const layers =
+    moved.drift.length === 0
+      ? ["  no payload layer moved — the manifest itself changed (metadata, imports, or how this telo serializes it)"]
+      : moved.drift.map((entry) => {
+          if (!entry.built) return `  ${entry.role}: published, no longer built`;
+          if (!entry.published) return `  ${entry.role}: newly built, not in the published artifact`;
+          return `  ${entry.role}: ${entry.published} → ${entry.built}`;
+        });
   return (
-    `${moduleRef} is already published at ${version}, but its payload has changed:\n` +
-    lines.join("\n") +
-    `\nA bundle inlines its dependencies, so a change in a shared library or the ` +
-    `lockfile alters these bytes without touching this module's own files. ` +
-    `Run \`telo release status\` to see what would bump and why, then ` +
-    `\`telo release apply\` to move metadata.version — republishing over the ` +
-    `existing tag would change what an already-pinned import resolves to.`
+    `${destination}@${version} is already published with pin ${moved.publishedPin}, ` +
+    `but the telo.yaml built now pins ${moved.builtPin}:\n` +
+    layers.join("\n") +
+    `\nA published version's pin never moves — every import pinned to it verifies against it. ` +
+    `Publish under a new metadata.version (in a release workspace, \`telo release status\` shows ` +
+    `what would bump and \`telo release apply\` moves it).`
   );
 }

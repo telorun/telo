@@ -1,0 +1,19 @@
+# A streaming agent setting `conclusionPrompt` with the default `onMaxSteps`
+# (`throw`): refused by `telo check` at the declaration, and by the controller
+# when the resource is created.
+kind: Telo.Library
+metadata:
+  name: ConclusionPromptUnusedStream
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+exports:
+  resources: [agent]
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: echo }
+---
+kind: Ai.AgentStream
+metadata: { name: agent }
+model: !ref echo
+conclusionPrompt: "Wrap up."

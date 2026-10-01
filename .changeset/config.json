@@ -86,11 +86,13 @@
     "@telorun/tesseract-build",
     "@telorun/tesseract-model-build",
     "@telorun/test-build",
+    "@telorun/text-diff-build",
     "@telorun/timer-build",
     "@telorun/type",
     "@telorun/vector-store",
     "@telorun/vector-store-memory-build",
     "@telorun/vector-store-pgvector-build",
+    "@telorun/watch-build",
     "@telorun/yaml-build"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {

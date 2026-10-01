@@ -1,6 +1,6 @@
 # A `!module-path` naming nothing in the module. Well-formed, so the analyzer
 # accepts it; whether anything is there takes a directory, so the kernel
-# refuses it at creation (and `telo check`'s Node-side probe reports it).
+# refuses the load (and `telo check` reports it) — both asking the same source.
 kind: Telo.Application
 metadata:
   name: ModulePathMissing

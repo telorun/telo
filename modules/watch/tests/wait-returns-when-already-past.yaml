@@ -1,0 +1,38 @@
+kind: Telo.Application
+metadata:
+  name: WatchWaitReturnsWhenAlreadyPast
+  version: 1.0.0
+  description: |
+    A publish that lands before the wait opens — between the caller's read of
+    its database and its wait — is not lost: the store remembers the topic's
+    latest version, so a wait whose cursor is below it returns at once instead
+    of holding for its timeout.
+imports:
+  Watch: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Watch.MemoryStore
+metadata: { name: store }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: publish
+    inputs: { topic: plan, version: 3 }
+    invoke:
+      kind: Watch.Publish
+      store: !ref store
+  - name: wait
+    inputs: { topic: plan, after: 2, timeout: 30s }
+    invoke:
+      kind: Watch.Wait
+      store: !ref store
+      maxTimeout: 30s
+  - name: assertReturnedAtOnce
+    inputs:
+      actual: !cel "steps.wait.result"
+      expected: { changed: true, version: 3 }
+    invoke: { kind: Assert.Equals }

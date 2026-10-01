@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: ShellPerCallCwd
+  version: 1.0.0
+  description: |
+    A call's `cwd` overlays the host's working directory: with argv execution
+    (no shell) and an absolute path, with a shell command line, and as a
+    relative path resolved against the host's own working directory.
+imports:
+  Shell: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Shell.LocalHost
+metadata: { name: root }
+cwd: /
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: argvAbsolute
+    inputs:
+      args: [pwd]
+      cwd: /usr
+    invoke:
+      kind: Shell.Command
+      host: !ref local
+
+  - name: commandLine
+    inputs:
+      command: pwd
+      cwd: /usr/bin
+    invoke:
+      kind: Shell.Command
+      host: !ref local
+
+  - name: relativeToHost
+    inputs:
+      command: pwd
+      cwd: usr
+    invoke:
+      kind: Shell.Command
+      host: !ref root
+
+  - name: assertDirectories
+    inputs:
+      actual:
+        argvAbsolute: !cel "steps.argvAbsolute.result.stdout"
+        commandLine: !cel "steps.commandLine.result.stdout"
+        relativeToHost: !cel "steps.relativeToHost.result.stdout"
+      expected:
+        argvAbsolute: "/usr\n"
+        commandLine: "/usr/bin\n"
+        relativeToHost: "/usr\n"
+    invoke:
+      kind: Assert.Equals

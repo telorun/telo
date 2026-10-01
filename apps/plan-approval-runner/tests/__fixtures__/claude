@@ -1,0 +1,203 @@
+#!/usr/bin/env node
+// A stand-in for the Claude CLI 2.1.284, as far as the runner uses it. It keeps
+// one machine's sessions in $CLAUDE_STUB_HOME/state/registry.json and appends
+// every call except a listing to $CLAUDE_STUB_HOME/state/calls, one JSON line
+// each: { argv, cwd, url } (url is PLAN_APPROVAL_URL). Run it through a
+// machine's wrapper (`machines/<test>/claude`), which sets the home.
+//
+//   agents --json [--all]            list sessions; stopped ones only with --all
+//   --bg [--name N] [...] <prompt>   start a session (named N, or after the prompt)
+//   --bg --resume <sessionId> [...] <prompt>
+//                                    continue a stopped session when given no other
+//                                    flag; otherwise start a copy under the same name
+//   stop <id>                        stop a running background session by short id
+//   rm <id>                          forget a session
+//
+// A `--cwd` flag is refused. A directory holding `.claude-stub/untrusted` is not
+// trusted. Words in a start prompt shape the session: WORKING / BLOCKED leave it
+// working / blocked after its turn, INTERACTIVE also opens it interactively,
+// FORK makes every resume start a copy, FAIL fails the call, VANISH lists nothing.
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+
+const home = process.env.CLAUDE_STUB_HOME;
+if (!home) {
+  process.stderr.write("stub: CLAUDE_STUB_HOME is not set; run a machine's wrapper\n");
+  process.exit(2);
+}
+const state = join(home, "state");
+mkdirSync(state, { recursive: true });
+const registryFile = join(state, "registry.json");
+const registry = existsSync(registryFile) ? JSON.parse(readFileSync(registryFile, "utf8")) : [];
+const save = () => writeFileSync(registryFile, JSON.stringify(registry, null, 2));
+const args = process.argv.slice(2);
+const cwd = process.cwd();
+
+if (args.includes("--cwd")) {
+  process.stderr.write("error: unknown option '--cwd'\n");
+  process.exit(1);
+}
+
+const record = () =>
+  appendFileSync(
+    join(state, "calls"),
+    JSON.stringify({ argv: args, cwd, url: process.env.PLAN_APPROVAL_URL ?? "" }) + "\n",
+  );
+
+const afterTurn = (traits) =>
+  traits.includes("WORKING")
+    ? { status: "busy", state: "working" }
+    : traits.includes("BLOCKED")
+      ? { status: "waiting", state: "blocked" }
+      : { status: "idle", state: "done" };
+
+const launch = (sessionId, name, traits) => {
+  registry.push({
+    sessionId,
+    id: sessionId.slice(0, 8),
+    cwd,
+    kind: "background",
+    name,
+    startedAt: Date.now(),
+    pid: 40000 + registry.length,
+    ...afterTurn(traits),
+    traits,
+  });
+  if (traits.includes("INTERACTIVE")) {
+    // As the real CLI lists it: an interactive entry has no short id.
+    registry.push({
+      sessionId,
+      cwd,
+      kind: "interactive",
+      name,
+      startedAt: Date.now(),
+      pid: 50000 + registry.length,
+      status: "idle",
+      state: "waiting",
+      traits,
+    });
+  }
+};
+
+const backgrounded = (entry) => {
+  process.stdout.write(
+    `backgrounded · ${entry.id} · ${entry.name}\n` +
+      `  claude agents             list sessions\n` +
+      `  claude attach ${entry.id}    open in this terminal\n` +
+      `  claude logs ${entry.id}      show recent output\n` +
+      `  claude stop ${entry.id}      stop this session\n`,
+  );
+};
+
+if (args[0] === "agents") {
+  const all = args.includes("--all");
+  const listed = registry
+    .filter((e) => all || e.state !== "stopped")
+    .map(({ traits, ...e }) => e);
+  process.stdout.write(JSON.stringify(listed) + "\n");
+  process.exit(0);
+}
+
+if (args[0] === "stop" || args[0] === "rm") {
+  record();
+  const id = args[1];
+  const matching = registry.filter((e) => e.id === id && e.kind === "background");
+  if (args[0] === "rm") {
+    if (matching.length === 0) {
+      process.stderr.write(`No session ${id}\n`);
+      process.exit(1);
+    }
+    for (let i = registry.length - 1; i >= 0; i--) if (registry[i].sessionId.startsWith(id)) registry.splice(i, 1);
+    save();
+    process.stdout.write(`removed ${id}\n`);
+    process.exit(0);
+  }
+  const running = matching.find((e) => e.state !== "stopped");
+  if (!running) {
+    process.stderr.write(`No running background session ${id}\n`);
+    process.exit(1);
+  }
+  running.state = "stopped";
+  delete running.pid;
+  delete running.status;
+  save();
+  process.stdout.write(`stopped ${id}\n`);
+  process.exit(0);
+}
+
+if (!args.includes("--bg")) {
+  process.stderr.write(`stub: unsupported call: ${args.join(" ")}\n`);
+  process.exit(2);
+}
+
+record();
+if (existsSync(join(cwd, ".claude-stub", "untrusted"))) {
+  process.stdout.write(
+    `Workspace not trusted. Run \`claude\` in ${cwd} once and accept the trust prompt, then retry.\n`,
+  );
+  process.exit(1);
+}
+
+const options = new Map();
+const flags = [];
+let prompt = "";
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === "--bg") continue;
+  if (arg.startsWith("--")) {
+    options.set(arg, args[i + 1]);
+    flags.push(arg);
+    i++;
+  } else {
+    prompt = arg;
+  }
+}
+if (options.has("--session-id")) {
+  process.stderr.write(
+    "warning: --bg manages the session id; ignoring --session-id (use --resume <id> to continue an existing session)\n",
+  );
+}
+
+if (options.has("--resume")) {
+  const sessionId = options.get("--resume");
+  const original = registry.find((e) => e.sessionId === sessionId && e.kind === "background");
+  if (!original) {
+    process.stderr.write(`No conversation found with session ID: ${sessionId}\n`);
+    process.exit(1);
+  }
+  const otherFlags = flags.filter((f) => f !== "--resume");
+  const running = original.state !== "stopped";
+  if (otherFlags.length > 0 || running || original.traits.includes("FORK")) {
+    const copyId = randomUUID();
+    const reason =
+      otherFlags.length > 0
+        ? `note: background session ${original.id} keeps its own saved options, so the flags you passed started a copy as ${copyId.slice(0, 8)}. Without flags, the same command continues ${original.id} itself.`
+        : `note: session ${original.id} is already running in the background, so this started a copy as ${copyId.slice(0, 8)}.`;
+    launch(copyId, original.name, original.traits);
+    save();
+    process.stdout.write(reason + "\n");
+    backgrounded(registry.find((e) => e.sessionId === copyId));
+    process.exit(0);
+  }
+  Object.assign(original, { pid: 60000 + registry.length, ...afterTurn(original.traits) });
+  save();
+  process.stdout.write(`note: woke session ${original.id} with its saved options (--permission-mode, --model).\n`);
+  backgrounded(original);
+  process.exit(0);
+}
+
+if (prompt.includes("FAIL")) {
+  process.stderr.write("stub: the prompt asked to fail\n");
+  process.exit(3);
+}
+const sessionId = randomUUID();
+const name = options.get("--name") ?? prompt.replace(/\s+/g, " ").trim();
+const traits = ["WORKING", "BLOCKED", "INTERACTIVE", "FORK"].filter((t) => prompt.includes(t));
+if (prompt.includes("VANISH")) {
+  backgrounded({ id: sessionId.slice(0, 8), name });
+  process.exit(0);
+}
+launch(sessionId, name, traits);
+save();
+backgrounded(registry.find((e) => e.sessionId === sessionId));

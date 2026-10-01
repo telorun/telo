@@ -1,0 +1,206 @@
+kind: Telo.Library
+metadata:
+  name: Watch
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Coordination]
+  description: >-
+    Wake-up signals for long polling: a caller waits until a topic's version moves
+    past the cursor it last read, and a writer raises that version after committing
+    a change. Any number of waiters share a topic and all wake together, and running
+    out of time is a normal result, so a request re-reads its data and waits again.
+requires:
+  # `Telo.Duration` is a value type an older analyzer does not know
+  # (X_TELO_TYPE_UNKNOWN); 0.92.0 is the first release that reads this file,
+  # verified by running each release's `telo check`. It also covers the
+  # effect-chain floor (0.82.0) the controllers need.
+  telo: ">=0.92.0"
+exports:
+  kinds:
+    - Wait
+    - Publish
+    - Store
+    - MemoryStore
+---
+# Watch.Store — where topic versions and their waiters live. A Telo.Provider: a
+# configured store, referenced by Watch.Wait / Watch.Publish through `store:`.
+# Normative contract: docs/store-contract.md.
+#
+#   raise(topic, version)                         → resolves once applied
+#   wait(topic, after, timeoutMs, cancellation)   → { changed, version }; never
+#                                                   rejects on the timeout or the
+#                                                   cancellation
+#
+# A wake-up signal only: the caller's database stays the source of truth, so a
+# backend may forget a topic and a waiter may return early, and neither is wrong.
+kind: Telo.Abstract
+metadata:
+  name: Store
+  description: >-
+    Holds the latest version of every topic and the callers waiting for it to move:
+    a waiter is released when the version passes its cursor, when its deadline
+    arrives or when its call is cancelled, and raising a version wakes every waiter
+    below it. A store shared across processes wakes a request held in one instance
+    when another raises the version.
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: MemoryStore
+  description: >-
+    Keeps topic versions and their waiters in the running process's memory, waking
+    waiters the moment a version is raised. Nothing is shared between instances or
+    survives a restart, so it fits single-process applications, development and
+    tests. Beyond a configurable number of topics nobody waits on, the least
+    recently raised are forgotten.
+extends: Self.Store
+controllers:
+  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#MemoryStore
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    maxTopics:
+      title: Max topics
+      type: integer
+      minimum: 1
+      default: 100000
+      description: >-
+        How many topics nobody is waiting on are remembered; beyond it the least
+        recently raised of them are forgotten. A topic with waiters is never
+        forgotten and does not count. A forgotten topic reads as version 0, which
+        costs a later waiter at most its timeout — never a missed wake-up for a
+        waiter that is already waiting.
+---
+kind: Telo.Definition
+metadata:
+  name: Wait
+  description: >-
+    Waits until a topic's version passes the caller's cursor, returning at once when
+    it already has. Takes the topic, the last version the caller read and how long to
+    wait, capped per resource. Returns whether the version changed and the version now
+    known; running out of time is a normal result, never an error.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Wait
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [topic, after, timeout]
+    examples:
+      - topic: "plan:42"
+        after: 7
+        timeout: "25s"
+    properties:
+      topic:
+        title: Topic
+        type: string
+        minLength: 1
+        description: What is being watched — typically one row, document or conversation.
+      after:
+        title: After
+        type: integer
+        description: >-
+          The version the caller last read from its own source of truth. The wait
+          returns as soon as the topic's version is greater than this.
+      timeout:
+        title: Timeout
+        x-telo-type: Telo.Duration
+        description: >-
+          How long this call waits (`25s`, `duration(request.query.wait)`), capped by
+          the resource's `maxTimeout`. Zero or less checks without waiting.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [changed, version]
+    properties:
+      changed:
+        type: boolean
+        description: >-
+          True when the topic's version passed `after`; false when the wait ran out
+          of time. Either way, read the source of truth again.
+      version:
+        type: integer
+        description: >-
+          The topic's version as the store knows it. After a restart the store may
+          know an older version than the caller has already read.
+schema:
+  type: object
+  additionalProperties: false
+  required: [store, maxTimeout]
+  # A wait lives in the memory of the call that opened it, so replaying it after
+  # a restart would wait again for a signal sent to the process that died.
+  x-telo-violates-zone:
+    replayed: >-
+      this wait lives only in the memory of the call that opened it, so a replay after
+      a restart would begin waiting again for a signal that went to the process that
+      died; inside a durable run, wait for a delivery with Durable.Await instead
+  properties:
+    store:
+      title: Store
+      description: The store holding topic versions and their waiters.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+    maxTimeout:
+      title: Max timeout
+      x-telo-type: Telo.Duration
+      x-telo-eval: compile
+      description: >-
+        The longest any call may wait, whatever its `timeout` asks for — the bound
+        that keeps a held request inside every proxy and client deadline in front
+        of it.
+  examples:
+    - store: !ref watchStore
+      maxTimeout: "30s"
+---
+kind: Telo.Definition
+metadata:
+  name: Publish
+  description: >-
+    Raises a topic's version and wakes every caller waiting on a cursor below it.
+    Versions only move forward: publishing one at or below the version already known
+    changes nothing, so publishing out of order is harmless. Call it after the change
+    the version describes is committed.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Publish
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [topic, version]
+    examples:
+      - topic: "plan:42"
+        version: 8
+    properties:
+      topic:
+        title: Topic
+        type: string
+        minLength: 1
+        description: The topic whose waiters are woken.
+      version:
+        title: Version
+        type: integer
+        description: >-
+          The version the change was committed at — a row version, a sequence value,
+          an update counter.
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      title: Store
+      description: The store holding topic versions and their waiters.
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+  examples:
+    - store: !ref watchStore

@@ -2,8 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, waitFor } from "@testing-library/react";
 
 import { transcriptFromTurns } from "../records";
-import type { JournalRecord, TurnRecords } from "../types";
-import { AGENT_URL, CONVERSATION, FakeEventStream, installAgentGlobals, openAgent, stubAgent } from "./agent-harness";
+import type { JournalRecord, TurnRecords, TurnSummary } from "../types";
+import {
+  AGENT_URL,
+  CONVERSATION,
+  FakeEventStream,
+  capabilities,
+  installAgentGlobals,
+  openAgent,
+  stubAgent,
+} from "./agent-harness";
 
 const finishedTurn: TurnRecords = {
   turnId: "t1",
@@ -54,5 +62,24 @@ describe("AgentProvider on open", () => {
     expect(result.current.messages).toEqual(
       transcriptFromTurns([finishedTurn, { turnId: "t2", status: "finished", error: null, records: [...loaded, ...live] }]),
     );
+  });
+
+  it("reads a turn's summary from the records route once its stream has ended, from an agent that keeps one", async () => {
+    const summary: TurnSummary = { files: [], check: null, runs: [], usage: { totalTokens: 15 } };
+    const page = {
+      turns: [{ turnId: "t2", status: "running", error: null, records: loaded }] as TurnRecords[],
+      next: null,
+    };
+    stubAgent(page, { "GET /capabilities": capabilities({ features: ["turn-summary"] }) });
+    const { result } = await openAgent();
+    await waitFor(() => expect(FakeEventStream.opened).toHaveLength(1));
+    await waitFor(() => expect(result.current.identity?.state).toBe("known"));
+
+    page.turns = [{ turnId: "t2", status: "finished", error: null, summary, revert: null, records: [...loaded, ...live] }];
+    act(() => {
+      for (const record of live) FakeEventStream.opened[0].emit(record);
+    });
+
+    await waitFor(() => expect(result.current.messages[1]).toMatchObject({ pending: false, summary }));
   });
 });

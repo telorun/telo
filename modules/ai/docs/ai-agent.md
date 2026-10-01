@@ -1,5 +1,5 @@
 ---
-description: "Ai.Agent: a tool-use loop over any Ai.Model. Tool providers, maxSteps/onMaxSteps/onToolError, bounded tool results, invocation inputs and the steps trace."
+description: "Ai.Agent: a tool-use loop over any Ai.Model. Tool providers, typed caller context, the step budget (maxSteps/onMaxSteps/conclusionPrompt), onToolError, bounded tool results, invocation inputs and the steps trace."
 sidebar_label: Ai.Agent
 ---
 
@@ -63,8 +63,9 @@ toolProviders:
 | `model`         | ref (`Ai.Model`)| yes      | The LLM that drives the loop.                                                            |
 | `system`        | string          | no       | Default system prompt. Runtime `inputs.system` wins.                                     |
 | `options`       | object          | no       | Option overrides passed to the model each turn (merged under `inputs.options`).          |
-| `maxSteps`      | integer         | no       | Max model turns. Default `8`.                                                            |
-| `onMaxSteps`    | `throw\|return` | no       | At the cap without finishing: `throw` raises `ERR_AGENT_MAX_STEPS`; `return` hands back the last turn's text (`finishReason: tool-calls`). Default `throw`. |
+| `maxSteps`      | integer         | no       | Max model turns. Default `8`. May be computed (`!cel "variables.maxSteps"`), resolved once at startup. |
+| `onMaxSteps`    | `throw\|return\|conclude` | no | At the cap without finishing — see [When the step budget runs out](#when-the-step-budget-runs-out). Default `throw`. |
+| `conclusionPrompt` | string (markdown) | no  | The final user message of the concluding call. Only with `onMaxSteps: conclude`; has a default wrap-up text. |
 | `onToolError`   | `feedback\|throw`| no      | When a tool throws or the model names an unknown tool: `feedback` records it in `steps` and returns it to the model so it can recover; `throw` aborts. Default `feedback`. A cancelled invocation and a durable suspension are not tool errors: they propagate either way. |
 | `maxToolResultBytes` | integer ≥ 1 | no | Bounds the text each tool result feeds the model — see [Bounded tool results](#bounded-tool-results). Unset: unbounded. |
 | `toolProviders` | array           | no       | Tool sources — see below.                                                                |
@@ -88,15 +89,58 @@ Tools are listed lazily on first invoke and cached. A name clash across provider
 | `messages` | array  | exactly one of `prompt`/`messages`| Full turns.                                                  |
 | `system`   | string | no                                | Runtime system override (wins over manifest `system`).       |
 | `options`  | object | no                                | Per-call option overrides.                                   |
+| `context`  | object | no                                | Data from the caller for the tools to read — see [Caller context](#caller-context). Default `{}`. |
+
+## Caller context
+
+`context` carries data the caller knows and the model must not choose: the id of the turn being served, the signed-in user, a tenant. It is never sent to the model. Each mounted provider's tools read it in their `inputs:` mapping as `context` (see [`Ai.Tools`](./ai-tool-provider.md#caller-context)), and a provider says what it needs by declaring a `contextType`.
+
+The agent's `context` input is typed by those declarations: it must satisfy the `contextType` of **every** provider under `toolProviders` that declares one, and a provider declaring none (an MCP provider, a static list reading no caller data) asks for nothing. An omitted `context` is `{}`, so an agent whose provider requires `turnId` must be called with it:
+
+```yaml
+- name: reply
+  invoke: !ref Assistant
+  inputs:
+    prompt: !cel "inputs.prompt"
+    context:
+      turnId: !cel "inputs.turnId"
+```
+
+A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:` under `telo check`, and `ERR_INPUT_INVALID` when invoked — before any model call is made. With several providers, declare each `contextType` open (no `additionalProperties: false`), since one value has to satisfy all of them. A provider the agent reaches only through a library's `resources:` input is not known to `telo check`; it is still enforced when the agent is invoked.
 
 ## Output
 
-`{ text, usage, finishReason, steps }`:
+`{ text, usage, finishReason, limit?, steps }`:
 
 - `text` — the model's final answer.
 - `usage` — token usage summed across every model call in the loop.
 - `finishReason` — from the final turn.
+- `limit` — `max-steps` when the step budget ended the run (`onMaxSteps: return` or `conclude`); absent when the model finished on its own.
 - `steps` — one entry per model call, the final answering call included (its `toolCalls` and `toolResults` are empty), so `steps` has as many entries as the run made model calls: `{ text, toolCalls, toolResults }`, where each result carries `{ toolCallId, name, content, error? }`. A call's id is fixed when the model requests it — a model that supplies none gets a generated `call_<uuid>`, unique across runs — and the result's `toolCallId` and the replayed assistant message carry the same one. `content` is the tool's reply — a string, or **content parts** (`ContentPart[]`) when a tool answered with an image; the agent carries parts through to the model untouched rather than JSON-stringifying them. Failures appear here too (not swallowed).
+
+## When the step budget runs out
+
+A run makes at most `maxSteps` model calls inside the loop. When that many pass and the model is still asking for tools, `onMaxSteps` decides:
+
+- `throw` (default) — the invocation fails with `ERR_AGENT_MAX_STEPS`.
+- `return` — the last turn is handed back as it stands: its text (often empty, since the model was asking for a tool) and its `finishReason`.
+- `conclude` — the agent makes **one more** model call, beyond `maxSteps`, and returns its answer. That call declares the same tools — so the tool calls already in the conversation stay valid — but may not use one (`toolChoice: none`), and its last message is `conclusionPrompt` as a user turn. If the model returns a tool call anyway, it is not run and not recorded. The call is one more entry in `steps`, and its usage is in the total.
+
+`return` and `conclude` both set `limit: max-steps` on the output, which is how a caller tells a budget-ended run from one the model finished — `finishReason` stays the model's own reason. A converged run carries no `limit`.
+
+```yaml
+kind: Ai.Agent
+metadata: { name: Assistant }
+model: !ref Gpt4oMini
+maxSteps: 12
+onMaxSteps: conclude
+conclusionPrompt: |
+  You are out of steps. Say what you finished, what is left, and the next step.
+toolProviders:
+  - provider: !ref WorkspaceTools
+```
+
+`conclusionPrompt` without `onMaxSteps: conclude` is refused by `telo check` (resource rule `AI_CONCLUSION_PROMPT_UNUSED`) and when the agent is created: the prompt is only ever sent by the concluding call.
 
 ## Bounded tool results
 

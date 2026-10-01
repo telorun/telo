@@ -40,6 +40,12 @@ export interface RunOptions {
   stdin?: string;
   /** Kill the child and fail after this many milliseconds. */
   timeoutMs?: number;
+  /**
+   * Per-call working directory, overlaid on the host's own. A relative value is
+   * resolved against the host's working directory, in the host's own path
+   * semantics.
+   */
+  cwd?: string;
 }
 
 /**
@@ -47,8 +53,9 @@ export interface RunOptions {
  * for its target and returns a lazy handle the operations consume either
  * buffered (`Shell.Command`) or streamed (`Shell.CommandStream`) — exactly one
  * per call. The host owns all composition (shell/argv resolution, env merge,
- * cwd) so the operations stay backend-agnostic. (Named `exec`, not `run`, to
- * avoid the Runnable capability's reserved `run()`.)
+ * resolving the per-call cwd over its own) so the operations stay
+ * backend-agnostic. (Named `exec`, not `run`, to avoid the Runnable
+ * capability's reserved `run()`.)
  */
 export interface ShellHost {
   exec(spec: CommandSpec, options: RunOptions, ctx?: InvokeContext): ExecutionHandle;

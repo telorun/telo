@@ -181,6 +181,24 @@ export class HttpTransport implements Transport {
     );
   }
 
+  checkAuthoredAnnotations(annotations: Readonly<Record<string, string>>): void {
+    const keys = Object.keys(annotations);
+    if (keys.length > 0) {
+      throw new Error(
+        `A plain URL carries no artifact annotations, so '${keys.join("', '")}' cannot be written. ` +
+          "Publish to an OCI registry (oci://host/repo) instead.",
+      );
+    }
+  }
+
+  publishedAnnotations(
+    manifest: string,
+    annotations: Readonly<Record<string, string>>,
+  ): Record<string, string> {
+    this.checkAuthoredAnnotations(annotations);
+    return {};
+  }
+
   async publish(
     destination: string,
     bundle: PublishBundle,

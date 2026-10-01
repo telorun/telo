@@ -8,7 +8,7 @@ import {
   transcriptFromTurns,
   type RecordsPage,
 } from "../records";
-import type { AssistantMessage, ChatMessage, JournalRecord, TurnRecords } from "../types";
+import type { AssistantMessage, ChatMessage, JournalRecord, TurnRecords, TurnRevert, TurnSummary } from "../types";
 
 const toolTurn: JournalRecord[] = [
   { id: 1, data: { type: "user-message", content: "build it", model: "m" } },
@@ -202,6 +202,94 @@ describe("records → transcript", () => {
         { kind: "text", text: "Done." },
       ],
     });
+  });
+
+  it("carries a file tool's change and diff, a command's result and a spent step budget onto the turn", () => {
+    const change = { path: "a.yaml", status: "modified", before: "b1", after: "a1", added: 1, removed: 1 };
+    const hunks = [
+      {
+        oldStart: 3,
+        oldLines: 1,
+        newStart: 3,
+        newLines: 1,
+        lines: [
+          { op: "removed", text: "port: 80" },
+          { op: "added", text: "port: 8080" },
+        ],
+      },
+    ];
+    const [, reply] = transcriptFromTurns([
+      {
+        turnId: "t1",
+        status: "finished",
+        error: null,
+        records: [
+          { id: 1, data: { type: "user-message", content: "fix it", model: "m" } },
+          { id: 2, data: { type: "tool-call", toolCall: { id: "e", name: "edit_file", arguments: { path: "a.yaml" } } } },
+          {
+            id: 3,
+            data: {
+              type: "tool-result",
+              toolResult: {
+                toolCallId: "e",
+                name: "edit_file",
+                content: "edited a.yaml",
+                output: { path: "a.yaml", replacements: 1, checkExitCode: 0, checkReport: null, changes: [change], hunks },
+              },
+            },
+          },
+          { id: 4, data: { type: "tool-call", toolCall: { id: "r", name: "run_manifest", arguments: { path: "t.yaml" } } } },
+          {
+            id: 5,
+            data: {
+              type: "tool-result",
+              toolResult: {
+                toolCallId: "r",
+                name: "run_manifest",
+                content: "failed\nexit 1",
+                output: { exitCode: 1, output: "failed\n", messages: "boom" },
+              },
+            },
+          },
+          { id: 6, data: { type: "finish", finishReason: "stop", limit: "max-steps" } },
+        ],
+      },
+    ]);
+
+    expect(reply).toMatchObject({
+      completed: true,
+      limit: "max-steps",
+      parts: [
+        { kind: "tool", tool: { path: "a.yaml", changes: [change], hunks, checkExitCode: 0 } },
+        { kind: "tool", tool: { run: { exitCode: 1, output: "failed\n", messages: "boom" } } },
+      ],
+    });
+  });
+
+  it("takes a turn's summary and recorded revert from the records route, and neither while it runs", () => {
+    const summary: TurnSummary = {
+      files: [
+        { path: "a.yaml", status: "created", before: null, after: "a1", added: 3, removed: 0, firstLine: 1, checkExitCode: 0 },
+      ],
+      check: "clean",
+      runs: [],
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+    };
+    const revert: TurnRevert = {
+      revertedAt: "2026-09-30T10:00:00.000Z",
+      files: [{ path: "a.yaml", status: "created", outcome: "restored" }],
+    };
+    const records: JournalRecord[] = [{ id: 1, data: { type: "user-message", content: "go", model: "m" } }];
+
+    const [, ended, , running] = transcriptFromTurns([
+      { turnId: "t1", status: "finished", error: null, summary, revert, records },
+      { turnId: "t2", status: "running", error: null, summary: null, revert: null, records },
+    ]) as AssistantMessage[];
+
+    expect(ended.summary).toEqual(summary);
+    expect(ended.revert).toEqual(revert);
+    expect(running.summary).toBeUndefined();
+    expect(running.revert).toBeUndefined();
   });
 
   it("folds a failed summarization and a title record with neither title nor error into nothing", () => {

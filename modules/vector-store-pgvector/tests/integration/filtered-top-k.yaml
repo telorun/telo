@@ -1,0 +1,230 @@
+kind: Telo.Application
+metadata:
+  name: VectorStorePgvectorFilteredTopK
+  version: 1.0.0
+  description: |
+    A match over an HNSW index returns the true nearest rows: the metadata filter
+    is applied before the topK cut, so a row it excludes never takes a match's
+    place, and a topK above `hnsw.ef_search` (40 by default) is met.
+
+    The index is seeded with 100 decoys nearer the query than any wanted row,
+    100 wanted rows next, and 150,000 further wanted rows — the size at which
+    the planner, estimating a JSONB filter's selectivity at 0.5%, stops preferring
+    a sequential scan. The test asserts on the plan in the same run, so it cannot
+    pass by the planner choosing the exact scan. The same rows loaded into
+    `VectorStoreMemory.Store` answer with the same ids.
+
+    A match leaves no scan setting behind: not on a pooled connection, and not in
+    a caller's transaction the match joins.
+
+    NEEDS A LIVE POSTGRES WITH PGVECTOR >= 0.8.0, which is why it is under
+    `tests/integration/`.
+imports:
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  VectorStore: ../../../vector-store
+  VectorStorePgvector: ../..
+  VectorStoreMemory: ../../../vector-store-memory
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  dbHost: { env: DB_HOST, type: string, default: localhost }
+  dbPort: { env: DB_PORT, type: integer, default: 5432 }
+  dbUser: { env: DB_USER, type: string, default: postgres }
+  dbPassword: { env: DB_PASSWORD, type: string, default: postgres }
+  dbName: { env: DB_NAME, type: string, default: postgres }
+targets:
+  - !ref seed
+  - !ref filteredMatch
+  - !ref noLeak
+---
+kind: Postgres.Connection
+metadata: { name: db }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+# One connection, so a setting a match left behind would be read back by the
+# next statement.
+kind: Postgres.Connection
+metadata: { name: singleDb }
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+pool: { min: 1, max: 1 }
+---
+# Provisions the table and its index at start-up.
+kind: VectorStorePgvector.Store
+metadata: { name: provisioned }
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: topk_vectors
+---
+kind: VectorStorePgvector.Store
+metadata: { name: singleIndex }
+connection: !ref singleDb
+dimensions: 3
+metric: cosine
+table: topk_vectors
+---
+kind: VectorStoreMemory.Store
+metadata: { name: memory }
+dimensions: 3
+metric: cosine
+---
+# The index is dropped for the load and rebuilt once, by the store in
+# `filteredMatch`'s scope — maintaining it row by row makes the load minutes long.
+kind: Run.Sequence
+metadata: { name: seed }
+steps:
+  - name: dropIndex
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: DROP INDEX IF EXISTS topk_vectors_embedding_idx
+  - name: empty
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: TRUNCATE topk_vectors
+  - name: load
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: >-
+        INSERT INTO topk_vectors (id, embedding, metadata)
+        SELECT 'd' || lpad(i::text, 4, '0'), ('[1,' || (0.001 * i)::text || ',0]')::vector,
+               '{"kind":"decoy"}'::jsonb
+        FROM generate_series(1, 100) AS i
+        UNION ALL
+        SELECT 'w' || lpad(i::text, 4, '0'), ('[1,' || (0.2 + 0.001 * i)::text || ',0]')::vector,
+               '{"kind":"wanted"}'::jsonb
+        FROM generate_series(1, 100) AS i
+        UNION ALL
+        SELECT 'b' || lpad(i::text, 6, '0'), ('[1,' || (0.5 + 0.00001 * i)::text || ',0]')::vector,
+               '{"kind":"wanted"}'::jsonb
+        FROM generate_series(1, 150000) AS i
+---
+kind: Run.Sequence
+metadata: { name: filteredMatch }
+with:
+  - kind: VectorStorePgvector.Store
+    metadata: { name: index }
+    connection: !ref db
+    dimensions: 3
+    metric: cosine
+    table: topk_vectors
+  - kind: VectorStore.Match
+    metadata: { name: indexMatch }
+    store: !ref index
+    topK: 50
+steps:
+  - name: analyze
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: ANALYZE topk_vectors
+  # The statement a filtered match runs, with the query vector inlined.
+  - name: plan
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: >-
+        EXPLAIN SELECT id, metadata, (embedding <=> '[1,0,0]'::vector) AS distance
+        FROM "topk_vectors"
+        WHERE ((metadata->'kind' = ANY(ARRAY['"wanted"'::jsonb])))
+        ORDER BY embedding <=> '[1,0,0]'::vector LIMIT 50
+  - name: filtered
+    invoke: !ref indexMatch
+    inputs:
+      vector: [1.0, 0.0, 0.0]
+      metadataFilter:
+        kind: { $in: [wanted] }
+  - name: unfiltered
+    invoke: !ref indexMatch
+    inputs:
+      vector: [1.0, 0.0, 0.0]
+  - name: rows
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT id, embedding::real[] AS vector, metadata FROM topk_vectors
+  - name: loadMemory
+    invoke: { kind: VectorStore.Record, store: !ref memory }
+    inputs:
+      items: !cel >-
+        steps.rows.result.rows.map(r, {'id': r.id, 'vector': r.vector, 'metadata': r.metadata})
+  - name: inMemory
+    invoke: { kind: VectorStore.Match, store: !ref memory, topK: 50 }
+    inputs:
+      vector: [1.0, 0.0, 0.0]
+      metadataFilter:
+        kind: { $in: [wanted] }
+  - name: assert
+    inputs:
+      actual:
+        usesIndex: !cel >-
+          steps.plan.result.rows.exists(r, r['QUERY PLAN'].contains('topk_vectors_embedding_idx'))
+        filtered: !cel "steps.filtered.result.matches.map(m, m.id)"
+        unfiltered: !cel "steps.unfiltered.result.matches.size()"
+        inMemory: !cel "steps.inMemory.result.matches.map(m, m.id)"
+      expected:
+        usesIndex: true
+        filtered:
+          [w0001, w0002, w0003, w0004, w0005, w0006, w0007, w0008, w0009, w0010,
+           w0011, w0012, w0013, w0014, w0015, w0016, w0017, w0018, w0019, w0020,
+           w0021, w0022, w0023, w0024, w0025, w0026, w0027, w0028, w0029, w0030,
+           w0031, w0032, w0033, w0034, w0035, w0036, w0037, w0038, w0039, w0040,
+           w0041, w0042, w0043, w0044, w0045, w0046, w0047, w0048, w0049, w0050]
+        unfiltered: 50
+        inMemory:
+          [w0001, w0002, w0003, w0004, w0005, w0006, w0007, w0008, w0009, w0010,
+           w0011, w0012, w0013, w0014, w0015, w0016, w0017, w0018, w0019, w0020,
+           w0021, w0022, w0023, w0024, w0025, w0026, w0027, w0028, w0029, w0030,
+           w0031, w0032, w0033, w0034, w0035, w0036, w0037, w0038, w0039, w0040,
+           w0041, w0042, w0043, w0044, w0045, w0046, w0047, w0048, w0049, w0050]
+    invoke: { kind: Assert.Equals }
+---
+kind: Run.Sequence
+metadata: { name: noLeak }
+steps:
+  - name: match
+    invoke: { kind: VectorStore.Match, store: !ref singleIndex, topK: 5 }
+    inputs:
+      vector: [1.0, 0.0, 0.0]
+      metadataFilter:
+        kind: { $in: [wanted] }
+  - name: afterMatch
+    invoke: { kind: Sql.Query, connection: !ref singleDb }
+    inputs:
+      sql: SELECT current_setting('hnsw.iterative_scan') AS setting
+  # Inside a caller's transaction the match joins it — on a one-connection pool a
+  # transaction of its own would wait for a connection forever.
+  - name: inTransaction
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref singleDb
+      steps:
+        kind: Run.Sequence
+        steps:
+          - name: match
+            invoke: { kind: VectorStore.Match, store: !ref singleIndex, topK: 5 }
+            inputs:
+              vector: [1.0, 0.0, 0.0]
+              metadataFilter:
+                kind: { $in: [wanted] }
+          - name: setting
+            invoke: { kind: Sql.Query, connection: !ref singleDb }
+            inputs:
+              sql: SELECT current_setting('hnsw.iterative_scan') AS setting
+        outputs:
+          matches: !cel "steps.match.result.matches.map(m, m.id)"
+          setting: !cel "steps.setting.result.rows[0].setting"
+  - name: assert
+    inputs:
+      actual:
+        matches: !cel "steps.match.result.matches.map(m, m.id)"
+        afterMatch: !cel "steps.afterMatch.result.rows[0].setting"
+        inTransaction: !cel "steps.inTransaction.result"
+      expected:
+        matches: [w0001, w0002, w0003, w0004, w0005]
+        afterMatch: "off"
+        inTransaction:
+          matches: [w0001, w0002, w0003, w0004, w0005]
+          setting: "off"
+    invoke: { kind: Assert.Equals }

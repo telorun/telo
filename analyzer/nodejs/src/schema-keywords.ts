@@ -328,7 +328,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-value-schema-from": {
     title: "Value schema from",
     description:
-      "The value here must satisfy the type declared at the named field — checked for EVERY such slot, not only the branch a given input selects.",
+      "The value here must satisfy the type declared at the named location — a field of the resource, or a JSON Pointer from its root that may cross a reference and range over a list with '*'. On a configuration slot every such slot is checked, not only the branch a given input selects; inside inputType / outputType the node is typed by every type the location reaches.",
     type: "string",
   },
   "x-telo-bindings-from": {
@@ -343,7 +343,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   },
   "x-telo-context-from-root": {
     title: "Context from root",
-    description: "Replace this context node's schema with the value navigated from the manifest root.",
+    description:
+      "Replace this context node's schema with the value navigated from the manifest root. When the path holds nothing, the node keeps the schema keywords it declares itself.",
     type: "string",
   },
   "x-telo-context-from-ref-kind": {

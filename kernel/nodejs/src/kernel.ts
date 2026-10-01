@@ -36,7 +36,12 @@ import {
   type ContractValidatorFactory,
   resolveBoundContract,
 } from "./invocation-contract-binding.js";
-import { readProjectionRef, scopeSlotProblems, type ProjectionScope } from "@telorun/analyzer";
+import {
+  readProjectionRef,
+  scopeSlotProblems,
+  type NamedContractShape,
+  type ProjectionScope,
+} from "@telorun/analyzer";
 import {
   ControllerContext,
   ControllerPolicy,
@@ -958,6 +963,22 @@ export class Kernel implements IKernel {
         "ERR_MANIFEST_VALIDATION_FAILED",
         versionConflicts.map((d) => d.message).join("\n"),
         versionConflicts.map(staticDiagnosticToRuntime),
+      );
+    }
+    // A tagged file claim naming nothing fails at resource creation anyway; the
+    // loader already knows, so refuse before booting anything — and so that
+    // `telo install`'s analyze-only pass fails the build that would ship it.
+    const missingFiles = analysisGraph.moduleFileDiagnostics;
+    if (missingFiles.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        missingFiles
+          .map((d) => {
+            const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+            return filePath ? `${filePath}: ${d.message}` : d.message;
+          })
+          .join("\n"),
+        missingFiles.map(staticDiagnosticToRuntime),
       );
     }
     for (const d of analysisGraph.versionDiagnostics) {
@@ -2386,6 +2407,21 @@ export class Kernel implements IKernel {
     rootModules: () => new Set(this._appName ? [this._appName] : []),
     typeDeclarations: () => this.typeDeclarations(),
   };
+
+  /**
+   * The named shape a contract field of `holder` names — in whichever module
+   * declares it, `extends` parents folded — read from the declarations the load
+   * holds, so it answers before any shape is created or any import initialized.
+   */
+  resolveNamedContractShape(
+    typeField: unknown,
+    holder: Record<string, any>,
+  ): NamedContractShape | undefined {
+    return this.registry.namedShapeOf(typeField, holder, {
+      rootModules: this.literalDecodingHost.rootModules(),
+      typeManifests: this.typeDeclarations(),
+    });
+  }
 
   /** Every declaration a named type resolves against: the analyzed set plus each
    *  module's own documents, since a library's internal shapes are not forwarded. */

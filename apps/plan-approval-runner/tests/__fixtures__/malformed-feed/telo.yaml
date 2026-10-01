@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: RunnerOnMalformedFeed
+  version: 1.0.0
+  description: |
+    Runs the runner against a server whose feed page is malformed and fails
+    once the runner has exited, so the runner's own error is on this run's
+    stderr.
+imports:
+  App: ../../../../../modules/app
+  Run: ../../../../../modules/run
+  Timer: ../../../../../modules/timer
+targets:
+  - !ref server
+  - !ref runner
+  - !ref awaitExit
+---
+kind: App.Instance
+metadata: { name: server }
+source: ../fake-server/telo.yaml
+ports: { http: 18768 }
+---
+kind: App.Instance
+metadata: { name: runner }
+source: ../../../telo.yaml
+awaitStart: false
+variables:
+  serverUrl: http://127.0.0.1:18768
+  runnerName: r1
+  repos:
+    alpha: !module-path ./repo
+  permissionMode: plan
+  claudeProgram: !module-path ./claude
+---
+kind: Run.Sequence
+metadata: { name: awaitExit }
+steps:
+  - name: wait
+    invoke:
+      kind: Run.Loop
+      condition: !cel "resources.runner.status.exitCode == null"
+      maxIterations: 200
+      steps:
+        - name: pause
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 50ms }
+  - name: exited
+    throw:
+      code: ERR_RUNNER_EXITED
+      message: !cel "'The runner exited with ' + string(resources.runner.status.exitCode) + '.'"

@@ -13,7 +13,7 @@ import {
   computeFilesIntegrity,
   type PayloadFile,
 } from "../../bundle/files-integrity.js";
-import { readOwnerManifest, type OwnerManifest } from "../../bundle/module-manifest.js";
+import { readOwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
 import type {
   PayloadLayer,
@@ -41,6 +41,21 @@ import {
   parseVersionedRef,
   withRefVersion,
 } from "./oci-ref.js";
+
+/** The `org.opencontainers.image.*` keys this transport projects from module
+ *  `metadata` — one table for the projection and for refusing an author
+ *  annotation that would shadow one. */
+const METADATA_ANNOTATIONS: ReadonlyArray<{
+  key: string;
+  field: "name" | "version" | "description" | "repository" | "license" | "documentation";
+}> = [
+  { key: "org.opencontainers.image.title", field: "name" },
+  { key: "org.opencontainers.image.version", field: "version" },
+  { key: "org.opencontainers.image.description", field: "description" },
+  { key: "org.opencontainers.image.source", field: "repository" },
+  { key: "org.opencontainers.image.licenses", field: "license" },
+  { key: "org.opencontainers.image.documentation", field: "documentation" },
+];
 
 /** A layer's identity within one artifact: role plus, for a controller layer,
  *  its selector. Role alone is not it — there is one controller layer per
@@ -263,20 +278,34 @@ export class OciTransport implements Transport {
     return `sha256-${await sha256Base64Url(new TextEncoder().encode(manifest))}`;
   }
 
-  /** Project a module's declared provenance onto the standard
-   *  `org.opencontainers.image.*` annotation keys. Descriptive only — nothing
-   *  addresses the artifact by these. Absent fields are omitted rather than
-   *  written empty, so the manifest carries only what the module declared. */
-  private static annotationsFor(identity: OwnerManifest): Record<string, string> {
-    const mapped: Array<[string, string | undefined]> = [
-      ["org.opencontainers.image.title", identity.name],
-      ["org.opencontainers.image.version", identity.version],
-      ["org.opencontainers.image.description", identity.description],
-      ["org.opencontainers.image.source", identity.repository],
-      ["org.opencontainers.image.licenses", identity.license],
-      ["org.opencontainers.image.documentation", identity.documentation],
-    ];
-    return Object.fromEntries(mapped.filter((e): e is [string, string] => Boolean(e[1])));
+  checkAuthoredAnnotations(annotations: Readonly<Record<string, string>>): void {
+    for (const key of Object.keys(annotations)) {
+      const derived = METADATA_ANNOTATIONS.find((entry) => entry.key === key);
+      if (derived) {
+        throw new Error(
+          `annotation '${key}' is written from the module's metadata.${derived.field} — ` +
+            `set metadata.${derived.field} in telo.yaml instead of passing it as an annotation.`,
+        );
+      }
+    }
+  }
+
+  /** The module's declared provenance on the standard `org.opencontainers.image.*`
+   *  keys, plus exactly the author's annotations. Descriptive only — nothing
+   *  addresses the artifact by these, and the pin does not cover them. Absent
+   *  fields are omitted rather than written empty. */
+  publishedAnnotations(
+    manifest: string,
+    annotations: Readonly<Record<string, string>>,
+  ): Record<string, string> {
+    this.checkAuthoredAnnotations(annotations);
+    const identity = readOwnerManifest(manifest);
+    const derived: Record<string, string> = {};
+    for (const { key, field } of METADATA_ANNOTATIONS) {
+      const value = identity[field];
+      if (value) derived[key] = value;
+    }
+    return { ...derived, ...annotations };
   }
 
   /** The index as it will be published: `blob` over the gzipped tar this
@@ -301,12 +330,14 @@ export class OciTransport implements Transport {
   async publish(
     destination: string,
     bundle: PublishBundle,
-    _opts: PublishOptions = {},
+    opts: PublishOptions = {},
   ): Promise<PublishResult> {
     const identity = readOwnerManifest(bundle.manifest);
     if (!identity.version) {
       throw new Error("OCI publish requires metadata.version (used as the tag).");
     }
+    // Before any push, so a refused annotation leaves the registry untouched.
+    const annotations = this.publishedAnnotations(bundle.manifest, opts.annotations ?? {});
 
     // Destination must be a full repo (`oci://host/repo`). Identity is the ref,
     // so the repo is never derived from `metadata.namespace`/`name` — a
@@ -381,7 +412,6 @@ export class OciTransport implements Transport {
     const manifestBlob = await client.pushBlob(manifestTar);
 
     const config = await client.pushEmptyConfig();
-    const annotations = OciTransport.annotationsFor(identity);
     const manifest: OciManifest = {
       schemaVersion: 2,
       mediaType: OCI_MANIFEST_MEDIA_TYPE,

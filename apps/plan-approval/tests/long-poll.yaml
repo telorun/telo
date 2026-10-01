@@ -1,0 +1,161 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalLongPoll
+  version: 1.0.0
+  description: |
+    The per-plan long poll. With events after the cursor it answers at once;
+    with none it holds the request, answers within milliseconds of a reviewer's
+    decision with that event, and otherwise answers empty at the server's cap
+    (LONG_POLL_CAP, here 1s) even when the client asked to wait longer. An
+    agent that lost its cursor resumes from the plan ID alone: the plan read
+    carries its state and cursor. An unknown plan is 404.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/long-poll
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18745, throwOnHttpError: false }
+---
+# One long poll, timed: [elapsed ms, event types, cursor].
+kind: Run.Sequence
+metadata: { name: poll }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [path]
+    properties:
+      path: { type: string }
+steps:
+  - name: start
+    value: !cel "nowMillis()"
+  - name: get
+    invoke: !ref call
+    inputs: { url: !cel "inputs.path" }
+  - name: end
+    value: !cel "nowMillis()"
+outputs:
+  elapsed: !cel "steps.end.result - steps.start.result"
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18745 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+            longPollCap: !cel "duration('1s')"
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: repo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: submit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-1, title: Plan, body: "## S1 do it" }
+        - name: plan
+          value: !cel "string(steps.submit.result.body.planId)"
+        - name: pending
+          invoke: !ref poll
+          inputs: { path: !cel "'/api/agent/plans/' + steps.plan.result + '/events?after=0&wait=10s'" }
+        - name: capped
+          invoke: !ref poll
+          inputs: { path: !cel "'/api/agent/plans/' + steps.plan.result + '/events?after=1&wait=10s'" }
+        # A long poll and, 300ms into it, a reviewer's decision.
+        - name: race
+          inputs: { plan: !cel "steps.plan.result", hash: !cel "string(steps.submit.result.body.hash)" }
+          invoke:
+            kind: Run.Projection
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [plan, hash]
+                properties:
+                  plan: { type: string }
+                  hash: { type: string }
+            collection: [poll, decide]
+            concurrency: 2
+            steps:
+              - name: branch
+                if: !cel "item == 'poll'"
+                then:
+                  - name: wait
+                    invoke: !ref poll
+                    inputs: { path: !cel "'/api/agent/plans/' + inputs.plan + '/events?after=1&wait=10s'" }
+                else:
+                  - name: pause
+                    invoke: { kind: Timer.Delay }
+                    inputs: { duration: 300ms }
+                  - name: decide
+                    invoke: !ref call
+                    inputs:
+                      url: !cel "'/api/review/plans/' + inputs.plan + '/decisions'"
+                      method: POST
+                      body: { author: rita, decision: approve, revision: 1, hash: !cel "inputs.hash" }
+            outputs:
+              result: !cel "item == 'poll' ? steps.wait.result : {'status': steps.decide.result.status}"
+        - name: resume
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/plans/' + steps.plan.result" }
+        - name: fromResume
+          invoke: !ref poll
+          inputs: { path: !cel "'/api/agent/plans/' + steps.plan.result + '/events?after=' + string(int(steps.resume.result.body.cursor) - 1)" }
+        - name: unknown
+          invoke: !ref call
+          inputs: { url: /api/agent/plans/nope/events }
+      outputs:
+        pending: !cel "[steps.pending.result.status, steps.pending.result.elapsed < 500, steps.pending.result.body.events.map(e, [e.seq, e.type, e.source]), steps.pending.result.body.cursor]"
+        capped: !cel "[steps.capped.result.body.events, steps.capped.result.elapsed >= 900, steps.capped.result.elapsed < 2500, steps.capped.result.body.cursor]"
+        woken: !cel "[steps.race.result[0].result.elapsed < 800, steps.race.result[0].result.body.events.map(e, [e.seq, e.type, e.source]), steps.race.result[1].result.status]"
+        resume: !cel "[steps.resume.result.body.state, steps.resume.result.body.cursor, steps.resume.result.body.latestRevision.seq]"
+        fromResume: !cel "[steps.fromResume.result.elapsed < 500, steps.fromResume.result.body.events.map(e, e.type), steps.fromResume.result.body.plan.state]"
+        unknown: !cel "[steps.unknown.result.status, steps.unknown.result.body.code]"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        pending: [200, true, [[1, submitted, agent]], 1]
+        capped: [[], true, true, 1]
+        woken: [true, [[2, decision, reviewer]], 201]
+        resume: [approved, 2, 1]
+        fromResume: [true, [decision], approved]
+        unknown: [404, ERR_PLAN_NOT_FOUND]

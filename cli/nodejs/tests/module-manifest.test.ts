@@ -132,6 +132,104 @@ describe("buildManifestJsonPayload", () => {
     });
   });
 
+  it("reports an Application's declared inputs in declaration order", async () => {
+    const manifest = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: HelloApp",
+      "  version: 0.1.0",
+      "variables:",
+      "  greeting:",
+      "    type: string",
+      "    description: What to say",
+      "    default: hello",
+      "    env: GREETING",
+      "    arg: { flag: greeting, short: g }",
+      "    minLength: 1",
+      "  name:",
+      "    type: string",
+      "    env: NAME",
+      "    arg: { position: 0 }",
+      "secrets:",
+      "  apiKey:",
+      "    type: string",
+      "    env: API_KEY",
+      "ports:",
+      "  http:",
+      "    env: PORT",
+      "    default: 8080",
+      "    arg: port",
+      "",
+    ].join("\n");
+
+    const payload = await buildManifestJsonPayload("./hello-app", manifest, log);
+
+    expect(payload.application).toEqual({
+      variables: [
+        {
+          name: "greeting",
+          description: "What to say",
+          required: false,
+          env: "GREETING",
+          default: "hello",
+          arg: { form: "flag", flag: "greeting", short: "g" },
+          schema: { type: "string", minLength: 1 },
+        },
+        {
+          name: "name",
+          description: "",
+          required: true,
+          env: "NAME",
+          default: null,
+          arg: { form: "position", position: 0 },
+          schema: { type: "string" },
+        },
+      ],
+      secrets: [{ name: "apiKey", description: "", required: true, env: "API_KEY", schema: { type: "string" } }],
+      ports: [
+        {
+          name: "http",
+          description: "",
+          required: false,
+          env: "PORT",
+          default: 8080,
+          arg: { form: "flag", flag: "port", short: "" },
+          protocol: "tcp",
+        },
+      ],
+    });
+  });
+
+  it("reports no application for a library", async () => {
+    const payload = await buildManifestJsonPayload("./console", MANIFEST, log);
+    expect(payload.application).toBeNull();
+  });
+
+  it("carries no value of a secret anywhere beside the manifest text itself", async () => {
+    const manifest = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: HelloApp",
+      "  version: 0.1.0",
+      "secrets:",
+      "  token:",
+      "    type: string",
+      "    env: TOKEN",
+      "    default: default-token-value",
+      "    examples: [example-token-value]",
+      "    enum: [default-token-value, enum-token-value]",
+      "",
+    ].join("\n");
+
+    const payload = await buildManifestJsonPayload("./hello-app", manifest, log);
+
+    expect(payload.application?.secrets).toEqual([
+      { name: "token", description: "", required: false, env: "TOKEN", schema: { type: "string" } },
+    ]);
+    const derived = JSON.stringify({ ...payload, manifest: undefined });
+    expect(derived).not.toMatch(/token-value/);
+  });
+
   it("has neither a pin nor a cache key for a local module", async () => {
     stubFetch(() => {
       throw new Error("a local ref must not reach the network");

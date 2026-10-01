@@ -43,7 +43,7 @@ variables:
     # `test-suite.yaml` for why discovering it also double-ran its nested suite.
     - "workspace/**"
 
-    # POSIX-only. These three drive the host shell in its own language — `printf`,
+    # POSIX-only. These four drive the host shell in its own language — `printf`,
     # `pwd`, and `"$VAR"` expansion — none of which cmd.exe speaks, so on Windows
     # `printf %s "$GREETING-$NAME"` comes back as its own literal text. That is
     # cmd behaving correctly, not `Shell.LocalHost` misbehaving: the controller
@@ -58,6 +58,7 @@ variables:
     - "modules/shell/tests/run-command.yaml"
     - "modules/shell/tests/host-behavior.yaml"
     - "modules/shell/tests/argv-and-env-unset.yaml"
+    - "modules/shell/tests/per-call-cwd.yaml"
   filter:
     type: string
     arg: { position: 0 }

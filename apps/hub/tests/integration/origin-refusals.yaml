@@ -1,0 +1,381 @@
+kind: Telo.Application
+metadata:
+  name: HubOriginRefusalsTest
+  version: 1.0.0
+  description: |
+    What the hub refuses of a module an origin serves, each refusal leaving
+    nothing of the module behind:
+
+    - Ingest, an application whose `telo module manifest --json` payload carries
+      no `application` field — what a telo older than the hub reports. Indexing
+      it would store an application that asks for nothing. The version is not
+      indexed and `version_ingest.last_error` names the missing field.
+    - Ingest, a manifest whose first document is neither a Telo.Library nor a
+      Telo.Application, though a later one is. The root kind is read from the
+      first document only, so this is not a module: not indexed, and
+      `version_ingest.last_error` names the root kind.
+    - Registration (`registerAndValidate`, what `POST /register` runs) of such a
+      manifest: refused with the reason the route answers a 400 with, no module
+      row created and no ingest scheduled.
+
+    The origin reads run the fixture `__fixtures__/recorded-origin` through the
+    workspace CLI, which takes the read's arguments as its own and prints what is
+    recorded for the ref. The manifest bucket and the embedder are never reached.
+
+    NEEDS A LIVE POSTGRES — a database `pnpm run test:e2e:hub` supplies from its
+    own stack through DB_HOST, DB_PORT, DB_USER, DB_PASSWORD and DB_NAME, never a
+    developer's database. Run only by the hub's own suite through that command.
+imports:
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  Postgres: oci://ghcr.io/telorun/postgres@0.5.0#sha256-9E683hTHR4FanCOcARsIWhZtRf2F7WF7_9dNHjFeA98
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  S3: oci://ghcr.io/telorun/s3@0.8.0#sha256-utdJQwmumCl0orYETnVY1oA7ytOZuik8syMIRZ1t_8o
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Embedding: oci://ghcr.io/telorun/embedding@0.11.4#sha256-SgB_TzvQFqoiKCzLuR9qgYSXtbzDVU_FUbmLq26H6Go
+  OpenAI: oci://ghcr.io/telorun/openai@0.7.0#sha256-01EFC7E_2pNVDqweIr4iJWFJ5Os1KS4DCX8JOYox2RM
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.10.3#sha256-pf5RXD52Y8bNjLiVVpZZ7W4ApLftZcjv0bsOtYbmK_8
+  VectorStorePgvector: oci://ghcr.io/telorun/vector-store-pgvector@0.13.0#sha256-_AtSLXds1fvlZcL19p1lLUT__diUVe92-Z_RvYjdD9Y
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
+  RateLimit: oci://ghcr.io/telorun/rate-limit@0.12.4#sha256-_E2AqSEEsTotJXiSmk9GBqlnlwW8JRXNJXZWbx-olxY
+  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.9.0#sha256-xf5Sl63MYbMSM4GzzRPVNrqbtrxQ27x9cwFKrDCjCEM
+  Assert: ../../../../modules/assert
+  Schema:
+    source: ../../hub-schema.yaml
+    resources:
+      connection: !ref db
+  Ingest:
+    source: ../../hub-ingest.yaml
+    resources:
+      connection: !ref db
+      bucketPut: !ref putManifest
+      embedPassage: !ref embedPassage
+      vectorUpsert: !ref vectorUpsert
+      vectorRemove: !ref vectorRemove
+      shellHost: !ref localShell
+    variables:
+      # Every read runs the recorded origin, which answers the arguments appended.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 6
+  Registry:
+    source: ../../hub-registry.yaml
+    resources:
+      connection: !ref db
+      rateLimit: !ref registerRateLimit
+      shellHost: !ref localShell
+      scheduleIngest: !ref Ingest.scheduleIngest
+    variables:
+      # The same origin: the origin reader is one shared library, so both
+      # importers must configure it alike.
+      teloCommand: [bun, ../../../../../cli/nodejs/bin/telo.ts, recorded-origin]
+      ingestRev: 6
+variables:
+  dbHost:
+    env: DB_HOST
+    type: string
+    default: localhost
+  dbPort:
+    env: DB_PORT
+    type: integer
+    default: 5432
+  dbUser:
+    env: DB_USER
+    type: string
+    default: postgres
+  dbPassword:
+    env: DB_PASSWORD
+    type: string
+    default: postgres
+  dbName:
+    env: DB_NAME
+    type: string
+    default: postgres
+targets:
+  - !ref Schema.migrations
+  - !ref contractMissing
+  - !ref rootKindUnsupported
+  - !ref registrationRootKindRefused
+---
+kind: Postgres.Connection
+metadata:
+  name: db
+connectionString: !cel >-
+  'postgres://' + variables.dbUser + ':' + variables.dbPassword + '@' +
+  variables.dbHost + ':' + string(variables.dbPort) + '/' + variables.dbName
+---
+kind: Shell.LocalHost
+metadata:
+  name: localShell
+cwd: !module-path __fixtures__
+---
+kind: S3.Put
+metadata:
+  name: putManifest
+bucketRef:
+  kind: S3.Bucket
+  bucketName: unused
+  endpoint: http://127.0.0.1:1
+  forcePathStyle: true
+  accessKeyId: unused
+  secretAccessKey: unused
+---
+kind: Embedding.Passage
+metadata:
+  name: embedPassage
+model:
+  kind: OpenAI.EmbeddingModel
+  model: unused
+  request:
+    kind: HttpClient.Request
+    client:
+      kind: HttpClient.Client
+      baseUrl: http://127.0.0.1:1
+---
+kind: VectorStorePgvector.Store
+metadata:
+  name: vectorIndex
+connection: !ref db
+dimensions: 3
+metric: cosine
+table: resource_vectors
+---
+kind: VectorStore.Record
+metadata:
+  name: vectorUpsert
+store: !ref vectorIndex
+---
+kind: VectorStore.Removal
+metadata:
+  name: vectorRemove
+store: !ref vectorIndex
+---
+kind: Sql.Query
+metadata:
+  name: query
+connection: !ref db
+---
+kind: Sql.Command
+metadata:
+  name: exec
+connection: !ref db
+---
+kind: Run.Sequence
+metadata:
+  name: contractMissing
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE id = 9311
+  - name: seedModule
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport)
+        VALUES (9311, 'oci://example.test/stale-app', 'oci')
+  # The attempt counter is what a run id is minted from, and a durable run id is
+  # never reused — so each run of this test starts its count from the clock
+  # rather than from 1, whose runs an earlier run of the test already burnt.
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, attempt, completed_at)
+        VALUES (9311, '1.0.0', EXTRACT(EPOCH FROM NOW())::int, NOW())
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: "9311"
+      version: 1.0.0
+      digest: sha256:stale
+      rev: 6
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: "9311"
+      ref: oci://example.test/stale-app
+      version: 1.0.0
+      digest: sha256:stale
+      latestVersion: 1.0.0
+      attempt: !cel "steps.claim.result.attempt"
+  # Bounded; the last reading leaves the loop, so a run that never completes
+  # fails on what it showed.
+  - name: await
+    invoke:
+      kind: Run.Loop
+      maxIterations: 60
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 1s
+        - name: state
+          invoke: !ref query
+          inputs:
+            sql: >-
+              SELECT completed_at IS NOT NULL AS completed
+              FROM version_ingest WHERE module_id = 9311 AND version = '1.0.0'
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+  - name: state
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT vi.last_error AS "lastError",
+               (SELECT COUNT(*)::int FROM module_versions mv WHERE mv.module_id = 9311) AS versions,
+               (SELECT COUNT(*)::int FROM application_inputs i WHERE i.module_id = 9311) AS inputs,
+               (SELECT COUNT(*)::int FROM search_entries e WHERE e.module_id = 9311) AS entries
+        FROM version_ingest vi WHERE vi.module_id = 9311 AND vi.version = '1.0.0'
+  - name: assert
+    inputs:
+      actual:
+        completed: !cel "steps.await.result.completed"
+        state: !cel "steps.state.result.rows"
+      expected:
+        completed: true
+        state:
+          - lastError: >-
+              INGEST_CONTRACT_MISSING: telo module manifest oci://example.test/stale-app@1.0.0
+              --json reported no `application` field for a Telo.Application — the telo
+              running the origin reads predates it; point TELO_COMMAND at the telo that
+              runs this hub
+            versions: 0
+            inputs: 0
+            entries: 0
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata:
+  name: rootKindUnsupported
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE id = 9312
+  - name: seedModule
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO modules (id, ref, transport)
+        VALUES (9312, 'oci://example.test/definition-root', 'oci')
+  # A clock-derived attempt, for the reason given on `contractMissing`.
+  - name: seedIngest
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO version_ingest (module_id, version, attempt, completed_at)
+        VALUES (9312, '1.0.0', EXTRACT(EPOCH FROM NOW())::int, NOW())
+  - name: claim
+    invoke: !ref Schema.claimVersion
+    inputs:
+      moduleId: "9312"
+      version: 1.0.0
+      digest: sha256:definition-root
+      rev: 6
+  - name: ingest
+    invoke: !ref Ingest.ingestVersion
+    inputs:
+      moduleId: "9312"
+      ref: oci://example.test/definition-root
+      version: 1.0.0
+      digest: sha256:definition-root
+      latestVersion: 1.0.0
+      attempt: !cel "steps.claim.result.attempt"
+  - name: await
+    invoke:
+      kind: Run.Loop
+      maxIterations: 60
+      condition: !cel "iteration == 0 || !previous.state.result.rows[0].completed"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 1s
+        - name: state
+          invoke: !ref query
+          inputs:
+            sql: >-
+              SELECT completed_at IS NOT NULL AS completed
+              FROM version_ingest WHERE module_id = 9312 AND version = '1.0.0'
+      outputs:
+        completed: !cel "steps.state.result.rows[0].completed"
+  - name: state
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT vi.last_error AS "lastError",
+               (SELECT COUNT(*)::int FROM module_versions mv WHERE mv.module_id = 9312) AS versions,
+               (SELECT COUNT(*)::int FROM resource_kinds rk WHERE rk.module_id = 9312) AS kinds,
+               (SELECT COUNT(*)::int FROM search_entries e WHERE e.module_id = 9312) AS entries
+        FROM version_ingest vi WHERE vi.module_id = 9312 AND vi.version = '1.0.0'
+  - name: assert
+    inputs:
+      actual:
+        completed: !cel "steps.await.result.completed"
+        state: !cel "steps.state.result.rows"
+      expected:
+        completed: true
+        state:
+          - lastError: >-
+              INGEST_ROOT_KIND_UNSUPPORTED: the root document of
+              oci://example.test/definition-root@1.0.0 is Telo.Definition; only a
+              Telo.Library or Telo.Application is indexed
+            versions: 0
+            kinds: 0
+            entries: 0
+    invoke:
+      kind: Assert.Equals
+---
+# Named rather than inline: a library's resource input takes only a `!ref`.
+kind: RateLimit.Guard
+metadata:
+  name: registerRateLimit
+store:
+  kind: CacheMemory.Store
+limit: 100
+window: 1m
+---
+kind: Run.Sequence
+metadata:
+  name: registrationRootKindRefused
+steps:
+  - name: reset
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM modules WHERE ref = 'oci://example.test/definition-first'
+  - name: register
+    invoke: !ref Registry.registerAndValidate
+    inputs:
+      ref: oci://example.test/definition-first
+      clientIp: 127.0.0.1
+  # Nothing recorded: no module row, and no durable run naming the ref.
+  - name: state
+    invoke: !ref query
+    inputs:
+      sql: >-
+        SELECT (SELECT COUNT(*)::int FROM modules
+                WHERE ref = 'oci://example.test/definition-first') AS modules,
+               (SELECT COUNT(*)::int FROM telo_durable_runs
+                WHERE inputs LIKE '%oci://example.test/definition-first%') AS runs
+  - name: assert
+    inputs:
+      actual:
+        register: !cel "steps.register.result"
+        state: !cel "steps.state.result.rows"
+      expected:
+        register:
+          ref: oci://example.test/definition-first
+          accepted: false
+          rateLimited: false
+          retryAfter: 0
+          error: >-
+            the root document of oci://example.test/definition-first is
+            Telo.Definition; only a Telo.Library or Telo.Application can be
+            registered
+        state:
+          - modules: 0
+            runs: 0
+    invoke:
+      kind: Assert.Equals

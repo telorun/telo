@@ -1,0 +1,250 @@
+# What an agent does when `maxSteps` model calls pass without the model
+# finishing. The fixture model asks for a tool on every call that offers one —
+# even a call told not to — and echoes each request's last message with the
+# tools and tool choice it was given, at 1 + 1 tokens a call.
+kind: Telo.Application
+metadata:
+  name: AgentMaxStepsTest
+  version: 1.0.0
+  description: An agent's step budget ends a run by throwing, returning or concluding, and marks the result.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref concludes
+  - !ref streamConcludes
+  - !ref returnsLastTurn
+  - !ref streamReturnsLastTurn
+  - !ref convergedRunHasNoLimit
+  - !ref throwsByDefault
+---
+kind: Run.Value
+metadata: { name: counter }
+value:
+  counted: true
+---
+kind: Ai.Tools
+metadata: { name: tools }
+tools:
+  - tool: !ref counter
+    name: count
+    parameters: { type: object, additionalProperties: false }
+---
+kind: AiEcho.EchoModel
+metadata: { name: restless }
+emitToolCall: { name: count }
+toolCallEveryTurn: true
+echoRequest: true
+usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }
+---
+kind: AiEcho.EchoModelStream
+metadata: { name: restlessStream }
+emitToolCall: { name: count }
+toolCallEveryTurn: true
+echoRequest: true
+usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 }
+---
+kind: AiEcho.EchoModel
+metadata: { name: settling }
+emitToolCall: { name: count }
+---
+kind: Ai.Agent
+metadata: { name: concluding }
+model: !ref restless
+maxSteps: 2
+onMaxSteps: conclude
+conclusionPrompt: "Wrap up."
+toolProviders:
+  - provider: !ref tools
+---
+kind: Ai.AgentStream
+metadata: { name: concludingStream }
+model: !ref restlessStream
+maxSteps: !cel "1 + 1"
+onMaxSteps: conclude
+conclusionPrompt: "Wrap up."
+toolProviders:
+  - provider: !ref tools
+---
+kind: Ai.Agent
+metadata: { name: returning }
+model: !ref restless
+maxSteps: 2
+onMaxSteps: return
+toolProviders:
+  - provider: !ref tools
+---
+kind: Ai.AgentStream
+metadata: { name: returningStream }
+model: !ref restlessStream
+maxSteps: 2
+onMaxSteps: return
+toolProviders:
+  - provider: !ref tools
+---
+kind: Ai.Agent
+metadata: { name: converging }
+model: !ref settling
+toolProviders:
+  - provider: !ref tools
+---
+kind: Ai.Agent
+metadata: { name: throwing }
+model: !ref restless
+maxSteps: 2
+toolProviders:
+  - provider: !ref tools
+---
+# One call beyond the budget: it declares the tools, may not use one, and ends
+# with the conclusion prompt. The tool call it returns anyway is not run — the
+# trace's last step has none — and its usage is in the total.
+kind: Run.Sequence
+metadata: { name: concludes }
+steps:
+  - name: run
+    invoke: !ref concluding
+    inputs:
+      prompt: "go"
+  - name: assertResult
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        text: "Wrap up. [tools: count] [toolChoice: none]"
+        usage: { promptTokens: 3, completionTokens: 3, totalTokens: 6, unit: tokens, total: 6 }
+        finishReason: tool-calls
+        limit: max-steps
+        steps:
+          - text: ""
+            toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
+            toolResults: [{ toolCallId: echo-call-1, name: count, content: '{"counted":true}' }]
+          - text: ""
+            toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
+            toolResults: [{ toolCallId: echo-call-1, name: count, content: '{"counted":true}' }]
+          - text: "Wrap up. [tools: count] [toolChoice: none]"
+            toolCalls: []
+            toolResults: []
+    invoke:
+      kind: Assert.Equals
+---
+# The same run as a stream: the concluding call's text is emitted, its tool call
+# is not, and the terminal finish carries the limit and every call's usage.
+kind: Run.Sequence
+metadata: { name: streamConcludes }
+steps:
+  - name: run
+    invoke: !ref concludingStream
+    inputs:
+      prompt: "go"
+  - name: parts
+    inputs:
+      input: !cel "steps.run.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: assertParts
+    inputs:
+      actual:
+        types: !cel "steps.parts.result.items.map(p, p.type)"
+        text: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+        finish: !cel "steps.parts.result.items[size(steps.parts.result.items) - 1]"
+      expected:
+        types:
+          - tool-call
+          - step-finish
+          - tool-result
+          - tool-call
+          - step-finish
+          - tool-result
+          - text-delta
+          - step-finish
+          - finish
+        text: "Wrap up. [tools: count] [toolChoice: none]"
+        finish:
+          type: finish
+          usage: { promptTokens: 3, completionTokens: 3, totalTokens: 6, unit: tokens, total: 6 }
+          finishReason: tool-calls
+          limit: max-steps
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: returnsLastTurn }
+steps:
+  - name: run
+    invoke: !ref returning
+    inputs:
+      prompt: "go"
+  - name: assertResult
+    inputs:
+      actual:
+        limit: !cel "steps.run.result.limit"
+        finishReason: !cel "steps.run.result.finishReason"
+        modelCalls: !cel "size(steps.run.result.steps)"
+        totalTokens: !cel "steps.run.result.usage.totalTokens"
+      expected:
+        limit: max-steps
+        finishReason: tool-calls
+        modelCalls: !cel "2"
+        totalTokens: !cel "4"
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: streamReturnsLastTurn }
+steps:
+  - name: run
+    invoke: !ref returningStream
+    inputs:
+      prompt: "go"
+  - name: parts
+    inputs:
+      input: !cel "steps.run.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: assertFinish
+    inputs:
+      actual: !cel "steps.parts.result.items[size(steps.parts.result.items) - 1]"
+      expected:
+        type: finish
+        usage: { promptTokens: 2, completionTokens: 2, totalTokens: 4, unit: tokens, total: 4 }
+        finishReason: tool-calls
+        limit: max-steps
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: convergedRunHasNoLimit }
+steps:
+  - name: run
+    invoke: !ref converging
+    inputs:
+      prompt: "go"
+  - name: assertNoLimit
+    inputs:
+      actual: !cel "has(steps.run.result.limit)"
+      expected: false
+    invoke:
+      kind: Assert.Equals
+---
+kind: Run.Sequence
+metadata: { name: throwsByDefault }
+steps:
+  - name: exhausted
+    try:
+      - name: run
+        invoke: !ref throwing
+        inputs:
+          prompt: "go"
+      - name: returned
+        throw:
+          code: AGENT_RETURNED
+          message: the agent returned instead of throwing
+    catch:
+      - name: assertCode
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_AGENT_MAX_STEPS
+        invoke:
+          kind: Assert.Equals

@@ -1,0 +1,8 @@
+# Consumes a library by path. Nothing publishes that library on its own, so its
+# embeds are checked here, from the file the library ships with.
+kind: Telo.Application
+metadata:
+  name: IncludeMissingApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

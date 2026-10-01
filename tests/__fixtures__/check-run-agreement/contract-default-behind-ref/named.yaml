@@ -1,0 +1,11 @@
+# Runs the library's call that omits the input declared by reference. This
+# consumer's entry-scoped check is silent about the library's call site, so the
+# kernel's bound contract is what refuses it.
+kind: Telo.Application
+metadata:
+  name: ContractDefaultBehindRefNamedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.callNamed

@@ -62,8 +62,10 @@ There is no `apiKey` and no `baseUrl`: both belong to the account. Point `reques
 
 Both kinds POST to `/chat/completions` through the injected request. Each has one declared, kernel-bound `invoke`:
 
-- `OpenAI.ChatModel.invoke({messages, options, tools?, responseFormat?})` → a buffered request → `{content, text, usage, finishReason, toolCalls?}`. `responseFormat` is sent as `response_format`, and a `json_schema` format is normalized into this API's nested `{type, json_schema: {…}}` form — the responses kinds take the same contract value flat under `text.format`, and each API refuses the other's shape, so both kinds reshape rather than pass through.
-- `OpenAI.ChatModelStream.invoke({messages, options, tools?})` → a `stream: true` request, parsed from the SSE `data:` frames → `{output}`, an `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
+- `OpenAI.ChatModel.invoke({messages, options, tools?, toolChoice?, responseFormat?})` → a buffered request → `{content, text, usage, finishReason, toolCalls?}`. `responseFormat` is sent as `response_format`, and a `json_schema` format is normalized into this API's nested `{type, json_schema: {…}}` form — the responses kinds take the same contract value flat under `text.format`, and each API refuses the other's shape, so both kinds reshape rather than pass through.
+- `OpenAI.ChatModelStream.invoke({messages, options, tools?, toolChoice?})` → a `stream: true` request, parsed from the SSE `data:` frames → `{output}`, an `AsyncIterable<StreamPart>`. `stream_options.include_usage` is set so the terminal `finish` part carries token usage.
+
+`toolChoice` (`auto` | `none`, legal only beside `tools`) is sent as `tool_choice` on both kinds. `none` keeps the `tools` in the request — a conversation holding earlier tool calls is only valid while they are described — and tells the model to answer without calling one; this is what an agent's concluding call sends. It is written after the merged `options`, so the call's own choice is what goes out.
 
 OpenAI `finish_reason` values map into the Ai contract:
 

@@ -1,0 +1,56 @@
+#!/bin/sh
+# A one-session stand-in for the Claude CLI whose resume can be held open, in
+# plain sh: the fixtures using it run with an empty environment, where `node`
+# is not on the path. State is in $CLAUDE_STUB_HOME/state; run it through a
+# fixture's `machine/claude`.
+#
+#   agents --json [--all]         the session, once started (stopped: only with --all)
+#   --bg --name N ... <prompt>    start the session; its turn ends at once (`done`)
+#   stop <id>                     stop it
+#   --bg --resume <id> <prompt>   wait until state/release exists, then finish the turn
+set -eu
+state="$CLAUDE_STUB_HOME/state"
+mkdir -p "$state"
+session=5e0c1a7e-2222-4c1a-8a51-000000000001
+short=5e0c1a7e
+
+case "$1" in
+  agents)
+    if [ ! -f "$state/session" ]; then echo "[]"; exit 0; fi
+    now="$(cat "$state/session")"
+    if [ "$now" = stopped ]; then
+      case "$*" in *--all*) ;; *) echo "[]"; exit 0 ;; esac
+      echo "[{\"sessionId\":\"$session\",\"id\":\"$short\",\"cwd\":\"$(cat "$state/cwd")\",\"kind\":\"background\",\"name\":\"$(cat "$state/name")\",\"startedAt\":1,\"state\":\"stopped\"}]"
+    else
+      echo "[{\"sessionId\":\"$session\",\"id\":\"$short\",\"cwd\":\"$(cat "$state/cwd")\",\"kind\":\"background\",\"name\":\"$(cat "$state/name")\",\"startedAt\":1,\"pid\":4242,\"status\":\"idle\",\"state\":\"done\"}]"
+    fi
+    ;;
+  stop)
+    echo "stop $2" >> "$state/calls"
+    echo stopped > "$state/session"
+    echo "stopped $2"
+    ;;
+  --bg)
+    if [ "$2" = --resume ]; then
+      echo "--bg --resume $3" >> "$state/calls"
+      waited=0
+      while [ ! -f "$state/release" ]; do
+        waited=$((waited + 1))
+        if [ "$waited" -gt 300 ]; then echo "stub: held for 30s with no state/release" >&2; exit 4; fi
+        sleep 0.1
+      done
+      echo done > "$state/session"
+      echo "backgrounded · $short · $(cat "$state/name")"
+    else
+      echo "--bg --name $3" >> "$state/calls"
+      pwd > "$state/cwd"
+      echo "$3" > "$state/name"
+      echo done > "$state/session"
+      echo "backgrounded · $short · $3"
+    fi
+    ;;
+  *)
+    echo "stub: unsupported call: $*" >&2
+    exit 2
+    ;;
+esac

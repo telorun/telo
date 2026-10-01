@@ -21,17 +21,23 @@ metadata:
     past `maxContextTokens`, project the journal into the model's history, serve
     the event stream and the conversation's records from the journal, abort a
     running turn, continue an interrupted one inside the same turn, and delete
-    whole conversations idle past the retention window.
+    whole conversations idle past the retention window. Every change write_file,
+    edit_file and delete_file make is checkpointed under its turn before the
+    workspace is touched — an entry row plus the file's copies under
+    `checkpoints/<turnId>/` in the state directory — so a turn's changes can be
+    listed as diffs, reverted, and summarized on its record page; one workspace
+    lease serializes those tools, a workspace push and each reverted path.
     Exported so the app and its tests drive the same handler. Parameterized by the
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.24.0#sha256-l7e2l8uDoqZlHpQ8qTwxGIBpBozMdKR11TZAr4bEiqU
-  OpenAI: oci://ghcr.io/telorun/openai@0.9.0#sha256-xMAOI8NDfvEbqw2bjZt0nuuvZQqVW8gP4SZz_Ly5Olo
+  Ai: ../../../modules/ai
+  OpenAI: ../../../modules/openai
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.19.0#sha256-P95SFQDZbOT7fHb57MMNorot29XXhUaYn4m319fGi9U
-  Mcp: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
-  Fs: oci://ghcr.io/telorun/fs@0.11.0#sha256-P7Z6jMuBPjPpHOgwcZXYpjuDsrXlORUMG1X79g00gfE
+  AiMcp: ../../../modules/ai-mcp
+  Mcp: ../../../modules/mcp-client
+  Fs: ../../../modules/fs
+  TextDiff: ../../../modules/text-diff
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
@@ -47,6 +53,7 @@ imports:
   KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.11.0#sha256-uL3TNWg-Pn3W3VIgrGhbdVUIE5U-mamF3h0LglLKGaM
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.2.0#sha256-yyQryveEwAPeuimLzQWZZcRy_8RsnFsZI60S4_yqnBE
   Log: oci://ghcr.io/telorun/log@0.2.0#sha256-tw2JEt1nLGFT0Y5eynRc-iTPp1aUQ-PE6LZIjQmNYNY
+  Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
 secrets:
   openaiApiKey:
     type: string
@@ -190,6 +197,39 @@ variables:
     # a wrong path is an easy mistake to make. Without a bound, one of them
     # holds the turn open until the model's step budget runs out.
     default: 120000
+  maxSteps:
+    type: integer
+    minimum: 1
+    # Model responses one request may take — each carries any number of tool
+    # calls, which is why the primer tells the agent to batch independent ones.
+    # Building an application is several files — a feature library per domain,
+    # a test per behaviour, the suite, the wiring — each with its own
+    # check-and-fix, plus discovery and a test-and-fix loop. At 16 a build ran
+    # out mid-way. A turn that spends the budget ends with a wrap-up reply
+    # rather than an error; its real ceiling is the token budget, which settles
+    # to what was actually spent.
+    default: 40
+  maxTurnDiffBytes:
+    type: integer
+    minimum: 0
+    # The most bytes of checkpoint copies one turn's diff reads — at every
+    # ending, at the boot catch-up and on each read of the changes route. A
+    # file whose two copies do not fit what is left is listed without counts
+    # and hunks. No env binding: a test lowers it.
+    default: 4194304
+  maxCheckpointBytes:
+    type: integer
+    minimum: 0
+    # The most bytes of "before" copies one write_file / edit_file /
+    # delete_file call may capture into its turn's checkpoint; a call that
+    # would capture more is refused before anything changes.
+    default: 16777216
+  maxCheckpointFiles:
+    type: integer
+    minimum: 1
+    # The most files one such call may capture — what bounds a recursive
+    # delete.
+    default: 1000
 exports:
   resources:
     - ensureWorkspace
@@ -211,6 +251,8 @@ exports:
     - conversationRecords
     - rebuildProjection
     - retentionSweep
+    - turnChanges
+    - revertTurn
     - author
     - readWorkspaceFile
     - runTelo
@@ -338,6 +380,58 @@ migrations:
                  WHERE t.conversation_id = c.id AND t.removed_at IS NULL) AS total_tokens
         FROM conversations c
         WHERE c.assembling = 0
+  # Checkpoints. An entry is one file one tool call changed: the digest it held
+  # before (null: absent) and the digest the call leaves (null: deleted),
+  # written before the workspace is touched and confirmed after — one whose
+  # write is not known to have happened is settled from the file it names; the
+  # copies are files under `checkpoints/<turn>/`. `turn_reverts` is a revert's recorded
+  # outcome per path, `turn_changes` the projection of a turn's net changes its
+  # summary is read from. A turn admitted from here on is `checkpointed`; an
+  # older one is not and cannot be reverted. The projection gains the readings
+  # a summary is built from and whether it was taken at the turn's ending; it
+  # is cleared and rebuilt from the journal at boot.
+  projection_6_checkpoints:
+    statements:
+      - |
+        CREATE TABLE checkpoint_entries (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          turn_id TEXT NOT NULL,
+          call_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          before_hash TEXT,
+          after_hash TEXT,
+          confirmed INTEGER NOT NULL DEFAULT 0
+        )
+      - CREATE INDEX checkpoint_entries_by_path ON checkpoint_entries (turn_id, path, id)
+      - CREATE INDEX checkpoint_entries_by_call ON checkpoint_entries (call_id)
+      - |
+        CREATE TABLE turn_reverts (
+          turn_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('created', 'modified', 'deleted')),
+          outcome TEXT NOT NULL CHECK (outcome IN ('restored', 'skipped')),
+          PRIMARY KEY (turn_id, path)
+        )
+      - |
+        CREATE TABLE turn_changes (
+          turn_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('created', 'modified', 'deleted')),
+          before_hash TEXT,
+          after_hash TEXT,
+          added INTEGER,
+          removed INTEGER,
+          first_line INTEGER,
+          check_exit_code INTEGER,
+          PRIMARY KEY (turn_id, path)
+        )
+      - ALTER TABLE turns ADD COLUMN checkpointed INTEGER NOT NULL DEFAULT 0
+      - ALTER TABLE turns ADD COLUMN reverted_at TEXT
+      - DELETE FROM turn_projections
+      - ALTER TABLE turn_projections ADD COLUMN prompt_tokens INTEGER NOT NULL DEFAULT 0
+      - ALTER TABLE turn_projections ADD COLUMN completion_tokens INTEGER NOT NULL DEFAULT 0
+      - ALTER TABLE turn_projections ADD COLUMN runs TEXT NOT NULL DEFAULT '[]'
+      - ALTER TABLE turn_projections ADD COLUMN ended INTEGER NOT NULL DEFAULT 0
 ---
 # The account, declared once: base URL and credential on the client, so the model
 # kinds carry no key and the 401 re-acquire-and-retry is inherited from
@@ -424,20 +518,42 @@ cwd: !cel "variables.workspaceDir"
 # one as-is, and nothing below them refuses `../`, so the decision is made on the
 # text before any of them is reached. Outside when absolute, when it holds a
 # backslash (a Windows separator the rule cannot reason about), when its first
-# segment is a drive letter, or when any segment is `..`. The empty path is the
-# workspace root.
+# segment is a drive letter, when any segment is `..`, or when it names the
+# agent's state directory or anything under it — the conversation database and
+# the checkpoints are the agent's own, never workspace content. The empty path
+# is the workspace root.
 kind: Telo.Function
 metadata:
   name: outsideWorkspace
-  description: Whether a path the agent or a client supplied would leave the workspace root.
+  description: Whether a path the agent or a client supplied would leave the workspace root or enter the agent's state directory.
 params:
   - name: path
+    schema: { type: string }
+  - name: workspaceDir
+    schema: { type: string }
+  - name: stateDir
     schema: { type: string }
 returns:
   schema: { type: boolean }
 body: !cel >-
   path.startsWith('/') || path.contains('\\') || path.split('/')[0].matches('^[A-Za-z]:')
     || path.split('/').exists(segment, segment == '..')
+    || (stateDir.startsWith(workspaceDir + '/')
+        && cel.bind(state, trimPrefix(stateDir, workspaceDir + '/'),
+             cel.bind(target, Self.normalPath(path), target == state || target.startsWith(state + '/'))))
+---
+# A workspace path as the checkpoint names it: no empty and no `.` segment, so
+# `./a//b.yaml` and `a/b.yaml` are one file.
+kind: Telo.Function
+metadata:
+  name: normalPath
+  description: A workspace-relative path without empty or `.` segments.
+params:
+  - name: path
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel "join(path.split('/').filter(segment, segment != '' && segment != '.'), '/')"
 ---
 kind: Telo.Function
 metadata:
@@ -450,7 +566,42 @@ returns:
   schema: { type: string }
 body: !cel >-
   'ERR_PATH_OUTSIDE_WORKSPACE: the path "' + path + '" is outside the workspace. A path is relative to the workspace root: '
-    + 'never absolute, no backslash, no drive letter, and no ".." segment.'
+    + 'never absolute, no backslash, no drive letter, no ".." segment, and never inside the agent\'s own state directory.'
+---
+# What a removal may never name, whatever the configuration: the workspace
+# root, and a directory the agent's state directory lies beneath — removing
+# either would take the conversation database and the checkpoints with it.
+# The state directory itself and anything inside it are `outsideWorkspace`.
+kind: Telo.Function
+metadata:
+  name: unremovable
+  description: Whether a path is the workspace root or a directory holding the agent's state directory.
+params:
+  - name: path
+    schema: { type: string }
+  - name: workspaceDir
+    schema: { type: string }
+  - name: stateDir
+    schema: { type: string }
+returns:
+  schema: { type: boolean }
+body: !cel >-
+  cel.bind(target, Self.normalPath(path),
+    target == '' || (stateDir.startsWith(workspaceDir + '/')
+      && Self.normalPath(trimPrefix(stateDir, workspaceDir + '/')).startsWith(target + '/')))
+---
+kind: Telo.Function
+metadata:
+  name: unremovableMessage
+  description: The refusal for a removal naming the workspace root or a directory holding the agent's state directory.
+params:
+  - name: path
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  'ERR_PATH_OUTSIDE_WORKSPACE: refused to delete "' + path + '": it is the workspace root or holds the agent\'s own '
+    + 'state directory, which is never workspace content. Nothing was removed. Delete the entries inside it one by one.'
 ---
 # What `telo check -o json` prints on stdout: the verdict, the counts and one
 # entry per diagnostic. Entries stay open, so a field a newer CLI adds is kept.
@@ -574,7 +725,7 @@ outputType:
       size: { type: integer }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: reject
         throw:
@@ -619,7 +770,7 @@ outputType:
             type: { type: string }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: reject
         throw:
@@ -634,7 +785,9 @@ steps:
 outputs:
   entries: !cel "steps.list.result.entries"
 ---
-# delete_file, confined.
+# delete_file, confined — the workspace root and a directory holding the
+# agent's state directory are never removed — then checkpointed and applied
+# under the workspace lease. `changes` is one Change per file the call deleted.
 kind: Run.Sequence
 metadata: { name: deleteWorkspaceFile }
 inputType:
@@ -642,8 +795,9 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, recursive]
+    required: [turnId, path, recursive]
     properties:
+      turnId: { type: string }
       path: { type: string }
       recursive: { type: boolean }
 outputType:
@@ -651,24 +805,39 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path]
+    required: [path, changes]
     properties:
       path: { type: string }
+      changes:
+        type: array
+        items: { $ref: "telo://Self/Change" }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: reject
         throw:
           code: ERR_PATH_OUTSIDE_WORKSPACE
           message: !cel "Self.outsideWorkspaceMessage(inputs.path)"
+  # Before anything is listed, captured or removed.
+  - name: whole
+    if: !cel "Self.unremovable(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    then:
+      - name: refuseWhole
+        throw:
+          code: ERR_PATH_OUTSIDE_WORKSPACE
+          message: !cel "Self.unremovableMessage(inputs.path)"
   - name: remove
-    invoke: !ref removeFile
+    invoke: !ref leasedWorkspace
     inputs:
-      path: !cel "inputs.path"
-      recursive: !cel "inputs.recursive"
+      operation:
+        remove:
+          turnId: !cel "inputs.turnId"
+          path: !cel "inputs.path"
+          recursive: !cel "inputs.recursive"
 outputs:
   path: !cel "inputs.path"
+  changes: !cel "steps.remove.result.result.changes"
 ---
 # Whole-workspace sync primitives, exported so the app's /workspace routes can
 # snapshot (content-hash tree) and apply an explicit write/delete change set.
@@ -680,9 +849,1304 @@ kind: Fs.TreeSync
 metadata: { name: treeSync }
 cwd: !cel "variables.workspaceDir"
 ---
+# One file's change as every surface reports it — a tool result's
+# `output.changes`, the changes route and a turn's summary: its status, the
+# digest it held before (null: it did not exist) and holds after (null:
+# deleted), and the lines added and removed, null when a side is not UTF-8 text
+# or is too large to compare.
+kind: Telo.JsonSchema
+metadata: { name: Change }
+schema:
+  type: object
+  additionalProperties: false
+  required: [path, status, before, after, added, removed]
+  properties:
+    path: { type: string }
+    status: { type: string, enum: [created, modified, deleted] }
+    before: { type: [string, "null"] }
+    after: { type: [string, "null"] }
+    added: { type: [integer, "null"] }
+    removed: { type: [integer, "null"] }
+---
+# A blob's text: its bytes decoded as UTF-8 when decoding reproduces its digest,
+# null when the bytes are not UTF-8 text.
+kind: Telo.Function
+metadata:
+  name: blobText
+  description: The UTF-8 text of base64 content whose digest is known, or null when the content is not UTF-8 text.
+params:
+  - name: content
+    schema: { type: string }
+  - name: digest
+    schema: { type: string }
+returns:
+  schema:
+    anyOf:
+      - type: string
+      - type: "null"
+body: !cel "cel.bind(text, base64Decode(content), sha256(text) == digest ? dyn(text) : null)"
+---
+# A file's change with its line diff. A side that does not exist is the empty
+# text; a side given as null is not comparable (binary, or too large to read),
+# and then the counts, the hunks and the first line are null. A deleted file
+# carries counts but no hunks and no first line.
+kind: Telo.Function
+metadata:
+  name: fileChange
+  description: A file's change between two digests, with its line counts, hunks and the line its first hunk starts at.
+params:
+  - name: path
+    schema: { type: string }
+  - name: before
+    schema: { type: string }
+    nullable: true
+  - name: after
+    schema: { type: string }
+    nullable: true
+  - name: beforeText
+    schema: { type: string }
+    nullable: true
+  - name: afterText
+    schema: { type: string }
+    nullable: true
+returns:
+  schema:
+    type: object
+    additionalProperties: false
+    required: [change, hunks, firstLine]
+    properties:
+      change: { $ref: "telo://Self/Change" }
+      hunks: { type: [array, "null"] }
+      firstLine: { type: [integer, "null"] }
+body: !cel >-
+  cel.bind(diff, beforeText == null || afterText == null ? null : dyn(TextDiff.lineDiff(beforeText, afterText)),
+    cel.bind(comparable, diff != null && diff.comparable,
+      {
+        'change': {
+          'path': path,
+          'status': before == null ? 'created' : after == null ? 'deleted' : 'modified',
+          'before': before,
+          'after': after,
+          'added': comparable ? dyn(diff.added) : null,
+          'removed': comparable ? dyn(diff.removed) : null
+        },
+        'hunks': comparable && after != null ? dyn(diff.hunks) : null,
+        'firstLine': comparable && after != null && size(diff.hunks) > 0 ? dyn(diff.hunks[0].newStart) : null
+      }))
+---
+kind: Telo.Function
+metadata:
+  name: checkpointTooLargeMessage
+  description: The refusal for a tool call whose checkpoint would pass a bound, naming the path, what was reached and the bound.
+params:
+  - name: path
+    schema: { type: string }
+  - name: reached
+    schema: { type: integer }
+  - name: bound
+    schema: { type: integer }
+  - name: unit
+    schema: { type: string, enum: [bytes, files] }
+returns:
+  schema: { type: string }
+body: !cel >-
+  'ERR_CHECKPOINT_TOO_LARGE: refused to change "' + path + '": the call would capture ' + string(reached) + ' ' + unit
+    + ' into the turn\'s checkpoint, over the ' + string(bound) + ' ' + unit + ' one call may capture. '
+    + 'Nothing was changed. Ask the user to make this change themselves.'
+---
+# The checkpoint's copies: `<stateDir>/checkpoints/<turnId>/<sha256>`, one
+# directory per turn, never shared between turns.
+kind: Fs.FileWrite
+metadata: { name: writeBlob }
+cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+---
+kind: Fs.File
+metadata: { name: readBlob }
+cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+---
+kind: Fs.DirectoryListing
+metadata: { name: listBlobs }
+cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+---
+kind: Sql.Command
+metadata: { name: checkpointCommand }
+connection: !ref chatDb
+---
+kind: Fs.TreeSync
+metadata: { name: blobSync }
+cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+---
+# What is at each workspace path right now, from METADATA alone: a path's kind
+# and size are its entry in its parent directory's listing — a regular `file`,
+# a `directory`, or `other` (a symbolic link, a device, a socket; a link is
+# never followed) — and a name the listing does not hold is `absent`. Nothing
+# is read and no directory is walked. One listing per distinct parent. Where
+# the parent cannot be listed, its ancestors are listed from the workspace
+# root downward to learn why: a segment the listing above it does not hold, or
+# holds as a regular file, makes every path beneath `absent`; a parent that IS
+# there, as a directory or anything else, could simply not be listed, and that
+# first listing's error is raised as it was — as is any listing that fails on
+# the way down. A path that could not be listed is never given a state.
+kind: Run.Sequence
+metadata: { name: pathStates }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [paths]
+    properties:
+      paths:
+        type: array
+        items: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [states]
+    properties:
+      states:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, state, size]
+          properties:
+            path: { type: string }
+            state: { type: string, enum: [file, directory, other, absent] }
+            size: { type: integer }
+steps:
+  - name: targets
+    value: !cel >-
+      inputs.paths.map(p, Self.normalPath(p)).map(p, cel.bind(segments, p.split('/'),
+        {'path': p, 'parent': join(slice(segments, 0, size(segments) - 1), '/'), 'name': segments[size(segments) - 1]}))
+  - name: listings
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.parents"
+      steps:
+        - name: listed
+          try:
+            - name: entries
+              invoke: !ref listDir
+              inputs:
+                path: !cel "item"
+          catch:
+            - name: cancelled
+              if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+              then:
+                - name: propagate
+                  throw:
+                    code: !cel "error.code"
+                    message: !cel "error.message"
+            - name: unlisted
+              value:
+                code: !cel "error.code"
+                message: !cel "error.message"
+                data: !cel "has(error.data) ? error.data : null"
+            - name: segments
+              value: !cel "item == '' ? [] : item.split('/')"
+            - name: depth
+              value: !cel "0"
+            # Empty while the walk goes on; the workspace root has no ancestor.
+            - name: verdict
+              value: !cel "size(steps.segments.result) == 0 ? 'there' : ''"
+            - name: walk
+              while: !cel "steps.verdict.result == ''"
+              do:
+                - name: above
+                  invoke: !ref listDir
+                  inputs:
+                    path: !cel "join(slice(steps.segments.result, 0, steps.depth.result), '/')"
+                - name: verdict
+                  value: !cel >-
+                    cel.bind(found, steps.above.result.entries.filter(e, e.name == steps.segments.result[steps.depth.result]),
+                      size(found) == 0 || found[0].type == 'file' ? 'absent'
+                        : steps.depth.result == size(steps.segments.result) - 1 ? 'there' : '')
+                - name: depth
+                  value: !cel "steps.depth.result + 1"
+            - name: unlistable
+              if: !cel "steps.verdict.result == 'there'"
+              then:
+                - name: raise
+                  invoke: !ref raiseRecorded
+                  inputs:
+                    code: !cel "string(steps.unlisted.result.code)"
+                    message: !cel "string(steps.unlisted.result.message)"
+                    data: !cel "steps.unlisted.result.data"
+      outputs:
+        parent: !cel "item"
+        listed: !cel "has(steps.entries)"
+        entries: !cel "has(steps.entries) ? steps.entries.result.entries : []"
+    inputs:
+      parents: !cel "distinct(steps.targets.result.filter(t, t.path != '').map(t, t.parent))"
+outputs:
+  # The empty path is the workspace root.
+  states: !cel >-
+    steps.targets.result.map(t,
+      t.path == '' ? {'path': t.path, 'state': 'directory', 'size': 0}
+        : cel.bind(l, steps.listings.result.filter(x, x.parent == t.parent)[0],
+            !l.listed
+              ? {'path': t.path, 'state': 'absent', 'size': 0}
+              : cel.bind(found, l.entries.filter(e, e.name == t.name),
+                  size(found) == 0 ? {'path': t.path, 'state': 'absent', 'size': 0}
+                    : {'path': t.path, 'state': found[0].type, 'size': int(found[0].size)})))
+---
+# The digest of the workspace file at a path whose kind and size are already
+# known from metadata, reading no more than a known copy's worth: a regular
+# file is read — once, bounded by its listed size — only when that size equals
+# one of the sizes given for it; a file of any other size, or one that grew
+# past its listed size before the read, has no digest and counts as changed.
+kind: Run.Sequence
+metadata: { name: sizedDigest }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, state, size, sizes]
+    properties:
+      path: { type: string }
+      state: { type: string, enum: [file, directory, other, absent] }
+      size: { type: integer }
+      sizes:
+        type: array
+        items: { type: integer }
+steps:
+  - name: candidate
+    if: !cel "inputs.state == 'file' && inputs.sizes.exists(s, int(s) == int(inputs.size))"
+    then:
+      - name: bounded
+        try:
+          - name: read
+            invoke: !ref readFile
+            inputs:
+              path: !cel "inputs.path"
+              encoding: base64
+              maxBytes: !cel "int(inputs.size)"
+        catch:
+          - name: failed
+            if: !cel "error.code != 'ERR_FILE_TOO_LARGE'"
+            then:
+              - name: reraise
+                throw:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+                  data: !cel "has(error.data) ? error.data : null"
+outputs:
+  hash: !cel "has(steps.read) ? dyn(steps.read.result.sha256) : null"
+---
+# What the workspace holds at each path: its kind from one metadata pass over
+# the paths, and its digest where `sizedDigest` reads it.
+kind: Run.Sequence
+metadata: { name: currentDigests }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [files]
+    properties:
+      files:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, sizes]
+          properties:
+            path: { type: string }
+            sizes:
+              type: array
+              items: { type: integer }
+steps:
+  - name: at
+    invoke: !ref pathStates
+    inputs:
+      paths: !cel "inputs.files.map(f, f.path)"
+  - name: digests
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.files"
+      steps:
+        - name: digest
+          invoke: !ref sizedDigest
+          inputs:
+            path: !cel "item.path"
+            state: !cel "item.state"
+            size: !cel "item.size"
+            sizes: !cel "item.sizes"
+      outputs:
+        path: !cel "item.path"
+        state: !cel "item.state"
+        hash: !cel "steps.digest.result.hash"
+    inputs:
+      files: !cel >-
+        enumerate(inputs.files).map(e, {
+          'path': steps.at.result.states[e.index].path,
+          'state': steps.at.result.states[e.index].state,
+          'size': steps.at.result.states[e.index].size,
+          'sizes': e.value.sizes
+        })
+outputs:
+  files: !cel "steps.digests.result"
+---
+# One capture read: a workspace file whole, as base64, refused before any of it
+# is read when it is larger than what the call's byte bound has left.
+kind: Run.Sequence
+metadata: { name: captureRead }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [path, subject, spent]
+    properties:
+      path: { type: string }
+      # The path the tool call names, which the refusal reports.
+      subject: { type: string }
+      # Bytes the call has captured already.
+      spent: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content, sha256, size]
+    properties:
+      content: { type: string }
+      sha256: { type: string }
+      size: { type: integer }
+steps:
+  - name: bounded
+    try:
+      - name: read
+        invoke: !ref readFile
+        inputs:
+          path: !cel "inputs.path"
+          encoding: base64
+          maxBytes: !cel "int(variables.maxCheckpointBytes) - int(inputs.spent)"
+    catch:
+      - name: tooLarge
+        if: !cel "error.code == 'ERR_FILE_TOO_LARGE'"
+        then:
+          - name: refuseTooLarge
+            throw:
+              code: ERR_CHECKPOINT_TOO_LARGE
+              message: !cel >-
+                Self.checkpointTooLargeMessage(inputs.subject, int(inputs.spent) + int(error.data.size),
+                  int(variables.maxCheckpointBytes), 'bytes')
+      - name: reraise
+        throw:
+          code: !cel "error.code"
+          message: !cel "error.message"
+          data: !cel "has(error.data) ? error.data : null"
+outputs:
+  content: !cel "steps.read.result.content"
+  sha256: !cel "steps.read.result.sha256"
+  size: !cel "steps.read.result.size"
+---
+# Records one tool call's checkpoint entries BEFORE the workspace is touched:
+# one row per path, unconfirmed, written only while the turn exists and is not
+# marked removed. A call for a turn that is gone removes the copies it stored —
+# the turn's directory — before it is refused, so copies exist only under live
+# turns.
+kind: Run.Sequence
+metadata: { name: recordEntries }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId, callId, entries]
+    properties:
+      turnId: { type: string }
+      callId: { type: string }
+      entries:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [path, before, after]
+          properties:
+            path: { type: string }
+            before: { type: [string, "null"] }
+            after: { type: [string, "null"] }
+steps:
+  - name: insert
+    invoke: !ref checkpointCommand
+    inputs:
+      sql: |
+        INSERT INTO checkpoint_entries (turn_id, call_id, path, before_hash, after_hash)
+        SELECT t.turn_id, ?, e.value ->> '$.path', e.value ->> '$.before', e.value ->> '$.after'
+        FROM json_each(?) AS e JOIN turns t ON t.turn_id = ? AND t.removed_at IS NULL
+        ORDER BY CAST(e.key AS INTEGER)
+      bindings:
+        - !cel "inputs.callId"
+        - !cel "json(inputs.entries)"
+        - !cel "inputs.turnId"
+  - name: turnGone
+    if: !cel "size(inputs.entries) > 0 && steps.insert.result.rowCount == 0"
+    then:
+      - name: discardCopies
+        invoke: !ref blobSync
+        inputs:
+          delete: !cel "[inputs.turnId]"
+      - name: refuseTurnGone
+        throw:
+          code: ERR_JOURNAL_KEY_REMOVED
+          message: !cel "'Turn ' + inputs.turnId + ' was removed; nothing was changed.'"
+---
+# Settles entries whose write is not known to have happened, from the file each
+# names: an entry is confirmed when the file holds its "after" (for a deletion:
+# the path is absent) and removed otherwise. Only entries of a live turn: those
+# of a turn marked removed are its removal's. What a call runs on its own
+# entries when it fails after recording them (`callId`) — a cancelled call
+# cannot, and leaves them to its turn's ending — what a turn's ending runs on
+# that turn's leftovers (`turnId`), and what boot runs on every one (neither).
+kind: Run.Sequence
+metadata: { name: settleEntries }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [callId, turnId]
+    properties:
+      callId: { type: [string, "null"] }
+      turnId: { type: [string, "null"] }
+steps:
+  - name: pending
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT e.id, e.turn_id, e.path, e.after_hash
+        FROM checkpoint_entries e JOIN turns t ON t.turn_id = e.turn_id AND t.removed_at IS NULL
+        WHERE e.confirmed = 0 AND (? IS NULL OR e.call_id = ?) AND (? IS NULL OR e.turn_id = ?)
+        ORDER BY e.id
+      bindings:
+        - !cel "inputs.callId"
+        - !cel "inputs.callId"
+        - !cel "inputs.turnId"
+        - !cel "inputs.turnId"
+  - name: unsettled
+    if: !cel "size(steps.pending.result.rows) > 0"
+    then:
+      # The size of each "after" copy: a file of another size is not read.
+      - name: copies
+        invoke:
+          kind: Run.Projection
+          collection: !cel "inputs.turnIds"
+          steps:
+            - name: blobs
+              invoke: !ref listBlobs
+              inputs:
+                path: !cel "item"
+          outputs:
+            turnId: !cel "item"
+            blobs: !cel "steps.blobs.result.entries"
+        inputs:
+          turnIds: !cel >-
+            distinct(steps.pending.result.rows.filter(r, r.after_hash != null).map(r, string(r.turn_id)))
+      - name: current
+        invoke: !ref currentDigests
+        inputs:
+          files: !cel >-
+            steps.pending.result.rows.map(r, {
+              'path': string(r.path),
+              'sizes': r.after_hash == null ? []
+                : steps.copies.result.filter(c, c.turnId == string(r.turn_id))[0].blobs
+                    .filter(b, b.name == string(r.after_hash)).map(b, int(b.size))
+            })
+      - name: confirm
+        invoke: !ref checkpointCommand
+        inputs:
+          sql: "UPDATE checkpoint_entries SET confirmed = 1 WHERE id IN (SELECT value FROM json_each(?))"
+          bindings:
+            - !cel >-
+              json(enumerate(steps.pending.result.rows).filter(e,
+                e.value.after_hash == null ? steps.current.result.files[e.index].state == 'absent'
+                  : steps.current.result.files[e.index].hash == string(e.value.after_hash))
+                .map(e, int(e.value.id)))
+      - name: remove
+        invoke: !ref checkpointCommand
+        inputs:
+          sql: |
+            DELETE FROM checkpoint_entries
+            WHERE confirmed = 0 AND id IN (SELECT value FROM json_each(?))
+          bindings: [ !cel "json(steps.pending.result.rows.map(r, int(r.id)))" ]
+---
+kind: Telo.Function
+metadata:
+  name: notFileMessage
+  description: The refusal for a path that exists but is not a regular file, or a tree holding such an entry.
+params:
+  - name: path
+    schema: { type: string }
+returns:
+  schema: { type: string }
+body: !cel >-
+  'ERR_PATH_NOT_A_FILE: refused to change "' + path + '": it is not a regular file (a directory where a file is '
+    + 'expected, a symbolic link, a device), so its content cannot be checkpointed. Nothing was changed.'
+---
+# Everything that writes the workspace through the agent, as ONE body the
+# workspace lease runs: a write, an edit, a removal, a pushed change set or one
+# batch of a revert's paths — whichever the caller names.
+kind: Telo.JsonSchema
+metadata: { name: WorkspaceOperation }
+schema:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  maxProperties: 1
+  properties:
+    write:
+      type: object
+      additionalProperties: false
+      required: [turnId, path, content]
+      properties:
+        turnId: { type: string }
+        path: { type: string }
+        content: { type: string }
+    edit:
+      type: object
+      additionalProperties: false
+      required: [turnId, path, oldString, newString]
+      properties:
+        turnId: { type: string }
+        path: { type: string }
+        oldString: { type: string }
+        newString: { type: string }
+    remove:
+      type: object
+      additionalProperties: false
+      required: [turnId, path, recursive]
+      properties:
+        turnId: { type: string }
+        path: { type: string }
+        recursive: { type: boolean }
+    sync:
+      type: object
+      additionalProperties: false
+      required: [write, delete]
+      properties:
+        write:
+          type: array
+          items:
+            type: object
+            required: [path, content]
+            properties:
+              path: { type: string }
+              content: { type: string }
+              encoding: { type: string, enum: [utf8, base64] }
+        delete:
+          type: array
+          items: { type: string }
+    # One batch of a revert, in path order.
+    revert:
+      type: object
+      additionalProperties: false
+      required: [turnId, paths]
+      properties:
+        turnId: { type: string }
+        paths:
+          type: array
+          maxItems: 25
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, status, before, after, sizes]
+            properties:
+              path: { type: string }
+              status: { type: string, enum: [created, modified, deleted] }
+              before: { type: [string, "null"] }
+              after: { type: [string, "null"] }
+              # The sizes of the turn's "before" and "after" copies of the path.
+              sizes:
+                type: array
+                items: { type: integer }
+---
+# One attempt at the workspace write lease: one holder at a time for the whole
+# workspace, over the store the per-conversation turn lease uses. What the
+# lease guarantees is that a revert never overwrites a change written through
+# the agent — its comparison and its replacement are one hold, and so are a
+# tool's capture and write and a whole pushed change set. `ttl` is far above the
+# longest hold the checkpoint bounds allow and only frees the key if a holder
+# dies. `Lease.Critical` refuses a busy key at once; that is raised as
+# ERR_WORKSPACE_BUSY, so the step invoking this can retry it. Named, not
+# inline in that step: a code thrown by an inline sequence is not counted in
+# the enclosing sequence's throws, and the routes' `catches:` name this one.
+#
+# The body the lease runs returns a failure as data rather than raising it, so
+# the caller's retry re-attempts only a busy lease and never the work; a
+# cancellation propagates as it is.
+#
+# Every tool arm follows one order: what is at the path (metadata only), the
+# refusals, the bounded capture read and the copies stored, the entries
+# recorded, the change, the entries confirmed. A change that fails after its
+# entries were recorded settles them from the files they name before it is
+# raised.
+kind: Run.Sequence
+metadata: { name: acquireWorkspace }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [operation]
+    properties:
+      operation: !ref WorkspaceOperation
+steps:
+  - name: lease
+    invoke:
+      kind: Lease.Critical
+      store: !ref leaseStore
+      ttl: 10m
+      invoke:
+        kind: Run.Sequence
+        inputType: !ref WorkspaceOperation
+        steps:
+          - name: attempt
+            try:
+              - name: operation
+                if: !cel "has(inputs.write)"
+                then:
+                  # write_file: the file's current copy and the content about
+                  # to be written are stored and the entry recorded, then the
+                  # file is written and the entry confirmed.
+                  - name: written
+                    invoke:
+                      kind: Run.Sequence
+                      inputType:
+                        kind: Telo.JsonSchema
+                        schema:
+                          type: object
+                          additionalProperties: false
+                          required: [turnId, path, content]
+                          properties:
+                            turnId: { type: string }
+                            path: { type: string }
+                            content: { type: string }
+                      steps:
+                        - name: call
+                          value: !cel "uuidv4()"
+                        - name: at
+                          invoke: !ref pathStates
+                          inputs:
+                            paths: !cel "[inputs.path]"
+                        - name: notFile
+                          if: !cel "steps.at.result.states[0].state in ['directory', 'other']"
+                          then:
+                            - name: refuseNotFile
+                              throw:
+                                code: ERR_PATH_NOT_A_FILE
+                                message: !cel "Self.notFileMessage(inputs.path)"
+                        - name: tooLarge
+                          if: !cel "steps.at.result.states[0].size > int(variables.maxCheckpointBytes)"
+                          then:
+                            - name: refuseTooLarge
+                              throw:
+                                code: ERR_CHECKPOINT_TOO_LARGE
+                                message: !cel >-
+                                  Self.checkpointTooLargeMessage(inputs.path, steps.at.result.states[0].size,
+                                    int(variables.maxCheckpointBytes), 'bytes')
+                        - name: existing
+                          if: !cel "steps.at.result.states[0].state == 'file'"
+                          then:
+                            - name: before
+                              invoke: !ref captureRead
+                              inputs:
+                                path: !cel "inputs.path"
+                                subject: !cel "inputs.path"
+                                spent: !cel "0"
+                            - name: storeBefore
+                              invoke: !ref writeBlob
+                              inputs:
+                                path: !cel "inputs.turnId + '/' + steps.before.result.sha256"
+                                content: !cel "steps.before.result.content"
+                                encoding: base64
+                                createParents: true
+                        - name: after
+                          value: !cel "sha256(inputs.content)"
+                        - name: storeAfter
+                          invoke: !ref writeBlob
+                          inputs:
+                            path: !cel "inputs.turnId + '/' + steps.after.result"
+                            content: !cel "inputs.content"
+                            createParents: true
+                        - name: diffed
+                          value: !cel >-
+                            Self.fileChange(Self.normalPath(inputs.path),
+                              has(steps.before) ? dyn(steps.before.result.sha256) : null,
+                              steps.after.result,
+                              has(steps.before) ? Self.blobText(steps.before.result.content, steps.before.result.sha256) : dyn(''),
+                              inputs.content)
+                        - name: entries
+                          invoke: !ref recordEntries
+                          inputs:
+                            turnId: !cel "inputs.turnId"
+                            callId: !cel "steps.call.result"
+                            entries: !cel >-
+                              [{'path': steps.diffed.result.change.path, 'before': steps.diffed.result.change.before,
+                                'after': steps.diffed.result.change.after}]
+                        - name: apply
+                          try:
+                            - name: write
+                              invoke: !ref writeFile
+                              inputs:
+                                path: !cel "inputs.path"
+                                content: !cel "inputs.content"
+                                createParents: true
+                          catch:
+                            - name: settle
+                              invoke: !ref settleEntries
+                              inputs:
+                                callId: !cel "steps.call.result"
+                                turnId: null
+                            - name: reraise
+                              throw:
+                                code: !cel "error.code"
+                                message: !cel "error.message"
+                                data: !cel "has(error.data) ? error.data : null"
+                        - name: confirm
+                          invoke: !ref checkpointCommand
+                          inputs:
+                            sql: "UPDATE checkpoint_entries SET confirmed = 1 WHERE call_id = ?"
+                            bindings: [ !cel "steps.call.result" ]
+                      outputs:
+                        bytesWritten: !cel "steps.write.result.bytesWritten"
+                        changes: !cel >-
+                          steps.diffed.result.change.before == steps.diffed.result.change.after ? [] : [steps.diffed.result.change]
+                        hunks: !cel "steps.diffed.result.hunks"
+                    inputs:
+                      turnId: !cel "inputs.write.turnId"
+                      path: !cel "inputs.write.path"
+                      content: !cel "inputs.write.content"
+                elseif:
+                  - if: !cel "has(inputs.edit)"
+                    then:
+                      # edit_file: the file is read once, bounded; bytes that
+                      # are not UTF-8 text are refused. When `oldString` occurs
+                      # exactly once the edited text is scanned for
+                      # credentials, both copies are stored and the entry
+                      # recorded before the edit; otherwise nothing is
+                      # checkpointed and the edit itself refuses.
+                      - name: edited
+                        invoke:
+                          kind: Run.Sequence
+                          inputType:
+                            kind: Telo.JsonSchema
+                            schema:
+                              type: object
+                              additionalProperties: false
+                              required: [turnId, path, oldString, newString]
+                              properties:
+                                turnId: { type: string }
+                                path: { type: string }
+                                oldString: { type: string }
+                                newString: { type: string }
+                          steps:
+                            - name: call
+                              value: !cel "uuidv4()"
+                            - name: at
+                              invoke: !ref pathStates
+                              inputs:
+                                paths: !cel "[inputs.path]"
+                            - name: notFile
+                              if: !cel "steps.at.result.states[0].state in ['directory', 'other']"
+                              then:
+                                - name: refuseNotFile
+                                  throw:
+                                    code: ERR_PATH_NOT_A_FILE
+                                    message: !cel "Self.notFileMessage(inputs.path)"
+                            - name: tooLarge
+                              if: !cel "steps.at.result.states[0].size > int(variables.maxCheckpointBytes)"
+                              then:
+                                - name: refuseTooLarge
+                                  throw:
+                                    code: ERR_CHECKPOINT_TOO_LARGE
+                                    message: !cel >-
+                                      Self.checkpointTooLargeMessage(inputs.path, steps.at.result.states[0].size,
+                                        int(variables.maxCheckpointBytes), 'bytes')
+                            - name: before
+                              invoke: !ref captureRead
+                              inputs:
+                                path: !cel "inputs.path"
+                                subject: !cel "inputs.path"
+                                spent: !cel "0"
+                            - name: text
+                              value: !cel "Self.blobText(steps.before.result.content, steps.before.result.sha256)"
+                            - name: notText
+                              if: !cel "steps.text.result == null"
+                              then:
+                                - name: refuseNotText
+                                  throw:
+                                    code: ERR_FILE_NOT_TEXT
+                                    message: !cel >-
+                                      'ERR_FILE_NOT_TEXT: refused to edit "' + inputs.path + '": its bytes are not UTF-8 text, so an '
+                                        + 'exact string replacement cannot be applied to it. Nothing was changed.'
+                            - name: unique
+                              value: !cel "inputs.oldString != '' && size(string(steps.text.result).split(inputs.oldString)) == 2"
+                            - name: checkpoint
+                              if: !cel "steps.unique.result"
+                              then:
+                                - name: edited
+                                  value: !cel "replace(string(steps.text.result), inputs.oldString, inputs.newString)"
+                                - name: findings
+                                  value: !cel "SecretScan.credentialFindings(steps.edited.result)"
+                                - name: secret
+                                  if: !cel "size(steps.findings.result) > 0"
+                                  then:
+                                    - name: refuseSecret
+                                      throw:
+                                        code: ERR_SECRET_IN_MANIFEST
+                                        message: !cel "Self.secretMessage(inputs.path, steps.findings.result)"
+                                        data:
+                                          path: !cel "inputs.path"
+                                          findings: !cel "steps.findings.result"
+                                - name: storeBefore
+                                  invoke: !ref writeBlob
+                                  inputs:
+                                    path: !cel "inputs.turnId + '/' + steps.before.result.sha256"
+                                    content: !cel "steps.before.result.content"
+                                    encoding: base64
+                                    createParents: true
+                                - name: storeAfter
+                                  invoke: !ref writeBlob
+                                  inputs:
+                                    path: !cel "inputs.turnId + '/' + sha256(steps.edited.result)"
+                                    content: !cel "steps.edited.result"
+                                    createParents: true
+                                - name: diffed
+                                  value: !cel >-
+                                    Self.fileChange(Self.normalPath(inputs.path), steps.before.result.sha256, sha256(steps.edited.result),
+                                      string(steps.text.result), steps.edited.result)
+                                - name: entries
+                                  invoke: !ref recordEntries
+                                  inputs:
+                                    turnId: !cel "inputs.turnId"
+                                    callId: !cel "steps.call.result"
+                                    entries: !cel >-
+                                      [{'path': steps.diffed.result.change.path, 'before': steps.diffed.result.change.before,
+                                        'after': steps.diffed.result.change.after}]
+                            - name: apply
+                              try:
+                                - name: edit
+                                  invoke: !ref editFile
+                                  inputs:
+                                    path: !cel "inputs.path"
+                                    oldString: !cel "inputs.oldString"
+                                    newString: !cel "inputs.newString"
+                              catch:
+                                - name: settle
+                                  invoke: !ref settleEntries
+                                  inputs:
+                                    callId: !cel "steps.call.result"
+                                    turnId: null
+                                - name: reraise
+                                  throw:
+                                    code: !cel "error.code"
+                                    message: !cel "error.message"
+                                    data: !cel "has(error.data) ? error.data : null"
+                            - name: confirm
+                              invoke: !ref checkpointCommand
+                              inputs:
+                                sql: "UPDATE checkpoint_entries SET confirmed = 1 WHERE call_id = ?"
+                                bindings: [ !cel "steps.call.result" ]
+                          outputs:
+                            replacements: !cel "steps.edit.result.replacements"
+                            changes: !cel >-
+                              has(steps.diffed) && steps.diffed.result.change.before != steps.diffed.result.change.after
+                                ? [steps.diffed.result.change] : []
+                            hunks: !cel "has(steps.diffed) ? steps.diffed.result.hunks : null"
+                        inputs:
+                          turnId: !cel "inputs.edit.turnId"
+                          path: !cel "inputs.edit.path"
+                          oldString: !cel "inputs.edit.oldString"
+                          newString: !cel "inputs.edit.newString"
+                  - if: !cel "has(inputs.remove)"
+                    then:
+                      # delete_file: a directory deleted recursively is
+                      # enumerated first, metadata only and page by page,
+                      # stopping at the first bound it crosses — no content is
+                      # read before both the file count and the listed sizes
+                      # pass, and a tree holding anything but regular files and
+                      # directories is refused whole. Then every file is
+                      # captured, one at a time, each read bounded by what the
+                      # byte bound has left; the entries are recorded, the path
+                      # removed and the entries confirmed. A removal that fails
+                      # part-way keeps a confirmed entry for each file it had
+                      # already removed.
+                      - name: removed
+                        invoke:
+                          kind: Run.Sequence
+                          inputType:
+                            kind: Telo.JsonSchema
+                            schema:
+                              type: object
+                              additionalProperties: false
+                              required: [turnId, path, recursive]
+                              properties:
+                                turnId: { type: string }
+                                path: { type: string }
+                                recursive: { type: boolean }
+                          steps:
+                            - name: call
+                              value: !cel "uuidv4()"
+                            - name: at
+                              invoke: !ref pathStates
+                              inputs:
+                                paths: !cel "[inputs.path]"
+                            # A root that is a symbolic link is never listed
+                            # through: its target is not the tree named.
+                            - name: notFile
+                              if: !cel "steps.at.result.states[0].state == 'other'"
+                              then:
+                                - name: refuseNotFile
+                                  throw:
+                                    code: ERR_PATH_NOT_A_FILE
+                                    message: !cel "Self.notFileMessage(inputs.path)"
+                            - name: listed
+                              value: !cel >-
+                                steps.at.result.states[0].state == 'file'
+                                  ? [{'path': steps.at.result.states[0].path, 'type': 'file', 'size': steps.at.result.states[0].size}]
+                                  : []
+                            # A directory deleted without `recursive` captures
+                            # nothing: the removal itself refuses it.
+                            - name: tree
+                              if: !cel "steps.at.result.states[0].state == 'directory' && inputs.recursive"
+                              then:
+                                - name: page
+                                  invoke: !ref listDir
+                                  inputs:
+                                    path: !cel "inputs.path"
+                                    recursive: true
+                                    limit: !cel "int(variables.maxCheckpointFiles) + 1"
+                                - name: listed
+                                  value: !cel "steps.page.result.entries.filter(e, e.type != 'directory')"
+                                - name: walk
+                                  while: !cel >-
+                                    has(steps.page.result.nextCursor)
+                                      && size(steps.listed.result) <= int(variables.maxCheckpointFiles)
+                                      && int(sum(steps.listed.result.map(e, e.size))) <= int(variables.maxCheckpointBytes)
+                                  do:
+                                    - name: page
+                                      invoke: !ref listDir
+                                      inputs:
+                                        path: !cel "inputs.path"
+                                        recursive: true
+                                        cursor: !cel "steps.page.result.nextCursor"
+                                        limit: !cel "int(variables.maxCheckpointFiles) + 1 - size(steps.listed.result)"
+                                    - name: listed
+                                      value: !cel "steps.listed.result + steps.page.result.entries.filter(e, e.type != 'directory')"
+                            - name: notFiles
+                              if: !cel "steps.listed.result.exists(e, e.type != 'file')"
+                              then:
+                                - name: refuseNotFiles
+                                  throw:
+                                    code: ERR_PATH_NOT_A_FILE
+                                    message: !cel "Self.notFileMessage(steps.listed.result.filter(e, e.type != 'file')[0].path)"
+                            - name: tooMany
+                              if: !cel "size(steps.listed.result) > int(variables.maxCheckpointFiles)"
+                              then:
+                                - name: refuseTooMany
+                                  throw:
+                                    code: ERR_CHECKPOINT_TOO_LARGE
+                                    message: !cel >-
+                                      Self.checkpointTooLargeMessage(inputs.path, size(steps.listed.result),
+                                        int(variables.maxCheckpointFiles), 'files')
+                            - name: tooLarge
+                              if: !cel "int(sum(steps.listed.result.map(e, e.size))) > int(variables.maxCheckpointBytes)"
+                              then:
+                                - name: refuseTooLarge
+                                  throw:
+                                    code: ERR_CHECKPOINT_TOO_LARGE
+                                    message: !cel >-
+                                      Self.checkpointTooLargeMessage(inputs.path, int(sum(steps.listed.result.map(e, e.size))),
+                                        int(variables.maxCheckpointBytes), 'bytes')
+                            - name: captured
+                              value: []
+                            - name: spent
+                              value: !cel "0"
+                            - name: capture
+                              while: !cel "size(steps.captured.result) < size(steps.listed.result)"
+                              do:
+                                - name: before
+                                  invoke: !ref captureRead
+                                  inputs:
+                                    path: !cel "steps.listed.result[size(steps.captured.result)].path"
+                                    subject: !cel "inputs.path"
+                                    spent: !cel "steps.spent.result"
+                                - name: storeBefore
+                                  invoke: !ref writeBlob
+                                  inputs:
+                                    path: !cel "inputs.turnId + '/' + steps.before.result.sha256"
+                                    content: !cel "steps.before.result.content"
+                                    encoding: base64
+                                    createParents: true
+                                - name: spent
+                                  value: !cel "steps.spent.result + steps.before.result.size"
+                                - name: captured
+                                  value: !cel >-
+                                    steps.captured.result + [Self.fileChange(steps.listed.result[size(steps.captured.result)].path,
+                                      steps.before.result.sha256, null,
+                                      Self.blobText(steps.before.result.content, steps.before.result.sha256), '').change]
+                            - name: entries
+                              invoke: !ref recordEntries
+                              inputs:
+                                turnId: !cel "inputs.turnId"
+                                callId: !cel "steps.call.result"
+                                entries: !cel "steps.captured.result.map(c, {'path': c.path, 'before': c.before, 'after': null})"
+                            - name: apply
+                              try:
+                                - name: remove
+                                  invoke: !ref removeFile
+                                  inputs:
+                                    path: !cel "inputs.path"
+                                    recursive: !cel "inputs.recursive"
+                              catch:
+                                - name: settle
+                                  invoke: !ref settleEntries
+                                  inputs:
+                                    callId: !cel "steps.call.result"
+                                    turnId: null
+                                - name: reraise
+                                  throw:
+                                    code: !cel "error.code"
+                                    message: !cel "error.message"
+                                    data: !cel "has(error.data) ? error.data : null"
+                            - name: confirm
+                              invoke: !ref checkpointCommand
+                              inputs:
+                                sql: "UPDATE checkpoint_entries SET confirmed = 1 WHERE call_id = ?"
+                                bindings: [ !cel "steps.call.result" ]
+                          outputs:
+                            changes: !cel "steps.captured.result"
+                        inputs:
+                          turnId: !cel "inputs.remove.turnId"
+                          path: !cel "inputs.remove.path"
+                          recursive: !cel "inputs.remove.recursive"
+                  - if: !cel "has(inputs.sync)"
+                    then:
+                      - name: synced
+                        invoke: !ref treeSync
+                        inputs:
+                          write: !cel "inputs.sync.write"
+                          delete: !cel "inputs.sync.delete"
+                  - if: !cel "has(inputs.revert)"
+                    then:
+                      # One batch of a revert, within one hold. Kind and
+                      # size of every path come from one listing per distinct
+                      # parent directory; then each path in turn is compared,
+                      # replaced and recorded. A file holding the turn's last
+                      # "after" is replaced by its "before" (removed when the
+                      # turn created it); one already holding the "before" is
+                      # restored; anything else was changed since and is
+                      # skipped, never overwritten. A file is read only when
+                      # its listed size is that of one of the turn's two
+                      # copies, immediately before its own replacement. The
+                      # outcome is written the first time the path is
+                      # evaluated and afterwards only moves to `restored`. A
+                      # path that fails stops the batch and is returned as
+                      # data beside whether an outcome was written before it:
+                      # the paths ahead of it stay replaced and recorded.
+                      - name: reverted
+                        invoke:
+                          kind: Run.Sequence
+                          inputType:
+                            kind: Telo.JsonSchema
+                            schema:
+                              type: object
+                              additionalProperties: false
+                              required: [turnId, paths]
+                              properties:
+                                turnId: { type: string }
+                                paths:
+                                  type: array
+                                  items:
+                                    type: object
+                                    additionalProperties: false
+                                    required: [path, status, before, after, sizes]
+                                    properties:
+                                      path: { type: string }
+                                      status: { type: string, enum: [created, modified, deleted] }
+                                      before: { type: [string, "null"] }
+                                      after: { type: [string, "null"] }
+                                      sizes:
+                                        type: array
+                                        items: { type: integer }
+                          steps:
+                            - name: at
+                              invoke: !ref pathStates
+                              inputs:
+                                paths: !cel "inputs.paths.map(p, p.path)"
+                            - name: next
+                              value: !cel "0"
+                            - name: recorded
+                              value: !cel "false"
+                            - name: batch
+                              try:
+                                - name: each
+                                  while: !cel "steps.next.result < size(inputs.paths)"
+                                  do:
+                                    - name: target
+                                      value: !cel "inputs.paths[steps.next.result]"
+                                    - name: current
+                                      invoke: !ref sizedDigest
+                                      inputs:
+                                        path: !cel "steps.target.result.path"
+                                        state: !cel "steps.at.result.states[steps.next.result].state"
+                                        size: !cel "steps.at.result.states[steps.next.result].size"
+                                        sizes: !cel "steps.target.result.sizes"
+                                    - name: holds
+                                      value: !cel >-
+                                        cel.bind(state, steps.at.result.states[steps.next.result].state, {
+                                          'after': steps.target.result.after == null ? state == 'absent'
+                                            : state == 'file' && steps.current.result.hash == steps.target.result.after,
+                                          'before': steps.target.result.before == null ? state == 'absent'
+                                            : state == 'file' && steps.current.result.hash == steps.target.result.before
+                                        })
+                                    - name: restore
+                                      if: !cel "steps.holds.result.after && steps.target.result.before != null"
+                                      then:
+                                        - name: copy
+                                          invoke: !ref readBlob
+                                          inputs:
+                                            path: !cel "inputs.turnId + '/' + string(steps.target.result.before)"
+                                            encoding: base64
+                                        - name: rewrite
+                                          invoke: !ref writeFile
+                                          inputs:
+                                            path: !cel "steps.target.result.path"
+                                            content: !cel "steps.copy.result.content"
+                                            encoding: base64
+                                            createParents: true
+                                      elseif:
+                                        - if: !cel "steps.holds.result.after"
+                                          then:
+                                            - name: delete
+                                              invoke: !ref removeFile
+                                              inputs:
+                                                path: !cel "steps.target.result.path"
+                                    - name: record
+                                      invoke: !ref checkpointCommand
+                                      inputs:
+                                        sql: |
+                                          INSERT INTO turn_reverts (turn_id, path, status, outcome)
+                                          SELECT turn_id, ?, ?, ? FROM turns WHERE turn_id = ? AND removed_at IS NULL
+                                          ON CONFLICT (turn_id, path) DO UPDATE SET status = excluded.status, outcome = 'restored'
+                                          WHERE excluded.outcome = 'restored' AND turn_reverts.outcome <> 'restored'
+                                        bindings:
+                                          - !cel "steps.target.result.path"
+                                          - !cel "steps.target.result.status"
+                                          - !cel "steps.holds.result.after || steps.holds.result.before ? 'restored' : 'skipped'"
+                                          - !cel "inputs.turnId"
+                                    - name: recorded
+                                      value: !cel "steps.recorded.result || steps.record.result.rowCount > 0"
+                                    - name: next
+                                      value: !cel "steps.next.result + 1"
+                              catch:
+                                - name: cancelled
+                                  if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+                                  then:
+                                    - name: propagate
+                                      throw:
+                                        code: !cel "error.code"
+                                        message: !cel "error.message"
+                                - name: failure
+                                  value:
+                                    code: !cel "error.code"
+                                    message: !cel "error.message"
+                                    data: !cel "has(error.data) ? error.data : null"
+                          outputs:
+                            recorded: !cel "steps.recorded.result"
+                            failure: !cel "has(steps.failure) ? steps.failure.result : null"
+                        inputs:
+                          turnId: !cel "inputs.revert.turnId"
+                          paths: !cel "inputs.revert.paths"
+            catch:
+              - name: cancelled
+                if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
+                then:
+                  - name: propagate
+                    throw:
+                      code: !cel "error.code"
+                      message: !cel "error.message"
+              - name: failure
+                value:
+                  code: !cel "error.code"
+                  message: !cel "error.message"
+                  data: !cel "has(error.data) ? error.data : null"
+        outputs:
+          failure: !cel "has(steps.failure) ? steps.failure.result : null"
+          result: !cel >-
+            has(steps.written) ? dyn(steps.written.result)
+              : has(steps.edited) ? dyn(steps.edited.result)
+              : has(steps.removed) ? dyn(steps.removed.result)
+              : has(steps.synced) ? dyn(steps.synced.result)
+              : has(steps.reverted) ? dyn(steps.reverted.result)
+              : null
+    inputs:
+      key: !cel "'workspace:' + string(variables.workspaceDir)"
+      inputs: !cel "inputs.operation"
+  - name: busy
+    if: !cel "!steps.lease.result.acquired"
+    then:
+      - name: refuseBusy
+        throw:
+          code: ERR_WORKSPACE_BUSY
+          message: >-
+            ERR_WORKSPACE_BUSY: another change to the workspace is in progress.
+            Nothing was changed; retry the call.
+outputs:
+  failure: !cel "steps.lease.result.result.failure"
+  result: !cel "steps.lease.result.result.result"
+---
+# One workspace operation under the lease. Acquisition is retried here — the
+# one layer that retries — and ERR_WORKSPACE_BUSY is raised when the retries
+# are spent. The operation's own failure is raised as it was.
+kind: Run.Sequence
+metadata: { name: leasedWorkspace }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [operation]
+    properties:
+      operation: !ref WorkspaceOperation
+steps:
+  - name: hold
+    invoke: !ref acquireWorkspace
+    inputs:
+      operation: !cel "inputs.operation"
+    # About five seconds of waiting in expectation and never more than about
+    # ten: a large recursive delete holds the lease for seconds, and a caller
+    # behind it waits rather than fails. Full jitter, capped at 50 ms, so a
+    # waiter asks again within every pause a multi-path revert leaves.
+    retry:
+      attempts: 200
+      initialDelay: 5
+      maxDelay: 50
+      jitter: full
+  - name: failed
+    if: !cel "steps.hold.result.failure != null"
+    then:
+      - name: raise
+        invoke: !ref raiseRecorded
+        inputs:
+          code: !cel "string(steps.hold.result.failure.code)"
+          message: !cel "string(steps.hold.result.failure.message)"
+          data: !cel "steps.hold.result.failure.data"
+outputs:
+  result: !cel "steps.hold.result.result"
+---
 # POST /workspace. Every path of the change set is judged BEFORE anything is
-# applied, so a refused set leaves the workspace as it was. Not scanned for
-# secrets: this is the user's own editor writing the user's own files.
+# applied, so a refused set leaves the workspace as it was — a path outside the
+# workspace, or a `delete` entry naming the workspace root or a directory
+# holding the agent's state directory — and the whole apply is one hold of the
+# workspace lease. Not scanned for secrets, and not
+# checkpointed: this is the user's own editor writing the user's own files.
 kind: Run.Sequence
 metadata: { name: syncWorkspace }
 inputType:
@@ -716,8 +2180,8 @@ outputType:
 steps:
   - name: outside
     value: !cel >-
-      inputs.write.map(w, w.path).filter(p, Self.outsideWorkspace(p))
-        + inputs.delete.filter(p, Self.outsideWorkspace(p))
+      inputs.write.map(w, w.path).filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
+        + inputs.delete.filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
   - name: confine
     if: !cel "size(steps.outside.result) > 0"
     then:
@@ -727,14 +2191,28 @@ steps:
           message: !cel "Self.outsideWorkspaceMessage(steps.outside.result[0]) + ' Nothing was applied.'"
           data:
             paths: !cel "steps.outside.result"
+  - name: whole
+    value: !cel >-
+      inputs.delete.filter(p, Self.unremovable(p, string(variables.workspaceDir), string(variables.stateDir)))
+  - name: keep
+    if: !cel "size(steps.whole.result) > 0"
+    then:
+      - name: refuseWhole
+        throw:
+          code: ERR_PATH_OUTSIDE_WORKSPACE
+          message: !cel "Self.unremovableMessage(steps.whole.result[0]) + ' Nothing was applied.'"
+          data:
+            paths: !cel "steps.whole.result"
   - name: apply
-    invoke: !ref treeSync
+    invoke: !ref leasedWorkspace
     inputs:
-      write: !cel "inputs.write"
-      delete: !cel "inputs.delete"
+      operation:
+        sync:
+          write: !cel "inputs.write"
+          delete: !cel "inputs.delete"
 outputs:
-  written: !cel "steps.apply.result.written"
-  deleted: !cel "steps.apply.result.deleted"
+  written: !cel "steps.apply.result.result.written"
+  deleted: !cel "steps.apply.result.result.deleted"
 ---
 # GET /ready. Each reason is one dependency a turn needs, probed for real: the
 # conversation database read, the operator's model key present, the workspace
@@ -926,8 +2404,12 @@ steps:
     invoke: !ref historyRows
     inputs:
       sql: |
-        SELECT turn_id, started_at, aborted_at FROM turns
-        WHERE conversation_id = ? AND turn_id >= ? AND removed_at IS NULL ORDER BY turn_id
+        SELECT t.turn_id, t.started_at, t.aborted_at, t.checkpointed, t.reverted_at,
+               COALESCE(p.prompt_tokens, 0) AS prompt_tokens,
+               COALESCE(p.completion_tokens, 0) AS completion_tokens,
+               COALESCE(p.tokens, 0) AS tokens, COALESCE(p.runs, '[]') AS runs
+        FROM turns t LEFT JOIN turn_projections p ON p.turn_id = t.turn_id
+        WHERE t.conversation_id = ? AND t.turn_id >= ? AND t.removed_at IS NULL ORDER BY t.turn_id
       bindings:
         - !cel "inputs.conversationId"
         - !cel "inputs.fromTurn"
@@ -971,6 +2453,7 @@ steps:
                     'turnId': steps.turns.result.rows[i].turn_id,
                     'startedAt': steps.turns.result.rows[i].started_at,
                     'abortedAt': steps.turns.result.rows[i].aborted_at,
+                    'row': steps.turns.result.rows[i],
                     'state': steps.headers.result[i].state,
                     'error': steps.headers.result[i].error,
                     'fromId': from[i],
@@ -983,6 +2466,20 @@ steps:
                       ? dyn({'fromTurn': steps.turns.result.rows[size(included)].turn_id, 'fromId': 0})
                       : null
                 })))))
+  # What the page's turns changed and what a revert of each recorded: the
+  # projection of their net file changes and their revert outcomes.
+  - name: changes
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT * FROM turn_changes WHERE turn_id IN (SELECT value FROM json_each(?)) ORDER BY turn_id, path
+      bindings: [ !cel "json(steps.plan.result.pages.map(p, p.turnId))" ]
+  - name: reverts
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT * FROM turn_reverts WHERE turn_id IN (SELECT value FROM json_each(?)) ORDER BY turn_id, path
+      bindings: [ !cel "json(steps.plan.result.pages.map(p, p.turnId))" ]
   - name: pages
     invoke:
       kind: Run.Projection
@@ -996,6 +2493,12 @@ steps:
             limit: !cel "item.limit"
       outputs:
         turnId: !cel "item.turnId"
+        # Null while the turn runs: a summary is of an ended turn.
+        summary: !cel >-
+          item.state == 'open' && steps.page.result.state != 'removed' ? null
+            : dyn(Self.turnSummary(item.row, inputs.changes.filter(c, c.turn_id == item.turnId)))
+        revert: !cel >-
+          Self.revertOutcome(item.row.reverted_at, inputs.reverts.filter(r, r.turn_id == item.turnId))
         startedAt: !cel "item.startedAt"
         # The state that planned this page, not the page read's own: a turn
         # that ended between the two reads is reported `running` with the
@@ -1015,6 +2518,8 @@ steps:
         records: !cel "steps.page.result.entries"
     inputs:
       pages: !cel "steps.plan.result.pages"
+      changes: !cel "steps.changes.result.rows"
+      reverts: !cel "steps.reverts.result.rows"
 outputs:
   turns: !cel "steps.pages.result"
   next: !cel "steps.plan.result.next"
@@ -1023,6 +2528,526 @@ outputs:
 kind: Sql.Query
 metadata: { name: historyRows }
 connection: !ref chatDb
+---
+# An ended turn's summary, from its projection: the files it changed on balance
+# (null for a turn from before checkpoints existed), whether their checks were
+# clean, the manifests it ran and the tokens every model call of it used.
+# `check` is `clean` when every created or modified file's last check exited 0,
+# `failing` when one exited otherwise, and null when the turn created and
+# modified nothing or a file's check is not known.
+kind: Telo.Function
+metadata:
+  name: turnSummary
+  description: A turn's summary from its row joined with its projection and its projected file changes.
+params:
+  - name: row
+    schema: { type: object }
+  - name: changes
+    schema: { type: array }
+returns:
+  schema: { type: object }
+body: !cel >-
+  cel.bind(codes, changes.filter(c, c.status != 'deleted').map(c, c.check_exit_code),
+    {
+      'files': int(row.checkpointed) == 0 ? null : dyn(changes.map(c, {
+        'path': c.path,
+        'status': c.status,
+        'before': c.before_hash,
+        'after': c.after_hash,
+        'added': c.added == null ? null : dyn(int(c.added)),
+        'removed': c.removed == null ? null : dyn(int(c.removed)),
+        'firstLine': c.first_line == null ? null : dyn(int(c.first_line)),
+        'checkExitCode': c.check_exit_code == null ? null : dyn(int(c.check_exit_code))
+      })),
+      'check': size(codes) == 0 ? null
+        : codes.exists(code, code != null && int(code) != 0) ? dyn('failing')
+        : codes.all(code, code != null) ? dyn('clean') : null,
+      'runs': parseJson(string(row.runs)).map(r, {'path': r.path, 'exitCode': int(r.exitCode)}),
+      'usage': {
+        'promptTokens': int(row.prompt_tokens),
+        'completionTokens': int(row.completion_tokens),
+        'totalTokens': int(row.tokens)
+      }
+    })
+---
+kind: Telo.Function
+metadata:
+  name: revertOutcome
+  description: A turn's recorded revert — when, and each path's outcome — or null when it was never reverted.
+params:
+  - name: revertedAt
+    schema: { type: string }
+    nullable: true
+  - name: rows
+    schema: { type: array }
+returns:
+  schema:
+    anyOf:
+      - type: object
+      - type: "null"
+body: !cel >-
+  revertedAt == null ? null : dyn({
+    'revertedAt': revertedAt,
+    'files': rows.map(r, {'path': r.path, 'status': r.status, 'outcome': r.outcome})
+  })
+---
+# A turn's checkpoint, one row per path, from its CONFIRMED entries only: the
+# digest the path held before the turn first changed it, the digest its last
+# entry left, and the size of each of those copies (null for an absent side).
+kind: Run.Sequence
+metadata: { name: checkpointPaths }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: paths
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT e.path,
+               (SELECT f.before_hash FROM checkpoint_entries f
+                 WHERE f.turn_id = e.turn_id AND f.path = e.path AND f.confirmed = 1
+                 ORDER BY f.id LIMIT 1) AS before_hash,
+               (SELECT f.after_hash FROM checkpoint_entries f
+                 WHERE f.turn_id = e.turn_id AND f.path = e.path AND f.confirmed = 1
+                 ORDER BY f.id DESC LIMIT 1) AS after_hash
+        FROM checkpoint_entries e WHERE e.turn_id = ? AND e.confirmed = 1 GROUP BY e.path ORDER BY e.path
+      bindings: [ !cel "inputs.turnId" ]
+  - name: recorded
+    if: !cel "size(steps.paths.result.rows) > 0"
+    then:
+      - name: copies
+        invoke: !ref listBlobs
+        inputs:
+          path: !cel "inputs.turnId"
+outputs:
+  paths: !cel >-
+    cel.bind(copies, has(steps.copies) ? steps.copies.result.entries : [],
+      steps.paths.result.rows.map(r, {
+        'path': string(r.path),
+        'before': r.before_hash == null ? null : dyn(string(r.before_hash)),
+        'after': r.after_hash == null ? null : dyn(string(r.after_hash)),
+        'beforeSize': cel.bind(copy, copies.filter(c, r.before_hash != null && c.name == string(r.before_hash)),
+          size(copy) > 0 ? dyn(int(copy[0].size)) : null),
+        'afterSize': cel.bind(copy, copies.filter(c, r.after_hash != null && c.name == string(r.after_hash)),
+          size(copy) > 0 ? dyn(int(copy[0].size)) : null)
+      }))
+---
+# A turn's net file changes with their line diffs: one per path whose first
+# "before" differs from its last "after", each compared over the turn's copies.
+# The diff reads at most `maxTurnDiffBytes` of copies: taken in path order, a
+# file is read and compared when the listed sizes of its two copies fit what
+# the budget has left; one that does not fit is not read and carries no counts,
+# hunks or first line, and a later, smaller one may still fit. Whether a side
+# that was read is comparable is `TextDiff.lineDiff`'s answer alone.
+kind: Run.Sequence
+metadata: { name: netChanges }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: checkpoint
+    invoke: !ref checkpointPaths
+    inputs:
+      turnId: !cel "inputs.turnId"
+  - name: net
+    value: !cel "steps.checkpoint.result.paths.filter(p, p.before != p.after)"
+  # Which files fit, judged on listed sizes before anything is read.
+  - name: fits
+    value: []
+  - name: spent
+    value: !cel "0"
+  - name: plan
+    while: !cel "size(steps.fits.result) < size(steps.net.result)"
+    do:
+      - name: cost
+        value: !cel >-
+          cel.bind(p, steps.net.result[size(steps.fits.result)],
+            (p.beforeSize == null ? 0 : int(p.beforeSize)) + (p.afterSize == null ? 0 : int(p.afterSize)))
+      - name: fit
+        value: !cel "steps.spent.result + steps.cost.result <= int(variables.maxTurnDiffBytes)"
+      - name: spent
+        value: !cel "steps.fit.result ? steps.spent.result + steps.cost.result : steps.spent.result"
+      - name: fits
+        value: !cel "steps.fits.result + [steps.fit.result]"
+  - name: diffs
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.net"
+      steps:
+        - name: beforeSide
+          if: !cel "item.fits && item.beforeSize != null"
+          then:
+            - name: beforeBlob
+              invoke: !ref readBlob
+              inputs:
+                path: !cel "inputs.turnId + '/' + string(item.before)"
+                encoding: base64
+        - name: afterSide
+          if: !cel "item.fits && item.afterSize != null"
+          then:
+            - name: afterBlob
+              invoke: !ref readBlob
+              inputs:
+                path: !cel "inputs.turnId + '/' + string(item.after)"
+                encoding: base64
+      outputs:
+        afterSize: !cel "item.afterSize"
+        diffed: !cel >-
+          Self.fileChange(item.path, item.before, item.after,
+            !item.fits ? null : item.before == null ? dyn('')
+              : has(steps.beforeBlob) ? Self.blobText(steps.beforeBlob.result.content, string(item.before)) : null,
+            !item.fits ? null : item.after == null ? dyn('')
+              : has(steps.afterBlob) ? Self.blobText(steps.afterBlob.result.content, string(item.after)) : null)
+    inputs:
+      turnId: !cel "inputs.turnId"
+      net: !cel "enumerate(steps.net.result).map(e, merge(e.value, {'fits': steps.fits.result[e.index]}))"
+outputs:
+  files: !cel "steps.diffs.result.map(d, merge(d.diffed, {'afterSize': d.afterSize}))"
+---
+# The refusals the changes and revert routes share, from one snapshot of the
+# turn's key and its row: removed (410 ERR_JOURNAL_KEY_REMOVED), never started
+# (404 ERR_TURN_NOT_FOUND).
+kind: Run.Sequence
+metadata: { name: requireTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: header
+    invoke: !ref journalRead
+    inputs:
+      key: !cel "inputs.turnId"
+      limit: 0
+  - name: row
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT t.conversation_id, t.checkpointed, t.reverted_at, t.removed_at,
+               (SELECT MAX(l.turn_id) FROM turns l
+                 WHERE l.conversation_id = t.conversation_id AND l.removed_at IS NULL) AS last_turn_id
+        FROM turns t WHERE t.turn_id = ?
+      bindings: [ !cel "inputs.turnId" ]
+  - name: removed
+    if: !cel >-
+      steps.header.result.state == 'removed'
+        || (size(steps.row.result.rows) > 0 && steps.row.result.rows[0].removed_at != null)
+    then:
+      - name: refuseRemoved
+        throw:
+          code: ERR_JOURNAL_KEY_REMOVED
+          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+  - name: unknown
+    if: !cel "steps.header.result.state == 'unknown' || size(steps.row.result.rows) == 0"
+    then:
+      - name: refuseUnknown
+        throw:
+          code: ERR_TURN_NOT_FOUND
+          message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+outputs:
+  conversationId: !cel "string(steps.row.result.rows[0].conversation_id)"
+  lastTurnId: !cel "string(steps.row.result.rows[0].last_turn_id)"
+  checkpointed: !cel "int(steps.row.result.rows[0].checkpointed) != 0"
+  revertedAt: !cel "steps.row.result.rows[0].reverted_at"
+---
+# GET /chat/{turnId}/changes: what a turn changed on balance, each file as its
+# Change with the line its first hunk starts at, its hunks from the first
+# "before" to the last "after", and whether the workspace file has changed
+# since — judged from the file's kind and size, and its content read only when
+# its size is that of the turn's "after". One request reads at most
+# `maxTurnDiffBytes` of workspace files for that, an allowance of its own
+# beside the diff's: taken in path order on listed sizes before any read, a
+# file that needs a read and does not fit what is left is not compared and
+# answers `changedSince: null`, and a later, smaller one may still fit. Served
+# for an archived conversation
+# and for a running turn (its confirmed entries so far). A turn from before
+# checkpoints existed answers `files: null` and `revert: null`. Refused for a
+# removed turn (410), an unknown one (404) and a conversation unknown or
+# deleted (404 / 410).
+kind: Run.Sequence
+metadata: { name: turnChanges }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: turn
+    invoke: !ref requireTurn
+    inputs:
+      turnId: !cel "inputs.turnId"
+  - name: conversation
+    invoke: !ref requireConversation
+    inputs:
+      conversationId: !cel "steps.turn.result.conversationId"
+  - name: checkpointed
+    if: !cel "steps.turn.result.checkpointed"
+    then:
+      - name: net
+        invoke: !ref netChanges
+        inputs:
+          turnId: !cel "inputs.turnId"
+      - name: at
+        invoke: !ref pathStates
+        inputs:
+          paths: !cel "steps.net.result.files.map(f, f.change.path)"
+      # Per file: `read` when its content must be read and fits the allowance,
+      # `skip` when it must be read and does not, `none` when metadata answers.
+      - name: reads
+        value: []
+      - name: spent
+        value: !cel "0"
+      - name: plan
+        while: !cel "size(steps.reads.result) < size(steps.net.result.files)"
+        do:
+          - name: candidate
+            value: !cel >-
+              cel.bind(f, steps.net.result.files[size(steps.reads.result)],
+                cel.bind(state, steps.at.result.states[size(steps.reads.result)],
+                  {'needed': f.afterSize != null && state.state == 'file' && state.size == int(f.afterSize),
+                   'size': state.size}))
+          - name: fit
+            value: !cel >-
+              steps.candidate.result.needed
+                && steps.spent.result + steps.candidate.result.size <= int(variables.maxTurnDiffBytes)
+          - name: spent
+            value: !cel "steps.fit.result ? steps.spent.result + steps.candidate.result.size : steps.spent.result"
+          - name: reads
+            value: !cel >-
+              steps.reads.result + [steps.fit.result ? 'read' : steps.candidate.result.needed ? 'skip' : 'none']
+      - name: workspace
+        invoke:
+          kind: Run.Projection
+          collection: !cel "inputs.files"
+          steps:
+            - name: digest
+              invoke: !ref sizedDigest
+              inputs:
+                path: !cel "item.path"
+                state: !cel "item.state"
+                size: !cel "item.size"
+                sizes: !cel "item.read == 'read' ? [item.size] : []"
+          outputs:
+            state: !cel "item.state"
+            read: !cel "item.read"
+            hash: !cel "steps.digest.result.hash"
+        inputs:
+          files: !cel >-
+            enumerate(steps.at.result.states).map(e,
+              {'path': e.value.path, 'state': e.value.state, 'size': e.value.size, 'read': steps.reads.result[e.index]})
+      - name: reverts
+        invoke: !ref historyRows
+        inputs:
+          sql: "SELECT path, status, outcome FROM turn_reverts WHERE turn_id = ? ORDER BY path"
+          bindings: [ !cel "inputs.turnId" ]
+outputs:
+  files: !cel >-
+    !has(steps.net) ? null : dyn(enumerate(steps.net.result.files).map(e, merge(e.value.change, {
+      'firstLine': e.value.firstLine,
+      'hunks': e.value.hunks,
+      'changedSince': cel.bind(at, steps.workspace.result[e.index],
+        e.value.change.after == null ? dyn(at.state != 'absent')
+          : at.read == 'none' ? dyn(true)
+          : at.read == 'skip' ? null
+          : dyn(!(at.hash == e.value.change.after)))
+    })))
+  revert: !cel >-
+    !has(steps.reverts) ? null : Self.revertOutcome(steps.turn.result.revertedAt, steps.reverts.result.rows)
+---
+# POST /chat/{turnId}/revert: puts back what a turn changed, in path order, in
+# batches of up to 25 paths — each batch one hold of the workspace lease, with
+# a 100 ms pause between holds so whoever waits for the lease gets it. Refused,
+# in order: the turn removed (410) or unknown (404), its conversation deleted
+# (410) or archived (409), a turn of that conversation running (409
+# ERR_TURN_IN_PROGRESS), a turn from before checkpoints existed (409
+# ERR_TURN_NOT_CHECKPOINTED), then a workspace that stays busy
+# (ERR_WORKSPACE_BUSY). Any turn may be reverted, not only the latest; a path
+# changed since is skipped. `turns.reverted_at` and the conversation's
+# `revision` move when a path's outcome was written or changed — also when the
+# revert then stops, busy or failed, part-way: what it recorded is stamped
+# first — and when the turn's first revert runs to its end, whatever it
+# restored. A revert refused or failed before any outcome was written moves
+# neither.
+kind: Run.Sequence
+metadata: { name: revertTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: turn
+    invoke: !ref requireTurn
+    inputs:
+      turnId: !cel "inputs.turnId"
+  - name: conversation
+    invoke: !ref requireWritableConversation
+    inputs:
+      conversationId: !cel "steps.turn.result.conversationId"
+  # Only the conversation's last turn can be running.
+  - name: last
+    invoke: !ref journalRead
+    inputs:
+      key: !cel "steps.turn.result.lastTurnId"
+      limit: 0
+  - name: inProgress
+    if: !cel "steps.last.result.state == 'open'"
+    then:
+      - name: refuseInProgress
+        throw:
+          code: ERR_TURN_IN_PROGRESS
+          message: A turn is running in this conversation; revert once it has ended.
+          data:
+            activeTurnId: !cel "steps.turn.result.lastTurnId"
+  - name: legacy
+    if: !cel "!steps.turn.result.checkpointed"
+    then:
+      - name: refuseLegacy
+        throw:
+          code: ERR_TURN_NOT_CHECKPOINTED
+          message: This turn ran before the agent kept checkpoints; its changes cannot be reverted.
+  - name: checkpoint
+    invoke: !ref checkpointPaths
+    inputs:
+      turnId: !cel "inputs.turnId"
+  # A path the turn left as it found it has nothing to restore.
+  - name: targets
+    value: !cel >-
+      steps.checkpoint.result.paths.filter(p, p.before != p.after).map(p, {
+        'path': p.path,
+        'status': p.before == null ? 'created' : p.after == null ? 'deleted' : 'modified',
+        'before': p.before,
+        'after': p.after,
+        'sizes': [p.beforeSize, p.afterSize].filter(s, s != null).map(s, int(s))
+      })
+  - name: next
+    value: !cel "0"
+  - name: recorded
+    value: !cel "false"
+  - name: completed
+    value: !cel "false"
+  - name: paths
+    try:
+      - name: each
+        while: !cel "steps.next.result < size(steps.targets.result)"
+        do:
+          - name: yield
+            if: !cel "steps.next.result > 0"
+            then:
+              - name: pause
+                invoke: { kind: Timer.Delay }
+                inputs:
+                  duration: 100ms
+          - name: batch
+            invoke: !ref leasedWorkspace
+            inputs:
+              operation:
+                revert:
+                  turnId: !cel "inputs.turnId"
+                  paths: !cel >-
+                    slice(steps.targets.result, steps.next.result,
+                      steps.next.result + 25 < size(steps.targets.result)
+                        ? steps.next.result + 25 : size(steps.targets.result))
+          - name: recorded
+            value: !cel "steps.recorded.result || steps.batch.result.result.recorded"
+          - name: failed
+            if: !cel "steps.batch.result.result.failure != null"
+            then:
+              - name: raise
+                invoke: !ref raiseRecorded
+                inputs:
+                  code: !cel "string(steps.batch.result.result.failure.code)"
+                  message: !cel "string(steps.batch.result.result.failure.message)"
+                  data: !cel "steps.batch.result.result.failure.data"
+          - name: next
+            value: !cel "steps.next.result + 25"
+      - name: completed
+        value: !cel "true"
+    finally:
+      - name: stamp
+        if: !cel "steps.recorded.result || (steps.completed.result && steps.turn.result.revertedAt == null)"
+        then:
+          - name: reverted
+            invoke:
+              kind: Sql.Transaction
+              connection: !ref chatDb
+              steps:
+                kind: Run.Sequence
+                inputType:
+                  kind: Telo.JsonSchema
+                  schema:
+                    type: object
+                    additionalProperties: false
+                    required: [conversationId, turnId]
+                    properties:
+                      conversationId: { type: string }
+                      turnId: { type: string }
+                steps:
+                  - name: turn
+                    invoke: !ref checkpointCommand
+                    inputs:
+                      sql: |
+                        UPDATE turns SET reverted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE turn_id = ? AND removed_at IS NULL
+                      bindings: [ !cel "inputs.turnId" ]
+                  - name: revision
+                    invoke: !ref checkpointCommand
+                    inputs:
+                      sql: |
+                        UPDATE conversations
+                        SET revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                        WHERE id = ? AND removed_at IS NULL
+                      bindings: [ !cel "inputs.conversationId" ]
+              inputs:
+                conversationId: !cel "inputs.conversationId"
+                turnId: !cel "inputs.turnId"
+            inputs:
+              conversationId: !cel "steps.turn.result.conversationId"
+              turnId: !cel "inputs.turnId"
+  - name: outcome
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT r.path, r.status, r.outcome FROM turn_reverts r WHERE r.turn_id = ? ORDER BY r.path
+      bindings: [ !cel "inputs.turnId" ]
+  - name: state
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT t.reverted_at, c.revision FROM turns t JOIN conversations c ON c.id = t.conversation_id
+        WHERE t.turn_id = ?
+      bindings: [ !cel "inputs.turnId" ]
+  - name: gone
+    if: !cel "size(steps.state.result.rows) == 0 || steps.state.result.rows[0].reverted_at == null"
+    then:
+      - name: refuseGone
+        throw:
+          code: ERR_JOURNAL_KEY_REMOVED
+          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+outputs:
+  revert: !cel "Self.revertOutcome(string(steps.state.result.rows[0].reverted_at), steps.outcome.result.rows)"
+  revision: !cel "int(steps.state.result.rows[0].revision)"
 ---
 # The model's view of one turn, folded from its journal records: the user's
 # message, then per model call an assistant row (its text, and the tool calls
@@ -1238,10 +3263,14 @@ body: !cel >-
           + 'Continue the request from where it stopped; do not redo work that already has a result.'))))
 ---
 # Project one turn: read its whole key, fold it, and replace its rows — the
-# `messages` rows and its `turn_projections` row (how far it was projected, the
-# last provider state it recorded and the model that produced it) — in one
-# transaction. The projection is never written by anything else, so it can be
-# dropped and rebuilt from the journal at any time.
+# `messages` rows, its `turn_projections` row (how far it was projected, the
+# last provider state it recorded and the model that produced it, and what its
+# summary reports: its usage and the manifests it ran) and its `turn_changes`
+# rows (its net file changes, diffed over its checkpoint) — in one transaction.
+# The projection is never written by anything else, so it can be dropped and
+# rebuilt from the journal and the checkpoint at any time. `ending` says the
+# projection is the turn's last: its end handler passes it, since the key is
+# still open while that handler runs.
 kind: Run.Sequence
 metadata: { name: projectTurn }
 inputType:
@@ -1249,10 +3278,11 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [conversationId, turnId]
+    required: [conversationId, turnId, ending]
     properties:
       conversationId: { type: string }
       turnId: { type: string }
+      ending: { type: boolean }
 steps:
   - name: read
     invoke: !ref journalRead
@@ -1260,6 +3290,25 @@ steps:
       key: !cel "inputs.turnId"
   - name: records
     value: !cel "steps.read.result.entries.map(e, e.data)"
+  - name: net
+    invoke: !ref netChanges
+    inputs:
+      turnId: !cel "inputs.turnId"
+  # Each changed file's last check: the last write_file, edit_file or
+  # telo_check result naming it. A deleted file has none.
+  - name: changes
+    value: !cel >-
+      cel.bind(checks, steps.records.result.filter(r, r.type == 'tool-result'
+            && r.toolResult.name in ['write_file', 'edit_file', 'telo_check'] && has(r.toolResult.output)
+            && type(r.toolResult.output) == type({})
+            && 'path' in r.toolResult.output && 'checkExitCode' in r.toolResult.output)
+          .map(r, {'path': Self.normalPath(string(r.toolResult.output.path)),
+                   'code': int(r.toolResult.output.checkExitCode)}),
+        steps.net.result.files.map(f, cel.bind(mine, checks.filter(c, c.path == f.change.path),
+          merge(f.change, {
+            'firstLine': f.firstLine,
+            'checkExitCode': f.change.status == 'deleted' || size(mine) == 0 ? null : dyn(mine[size(mine) - 1].code)
+          }))))
   - name: write
     invoke:
       kind: Sql.Transaction
@@ -1283,10 +3332,20 @@ steps:
               - contextTokens
               - summary
               - summaryThrough
+              - changes
+              - promptTokens
+              - completionTokens
+              - runs
+              - ended
             properties:
               conversationId: { type: string }
               turnId: { type: string }
               messages: { type: string }
+              changes: { type: string }
+              promptTokens: { type: integer }
+              completionTokens: { type: integer }
+              runs: { type: string }
+              ended: { type: boolean }
               throughId: { type: integer }
               providerState: { type: [string, "null"] }
               providerModel: { type: [string, "null"] }
@@ -1315,13 +3374,32 @@ steps:
                 - !cel "inputs.turnId"
                 - !cel "inputs.conversationId"
                 - !cel "inputs.messages"
+          - name: clearChanges
+            invoke: !ref checkpointCommand
+            inputs:
+              sql: "DELETE FROM turn_changes WHERE turn_id = ?"
+              bindings: [ !cel "inputs.turnId" ]
+          - name: insertChanges
+            invoke: !ref checkpointCommand
+            inputs:
+              sql: |
+                INSERT INTO turn_changes (turn_id, path, status, before_hash, after_hash, added, removed,
+                                          first_line, check_exit_code)
+                SELECT ?, c.value ->> '$.path', c.value ->> '$.status', c.value ->> '$.before', c.value ->> '$.after',
+                       c.value ->> '$.added', c.value ->> '$.removed', c.value ->> '$.firstLine',
+                       c.value ->> '$.checkExitCode'
+                FROM json_each(?) AS c
+              bindings:
+                - !cel "inputs.turnId"
+                - !cel "inputs.changes"
           - name: projection
             invoke: { kind: Sql.Command, connection: !ref chatDb }
             inputs:
               sql: |
                 INSERT INTO turn_projections (turn_id, conversation_id, through_id, provider_state, provider_model,
-                                              tokens, model, context_tokens, summary, summary_through)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                              tokens, model, context_tokens, summary, summary_through,
+                                              prompt_tokens, completion_tokens, runs, ended)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (turn_id) DO UPDATE SET
                   through_id = excluded.through_id,
                   provider_state = excluded.provider_state,
@@ -1330,7 +3408,11 @@ steps:
                   model = excluded.model,
                   context_tokens = excluded.context_tokens,
                   summary = excluded.summary,
-                  summary_through = excluded.summary_through
+                  summary_through = excluded.summary_through,
+                  prompt_tokens = excluded.prompt_tokens,
+                  completion_tokens = excluded.completion_tokens,
+                  runs = excluded.runs,
+                  ended = excluded.ended
               bindings:
                 - !cel "inputs.turnId"
                 - !cel "inputs.conversationId"
@@ -1342,10 +3424,19 @@ steps:
                 - !cel "inputs.contextTokens"
                 - !cel "inputs.summary"
                 - !cel "inputs.summaryThrough"
+                - !cel "inputs.promptTokens"
+                - !cel "inputs.completionTokens"
+                - !cel "inputs.runs"
+                - !cel "inputs.ended ? 1 : 0"
       inputs:
         conversationId: !cel "inputs.conversationId"
         turnId: !cel "inputs.turnId"
         messages: !cel "inputs.messages"
+        changes: !cel "inputs.changes"
+        promptTokens: !cel "inputs.promptTokens"
+        completionTokens: !cel "inputs.completionTokens"
+        runs: !cel "inputs.runs"
+        ended: !cel "inputs.ended"
         throughId: !cel "inputs.throughId"
         providerState: !cel "inputs.providerState"
         providerModel: !cel "inputs.providerModel"
@@ -1399,6 +3490,28 @@ steps:
       summaryThrough: !cel >-
         cel.bind(summaries, steps.records.result.filter(r, r.type == 'context-summary' && has(r.summary)),
           size(summaries) > 0 ? dyn(summaries[size(summaries) - 1].throughTurnId) : null)
+      changes: !cel "json(steps.changes.result)"
+      # The same calls `tokens` sums, by direction.
+      promptTokens: !cel >-
+        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
+            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.promptTokens)),
+          size(spent) == 0 ? 0 : int(sum(spent)))
+      completionTokens: !cel >-
+        cel.bind(spent, steps.records.result.filter(r, r.type == 'step-finish'
+            || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, int(r.usage.completionTokens)),
+          size(spent) == 0 ? 0 : int(sum(spent)))
+      # Every `run_manifest` call that returned a result, in order, with the
+      # path its call named. A call refused as a tool error ran nothing.
+      runs: !cel >-
+        cel.bind(calls, steps.records.result.filter(r, r.type == 'tool-call' && r.toolCall.name == 'run_manifest'),
+          json(steps.records.result.filter(r, r.type == 'tool-result' && r.toolResult.name == 'run_manifest'
+                && has(r.toolResult.output) && type(r.toolResult.output) == type({})
+                && 'exitCode' in r.toolResult.output)
+            .map(r, cel.bind(call, calls.filter(c, c.toolCall.id == r.toolResult.toolCallId),
+              {'path': size(call) > 0 && type(call[0].toolCall.arguments) == type({}) && 'path' in call[0].toolCall.arguments
+                  ? string(call[0].toolCall.arguments.path) : '',
+               'exitCode': int(r.toolResult.output.exitCode)}))))
+      ended: !cel "inputs.ending || steps.read.result.state != 'open'"
 ---
 # Bring the projection up to date for every turn of a conversation whose journal
 # holds records the projection has not seen — the step every history read goes
@@ -1419,7 +3532,7 @@ steps:
     invoke: !ref historyRows
     inputs:
       sql: |
-        SELECT t.turn_id, COALESCE(p.through_id, -1) AS through_id
+        SELECT t.turn_id, COALESCE(p.through_id, -1) AS through_id, COALESCE(p.ended, 0) AS ended
         FROM turns t LEFT JOIN turn_projections p ON p.turn_id = t.turn_id
         WHERE t.conversation_id = ? AND t.removed_at IS NULL
         ORDER BY t.turn_id
@@ -1434,14 +3547,18 @@ steps:
           inputs:
             key: !cel "item.turn_id"
             limit: 0
+        # Behind the journal, or projected while it ran and ended since.
         - name: behind
-          if: !cel "steps.header.result.lastId > int(item.through_id)"
+          if: !cel >-
+            steps.header.result.lastId > int(item.through_id)
+              || (int(item.ended) == 0 && steps.header.result.state != 'open')
           then:
             - name: project
               invoke: !ref projectTurn
               inputs:
                 conversationId: !cel "inputs.conversationId"
                 turnId: !cel "item.turn_id"
+                ending: false
     inputs:
       turns: !cel "steps.turns.result.rows"
       conversationId: !cel "inputs.conversationId"
@@ -1475,22 +3592,32 @@ steps:
           inputs:
             conversationId: !cel "inputs.conversationId"
             turnId: !cel "item.turn_id"
+            ending: false
     inputs:
       turns: !cel "steps.turns.result.rows"
       conversationId: !cel "inputs.conversationId"
 ---
-# Boot: catch up every conversation holding a live turn with no projection row
-# — after the migration that clears `turn_projections`, every conversation.
+# Boot, before any route is served. First every entry a crash left unconfirmed
+# is settled from the file it names. Then every conversation holding a live
+# turn with no projection row — after a migration that clears
+# `turn_projections`, every conversation — or one whose projection was not
+# taken at its ending is caught up: a turn a crash cut off, whose summary is
+# projected here.
 kind: Run.Sequence
 metadata: { name: catchUpProjections }
 steps:
+  - name: settle
+    invoke: !ref settleEntries
+    inputs:
+      callId: null
+      turnId: null
   - name: behind
     invoke: !ref historyRows
     inputs:
       sql: |
         SELECT DISTINCT t.conversation_id FROM turns t
         WHERE t.removed_at IS NULL
-          AND NOT EXISTS (SELECT 1 FROM turn_projections p WHERE p.turn_id = t.turn_id)
+          AND NOT EXISTS (SELECT 1 FROM turn_projections p WHERE p.turn_id = t.turn_id AND p.ended = 1)
         ORDER BY t.conversation_id
       bindings: []
   - name: each
@@ -1752,8 +3879,9 @@ outputs:
   conversation: !cel "steps.read.result.conversation"
 ---
 # Remove every marked turn of a set: its journal key first (a removed turn keeps
-# answering 410 for the journal's marker retention), then its rows. Each step is
-# safe to repeat, so a cascade a crash cut short is finished by the next one.
+# answering 410 for the journal's marker retention), then its checkpoint
+# directory (one that is not there is not an error), then its rows. Each step
+# is safe to repeat, so a cascade a crash cut short is finished by the next one.
 kind: Run.Sequence
 metadata: { name: cascadeTurns }
 inputType:
@@ -1778,6 +3906,10 @@ steps:
             journal: !ref turnJournal
           inputs:
             key: !cel "item"
+        - name: removeBlobs
+          invoke: !ref blobSync
+          inputs:
+            delete: !cel "[item]"
         - name: removeRows
           invoke:
             kind: Sql.Transaction
@@ -1802,6 +3934,21 @@ steps:
                   invoke: { kind: Sql.Command, connection: !ref chatDb }
                   inputs:
                     sql: "DELETE FROM turn_projections WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+                - name: changes
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM turn_changes WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+                - name: entries
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM checkpoint_entries WHERE turn_id = ?"
+                    bindings: [ !cel "inputs.turnId" ]
+                - name: reverts
+                  invoke: { kind: Sql.Command, connection: !ref chatDb }
+                  inputs:
+                    sql: "DELETE FROM turn_reverts WHERE turn_id = ?"
                     bindings: [ !cel "inputs.turnId" ]
                 - name: turn
                   invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -2256,12 +4403,15 @@ steps:
     invoke: { kind: Sql.Command, connection: !ref chatDb }
     inputs:
       sql: |
-        INSERT INTO turns (turn_id, conversation_id, started_at, aborted_at)
-        SELECT ?, id, ?, ? FROM conversations WHERE id = ? AND removed_at IS NULL AND assembling = 1
+        INSERT INTO turns (turn_id, conversation_id, started_at, aborted_at, checkpointed, reverted_at)
+        SELECT ?, c.id, ?, ?, COALESCE(s.checkpointed, 0), s.reverted_at
+        FROM conversations c LEFT JOIN turns s ON s.turn_id = ?
+        WHERE c.id = ? AND c.removed_at IS NULL AND c.assembling = 1
       bindings:
         - !cel "inputs.turnId"
         - !cel "inputs.startedAt"
         - !cel "inputs.abortedAt"
+        - !cel "inputs.sourceTurnId"
         - !cel "inputs.conversationId"
   - name: branchGone
     if: !cel "steps.row.result.rowCount == 0"
@@ -2330,11 +4480,61 @@ steps:
                   code: !cel "error.code"
                   message: !cel "error.message"
                   data: !cel "has(error.data) ? error.data : null"
+  # The copy's checkpoint: the source's entries and revert outcomes under the
+  # copy's id, and its blobs as files of the copy's own directory.
+  - name: entries
+    invoke: !ref checkpointCommand
+    inputs:
+      sql: |
+        INSERT INTO checkpoint_entries (turn_id, call_id, path, before_hash, after_hash, confirmed)
+        SELECT ?, call_id, path, before_hash, after_hash, confirmed FROM checkpoint_entries
+        WHERE turn_id = ? ORDER BY id
+      bindings:
+        - !cel "inputs.turnId"
+        - !cel "inputs.sourceTurnId"
+  - name: outcomes
+    invoke: !ref checkpointCommand
+    inputs:
+      sql: |
+        INSERT INTO turn_reverts (turn_id, path, status, outcome)
+        SELECT ?, path, status, outcome FROM turn_reverts WHERE turn_id = ?
+      bindings:
+        - !cel "inputs.turnId"
+        - !cel "inputs.sourceTurnId"
+  - name: checkpointed
+    if: !cel "steps.entries.result.rowCount > 0"
+    then:
+      - name: blobs
+        invoke: !ref listBlobs
+        inputs:
+          path: !cel "inputs.sourceTurnId"
+      - name: copies
+        invoke:
+          kind: Run.Iteration
+          collection: !cel "inputs.blobs"
+          steps:
+            - name: source
+              invoke: !ref readBlob
+              inputs:
+                path: !cel "inputs.sourceTurnId + '/' + item"
+                encoding: base64
+            - name: copy
+              invoke: !ref writeBlob
+              inputs:
+                path: !cel "inputs.turnId + '/' + item"
+                content: !cel "steps.source.result.content"
+                encoding: base64
+                createParents: true
+        inputs:
+          sourceTurnId: !cel "inputs.sourceTurnId"
+          turnId: !cel "inputs.turnId"
+          blobs: !cel "steps.blobs.result.entries.filter(e, e.type == 'file').map(e, e.name)"
   - name: project
     invoke: !ref projectTurn
     inputs:
       conversationId: !cel "inputs.conversationId"
       turnId: !cel "inputs.turnId"
+      ending: false
 ---
 # POST /conversations/{id}/branch: a new conversation holding a copy of every
 # live turn through `throughTurnId`, record for record, under new ids minted in
@@ -2609,7 +4809,7 @@ outputType:
       checkMessages: { type: string }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: reject
         throw:
@@ -2675,7 +4875,7 @@ steps:
     value: !cel >-
       inputs.args
         .map(a, a.startsWith('-') && a.contains('=') ? a.substring(a.indexOf('=') + 1) : a)
-        .filter(p, Self.outsideWorkspace(p))
+        .filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
   - name: confine
     if: !cel "size(steps.outside.result) > 0"
     then:
@@ -2737,7 +4937,7 @@ steps:
             Running manifests is not enabled in this deployment. Validate the
             tests with telo_check instead, and say they are ready to run.
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: rejectPath
         throw:
@@ -2758,10 +4958,13 @@ outputs:
 ---
 # write_file / edit_file are exposed to the agent through these sequences: the
 # path is confined, the resulting content is scanned for credentials BEFORE
-# anything is written, and every mutation is immediately followed by
+# anything is written, the change is checkpointed under its turn and applied
+# under the workspace lease, and every mutation is immediately followed by
 # `telo check` on the same file, whose report is returned in the tool result.
 # The agent therefore always sees diagnostics after touching a file — it cannot
-# "forget" to validate — and cannot write a key into a file at all.
+# "forget" to validate — and cannot write a key into a file at all. `changes`
+# is the file's Change (none when the bytes did not change) and `hunks` the
+# call's own line diff, null when a side is not comparable text.
 kind: Run.Sequence
 metadata: { name: writeFileChecked }
 inputType:
@@ -2769,8 +4972,9 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, content]
+    required: [turnId, path, content]
     properties:
+      turnId: { type: string }
       path: { type: string }
       content: { type: string }
 outputType:
@@ -2778,7 +4982,7 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, bytesWritten, checkExitCode, checkReport, checkMessages]
+    required: [path, bytesWritten, checkExitCode, checkReport, checkMessages, changes, hunks]
     properties:
       path: { type: string }
       bytesWritten: { type: integer }
@@ -2788,9 +4992,13 @@ outputType:
           - $ref: "telo://Self/CheckReport"
           - type: "null"
       checkMessages: { type: string }
+      changes:
+        type: array
+        items: { $ref: "telo://Self/Change" }
+      hunks: { type: [array, "null"] }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path)"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
       - name: reject
         throw:
@@ -2809,25 +5017,29 @@ steps:
             path: !cel "inputs.path"
             findings: !cel "steps.findings.result"
   - name: write
-    invoke: !ref writeFile
+    invoke: !ref leasedWorkspace
     inputs:
-      path: !cel "inputs.path"
-      content: !cel "inputs.content"
-      createParents: true
+      operation:
+        write:
+          turnId: !cel "inputs.turnId"
+          path: !cel "inputs.path"
+          content: !cel "inputs.content"
   - name: check
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
-  bytesWritten: !cel "steps.write.result.bytesWritten"
+  bytesWritten: !cel "steps.write.result.result.bytesWritten"
   checkExitCode: !cel "steps.check.result.exitCode"
   checkReport: !cel "steps.check.result.stdout.trim() == '' ? null : parseJson(steps.check.result.stdout)"
   checkMessages: !cel "steps.check.result.stderr"
+  changes: !cel "steps.write.result.result.changes"
+  hunks: !cel "steps.write.result.result.hunks"
 ---
-# The edit is scanned as the file it would leave: read through the confined
-# read, the one occurrence replaced, the result scanned. When `oldString` does
-# not occur exactly once there is no result to scan — the edit itself refuses.
+# The edit is scanned as the file it would leave: read under the lease, the one
+# occurrence replaced, the result scanned. When `oldString` does not occur
+# exactly once there is no result to scan — the edit itself refuses.
 kind: Run.Sequence
 metadata: { name: editFileChecked }
 inputType:
@@ -2835,8 +5047,9 @@ inputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, oldString, newString]
+    required: [turnId, path, oldString, newString]
     properties:
+      turnId: { type: string }
       path: { type: string }
       oldString: { type: string }
       newString: { type: string }
@@ -2845,7 +5058,7 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [path, replacements, checkExitCode, checkReport, checkMessages]
+    required: [path, replacements, checkExitCode, checkReport, checkMessages, changes, hunks]
     properties:
       path: { type: string }
       replacements: { type: integer }
@@ -2855,48 +5068,54 @@ outputType:
           - $ref: "telo://Self/CheckReport"
           - type: "null"
       checkMessages: { type: string }
+      changes:
+        type: array
+        items: { $ref: "telo://Self/Change" }
+      hunks: { type: [array, "null"] }
 steps:
-  - name: current
-    invoke: !ref readWorkspaceFile
-    inputs:
-      path: !cel "inputs.path"
-  - name: unique
-    if: !cel "inputs.oldString != '' && size(steps.current.result.content.split(inputs.oldString)) == 2"
+  - name: confine
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
     then:
-      - name: findings
-        value: !cel "SecretScan.credentialFindings(replace(steps.current.result.content, inputs.oldString, inputs.newString))"
-      - name: secret
-        if: !cel "size(steps.findings.result) > 0"
-        then:
-          - name: refuseSecret
-            throw:
-              code: ERR_SECRET_IN_MANIFEST
-              message: !cel "Self.secretMessage(inputs.path, steps.findings.result)"
-              data:
-                path: !cel "inputs.path"
-                findings: !cel "steps.findings.result"
+      - name: reject
+        throw:
+          code: ERR_PATH_OUTSIDE_WORKSPACE
+          message: !cel "Self.outsideWorkspaceMessage(inputs.path)"
   - name: edit
-    invoke: !ref editFile
+    invoke: !ref leasedWorkspace
     inputs:
-      path: !cel "inputs.path"
-      oldString: !cel "inputs.oldString"
-      newString: !cel "inputs.newString"
+      operation:
+        edit:
+          turnId: !cel "inputs.turnId"
+          path: !cel "inputs.path"
+          oldString: !cel "inputs.oldString"
+          newString: !cel "inputs.newString"
   - name: check
     invoke: !ref runCommand
     inputs:
       args: !cel "variables.teloProgram + ['check', '-o', 'json', inputs.path]"
 outputs:
   path: !cel "inputs.path"
-  replacements: !cel "steps.edit.result.replacements"
+  replacements: !cel "steps.edit.result.result.replacements"
   checkExitCode: !cel "steps.check.result.exitCode"
   checkReport: !cel "steps.check.result.stdout.trim() == '' ? null : parseJson(steps.check.result.stdout)"
   checkMessages: !cel "steps.check.result.stderr"
+  changes: !cel "steps.edit.result.result.changes"
+  hunks: !cel "steps.edit.result.result.hunks"
 ---
 # Every result is TEXT the model reads — a `result:` rendering per tool, never
 # the output serialized as JSON. The structured output still rides the tool
-# result record (`output`) for clients.
+# result record (`output`) for clients. The tools that change files read the
+# turn they serve from the agent's caller — never from the model — and
+# checkpoint under it.
 kind: Ai.Tools
 metadata: { name: workspaceTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
 tools:
   - tool: !ref writeFileChecked
     name: write_file
@@ -2908,7 +5127,10 @@ tools:
       what to fix; keep fixing until the check is clean. A path outside the
       workspace fails with ERR_PATH_OUTSIDE_WORKSPACE, and content holding a
       credential is refused with ERR_SECRET_IN_MANIFEST before anything is
-      written.
+      written. ERR_CHECKPOINT_TOO_LARGE means the file it would replace is too
+      large to checkpoint, ERR_PATH_NOT_A_FILE that the path is a directory, a
+      symbolic link or a device — ask the user to make the change;
+      ERR_WORKSPACE_BUSY means another change was in progress — call again.
     parameters:
       type: object
       additionalProperties: false
@@ -2916,6 +5138,10 @@ tools:
       properties:
         path: { type: string }
         content: { type: string }
+    inputs:
+      turnId: !cel "context.turnId"
+      path: !cel "arguments.path"
+      content: !cel "arguments.content"
     result: !cel "'wrote ' + result.path + '\\n' + Self.renderCheck(result.checkExitCode, result.checkReport, result.checkMessages)"
   - tool: !ref editFileChecked
     name: edit_file
@@ -2925,7 +5151,12 @@ tools:
       `wrote <path>`, then `check: clean` or one `file:line:col CODE message`
       line per diagnostic, then any notes the checker wrote. Keep fixing until
       the check is clean. An edit whose result would hold a credential is
-      refused with ERR_SECRET_IN_MANIFEST before anything is written.
+      refused with ERR_SECRET_IN_MANIFEST before anything is written. A file
+      that is not UTF-8 text is refused with ERR_FILE_NOT_TEXT, one too large to
+      checkpoint with ERR_CHECKPOINT_TOO_LARGE, a path that is a directory, a
+      symbolic link or a device with ERR_PATH_NOT_A_FILE — ask the user to make
+      the change; ERR_WORKSPACE_BUSY means another change was in progress —
+      call again.
     parameters:
       type: object
       additionalProperties: false
@@ -2934,6 +5165,11 @@ tools:
         path: { type: string }
         oldString: { type: string }
         newString: { type: string }
+    inputs:
+      turnId: !cel "context.turnId"
+      path: !cel "arguments.path"
+      oldString: !cel "arguments.oldString"
+      newString: !cel "arguments.newString"
     result: !cel "'wrote ' + result.path + '\\n' + Self.renderCheck(result.checkExitCode, result.checkReport, result.checkMessages)"
   - tool: !ref readWorkspaceFile
     name: read_file
@@ -2972,7 +5208,14 @@ tools:
       Delete a file, relative to the workspace root (or a directory tree with
       recursive: true). Fails if the path does not exist. The result is
       `deleted <path>`. After deleting a file other manifests reference, run
-      telo_check on them to catch dangling imports or refs.
+      telo_check on them to catch dangling imports or refs. The workspace root,
+      and a directory holding the agent's own state directory, are refused
+      with ERR_PATH_OUTSIDE_WORKSPACE — delete the entries inside one by one. A
+      deletion that would capture more files or bytes than one call may is
+      refused with ERR_CHECKPOINT_TOO_LARGE, and a symbolic link or a tree
+      holding one (or a device) with ERR_PATH_NOT_A_FILE, before anything is
+      deleted — ask the user to make the change; ERR_WORKSPACE_BUSY means
+      another change was in progress — call again.
     parameters:
       type: object
       additionalProperties: false
@@ -2981,6 +5224,7 @@ tools:
         path: { type: string }
         recursive: { type: boolean }
     inputs:
+      turnId: !cel "context.turnId"
       path: !cel "arguments.path"
       recursive: !cel "'recursive' in arguments ? arguments.recursive : false"
     result: !cel "'deleted ' + result.path"
@@ -3051,16 +5295,17 @@ model: !ref model
 # prompt identity (`promptIdentity`), and a literal block this size made the
 # library unreadable.
 system: !include-text ./primer.md
-# Model responses one request may take — each carries any number of tool calls,
-# which is why the primer tells the agent to batch independent ones. Building an
-# application is several files — a feature library per domain, a test per
-# behaviour, the suite, the wiring — each with its own check-and-fix, plus
-# discovery and a test-and-fix loop. At 16 a build ran out mid-way and lost the
-# reply with the work half-written, which is the one outcome this workflow must
-# not produce. A literal because `maxSteps` is not a CEL slot on this kind; the
-# turn's real ceiling is the token budget, which settles to what was actually
-# spent.
-maxSteps: 40
+# A turn that spends its step budget ends with one more model call that may not
+# use a tool and writes the wrap-up the primer describes, so the turn completes
+# with a readable reply (its `finish` record carries `limit: max-steps`) rather
+# than failing. `int(...)`: an integer variable forwarded through an import
+# arrives as a double at runtime.
+maxSteps: !cel "int(variables.maxSteps)"
+onMaxSteps: conclude
+conclusionPrompt: >-
+  You have used every step this turn may take. Do not call a tool. Reply now
+  with the wrap-up your instructions describe under "When you run out of
+  steps": what is done, what is not done, and the next step.
 # What one tool result may put into the context: a file read whole, a module
 # manifest or a command's output would otherwise fill it in one step.
 maxToolResultBytes: !cel "int(variables.maxToolResultBytes)"
@@ -3144,11 +5389,19 @@ steps:
   # projection succeeds: another client re-reads the records either way.
   - name: projection
     try:
+      # What a cancelled or failed call left unsettled, before the summary
+      # counts the turn's entries. No lease: nothing of this turn writes now.
+      - name: settle
+        invoke: !ref settleEntries
+        inputs:
+          callId: null
+          turnId: !cel "inputs.turnId"
       - name: project
         invoke: !ref projectTurn
         inputs:
           conversationId: !cel "inputs.conversationId"
           turnId: !cel "inputs.turnId"
+          ending: true
     finally:
       - name: ended
         invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -3350,8 +5603,8 @@ steps:
                     invoke: { kind: Sql.Command, connection: !ref chatDb }
                     inputs:
                       sql: |
-                        INSERT INTO turns (turn_id, conversation_id)
-                        SELECT ?, id FROM conversations
+                        INSERT INTO turns (turn_id, conversation_id, checkpointed)
+                        SELECT ?, id, 1 FROM conversations
                         WHERE id = ? AND removed_at IS NULL AND archived = 0 AND assembling = 0
                       bindings:
                         - !cel "inputs.turnId"
@@ -3419,9 +5672,8 @@ steps:
           code: !cel "error.code"
           message: !cel "error.message"
           data: !cel "has(error.data) ? error.data : null"
-  # A turn is already in flight for this conversation — refuse the overlap so two
-  # turns never write the shared workspace at once, and take back everything this
-  # attempt wrote: the reservation, the `turns` row and the claimed key.
+  # A turn is already in flight for this conversation — refuse the overlap, and take
+  # back everything this attempt wrote: the reservation, the `turns` row and the claimed key.
   - name: overlap
     if: !cel "!steps.startTurn.result.acquired"
     then:
@@ -3561,22 +5813,26 @@ steps:
     inputs:
       key: !cel "inputs.turnId"
       limit: 0
+  - name: row
+    invoke: !ref historyRows
+    inputs:
+      sql: |
+        SELECT t.conversation_id, t.aborted_at, t.removed_at,
+               (SELECT MAX(l.turn_id) FROM turns l
+                 WHERE l.conversation_id = t.conversation_id AND l.removed_at IS NULL) AS last_turn_id
+        FROM turns t WHERE t.turn_id = ?
+      bindings: [ !cel "inputs.turnId" ]
+  # Removed is the key gone, or the turn marked while its key still waits for
+  # the cascade.
   - name: removed
-    if: !cel "steps.snapshot.result.state == 'removed'"
+    if: !cel >-
+      steps.snapshot.result.state == 'removed'
+        || (size(steps.row.result.rows) > 0 && steps.row.result.rows[0].removed_at != null)
     then:
       - name: refuseRemoved
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
           message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
-  - name: row
-    invoke: !ref historyRows
-    inputs:
-      sql: |
-        SELECT t.conversation_id, t.aborted_at,
-               (SELECT MAX(l.turn_id) FROM turns l
-                 WHERE l.conversation_id = t.conversation_id AND l.removed_at IS NULL) AS last_turn_id
-        FROM turns t WHERE t.turn_id = ? AND t.removed_at IS NULL
-      bindings: [ !cel "inputs.turnId" ]
   - name: unknown
     if: !cel "steps.snapshot.result.state == 'unknown' || size(steps.row.result.rows) == 0"
     then:
@@ -4493,6 +6749,9 @@ steps:
   - name: ask
     invoke: !ref author
     inputs:
+      # What the file tools checkpoint under; never shown to the model.
+      context:
+        turnId: !cel "inputs.turnId"
       providerState: !cel >-
         size(steps.previous.result.rows) > 0
           && steps.previous.result.rows[0].provider_state != null

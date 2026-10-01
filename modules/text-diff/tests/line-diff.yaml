@@ -1,0 +1,92 @@
+kind: Telo.Application
+metadata:
+  name: LineDiffTest
+  version: 1.0.0
+  description: |
+    `TextDiff.lineDiff(before, after)` as a manifest sees it: one replaced line
+    in ten is one hunk with three lines of context either side; equal texts have
+    no hunks; a final line without its newline is marked; and a text over the
+    instance's byte limit is not compared at all.
+imports:
+  TextDiff: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+# An instance of its own, with a limit small enough to cross in a test.
+kind: TextDiff.LineDiff
+metadata: { name: tiny }
+maxInputBytes: 16
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: texts
+    value:
+      before: "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n"
+      after: "one\ntwo\nthree\nfour\nFIVE\nsix\nseven\neight\nnine\nten\n"
+
+  - name: assertReplacedLine
+    inputs:
+      actual: !cel "TextDiff.lineDiff(steps.texts.result.before, steps.texts.result.after)"
+      expected:
+        comparable: true
+        added: !cel "1"
+        removed: !cel "1"
+        hunks:
+          - oldStart: !cel "2"
+            oldLines: !cel "7"
+            newStart: !cel "2"
+            newLines: !cel "7"
+            lines:
+              - { op: context, text: two }
+              - { op: context, text: three }
+              - { op: context, text: four }
+              - { op: removed, text: five }
+              - { op: added, text: FIVE }
+              - { op: context, text: six }
+              - { op: context, text: seven }
+              - { op: context, text: eight }
+    invoke: !ref Assert.equals
+
+  - name: assertIdentical
+    inputs:
+      actual: !cel "TextDiff.lineDiff(steps.texts.result.before, steps.texts.result.before)"
+      expected:
+        comparable: true
+        added: !cel "0"
+        removed: !cel "0"
+        hunks: []
+    invoke: !ref Assert.equals
+
+  # The last line loses its newline: it is a changed line, and the version
+  # without one says so.
+  - name: assertMissingFinalNewline
+    inputs:
+      actual: !cel "TextDiff.lineDiff('a\\nb\\n', 'a\\nb')"
+      expected:
+        comparable: true
+        added: !cel "1"
+        removed: !cel "1"
+        hunks:
+          - oldStart: !cel "1"
+            oldLines: !cel "2"
+            newStart: !cel "1"
+            newLines: !cel "2"
+            lines:
+              - { op: context, text: a }
+              - { op: removed, text: b }
+              - { op: added, text: b, noNewline: true }
+    invoke: !ref Assert.equals
+
+  # 17 bytes against a 16-byte limit, on either side.
+  - name: assertOverLimit
+    inputs:
+      actual:
+        before: !cel "Self.tiny('12345678901234567', 'short')"
+        after: !cel "Self.tiny('short', '12345678901234567')"
+      expected:
+        before: { comparable: false, added: null, removed: null, hunks: null }
+        after: { comparable: false, added: null, removed: null, hunks: null }
+    invoke: !ref Assert.equals

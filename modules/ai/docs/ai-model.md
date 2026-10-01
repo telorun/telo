@@ -78,8 +78,24 @@ async invoke(input: ModelInvokeInput, ctx?: InvokeContext) {
 | `messages` | The conversation, as `Ai.Message` turns. Required, non-empty. |
 | `options` | Request options, already merged by the operation from its own and the caller's. |
 | `tools` | The tools this call may ask for. Absent when the caller offers none. |
+| `toolChoice` | `auto` or `none`; absent means `auto`. Legal only beside `tools`. |
 | `providerState` | Opaque state a previous turn produced, replayed verbatim. |
 | `responseFormat` | The shape the answer must take, when the provider enforces one. |
+
+### `toolChoice` — a call that may not use a tool
+
+`auto` leaves it to the model whether to ask for a tool. `none` asks for an answer
+**without** requesting one, while `tools` stay declared: a conversation that already
+holds tool calls and their results is only valid to most endpoints while the tools it
+names are still described, so "no tools this time" cannot be said by leaving `tools`
+out. An agent's concluding call (`onMaxSteps: conclude`) is this shape.
+
+A provider maps `none` onto its endpoint's own switch. A model may still return a tool
+call under `none`; what to do with it is the caller's — an agent neither runs nor
+reports one.
+
+`toolChoice` without `tools` is refused by the contract: `telo check` reports the call,
+and the kernel raises `ERR_INPUT_INVALID` at dispatch.
 
 ### `providerState` — how reasoning survives a tool loop
 

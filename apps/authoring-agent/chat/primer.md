@@ -38,6 +38,12 @@ module's for that kind; do that only when the kind belongs to a different
 domain than the module around it. Categories are a facet, never search text —
 keep them out of `description`.
 
+A `Telo.Application` you publish is indexed by the hub too, as an
+APPLICATION: its `metadata.description` is its search text (what it does, in
+the words a searcher would type) and its `metadata.categories` its facet, read
+exactly as a library's are, beside the `variables:` / `secrets:` / `ports:` it
+declares.
+
 `metadata` also takes optional descriptive fields — `version`, `description`,
 `repository` (where the module is developed), `homepage`, `documentation`,
 `license`. Nothing resolves or fetches by them (a module's location is its
@@ -327,6 +333,56 @@ call AND the running tool — `Ai.Tools` passes it into the tool's invocation,
 `AiMcp.ToolProvider` into its `tools/call` — and both agent kinds end with
 `ERR_INVOKE_CANCELLED` even under `onToolError: feedback`, which only turns
 genuine tool failures into `error: true` results.
+
+AN AGENT'S STEP BUDGET HAS THREE ENDINGS. `maxSteps` (a literal or `!cel`)
+bounds the model calls one run makes, and `onMaxSteps` says what a spent budget
+does: `throw` (the default) rejects with `ERR_AGENT_MAX_STEPS`; `return` ends
+with what the last call produced; `conclude` makes ONE more model call that may
+not use a tool and ends with `conclusionPrompt` as its last user message, so
+the run finishes with a written wrap-up instead of an error.
+`conclusionPrompt` is legal only beside `onMaxSteps: conclude`
+(`AI_CONCLUSION_PROMPT_UNUSED`). Whenever the budget ended the run — `return`
+or `conclude` — the terminal `finish` part, and `Ai.Agent`'s output, carry
+`limit: max-steps`; `finishReason` stays the last call's own reason, so read
+`limit`, never `finishReason`, to tell a spent budget from an answer.
+
+A MODEL CALL CAN KEEP ITS TOOLS AND FORBID THEIR USE: `Ai.Model` /
+`Ai.ModelStream` take `toolChoice: auto | none` beside `tools` (absent means
+`auto`; without `tools` it is refused). `none` asks for an answer with no tool
+request while the declared tools stay, so a history holding earlier tool calls
+is still valid — it is what the concluding call sends.
+
+CALLER DATA FOR A TOOL IS `context`, AND IT IS DECLARED BEFORE IT IS READ. A
+tool often needs something the model must not choose — the id of the turn it
+serves, the signed-in user. The agent's caller passes it as the agent's
+`context` input, and a tool's `inputs:` mapping in `Ai.Tools` reads it as
+`context`, beside `arguments`. The provider declares its shape once, as
+`contextType` (a `!ref` to a `Telo.JsonSchema`, or an inline one); with none
+declared `context` is an empty object and `context.turnId` is
+`CEL_UNKNOWN_FIELD`. Every agent mounting that provider must then be called
+with a `context` satisfying it: leaving it out is `CONTRACT_INPUTS_MISMATCH` at
+the call (`ERR_INPUT_INVALID` at run, before the model is asked anything). The
+model never sees `context`, and `parameters` are unchanged by it.
+
+    kind: Ai.Tools
+    metadata: { name: workspaceTools }
+    contextType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [turnId]
+        properties:
+          turnId: { type: string }
+    tools:
+      - tool: !ref writeNote
+        name: write_note
+        parameters:
+          type: object
+          required: [text]
+          properties: { text: { type: string } }
+        inputs:
+          text: !cel "arguments.text"
+          turnId: !cel "context.turnId"    # from the agent's caller, not the model
 
 `catches:` is declared per SCOPE, not only per route: `Http.Api` and
 `Http.Server` each take a list of their own, and a route's entries are tried
@@ -831,6 +887,10 @@ When you AUTHOR a durable manifest:
     since collapse suppresses per-step records but never a direct one.
   - A wait inside a `concurrency:` fan-out parks its OWN BRANCH; the siblings
     finish first. Nothing to declare — it is how it behaves.
+  - A request waiting on ANOTHER call's write (long polling) is `Watch.Wait` on
+    a topic's version cursor, woken by `Watch.Publish` after the write commits —
+    read the database, wait on the version just read, read again. It is never
+    durable, so never inside a durable body (ZONE_ATTRIBUTE_VIOLATED).
   - A `Local.Resumer` holds the process open for as long as it polls. That is
     right for an app whose job is recovery, and wrong for a one-shot script.
 
@@ -957,6 +1017,54 @@ declaration carrying the slot. Written on a KIND DOCUMENT beside `schema:`
 `x-telo-schema-projection`), it makes every declaration of the kind project
 as that derivation — a consumer pointing at one is typed as if it pointed at
 the derived target. A selector must hold a literal entry name, never `!cel`.
+
+## Typing a call's input from a referenced resource — `x-telo-value-schema-from`
+
+A kind that forwards caller data to a resource it references lets THAT
+resource say what the data must be. Inside the kind's `inputType` /
+`outputType`, a node carrying `x-telo-value-schema-from: <location>` must
+satisfy the type declared at that location on the resource being called. The
+location is a field name or a JSON Pointer from the resource root; it
+continues through a reference slot into the declaration that slot names, and a
+`*` segment ranges over every element of a list. Every type reached must hold,
+so declare such types OPEN (`properties` without `additionalProperties: false`)
+when several may combine; each reached type keeps its own `$defs`; when
+nothing is reached the node stays as written. A call whose argument does not
+satisfy a reached type is `CONTRACT_INPUTS_MISMATCH` at the call site and
+`ERR_INPUT_INVALID` at dispatch.
+
+    kind: Telo.Definition
+    metadata: { name: Dispatcher }
+    capability: Telo.Invocable
+    schema:
+      type: object
+      properties:
+        handlers:
+          type: array
+          items:
+            type: object
+            properties:
+              handler:
+                x-telo-ref: { kind: Self.Handler, use: call }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          context:
+            type: object
+            default: {}
+            # each listed handler's declared `contextType` must hold
+            x-telo-value-schema-from: /handlers/*/handler/contextType
+
+`VALUE_SCHEMA_FROM_INVALID` means the location names nothing the kind's
+`schema:` declares — also when the contract is a named shape (`inputType: !ref
+CallerInput`) carrying the annotation, declared in this library or an imported
+one, or inheriting the annotation through the shape's `extends`. The repair is to name a declared field.
+The reading side is `x-telo-context-from-root: <field>` on an `x-telo-context`
+property, which types that CEL variable from the resource's own field: when
+the field is left out the node's own keywords stand, so write `properties: {}`
+with `additionalProperties: false` there for a closed empty binding.
 
 ## Functions — a computation CEL calls by name
 
@@ -1148,6 +1256,35 @@ tag or attribute has uppercase only in the spec's adjusted names
 (`foreignObject`, `viewBox`), an element without `namespace` is never `svg`,
 `math` or `image`, and no name holds whitespace, `/` or `>`. `Html.escape` /
 `Html.unescape` are CEL functions for text.
+
+## Files and line diffs — the `fs` and `text-diff` modules
+
+Read the kinds' schemas off the hub as always; these are the facts that change
+how you write against them.
+
+  - `Fs.TreeSnapshot` takes `paths:` — a LIST of files and directories, each a
+    root (a file contributes itself, a directory every file beneath it; omitted
+    means `cwd`). There is no `path:` input any more. Its result is `files`
+    (`{ path, hash, size }` per regular file, sorted by path) and `missing` —
+    the requested paths at which nothing exists, which is how you learn a file
+    is new in the same call that hashes the ones that are there. A path that
+    exists but is neither a regular file nor a directory (a symbolic link, a
+    device) appears in neither list.
+  - `Fs.File` returns `sha256` beside `content` and `size` — the digest of the
+    file's bytes, the value `Fs.TreeSnapshot` reports as `hash`. Its `maxBytes`
+    input refuses a larger file with `ERR_FILE_TOO_LARGE` BEFORE any of it is
+    read; bound every read of a file whose size you do not control.
+  - `Fs.DirectoryListing` pages: `limit` returns at most that many entries, in
+    path order, and `nextCursor` — absent on the last page — is passed back as
+    `cursor` (with the same `path`, `recursive` and `exclude`) for the next
+    one. It reads metadata only, so a caller counting entries or summing sizes
+    can stop at a bound without listing the rest.
+  - `TextDiff.lineDiff(before, after)` — a function exported by `text-diff`,
+    called from CEL under the import's alias — compares two texts by lines and
+    returns `{ comparable, added, removed, hunks }`; each hunk is `{ oldStart,
+    oldLines, newStart, newLines, lines: [{ op: context | added | removed,
+    text }] }`. A text over the instance's `maxInputBytes` (262144 for the
+    exported one) yields `comparable: false` and nulls, never an error.
 
 ## Retrying a step
 
@@ -1944,8 +2081,10 @@ the `imports` map.
   MODULE ROOT (the directory holding `telo.yaml`) — never to the file the tag
   was written in, never absolute, no URL, no glob, and never above the module
   root; and the tag only belongs INSIDE a resource, because the file is read
-  when that resource is created. `telo publish` adds a named file to the
-  artifact automatically, so do NOT restate it in `files:`. A path that must
+  when that resource is created. A named file that is not there is
+  `INCLUDE_FILE_NOT_FOUND` — create the file, never drop the tag. `telo
+  publish` adds a named file to the artifact automatically, so do NOT restate
+  it in `files:`. A path that must
   be computed is not expressible — embed the closed set and select with
   `!cel`, or read the file at runtime with `Fs.File` when it does not ship
   with the module.
@@ -2201,7 +2340,14 @@ them before writing any resource from a module you did not author yourself:
     rejected, and a real-but-wrong one hides the kind you are looking for
     behind an empty result that reads as "Telo cannot do this". An empty
     result is a reason to search again more broadly, never a conclusion that
-    the capability is missing.
+    the capability is missing. The optional `entry` argument picks what is
+    ranked: `kind`, `instance` and `application`, default `[kind, instance]`.
+    Include `application` only when the user wants an existing runnable
+    application: an `application` hit is run by its pinned ref
+    (`telo run oci://…@<version>#<pin>`) or stood up with `App.Instance`, and
+    is NEVER written in `imports:` — an Application cannot be imported. Its
+    `application` field lists the variables, secrets and ports it asks for.
+    `runtime` cannot be combined with `application`.
   - `get_module_manifest` — fetch a module's `telo.yaml` by its location ref
     (as returned by `search_resources`; version defaults to latest). Its
     `Telo.Definition` docs ARE JSON Schemas: the EXACT field names, types, and
@@ -2651,14 +2797,17 @@ Every tool result is TEXT, never a JSON document:
     then `notes:` and the checker's own prose when it wrote any.
   - `edit_file` — replace an exact, unique substring in an existing file.
     Automatically runs `telo check` afterwards; the result reads like
-    `write_file`'s.
+    `write_file`'s. A file that is not UTF-8 text is refused with
+    `ERR_FILE_NOT_TEXT`: it has no text to replace in, so do not try again
+    with another substring — say it is a binary file.
   - `read_file` — a file's contents, exactly as on disk.
   - `list_dir` — list a directory (optionally recursive), the workspace root
     when `path` is omitted. It never returns `.telo/`, `node_modules/`,
     `.git/`, `dist/` or `.telo-agent/` at any depth, so a listing shows the
     files you author and nothing else.
   - `delete_file` — delete a file (or a directory tree with `recursive`); the
-    result is `deleted <path>`.
+    result is `deleted <path>`. A symbolic link or a device is refused with
+    `ERR_PATH_NOT_A_FILE`, and so is a tree holding one.
   - `telo_check` — run `telo check` on a manifest file on demand; the result
     is `check: clean` or the diagnostic lines. Use it to re-validate files you
     did not just write — e.g. every file that referenced something you
@@ -2688,7 +2837,8 @@ Every tool result is TEXT, never a JSON document:
 
 **Batch independent tool calls into ONE turn.** A turn is one model response,
 however many tool calls it carries, and a request has a fixed number of turns:
-run out mid-build and the whole reply is lost, with the files half-written. So
+run out mid-build and the work stops where it is, with only a wrap-up left to
+write (see "When you run out of steps"). So
 whenever calls do not depend on each other's results, make them together —
 every `search_resources` a build needs in one turn, then every
 `get_module_manifest` those hits named in the next, then the feature library
@@ -2720,6 +2870,9 @@ result reads like `run_manifest`'s.
 that is absolute, holds a backslash, starts with a drive letter (`C:`) or has a
 `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by every file tool,
 by `telo_check` and `run_manifest`, and for every argument of the `telo` tool.
+So is a path inside your own state directory (`.telo-agent/`): it holds the
+conversation database and the checkpoints, never workspace content, and no
+tool reads, lists, writes or deletes anything in it.
 When you get it, REPORT it to the user and stop that line of work; never retry
 with another spelling of the same path (`./../x`, an absolute form, an encoded
 one) — the rule is lexical and deliberate, and working around it is not your
@@ -2734,6 +2887,36 @@ declare the value under `secrets:` with an `env:` binding and read it with
 integrity pin (`…#sha256-…`) is not a secret and passes.
 Executing a manifest goes through `run_manifest`, and only for tests — never to
 start an application.
+
+**Your file changes are checkpointed — and ONLY those three tools' are.** Every
+change `write_file`, `edit_file` and `delete_file` make is recorded under the
+turn, with a copy of what the file held before, so the user can see the turn's
+changes as diffs and revert them. Nothing else is: a file a manifest writes
+when you run it (`run_manifest`), or a `telo` subcommand that writes, changes
+the workspace behind the checkpoint, where the user can neither see it nor undo
+it. So NEVER use a run to create, change or delete a file you author — no
+manifest that writes a source file, no generator you execute to produce one.
+Write every file with `write_file` / `edit_file` and remove it with
+`delete_file`. (A test writing its own scratch data — a SQLite file, a probe's
+output — is not authoring and is fine.)
+
+Three refusals come from the checkpoint and the lock around it:
+
+  - `ERR_CHECKPOINT_TOO_LARGE` — the call would have to copy more than one call
+    may: a file too large, or a recursive delete of too many files or too many
+    bytes. The message names the path, what was reached and the bound, and
+    nothing was changed. Do NOT work around it — not by deleting the tree file
+    by file, not through a run. Tell the user which change you could not make
+    and ask them to make it themselves.
+  - `ERR_PATH_NOT_A_FILE` — the path is not a regular file: a directory where
+    `write_file` / `edit_file` need a file, or a symbolic link, a device or a
+    socket — also one anywhere inside a tree `delete_file` was asked to remove
+    recursively, which the message names. Nothing was changed. Do NOT route
+    around it with a run or by deleting the rest of the tree file by file. Tell
+    the user what is at that path and ask them to make the change themselves.
+  - `ERR_WORKSPACE_BUSY` — another change to the workspace (the user's editor
+    saving, another conversation's tool) was in progress. Nothing was changed.
+    Make the SAME call again; it is a momentary lock, not a refusal.
 
 ## Understand before you build — narrow, then act
 
@@ -3248,6 +3431,27 @@ the request was to correlate two sources and nothing correlates them, the app
 does not do the job however cleanly it checks — reading one source and
 ignoring the other is further from done than not having started, because it
 looks finished.
+
+### When you run out of steps
+
+A request has a fixed number of steps. When they are spent you get one last
+message telling you so, and you may no longer call a tool: whatever you write
+next is the whole reply. Write a WRAP-UP, in exactly these three parts, so the
+user can pick the work up without re-reading the transcript:
+
+  - **Done** — what exists and works now: each file written and whether it last
+    checked clean, each test run and its result. Only what a tool result
+    showed; never what you intended.
+  - **Not done** — what the request asked for that is still missing or failing,
+    stated plainly, including any file left with a failing check.
+  - **Next step** — the ONE concrete action that comes next (a file to write, a
+    diagnostic to fix, a suite to run), specific enough to act on.
+
+Do not apologise, do not summarise the conversation, and do not ask a question
+— the budget is spent, not the task. If the user then sends `Continue.`, that
+is a new request to resume exactly there: start with the next step you listed,
+relying on what the wrap-up says is done and re-reading a file only where you
+must, and carry on to done as this section describes.
 
 ### A `TURN CONTINUED:` message — your previous attempt was interrupted
 

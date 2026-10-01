@@ -1,0 +1,43 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunnerRefusals
+  version: 1.0.0
+  description: |
+    What the runner refuses. A runner serving no repository does not boot, nor
+    does one mapping two repositories to one directory; a feed page that is not
+    the protocol's shape ends the runner at the feed call with the
+    output-contract error, before any command runs; and a reader misspelling a
+    field of the typed feed page fails `telo check`.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref noRepos
+  - !ref sharedDirectory
+  - !ref malformedFeed
+  - !ref misspelledField
+---
+kind: Assert.Manifest
+metadata: { name: noRepos }
+source: ./__fixtures__/empty-repos/telo.yaml
+expect:
+  runFails: "repos: / must NOT have fewer than 1 properties"
+---
+kind: Assert.Manifest
+metadata: { name: sharedDirectory }
+source: ./__fixtures__/shared-directory/telo.yaml
+expect:
+  runFails: "RUNNER_REPOS maps alpha and beta to the same directory"
+---
+kind: Assert.Manifest
+metadata: { name: malformedFeed }
+source: ./__fixtures__/malformed-feed/telo.yaml
+expect:
+  runFails: "Run.Sequence/feed: result do not satisfy the declared outputType"
+---
+kind: Assert.Manifest
+metadata: { name: misspelledField }
+source: ./__fixtures__/misspelled-feed/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: steps.pending.result.cusor

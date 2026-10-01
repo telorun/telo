@@ -205,6 +205,10 @@ export interface EngineFileClaim {
   /** The path may name a directory, which then claims every file beneath it.
    *  Whether it does is a question for whoever holds the directory. */
   readonly directory?: boolean;
+  /** The diagnostic code reporting a claim that names nothing — the static twin
+   *  of the runtime's refusal, declared by the engine so the existence check
+   *  recognises no tag by name. */
+  readonly notFoundCode: string;
 }
 
 /** One CEL expression inside a tagged scalar, by offset into the scalar's

@@ -1,0 +1,172 @@
+kind: Telo.Application
+metadata:
+  name: FsBoundedReads
+  version: 1.0.0
+  description: |
+    Reads that say how much they took. Fs.TreeSnapshot takes several roots — a
+    file, a directory, one that does not exist — and reports each file's size
+    and the roots it could not find. Fs.File reports the sha256 a snapshot
+    reports for the same file, and refuses a file over `maxBytes` without
+    reading it. Fs.DirectoryListing pages a tree in path order.
+imports:
+  Fs: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+variables:
+  fixturesDir:
+    env: FS_BOUNDED_READS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/fs/tests/__fixtures__
+---
+kind: Fs.TreeSync
+metadata: { name: sync }
+cwd: !cel "variables.fixturesDir.joinPath('scratch-bounded')"
+---
+kind: Fs.TreeSnapshot
+metadata: { name: snap }
+cwd: !cel "variables.fixturesDir.joinPath('scratch-bounded')"
+---
+kind: Fs.File
+metadata: { name: read }
+cwd: !cel "variables.fixturesDir.joinPath('scratch-bounded')"
+---
+kind: Fs.DirectoryListing
+metadata: { name: list }
+cwd: !cel "variables.fixturesDir.joinPath('scratch-bounded')"
+---
+kind: Fs.FileRemoval
+metadata: { name: remove }
+cwd: !cel "variables.fixturesDir"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: reset
+    try:
+      - name: doReset
+        inputs: { path: scratch-bounded, recursive: true }
+        invoke: !ref remove
+    catch:
+      - name: noLeftover
+        inputs: { actual: 1, expected: 1 }
+        invoke: !ref Assert.equals
+
+  # Ten entries once listed: two directories and eight files.
+  - name: seed
+    inputs:
+      write:
+        - { path: a.txt, content: "alpha\n" }
+        - { path: a/1.txt, content: "one\n" }
+        - { path: a/2.txt, content: "two\n" }
+        - { path: b/1.txt, content: "three\n" }
+        - { path: c.txt, content: "gamma\n" }
+        - { path: d.txt, content: "d" }
+        - { path: e.txt, content: "e" }
+        - { path: f.txt, content: "f" }
+    invoke: !ref sync
+
+  # A file root, a directory root and a root that does not exist.
+  - name: snapshot
+    inputs:
+      paths: [c.txt, a, gone/missing.txt]
+    invoke: !ref snap
+
+  - name: readC
+    inputs: { path: c.txt }
+    invoke: !ref read
+
+  - name: assertSnapshot
+    inputs:
+      actual:
+        snapshot: !cel "steps.snapshot.result"
+        readSha256: !cel "steps.readC.result.sha256"
+      expected:
+        snapshot:
+          files:
+            - { path: a/1.txt, hash: 2c8b08da5ce60398e1f19af0e5dccc744df274b826abe585eaba68c525434806, size: !cel "4" }
+            - { path: a/2.txt, hash: 27dd8ed44a83ff94d557f9fd0412ed5a8cbca69ea04922d88c01184a07300a5a, size: !cel "4" }
+            - { path: c.txt, hash: ae9a6306a205417afddd14316cc1d0d5e04a98f1be10865dce643925ee070ce2, size: !cel "6" }
+          missing: [gone/missing.txt]
+        # The digest a read reports is the one the snapshot reports for c.txt.
+        readSha256: ae9a6306a205417afddd14316cc1d0d5e04a98f1be10865dce643925ee070ce2
+    invoke: !ref Assert.equals
+
+  # c.txt is 6 bytes: a 6-byte bound reads it, a 5-byte bound refuses it.
+  - name: readWithinBound
+    inputs: { path: c.txt, maxBytes: 6 }
+    invoke: !ref read
+
+  - name: readOverBound
+    try:
+      - name: read
+        inputs: { path: c.txt, maxBytes: 5 }
+        invoke: !ref read
+      - name: wasRead
+        throw:
+          code: FILE_WAS_READ
+          message: a file over `maxBytes` was read
+    catch:
+      - name: assertTooLarge
+        inputs:
+          actual:
+            code: !cel "error.code"
+            size: !cel "error.data.size"
+            maxBytes: !cel "error.data.maxBytes"
+          expected:
+            code: ERR_FILE_TOO_LARGE
+            size: !cel "6"
+            maxBytes: !cel "5"
+        invoke: !ref Assert.equals
+
+  - name: assertWithinBound
+    inputs:
+      actual: !cel "steps.readWithinBound.result.content"
+      expected: "gamma\n"
+    invoke: !ref Assert.equals
+
+  # Ten entries, three to a page: four pages, each continuing after the last.
+  - name: page1
+    inputs: { recursive: true, limit: 3 }
+    invoke: !ref list
+  - name: page2
+    inputs:
+      recursive: true
+      limit: 3
+      cursor: !cel "steps.page1.result.nextCursor"
+    invoke: !ref list
+  - name: page3
+    inputs:
+      recursive: true
+      limit: 3
+      cursor: !cel "steps.page2.result.nextCursor"
+    invoke: !ref list
+  - name: page4
+    inputs:
+      recursive: true
+      limit: 3
+      cursor: !cel "steps.page3.result.nextCursor"
+    invoke: !ref list
+
+  - name: assertPages
+    inputs:
+      actual:
+        page1: !cel "steps.page1.result.entries.map(e, e.path)"
+        page2: !cel "steps.page2.result.entries.map(e, e.path)"
+        page3: !cel "steps.page3.result.entries.map(e, e.path)"
+        page4: !cel "steps.page4.result.entries.map(e, e.path)"
+        lastPageHasCursor: !cel "has(steps.page4.result.nextCursor)"
+      expected:
+        # Path order: `a.txt` sorts before `a/1.txt`, since `.` precedes `/`.
+        page1: [a, a.txt, a/1.txt]
+        page2: [a/2.txt, b, b/1.txt]
+        page3: [c.txt, d.txt, e.txt]
+        page4: [f.txt]
+        lastPageHasCursor: false
+    invoke: !ref Assert.equals
+
+  - name: cleanup
+    inputs: { path: scratch-bounded, recursive: true }
+    invoke: !ref remove

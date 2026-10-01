@@ -248,6 +248,13 @@ export type {
 } from "./reference-reach.js";
 export { scopeSlotProblems } from "./validate-scope-slots.js";
 export type { ScopeSlotProblem } from "./validate-scope-slots.js";
+export { namedContractShape, valueSchemaFromProblems } from "./validate-value-schema-location.js";
+export type {
+  NamedContractShape,
+  ValueSchemaFromProblem,
+} from "./validate-value-schema-location.js";
+export { resolveContractValueSchemas } from "./value-schema-slot.js";
+export type { ValueSchemaHost } from "./value-schema-slot.js";
 export {
   hasDeclaredUse,
   isRefSlot,
@@ -448,6 +455,7 @@ export type {
   CompatibilityConflict,
   CompatibilityResult,
   ExternalSchemaResolver,
+  StandInOptions,
 } from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
 export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
@@ -530,6 +538,14 @@ export type {
   FlagArgBinding,
   PositionalArgBinding,
 } from "./application-arguments.js";
+export { readApplicationContract } from "./application-contract.js";
+export type {
+  ApplicationContract,
+  ApplicationContractArg,
+  ApplicationContractPort,
+  ApplicationContractSecret,
+  ApplicationContractVariable,
+} from "./application-contract.js";
 export {
   decodePlainLiterals,
   mapTextLeaves,
@@ -561,6 +577,7 @@ export {
   verifiedFetch,
   sha256Base64Url,
   IntegrityError,
+  ManifestNotFoundError,
 } from "./sources/integrity.js";
 export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";

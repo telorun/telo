@@ -1,0 +1,57 @@
+# `toolChoice` on a model call: accepted beside `tools`, where `none` reaches the
+# model with the tools still declared, and refused on a call offering none.
+kind: Telo.Application
+metadata:
+  name: ModelToolChoiceTest
+  version: 1.0.0
+  description: A model call may forbid tool use only while it declares tools.
+imports:
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref toolChoiceReachesTheModel
+  - !ref toolChoiceWithoutTools
+  - !ref toolChoiceWithoutToolsAtRuntime
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+echoRequest: true
+---
+kind: Run.Sequence
+metadata: { name: toolChoiceReachesTheModel }
+steps:
+  - name: call
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: "hello"
+      tools:
+        - name: lookup
+          parameters: { type: object }
+      toolChoice: none
+  - name: assertText
+    inputs:
+      actual: !cel "steps.call.result.text"
+      expected: "hello [tools: lookup] [toolChoice: none]"
+    invoke:
+      kind: Assert.Equals
+---
+# Refused where the call is written, and — from a consumer whose check is
+# silent — by the bound contract (`ERR_INPUT_INVALID`, matched by its message);
+# the model fixture fails any request it receives.
+kind: Assert.Manifest
+metadata: { name: toolChoiceWithoutTools }
+source: ./__fixtures__/tool-choice-without-tools/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "must have property tools when property toolChoice is present"
+---
+kind: Assert.Manifest
+metadata: { name: toolChoiceWithoutToolsAtRuntime }
+source: ./__fixtures__/tool-choice-without-tools-app.yaml
+expect:
+  errors: []
+  runFails: "AiEcho.EchoModel/echo: inputs do not satisfy the declared inputType"

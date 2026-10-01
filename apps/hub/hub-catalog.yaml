@@ -9,8 +9,8 @@ kind: Telo.Library
 metadata:
   name: HubCatalog
   description: >-
-    Keyed reads over the discovery index: one module's metadata, kinds and
-    versions, the cached manifest text for a version, the kinds implementing a
+    Keyed reads over the discovery index: one module's metadata, kinds, an
+    application's declared inputs and versions, the cached manifest text for a version, the kinds implementing a
     contract, the ready-made instances of a kind, ref autocomplete, and how far a
     registration has got.
 requires:
@@ -170,7 +170,9 @@ outputType:
       kinds: { type: array }
       exportedResources: { type: array }
       versions: { type: array }
-    required: [found, module, kinds, exportedResources, versions]
+      # An application's declared contract; null for a library.
+      application: { type: [object, "null"], additionalProperties: true }
+    required: [found, module, kinds, exportedResources, versions, application]
 steps:
   - name: tracked
     invoke: !ref trackedModules
@@ -187,8 +189,16 @@ steps:
                mv.homepage, module_publisher(m.ref, m.transport) AS publisher, m.transport,
                COALESCE(mv.integrity, '') AS integrity,
                mv.deprecated_reason, mv.replaced_by,
-               COALESCE(mv.runtimes, '{}') AS runtimes, mv.runtimes_full,
-               mv.languages, mv.portable,
+               /* No runtime reach for an application: the hub does not index the
+                  reach of a whole import closure. */
+               CASE WHEN mv.root_kind = 'Application' THEN NULL
+                    ELSE json_build_object('runtimes', COALESCE(mv.runtimes, '{}'),
+                                           'full', mv.runtimes_full,
+                                           'languages', mv.languages,
+                                           'portable', mv.portable) END AS runtime,
+               /* The declared contract of an application version, NULL for any
+                  other — including one whose root kind is not recorded. */
+               application_contract(mv.module_id, mv.version) AS application,
                (SELECT COALESCE(json_agg(json_build_object('slug', s, 'label', l) ORDER BY s), '[]'::json)
                 FROM unnest(mv.categories, mv.category_labels) AS t(s, l)) AS categories,
                /* The module's own kinds, then the kinds it re-exports from an
@@ -267,11 +277,14 @@ outputs:
      'publisher': steps.row.result.rows[0].publisher, 'categories': steps.row.result.rows[0].categories,
      'deprecated': {'reason': steps.row.result.rows[0].deprecated_reason,
                     'replacedBy': steps.row.result.rows[0].replaced_by},
-     'runtime': {'runtimes': steps.row.result.rows[0].runtimes, 'full': steps.row.result.rows[0].runtimes_full,
-                 'languages': steps.row.result.rows[0].languages, 'portable': steps.row.result.rows[0].portable}}
+     'runtime': steps.row.result.rows[0].runtime}
   kinds: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].kinds : []"
   exportedResources: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].exportedResources : []"
   versions: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].versions : []"
+  # An application exports nothing, so its `kinds` and `exportedResources` are
+  # empty and its `module.runtime` is null — the hub does not index the reach of
+  # a whole import closure.
+  application: !cel "steps.row.result.rows.size() > 0 ? steps.row.result.rows[0].application : null"
 ---
 # Newest-first, matching the `telo module versions` CLI verb this mirrors (one
 # contract, three front-ends): valid dotted-numeric versions sort by numeric
@@ -402,6 +415,10 @@ outputs:
 # knows — the memorable token at an OCI path's tail matches without the
 # scheme/host boilerplate, and a typo still hits. Not the semantic search — no
 # embedder in this path, ever.
+#
+# It completes a ref to IMPORT, so a module whose latest version is recorded as
+# an application is left out. One with no ingested version, or whose root kind
+# is not recorded, stays listed.
 kind: Run.Sequence
 metadata:
   name: refSuggestions
@@ -431,7 +448,8 @@ steps:
         FROM modules m
         LEFT JOIN module_versions mv
           ON mv.module_id = m.id AND mv.version = m.latest_version
-        WHERE m.ref % $1 OR m.ref ILIKE '%' || $1 || '%'
+        WHERE (m.ref % $1 OR m.ref ILIKE '%' || $1 || '%')
+          AND mv.root_kind IS DISTINCT FROM 'Application'
         ORDER BY (CASE WHEN regexp_replace(m.ref, '.*/', '') ILIKE '%' || $1 || '%' THEN 1 ELSE 0 END) DESC,
                  similarity(m.ref, $1) DESC, m.ref
         LIMIT 20

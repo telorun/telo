@@ -13,6 +13,7 @@ import {
 } from "@telorun/sdk";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
+import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
 import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
@@ -587,12 +588,19 @@ function numericPlaceholder(schema: Record<string, any>): number {
  *  placeholder that reads only the top level would violate it and report against
  *  a value the author never wrote. The tightest bound wins, which is what the
  *  intersection means. */
-function foldedConstraints(schema: Record<string, any>): Record<string, any> {
+function foldedConstraints(
+  schema: Record<string, any>,
+  root: Record<string, any>,
+  build: StandInBuild,
+  open: ReadonlySet<string>,
+): Record<string, any> {
   const branches = Array.isArray(schema.allOf) ? (schema.allOf as Record<string, any>[]) : [];
   if (branches.length === 0) return schema;
   const out: Record<string, any> = { ...schema };
   for (const branch of branches) {
-    const folded = foldedConstraints(branch);
+    if (!branch || typeof branch !== "object") continue;
+    const entered = enterStandInNode(branch, root, build, open);
+    const folded = foldedConstraints(entered.schema, entered.root, build, entered.open);
     for (const key of ["minimum", "exclusiveMinimum", "minLength", "minItems"] as const) {
       if (typeof folded[key] === "number" && (typeof out[key] !== "number" || folded[key] > out[key])) {
         out[key] = folded[key];
@@ -610,9 +618,86 @@ function foldedConstraints(schema: Record<string, any>): Record<string, any> {
     if (folded.required) {
       out.required = [...new Set([...(out.required ?? []), ...folded.required])];
     }
-    if (folded.properties) out.properties = { ...folded.properties, ...(out.properties ?? {}) };
+    if (folded.properties) {
+      // A member folded in keeps the document it was declared in.
+      for (const member of Object.values(folded.properties)) {
+        if (member && typeof member === "object" && !build.foreign.has(member)) {
+          build.foreign.set(member, entered.root);
+        }
+      }
+      out.properties = { ...folded.properties, ...(out.properties ?? {}) };
+    }
   }
   return out;
+}
+
+/** Where the schema a stand-in is built from resolves its references. */
+export interface StandInOptions {
+  /** The document the schema's own `#/…` references resolve against. Defaults
+   *  to the schema itself. */
+  root?: Record<string, any>;
+  /** Resolves a named shape (`telo:<module>/<Type>`) to its schema. */
+  external?: ExternalSchemaResolver;
+}
+
+/** One stand-in build: the resolver, and the document of every member folded in
+ *  from another one — an `allOf` branch that names a shape contributes members
+ *  whose own `#/…` references are relative to that shape. */
+interface StandInBuild {
+  external?: ExternalSchemaResolver;
+  foreign: WeakMap<object, Record<string, any>>;
+  /** Numbers the documents met, so a `#/…` reference is identified with the
+   *  document it is relative to. */
+  documents: WeakMap<object, number>;
+  documentCount: number;
+}
+
+const standInBuild = (external?: ExternalSchemaResolver): StandInBuild => ({
+  external,
+  foreign: new WeakMap(),
+  documents: new WeakMap(),
+  documentCount: 0,
+});
+
+/** What a reference names, as a key: a named shape by its id, a document-local
+ *  pointer with its document. Keyed on the reference rather than on the schema
+ *  it resolves to, so termination does not rest on a resolver returning the
+ *  same object twice. */
+function referenceKey(ref: string, root: Record<string, any>, build: StandInBuild): string {
+  if (!ref.startsWith("#")) return ref;
+  let document = build.documents.get(root);
+  if (document === undefined) {
+    document = build.documentCount++;
+    build.documents.set(root, document);
+  }
+  return `${document}${ref}`;
+}
+
+/**
+ * The node a stand-in is built from: `schema` with its reference followed, and
+ * the document the result's own `#/…` references resolve against — the base
+ * travels with the schema, as it does for the substitution walk.
+ *
+ * A reference already open on this descent stands in as undescribed, which is
+ * what ends a shape that contains itself.
+ */
+function enterStandInNode(
+  schema: Record<string, any>,
+  root: Record<string, any>,
+  build: StandInBuild,
+  open: ReadonlySet<string>,
+): { schema: Record<string, any>; root: Record<string, any>; open: ReadonlySet<string> } {
+  let node = { schema, root };
+  let seen = open;
+  while (typeof node.schema.$ref === "string") {
+    const target = resolveRefIn(node.schema, node.root, build.external);
+    if (target.schema === node.schema) break;
+    const key = referenceKey(node.schema.$ref, node.root, build);
+    if (seen.has(key)) return { schema: {}, root: node.root, open: seen };
+    seen = new Set(seen).add(key);
+    node = target;
+  }
+  return { ...node, open: seen };
 }
 
 /** The stand-in for a CEL leaf at a `live` slot. Static analysis asserts a live
@@ -627,8 +712,31 @@ function liveValuePlaceholder(schema: Record<string, any>): unknown | undefined 
   return binding ? Object.create(binding.constructor.prototype) : undefined;
 }
 
-export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown {
-  const schema = foldedConstraints(rawSchema);
+/**
+ * A value the schema accepts, standing in for one only known at runtime.
+ *
+ * A node that NAMES its shape — a named shape, a document-local `#/…` pointer —
+ * is resolved before anything is built from it, at every descent: the node
+ * itself, a list's items, a required member, a union branch, a folded `allOf`
+ * branch. Building from the reference as written reads a described value as
+ * undescribed and yields `null`, which the shape then rejects.
+ */
+export function celPlaceholderForSchema(
+  rawSchema: Record<string, any>,
+  options: StandInOptions = {},
+): unknown {
+  return standIn(rawSchema, options.root ?? rawSchema, standInBuild(options.external), new Set());
+}
+
+function standIn(
+  rawSchema: Record<string, any>,
+  base: Record<string, any>,
+  build: StandInBuild,
+  open: ReadonlySet<string>,
+): unknown {
+  const node = enterStandInNode(rawSchema, build.foreign.get(rawSchema) ?? base, build, open);
+  const schema = foldedConstraints(node.schema, node.root, build, node.open);
+  const descend = (child: Record<string, any>) => standIn(child, node.root, build, node.open);
   // An instance-typed slot's placeholder must BE an instance: the same keyword
   // validates statically and at dispatch, so a CEL leaf standing in for a runtime
   // value has to satisfy it. This is what keeps the rule single — a literal is
@@ -651,9 +759,20 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
   // keyword's range check sees a number rather than nothing.
   const jsonEntry = valueTypeOf(schema);
   if (jsonEntry?.base !== undefined && schema.type === undefined) {
-    return celPlaceholderForSchema({ ...rawSchema, type: jsonEntry.base });
+    return descend({ ...node.schema, type: jsonEntry.base });
   }
-  if (schema.default !== undefined) return schema.default;
+  // A declared default stands in only when it fits what this node resolves to.
+  // A node typed from elsewhere may require what its own default lacks
+  // (`default: {}` beside a conjoined type requiring a member), and such a
+  // default would be reported against an expression that supplies the member.
+  if (
+    schema.default !== undefined &&
+    fitsStandInConstraints(schema.default, schema, (member, child) =>
+      defaultFits(member, child, node.root, build, node.open),
+    )
+  ) {
+    return schema.default;
+  }
   // An enum-constrained field needs a placeholder drawn from the enum: the
   // type-based fallbacks below ("" for a string, 0 for a number) satisfy `type`
   // but violate `enum`, so a CEL expression feeding any enum field would report
@@ -674,7 +793,7 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
     const branches = unionBranches(schema);
     if (branches) {
       for (const branch of branches) {
-        const candidate = celPlaceholderForSchema(branch);
+        const candidate = descend(branch);
         if (candidate !== null) return candidate;
       }
     }
@@ -698,13 +817,104 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
       // value the author never wrote.
       return typeof schema.minItems === "number" && schema.minItems > 0
         ? Array.from({ length: schema.minItems }, () =>
-            celPlaceholderForSchema((schema.items ?? {}) as Record<string, any>),
+            descend((schema.items ?? {}) as Record<string, any>),
           )
         : [];
     case "object":
-      return objectPlaceholder(schema);
+      return objectPlaceholder(schema, descend);
     default:
       return null;
+  }
+}
+
+/** Whether `value` fits the node `rawSchema` names, entered and folded as a
+ *  stand-in is built from it — a reference already open reads as undescribed. */
+function defaultFits(
+  value: unknown,
+  rawSchema: Record<string, any>,
+  base: Record<string, any>,
+  build: StandInBuild,
+  open: ReadonlySet<string>,
+): boolean {
+  const node = enterStandInNode(rawSchema, build.foreign.get(rawSchema) ?? base, build, open);
+  const schema = foldedConstraints(node.schema, node.root, build, node.open);
+  return fitsStandInConstraints(value, schema, (member, child) =>
+    defaultFits(member, child, node.root, build, node.open),
+  );
+}
+
+/**
+ * Whether `value` satisfies the constraints a stand-in is built for at a folded
+ * node: its JSON type, `enum` / `const`, numeric bounds, `minLength`,
+ * `minItems` and each item, an object's required members and the members its
+ * `properties` describe, and — with no `type` — at least one union branch.
+ * Anything a stand-in is not built for (`pattern`, JSON Schema's own formats,
+ * `not`, conditionals) is not judged, so it never refuses what a validator
+ * accepts.
+ */
+function fitsStandInConstraints(
+  value: unknown,
+  schema: Record<string, any>,
+  fits: (member: unknown, child: Record<string, any>) => boolean,
+): boolean {
+  const types: unknown[] =
+    schema.type === undefined ? [] : Array.isArray(schema.type) ? schema.type : [schema.type];
+  if (types.length > 0 && !types.some((type) => isOfJsonType(value, type))) return false;
+  if (Array.isArray(schema.enum) && !schema.enum.some((member) => deepEquals(member, value))) {
+    return false;
+  }
+  if ("const" in schema && !deepEquals(schema.const, value)) return false;
+  if (types.length === 0) {
+    const branches = unionBranches(schema);
+    if (branches && !branches.some((branch) => fits(value, branch))) return false;
+  }
+  if (typeof value === "number") {
+    if (typeof schema.minimum === "number" && value < schema.minimum) return false;
+    if (typeof schema.exclusiveMinimum === "number" && value <= schema.exclusiveMinimum) return false;
+    if (typeof schema.maximum === "number" && value > schema.maximum) return false;
+    if (typeof schema.exclusiveMaximum === "number" && value >= schema.exclusiveMaximum) return false;
+    return true;
+  }
+  if (typeof value === "string") {
+    return typeof schema.minLength !== "number" || [...value].length >= schema.minLength;
+  }
+  if (Array.isArray(value)) {
+    if (typeof schema.minItems === "number" && value.length < schema.minItems) return false;
+    const items = schema.items;
+    if (!items || typeof items !== "object" || Array.isArray(items)) return true;
+    return value.every((item) => fits(item, items as Record<string, any>));
+  }
+  if (value !== null && typeof value === "object") {
+    const held = value as Record<string, unknown>;
+    const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+    if (required.some((key) => held[key] === undefined)) return false;
+    const properties = (schema.properties ?? {}) as Record<string, unknown>;
+    return Object.entries(held).every(([key, member]) => {
+      const child = properties[key];
+      return !child || typeof child !== "object" || fits(member, child as Record<string, any>);
+    });
+  }
+  return true;
+}
+
+function isOfJsonType(value: unknown, type: unknown): boolean {
+  switch (type) {
+    case "null":
+      return value === null;
+    case "boolean":
+      return typeof value === "boolean";
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" || typeof value === "bigint";
+    case "integer":
+      return typeof value === "bigint" || (typeof value === "number" && Number.isInteger(value));
+    case "array":
+      return Array.isArray(value);
+    case "object":
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    default:
+      return true;
   }
 }
 
@@ -720,8 +930,14 @@ export function celPlaceholderForSchema(rawSchema: Record<string, any>): unknown
 export function producedPlaceholder(
   produced: Record<string, any>,
   slot: Record<string, any>,
+  options: StandInOptions = {},
 ): unknown {
-  const format = produced.type === "string" ? teloFormatOf(foldedConstraints(slot)) : undefined;
+  const format =
+    produced.type === "string"
+      ? teloFormatOf(
+          foldedConstraints(slot, options.root ?? slot, standInBuild(options.external), new Set()),
+        )
+      : undefined;
   return format !== undefined ? format.standIn : celPlaceholderForSchema(produced);
 }
 
@@ -731,13 +947,16 @@ export function producedPlaceholder(
  *  "buildRequest(...)"`), which is exactly when the analyzer knows least and
  *  should say least. Members are filled recursively by the same rule, so a
  *  required nested object is satisfied too. */
-function objectPlaceholder(schema: Record<string, any>): Record<string, unknown> {
+function objectPlaceholder(
+  schema: Record<string, any>,
+  standInFor: (member: Record<string, any>) => unknown,
+): Record<string, unknown> {
   const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
   if (required.length === 0) return {};
   const properties = (schema.properties ?? {}) as Record<string, Record<string, any>>;
   const out: Record<string, unknown> = {};
   for (const key of required) {
-    out[key] = celPlaceholderForSchema(properties[key] ?? {});
+    out[key] = standInFor(properties[key] ?? {});
   }
   return out;
 }
@@ -1030,14 +1249,16 @@ export function substituteCelFields(
   // string slot, or text at an integer slot, is still refused statically; any
   // other expression stands in as the slot asks. The engine is what says which,
   // never a tag name — and a tag its engine resolves now (`!literal`) is no
-  // stand-in at all: its value is judged like any literal.
+  // stand-in at all: its value is judged like any literal. The builder is given
+  // the resolver and the document this node sits in, so a slot whose items or
+  // required members name a shape stands in as that shape.
   const reading = readStandIn(data);
   if (reading?.kind === "value") return reading.value;
   if (reading) {
     standIns?.set(pointer, reading);
     return reading.class === "produced"
-      ? producedPlaceholder(reading.produced, resolved)
-      : celPlaceholderForSchema(resolved);
+      ? producedPlaceholder(reading.produced, resolved, { root, external })
+      : celPlaceholderForSchema(resolved, { root, external });
   }
   if (Array.isArray(data)) {
     const item = resolveRefIn((resolved.items ?? {}) as Record<string, any>, root, external);

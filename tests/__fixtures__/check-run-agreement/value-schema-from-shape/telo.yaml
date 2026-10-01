@@ -1,0 +1,15 @@
+# Declares the kind whose named input shape carries an unreachable location.
+# This consumer's entry-scoped check is silent about the library's definition,
+# so the kernel refuses it when it registers the kind.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromShapeApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - invoke: !ref caller
+---
+kind: Lib.Caller
+metadata:
+  name: caller

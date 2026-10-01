@@ -78,7 +78,7 @@ export function assembleGraphDiagnostics(
       ...graph.parseDiagnostics,
       ...graph.migrationDiagnostics,
       ...graph.versionDiagnostics,
-      ...graph.modulePathDiagnostics,
+      ...graph.moduleFileDiagnostics,
       ...importResolutionDiagnostics(graph),
       ...live,
     ],

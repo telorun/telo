@@ -26,7 +26,9 @@ describe("!module-path", () => {
   });
 
   it("claims the path as a possible directory, so publish and packaging carry what is beneath it", () => {
-    expect(modulePathEngine.fileClaims!("./public")).toEqual([{ path: "public", directory: true }]);
+    expect(modulePathEngine.fileClaims!("./public")).toEqual([
+      { path: "public", directory: true, notFoundCode: "MODULE_PATH_NOT_FOUND" },
+    ]);
     expect(modulePathEngine.fileClaims!("../outside")).toEqual([]);
   });
 

@@ -1,0 +1,164 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRegistration
+  version: 1.0.0
+  description: |
+    Products and repositories are registered through the review surface only.
+    A product is created (its deadline echoed as whole seconds), listed, and
+    replaced in full — an omitted webhook is cleared; a second registration is
+    409 ERR_PRODUCT_EXISTS and an unknown path slug 404 ERR_PRODUCT_NOT_FOUND. A
+    repository naming an unregistered product is 422 ERR_PRODUCT_NOT_FOUND with a
+    message pointing at the settings page. A request whose Origin names another
+    host is 403 ERR_ORIGIN_NOT_ALLOWED; no Origin and the server's own origin
+    pass. The UI directory is served at `/`, deep links included.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/registration
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18741, throwOnHttpError: false }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18741 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs:
+            url: /api/review/products
+            method: POST
+            body: { slug: acme, name: Acme, deadline: 48h, webhookUrl: "http://127.0.0.1:1/hook" }
+        - name: duplicate
+          invoke: !ref call
+          inputs:
+            url: /api/review/products
+            method: POST
+            body: { slug: acme, name: Acme again }
+        - name: replace
+          invoke: !ref call
+          inputs:
+            url: /api/review/products/acme
+            method: PUT
+            body: { name: Acme Corp, deadline: 2h }
+        - name: replaceUnknown
+          invoke: !ref call
+          inputs:
+            url: /api/review/products/nope
+            method: PUT
+            body: { name: Nope }
+        - name: products
+          invoke: !ref call
+          inputs: { url: /api/review/products }
+        - name: repoUnknownProduct
+          invoke: !ref call
+          inputs:
+            url: /api/review/repos
+            method: POST
+            body: { slug: api, url: "git@example.com:acme/api.git", products: [acme, ghost] }
+        - name: repo
+          invoke: !ref call
+          inputs:
+            url: /api/review/repos
+            method: POST
+            body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] }
+        - name: repoDuplicate
+          invoke: !ref call
+          inputs:
+            url: /api/review/repos
+            method: POST
+            body: { slug: api, url: "git@example.com:acme/other.git", products: [acme] }
+        - name: repos
+          invoke: !ref call
+          inputs: { url: /api/review/repos }
+        - name: foreignOrigin
+          invoke: !ref call
+          inputs:
+            url: /api/review/products
+            headers: { origin: "http://evil.example" }
+        - name: foreignOriginAgent
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans/x
+            headers: { origin: "http://127.0.0.1:18742" }
+        - name: sameOrigin
+          invoke: !ref call
+          inputs:
+            url: /api/review/products
+            headers: { origin: "http://127.0.0.1:18741" }
+        - name: index
+          invoke: !ref call
+          inputs: { url: /, responseType: text }
+        - name: deepLink
+          invoke: !ref call
+          inputs: { url: /plans/some-plan, responseType: text }
+      outputs:
+        product: !cel "[steps.product.result.status, steps.product.result.body]"
+        duplicate: !cel "[steps.duplicate.result.status, steps.duplicate.result.body.code]"
+        replace: !cel "[steps.replace.result.status, steps.replace.result.body]"
+        replaceUnknown: !cel "[steps.replaceUnknown.result.status, steps.replaceUnknown.result.body.code]"
+        products: !cel "steps.products.result.body.products.map(p, [p.slug, p.name, p.deadline, p.webhookUrl])"
+        repoUnknownProduct: !cel "[steps.repoUnknownProduct.result.status, steps.repoUnknownProduct.result.body.code, steps.repoUnknownProduct.result.body.error]"
+        repo: !cel "[steps.repo.result.status, steps.repo.result.body.slug, steps.repo.result.body.products]"
+        repoDuplicate: !cel "[steps.repoDuplicate.result.status, steps.repoDuplicate.result.body.code]"
+        repos: !cel "steps.repos.result.body.repos.map(r, [r.slug, r.url, r.products])"
+        foreignOrigin: !cel "[steps.foreignOrigin.result.status, steps.foreignOrigin.result.body.code]"
+        foreignOriginAgent: !cel "[steps.foreignOriginAgent.result.status, steps.foreignOriginAgent.result.body.code]"
+        sameOrigin: !cel "steps.sameOrigin.result.status"
+        index: !cel "[steps.index.result.status, steps.index.result.body.contains('plan-approval test UI')]"
+        deepLink: !cel "[steps.deepLink.result.status, steps.deepLink.result.body.contains('plan-approval test UI')]"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        product:
+          - 201
+          - { slug: acme, name: Acme, deadline: 172800s, webhookUrl: "http://127.0.0.1:1/hook", createdAt: !cel "steps.run.result.product[1].createdAt", pendingDeliveries: 0, deliveries: [] }
+        duplicate: [409, ERR_PRODUCT_EXISTS]
+        replace:
+          - 200
+          - { slug: acme, name: Acme Corp, deadline: 7200s, webhookUrl: null, createdAt: !cel "steps.run.result.product[1].createdAt", pendingDeliveries: 0, deliveries: [] }
+        replaceUnknown: [404, ERR_PRODUCT_NOT_FOUND]
+        products: [[acme, Acme Corp, 7200s, null]]
+        repoUnknownProduct: [422, ERR_PRODUCT_NOT_FOUND, "Product ghost is not registered. Register products on the settings page first."]
+        repo: [201, api, [acme]]
+        repoDuplicate: [409, ERR_REPO_EXISTS]
+        repos: [[api, "git@example.com:acme/api.git", [acme]]]
+        foreignOrigin: [403, ERR_ORIGIN_NOT_ALLOWED]
+        foreignOriginAgent: [403, ERR_ORIGIN_NOT_ALLOWED]
+        sameOrigin: 200
+        index: [200, true]
+        deepLink: [200, true]

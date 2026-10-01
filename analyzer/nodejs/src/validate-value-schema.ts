@@ -2,10 +2,12 @@ import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
 import type { StandIns } from "./stand-in-findings.js";
+import type { ValueSchemaHost } from "./value-schema-slot.js";
 
 /**
- * `x-telo-value-schema-from: "<field>"` — the value written at the annotated
- * node must satisfy the type declared at the resource's `<field>`.
+ * `x-telo-value-schema-from: "<location>"` — the value written at the annotated
+ * node must satisfy every type the location names from the resource: a field of
+ * its own, or a pointer that may cross its references.
  *
  * The motivating shape is a kind with ONE declared output contract and SEVERAL
  * places that must each produce it — a decision table's rows, a switch's arms.
@@ -43,10 +45,14 @@ export function collectValueSchemaIssues(
   defSchema: Record<string, any> | undefined,
   allManifests: Record<string, any>[],
   validator: ShapeAwareValidator,
+  /** Follows a location across a reference. Omitted by a caller holding no
+   *  module scope, where a location is read off the resource alone. */
+  valueSchemaHost?: ValueSchemaHost,
 ): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
   for (const { path, value, schema, from } of valueSchemaSites(manifest, defSchema, {
     typeManifests: allManifests,
+    valueSchemaHost,
   })) {
     const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(value, schema, undefined, {

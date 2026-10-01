@@ -1,0 +1,18 @@
+modules:
+  apps/hub: Added
+body: "The hub registers and indexes Telo applications. `POST /register` accepts a root
+  `Telo.Application` as well as a `Telo.Library` (anything else is refused naming the
+  root kind); an application is tracked, pinned and cached like a library and indexed by
+  its declared `variables` / `secrets` / `ports` contract, which `/module` and
+  `get_module` return as `application` (null for a library; no secret value is ever
+  stored or served). `/search/resources`, `/search/modules`, `/categories` and the
+  `search_resources` / `list_categories` tools take an `entry` filter (`kind`,
+  `instance`, `application`; default `[kind, instance]`, so no application displaces an
+  existing result); `runtime` combined with `application` is refused as
+  `ERR_RUNTIME_FILTER_UNSUPPORTED`, and `/refs` / `suggest_module_refs` never list an
+  application. Breaking: `TELO_BIN` is replaced by `TELO_COMMAND`, a JSON array (default
+  `[\"telo\"]`) naming the telo the origin reads run, which must be the hub's own
+  generation; the development image points it at the checkout's CLI. `INGEST_REV`
+  defaults to 6, so the deploy re-ingests every tracked version once: a version's root
+  kind can only be learned from its manifest, and applications seeded earlier had their
+  own kinds stored as exported."

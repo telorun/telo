@@ -1,24 +1,17 @@
-import { Fragment, useMemo, useState } from "react";
-import { Brain, ChevronDown, CircleStop, RotateCw, ScrollText, TriangleAlert } from "lucide-react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Brain, ChevronDown, CircleStop, ListTree, Play, RotateCw, ScrollText, TriangleAlert } from "lucide-react";
 import { describeTurnError, splitAgentText } from "@/agent";
-import type { AssistantMessage, ChatMessage, CheckDiagnostic, ToolCallView, TurnError, UserMessage } from "@/agent";
+import type { AssistantMessage, AssistantPart, ChatMessage, TurnError, UserMessage } from "@/agent";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-  type ToolUIState,
-} from "@/components/ai-elements/tool";
 import { Loader } from "@/components/ai-elements/loader";
 import { QuestionCard } from "./QuestionCard";
 import { MessageActions, type MessageActionHandlers } from "./MessageActions";
+import { ToolCard, toolFailed } from "./ToolCard";
 
 export interface MessageBlockProps {
   message: ChatMessage;
@@ -32,6 +25,10 @@ export interface MessageBlockProps {
   /** Turns a summary is shown after; a summary of a turn not among them is
    *  shown where it was journaled. */
   summaryAnchors?: ReadonlySet<string>;
+  /** Show each write's and edit's own diff on its card. */
+  diffs?: boolean;
+  /** Present on a turn that spent its step budget and may be continued. */
+  onContinue?: () => void;
 }
 
 export function MessageBlock({ message, ...props }: MessageBlockProps) {
@@ -159,6 +156,8 @@ function AssistantMessageBlock({
   onRetry,
   actions,
   summaryAnchors,
+  diffs,
+  onContinue,
 }: Omit<MessageBlockProps, "message"> & { message: AssistantMessage }) {
   const { parts } = message;
   // Only the last text segment can hold an answerable question: anything the
@@ -174,49 +173,62 @@ function AssistantMessageBlock({
     [questionText, questionCards],
   );
 
+  const renderPart = (part: AssistantPart, i: number): ReactNode => {
+    if (part.kind === "thinking") {
+      return (
+        <ReasoningCard key={`thinking-${i}`} text={part.text} streaming={!!message.pending && i === parts.length - 1} />
+      );
+    }
+    if (part.kind === "tool") {
+      return <ToolCard key={`tool-${i}`} tool={part.tool} diffs={diffs} />;
+    }
+    if (part.kind === "continued") return <ContinuedDivider key={`continued-${i}`} />;
+    if (part.kind === "title-error") return <TitleErrorNotice key={`title-${i}`} error={part.error} />;
+    if (part.kind === "summary") {
+      return summaryAnchors?.has(part.throughTurnId) ? null : (
+        <SummaryDivider key={`summary-${i}`} summary={part.summary} />
+      );
+    }
+    if (i !== lastText || !segments) {
+      return <MessageResponse key={`text-${i}`}>{part.text}</MessageResponse>;
+    }
+    return (
+      <Fragment key={`text-${i}`}>
+        {segments.map((segment, j) =>
+          segment.kind === "text" ? (
+            <MessageResponse key={j}>{segment.text}</MessageResponse>
+          ) : segment.kind === "questions" ? (
+            <QuestionCard
+              key={j}
+              questions={segment.questions}
+              interactive={answerable && !message.pending}
+              onAnswer={onAnswer}
+            />
+          ) : (
+            <Loader key={j} size={16} className="text-muted-foreground" />
+          ),
+        )}
+      </Fragment>
+    );
+  };
+
   return (
     <Message from="assistant">
       <MessageContent>
-        {parts.map((part, i) => {
-          if (part.kind === "thinking") {
-            return (
-              <ReasoningCard
-                key={`thinking-${i}`}
-                text={part.text}
-                streaming={!!message.pending && i === parts.length - 1}
-              />
-            );
-          }
-          if (part.kind === "tool") return <ToolCallCard key={`tool-${i}`} tool={part.tool} />;
-          if (part.kind === "continued") return <ContinuedDivider key={`continued-${i}`} />;
-          if (part.kind === "title-error") return <TitleErrorNotice key={`title-${i}`} error={part.error} />;
-          if (part.kind === "summary") {
-            return summaryAnchors?.has(part.throughTurnId) ? null : (
-              <SummaryDivider key={`summary-${i}`} summary={part.summary} />
-            );
-          }
-          if (i !== lastText || !segments) {
-            return <MessageResponse key={`text-${i}`}>{part.text}</MessageResponse>;
-          }
-          return (
-            <Fragment key={`text-${i}`}>
-              {segments.map((segment, j) =>
-                segment.kind === "text" ? (
-                  <MessageResponse key={j}>{segment.text}</MessageResponse>
-                ) : segment.kind === "questions" ? (
-                  <QuestionCard
-                    key={j}
-                    questions={segment.questions}
-                    interactive={answerable && !message.pending}
-                    onAnswer={onAnswer}
-                  />
-                ) : (
-                  <Loader key={j} size={16} className="text-muted-foreground" />
-                ),
-              )}
-            </Fragment>
-          );
-        })}
+        {stepRuns(parts).map(({ from, to }) =>
+          to - from < 2 ? (
+            renderPart(parts[from], from)
+          ) : (
+            <StepGroup
+              key={`steps-${from}`}
+              count={to - from}
+              failed={parts.slice(from, to).filter((part) => part.kind === "tool" && toolFailed(part.tool)).length}
+              streaming={!!message.pending}
+            >
+              {parts.slice(from, to).map((part, offset) => renderPart(part, from + offset))}
+            </StepGroup>
+          ),
+        )}
         {message.pending && parts.length === 0 && <Loader size={16} className="text-muted-foreground" />}
         {message.stopped && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -233,6 +245,15 @@ function AssistantMessageBlock({
                 Resume
               </Button>
             )}
+          </div>
+        )}
+        {onContinue && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>The agent used up its steps for this turn.</span>
+            <Button variant="outline" size="xs" onClick={onContinue}>
+              <Play className="size-3" />
+              Continue
+            </Button>
           </div>
         )}
       </MessageContent>
@@ -289,58 +310,49 @@ function ReasoningCard({ text, streaming }: { text: string; streaming: boolean }
   );
 }
 
-/** A diagnostic as the agent's own rendering spells it. */
-function diagnosticLine(d: CheckDiagnostic): string {
-  return `${d.file}:${d.line}:${d.column}${d.code ? ` ${d.code}` : ""} ${d.message}`;
-}
-
-function CheckVerdict({ diagnostics, seen }: { diagnostics: CheckDiagnostic[]; seen?: string }) {
-  return (
-    <div className="space-y-2 p-2">
-      {diagnostics.length > 0 && (
-        <ul className="font-mono">
-          {diagnostics.map((d, i) => (
-            <li key={i}>{diagnosticLine(d)}</li>
-          ))}
-        </ul>
-      )}
-      {seen && (
-        <div className="space-y-1 text-muted-foreground">
-          <div className="text-[10px] uppercase tracking-wide">What the model saw</div>
-          <pre className="whitespace-pre-wrap font-mono">{seen}</pre>
-        </div>
-      )}
-    </div>
-  );
+/** The turn's parts as the runs they render in: each stretch of consecutive
+ *  tool calls and thinking — what happened between two pieces of the reply —
+ *  is one run, and every other part a run of its own. */
+function stepRuns(parts: AssistantPart[]): Array<{ from: number; to: number }> {
+  const runs: Array<{ from: number; to: number }> = [];
+  const isStep = (part: AssistantPart) => part.kind === "tool" || part.kind === "thinking";
+  for (let i = 0; i < parts.length; ) {
+    let to = i + 1;
+    if (isStep(parts[i])) while (to < parts.length && isStep(parts[to])) to++;
+    runs.push({ from: i, to });
+    i = to;
+  }
+  return runs;
 }
 
 /**
- * One tool call. The verdict is the structured result's: a write, edit or
- * check whose `telo check` exited non-zero is an error card listing its
- * diagnostics. The rendered text the model was given is shown as the result,
- * except for a tool that failed outright, whose text is its error.
+ * Two or more steps in a row, folded into one line. Open while the turn
+ * streams — that is where the work is — and folded once it has ended, when the
+ * reply is what is read; the reader's own toggle overrides either.
  */
-function ToolCallCard({ tool }: { tool: ToolCallView }) {
-  const checkFailed = tool.checkExitCode != null && tool.checkExitCode !== 0;
-  const toolFailed = tool.state === "error";
-  const errored = toolFailed || checkFailed;
-  const state: ToolUIState =
-    tool.state === "running" ? "input-available" : errored ? "output-error" : "output-available";
-  const seen = typeof tool.output === "string" ? tool.output : undefined;
-  const errorText = toolFailed ? seen : checkFailed ? `telo check exited with ${tool.checkExitCode}` : undefined;
-  const output = toolFailed ? undefined : checkFailed ? (
-    <CheckVerdict diagnostics={tool.diagnostics ?? []} seen={seen} />
-  ) : (
-    tool.output
-  );
+function StepGroup({
+  count,
+  failed,
+  streaming,
+  children,
+}: {
+  count: number;
+  failed: number;
+  streaming: boolean;
+  children: ReactNode;
+}) {
+  const [override, setOverride] = useState<boolean | null>(null);
+  const open = override ?? streaming;
 
   return (
-    <Tool defaultOpen={errored}>
-      <ToolHeader type={`tool-${tool.name}`} title={tool.name} state={state} />
-      <ToolContent>
-        {tool.args != null && <ToolInput input={tool.args} />}
-        <ToolOutput output={output} errorText={errorText} />
-      </ToolContent>
-    </Tool>
+    <Collapsible open={open} onOpenChange={setOverride}>
+      <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground underline-offset-2 hover:underline">
+        <ListTree className="size-3" />
+        {count} steps
+        {failed > 0 && <span className="text-destructive">· {failed} failed</span>}
+        <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-2 flex flex-col gap-2 border-l pl-3">{children}</CollapsibleContent>
+    </Collapsible>
   );
 }

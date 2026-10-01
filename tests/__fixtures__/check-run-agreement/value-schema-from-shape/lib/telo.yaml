@@ -1,0 +1,46 @@
+# A kind whose contract is a named shape, and the shape carries the annotation:
+# its location says `reader` where the kind's schema declares `readers`. The
+# annotation is the kind's wherever its contract is written, so the kind is
+# refused for it.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromShapeLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names an input shape that types a node from a
+    location the kind's own schema does not declare.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CallerInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      default: {}
+      x-telo-value-schema-from: /reader/*/contextType
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType: !ref CallerInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

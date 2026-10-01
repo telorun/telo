@@ -1,0 +1,244 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalLifecycle
+  version: 1.0.0
+  description: |
+    The plan state machine over HTTP. Approval is taken only from submitted,
+    revised or changes_requested; request changes and reject also after approval
+    and while the work runs. Reports are taken only on an approved plan and its
+    work (in_progress, parked, completed), a report naming the current state
+    changes nothing, and withdrawal is refused once a plan is rejected, withdrawn
+    or completed — each refused move 409 ERR_INVALID_TRANSITION. A closed plan
+    takes no revision (409 ERR_PLAN_CLOSED). Links take a closed status
+    vocabulary per type, an unchanged status records nothing, and every timeline
+    entry carries its source.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/lifecycle
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18743, throwOnHttpError: false }
+---
+# Submits a plan and returns its ID and first hash.
+kind: Run.Sequence
+metadata: { name: submit }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [loop]
+    properties:
+      loop: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: /api/agent/plans
+      method: POST
+      body: { product: acme, repo: api, branch: main, loop: !cel "inputs.loop", title: !cel "'Plan ' + inputs.loop", body: !cel "'## S1 ' + inputs.loop" }
+outputs:
+  id: !cel "string(steps.post.result.body.planId)"
+  hash: !cel "string(steps.post.result.body.hash)"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18743 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: repo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: a
+          invoke: !ref submit
+          inputs: { loop: A }
+        - name: b
+          invoke: !ref submit
+          inputs: { loop: B }
+        - name: c
+          invoke: !ref submit
+          inputs: { loop: C }
+        - name: moves
+          inputs:
+            a: !cel "steps.a.result"
+            b: !cel "steps.b.result"
+            c: !cel "steps.c.result"
+          invoke:
+            kind: Run.Projection
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [a, b, c]
+                properties:
+                  a: { type: object, required: [id, hash], properties: { id: { type: string }, hash: { type: string } } }
+                  b: { type: object, required: [id, hash], properties: { id: { type: string }, hash: { type: string } } }
+                  c: { type: object, required: [id, hash], properties: { id: { type: string }, hash: { type: string } } }
+            # Each move is [plan, action path, body]; they run in order.
+            collection: !cel >-
+              [
+                ['a', 'reports', {'kind': 'progress', 'body': 'too early'}],
+                ['a', 'decisions', {'author': 'rita', 'decision': 'approve', 'revision': 1, 'hash': inputs.a.hash}],
+                ['a', 'decisions', {'author': 'rita', 'decision': 'approve', 'revision': 1, 'hash': inputs.a.hash}],
+                ['a', 'reports', {'kind': 'progress', 'body': 'starting'}],
+                ['a', 'reports', {'kind': 'progress', 'body': 'working', 'state': 'in_progress'}],
+                ['a', 'reports', {'kind': 'progress', 'body': 'still working', 'state': 'in_progress'}],
+                ['a', 'reports', {'kind': 'progress', 'body': 'blocked', 'state': 'parked'}],
+                ['a', 'reports', {'kind': 'final', 'body': 'done', 'state': 'completed'}],
+                ['a', 'reports', {'kind': 'progress', 'body': 'after the end'}],
+                ['a', 'revisions', {'body': '## S1 again', 'summary': 'more', 'base': inputs.a.hash}],
+                ['a', 'withdraw', {}],
+                ['a', 'decisions', {'author': 'rita', 'decision': 'reject', 'revision': 1, 'hash': inputs.a.hash}],
+                ['b', 'reports', {'kind': 'progress', 'body': 'x', 'state': 'in_progress'}],
+                ['b', 'decisions', {'author': 'rita', 'decision': 'reject', 'revision': 1, 'hash': inputs.b.hash}],
+                ['b', 'decisions', {'author': 'rita', 'decision': 'approve', 'revision': 1, 'hash': inputs.b.hash}],
+                ['b', 'revisions', {'body': '## S1 again', 'summary': 'more', 'base': inputs.b.hash}],
+                ['c', 'decisions', {'author': 'rita', 'decision': 'approve', 'revision': 1, 'hash': inputs.c.hash}],
+                ['c', 'reports', {'kind': 'progress', 'body': 'x', 'state': 'in_progress'}],
+                ['c', 'decisions', {'author': 'rita', 'decision': 'request_changes', 'revision': 1, 'hash': inputs.c.hash, 'note': 'stop'}],
+                ['c', 'withdraw', {}],
+                ['c', 'withdraw', {}],
+                ['c', 'revisions', {'body': '## S1 again', 'summary': 'more', 'base': inputs.c.hash}]
+              ]
+            steps:
+              - name: send
+                # One POST to a plan, answering [status, state or code].
+                invoke:
+                  kind: Run.Sequence
+                  inputType:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      required: [path, body]
+                      properties:
+                        path: { type: string }
+                        body: { type: object }
+                  steps:
+                    - name: post
+                      invoke: !ref call
+                      inputs: { url: !cel "inputs.path", method: POST, body: !cel "inputs.body" }
+                  outputs:
+                    answer: !cel >-
+                      [steps.post.result.status, 'state' in steps.post.result.body ? steps.post.result.body.state
+                        : ('code' in steps.post.result.body ? steps.post.result.body.code : steps.post.result.body)]
+                inputs:
+                  path: !cel >-
+                    (item[1] in ['decisions'] ? '/api/review/plans/' : '/api/agent/plans/')
+                      + inputs[string(item[0])].id + '/' + string(item[1])
+                  body: !cel "item[2]"
+            outputs:
+              move: !cel "string(item[0]) + ' ' + string(item[1])"
+              answer: !cel "steps.send.result.answer"
+        - name: branch
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.a.result.id + '/links'"
+            method: POST
+            body: { type: branch, url: "https://git.example/acme/api/tree/a", status: open }
+        - name: branchSame
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.a.result.id + '/links'"
+            method: POST
+            body: { type: branch, url: "https://git.example/acme/api/tree/a", status: open }
+        - name: branchMerged
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.a.result.id + '/links'"
+            method: POST
+            body: { type: branch, url: "https://git.example/acme/api/tree/a", status: merged }
+        - name: pullWrongStatus
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.a.result.id + '/links'"
+            method: POST
+            body: { type: pull-request, url: "https://git.example/acme/api/pull/1", status: pushed }
+        - name: commit
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.a.result.id + '/links'"
+            method: POST
+            body: { type: commit, url: "https://git.example/acme/api/commit/abc", status: pushed }
+        - name: detail
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + steps.a.result.id" }
+      outputs:
+        moves: !cel "steps.moves.result.map(m, [m.move, m.answer])"
+        links: !cel "[steps.branch.result.body.changed, steps.branchSame.result.body.changed, steps.branchMerged.result.body.changed, steps.pullWrongStatus.result.status, steps.commit.result.body.changed]"
+        current: !cel "steps.detail.result.body.links.map(l, [l.type, l.status])"
+        timeline: !cel "steps.detail.result.body.events.map(e, [e.type, e.source])"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        moves:
+          - [a reports, [409, ERR_INVALID_TRANSITION]]
+          - [a decisions, [201, approved]]
+          - [a decisions, [409, ERR_INVALID_TRANSITION]]
+          - [a reports, [200, approved]]
+          - [a reports, [200, in_progress]]
+          - [a reports, [200, in_progress]]
+          - [a reports, [200, parked]]
+          - [a reports, [200, completed]]
+          - [a reports, [409, ERR_INVALID_TRANSITION]]
+          - [a revisions, [409, ERR_PLAN_CLOSED]]
+          - [a withdraw, [409, ERR_INVALID_TRANSITION]]
+          - [a decisions, [409, ERR_INVALID_TRANSITION]]
+          - [b reports, [409, ERR_INVALID_TRANSITION]]
+          - [b decisions, [201, rejected]]
+          - [b decisions, [409, ERR_INVALID_TRANSITION]]
+          - [b revisions, [409, ERR_PLAN_CLOSED]]
+          - [c decisions, [201, approved]]
+          - [c reports, [200, in_progress]]
+          - [c decisions, [201, changes_requested]]
+          - [c withdraw, [200, withdrawn]]
+          - [c withdraw, [409, ERR_INVALID_TRANSITION]]
+          - [c revisions, [409, ERR_PLAN_CLOSED]]
+        links: [true, false, true, 400, true]
+        current: [[branch, merged], [commit, pushed]]
+        timeline:
+          - [submitted, agent]
+          - [decision, reviewer]
+          - [report, agent]
+          - [report, agent]
+          - [report, agent]
+          - [report, agent]
+          - [report, agent]
+          - [link, agent]
+          - [link, agent]
+          - [link, agent]

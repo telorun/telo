@@ -1,0 +1,153 @@
+kind: Telo.Library
+metadata:
+  name: PlanApprovalRunnerProtocol
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Coordination]
+  description: >-
+    The wire shapes a plan-approval server and its per-machine runners exchange:
+    the runner's report of the repositories it serves and the agent sessions it
+    sees, one command it must execute, a page of pending commands with its resume
+    cursor, and the outcome it posts back. Types only, so both sides check their
+    reads and writes against one definition.
+exports:
+  resources:
+    - RunnerReport
+    - RunnerCommand
+    - CommandPage
+    - CommandOutcome
+---
+# PUT /api/agent/runners/{name} — sent by the runner every cycle.
+kind: Telo.JsonSchema
+metadata: { name: RunnerReport }
+schema:
+  type: object
+  additionalProperties: false
+  required: [instance, repos, sessions]
+  properties:
+    instance:
+      type: string
+      format: uuid
+      description: Minted once per runner process; the newest instance of a runner name wins.
+    repos:
+      type: array
+      description: Slugs of the repositories this runner serves — never a path.
+      items: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+    sessions:
+      type: array
+      description: The agent sessions currently listed in the served repositories.
+      items:
+        type: object
+        additionalProperties: false
+        required: [id, repo]
+        properties:
+          id: { type: string, format: uuid }
+          repo: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+---
+# One entry of the command feed, by `type`. `wake` is created by the server when
+# a reviewer decides a plan whose session this runner owns; `start` / `stop` are
+# created by a reviewer from the runners page. A start names the session it
+# creates; claude assigns its ID, which the runner reports in the outcome.
+kind: Telo.JsonSchema
+metadata: { name: RunnerCommand }
+schema:
+  type: object
+  required: [seq, type, repo]
+  properties:
+    seq:
+      type: integer
+      minimum: 1
+      description: Per-runner, strictly increasing.
+    type:
+      type: string
+      enum: [wake, start, stop]
+    repo: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+    session: { type: string, format: uuid, description: "`wake` / `stop`: the session acted on." }
+    plan: { type: string, description: "`wake`: the plan whose decision wakes the session." }
+    planSeq: { type: integer, description: "`wake`: the plan event carrying the decision." }
+    decision: { type: string, enum: [approve, request_changes, reject], description: "`wake` only." }
+    sessionName:
+      type: string
+      pattern: "^plan-approval-[0-9a-f-]{36}$"
+      description: "`start`: the name the new session is started under."
+    prompt: { type: string, description: "`start`: the reviewer's prompt for the new session." }
+    author: { type: string, description: "`start` / `stop`: the self-declared reviewer who asked." }
+  oneOf:
+    - additionalProperties: false
+      required: [session, plan, planSeq, decision]
+      properties:
+        seq: {}
+        type: { const: wake }
+        repo: {}
+        session: {}
+        plan: {}
+        planSeq: {}
+        decision: {}
+    - additionalProperties: false
+      required: [sessionName, prompt, author]
+      properties:
+        seq: {}
+        type: { const: start }
+        repo: {}
+        sessionName: {}
+        prompt: {}
+        author: {}
+    - additionalProperties: false
+      required: [session, author]
+      properties:
+        seq: {}
+        type: { const: stop }
+        repo: {}
+        session: {}
+        author: {}
+---
+# GET /api/agent/runners/{name}/commands — the response body.
+kind: Telo.JsonSchema
+metadata: { name: CommandPage }
+schema:
+  type: object
+  additionalProperties: false
+  required: [commands, cursor]
+  properties:
+    commands:
+      type: array
+      items: !ref RunnerCommand
+    cursor:
+      type: integer
+      minimum: 0
+      description: The highest command seq this page considered; the next long poll's `after`.
+---
+# POST /api/agent/runners/{name}/commands/{seq}/outcome — the request body.
+# A `done` start carries the ID of the session it started; nothing else carries
+# a session. A `failed` outcome always carries its error.
+kind: Telo.JsonSchema
+metadata: { name: CommandOutcome }
+schema:
+  type: object
+  required: [instance, state]
+  properties:
+    instance: { type: string, format: uuid }
+    state:
+      type: string
+      enum: [done, failed]
+    session: { type: string, format: uuid }
+    error:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+  oneOf:
+    - additionalProperties: false
+      properties:
+        instance: {}
+        state: { const: done }
+        session: {}
+    - additionalProperties: false
+      required: [error]
+      properties:
+        instance: {}
+        state: { const: failed }
+        error: {}

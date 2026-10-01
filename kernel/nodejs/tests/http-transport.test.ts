@@ -48,6 +48,14 @@ describe("HttpTransport.canonicalizeSiblingRef", () => {
   });
 });
 
+describe("HttpTransport.checkAuthoredAnnotations", () => {
+  it("refuses an annotation it has no artifact to write onto", () => {
+    expect(() =>
+      new HttpTransport().checkAuthoredAnnotations({ "com.example.note": "x" }),
+    ).toThrow(/cannot be written/);
+  });
+});
+
 describe("HttpTransport.digest", () => {
   it("derives the fetch URL and hashes the telo.yaml bytes", async () => {
     const urls: string[] = [];

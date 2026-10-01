@@ -45,8 +45,11 @@ import {
   analyzerContractScope,
   type ContractScope,
   PERMISSIVE_CONTRACT,
+  type NamedShapeScope,
   projectionModules,
   resolveContract,
+  resolveNamedShape,
+  valueSchemaHostOf,
 } from "./invocation-contract.js";
 import { buildCallGraph } from "./call-graph.js";
 import { libraryDeclarations } from "./library-declarations.js";
@@ -170,6 +173,7 @@ import {
 import { navigateDeclaredChain, shapeNamedBy } from "./referenced-shape.js";
 import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
+import { valueSchemaFromProblems } from "./validate-value-schema-location.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
@@ -185,7 +189,6 @@ import {
   extractContextsFromSchema,
   getManifestItem,
   resolveContextAnnotations,
-  resolveTypeFieldToSchema,
 } from "./validate-cel-context.js";
 import {
   celEvalModeAt,
@@ -1181,6 +1184,12 @@ export class StaticAnalyzer {
         projectionIssues.push(...validateSchemaProjection(m as unknown as ResourceManifest));
       }
     }
+    // A contract field naming a shape is read as contract typing reads it: in
+    // the module the kind's own imports give, with `extends` parents folded.
+    const namedShapes: NamedShapeScope = {
+      typeManifests: manifests as Record<string, any>[],
+      modules: projectionModules(defs, aliases, { aliasesByModule, rootModules, libraries }),
+    };
     for (const m of manifests) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
       const def = m as unknown as ResourceDefinition;
@@ -1204,6 +1213,25 @@ export class StaticAnalyzer {
           scopeSlotDiagnostics.push({
             severity: DiagnosticSeverity.Error,
             code: "SCOPE_SLOT_MISPLACED",
+            source: SOURCE,
+            message: `${m.kind} ${problem.message}`,
+            data: {
+              resource: { kind: m.kind, name: def.metadata?.name as string },
+              filePath: (def.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
+        for (const problem of valueSchemaFromProblems(
+          m as Record<string, any>,
+          effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)) as
+            | Record<string, any>
+            | undefined,
+          (typeField) => resolveNamedShape(typeField, m as Record<string, any>, namedShapes),
+        )) {
+          scopeSlotDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "VALUE_SCHEMA_FROM_INVALID",
             source: SOURCE,
             message: `${m.kind} ${problem.message}`,
             data: {
@@ -2106,6 +2134,17 @@ export class StaticAnalyzer {
       (kind, declaration) => projectionDefs(kind, declaration),
       projectionModules(defs, aliases, { aliasesByModule, rootModules, libraries }),
     );
+    // The host a contract's location is read through, so a configuration slot
+    // and a contract node resolve a named type field the same way: in the
+    // module that declared its holder.
+    const valueSchemaHost = valueSchemaHostOf(
+      analyzerContractScope(
+        defs,
+        aliases,
+        { aliasesByModule, rootModules, libraries },
+        allManifests as Record<string, any>[],
+      ),
+    );
 
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
@@ -2359,6 +2398,7 @@ export class StaticAnalyzer {
           schema,
           allManifests as Record<string, any>[],
           shapeAwareValidator,
+          valueSchemaHost,
         );
         const issues = [...ajvIssues, ...valueSchemaIssues];
         // WHY A FIELD THIS KIND EXISTS TO SUPPLY IS STILL REQUIRED OF ITS

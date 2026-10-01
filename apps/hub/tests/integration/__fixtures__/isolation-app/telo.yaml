@@ -1,0 +1,8 @@
+# An application nearer to the query `quillwort` than any kind of `isolation-lib`,
+# which a default search must behave as if it were not registered.
+kind: Telo.Application
+metadata:
+  name: QuillwortApp
+  version: 1.0.0
+  description: Serves the quillwort catalogue over HTTP.
+  categories: [Testing]

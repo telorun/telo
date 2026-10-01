@@ -42,7 +42,8 @@ It resolves to wherever the module's files are on disk: the directory in a
 checkout, the unpacked assets of a published artifact, the unpacked payload of a
 packaged executable. `telo publish` and `telo package` carry the whole directory
 with no `files:` entry, and refuse one that is missing or empty
-(`MODULE_PATH_NOT_FOUND` / `MODULE_PATH_EMPTY`), which `telo check` reports too.
+(`MODULE_PATH_NOT_FOUND` / `MODULE_PATH_EMPTY`); a missing one is also reported by
+`telo check` and refuses `telo run` / `telo install` at load.
 
 **Files on the host** — reports the application writes, an upload directory —
 come from a variable typed `Telo.HostPath`. A relative value there is resolved

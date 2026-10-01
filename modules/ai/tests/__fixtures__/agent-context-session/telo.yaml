@@ -1,0 +1,81 @@
+# Two providers, two declared types: the agent mounting both requires both of
+# its caller. `callWithoutSessionId` supplies only what the first one reads.
+kind: Telo.Library
+metadata:
+  name: AgentContextSessionMissing
+  version: 1.0.0
+  description: Fixture library whose agent call supplies the caller data of one of its two tool providers.
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+exports:
+  resources: [callWithoutSessionId]
+---
+# Reaching the model at all would fail the run with this code instead.
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+failOn:
+  message: "hello"
+  code: ERR_MODEL_REACHED
+  reason: the model received a request
+---
+kind: Run.Value
+metadata: { name: recorder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      id: { type: string }
+value:
+  id: !cel "inputs.id"
+---
+kind: Ai.Tools
+metadata: { name: turnTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+tools:
+  - tool: !ref recorder
+    name: record_turn
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.turnId"
+---
+kind: Ai.Tools
+metadata: { name: sessionTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [sessionId]
+    properties:
+      sessionId: { type: string }
+tools:
+  - tool: !ref recorder
+    name: record_session
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.sessionId"
+---
+kind: Ai.Agent
+metadata: { name: turnAndSessionAgent }
+model: !ref echo
+toolProviders:
+  - provider: !ref turnTools
+  - provider: !ref sessionTools
+---
+kind: Run.Sequence
+metadata: { name: callWithoutSessionId }
+steps:
+  - name: call
+    invoke: !ref turnAndSessionAgent
+    inputs:
+      prompt: "hello"
+      context:
+        turnId: "turn-7"

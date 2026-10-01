@@ -1,0 +1,35 @@
+# The same kind naming the imported shape whose location its schema declares:
+# the kind registers, and its `context` input is typed by what its readers
+# declare.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromImportedShapeAcceptedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names an imported input shape that types a node
+    from a location the kind's schema declares.
+imports:
+  Shapes: ../shapes
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType: !ref Shapes.CallerInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

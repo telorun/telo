@@ -1,0 +1,285 @@
+kind: Telo.Application
+metadata:
+  name: ChatCheckpointRemoval
+  version: 1.0.0
+  description: |
+    A turn's checkpoint goes where the turn goes, offline against the provider
+    stub. Deleting a conversation, truncating it and the retention sweep each
+    remove the removed turns' checkpoint directories and rows; a turn a crash
+    left marked removed with its directory still present is finished by the
+    next sweep. A branch's copied turn carries the source's checkpoint under
+    its own id — the same summary, its blobs in its own directory — so it can
+    be reverted after the source conversation is deleted. Throughout,
+    directories under `checkpoints/` exist only for live turns.
+variables:
+  scratch:
+    env: CHAT_TEST_CHECKPOINT_REMOVAL_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/checkpoint-removal
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18548/v1
+      teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: ../../../../modules/fs
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# The chat library's database, reached from outside it.
+kind: SQLite.Connection
+metadata: { name: libraryDb }
+file: !cel "variables.scratch.joinPath('state').joinPath('agent.sqlite')"
+---
+kind: Sql.Query
+metadata: { name: libraryQuery }
+connection: !ref libraryDb
+---
+# One turn in a conversation — a new one, or the one named — run to its end.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message]
+    properties:
+      conversationId: { type: string }
+      message: { type: string }
+steps:
+  - name: conversation
+    if: !cel "!has(inputs.conversationId)"
+    then:
+      - name: created
+        invoke: !ref Chat.createConversation
+  - name: id
+    value: !cel "has(inputs.conversationId) ? inputs.conversationId : string(steps.created.result.conversation.id)"
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.id.result"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "inputs.message"
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "steps.start.result.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 60000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+outputs:
+  conversationId: !cel "steps.id.result"
+  turnId: !cel "steps.start.result.turnId"
+---
+# What is left of a set of turns: which still have a checkpoint directory, and
+# how many checkpoint, change and revert rows name them. And whether every
+# directory under `checkpoints/` belongs to a live turn.
+kind: Run.Sequence
+metadata: { name: left }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnIds]
+    properties:
+      turnIds:
+        type: array
+        items: { type: string }
+steps:
+  - name: directories
+    invoke:
+      kind: Fs.DirectoryListing
+      cwd: !cel "variables.scratch.joinPath('state')"
+    inputs:
+      path: checkpoints
+  - name: rows
+    invoke: !ref libraryQuery
+    inputs:
+      sql: |
+        SELECT (SELECT COUNT(*) FROM checkpoint_entries WHERE turn_id IN (SELECT value FROM json_each(?1)))
+             + (SELECT COUNT(*) FROM turn_changes WHERE turn_id IN (SELECT value FROM json_each(?1)))
+             + (SELECT COUNT(*) FROM turn_reverts WHERE turn_id IN (SELECT value FROM json_each(?1)))
+             + (SELECT COUNT(*) FROM turns WHERE turn_id IN (SELECT value FROM json_each(?1))) AS n
+      bindings: [ !cel "json(inputs.turnIds)" ]
+  - name: live
+    invoke: !ref libraryQuery
+    inputs:
+      sql: "SELECT turn_id FROM turns WHERE removed_at IS NULL"
+      bindings: []
+outputs:
+  directories: !cel "inputs.turnIds.map(t, steps.directories.result.entries.exists(e, e.name == t))"
+  rows: !cel "int(steps.rows.result.rows[0].n)"
+  onlyLive: !cel >-
+    steps.directories.result.entries.all(e, steps.live.result.rows.exists(r, r.turn_id == e.name))
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18548 }
+targets: [ !ref stub ]
+steps:
+  - name: calls
+    value:
+      deleted: !cel "'write it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments': {'path': 'deleted.txt', 'content': 'a\\n'}}]))"
+      truncated: !cel "'write it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments': {'path': 'truncated.txt', 'content': 'b\\n'}}]))"
+      marked: !cel "'write it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments': {'path': 'marked.txt', 'content': 'c\\n'}}]))"
+      branched: !cel "'write it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments': {'path': 'branched.txt', 'content': 'd\\n'}}]))"
+      swept: !cel "'write it STUB_CALLS:' + base64Encode(json([{'name': 'write_file', 'arguments': {'path': 'swept.txt', 'content': 'e\\n'}}]))"
+  - name: deleted
+    invoke: !ref turn
+    inputs: { message: !cel "steps.calls.result.deleted" }
+  # The stub scripts tool calls only for a history holding none, so the turn
+  # that writes follows one that only answered.
+  - name: kept
+    invoke: !ref turn
+    inputs: { message: hello }
+  - name: truncated
+    invoke: !ref turn
+    inputs:
+      conversationId: !cel "steps.kept.result.conversationId"
+      message: !cel "steps.calls.result.truncated"
+  - name: marked
+    invoke: !ref turn
+    inputs: { message: !cel "steps.calls.result.marked" }
+  - name: branched
+    invoke: !ref turn
+    inputs: { message: !cel "steps.calls.result.branched" }
+  - name: swept
+    invoke: !ref turn
+    inputs: { message: !cel "steps.calls.result.swept" }
+  - name: written
+    invoke: !ref left
+    inputs:
+      turnIds: !cel >-
+        [steps.deleted.result.turnId, steps.truncated.result.turnId, steps.marked.result.turnId,
+         steps.branched.result.turnId, steps.swept.result.turnId]
+  # ── delete ─────────────────────────────────────────────────────────────────
+  - name: delete
+    invoke: !ref Chat.deleteConversation
+    inputs: { conversationId: !cel "steps.deleted.result.conversationId" }
+  - name: afterDelete
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.deleted.result.turnId]" }
+  # ── truncate ───────────────────────────────────────────────────────────────
+  - name: current
+    invoke: !ref Chat.getConversation
+    inputs: { conversationId: !cel "steps.kept.result.conversationId" }
+  - name: truncate
+    invoke: !ref Chat.truncateConversation
+    inputs:
+      conversationId: !cel "steps.kept.result.conversationId"
+      fromTurnId: !cel "steps.truncated.result.turnId"
+      revision: !cel "steps.current.result.conversation.revision"
+  - name: afterTruncate
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.truncated.result.turnId]" }
+  # ── a removal a crash cut short: the turn marked, nothing removed yet ──────
+  - name: crash
+    invoke: { kind: Sql.Command, connection: !ref libraryDb }
+    inputs:
+      sql: "UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE turn_id = ?"
+      bindings: [ !cel "steps.marked.result.turnId" ]
+  - name: afterCrash
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.marked.result.turnId]" }
+  # Marked, its key still there: the turn already answers as removed.
+  - name: markedContinue
+    try:
+      - name: refusedContinue
+        invoke: !ref Chat.continueTurn
+        inputs: { turnId: !cel "steps.marked.result.turnId", clientIp: test-runner }
+    catch:
+      - name: refusal
+        value: !cel "error.code"
+  # Nothing is idle: this sweep only finishes what was left marked.
+  - name: finishing
+    invoke: !ref Chat.retentionSweep
+    inputs: { idleBefore: !cel "now() - duration('24h')" }
+  - name: afterFinishing
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.marked.result.turnId]" }
+  # ── a branch outlives its source ───────────────────────────────────────────
+  - name: source
+    invoke: !ref Chat.conversationRecords
+    inputs: { conversationId: !cel "steps.branched.result.conversationId", fromTurn: "", fromId: 0, limit: 2000 }
+  - name: branch
+    invoke: !ref Chat.branchConversation
+    inputs:
+      conversationId: !cel "steps.branched.result.conversationId"
+      throughTurnId: !cel "steps.branched.result.turnId"
+  - name: copy
+    invoke: !ref Chat.conversationRecords
+    inputs: { conversationId: !cel "steps.branch.result.conversation.id", fromTurn: "", fromId: 0, limit: 2000 }
+  - name: deleteSource
+    invoke: !ref Chat.deleteConversation
+    inputs: { conversationId: !cel "steps.branched.result.conversationId" }
+  - name: afterSource
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.branched.result.turnId, string(steps.copy.result.turns[0].turnId)]" }
+  - name: revertCopy
+    invoke: !ref Chat.revertTurn
+    inputs: { turnId: !cel "string(steps.copy.result.turns[0].turnId)" }
+  - name: workspace
+    invoke: !ref Chat.treeSnapshot
+    inputs:
+      paths: [branched.txt]
+  # ── the retention sweep: everything is idle ────────────────────────────────
+  - name: sweep
+    invoke: !ref Chat.retentionSweep
+    inputs: { idleBefore: !cel "now() + duration('1h')" }
+  - name: afterSweep
+    invoke: !ref left
+    inputs: { turnIds: !cel "[steps.swept.result.turnId, string(steps.copy.result.turns[0].turnId)]" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        written: !cel "[steps.written.result.directories, steps.written.result.onlyLive]"
+        afterDelete: !cel "[steps.afterDelete.result.directories, steps.afterDelete.result.rows, steps.afterDelete.result.onlyLive]"
+        afterTruncate: !cel "[steps.afterTruncate.result.directories, steps.afterTruncate.result.rows, steps.afterTruncate.result.onlyLive]"
+        afterCrash: !cel "[steps.afterCrash.result.directories, steps.afterCrash.result.onlyLive]"
+        markedContinue: !cel "has(steps.refusal) ? steps.refusal.result : 'continued'"
+        afterFinishing: !cel "[steps.afterFinishing.result.directories, steps.afterFinishing.result.rows, steps.afterFinishing.result.onlyLive]"
+        branch:
+          sameSummary: !cel "steps.copy.result.turns[0].summary == steps.source.result.turns[0].summary"
+          files: !cel "steps.copy.result.turns[0].summary.files.map(f, f.path + ' ' + f.status)"
+          afterSource: !cel "[steps.afterSource.result.directories, steps.afterSource.result.onlyLive]"
+          reverted: !cel "steps.revertCopy.result.revert.files.map(f, f.path + ' ' + f.outcome)"
+          missing: !cel "steps.workspace.result.missing"
+        afterSweep: !cel "[steps.afterSweep.result.directories, steps.afterSweep.result.rows, steps.afterSweep.result.onlyLive]"
+      expected:
+        written: [ [ true, true, true, true, true ], true ]
+        afterDelete: [ [ false ], 0, true ]
+        afterTruncate: [ [ false ], 0, true ]
+        afterCrash: [ [ true ], false ]
+        markedContinue: ERR_JOURNAL_KEY_REMOVED
+        afterFinishing: [ [ false ], 0, true ]
+        branch:
+          sameSummary: true
+          files: [ branched.txt created ]
+          afterSource: [ [ false, true ], true ]
+          reverted: [ branched.txt restored ]
+          missing: [ branched.txt ]
+        afterSweep: [ [ false, false ], 0, true ]

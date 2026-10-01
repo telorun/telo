@@ -16,7 +16,11 @@ metadata:
     POST /chat/{turnId}/continue resumes an interrupted one inside the same turn;
     GET /conversations/{id}/records pages a conversation's records. A
     conversation is named after its first message, and its older turns are
-    summarized once its context reaches MAX_CONTEXT_TOKENS. Conversations idle
+    summarized once its context reaches MAX_CONTEXT_TOKENS. Every change the
+    agent's write_file, edit_file and delete_file make is checkpointed under its
+    turn: GET /chat/{turnId}/changes lists a turn's net file changes as diffs,
+    POST /chat/{turnId}/revert puts them back, and every ended turn's entry on
+    the records route carries a summary. Conversations idle
     for RETENTION_DAYS are deleted whole, at boot and hourly. Requires
     OPENAI_API_KEY (any value when MODEL_ENDPOINT names a keyless endpoint).
 
@@ -47,6 +51,8 @@ imports:
       teloProgram: !cel "variables.teloProgram"
       maxContextTokens: !cel "variables.maxContextTokens"
       maxToolResultBytes: !cel "variables.maxToolResultBytes"
+      maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
+      maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
   Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
   Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
   Scheduler: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
@@ -119,6 +125,20 @@ variables:
     type: integer
     minimum: 1
     default: 32768
+  # The most bytes of "before" copies one write_file, edit_file or delete_file
+  # call may capture into its turn's checkpoint, and the most files. A call
+  # that would pass either is refused with ERR_CHECKPOINT_TOO_LARGE before
+  # anything changes.
+  maxCheckpointBytes:
+    env: MAX_CHECKPOINT_BYTES
+    type: integer
+    minimum: 0
+    default: 16777216
+  maxCheckpointFiles:
+    env: MAX_CHECKPOINT_FILES
+    type: integer
+    minimum: 1
+    default: 1000
   # How hard the model thinks before each turn. Bound to an env var because it
   # is the dial an operator turns per deployment: it trades answer quality
   # against latency and spend on every turn of every tool loop, and `minimal`
@@ -332,8 +352,8 @@ routes:
               error: !cel "error.message"
               code: ERR_AT_CAPACITY
               retryAfter: !cel "error.data.retryAfter"
-      # A turn is already in flight for this conversation — two AI turns never
-      # write the shared workspace at once.
+      # A turn is already in flight for this conversation. Turns of different
+      # conversations can run at once; the workspace write lease serializes their writes.
       - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
         status: 409
         content:
@@ -552,10 +572,158 @@ routes:
             body:
               error: !cel "error.message"
               code: !cel "error.code"
+  # What a turn changed on balance: each file with its status, digests, line
+  # counts, hunks, the line its first hunk starts at and whether the workspace
+  # file has changed since; and the turn's recorded revert, null until one ran.
+  # Served for an archived conversation and while the turn runs. Both are null
+  # for a turn from before checkpoints existed.
+  - request:
+      path: /chat/{turnId}/changes
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [turnId]
+          properties:
+            turnId: { type: string }
+    handler: !ref Chat.turnChanges
+    inputs:
+      turnId: !cel "request.params.turnId"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              files: !cel "result.files"
+              revert: !cel "result.revert"
+    catches:
+      - when: !cel "error.code == 'ERR_JOURNAL_KEY_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_JOURNAL_KEY_REMOVED
+      - when: !cel "error.code == 'ERR_TURN_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
+  # Put back what a turn changed. No body. Each path is restored only while it
+  # still holds what the turn left; one changed since is `skipped`, never
+  # overwritten. `revision` is the conversation's, moved when a path's outcome
+  # was written or changed, and when the turn's first revert runs to its end.
+  - request:
+      path: /chat/{turnId}/revert
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [turnId]
+          properties:
+            turnId: { type: string }
+    handler: !ref Chat.revertTurn
+    inputs:
+      turnId: !cel "request.params.turnId"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              revert: !cel "result.revert"
+              revision: !cel "result.revision"
+    catches:
+      - when: !cel "error.code == 'ERR_JOURNAL_KEY_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_JOURNAL_KEY_REMOVED
+      - when: !cel "error.code == 'ERR_TURN_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
+        status: 404
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_NOT_FOUND
+      - when: !cel "error.code == 'ERR_CONVERSATION_REMOVED'"
+        status: 410
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_REMOVED
+      - when: !cel "error.code == 'ERR_CONVERSATION_ARCHIVED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_CONVERSATION_ARCHIVED
+      - when: !cel "error.code == 'ERR_TURN_IN_PROGRESS'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_IN_PROGRESS
+              activeTurnId: !cel "error.data.activeTurnId"
+      - when: !cel "error.code == 'ERR_TURN_NOT_CHECKPOINTED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_TURN_NOT_CHECKPOINTED
+      # The workspace lease stayed held through every retry. Paths restored
+      # before that stay restored and recorded on the turn.
+      - when: !cel "error.code == 'ERR_WORKSPACE_BUSY'"
+        status: 503
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_WORKSPACE_BUSY
+      - status: 500
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: !cel "error.code"
   # A conversation's records, paged by (turn, record id): each turn with its
-  # status and its `{ id, data }` records, in order — the transcript every
-  # client renders from. `next` is the cursor of the following page, null on
-  # the last.
+  # status, its `{ id, data }` records, its `summary` once it has ended and its
+  # `revert` once one ran, in order — the transcript every client renders
+  # from. `next` is the cursor of the following page, null on the last.
   - request:
       path: /conversations/{id}/records
       method: GET
@@ -995,7 +1163,10 @@ routes:
               type: array
               items: { type: string }
     # Every path is judged before anything is applied: one outside the
-    # workspace refuses the whole change set.
+    # workspace, or a `delete` entry naming the workspace root or a directory
+    # holding the state directory, refuses the whole change set (400). The
+    # whole apply is one hold of the workspace lease the agent's file tools
+    # and a revert take.
     handler: !ref Chat.syncWorkspace
     inputs:
       write: !cel "has(request.body.write) ? request.body.write : []"
@@ -1015,6 +1186,13 @@ routes:
             body:
               error: !cel "error.message"
               code: ERR_PATH_OUTSIDE_WORKSPACE
+      - when: !cel "error.code == 'ERR_WORKSPACE_BUSY'"
+        status: 503
+        content:
+          application/json:
+            body:
+              error: !cel "error.message"
+              code: ERR_WORKSPACE_BUSY
       - status: 500
         content:
           application/json:
@@ -1072,10 +1250,18 @@ routes:
                 id: !cel "result.id"
               auth: !cel "secrets.agentToken == '' ? 'none' : 'bearer'"
               # What a client may offer: `conversations` (the conversation
-              # routes, their refusals on POST /chat, export), and the
-              # truncation and branch routes. A client ignores an entry it does
-              # not know.
-              features: [conversations, conversation-truncation, conversation-branching]
+              # routes, their refusals on POST /chat, export), the truncation
+              # and branch routes, a turn's changes and its revert, the
+              # `summary` on the records route, and a spent step budget ending
+              # in a wrap-up reply. A client ignores an entry it does not know.
+              features:
+                - conversations
+                - conversation-truncation
+                - conversation-branching
+                - turn-changes
+                - turn-revert
+                - turn-summary
+                - turn-conclusion
               manifestRuns: !cel "variables.allowManifestRuns"
 ---
 # Liveness and readiness, for an orchestrator's probes: never guarded, since a

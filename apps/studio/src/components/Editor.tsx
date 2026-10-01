@@ -74,9 +74,8 @@ import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { useAgent } from "../agent";
 import type { WorkspaceBridge } from "../agent";
 import { sessionWorkspace } from "../agent/agent-workspace";
-import { sha256Hex } from "../agent/hash";
 import { AGENT_APP_NAME } from "../agent/launch";
-import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
+import { editorWorkspaceBridge } from "./editor-workspace-bridge";
 import { AgentPanel } from "./agent/AgentPanel";
 import { saveDeploymentsForWorkspace } from "../storage-deployments";
 import { findMissingRequiredEnv } from "./views/run/declared-env";
@@ -256,47 +255,11 @@ export function Editor() {
   } = agent;
   const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
     if (!agentRootDir) return null;
-    const abs = (rel: string) => (rel ? pathJoin(agentRootDir, rel) : agentRootDir);
-    return {
-      async snapshot() {
-        const adapter = workspaceAdapterRef.current;
-        const out = new Map<string, string>();
-        if (!adapter) return out;
-        const walk = async (rel: string) => {
-          for (const entry of await adapter.listDir(abs(rel))) {
-            if (SYNC_EXCLUDED_DIRS.has(entry.name)) continue;
-            const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-            if (entry.isDirectory) await walk(childRel);
-            else out.set(childRel, await sha256Hex(await adapter.readFile(abs(childRel))));
-          }
-        };
-        await walk("");
-        return out;
-      },
-      async readFile(rel) {
-        const adapter = workspaceAdapterRef.current;
-        if (!adapter) throw new Error("no workspace open");
-        return adapter.readFile(abs(rel));
-      },
-      async applyChanges(writes, deletes) {
-        const adapter = workspaceAdapterRef.current;
-        if (!adapter) return;
-        const affected: string[] = [];
-        for (const w of writes) {
-          await adapter.writeFile(abs(w.path), w.content);
-          affected.push(abs(w.path));
-        }
-        for (const d of deletes) {
-          try {
-            await adapter.delete(abs(d));
-            affected.push(abs(d));
-          } catch {
-            /* already gone */
-          }
-        }
-        if (affected.length) await afterFileMutation(affected);
-      },
-    };
+    return editorWorkspaceBridge({
+      rootDir: agentRootDir,
+      adapter: () => workspaceAdapterRef.current,
+      afterFileMutation,
+    });
   }, [agentRootDir, afterFileMutation, workspaceAdapterRef]);
 
   useEffect(() => {
@@ -2241,6 +2204,25 @@ export function Editor() {
                     </li>
                   ))}
                 </ul>
+                {pendingImport.plan.published && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This copy holds the published manifest alone — the browser cannot reach the
+                    registry
+                    {pendingImport.plan.published.uncopiedLayers.length > 0
+                      ? ", so these payload layers are not copied:"
+                      : "."}
+                  </p>
+                )}
+                {pendingImport.plan.published &&
+                  pendingImport.plan.published.uncopiedLayers.length > 0 && (
+                    <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                      {pendingImport.plan.published.uncopiedLayers.map((layer) => (
+                        <li key={layer} className="break-all">
+                          <code>{layer}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
               </div>
               {pendingImport.plan.errors.length > 0 && (
                 <div>

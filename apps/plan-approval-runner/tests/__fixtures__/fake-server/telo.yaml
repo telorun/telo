@@ -1,0 +1,39 @@
+kind: Telo.Application
+metadata:
+  name: MalformedFeedServer
+  version: 1.0.0
+  description: |
+    Answers a runner's report, and serves a command feed whose one command has
+    a type the protocol does not know.
+imports:
+  Http: ../../../../../modules/http-server
+ports:
+  http:
+    env: PORT
+    default: 18798
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /api/agent
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: "/runners/{name}", method: PUT }
+    returns:
+      - status: 200
+        content: { application/json: { body: { runner: r1, lastSeenAt: "", commandSeq: 1 } } }
+  - request: { path: "/runners/{name}/commands", method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              commands:
+                - { seq: 1, type: reboot, session: 5e0c1a7e-1111-4c1a-8a51-000000000001, repo: alpha }
+              cursor: 1

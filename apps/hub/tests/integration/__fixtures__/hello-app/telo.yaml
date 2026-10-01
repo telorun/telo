@@ -1,0 +1,35 @@
+# An application as the hub indexes one: a declared contract with one of each
+# input, a secret carrying a default whose value must never be indexed, and a kind
+# of its own, which an application does not export.
+kind: Telo.Application
+metadata:
+  name: HelloFixtureApp
+  version: 1.0.0
+  description: Greets every visitor by name over HTTP.
+  categories: [Testing]
+variables:
+  greeting:
+    env: GREETING
+    type: string
+    description: The word each greeting opens with.
+    default: hello
+    minLength: 1
+    arg: { flag: greeting, short: g }
+secrets:
+  apiToken:
+    env: API_TOKEN
+    type: string
+    description: Token presented to the upstream directory.
+    default: fixture-secret-default-value
+ports:
+  http:
+    env: PORT
+    default: 8080
+---
+kind: Telo.Definition
+metadata:
+  name: Greeter
+  description: Composes one greeting.
+capability: Telo.Invocable
+schema:
+  type: object

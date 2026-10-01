@@ -1,0 +1,47 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunnerTestSuite
+  version: 1.0.0
+  description: |
+    The plan-approval runner's own tests, offline: each stands up a
+    plan-approval server and the runner, with a stub Claude CLI, and drives them
+    over HTTP. Separate from the repo suite, which excludes `apps/**`.
+
+        telo ./apps/plan-approval-runner/test-suite.yaml
+variables:
+  include:
+    type: array
+    items: { type: string }
+    arg: include
+    description: Glob pattern selecting the test manifests to run, relative to this file.
+    default:
+    - "tests/*.yaml"
+  exclude:
+    type: array
+    items: { type: string }
+    arg: exclude
+    description: Glob pattern excluding test manifests, relative to this file.
+    default:
+    - "**/__fixtures__/**"
+  filter:
+    type: string
+    arg: { position: 0 }
+    description: Run only the tests whose path contains this text.
+    default: ""
+  concurrency:
+    type: integer
+    minimum: 1
+    arg: concurrency
+    description: How many tests run at once.
+    default: 3
+imports:
+  Test: ../../modules/test
+targets:
+  - !ref runAll
+---
+kind: Test.Suite
+metadata: { name: runAll }
+include: !cel "variables.include"
+exclude: !cel "variables.exclude"
+filter: !cel "variables.filter"
+concurrency: !cel "variables.concurrency"

@@ -1,0 +1,91 @@
+# A structured throw inside a transaction body reaches the route's `catches:`,
+# and the transaction rolls back: Sql.Transaction's throw union is its body's
+# (`throws: { inherit: true }`), so `telo check` accepts the entry naming the
+# code, and the row written before the throw is gone.
+kind: Telo.Application
+metadata:
+  name: TransactionThrowReachesCatches
+  version: 1.0.0
+imports:
+  Sql: ../
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Http.Api
+metadata: { name: accountsApi }
+routes:
+  - request: { path: /accounts, method: POST }
+    handler:
+      kind: Sql.Transaction
+      connection: !ref db
+      steps:
+        kind: Run.Sequence
+        steps:
+          - name: insert
+            inputs:
+              sql: "INSERT INTO accounts (email) VALUES ('ada@example.com')"
+            invoke:
+              kind: Sql.Command
+              connection: !ref db
+          - name: reject
+            throw: { code: ACCOUNT_REJECTED, message: "the account was refused after it was written" }
+    returns:
+      - status: 201
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      - when: !cel "error.code == 'ACCOUNT_REJECTED'"
+        status: 409
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 18720
+    mounts:
+      - mount: !ref accountsApi
+targets:
+  - !ref server
+steps:
+  - name: createTable
+    inputs:
+      sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
+    invoke:
+      kind: Sql.Command
+      connection: !ref db
+  - name: open
+    inputs: { url: "http://127.0.0.1:18720/accounts", method: POST }
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, throwOnHttpError: false }
+  - name: count
+    inputs:
+      sql: "SELECT COUNT(*) AS n FROM accounts"
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+  - name: assertRenderedAndRolledBack
+    inputs:
+      actual:
+        status: !cel "steps.open.result.status"
+        body: !cel "steps.open.result.body"
+        rows: !cel "steps.count.result.rows"
+      expected:
+        status: 409
+        body: { code: ACCOUNT_REJECTED }
+        rows: [{ n: 0 }]
+    invoke: { kind: Assert.Equals }

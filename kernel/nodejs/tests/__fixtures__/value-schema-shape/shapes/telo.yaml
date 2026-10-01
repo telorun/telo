@@ -1,0 +1,27 @@
+# An exported input shape that inherits, from the shape it extends, a node typed
+# from the location `reader`.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaShapes
+  version: 1.0.0
+exports:
+  resources: [CallerInput]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: BaseInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      x-telo-value-schema-from: /reader/*/contextType
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CallerInput
+extends: BaseInput
+schema:
+  type: object
+  properties:
+    note: { type: string }

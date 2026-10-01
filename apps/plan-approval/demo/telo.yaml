@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalDemo
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    Seeds a running plan-approval server with demo data for trying the review
+    UI, playing a reviewer, an agent and a runner over HTTP: a product with a 1s
+    review deadline and an unreachable webhook, a repository, a runner
+    reporting one session, a plan from that session revised once, and a branch
+    link. One-shot; run it once per fresh database.
+imports:
+  HttpClient: ../../../modules/http-client
+  Console: ../../../modules/console
+  Run: ../../../modules/run
+variables:
+  serverUrl:
+    env: PLAN_APPROVAL_URL
+    type: string
+    format: uri
+    description: The plan-approval server to seed, e.g. `http://127.0.0.1:8080`.
+targets:
+  - !ref seed
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: !cel "variables.serverUrl", throwOnHttpError: true }
+---
+kind: Run.Sequence
+metadata: { name: seed }
+steps:
+  - name: session
+    value: !cel "uuidv4()"
+  # A 1s deadline makes the plan overdue at once; the webhook points at a closed
+  # port, so the product page lists failed delivery attempts.
+  - name: product
+    invoke: !ref call
+    inputs:
+      url: /api/review/products
+      method: POST
+      body: { slug: acme, name: Acme, deadline: 1s, webhookUrl: "http://127.0.0.1:9/plan-approval-hook" }
+  - name: repo
+    invoke: !ref call
+    inputs:
+      url: /api/review/repos
+      method: POST
+      body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] }
+  - name: runner
+    invoke: !ref call
+    inputs:
+      url: /api/agent/runners/workstation
+      method: PUT
+      body:
+        instance: !cel "uuidv4()"
+        repos: [api]
+        sessions:
+          - { id: !cel "steps.session.result", repo: api }
+  - name: plan
+    invoke: !ref call
+    inputs:
+      url: /api/agent/plans
+      method: POST
+      body:
+        product: acme
+        repo: api
+        branch: feature/rate-limit
+        loop: rate-limit
+        session: !cel "steps.session.result"
+        title: Rate-limit the public API
+        body: |-
+          # Rate-limit the public API
+
+          <script>alert('raw HTML renders as text')</script>
+
+          ## S1 Add a limiter
+          Token bucket per API key.
+
+          ## S2 Configure limits
+          - **C1**: 100 requests per minute
+          - C2 burst of 20
+
+          ## Notes
+          Nothing else changes.
+  - name: revision
+    invoke: !ref call
+    inputs:
+      url: !cel "'/api/agent/plans/' + string(steps.plan.result.body.planId) + '/revisions'"
+      method: POST
+      body:
+        base: !cel "string(steps.plan.result.body.hash)"
+        summary: Raise the limit, drop the burst, add monitoring.
+        body: |-
+          # Rate-limit the public API
+
+          <script>alert('raw HTML renders as text')</script>
+
+          ## S1 Add a limiter
+          Token bucket per API key, in Redis.
+
+          ## S2 Configure limits
+          - **C1**: 200 requests per minute
+
+          ## S3 Monitor
+          - M1 alert on sustained 429s
+
+          ## Notes
+          Nothing else changes.
+  - name: link
+    invoke: !ref call
+    inputs:
+      url: !cel "'/api/agent/plans/' + string(steps.plan.result.body.planId) + '/links'"
+      method: POST
+      body: { type: branch, url: "https://example.com/acme/api/tree/feature/rate-limit", status: open }
+  - name: say
+    invoke: !ref Console.writeLine
+    inputs:
+      output: !cel "'Seeded. Open ' + variables.serverUrl + '/plans/' + string(steps.plan.result.body.planId)"

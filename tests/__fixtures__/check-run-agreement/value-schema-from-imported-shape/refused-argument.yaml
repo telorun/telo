@@ -1,0 +1,32 @@
+# Calls the kind typed through its imported shape with caller data its reader
+# refuses: the annotation is live, so the call is reported where it is written.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromImportedShapeRefusedArgument
+  version: 1.0.0
+imports:
+  Lib: ./accepted-lib
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+kind: Lib.Caller
+metadata:
+  name: caller
+readers:
+  - contextType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [turnId]
+        properties:
+          turnId: { type: string }
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: call
+    invoke: !ref caller
+    inputs:
+      context: { turnId: 42 }

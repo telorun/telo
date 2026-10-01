@@ -11,19 +11,25 @@ resource produced.
 All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
 `Ai.Tools` for an agent.
 
-- **`Fs.File`** — read a file. `{ path, encoding? }` → `{ content, size }`.
+- **[`Fs.File`](docs/file.md)** — read a file. `{ path, encoding?, maxBytes? }` →
+  `{ content, size, sha256 }`. `sha256` is the digest of the file's bytes;
+  `maxBytes` refuses a larger file with `ERR_FILE_TOO_LARGE` before reading it.
 - **`Fs.FileWrite`** — write a file whole. `{ path, content, encoding?,
   createParents? }` → `{ bytesWritten }`.
 - **`Fs.FileEdit`** — edit a file in place by exact string replacement.
   `{ path, oldString, newString, replaceAll? }` → `{ replacements }`. Fails when
   `oldString` is absent, or matches more than once without `replaceAll` — never
   a silent no-op. Byte-level, so comments and `!cel` tags survive.
-- **`Fs.DirectoryListing`** — list a directory. `{ path?, recursive?, exclude? }`
-  → `{ entries: [{ name, path, type, size }] }`; each `path` is relative to `cwd`
-  so it can be fed straight back as an input. `exclude` omits entries by base
-  name at any depth (an excluded directory is neither listed nor descended) —
-  a recursive listing of a real tree needs it to stay readable, e.g.
-  `node_modules`, `.git`, `.telo`.
+- **[`Fs.DirectoryListing`](docs/directory-listing.md)** — list a directory.
+  `{ path?, recursive?, exclude?, limit?, cursor? }`
+  → `{ entries: [{ name, path, type, size }], nextCursor? }`, sorted by `path`
+  (the whole path, by Unicode code point);
+  each `path` is relative to `cwd` so it can be fed straight back as an input.
+  `exclude` omits entries by base name at any depth (an excluded directory is
+  neither listed nor descended) — a recursive listing of a real tree needs it to
+  stay readable, e.g. `node_modules`, `.git`, `.telo`. `limit` returns one page
+  and `nextCursor` — absent on the last — continues it as the next call's
+  `cursor`.
 
   **Every emitted `path` is separated with `/`, on every host.** A path that
   reaches a manifest stops being a host path: an author compares it in CEL
@@ -37,12 +43,15 @@ All are `Telo.Invocable` — invoke them from a `Run.Sequence` or wrap them as
   already existed); without, an existing path or missing parent is an error.
 - **`Fs.FileRemoval`** — remove a file, or a tree with `recursive`.
   `{ path, recursive? }` → `{ removed }`.
-- **`Fs.TreeSnapshot`** — content-hash a directory tree.
-  `{ path?, exclude? }` → `{ files: [{ path, hash }] }`, `hash` the sha256 hex
-  of the file's bytes. A content hash is a reliable change detector where
-  `DirectoryListing`'s `size` is not (equal size ≠ equal content), so two
-  snapshots diff to an exact change set. `exclude` skips entries by base name at
-  any depth (e.g. `node_modules`, `.git`, `dist`).
+- **[`Fs.TreeSnapshot`](docs/tree-snapshot.md)** — content-hash files and
+  directory trees. `{ paths?, exclude? }` →
+  `{ files: [{ path, hash, size }], missing }`, `hash` the sha256 hex of the
+  file's bytes. Each of `paths` is a file or a directory root; one at which
+  nothing exists is listed in `missing` rather than failing the call. A content
+  hash is a reliable change detector where `DirectoryListing`'s `size` is not
+  (equal size ≠ equal content), so two snapshots diff to an exact change set.
+  `exclude` skips entries by base name at any depth (e.g. `node_modules`,
+  `.git`, `dist`).
 - **`Fs.TreeSync`** — apply an **explicit** change set.
   `{ write?: [{ path, content, encoding? }], delete?: [path] }` →
   `{ written, deleted }`. Writes each file (creating parents), then removes each
@@ -58,9 +67,9 @@ set.
 
 Each resource carries an optional `cwd` — the base directory invoke `path`s
 resolve against; omitted, the working directory. An absolute invoke `path` is
-used as-is. Where the invoke `path` is optional (`DirectoryListing`,
-`TreeSnapshot`), omitting it and passing an empty string both mean `cwd` itself —
-an empty string is a spelling of the default, not an error. It is **not** a
+used as-is. `DirectoryListing`'s `path` is optional: omitting it and passing an
+empty string both mean `cwd` itself — an empty string is a spelling of the
+default, not an error. `TreeSnapshot` with no `paths` snapshots `cwd`. It is **not** a
 security boundary: nothing confines paths to `cwd`. Real isolation comes from
 where the kernel runs (the runner sandbox), not this field.
 
@@ -112,7 +121,10 @@ file embedded with `!include-bytes`. A string at `content` is always text, so
 Errors are surfaced, never swallowed. A missing file (`ENOENT`), a permission
 failure (`EACCES`), and the like raise an actionable error naming the offending
 path and code; an `Fs.FileEdit` with an absent or ambiguous `oldString` fails
-rather than silently doing nothing.
+rather than silently doing nothing. `Fs.File` raises the catchable code
+`ERR_FILE_TOO_LARGE` for a file over the call's `maxBytes`. A path
+`Fs.TreeSnapshot` was asked for and did not find is not an error — it is
+reported in `missing`.
 
 ## What is logged
 
@@ -148,7 +160,7 @@ cwd: !cel "variables.workspace"
 # invoked from a Run.Sequence (or wrapped as an Ai.Tools tool):
 #   - name: Read
 #     invoke: !ref ReadFile
-#     inputs: { path: telo.yaml }                                    # → { content, size }
+#     inputs: { path: telo.yaml }                                    # → { content, size, sha256 }
 #   - name: Edit
 #     invoke: !ref EditFile
 #     inputs: { path: telo.yaml, oldString: "version: 1", newString: "version: 2" }  # → { replacements }

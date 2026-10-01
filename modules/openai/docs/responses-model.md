@@ -98,6 +98,7 @@ The translation from the provider-neutral contract:
 | an `assistant` message's `toolCalls` | one `{type: function_call, call_id, name, arguments}` item each |
 | a `tool` message | `{type: function_call_output, call_id, output}` |
 | `tools` | flat — `{type: function, name, description, parameters}` |
+| `toolChoice` | `tool_choice` (`auto` \| `none`), sent only beside `tools`; `none` keeps the tools declared and forbids a new call |
 | `responseFormat` | `text.format`, and the VALUE is reshaped too — see below |
 | `providerState` | the reasoning items, spliced in **before** the function calls they reasoned about |
 

@@ -211,4 +211,30 @@ describe("x-telo-context-from-ref-kind", () => {
     });
     expect(resolved.properties.result).toEqual({});
   });
+
+  it("keeps the node's own keywords when the root path holds nothing", () => {
+    // A kind says what the variable is when the field is left out: here, a
+    // closed empty object, so reading any member of it is an unknown field.
+    const context = {
+      type: "object",
+      properties: {
+        context: {
+          type: "object",
+          additionalProperties: false,
+          "x-telo-context-from-root": "contextType",
+        },
+        acc: { "x-telo-context-from-root": "accType" },
+      },
+    };
+    const declared = { type: "object", properties: { turnId: { type: "string" } } };
+
+    const absent = resolveContextAnnotations(context, {}, { manifestRoot: {} });
+    expect(absent.properties.context).toEqual({ type: "object", additionalProperties: false });
+    // A node declaring no keywords of its own stays untyped.
+    expect(absent.properties.acc).toEqual({});
+
+    const manifestRoot = { contextType: { kind: "Telo.JsonSchema", schema: declared } };
+    const present = resolveContextAnnotations(context, manifestRoot, { manifestRoot });
+    expect(present.properties.context).toEqual(declared);
+  });
 });

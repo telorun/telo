@@ -1,0 +1,3135 @@
+kind: Telo.Library
+metadata:
+  name: PlanApprovalPlans
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  categories: [Coordination, Storage]
+  description: >-
+    Review and approval of agent-written plans, stored in SQLite: products and
+    repositories, plans with hashed revisions and item IDs, reviewer comments and
+    decisions bound to one revision, progress reports and links, a per-plan event
+    timeline with long-poll wake-ups, a webhook outbox with retries, and a
+    registry of machines that wake, start and stop agent sessions from a command
+    feed.
+requires:
+  # `Telo.Duration` is a value type an older analyzer does not know; 0.92.0 is
+  # the first release that reads this file.
+  telo: ">=0.92.0"
+imports:
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Run: ../../../modules/run
+  Watch: ../../../modules/watch
+  HttpClient: ../../../modules/http-client
+  RunnerProtocol: ../../plan-approval-runner-protocol
+resources:
+  connection:
+    kind: SQLite.Connection
+    description: The database every table lives in.
+variables:
+  longPollCap:
+    type: string
+    x-telo-type: Telo.Duration
+    description: The longest any long poll holds a request, whatever its `wait` asks for.
+exports:
+  resources:
+    - schema
+    - flushOutbox
+    - createProduct
+    - listProducts
+    - updateProduct
+    - createRepo
+    - listRepos
+    - submitPlan
+    - revisePlan
+    - withdrawPlan
+    - agentPlan
+    - planEvents
+    - reportPlan
+    - upsertLink
+    - listPlans
+    - planDetail
+    - commentPlan
+    - decidePlan
+    - planHistory
+    - productHistory
+    - reportRunner
+    - commandFeed
+    - commandOutcome
+    - listRunners
+    - runnerSessions
+    - runnerCommands
+    - createRunnerCommand
+---
+kind: SQLite.Table
+metadata: { name: products }
+table: products
+columns:
+  slug: { type: text, primaryKey: true }
+  name: { type: text, nullable: false }
+  deadline_seconds: { type: integer }
+  webhook_url: { type: text }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+---
+kind: SQLite.Table
+metadata: { name: repos }
+table: repos
+columns:
+  slug: { type: text, primaryKey: true }
+  url: { type: text, nullable: false }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+---
+kind: SQLite.Table
+metadata: { name: repoProducts }
+table: repo_products
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  repo: { type: text, nullable: false }
+  product: { type: text, nullable: false }
+indexes:
+  repo_products_key: { columns: [repo, product], unique: true }
+---
+kind: SQLite.Table
+metadata: { name: plans }
+table: plans
+columns:
+  id: { type: text, primaryKey: true }
+  product: { type: text, nullable: false }
+  repo: { type: text, nullable: false }
+  branch: { type: text, nullable: false }
+  loop: { type: text, nullable: false }
+  title: { type: text, nullable: false }
+  state: { type: text, nullable: false }
+  session: { type: text }
+  latest_seq: { type: integer, nullable: false }
+  latest_hash: { type: text, nullable: false }
+  latest_at: { type: text, nullable: false }
+  approved_seq: { type: integer }
+  approved_hash: { type: text }
+  cursor: { type: integer, nullable: false }
+  created_at: { type: text, nullable: false }
+  updated_at: { type: text, nullable: false }
+indexes:
+  plans_by_loop: { columns: [product, repo, loop] }
+  plans_by_session: { columns: [session] }
+---
+kind: SQLite.Table
+metadata: { name: revisions }
+table: revisions
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  plan_id: { type: text, nullable: false }
+  seq: { type: integer, nullable: false }
+  hash: { type: text, nullable: false }
+  body: { type: text, nullable: false }
+  summary: { type: text }
+  items: { type: text, nullable: false }
+  session: { type: text }
+  created_at: { type: text, nullable: false }
+indexes:
+  revisions_key: { columns: [plan_id, seq], unique: true }
+  revisions_by_hash: { columns: [hash] }
+---
+# The timeline: every state-changing write appends one row, whose `seq` is the
+# plan's cursor after that write.
+kind: SQLite.Table
+metadata: { name: events }
+table: events
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  plan_id: { type: text, nullable: false }
+  seq: { type: integer, nullable: false }
+  type: { type: text, nullable: false }
+  source: { type: text, nullable: false }
+  author: { type: text }
+  revision: { type: integer }
+  data: { type: text, nullable: false }
+  created_at: { type: text, nullable: false }
+indexes:
+  events_key: { columns: [plan_id, seq], unique: true }
+---
+kind: SQLite.Table
+metadata: { name: links }
+table: links
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  plan_id: { type: text, nullable: false }
+  type: { type: text, nullable: false }
+  url: { type: text, nullable: false }
+  status: { type: text, nullable: false }
+  reported_at: { type: text, nullable: false }
+indexes:
+  links_key: { columns: [plan_id, type, url], unique: true }
+---
+# Webhook deliveries still owed. A row is written in the transaction of the event
+# it announces and deleted from nothing: `delivered_at` marks it done.
+kind: SQLite.Table
+metadata: { name: outbox }
+table: outbox
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  product: { type: text, nullable: false }
+  url: { type: text, nullable: false }
+  event: { type: text, nullable: false }
+  plan_id: { type: text, nullable: false }
+  payload: { type: text, nullable: false }
+  attempts: { type: integer, nullable: false, default: 0 }
+  next_attempt_ms: { type: integer, nullable: false }
+  delivered_at: { type: text }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+indexes:
+  outbox_due: { columns: [next_attempt_ms], where: "delivered_at IS NULL" }
+---
+kind: SQLite.Table
+metadata: { name: deliveryAttempts }
+table: delivery_attempts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  outbox_id: { type: integer, nullable: false }
+  product: { type: text, nullable: false }
+  attempt: { type: integer, nullable: false }
+  status: { type: integer }
+  error: { type: text }
+  at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+indexes:
+  delivery_attempts_by_product: { columns: [product, id] }
+---
+kind: SQLite.Table
+metadata: { name: runners }
+table: runners
+columns:
+  name: { type: text, primaryKey: true }
+  instance: { type: text, nullable: false }
+  repos: { type: text, nullable: false }
+  command_seq: { type: integer, nullable: false, default: 0 }
+  last_seen_at: { type: text, nullable: false }
+---
+# Every instance a runner name has been replaced from. A request carrying one is
+# refused, so a stale process cannot take a runner back.
+kind: SQLite.Table
+metadata: { name: retiredInstances }
+table: retired_instances
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  runner: { type: text, nullable: false }
+  instance: { type: text, nullable: false }
+indexes:
+  retired_instances_key: { columns: [runner, instance], unique: true }
+---
+kind: SQLite.Table
+metadata: { name: sessions }
+table: sessions
+columns:
+  ord: { type: integer, primaryKey: true, identity: always }
+  id: { type: text, nullable: false, unique: true }
+  runner: { type: text, nullable: false }
+  repo: { type: text, nullable: false }
+  state: { type: text, nullable: false }
+  first_seen_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+  last_seen_at: { type: text }
+indexes:
+  sessions_by_runner: { columns: [runner, ord] }
+  sessions_by_runner_state: { columns: [runner, state, ord] }
+---
+kind: SQLite.Table
+metadata: { name: commands }
+table: commands
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  runner: { type: text, nullable: false }
+  seq: { type: integer, nullable: false }
+  type: { type: text, nullable: false }
+  state: { type: text, nullable: false }
+  # A start's session is known only from its `done` outcome.
+  session: { type: text }
+  session_name: { type: text }
+  repo: { type: text, nullable: false }
+  plan_id: { type: text }
+  plan_seq: { type: integer }
+  decision: { type: text }
+  prompt: { type: text }
+  author: { type: text }
+  error_code: { type: text }
+  error_message: { type: text }
+  created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
+  completed_at: { type: text }
+indexes:
+  commands_key: { columns: [runner, seq], unique: true }
+  commands_by_plan: { columns: [plan_id, state] }
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref connection
+tables:
+  - !ref products
+  - !ref repos
+  - !ref repoProducts
+  - !ref plans
+  - !ref revisions
+  - !ref events
+  - !ref links
+  - !ref outbox
+  - !ref deliveryAttempts
+  - !ref runners
+  - !ref retiredInstances
+  - !ref sessions
+  - !ref commands
+---
+kind: Watch.MemoryStore
+metadata: { name: watchStore }
+---
+kind: Watch.Publish
+metadata: { name: publish }
+store: !ref watchStore
+---
+kind: Watch.Wait
+metadata: { name: wait }
+store: !ref watchStore
+maxTimeout: !cel "variables.longPollCap"
+---
+# ---------------------------------------------------------------------------
+# Row shapes. Every read below parses SQLite JSON, so each declares what it
+# returns: a reader misspelling a field then fails `telo check`.
+# ---------------------------------------------------------------------------
+kind: Telo.JsonSchema
+metadata: { name: Plan }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, product, repo, branch, loop, title, state, session, runner, latestRevision,
+    approvedSeq, approvedHash, cursor, createdAt, updatedAt, overdue]
+  properties:
+    id: { type: string }
+    product: { type: string }
+    repo: { type: string }
+    branch: { type: string }
+    loop: { type: string }
+    title: { type: string }
+    state: { type: string }
+    session: { type: [string, "null"] }
+    runner: { type: [string, "null"] }
+    latestRevision:
+      type: object
+      additionalProperties: false
+      required: [seq, hash, items, createdAt]
+      properties:
+        seq: { type: integer }
+        hash: { type: string }
+        items: { type: array, items: { type: string } }
+        createdAt: { type: string }
+    approvedSeq: { type: [integer, "null"] }
+    approvedHash: { type: [string, "null"] }
+    cursor: { type: integer }
+    createdAt: { type: string }
+    updatedAt: { type: string }
+    overdue: { type: boolean }
+---
+kind: Telo.JsonSchema
+metadata: { name: TimelineEvent }
+schema:
+  type: object
+  additionalProperties: false
+  required: [seq, type, source, author, revision, data, createdAt]
+  properties:
+    seq: { type: integer }
+    type: { type: string }
+    source: { type: string, enum: [agent, reviewer] }
+    author: { type: [string, "null"] }
+    revision: { type: [integer, "null"] }
+    data: { type: object }
+    createdAt: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Revision }
+schema:
+  type: object
+  additionalProperties: false
+  required: [seq, hash, summary, items, session, body, createdAt]
+  properties:
+    seq: { type: integer }
+    hash: { type: string }
+    summary: { type: [string, "null"] }
+    items: { type: array, items: { type: string } }
+    session: { type: [string, "null"] }
+    body: { type: string }
+    createdAt: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: PlanHistory }
+schema:
+  type: object
+  additionalProperties: false
+  required: [plan, revisions, events]
+  properties:
+    plan: !ref Plan
+    revisions: { type: array, items: !ref Revision }
+    events: { type: array, items: !ref TimelineEvent }
+---
+kind: Telo.JsonSchema
+metadata: { name: Product }
+schema:
+  type: object
+  additionalProperties: false
+  required: [slug, name, deadline, webhookUrl, createdAt, pendingDeliveries, deliveries]
+  properties:
+    slug: { type: string }
+    name: { type: string }
+    deadline: { type: [string, "null"] }
+    webhookUrl: { type: [string, "null"] }
+    createdAt: { type: string }
+    pendingDeliveries: { type: integer }
+    deliveries:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [outboxId, event, planId, attempt, status, error, at]
+        properties:
+          outboxId: { type: integer }
+          event: { type: string }
+          planId: { type: string }
+          attempt: { type: integer }
+          status: { type: [integer, "null"] }
+          error: { type: [string, "null"] }
+          at: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Repo }
+schema:
+  type: object
+  additionalProperties: false
+  required: [slug, url, createdAt, products]
+  properties:
+    slug: { type: string }
+    url: { type: string }
+    createdAt: { type: string }
+    products: { type: array, items: { type: string } }
+---
+# ---------------------------------------------------------------------------
+# Shared statements. Each is invoked from inside a transaction body and joins
+# it, since membership is ambient per connection.
+# ---------------------------------------------------------------------------
+# Append one timeline entry: the plan's cursor moves by one and the entry takes
+# that value as its `seq`.
+kind: Run.Sequence
+metadata: { name: appendEvent }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, type, source, author, revision, data]
+    properties:
+      planId: { type: string }
+      type: { type: string }
+      source: { type: string, enum: [agent, reviewer] }
+      author: { type: string, anyOf: [{ const: "", description: The entry has no author. }, { minLength: 1 }] }
+      revision: { type: integer, anyOf: [{ const: 0, description: The entry is about no one revision. }, { minimum: 1 }] }
+      data: { type: object }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seq]
+    properties:
+      seq: { type: integer }
+steps:
+  - name: bump
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        UPDATE plans SET cursor = cursor + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE id = ${{ inputs.planId }} RETURNING cursor
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        INSERT INTO events (plan_id, seq, type, source, author, revision, data, created_at)
+        VALUES (${{ inputs.planId }}, ${{ steps.bump.result.rows[0].cursor }}, ${{ inputs.type }},
+          ${{ inputs.source }}, NULLIF(${{ inputs.author }}, ''), NULLIF(${{ inputs.revision }}, 0),
+          ${{ json(inputs.data) }}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+outputs:
+  seq: !cel "int(steps.bump.result.rows[0].cursor)"
+---
+# At most one pending wake per plan: any newer decision or agent write retires it.
+kind: Run.Sequence
+metadata: { name: supersedeWake }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+steps:
+  - name: supersede
+    invoke: { kind: Sql.Command, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        UPDATE commands SET state = 'superseded', completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        WHERE plan_id = ${{ inputs.planId }} AND type = 'wake' AND state = 'pending'
+---
+# Queue a wake for the runner owning the plan's session, if one does. Returns the
+# runner (empty when nobody owns the session) and its new command cursor, which
+# the caller publishes after commit.
+kind: Run.Sequence
+metadata: { name: enqueueWake }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, planSeq, decision]
+    properties:
+      planId: { type: string }
+      planSeq: { type: integer }
+      decision: { type: string, enum: [approve, request_changes, reject] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [runner, commandSeq]
+    properties:
+      runner: { type: string }
+      commandSeq: { type: integer }
+steps:
+  - name: supersede
+    invoke: !ref supersedeWake
+    inputs: { planId: !cel "inputs.planId" }
+  - name: owner
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT s.runner AS runner, s.id AS session, s.repo AS repo FROM plans p
+        JOIN sessions s ON s.id = p.session WHERE p.id = ${{ inputs.planId }}
+  - name: queue
+    if: !cel "size(steps.owner.result.rows) > 0"
+    then:
+      - name: next
+        invoke: !ref nextCommandSeq
+        inputs: { runner: !cel "string(steps.owner.result.rows[0].runner)" }
+      - name: insert
+        invoke: { kind: Sql.Command, connection: !ref connection }
+        inputs:
+          sql: !sql >-
+            INSERT INTO commands (runner, seq, type, state, session, repo, plan_id, plan_seq, decision)
+            VALUES (${{ steps.owner.result.rows[0].runner }}, ${{ steps.next.result.seq }}, 'wake', 'pending',
+              ${{ steps.owner.result.rows[0].session }}, ${{ steps.owner.result.rows[0].repo }},
+              ${{ inputs.planId }}, ${{ inputs.planSeq }}, ${{ inputs.decision }})
+outputs:
+  runner: !cel "size(steps.owner.result.rows) > 0 ? string(steps.owner.result.rows[0].runner) : ''"
+  commandSeq: !cel "size(steps.owner.result.rows) > 0 ? steps.next.result.seq : 0"
+---
+# The runner's command counter, moved in the transaction that writes the command.
+kind: Run.Sequence
+metadata: { name: nextCommandSeq }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [runner]
+    properties:
+      runner: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seq]
+    properties:
+      seq: { type: integer }
+steps:
+  - name: bump
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        UPDATE runners SET command_seq = command_seq + 1 WHERE name = ${{ inputs.runner }}
+        RETURNING command_seq
+outputs:
+  seq: !cel "int(steps.bump.result.rows[0].command_seq)"
+---
+# An outbox row for the plan's product, when it has a webhook. The payload is
+# composed here, from the rows the event's transaction just wrote.
+kind: Run.Sequence
+metadata: { name: enqueueWebhook }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, event]
+    properties:
+      planId: { type: string }
+      event: { type: string, enum: [plan.submitted, plan.revised] }
+steps:
+  - name: insert
+    invoke: { kind: Sql.Command, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        INSERT INTO outbox (product, url, event, plan_id, payload, next_attempt_ms)
+        SELECT pr.slug, pr.webhook_url, ${{ inputs.event }}, p.id,
+          json_object('event', ${{ inputs.event }}, 'planId', p.id, 'title', p.title,
+            'product', p.product, 'repo', p.repo,
+            'revision', json_object('seq', p.latest_seq, 'hash', p.latest_hash),
+            'path', '/plans/' || p.id),
+          ${{ nowMillis() }}
+        FROM plans p JOIN products pr ON pr.slug = p.product
+        WHERE p.id = ${{ inputs.planId }} AND pr.webhook_url IS NOT NULL
+---
+# Plans as every surface reads them: state, latest revision with its item IDs,
+# approval, cursor, read-time `overdue` (submitted or revised, the product has a
+# deadline, and the latest revision is older than it), the session and the
+# runner owning it. Each filter is ignored when empty (or -1).
+kind: Run.Sequence
+metadata: { name: queryPlans }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, product, repo, state, olderThanSeconds]
+    properties:
+      planId: { type: string, anyOf: [{ const: "", description: Any plan. }, { minLength: 1 }] }
+      product: { type: string, anyOf: [{ const: "", description: Any product. }, { minLength: 1 }] }
+      repo: { type: string, anyOf: [{ const: "", description: Any repository. }, { minLength: 1 }] }
+      state: { type: string, anyOf: [{ const: "", description: Any state. }, { minLength: 1 }] }
+      olderThanSeconds: { type: integer, anyOf: [{ const: -1, description: Any age. }, { minimum: 0 }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plans]
+    properties:
+      plans: { type: array, items: !ref Plan }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS plans FROM (
+          SELECT json_object(
+            'id', p.id, 'product', p.product, 'repo', p.repo, 'branch', p.branch, 'loop', p.loop,
+            'title', p.title, 'state', p.state, 'session', p.session, 'runner', s.runner,
+            'latestRevision', json_object('seq', p.latest_seq, 'hash', p.latest_hash,
+              'items', json(r.items), 'createdAt', p.latest_at),
+            'approvedSeq', p.approved_seq, 'approvedHash', p.approved_hash,
+            'cursor', p.cursor, 'createdAt', p.created_at, 'updatedAt', p.updated_at,
+            'overdue', json(CASE WHEN p.state IN ('submitted', 'revised')
+              AND pr.deadline_seconds IS NOT NULL
+              AND (julianday('now') - julianday(p.latest_at)) * 86400 > pr.deadline_seconds
+              THEN 'true' ELSE 'false' END)
+          ) AS doc
+          FROM plans p
+          JOIN revisions r ON r.plan_id = p.id AND r.seq = p.latest_seq
+          JOIN products pr ON pr.slug = p.product
+          LEFT JOIN sessions s ON s.id = p.session
+          WHERE (${{ inputs.planId }} = '' OR p.id = ${{ inputs.planId }})
+            AND (${{ inputs.product }} = '' OR p.product = ${{ inputs.product }})
+            AND (${{ inputs.repo }} = '' OR p.repo = ${{ inputs.repo }})
+            AND (${{ inputs.state }} = '' OR p.state = ${{ inputs.state }})
+            AND (${{ inputs.olderThanSeconds }} < 0
+              OR (julianday('now') - julianday(p.latest_at)) * 86400 >= ${{ inputs.olderThanSeconds }})
+          ORDER BY p.latest_at DESC, p.id)
+outputs:
+  plans: !cel "parseJson(string(steps.query.result.rows[0].plans))"
+---
+kind: Run.Sequence
+metadata: { name: readPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plan]
+    properties:
+      plan: !ref Plan
+steps:
+  - name: query
+    invoke: !ref queryPlans
+    inputs: { planId: !cel "inputs.planId", product: "", repo: "", state: "", olderThanSeconds: -1 }
+  - name: missing
+    if: !cel "size(steps.query.result.plans) == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_PLAN_NOT_FOUND
+          message: !cel "'Plan ' + inputs.planId + ' does not exist.'"
+outputs:
+  plan: !cel "steps.query.result.plans[0]"
+---
+# A plan's timeline after `after`, in seq order. Every entry carries its
+# `source`: `agent` or `reviewer`.
+kind: Run.Sequence
+metadata: { name: readEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, after]
+    properties:
+      planId: { type: string }
+      after: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [events]
+    properties:
+      events: { type: array, items: !ref TimelineEvent }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS events FROM (
+          SELECT json_object('seq', seq, 'type', type, 'source', source, 'author', author,
+            'revision', revision, 'data', json(data), 'createdAt', created_at) AS doc
+          FROM events WHERE plan_id = ${{ inputs.planId }} AND seq > ${{ inputs.after }}
+          ORDER BY seq)
+outputs:
+  events: !cel "parseJson(string(steps.query.result.rows[0].events))"
+---
+# Every revision of a plan, bodies included.
+kind: Run.Sequence
+metadata: { name: readRevisions }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [revisions]
+    properties:
+      revisions: { type: array, items: !ref Revision }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS revisions FROM (
+          SELECT json_object('seq', seq, 'hash', hash, 'summary', summary, 'items', json(items),
+            'session', session, 'body', body, 'createdAt', created_at) AS doc
+          FROM revisions WHERE plan_id = ${{ inputs.planId }} ORDER BY seq)
+outputs:
+  revisions: !cel "parseJson(string(steps.query.result.rows[0].revisions))"
+---
+# The item IDs of a revision body: every heading or list-item line whose first
+# word — optionally bold — is capital letters followed by digits (`## S1 …`,
+# `- **C2**: …`, `3. AB12 …`), in order. Lines inside a fenced code block are
+# not Markdown headings or list items, so the fenced regions are removed first.
+# A fence opens at a line starting, after any indent, with three or more
+# backticks (and no backtick after them) or tildes, and runs through the next
+# line holding only at least as many of the same character, or to the end of
+# the body. RE2 has no backreference, so there is one arm per opening length —
+# 3, 4, 5, and 6 or more. CRLF line ends are read as LF.
+kind: Telo.Function
+metadata:
+  name: itemIds
+  description: The item IDs a plan body declares, in order of appearance.
+params:
+  - name: body
+    schema: { type: string }
+returns:
+  schema: { type: array, items: { type: string } }
+body: !cel >-
+  regexExtractAll(
+    regexReplace(replace(body, '\r\n', '\n'),
+      r'^[ \t]*(?:'
+        + r'`{3}[^`\n]*$.*?(?:^[ \t]*`{3,}[ \t]*$|\z)|'
+        + r'`{4}[^`\n]*$.*?(?:^[ \t]*`{4,}[ \t]*$|\z)|'
+        + r'`{5}[^`\n]*$.*?(?:^[ \t]*`{5,}[ \t]*$|\z)|'
+        + r'`{6,}[^`\n]*$.*?(?:^[ \t]*`{6,}[ \t]*$|\z)|'
+        + r'~{3}(?:[^~\n][^\n]*)?$.*?(?:^[ \t]*~{3,}[ \t]*$|\z)|'
+        + r'~{4}(?:[^~\n][^\n]*)?$.*?(?:^[ \t]*~{4,}[ \t]*$|\z)|'
+        + r'~{5}(?:[^~\n][^\n]*)?$.*?(?:^[ \t]*~{5,}[ \t]*$|\z)|'
+        + r'~{6,}(?:[^~\n][^\n]*)?$.*?(?:^[ \t]*~{6,}[ \t]*$|\z))',
+      '', 'ms'),
+    r'^[ \t]*(?:#{1,6}[ \t]+|[-*+][ \t]+|[0-9]+[.)][ \t]+)(?:\*\*)?[A-Z]+[0-9]+(?:\*\*)?(?:[ \t:.,)]|$)',
+    'm').map(line, regexExtract(regexReplace(line, r'^[ \t]*(?:#{1,6}|[-*+]|[0-9]+[.)])', ''), '[A-Z]+[0-9]+'))
+---
+# ---------------------------------------------------------------------------
+# Products and repositories (review surface).
+# ---------------------------------------------------------------------------
+# A product as the settings page reads it, with its latest delivery attempts
+# (newest first) — each carrying the error it failed with, or null.
+kind: Run.Sequence
+metadata: { name: readProducts }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [slug]
+    properties:
+      slug: { type: string, anyOf: [{ const: "", description: Every product. }, { minLength: 1 }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [products]
+    properties:
+      products: { type: array, items: !ref Product }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS products FROM (
+          SELECT json_object('slug', p.slug, 'name', p.name,
+            'deadline', CASE WHEN p.deadline_seconds IS NULL THEN NULL ELSE p.deadline_seconds || 's' END,
+            'webhookUrl', p.webhook_url, 'createdAt', p.created_at,
+            'pendingDeliveries', (SELECT count(*) FROM outbox o
+              WHERE o.product = p.slug AND o.delivered_at IS NULL),
+            'deliveries', (SELECT json_group_array(json_object('outboxId', a.outbox_id,
+                'event', o.event, 'planId', o.plan_id, 'attempt', a.attempt,
+                'status', a.status, 'error', a.error, 'at', a.at))
+              FROM (SELECT * FROM delivery_attempts WHERE product = p.slug ORDER BY id DESC LIMIT 20) a
+              JOIN outbox o ON o.id = a.outbox_id)
+          ) AS doc
+          FROM products p WHERE ${{ inputs.slug }} = '' OR p.slug = ${{ inputs.slug }}
+          ORDER BY p.slug)
+outputs:
+  products: !cel "parseJson(string(steps.query.result.rows[0].products))"
+---
+kind: Run.Sequence
+metadata: { name: createProduct }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [slug, name, deadlineSeconds, webhookUrl]
+    properties:
+      slug: { type: string }
+      name: { type: string }
+      deadlineSeconds: { type: integer, anyOf: [{ const: -1, description: The product has no review deadline. }, { minimum: 0 }] }
+      webhookUrl: { type: string, anyOf: [{ const: "", description: The product has no webhook. }, { format: uri }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [product]
+    properties:
+      product: !ref Product
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [slug, name, deadlineSeconds, webhookUrl]
+            properties:
+              slug: { type: string }
+              name: { type: string }
+              deadlineSeconds: { type: integer }
+              webhookUrl: { type: string }
+        steps:
+          - name: existing
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT slug FROM products WHERE slug = ${{ inputs.slug }}"
+          - name: exists
+            if: !cel "size(steps.existing.result.rows) > 0"
+            then:
+              - name: refuse
+                throw:
+                  code: ERR_PRODUCT_EXISTS
+                  message: !cel "'Product ' + inputs.slug + ' is already registered.'"
+          - name: insert
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                INSERT INTO products (slug, name, deadline_seconds, webhook_url)
+                VALUES (${{ inputs.slug }}, ${{ inputs.name }}, NULLIF(${{ inputs.deadlineSeconds }}, -1),
+                  NULLIF(${{ inputs.webhookUrl }}, ''))
+  - name: read
+    invoke: !ref readProducts
+    inputs: { slug: !cel "inputs.slug" }
+outputs:
+  product: !cel "steps.read.result.products[0]"
+---
+# ---------------------------------------------------------------------------
+# Webhook outbox.
+# ---------------------------------------------------------------------------
+# The webhook relay's tick: deliver up to four due outbox rows. A row is claimed
+# by moving its next attempt past the 10s request timeout in one statement, so
+# two ticks never send it together; each attempt is recorded with the error it
+# failed with, and a failure delays the row 5s × 2^(attempts−1), at most 128×.
+kind: Run.Sequence
+metadata: { name: flushOutbox }
+steps:
+  - name: claim
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        UPDATE outbox SET next_attempt_ms = ${{ nowMillis() + 11000 }}
+        WHERE id IN (SELECT id FROM outbox WHERE delivered_at IS NULL AND next_attempt_ms <= ${{ nowMillis() }}
+          ORDER BY next_attempt_ms, id LIMIT 4)
+        RETURNING id, product, url, payload, attempts
+  - name: deliver
+    invoke:
+      kind: Run.Iteration
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [rows]
+          properties:
+            rows: { type: array }
+      collection: !cel "inputs.rows"
+      concurrency: 4
+      steps:
+        - name: attempt
+          try:
+            - name: post
+              invoke:
+                kind: HttpClient.Request
+                client: { kind: HttpClient.Client, timeout: 10000, throwOnHttpError: true }
+              inputs:
+                url: !cel "string(item.url)"
+                method: POST
+                body: !cel "parseJson(string(item.payload))"
+            - name: delivered
+              inputs:
+                id: !cel "int(item.id)"
+                product: !cel "string(item.product)"
+                attempt: !cel "int(item.attempts) + 1"
+                status: !cel "steps.post.result.status"
+              invoke:
+                kind: Sql.Transaction
+                connection: !ref connection
+                inputs: !cel "inputs"
+                steps:
+                  kind: Run.Sequence
+                  inputType:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      required: [id, product, attempt, status]
+                      properties:
+                        id: { type: integer }
+                        product: { type: string }
+                        attempt: { type: integer }
+                        status: { type: integer }
+                  steps:
+                    - name: record
+                      invoke: { kind: Sql.Command, connection: !ref connection }
+                      inputs:
+                        sql: !sql >-
+                          INSERT INTO delivery_attempts (outbox_id, product, attempt, status)
+                          VALUES (${{ inputs.id }}, ${{ inputs.product }}, ${{ inputs.attempt }}, ${{ inputs.status }})
+                    - name: mark
+                      invoke: { kind: Sql.Command, connection: !ref connection }
+                      inputs:
+                        sql: !sql >-
+                          UPDATE outbox SET attempts = ${{ inputs.attempt }},
+                            delivered_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                          WHERE id = ${{ inputs.id }}
+          catch:
+            - name: failed
+              inputs:
+                id: !cel "int(item.id)"
+                product: !cel "string(item.product)"
+                attempt: !cel "int(item.attempts) + 1"
+                error: !cel "error.code + ': ' + error.message"
+              invoke:
+                kind: Sql.Transaction
+                connection: !ref connection
+                inputs: !cel "inputs"
+                steps:
+                  kind: Run.Sequence
+                  inputType:
+                    kind: Telo.JsonSchema
+                    schema:
+                      type: object
+                      required: [id, product, attempt, error]
+                      properties:
+                        id: { type: integer }
+                        product: { type: string }
+                        attempt: { type: integer }
+                        error: { type: string }
+                  steps:
+                    - name: record
+                      invoke: { kind: Sql.Command, connection: !ref connection }
+                      inputs:
+                        sql: !sql >-
+                          INSERT INTO delivery_attempts (outbox_id, product, attempt, error)
+                          VALUES (${{ inputs.id }}, ${{ inputs.product }}, ${{ inputs.attempt }}, ${{ inputs.error }})
+                    - name: reschedule
+                      invoke: { kind: Sql.Command, connection: !ref connection }
+                      inputs:
+                        sql: !sql >-
+                          UPDATE outbox SET attempts = ${{ inputs.attempt }},
+                            next_attempt_ms = ${{ nowMillis() }}
+                              + 5000 * (1 << min(${{ inputs.attempt }} - 1, 7))
+                          WHERE id = ${{ inputs.id }}
+    inputs:
+      rows: !cel "steps.claim.result.rows"
+---
+kind: Run.Sequence
+metadata: { name: listProducts }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [products]
+    properties:
+      products: { type: array, items: !ref Product }
+steps:
+  - name: read
+    invoke: !ref readProducts
+    inputs: { slug: "" }
+outputs:
+  products: !cel "steps.read.result.products"
+---
+# A full replacement of the product's settings: an omitted deadline or webhook
+# is cleared.
+kind: Run.Sequence
+metadata: { name: updateProduct }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [slug, name, deadlineSeconds, webhookUrl]
+    properties:
+      slug: { type: string }
+      name: { type: string }
+      deadlineSeconds: { type: integer, anyOf: [{ const: -1, description: The product has no review deadline. }, { minimum: 0 }] }
+      webhookUrl: { type: string, anyOf: [{ const: "", description: The product has no webhook. }, { format: uri }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [product]
+    properties:
+      product: !ref Product
+steps:
+  - name: update
+    invoke: { kind: Sql.Command, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        UPDATE products SET name = ${{ inputs.name }},
+          deadline_seconds = NULLIF(${{ inputs.deadlineSeconds }}, -1),
+          webhook_url = NULLIF(${{ inputs.webhookUrl }}, '')
+        WHERE slug = ${{ inputs.slug }}
+  - name: missing
+    if: !cel "steps.update.result.rowCount == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_PRODUCT_NOT_FOUND
+          message: !cel "'Product ' + inputs.slug + ' is not registered. Register it on the settings page first.'"
+  - name: read
+    invoke: !ref readProducts
+    inputs: { slug: !cel "inputs.slug" }
+outputs:
+  product: !cel "steps.read.result.products[0]"
+---
+kind: Run.Sequence
+metadata: { name: readRepos }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [repos]
+    properties:
+      repos: { type: array, items: !ref Repo }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: >-
+        SELECT json_group_array(json(doc)) AS repos FROM (
+          SELECT json_object('slug', r.slug, 'url', r.url, 'createdAt', r.created_at,
+            'products', (SELECT json_group_array(product) FROM
+              (SELECT product FROM repo_products WHERE repo = r.slug ORDER BY product))
+          ) AS doc FROM repos r ORDER BY r.slug)
+outputs:
+  repos: !cel "parseJson(string(steps.query.result.rows[0].repos))"
+---
+kind: Run.Sequence
+metadata: { name: createRepo }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [slug, url, products]
+    properties:
+      slug: { type: string }
+      url: { type: string }
+      products: { type: array, minItems: 1, items: { type: string } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [repo]
+    properties:
+      repo: !ref Repo
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [slug, url, products]
+            properties:
+              slug: { type: string }
+              url: { type: string }
+              products: { type: array, items: { type: string } }
+        steps:
+          - name: existing
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT slug FROM repos WHERE slug = ${{ inputs.slug }}"
+          - name: exists
+            if: !cel "size(steps.existing.result.rows) > 0"
+            then:
+              - name: refuse
+                throw:
+                  code: ERR_REPO_EXISTS
+                  message: !cel "'Repository ' + inputs.slug + ' is already registered.'"
+          - name: unknown
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT value AS slug FROM json_each(${{ json(inputs.products) }})
+                WHERE value NOT IN (SELECT slug FROM products)
+          - name: unknownProducts
+            if: !cel "size(steps.unknown.result.rows) > 0"
+            then:
+              - name: refuseProducts
+                throw:
+                  code: ERR_PRODUCT_NOT_FOUND
+                  message: !cel >-
+                    'Product ' + join(steps.unknown.result.rows.map(r, string(r.slug)), ', ')
+                      + ' is not registered. Register products on the settings page first.'
+          - name: insertRepo
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql "INSERT INTO repos (slug, url) VALUES (${{ inputs.slug }}, ${{ inputs.url }})"
+          - name: link
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                INSERT INTO repo_products (repo, product)
+                SELECT DISTINCT ${{ inputs.slug }}, value FROM json_each(${{ json(inputs.products) }})
+  - name: read
+    invoke: !ref readRepos
+outputs:
+  repo: !cel "steps.read.result.repos.filter(r, r.slug == inputs.slug)[0]"
+---
+kind: Run.Sequence
+metadata: { name: listRepos }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [repos]
+    properties:
+      repos: { type: array, items: !ref Repo }
+steps:
+  - name: read
+    invoke: !ref readRepos
+outputs:
+  repos: !cel "steps.read.result.repos"
+---
+# ---------------------------------------------------------------------------
+# Agent surface: plans and revisions.
+# ---------------------------------------------------------------------------
+# What an agent write returns: the plan, its latest revision, whether this call
+# created anything, and the plan's cursor after it.
+kind: Telo.JsonSchema
+metadata: { name: RevisionReceipt }
+schema:
+  type: object
+  additionalProperties: false
+  required: [planId, seq, hash, created, cursor]
+  properties:
+    planId: { type: string }
+    seq: { type: integer }
+    hash: { type: string }
+    created: { type: boolean }
+    cursor: { type: integer }
+---
+# Submit a plan. Idempotent: a body already submitted for the same product,
+# repository and loop returns that plan and revision with `created: false`.
+kind: Run.Sequence
+metadata: { name: submitPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [product, repo, branch, loop, session, title, body]
+    properties:
+      product: { type: string }
+      repo: { type: string }
+      branch: { type: string }
+      loop: { type: string }
+      session: { type: string, anyOf: [{ const: "", description: The agent named no session. }, { format: uuid }] }
+      title: { type: string }
+      body: { type: string }
+outputType: !ref RevisionReceipt
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [product, repo, branch, loop, session, title, body]
+            properties:
+              product: { type: string }
+              repo: { type: string }
+              branch: { type: string }
+              loop: { type: string }
+              session: { type: string }
+              title: { type: string }
+              body: { type: string }
+        outputType: !ref RevisionReceipt
+        steps:
+          - name: doc
+            value:
+              hash: !cel "sha256(inputs.body)"
+              items: !cel "Self.itemIds(inputs.body)"
+          - name: product
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT slug FROM products WHERE slug = ${{ inputs.product }}"
+          - name: noProduct
+            if: !cel "size(steps.product.result.rows) == 0"
+            then:
+              - name: refuseProduct
+                throw:
+                  code: ERR_PRODUCT_NOT_FOUND
+                  message: !cel >-
+                    'Product ' + inputs.product + ' is not registered. A reviewer registers
+                    products and repositories on the settings page (/settings).'
+          - name: linked
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT repo FROM repo_products WHERE repo = ${{ inputs.repo }} AND product = ${{ inputs.product }}
+          - name: notLinked
+            if: !cel "size(steps.linked.result.rows) == 0"
+            then:
+              - name: refuseRepo
+                throw:
+                  code: ERR_REPO_NOT_IN_PRODUCT
+                  message: !cel >-
+                    'Repository ' + inputs.repo + ' is not registered under product ' + inputs.product
+                      + '. A reviewer links repositories to products on the settings page (/settings).'
+          - name: duplicates
+            if: !cel "size(steps.doc.result.items) != size(distinct(steps.doc.result.items))"
+            then:
+              - name: refuseDuplicates
+                throw:
+                  code: ERR_DUPLICATE_ITEM_ID
+                  message: !cel >-
+                    'Item IDs must be unique within a revision; repeated: '
+                      + join(distinct(steps.doc.result.items.filter(i,
+                          size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')
+          - name: existing
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT p.id AS id, r.seq AS seq, p.cursor AS cursor FROM plans p
+                JOIN revisions r ON r.plan_id = p.id
+                WHERE p.product = ${{ inputs.product }} AND p.repo = ${{ inputs.repo }}
+                  AND p.loop = ${{ inputs.loop }} AND r.hash = ${{ steps.doc.result.hash }}
+                ORDER BY r.seq DESC LIMIT 1
+          - name: create
+            if: !cel "size(steps.existing.result.rows) == 0"
+            then:
+              - name: planId
+                value: !cel "uuidv4()"
+              - name: insertPlan
+                invoke: { kind: Sql.Command, connection: !ref connection }
+                inputs:
+                  sql: !sql >-
+                    INSERT INTO plans (id, product, repo, branch, loop, title, state, session,
+                      latest_seq, latest_hash, latest_at, cursor, created_at, updated_at)
+                    VALUES (${{ steps.planId.result }}, ${{ inputs.product }}, ${{ inputs.repo }},
+                      ${{ inputs.branch }}, ${{ inputs.loop }}, ${{ inputs.title }}, 'submitted',
+                      NULLIF(${{ inputs.session }}, ''), 1, ${{ steps.doc.result.hash }},
+                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0,
+                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+              - name: insertRevision
+                invoke: { kind: Sql.Command, connection: !ref connection }
+                inputs:
+                  sql: !sql >-
+                    INSERT INTO revisions (plan_id, seq, hash, body, items, session, created_at)
+                    VALUES (${{ steps.planId.result }}, 1, ${{ steps.doc.result.hash }}, ${{ inputs.body }},
+                      ${{ json(steps.doc.result.items) }}, NULLIF(${{ inputs.session }}, ''),
+                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+              - name: event
+                invoke: !ref appendEvent
+                inputs:
+                  planId: !cel "steps.planId.result"
+                  type: submitted
+                  source: agent
+                  author: ""
+                  revision: 1
+                  data:
+                    title: !cel "inputs.title"
+                    hash: !cel "steps.doc.result.hash"
+                    items: !cel "steps.doc.result.items"
+                    session: !cel "inputs.session"
+              - name: webhook
+                invoke: !ref enqueueWebhook
+                inputs: { planId: !cel "steps.planId.result", event: plan.submitted }
+        outputs:
+          planId: !cel "size(steps.existing.result.rows) == 0 ? steps.planId.result : string(steps.existing.result.rows[0].id)"
+          seq: !cel "size(steps.existing.result.rows) == 0 ? 1 : int(steps.existing.result.rows[0].seq)"
+          hash: !cel "steps.doc.result.hash"
+          created: !cel "size(steps.existing.result.rows) == 0"
+          cursor: !cel "size(steps.existing.result.rows) == 0 ? steps.event.result.seq : int(steps.existing.result.rows[0].cursor)"
+  - name: publish
+    when: !cel "steps.tx.result.created"
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + steps.tx.result.planId"
+      version: !cel "steps.tx.result.cursor"
+outputs:
+  planId: !cel "steps.tx.result.planId"
+  seq: !cel "steps.tx.result.seq"
+  hash: !cel "steps.tx.result.hash"
+  created: !cel "steps.tx.result.created"
+  cursor: !cel "steps.tx.result.cursor"
+---
+# A plan's row as the write paths check it.
+kind: Run.Sequence
+metadata: { name: lockPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [state, latestSeq, latestHash, approvedSeq, approvedHash, cursor]
+    properties:
+      state: { type: string }
+      latestSeq: { type: integer }
+      latestHash: { type: string }
+      approvedSeq: { type: integer }
+      approvedHash: { type: string }
+      cursor: { type: integer }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT state, latest_seq, latest_hash, IFNULL(approved_seq, 0) AS approved_seq,
+          IFNULL(approved_hash, '') AS approved_hash, cursor
+        FROM plans WHERE id = ${{ inputs.planId }}
+  - name: missing
+    if: !cel "size(steps.query.result.rows) == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_PLAN_NOT_FOUND
+          message: !cel "'Plan ' + inputs.planId + ' does not exist.'"
+outputs:
+  state: !cel "string(steps.query.result.rows[0].state)"
+  latestSeq: !cel "int(steps.query.result.rows[0].latest_seq)"
+  latestHash: !cel "string(steps.query.result.rows[0].latest_hash)"
+  approvedSeq: !cel "int(steps.query.result.rows[0].approved_seq)"
+  approvedHash: !cel "string(steps.query.result.rows[0].approved_hash)"
+  cursor: !cel "int(steps.query.result.rows[0].cursor)"
+---
+# Revise a plan against the hash the agent last saw. A body identical to the
+# latest revision is a no-op; a stale `base`, a closed plan or repeated item IDs
+# are refused; a revision voids an approval (recorded) and returns the plan to
+# `revised`.
+kind: Run.Sequence
+metadata: { name: revisePlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, body, summary, base, session]
+    properties:
+      planId: { type: string }
+      body: { type: string }
+      summary: { type: string }
+      base: { type: string }
+      session: { type: string, anyOf: [{ const: "", description: Keep the plan's session. }, { format: uuid }] }
+outputType: !ref RevisionReceipt
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId, body, summary, base, session]
+            properties:
+              planId: { type: string }
+              body: { type: string }
+              summary: { type: string }
+              base: { type: string }
+              session: { type: string }
+        outputType: !ref RevisionReceipt
+        steps:
+          - name: doc
+            value:
+              hash: !cel "sha256(inputs.body)"
+              items: !cel "Self.itemIds(inputs.body)"
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: change
+            if: !cel "steps.doc.result.hash != steps.plan.result.latestHash"
+            then:
+              - name: closed
+                if: !cel "steps.plan.result.state in ['rejected', 'withdrawn', 'completed']"
+                then:
+                  - name: refuseClosed
+                    throw:
+                      code: ERR_PLAN_CLOSED
+                      message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and takes no further revisions.'"
+              - name: stale
+                if: !cel "inputs.base != steps.plan.result.latestHash"
+                then:
+                  - name: refuseStale
+                    throw:
+                      code: ERR_STALE_BASE
+                      message: !cel >-
+                        'The plan has moved on: its latest revision is ' + string(steps.plan.result.latestSeq)
+                          + ' (' + steps.plan.result.latestHash + '). Read it and revise against that hash.'
+                      data:
+                        latestSeq: !cel "steps.plan.result.latestSeq"
+                        latestHash: !cel "steps.plan.result.latestHash"
+              - name: duplicates
+                if: !cel "size(steps.doc.result.items) != size(distinct(steps.doc.result.items))"
+                then:
+                  - name: refuseDuplicates
+                    throw:
+                      code: ERR_DUPLICATE_ITEM_ID
+                      message: !cel >-
+                        'Item IDs must be unique within a revision; repeated: '
+                          + join(distinct(steps.doc.result.items.filter(i,
+                              size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')
+              - name: insertRevision
+                invoke: { kind: Sql.Command, connection: !ref connection }
+                inputs:
+                  sql: !sql >-
+                    INSERT INTO revisions (plan_id, seq, hash, body, summary, items, session, created_at)
+                    VALUES (${{ inputs.planId }}, ${{ steps.plan.result.latestSeq + 1 }}, ${{ steps.doc.result.hash }},
+                      ${{ inputs.body }}, ${{ inputs.summary }}, ${{ json(steps.doc.result.items) }},
+                      NULLIF(${{ inputs.session }}, ''), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+              - name: updatePlan
+                invoke: { kind: Sql.Command, connection: !ref connection }
+                inputs:
+                  sql: !sql >-
+                    UPDATE plans SET latest_seq = ${{ steps.plan.result.latestSeq + 1 }},
+                      latest_hash = ${{ steps.doc.result.hash }},
+                      latest_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), state = 'revised',
+                      approved_seq = NULL, approved_hash = NULL,
+                      session = COALESCE(NULLIF(${{ inputs.session }}, ''), session)
+                    WHERE id = ${{ inputs.planId }}
+              - name: voided
+                if: !cel "steps.plan.result.approvedHash != ''"
+                then:
+                  - name: voidEvent
+                    invoke: !ref appendEvent
+                    inputs:
+                      planId: !cel "inputs.planId"
+                      type: approval_voided
+                      source: agent
+                      author: ""
+                      revision: !cel "steps.plan.result.approvedSeq"
+                      data:
+                        hash: !cel "steps.plan.result.approvedHash"
+                        byRevision: !cel "steps.plan.result.latestSeq + 1"
+              - name: event
+                invoke: !ref appendEvent
+                inputs:
+                  planId: !cel "inputs.planId"
+                  type: revised
+                  source: agent
+                  author: ""
+                  revision: !cel "steps.plan.result.latestSeq + 1"
+                  data:
+                    hash: !cel "steps.doc.result.hash"
+                    summary: !cel "inputs.summary"
+                    items: !cel "steps.doc.result.items"
+                    session: !cel "inputs.session"
+              - name: supersede
+                invoke: !ref supersedeWake
+                inputs: { planId: !cel "inputs.planId" }
+              - name: webhook
+                invoke: !ref enqueueWebhook
+                inputs: { planId: !cel "inputs.planId", event: plan.revised }
+        outputs:
+          planId: !cel "inputs.planId"
+          seq: !cel "steps.doc.result.hash == steps.plan.result.latestHash ? steps.plan.result.latestSeq : steps.plan.result.latestSeq + 1"
+          hash: !cel "steps.doc.result.hash"
+          created: !cel "steps.doc.result.hash != steps.plan.result.latestHash"
+          cursor: !cel "steps.doc.result.hash == steps.plan.result.latestHash ? steps.plan.result.cursor : steps.event.result.seq"
+  - name: publish
+    when: !cel "steps.tx.result.created"
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "steps.tx.result.cursor"
+outputs:
+  planId: !cel "steps.tx.result.planId"
+  seq: !cel "steps.tx.result.seq"
+  hash: !cel "steps.tx.result.hash"
+  created: !cel "steps.tx.result.created"
+  cursor: !cel "steps.tx.result.cursor"
+---
+# What a state-changing write returns: the plan's state and cursor after it.
+kind: Telo.JsonSchema
+metadata: { name: StateReceipt }
+schema:
+  type: object
+  additionalProperties: false
+  required: [planId, state, cursor]
+  properties:
+    planId: { type: string }
+    state: { type: string }
+    cursor: { type: integer }
+---
+kind: Run.Sequence
+metadata: { name: withdrawPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType: !ref StateReceipt
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId]
+            properties:
+              planId: { type: string }
+        outputType: !ref StateReceipt
+        steps:
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: closed
+            if: !cel "steps.plan.result.state in ['rejected', 'withdrawn', 'completed']"
+            then:
+              - name: refuse
+                throw:
+                  code: ERR_INVALID_TRANSITION
+                  message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and cannot be withdrawn.'"
+          - name: update
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql "UPDATE plans SET state = 'withdrawn' WHERE id = ${{ inputs.planId }}"
+          - name: event
+            invoke: !ref appendEvent
+            inputs:
+              planId: !cel "inputs.planId"
+              type: withdrawn
+              source: agent
+              author: ""
+              revision: !cel "steps.plan.result.latestSeq"
+              data: { from: !cel "steps.plan.result.state" }
+          - name: supersede
+            invoke: !ref supersedeWake
+            inputs: { planId: !cel "inputs.planId" }
+        outputs:
+          planId: !cel "inputs.planId"
+          state: withdrawn
+          cursor: !cel "steps.event.result.seq"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "steps.tx.result.cursor"
+outputs:
+  planId: !cel "steps.tx.result.planId"
+  state: !cel "steps.tx.result.state"
+  cursor: !cel "steps.tx.result.cursor"
+---
+# A progress or final report on an approved plan's work. With `state`, it moves
+# the plan: approved → in_progress | completed | parked, in_progress →
+# in_progress | completed | parked, parked → in_progress | completed; naming the
+# plan's current state changes nothing. Any other plan refuses reports.
+kind: Run.Sequence
+metadata: { name: reportPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, kind, body, state]
+    properties:
+      planId: { type: string }
+      kind: { type: string, enum: [progress, final] }
+      body: { type: string }
+      state:
+        type: string
+        anyOf:
+          - { const: "", description: The report moves no state. }
+          - { enum: [in_progress, completed, parked] }
+outputType: !ref StateReceipt
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId, kind, body, state]
+            properties:
+              planId: { type: string }
+              kind: { type: string }
+              body: { type: string }
+              state: { type: string }
+        outputType: !ref StateReceipt
+        steps:
+          - name: transitions
+            value:
+              approved: [approved, in_progress, completed, parked]
+              in_progress: [in_progress, completed, parked]
+              parked: [parked, in_progress, completed]
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: illegal
+            if: !cel >-
+              !(steps.plan.result.state in steps.transitions.result)
+                || (inputs.state != '' && !(inputs.state in steps.transitions.result[steps.plan.result.state]))
+            then:
+              - name: refuseIllegal
+                throw:
+                  code: ERR_INVALID_TRANSITION
+                  message: !cel >-
+                    'Plan ' + inputs.planId + ' is ' + steps.plan.result.state
+                      + (inputs.state == '' ? '' : ' and cannot move to ' + inputs.state)
+                      + '. Reports are taken only on an approved plan and the work that follows it.'
+          - name: update
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                UPDATE plans SET state = COALESCE(NULLIF(${{ inputs.state }}, ''), state)
+                WHERE id = ${{ inputs.planId }}
+          - name: event
+            invoke: !ref appendEvent
+            inputs:
+              planId: !cel "inputs.planId"
+              type: report
+              source: agent
+              author: ""
+              revision: !cel "steps.plan.result.latestSeq"
+              data:
+                kind: !cel "inputs.kind"
+                body: !cel "inputs.body"
+                state: !cel "inputs.state == '' ? steps.plan.result.state : inputs.state"
+          - name: supersede
+            invoke: !ref supersedeWake
+            inputs: { planId: !cel "inputs.planId" }
+        outputs:
+          planId: !cel "inputs.planId"
+          state: !cel "inputs.state == '' ? steps.plan.result.state : inputs.state"
+          cursor: !cel "steps.event.result.seq"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "steps.tx.result.cursor"
+outputs:
+  planId: !cel "steps.tx.result.planId"
+  state: !cel "steps.tx.result.state"
+  cursor: !cel "steps.tx.result.cursor"
+---
+# A branch, pull request or commit linked to the plan, keyed by type and URL.
+# An unchanged status is a no-op; every change is a timeline entry.
+kind: Run.Sequence
+metadata: { name: upsertLink }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, type, url, status]
+    properties:
+      planId: { type: string }
+      type: { type: string, enum: [branch, pull-request, commit] }
+      url: { type: string }
+      status: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, changed, cursor]
+    properties:
+      planId: { type: string }
+      changed: { type: boolean }
+      cursor: { type: integer }
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId, type, url, status]
+            properties:
+              planId: { type: string }
+              type: { type: string }
+              url: { type: string }
+              status: { type: string }
+        steps:
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: current
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT status FROM links WHERE plan_id = ${{ inputs.planId }}
+                  AND type = ${{ inputs.type }} AND url = ${{ inputs.url }}
+          - name: change
+            if: !cel "size(steps.current.result.rows) == 0 || string(steps.current.result.rows[0].status) != inputs.status"
+            then:
+              - name: upsert
+                invoke: { kind: Sql.Command, connection: !ref connection }
+                inputs:
+                  sql: !sql >-
+                    INSERT INTO links (plan_id, type, url, status, reported_at)
+                    VALUES (${{ inputs.planId }}, ${{ inputs.type }}, ${{ inputs.url }}, ${{ inputs.status }},
+                      strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                    ON CONFLICT (plan_id, type, url) DO UPDATE SET status = excluded.status,
+                      reported_at = excluded.reported_at
+              - name: event
+                invoke: !ref appendEvent
+                inputs:
+                  planId: !cel "inputs.planId"
+                  type: link
+                  source: agent
+                  author: ""
+                  revision: 0
+                  data:
+                    type: !cel "inputs.type"
+                    url: !cel "inputs.url"
+                    status: !cel "inputs.status"
+                    previous: !cel "size(steps.current.result.rows) == 0 ? '' : string(steps.current.result.rows[0].status)"
+              - name: supersede
+                invoke: !ref supersedeWake
+                inputs: { planId: !cel "inputs.planId" }
+        outputs:
+          changed: !cel "size(steps.current.result.rows) == 0 || string(steps.current.result.rows[0].status) != inputs.status"
+          cursor: !cel >-
+            size(steps.current.result.rows) == 0 || string(steps.current.result.rows[0].status) != inputs.status
+              ? steps.event.result.seq : steps.plan.result.cursor
+  - name: publish
+    when: !cel "steps.tx.result.changed"
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "steps.tx.result.cursor"
+outputs:
+  planId: !cel "inputs.planId"
+  changed: !cel "steps.tx.result.changed"
+  cursor: !cel "steps.tx.result.cursor"
+---
+kind: Run.Sequence
+metadata: { name: agentPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plan]
+    properties:
+      plan: !ref Plan
+steps:
+  - name: read
+    invoke: !ref readPlan
+    inputs: { planId: !cel "inputs.planId" }
+outputs:
+  plan: !cel "steps.read.result.plan"
+---
+# The per-plan long poll. Returns at once when the plan has events after
+# `after`; otherwise waits on the plan's topic for up to `wait` (capped), then
+# answers with whatever is there — possibly nothing.
+kind: Run.Sequence
+metadata: { name: planEvents }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, after, wait]
+    properties:
+      planId: { type: string }
+      after: { type: integer, minimum: 0 }
+      wait: { x-telo-type: Telo.Duration }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plan, events, cursor]
+    properties:
+      plan: !ref Plan
+      events: { type: array, items: !ref TimelineEvent }
+      cursor: { type: integer }
+steps:
+  - name: before
+    invoke: !ref readPlan
+    inputs: { planId: !cel "inputs.planId" }
+  - name: hold
+    if: !cel "int(steps.before.result.plan.cursor) <= inputs.after"
+    then:
+      - name: wait
+        invoke: !ref wait
+        inputs:
+          topic: !cel "'plan:' + inputs.planId"
+          after: !cel "int(steps.before.result.plan.cursor)"
+          timeout: !cel "inputs.wait"
+  - name: plan
+    invoke: !ref readPlan
+    inputs: { planId: !cel "inputs.planId" }
+  - name: events
+    invoke: !ref readEvents
+    inputs: { planId: !cel "inputs.planId", after: !cel "inputs.after" }
+outputs:
+  plan: !cel "steps.plan.result.plan"
+  events: !cel "steps.events.result.events"
+  cursor: !cel "int(steps.plan.result.plan.cursor)"
+---
+# ---------------------------------------------------------------------------
+# Review surface.
+# ---------------------------------------------------------------------------
+kind: Run.Sequence
+metadata: { name: listPlans }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [product, repo, state, olderThanSeconds]
+    properties:
+      product: { type: string, anyOf: [{ const: "", description: Any product. }, { minLength: 1 }] }
+      repo: { type: string, anyOf: [{ const: "", description: Any repository. }, { minLength: 1 }] }
+      state: { type: string, anyOf: [{ const: "", description: Any state. }, { minLength: 1 }] }
+      olderThanSeconds: { type: integer, anyOf: [{ const: -1, description: Any age. }, { minimum: 0 }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plans]
+    properties:
+      plans: { type: array, items: !ref Plan }
+steps:
+  - name: query
+    invoke: !ref queryPlans
+    inputs:
+      planId: ""
+      product: !cel "inputs.product"
+      repo: !cel "inputs.repo"
+      state: !cel "inputs.state"
+      olderThanSeconds: !cel "inputs.olderThanSeconds"
+outputs:
+  plans: !cel "steps.query.result.plans"
+---
+# The plan page: every revision in full, the timeline, links, and the highest
+# revision a reviewer has commented on or decided (the diff's default base).
+kind: Run.Sequence
+metadata: { name: planDetail }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [plan, revisions, events, links, lastReviewedRevision]
+    properties:
+      plan: !ref Plan
+      revisions: { type: array, items: !ref Revision }
+      events: { type: array, items: !ref TimelineEvent }
+      links:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [type, url, status, reportedAt]
+          properties:
+            type: { type: string }
+            url: { type: string }
+            status: { type: string }
+            reportedAt: { type: string }
+      lastReviewedRevision: { type: integer }
+steps:
+  - name: plan
+    invoke: !ref readPlan
+    inputs: { planId: !cel "inputs.planId" }
+  - name: revisions
+    invoke: !ref readRevisions
+    inputs: { planId: !cel "inputs.planId" }
+  - name: events
+    invoke: !ref readEvents
+    inputs: { planId: !cel "inputs.planId", after: 0 }
+  - name: links
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS links FROM (
+          SELECT json_object('type', type, 'url', url, 'status', status, 'reportedAt', reported_at) AS doc
+          FROM links WHERE plan_id = ${{ inputs.planId }} ORDER BY type, url)
+  - name: reviewed
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT IFNULL(max(revision), 0) AS revision FROM events
+        WHERE plan_id = ${{ inputs.planId }} AND type IN ('comment', 'decision')
+outputs:
+  plan: !cel "steps.plan.result.plan"
+  revisions: !cel "steps.revisions.result.revisions"
+  events: !cel "steps.events.result.events"
+  links: !cel "parseJson(string(steps.links.result.rows[0].links))"
+  lastReviewedRevision: !cel "int(steps.reviewed.result.rows[0].revision)"
+---
+# A reviewer comment on one revision, optionally on one item of it. Wakes nobody.
+kind: Run.Sequence
+metadata: { name: commentPlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, author, body, revision, item]
+    properties:
+      planId: { type: string }
+      author: { type: string }
+      body: { type: string }
+      revision: { type: integer }
+      item: { type: string, anyOf: [{ const: "", description: A comment on the whole revision. }, { pattern: "^[A-Z]+[0-9]+$" }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, seq]
+    properties:
+      planId: { type: string }
+      seq: { type: integer }
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId, author, body, revision, item]
+            properties:
+              planId: { type: string }
+              author: { type: string }
+              body: { type: string }
+              revision: { type: integer }
+              item: { type: string }
+        steps:
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: revision
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT items FROM revisions WHERE plan_id = ${{ inputs.planId }} AND seq = ${{ inputs.revision }}
+          - name: noRevision
+            if: !cel "size(steps.revision.result.rows) == 0"
+            then:
+              - name: refuseRevision
+                throw:
+                  code: ERR_REVISION_NOT_FOUND
+                  message: !cel "'Plan ' + inputs.planId + ' has no revision ' + string(inputs.revision) + '.'"
+          - name: noItem
+            if: !cel >-
+              inputs.item != '' && !(inputs.item in parseJson(string(steps.revision.result.rows[0].items)))
+            then:
+              - name: refuseItem
+                throw:
+                  code: ERR_ITEM_NOT_FOUND
+                  message: !cel "'Revision ' + string(inputs.revision) + ' has no item ' + inputs.item + '.'"
+          - name: event
+            invoke: !ref appendEvent
+            inputs:
+              planId: !cel "inputs.planId"
+              type: comment
+              source: reviewer
+              author: !cel "inputs.author"
+              revision: !cel "inputs.revision"
+              data:
+                body: !cel "inputs.body"
+                item: !cel "inputs.item"
+        outputs:
+          seq: !cel "steps.event.result.seq"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "int(steps.tx.result.seq)"
+outputs:
+  planId: !cel "inputs.planId"
+  seq: !cel "int(steps.tx.result.seq)"
+---
+# A reviewer decision, bound to the latest revision by seq and hash. Approval
+# records the approved hash; request changes and reject clear it. The decision
+# queues a wake for the runner owning the plan's session, retiring any wake
+# still pending for the plan.
+kind: Run.Sequence
+metadata: { name: decidePlan }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, author, decision, revision, hash, note]
+    properties:
+      planId: { type: string }
+      author: { type: string }
+      decision: { type: string, enum: [approve, request_changes, reject] }
+      revision: { type: integer }
+      hash: { type: string }
+      note: { type: string, anyOf: [{ const: "", description: The reviewer wrote no note. }, { minLength: 1 }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId, state, cursor]
+    properties:
+      planId: { type: string }
+      state: { type: string }
+      cursor: { type: integer }
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [planId, author, decision, revision, hash, note]
+            properties:
+              planId: { type: string }
+              author: { type: string }
+              decision: { type: string }
+              revision: { type: integer }
+              hash: { type: string }
+              note: { type: string }
+        steps:
+          - name: states
+            value:
+              approve: approved
+              request_changes: changes_requested
+              reject: rejected
+          - name: plan
+            invoke: !ref lockPlan
+            inputs: { planId: !cel "inputs.planId" }
+          - name: noRevision
+            if: !cel "inputs.revision > steps.plan.result.latestSeq"
+            then:
+              - name: refuseRevision
+                throw:
+                  code: ERR_REVISION_NOT_FOUND
+                  message: !cel "'Plan ' + inputs.planId + ' has no revision ' + string(inputs.revision) + '.'"
+          - name: superseded
+            if: !cel "inputs.revision != steps.plan.result.latestSeq || inputs.hash != steps.plan.result.latestHash"
+            then:
+              - name: refuseSuperseded
+                throw:
+                  code: ERR_REVISION_SUPERSEDED
+                  message: !cel >-
+                    'A decision binds to the latest revision, which is ' + string(steps.plan.result.latestSeq)
+                      + ' (' + steps.plan.result.latestHash + '). Review it and decide again.'
+                  data:
+                    latestSeq: !cel "steps.plan.result.latestSeq"
+                    latestHash: !cel "steps.plan.result.latestHash"
+          - name: undecidable
+            if: !cel >-
+              !(steps.plan.result.state in (inputs.decision == 'approve'
+                ? ['submitted', 'revised', 'changes_requested']
+                : ['submitted', 'revised', 'changes_requested', 'approved', 'in_progress', 'parked']))
+            then:
+              - name: refuseState
+                throw:
+                  code: ERR_INVALID_TRANSITION
+                  message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and cannot take a ' + inputs.decision + ' decision.'"
+          - name: update
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                UPDATE plans SET state = ${{ steps.states.result[inputs.decision] }},
+                  approved_seq = CASE WHEN ${{ inputs.decision }} = 'approve' THEN ${{ inputs.revision }} ELSE NULL END,
+                  approved_hash = CASE WHEN ${{ inputs.decision }} = 'approve' THEN ${{ inputs.hash }} ELSE NULL END
+                WHERE id = ${{ inputs.planId }}
+          - name: event
+            invoke: !ref appendEvent
+            inputs:
+              planId: !cel "inputs.planId"
+              type: decision
+              source: reviewer
+              author: !cel "inputs.author"
+              revision: !cel "inputs.revision"
+              data:
+                decision: !cel "inputs.decision"
+                hash: !cel "inputs.hash"
+                note: !cel "inputs.note"
+          - name: wake
+            invoke: !ref enqueueWake
+            inputs:
+              planId: !cel "inputs.planId"
+              planSeq: !cel "steps.event.result.seq"
+              decision: !cel "inputs.decision"
+        outputs:
+          state: !cel "string(steps.states.result[inputs.decision])"
+          cursor: !cel "steps.event.result.seq"
+          runner: !cel "steps.wake.result.runner"
+          commandSeq: !cel "steps.wake.result.commandSeq"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'plan:' + inputs.planId"
+      version: !cel "int(steps.tx.result.cursor)"
+  - name: wakeRunner
+    when: !cel "string(steps.tx.result.runner) != ''"
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'runner:' + string(steps.tx.result.runner)"
+      version: !cel "int(steps.tx.result.commandSeq)"
+outputs:
+  planId: !cel "inputs.planId"
+  state: !cel "string(steps.tx.result.state)"
+  cursor: !cel "int(steps.tx.result.cursor)"
+---
+# A plan's whole record: the plan, every revision in full and every event in
+# seq order. Nothing is ever deleted, so this is the complete history.
+kind: Run.Sequence
+metadata: { name: planHistory }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [planId]
+    properties:
+      planId: { type: string }
+outputType: !ref PlanHistory
+steps:
+  - name: plan
+    invoke: !ref readPlan
+    inputs: { planId: !cel "inputs.planId" }
+  - name: revisions
+    invoke: !ref readRevisions
+    inputs: { planId: !cel "inputs.planId" }
+  - name: events
+    invoke: !ref readEvents
+    inputs: { planId: !cel "inputs.planId", after: 0 }
+outputs:
+  plan: !cel "steps.plan.result.plan"
+  revisions: !cel "steps.revisions.result.revisions"
+  events: !cel "steps.events.result.events"
+---
+kind: Run.Sequence
+metadata: { name: productHistory }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [slug]
+    properties:
+      slug: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [product, plans]
+    properties:
+      product: !ref Product
+      plans: { type: array, items: !ref PlanHistory }
+steps:
+  - name: product
+    invoke: !ref readProducts
+    inputs: { slug: !cel "inputs.slug" }
+  - name: missing
+    if: !cel "size(steps.product.result.products) == 0"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_PRODUCT_NOT_FOUND
+          message: !cel "'Product ' + inputs.slug + ' is not registered.'"
+  - name: plans
+    invoke: !ref queryPlans
+    inputs: { planId: "", product: !cel "inputs.slug", repo: "", state: "", olderThanSeconds: -1 }
+  - name: histories
+    invoke:
+      kind: Run.Projection
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [ids]
+          properties:
+            ids: { type: array, items: { type: string } }
+      collection: !cel "inputs.ids"
+      steps:
+        - name: history
+          invoke: !ref planHistory
+          inputs: { planId: !cel "item" }
+      outputs:
+        plan: !cel "steps.history.result.plan"
+        revisions: !cel "steps.history.result.revisions"
+        events: !cel "steps.history.result.events"
+    inputs:
+      ids: !cel "steps.plans.result.plans.map(p, string(p.id))"
+outputs:
+  product: !cel "steps.product.result.products[0]"
+  plans: !cel "steps.histories.result"
+---
+# ---------------------------------------------------------------------------
+# Runners: registration, sessions and the command feed.
+# ---------------------------------------------------------------------------
+# A runner's row, and the refusals every runner call shares: an unknown name,
+# and a request from an instance that is no longer the runner's newest.
+kind: Run.Sequence
+metadata: { name: checkRunner }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, instance]
+    properties:
+      name: { type: string }
+      instance: { type: string, anyOf: [{ const: "", description: "No instance check (a reviewer's call)." }, { format: uuid }] }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [repos, commandSeq]
+    properties:
+      repos: { type: array, items: { type: string } }
+      commandSeq: { type: integer }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql "SELECT instance, repos, command_seq FROM runners WHERE name = ${{ inputs.name }}"
+  - name: missing
+    if: !cel "size(steps.query.result.rows) == 0"
+    then:
+      - name: refuseMissing
+        throw:
+          code: ERR_RUNNER_NOT_FOUND
+          message: !cel "'Runner ' + inputs.name + ' has never reported.'"
+  - name: replaced
+    if: !cel "inputs.instance != '' && string(steps.query.result.rows[0].instance) != inputs.instance"
+    then:
+      - name: refuseReplaced
+        throw:
+          code: ERR_RUNNER_REPLACED
+          message: !cel >-
+            'Runner ' + inputs.name + ' is now served by a newer instance; this process ('
+              + inputs.instance + ') must stop.'
+outputs:
+  repos: !cel "parseJson(string(steps.query.result.rows[0].repos))"
+  commandSeq: !cel "int(steps.query.result.rows[0].command_seq)"
+---
+# The one rule for a runner coming to own sessions, from a report or from a
+# start's outcome: a session another runner owns is refused, a session seen for
+# the first time becomes this runner's, and a plan of such a session whose
+# latest decision has no wake yet — and no agent write since — gets one. Runs
+# inside the caller's transaction.
+kind: Run.Sequence
+metadata: { name: associateSessions }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [runner, sessions]
+    properties:
+      runner: { type: string }
+      sessions:
+        type: array
+        items:
+          type: object
+          required: [id, repo]
+          properties:
+            id: { type: string }
+            repo: { type: string }
+steps:
+  - name: owned
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT id, runner FROM sessions
+        WHERE id IN (SELECT json_extract(value, '$.id') FROM json_each(${{ json(inputs.sessions) }}))
+          AND runner != ${{ inputs.runner }}
+  - name: ownedElsewhere
+    if: !cel "size(steps.owned.result.rows) > 0"
+    then:
+      - name: refuseOwned
+        throw:
+          code: ERR_SESSION_OWNED
+          message: !cel >-
+            'Session ' + string(steps.owned.result.rows[0].id) + ' belongs to runner '
+              + string(steps.owned.result.rows[0].runner) + '.'
+  - name: fresh
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_extract(value, '$.id') AS id, json_extract(value, '$.repo') AS repo
+        FROM json_each(${{ json(inputs.sessions) }})
+        WHERE json_extract(value, '$.id') NOT IN (SELECT id FROM sessions)
+  - name: insertFresh
+    invoke: { kind: Sql.Command, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        INSERT INTO sessions (id, runner, repo, state)
+        SELECT json_extract(value, '$.id'), ${{ inputs.runner }}, json_extract(value, '$.repo'), 'active'
+        FROM json_each(${{ json(inputs.sessions) }})
+        WHERE json_extract(value, '$.id') NOT IN (SELECT id FROM sessions)
+  # A decision taken before the plan's session had a runner: its wake is
+  # owed now, unless the agent has written to the plan since.
+  - name: owed
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT p.id AS plan_id, e.seq AS plan_seq, json_extract(e.data, '$.decision') AS decision
+        FROM plans p
+        JOIN events e ON e.plan_id = p.id AND e.seq =
+          (SELECT max(seq) FROM events WHERE plan_id = p.id AND type = 'decision')
+        WHERE p.session IN (SELECT value FROM json_each(${{ json(steps.fresh.result.rows.map(r, string(r.id))) }}))
+          AND NOT EXISTS (SELECT 1 FROM events a WHERE a.plan_id = p.id AND a.seq > e.seq AND a.source = 'agent')
+          AND NOT EXISTS (SELECT 1 FROM commands c WHERE c.plan_id = p.id AND c.type = 'wake' AND c.plan_seq = e.seq)
+        ORDER BY p.id
+  - name: catchUp
+    invoke:
+      kind: Run.Iteration
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [owed]
+          properties:
+            owed: { type: array }
+      collection: !cel "inputs.owed"
+      steps:
+        - name: wake
+          invoke: !ref enqueueWake
+          inputs:
+            planId: !cel "string(item.plan_id)"
+            planSeq: !cel "int(item.plan_seq)"
+            decision: !cel "string(item.decision)"
+    inputs:
+      owed: !cel "steps.owed.result.rows"
+---
+# PUT /api/agent/runners/{name}. Registers the runner (or refreshes it), makes
+# the newest instance the runner's, marks the reported sessions active and the
+# runner's others inactive, and — for a session reported for the first time —
+# queues the wake owed for a plan decided before its session was known.
+kind: Run.Sequence
+metadata: { name: reportRunner }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, report]
+    properties:
+      name: { type: string }
+      report: !ref RunnerProtocol.RunnerReport
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [runner, lastSeenAt, commandSeq]
+    properties:
+      runner: { type: string }
+      lastSeenAt: { type: string }
+      commandSeq: { type: integer }
+steps:
+  - name: tx
+    inputs:
+      name: !cel "inputs.name"
+      instance: !cel "inputs.report.instance"
+      repos: !cel "inputs.report.repos"
+      sessions: !cel "inputs.report.sessions"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [name, instance, repos, sessions]
+            properties:
+              name: { type: string }
+              instance: { type: string }
+              repos: { type: array, items: { type: string } }
+              sessions:
+                type: array
+                items:
+                  type: object
+                  required: [id, repo]
+                  properties:
+                    id: { type: string }
+                    repo: { type: string }
+        steps:
+          - name: retired
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT instance FROM retired_instances
+                WHERE runner = ${{ inputs.name }} AND instance = ${{ inputs.instance }}
+          - name: replaced
+            if: !cel "size(steps.retired.result.rows) > 0"
+            then:
+              - name: refuseReplaced
+                throw:
+                  code: ERR_RUNNER_REPLACED
+                  message: !cel >-
+                    'Runner ' + inputs.name + ' is now served by a newer instance; this process ('
+                      + inputs.instance + ') must stop.'
+          - name: unknownRepos
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                SELECT value AS slug FROM json_each(${{ json(inputs.repos) }})
+                WHERE value NOT IN (SELECT slug FROM repos)
+          - name: repoNotFound
+            if: !cel "size(steps.unknownRepos.result.rows) > 0"
+            then:
+              - name: refuseRepo
+                throw:
+                  code: ERR_REPO_NOT_FOUND
+                  message: !cel >-
+                    'Repository ' + join(steps.unknownRepos.result.rows.map(r, string(r.slug)), ', ')
+                      + ' is not registered. A reviewer registers repositories on the settings page (/settings).'
+          - name: unserved
+            if: !cel "inputs.sessions.exists(s, !(s.repo in inputs.repos))"
+            then:
+              - name: refuseUnserved
+                throw:
+                  code: ERR_REPO_NOT_SERVED
+                  message: !cel >-
+                    'Session ' + inputs.sessions.filter(s, !(s.repo in inputs.repos))[0].id
+                      + ' is in a repository this runner does not report serving.'
+          - name: retire
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                INSERT INTO retired_instances (runner, instance)
+                SELECT name, instance FROM runners
+                WHERE name = ${{ inputs.name }} AND instance != ${{ inputs.instance }}
+                ON CONFLICT (runner, instance) DO NOTHING
+          - name: upsert
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                INSERT INTO runners (name, instance, repos, command_seq, last_seen_at)
+                VALUES (${{ inputs.name }}, ${{ inputs.instance }}, ${{ json(inputs.repos) }}, 0,
+                  strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                ON CONFLICT (name) DO UPDATE SET instance = excluded.instance, repos = excluded.repos,
+                  last_seen_at = excluded.last_seen_at
+          - name: associate
+            invoke: !ref associateSessions
+            inputs: { runner: !cel "inputs.name", sessions: !cel "inputs.sessions" }
+          - name: activate
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                UPDATE sessions SET
+                  state = CASE WHEN id IN (SELECT json_extract(value, '$.id') FROM json_each(${{ json(inputs.sessions) }}))
+                    THEN 'active' ELSE 'inactive' END,
+                  last_seen_at = CASE WHEN id IN (SELECT json_extract(value, '$.id') FROM json_each(${{ json(inputs.sessions) }}))
+                    THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ELSE last_seen_at END
+                WHERE runner = ${{ inputs.name }}
+                  AND (state = 'active'
+                    OR id IN (SELECT json_extract(value, '$.id') FROM json_each(${{ json(inputs.sessions) }})))
+          - name: runner
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT last_seen_at, command_seq FROM runners WHERE name = ${{ inputs.name }}"
+        outputs:
+          lastSeenAt: !cel "string(steps.runner.result.rows[0].last_seen_at)"
+          commandSeq: !cel "int(steps.runner.result.rows[0].command_seq)"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'runner:' + inputs.name"
+      version: !cel "int(steps.tx.result.commandSeq)"
+outputs:
+  runner: !cel "inputs.name"
+  lastSeenAt: !cel "string(steps.tx.result.lastSeenAt)"
+  commandSeq: !cel "int(steps.tx.result.commandSeq)"
+---
+# A runner's pending commands after `after`, oldest first, as protocol entries,
+# and the runner's command counter — read in one statement, so the counter is
+# never behind the page.
+kind: Run.Sequence
+metadata: { name: pendingCommands }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, after, limit]
+    properties:
+      name: { type: string }
+      after: { type: integer }
+      limit: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [commands, commandSeq]
+    properties:
+      commands: { type: array, items: !ref RunnerProtocol.RunnerCommand }
+      commandSeq: { type: integer }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT (SELECT command_seq FROM runners WHERE name = ${{ inputs.name }}) AS command_seq,
+          (SELECT json_group_array(json(doc)) FROM (
+          SELECT CASE type
+            WHEN 'wake' THEN json_object('seq', seq, 'type', type, 'session', session, 'repo', repo,
+              'plan', plan_id, 'planSeq', plan_seq, 'decision', decision)
+            WHEN 'start' THEN json_object('seq', seq, 'type', type, 'repo', repo,
+              'sessionName', session_name, 'prompt', prompt, 'author', author)
+            ELSE json_object('seq', seq, 'type', type, 'session', session, 'repo', repo, 'author', author)
+          END AS doc
+          FROM commands WHERE runner = ${{ inputs.name }} AND state = 'pending' AND seq > ${{ inputs.after }}
+          ORDER BY seq LIMIT ${{ inputs.limit }})) AS commands
+outputs:
+  commands: !cel "parseJson(string(steps.query.result.rows[0].commands))"
+  commandSeq: !cel "int(steps.query.result.rows[0].command_seq)"
+---
+# GET /api/agent/runners/{name}/commands — the runner's long poll. Pending
+# commands after `after`; when there are none, waits on the runner's topic for
+# up to `wait` (capped). `cursor` is the highest seq the page considered.
+kind: Run.Sequence
+metadata: { name: commandFeed }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, instance, after, wait, limit]
+    properties:
+      name: { type: string }
+      instance: { type: string }
+      after: { type: integer, minimum: 0 }
+      wait: { x-telo-type: Telo.Duration }
+      limit: { type: integer, minimum: 1 }
+outputType: !ref RunnerProtocol.CommandPage
+steps:
+  - name: runner
+    invoke: !ref checkRunner
+    inputs: { name: !cel "inputs.name", instance: !cel "inputs.instance" }
+  - name: first
+    invoke: !ref pendingCommands
+    inputs: { name: !cel "inputs.name", after: !cel "inputs.after", limit: !cel "inputs.limit" }
+  - name: hold
+    if: !cel "size(steps.first.result.commands) == 0"
+    then:
+      - name: wait
+        invoke: !ref wait
+        inputs:
+          topic: !cel "'runner:' + inputs.name"
+          after: !cel "steps.first.result.commandSeq"
+          timeout: !cel "inputs.wait"
+  # The runner may have been replaced while this request waited.
+  - name: again
+    invoke: !ref checkRunner
+    inputs: { name: !cel "inputs.name", instance: !cel "inputs.instance" }
+  - name: page
+    invoke: !ref pendingCommands
+    inputs: { name: !cel "inputs.name", after: !cel "inputs.after", limit: !cel "inputs.limit" }
+outputs:
+  commands: !cel "steps.page.result.commands"
+  cursor: !cel >-
+    size(steps.page.result.commands) == inputs.limit
+      ? int(steps.page.result.commands[inputs.limit - 1].seq)
+      : (steps.page.result.commandSeq > inputs.after ? steps.page.result.commandSeq : inputs.after)
+---
+# POST /api/agent/runners/{name}/commands/{seq}/outcome. Settles a pending
+# command. A start's `done` names the session it started, which becomes this
+# runner's by the same rule a report follows.
+kind: Run.Sequence
+metadata: { name: commandOutcome }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, seq, outcome]
+    properties:
+      name: { type: string }
+      seq: { type: integer }
+      outcome: !ref RunnerProtocol.CommandOutcome
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [seq, state]
+    properties:
+      seq: { type: integer }
+      state: { type: string }
+steps:
+  - name: tx
+    inputs:
+      name: !cel "inputs.name"
+      seq: !cel "inputs.seq"
+      instance: !cel "inputs.outcome.instance"
+      state: !cel "inputs.outcome.state"
+      session: !cel "has(inputs.outcome.session) ? inputs.outcome.session : ''"
+      errorCode: !cel "has(inputs.outcome.error) ? inputs.outcome.error.code : ''"
+      errorMessage: !cel "has(inputs.outcome.error) ? inputs.outcome.error.message : ''"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [name, seq, instance, state, session, errorCode, errorMessage]
+            properties:
+              name: { type: string }
+              seq: { type: integer }
+              instance: { type: string }
+              state: { type: string }
+              session: { type: string, anyOf: [{ const: "", description: No session. }, { format: uuid }] }
+              errorCode: { type: string, anyOf: [{ const: "", description: The command succeeded. }, { minLength: 1 }] }
+              errorMessage: { type: string }
+        steps:
+          - name: runner
+            invoke: !ref checkRunner
+            inputs: { name: !cel "inputs.name", instance: !cel "inputs.instance" }
+          - name: command
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT state, type, repo FROM commands WHERE runner = ${{ inputs.name }} AND seq = ${{ inputs.seq }}"
+          - name: missing
+            if: !cel "size(steps.command.result.rows) == 0"
+            then:
+              - name: refuseMissing
+                throw:
+                  code: ERR_COMMAND_NOT_FOUND
+                  message: !cel "'Runner ' + inputs.name + ' has no command ' + string(inputs.seq) + '.'"
+          - name: settled
+            if: !cel "string(steps.command.result.rows[0].state) != 'pending'"
+            then:
+              - name: refuseSettled
+                throw:
+                  code: ERR_INVALID_TRANSITION
+                  message: !cel >-
+                    'Command ' + string(inputs.seq) + ' is already '
+                      + string(steps.command.result.rows[0].state) + '; only a pending command takes an outcome.'
+          - name: kind
+            value: !cel "string(steps.command.result.rows[0].type)"
+          - name: invalid
+            if: !cel >-
+              (inputs.state == 'done' && steps.kind.result == 'start' && inputs.session == '')
+                || (inputs.session != '' && steps.kind.result != 'start')
+            then:
+              - name: refuseInvalid
+                throw:
+                  code: ERR_OUTCOME_INVALID
+                  message: !cel >-
+                    steps.kind.result == 'start'
+                      ? 'A done start must name the session it started (session).'
+                      : 'Only a done start names a session; command ' + string(inputs.seq) + ' is a '
+                          + steps.kind.result + '.'
+          - name: own
+            if: !cel "inputs.session != ''"
+            then:
+              - name: associate
+                invoke: !ref associateSessions
+                inputs:
+                  runner: !cel "inputs.name"
+                  sessions: !cel "[{'id': inputs.session, 'repo': string(steps.command.result.rows[0].repo)}]"
+          - name: update
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                UPDATE commands SET state = ${{ inputs.state }},
+                  session = COALESCE(NULLIF(${{ inputs.session }}, ''), session),
+                  error_code = NULLIF(${{ inputs.errorCode }}, ''),
+                  error_message = NULLIF(${{ inputs.errorMessage }}, ''),
+                  completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE runner = ${{ inputs.name }} AND seq = ${{ inputs.seq }}
+          - name: counter
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT command_seq FROM runners WHERE name = ${{ inputs.name }}"
+        outputs:
+          commandSeq: !cel "int(steps.counter.result.rows[0].command_seq)"
+  # A catch-up wake the new session owed is already in the feed.
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'runner:' + inputs.name"
+      version: !cel "int(steps.tx.result.commandSeq)"
+outputs:
+  seq: !cel "inputs.seq"
+  state: !cel "inputs.outcome.state"
+---
+kind: Run.Sequence
+metadata: { name: listRunners }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [runners]
+    properties:
+      runners:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, lastSeenAt, repos, activeSessions]
+          properties:
+            name: { type: string }
+            lastSeenAt: { type: string }
+            repos: { type: array, items: { type: string } }
+            activeSessions:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, repo]
+                properties:
+                  id: { type: string }
+                  repo: { type: string }
+steps:
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: >-
+        SELECT json_group_array(json(doc)) AS runners FROM (
+          SELECT json_object('name', r.name, 'lastSeenAt', r.last_seen_at, 'repos', json(r.repos),
+            'activeSessions', (SELECT json_group_array(json_object('id', s.id, 'repo', s.repo))
+              FROM sessions s WHERE s.runner = r.name AND s.state = 'active')
+          ) AS doc FROM runners r ORDER BY r.name)
+outputs:
+  runners: !cel "parseJson(string(steps.query.result.rows[0].runners))"
+---
+# A runner's sessions, a page at a time in `ord` order (the order they were
+# first seen): `after` and `before` bound the page exclusively, `order` picks
+# the end it starts from, and `cursor` is the last key in page order — on an
+# empty page, the request's bound in that direction (0 when it has none).
+kind: Run.Sequence
+metadata: { name: runnerSessions }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, state, order, after, before, limit]
+    properties:
+      name: { type: string }
+      state:
+        type: string
+        anyOf:
+          - { const: "", description: Every state. }
+          - { enum: [active, inactive] }
+      order: { type: string, enum: [asc, desc] }
+      after: { type: integer, minimum: 0 }
+      before: { type: integer, anyOf: [{ const: 0, description: No upper bound. }, { minimum: 1 }] }
+      limit: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [sessions, cursor]
+    properties:
+      sessions:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, repo, state, firstSeenAt, lastSeenAt, plans]
+          properties:
+            id: { type: string }
+            repo: { type: string }
+            state: { type: string, enum: [active, inactive] }
+            firstSeenAt: { type: string }
+            lastSeenAt: { type: [string, "null"] }
+            plans: { type: array, items: { type: string } }
+      cursor: { type: integer }
+steps:
+  - name: runner
+    invoke: !ref checkRunner
+    inputs: { name: !cel "inputs.name", instance: "" }
+  # One arm per order and per "any state / one state", so each walks an index
+  # in page order and stops at the limit; the arms the request does not name
+  # are constant-false.
+  - name: bounds
+    value:
+      upper: !cel "inputs.before == 0 ? 9223372036854775807 : inputs.before"
+      bound: !cel "inputs.order == 'desc' ? inputs.before : inputs.after"
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS sessions,
+          IFNULL(CASE WHEN ${{ inputs.order }} = 'desc' THEN min(ord) ELSE max(ord) END,
+            ${{ steps.bounds.result.bound }}) AS cursor
+        FROM (
+          SELECT ord, json_object('id', id, 'repo', repo, 'state', state, 'firstSeenAt', first_seen_at,
+            'lastSeenAt', last_seen_at,
+            'plans', (SELECT json_group_array(p.id) FROM plans p WHERE p.session = s.id)) AS doc
+          FROM (
+            SELECT * FROM (SELECT * FROM sessions
+              WHERE ${{ inputs.order }} = 'asc' AND ${{ inputs.state }} = '' AND runner = ${{ inputs.name }}
+                AND ord > ${{ inputs.after }} AND ord < ${{ steps.bounds.result.upper }}
+              ORDER BY ord LIMIT ${{ inputs.limit }})
+            UNION ALL
+            SELECT * FROM (SELECT * FROM sessions
+              WHERE ${{ inputs.order }} = 'asc' AND runner = ${{ inputs.name }} AND state = ${{ inputs.state }}
+                AND ord > ${{ inputs.after }} AND ord < ${{ steps.bounds.result.upper }}
+              ORDER BY ord LIMIT ${{ inputs.limit }})
+            UNION ALL
+            SELECT * FROM (SELECT * FROM sessions
+              WHERE ${{ inputs.order }} = 'desc' AND ${{ inputs.state }} = '' AND runner = ${{ inputs.name }}
+                AND ord > ${{ inputs.after }} AND ord < ${{ steps.bounds.result.upper }}
+              ORDER BY ord DESC LIMIT ${{ inputs.limit }})
+            UNION ALL
+            SELECT * FROM (SELECT * FROM sessions
+              WHERE ${{ inputs.order }} = 'desc' AND runner = ${{ inputs.name }} AND state = ${{ inputs.state }}
+                AND ord > ${{ inputs.after }} AND ord < ${{ steps.bounds.result.upper }}
+              ORDER BY ord DESC LIMIT ${{ inputs.limit }})) s)
+outputs:
+  sessions: !cel "parseJson(string(steps.query.result.rows[0].sessions))"
+  cursor: !cel "int(steps.query.result.rows[0].cursor)"
+---
+# A runner's command history, every state, with each outcome, a page at a time
+# in `seq` order, bounded and ordered as `runnerSessions` is.
+kind: Run.Sequence
+metadata: { name: runnerCommands }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, order, after, before, limit]
+    properties:
+      name: { type: string }
+      order: { type: string, enum: [asc, desc] }
+      after: { type: integer, minimum: 0 }
+      before: { type: integer, anyOf: [{ const: 0, description: No upper bound. }, { minimum: 1 }] }
+      limit: { type: integer }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [commands, cursor]
+    properties:
+      commands:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [seq, type, state, session, sessionName, repo, plan, planSeq, decision, prompt, author,
+            error, createdAt, completedAt]
+          properties:
+            seq: { type: integer }
+            type: { type: string, enum: [wake, start, stop] }
+            state: { type: string, enum: [pending, done, failed, superseded] }
+            session: { type: [string, "null"] }
+            sessionName: { type: [string, "null"] }
+            repo: { type: string }
+            plan: { type: [string, "null"] }
+            planSeq: { type: [integer, "null"] }
+            decision: { type: [string, "null"] }
+            prompt: { type: [string, "null"] }
+            author: { type: [string, "null"] }
+            error:
+              type: [object, "null"]
+              additionalProperties: false
+              required: [code, message]
+              properties:
+                code: { type: string }
+                message: { type: string }
+            createdAt: { type: string }
+            completedAt: { type: [string, "null"] }
+      cursor: { type: integer }
+steps:
+  - name: runner
+    invoke: !ref checkRunner
+    inputs: { name: !cel "inputs.name", instance: "" }
+  - name: bounds
+    value:
+      upper: !cel "inputs.before == 0 ? 9223372036854775807 : inputs.before"
+      bound: !cel "inputs.order == 'desc' ? inputs.before : inputs.after"
+  - name: query
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql >-
+        SELECT json_group_array(json(doc)) AS commands,
+          IFNULL(CASE WHEN ${{ inputs.order }} = 'desc' THEN min(seq) ELSE max(seq) END,
+            ${{ steps.bounds.result.bound }}) AS cursor
+        FROM (
+          SELECT seq, json_object('seq', seq, 'type', type, 'state', state, 'session', session,
+            'sessionName', session_name, 'repo', repo,
+            'plan', plan_id, 'planSeq', plan_seq, 'decision', decision, 'prompt', prompt, 'author', author,
+            'error', CASE WHEN error_code IS NULL THEN NULL
+              ELSE json_object('code', error_code, 'message', error_message) END,
+            'createdAt', created_at, 'completedAt', completed_at) AS doc
+          FROM (
+            SELECT * FROM (SELECT * FROM commands
+              WHERE ${{ inputs.order }} = 'asc' AND runner = ${{ inputs.name }}
+                AND seq > ${{ inputs.after }} AND seq < ${{ steps.bounds.result.upper }}
+              ORDER BY seq LIMIT ${{ inputs.limit }})
+            UNION ALL
+            SELECT * FROM (SELECT * FROM commands
+              WHERE ${{ inputs.order }} = 'desc' AND runner = ${{ inputs.name }}
+                AND seq > ${{ inputs.after }} AND seq < ${{ steps.bounds.result.upper }}
+              ORDER BY seq DESC LIMIT ${{ inputs.limit }})))
+outputs:
+  commands: !cel "parseJson(string(steps.query.result.rows[0].commands))"
+  cursor: !cel "int(steps.query.result.rows[0].cursor)"
+---
+# A reviewer's start or stop. `start` mints the NAME the runner starts the
+# session under; the session's ID is claude's, reported in the start's outcome.
+# Neither takes a path or a permission mode — those are the runner's own.
+kind: Run.Sequence
+metadata: { name: createRunnerCommand }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, author, type, repo, prompt, session]
+    properties:
+      name: { type: string }
+      author: { type: string }
+      type: { type: string, enum: [start, stop] }
+      repo: { type: string }
+      prompt: { type: string }
+      session: { type: string }
+    # A start names a repository and a prompt; a stop names a session. The field
+    # the command does not take is "".
+    anyOf:
+      - properties:
+          type: { const: start }
+          repo: { minLength: 1 }
+          prompt: { minLength: 1 }
+          session: { const: "" }
+      - properties:
+          type: { const: stop }
+          repo: { const: "" }
+          prompt: { const: "" }
+          session: { format: uuid }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [seq]
+    properties:
+      seq: { type: integer }
+steps:
+  - name: tx
+    inputs: !cel "inputs"
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref connection
+      inputs: !cel "inputs"
+      steps:
+        kind: Run.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema:
+            type: object
+            required: [name, author, type, repo, prompt, session]
+            properties:
+              name: { type: string }
+              author: { type: string }
+              type: { type: string }
+              repo: { type: string }
+              prompt: { type: string }
+              session: { type: string }
+        steps:
+          - name: minted
+            value: !cel "'plan-approval-' + uuidv4()"
+          - name: runner
+            invoke: !ref checkRunner
+            inputs: { name: !cel "inputs.name", instance: "" }
+          - name: target
+            invoke: { kind: Sql.Query, connection: !ref connection }
+            inputs:
+              sql: !sql "SELECT id, repo FROM sessions WHERE id = ${{ inputs.session }} AND runner = ${{ inputs.name }}"
+          - name: unserved
+            if: !cel "inputs.type == 'start' && !(inputs.repo in steps.runner.result.repos)"
+            then:
+              - name: refuseUnserved
+                throw:
+                  code: ERR_REPO_NOT_SERVED
+                  message: !cel "'Runner ' + inputs.name + ' does not serve repository ' + inputs.repo + '.'"
+          - name: unknownSession
+            if: !cel "inputs.type == 'stop' && size(steps.target.result.rows) == 0"
+            then:
+              - name: refuseSession
+                throw:
+                  code: ERR_SESSION_NOT_FOUND
+                  message: !cel "'Runner ' + inputs.name + ' has no session ' + inputs.session + '.'"
+          - name: repo
+            value: !cel "inputs.type == 'start' ? inputs.repo : string(steps.target.result.rows[0].repo)"
+          - name: next
+            invoke: !ref nextCommandSeq
+            inputs: { runner: !cel "inputs.name" }
+          - name: insert
+            invoke: { kind: Sql.Command, connection: !ref connection }
+            inputs:
+              sql: !sql >-
+                INSERT INTO commands (runner, seq, type, state, session, session_name, repo, prompt, author)
+                VALUES (${{ inputs.name }}, ${{ steps.next.result.seq }}, ${{ inputs.type }}, 'pending',
+                  NULLIF(${{ inputs.session }}, ''),
+                  CASE WHEN ${{ inputs.type }} = 'start' THEN ${{ steps.minted.result }} END,
+                  ${{ steps.repo.result }}, NULLIF(${{ inputs.prompt }}, ''), ${{ inputs.author }})
+        outputs:
+          seq: !cel "steps.next.result.seq"
+  - name: publish
+    invoke: !ref publish
+    inputs:
+      topic: !cel "'runner:' + inputs.name"
+      version: !cel "int(steps.tx.result.seq)"
+outputs:
+  seq: !cel "int(steps.tx.result.seq)"

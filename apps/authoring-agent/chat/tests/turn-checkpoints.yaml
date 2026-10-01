@@ -1,0 +1,848 @@
+kind: Telo.Application
+metadata:
+  name: ChatTurnCheckpoints
+  version: 1.0.0
+  description: |
+    What write_file, edit_file and delete_file checkpoint, driven offline
+    against the provider stub with the byte bound lowered to 4096 and the
+    turn's diff budget to 64 bytes.
+
+    A turn that writes, edits and deletes has exactly those entries, each
+    confirmed, and its tools' `output` carries the file's Change and, for a
+    write or an edit, the call's hunks. A write that fails after its entry was
+    recorded leaves none, and a revert of the turn still restores what it
+    changed before. A change the user pushes while the turn runs is not
+    charged to it, and the turn's changes are readable while it runs. A write
+    for a turn removed meanwhile is refused and leaves no checkpoint directory.
+    Entries a cancelled call left unconfirmed are settled when their turn ends:
+    with a turn held after two writes, its entries un-confirmed and one of the
+    two files overwritten on disk, an abort leaves the untouched path in the
+    summary, in the changes and restored by a revert, and the overwritten one
+    in none of them, its file left alone.
+    Refused before anything changes, leaving no entry and no blob: an edit of
+    a file that is not UTF-8 text (ERR_FILE_NOT_TEXT), a write over and a
+    delete of a file larger than the byte bound, a recursive delete of 1001
+    files and one whose listed sizes pass the byte bound
+    (ERR_CHECKPOINT_TOO_LARGE), a write to a directory, a recursive delete of
+    a symbolic link to a directory and of a tree holding a symbolic link
+    (ERR_PATH_NOT_A_FILE, the link and every file left as they were), and every
+    tool on a path inside the agent's state directory, and a recursive delete
+    of the workspace root (ERR_PATH_OUTSIDE_WORKSPACE). On an agent whose state
+    directory lies two levels down, a pushed delete of the first level is
+    refused (400, nothing removed) and one of a sibling directory is applied.
+
+    A write under a directory that is there but cannot be listed fails with
+    the listing's own error — never as "not a regular file" — recording nothing
+    and leaving the file as it was. A turn that changed three files of which
+    the second does not fit the diff budget lists all three, the first and the
+    third with counts and hunks and the second without, on the changes route
+    and in the summary alike, and the unfitting file's copy is not read. The
+    changes route compares workspace files within an allowance of its own: of
+    three files a turn wrote, the one that fits reports `changedSince: false`,
+    one too large and untouched reports null, and one too large whose size on
+    disk changed since reports true; the summary is as it was.
+variables:
+  scratch:
+    env: CHAT_TEST_TURN_CHECKPOINTS_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-checkpoints
+  # The workspace of an agent whose state directory lies two levels down.
+  nested:
+    env: CHAT_TEST_TURN_CHECKPOINTS_NESTED
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-checkpoints-nested
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      # The state directory inside the workspace, as the application lays it out.
+      workspaceDir: !cel "variables.scratch"
+      stateDir: !cel "variables.scratch.joinPath('.telo-agent')"
+      modelEndpoint: http://127.0.0.1:18540/v1
+      teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+      maxCheckpointBytes: 4096
+      maxTurnDiffBytes: 64
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: ../../../../modules/fs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+---
+kind: HttpClient.Request
+metadata: { name: lenientCall }
+client:
+  kind: HttpClient.Client
+  throwOnHttpError: false
+---
+# The agent's database, reached from outside the library.
+kind: SQLite.Connection
+metadata: { name: agentDb }
+file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+---
+kind: Sql.Query
+metadata: { name: agentQuery }
+connection: !ref agentDb
+---
+kind: Fs.TreeSnapshot
+metadata: { name: onDisk }
+cwd: !cel "variables.scratch"
+---
+kind: Fs.DirectoryListing
+metadata: { name: listed }
+cwd: !cel "variables.scratch"
+---
+kind: Shell.Command
+metadata: { name: inWorkspace }
+host:
+  kind: Shell.LocalHost
+  cwd: !cel "variables.scratch"
+---
+# Starts a turn in a conversation of its own, telling the stub which tool
+# calls to ask for.
+kind: Run.Sequence
+metadata: { name: begin }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [directive, calls]
+    properties:
+      directive: { type: string }
+      calls:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.conversation.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel "inputs.directive + ' STUB_CALLS:' + base64Encode(json(inputs.calls))"
+outputs:
+  conversationId: !cel "steps.conversation.result.conversation.id"
+  turnId: !cel "steps.start.result.turnId"
+---
+# A turn's records, read to its end.
+kind: Run.Sequence
+metadata: { name: finished }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "inputs.turnId"
+      fromId: 0
+  - name: drain
+    timeout: 60000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.read.result.output"
+outputs:
+  last: !cel "steps.drain.result.items[size(steps.drain.result.items) - 1].data.type"
+  results: !cel "steps.drain.result.items.filter(r, r.data.type == 'tool-result').map(r, r.data.toolResult)"
+---
+# Fails until the stub has received `count` agent requests carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubReceived }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text, count]
+    properties:
+      text: { type: string }
+      count: { type: integer }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/requests }
+  - name: notYet
+    if: !cel >-
+      size(steps.sent.result.body.requests.filter(r, json(r).contains(inputs.text)
+        && !json(r).contains('You name conversations'))) < inputs.count
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: The stub has not received the request yet.
+---
+# A turn's checkpoint as the database and the state directory hold it.
+kind: Run.Sequence
+metadata: { name: checkpoint }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: entries
+    invoke: !ref agentQuery
+    inputs:
+      sql: |
+        SELECT path, before_hash IS NULL AS absent, after_hash IS NULL AS deleted, confirmed
+        FROM checkpoint_entries WHERE turn_id = ? ORDER BY id
+      bindings: [ !cel "inputs.turnId" ]
+  - name: blobs
+    invoke: !ref onDisk
+    inputs:
+      paths: !cel "['.telo-agent/checkpoints/' + inputs.turnId]"
+outputs:
+  entries: !cel >-
+    steps.entries.result.rows.map(r, r.path + ' ' + (int(r.absent) != 0 ? 'absent' : 'file') + '>'
+      + (int(r.deleted) != 0 ? 'absent' : 'file') + (int(r.confirmed) != 0 ? '' : ' unconfirmed'))
+  blobs: !cel "size(steps.blobs.result.files)"
+  directory: !cel "size(steps.blobs.result.missing) == 0"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18540 }
+targets: [ !ref stub ]
+steps:
+  # The workspace holds the open database, so what earlier runs left is
+  # removed path by path; then the files the refusals are tried on.
+  # A run cut short may have left the directory unlistable.
+  - name: unlockLeftover
+    invoke: !ref inWorkspace
+    inputs:
+      args: [sh, -c, "chmod 755 locked 2>/dev/null; true"]
+  - name: seed
+    invoke: !ref Chat.syncWorkspace
+    inputs:
+      delete: [locked, budget, compare, apps, notes, c.txt, d.txt, e.txt, s1.txt, s2.txt, user.txt, bin.dat, big.txt, many, heavy, deep, linkdir, linked]
+      write: []
+  - name: fixtures
+    invoke: !ref Chat.syncWorkspace
+    inputs:
+      delete: []
+      write: !cel >-
+        [{'path': 'bin.dat', 'content': '//4AAQ==', 'encoding': 'base64'},
+         {'path': 'big.txt', 'content': join(range(500).map(i, '0123456789'), '')}]
+        + range(1001).map(i, {'path': 'many/f' + string(i) + '.txt', 'content': ''})
+        + range(3).map(i, {'path': 'heavy/f' + string(i) + '.txt', 'content': join(range(200).map(j, '0123456789'), '')})
+        + [{'path': 'deep/big.txt', 'content': join(range(500).map(i, '0123456789'), '')},
+           {'path': 'linked/a.txt', 'content': 'a'}, {'path': 'locked/x.txt', 'content': 'kept\n'}]
+  # A link to a directory, and a link inside a tree.
+  - name: links
+    invoke: !ref inWorkspace
+    inputs:
+      args: [sh, -c, "ln -s heavy linkdir && ln -s ../big.txt linked/link"]
+  # ── what a turn checkpoints ────────────────────────────────────────────────
+  - name: authored
+    invoke: !ref begin
+    inputs:
+      directive: do it
+      calls:
+        - { name: write_file, arguments: { path: apps/demo/telo.yaml, content: "kind: Telo.Library\nmetadata:\n  name: Demo\n" } }
+        - { name: write_file, arguments: { path: notes/b.txt, content: "one\ntwo\nthree\n" } }
+        - { name: edit_file, arguments: { path: ./notes//b.txt, oldString: two, newString: TWO } }
+        - { name: write_file, arguments: { path: c.txt, content: "gone\n" } }
+        - { name: delete_file, arguments: { path: c.txt } }
+        - { name: write_file, arguments: { path: c.txt, content: "back\n" } }
+        # Its entry is recorded, then the write fails: a file is in the way.
+        - { name: write_file, arguments: { path: c.txt/child.txt, content: "x" } }
+  - name: authoredEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.authored.result.turnId" }
+  - name: authoredCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.authored.result.turnId" }
+  # ── a pushed change mid-turn ───────────────────────────────────────────────
+  # The stub holds the turn's first request, then the one carrying the tool
+  # result: the push lands between the turn's write and its end.
+  - name: held
+    invoke: !ref begin
+    inputs:
+      directive: STUB_SLOW keep going
+      calls:
+        - { name: write_file, arguments: { path: d.txt, content: "agent\n" } }
+  - name: firstHeld
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW keep going, count: 1 }
+  - name: releaseFirst
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: secondHeld
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW keep going, count: 2 }
+  - name: pushed
+    invoke: !ref Chat.syncWorkspace
+    inputs:
+      delete: []
+      write:
+        - { path: d.txt, content: "user\n" }
+        - { path: user.txt, content: "mine\n" }
+  - name: whileRunning
+    invoke: !ref Chat.turnChanges
+    inputs: { turnId: !cel "steps.held.result.turnId" }
+  - name: releaseSecond
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: heldEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.held.result.turnId" }
+  - name: heldCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.held.result.turnId" }
+  # ── a write for a turn removed meanwhile ───────────────────────────────────
+  # The stub holds the turn's first request; the turn is marked removed, then
+  # the request is let go and the write is tried.
+  - name: gone
+    invoke: !ref begin
+    inputs:
+      directive: STUB_SLOW too late
+      calls:
+        - { name: write_file, arguments: { path: e.txt, content: "late\n" } }
+  - name: goneFirst
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW too late, count: 1 }
+  - name: markRemoved
+    invoke:
+      kind: Sql.Command
+      connection: !ref agentDb
+    inputs:
+      sql: "UPDATE turns SET removed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE turn_id = ?"
+      bindings: [ !cel "steps.gone.result.turnId" ]
+  - name: goneRelease
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: goneSecond
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW too late, count: 2 }
+  - name: goneReleaseSecond
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: goneEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.gone.result.turnId" }
+  - name: goneCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.gone.result.turnId" }
+  - name: goneFile
+    invoke: !ref onDisk
+    inputs:
+      paths: [e.txt]
+  # ── a cancelled call's entries, settled when the turn ends ─────────────────
+  # The stub holds the request carrying the two writes' results. The turn's
+  # entries are un-confirmed, as a cancelled call leaves them, and one of the
+  # two files is overwritten on disk; then the turn is aborted.
+  - name: cut
+    invoke: !ref begin
+    inputs:
+      directive: STUB_SLOW cut it
+      calls:
+        - { name: write_file, arguments: { path: s1.txt, content: "one\n" } }
+        - { name: write_file, arguments: { path: s2.txt, content: "two\n" } }
+  - name: cutFirst
+    retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW cut it, count: 1 }
+  - name: cutRelease
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: cutSecond
+    retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW cut it, count: 2 }
+  - name: cutUnconfirm
+    invoke:
+      kind: Sql.Command
+      connection: !ref agentDb
+    inputs:
+      sql: "UPDATE checkpoint_entries SET confirmed = 0 WHERE turn_id = ?"
+      bindings: [ !cel "steps.cut.result.turnId" ]
+  - name: cutOverwrite
+    invoke:
+      kind: Fs.FileWrite
+      cwd: !cel "variables.scratch"
+    inputs:
+      path: s2.txt
+      content: "user\n"
+  - name: cutAbort
+    invoke: !ref Chat.abortTurn
+    inputs: { turnId: !cel "steps.cut.result.turnId" }
+  - name: cutEnd
+    try:
+      - name: cutRead
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.cut.result.turnId"
+          fromId: 0
+      - name: cutDrain
+        timeout: 60000
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.cutRead.result.output"
+    catch:
+      - name: cutEnding
+        value: !cel "error.code"
+  - name: cutCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.cut.result.turnId" }
+  - name: cutRecords
+    invoke: !ref Chat.conversationRecords
+    inputs:
+      conversationId: !cel "steps.cut.result.conversationId"
+      fromTurn: ""
+      fromId: 0
+      limit: 2000
+  - name: cutChanges
+    invoke: !ref Chat.turnChanges
+    inputs: { turnId: !cel "steps.cut.result.turnId" }
+  - name: cutReverted
+    invoke: !ref Chat.revertTurn
+    inputs: { turnId: !cel "steps.cut.result.turnId" }
+  - name: cutDisk
+    invoke: !ref onDisk
+    inputs:
+      paths: [s1.txt, s2.txt]
+  # ── a directory that is there but cannot be listed ─────────────────────────
+  # Mode 0311: its entries can be reached by name, the directory cannot be
+  # read. A turn lists the workspace when it starts, so the stub holds the
+  # turn's first request while the mode changes, and the one carrying the
+  # tool's result while it is put back. The command succeeds only if listing
+  # the directory fails.
+  - name: unlistable
+    invoke: !ref begin
+    inputs:
+      directive: STUB_SLOW write there
+      calls:
+        - { name: write_file, arguments: { path: locked/x.txt, content: "new\n" } }
+  - name: unlistableFirst
+    retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW write there, count: 1 }
+  - name: lock
+    invoke: !ref inWorkspace
+    inputs:
+      args: [sh, -c, "chmod 311 locked && ! ls locked > /dev/null 2>&1"]
+  - name: unlistableRelease
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: unlistableSecond
+    retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW write there, count: 2 }
+  - name: unlock
+    invoke: !ref inWorkspace
+    inputs:
+      args: [sh, -c, "cat locked/x.txt; chmod 755 locked"]
+  - name: unlistableReleaseSecond
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18540/release, method: POST }
+  - name: unlistableEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.unlistable.result.turnId" }
+  - name: unlistableCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.unlistable.result.turnId" }
+  # ── a turn's diff budget ───────────────────────────────────────────────────
+  # 64 bytes: the first file's copy (8) fits, the second's (100) does not, the
+  # third's (6) fits what is left.
+  - name: budgeted
+    invoke: !ref begin
+    inputs:
+      directive: three files
+      calls:
+        - { name: write_file, arguments: { path: budget/a.txt, content: "one\ntwo\n" } }
+        - { name: write_file, arguments: { path: budget/b.txt, content: !cel "join(range(20).map(i, 'line\\n'), '')" } }
+        - { name: write_file, arguments: { path: budget/c.txt, content: "three\n" } }
+  - name: budgetedEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.budgeted.result.turnId" }
+  - name: budgetedRecords
+    invoke: !ref Chat.conversationRecords
+    inputs:
+      conversationId: !cel "steps.budgeted.result.conversationId"
+      fromTurn: ""
+      fromId: 0
+      limit: 2000
+  # The unfitting file's copy made unreadable: reading it would fail the route.
+  - name: budgetedSeal
+    invoke: !ref inWorkspace
+    inputs:
+      args:
+        - sh
+        - -c
+        - !cel >-
+          'cd .telo-agent/checkpoints/' + steps.budgeted.result.turnId + ' && chmod 000 '
+            + sha256(join(range(20).map(i, 'line\n'), '')) + ' && ! cat ' + sha256(join(range(20).map(i, 'line\n'), ''))
+            + ' > /dev/null 2>&1'
+  - name: budgetedChanges
+    invoke: !ref Chat.turnChanges
+    inputs: { turnId: !cel "steps.budgeted.result.turnId" }
+  - name: budgetedUnseal
+    invoke: !ref inWorkspace
+    inputs:
+      args:
+        - sh
+        - -c
+        - !cel >-
+          'chmod 644 .telo-agent/checkpoints/' + steps.budgeted.result.turnId + '/'
+            + sha256(join(range(20).map(i, 'line\n'), ''))
+  # ── the changes route's workspace comparison ───────────────────────────────
+  # 64 bytes again, of workspace files this time: the first file (8) is read,
+  # the second (100) is not, and the third needs no read once its size differs.
+  - name: compared
+    invoke: !ref begin
+    inputs:
+      directive: three more files
+      calls:
+        - { name: write_file, arguments: { path: compare/a.txt, content: "one\ntwo\n" } }
+        - { name: write_file, arguments: { path: compare/b.txt, content: !cel "join(range(20).map(i, 'line\\n'), '')" } }
+        - { name: write_file, arguments: { path: compare/c.txt, content: !cel "join(range(20).map(i, 'rows\\n'), '')" } }
+  - name: comparedEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.compared.result.turnId" }
+  - name: comparedResize
+    invoke:
+      kind: Fs.FileWrite
+      cwd: !cel "variables.scratch"
+    inputs:
+      path: compare/c.txt
+      content: "short\n"
+  - name: comparedChanges
+    invoke: !ref Chat.turnChanges
+    inputs: { turnId: !cel "steps.compared.result.turnId" }
+  - name: comparedRecords
+    invoke: !ref Chat.conversationRecords
+    inputs:
+      conversationId: !cel "steps.compared.result.conversationId"
+      fromTurn: ""
+      fromId: 0
+      limit: 2000
+  # ── refusals ───────────────────────────────────────────────────────────────
+  - name: refused
+    invoke: !ref begin
+    inputs:
+      directive: try these
+      calls:
+        - { name: edit_file, arguments: { path: bin.dat, oldString: a, newString: b } }
+        - { name: write_file, arguments: { path: big.txt, content: "small" } }
+        - { name: delete_file, arguments: { path: big.txt } }
+        - { name: delete_file, arguments: { path: many, recursive: true } }
+        - { name: delete_file, arguments: { path: heavy, recursive: true } }
+        - { name: write_file, arguments: { path: deep, content: "small" } }
+        - { name: delete_file, arguments: { path: linkdir, recursive: true } }
+        - { name: delete_file, arguments: { path: linked, recursive: true } }
+        - { name: delete_file, arguments: { path: .telo-agent, recursive: true } }
+        - { name: read_file, arguments: { path: .telo-agent/agent.sqlite } }
+        - { name: write_file, arguments: { path: ./.telo-agent/x.txt, content: "x" } }
+        - { name: edit_file, arguments: { path: .telo-agent//agent.sqlite, oldString: a, newString: b } }
+        - { name: list_dir, arguments: { path: .telo-agent } }
+        - { name: telo_check, arguments: { path: .telo-agent/x.yaml } }
+        - { name: telo, arguments: { args: [ check, .telo-agent/x.yaml ] } }
+        - { name: delete_file, arguments: { path: ., recursive: true } }
+  - name: refusedEnd
+    invoke: !ref finished
+    inputs: { turnId: !cel "steps.refused.result.turnId" }
+  - name: refusedCheckpoint
+    invoke: !ref checkpoint
+    inputs: { turnId: !cel "steps.refused.result.turnId" }
+  - name: remaining
+    invoke: !ref onDisk
+    inputs:
+      paths: [bin.dat, big.txt, many, heavy, deep, linked, .telo-agent/x.txt]
+  - name: remainingLinks
+    invoke: !ref listed
+    inputs:
+      recursive: true
+      exclude: [many, heavy, .telo-agent, apps, notes, deep]
+  # ── a state directory two levels down ──────────────────────────────────────
+  # `own` holds the agent's state directory; `side` is its sibling.
+  - name: nested
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: nestedAgent }
+          source: ../../telo.yaml
+          ports: { http: 18551 }
+          variables:
+            workspaceDir: !cel "variables.nested"
+            stateDir: !cel "variables.nested.joinPath('own').joinPath('state')"
+            modelEndpoint: http://127.0.0.1:18540/v1
+            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref nestedAgent ]
+      steps:
+        - name: seeded
+          invoke: !ref lenientCall
+          inputs:
+            url: http://127.0.0.1:18551/workspace
+            method: POST
+            body:
+              write:
+                - { path: own/keep.txt, content: "keep\n" }
+                - { path: side/x.txt, content: "x\n" }
+        - name: firstLevel
+          invoke: !ref lenientCall
+          inputs:
+            url: http://127.0.0.1:18551/workspace
+            method: POST
+            body:
+              delete: [ side, own ]
+        - name: sibling
+          invoke: !ref lenientCall
+          inputs:
+            url: http://127.0.0.1:18551/workspace
+            method: POST
+            body:
+              delete: [ side ]
+        - name: left
+          invoke:
+            kind: Fs.TreeSnapshot
+            cwd: !cel "variables.nested"
+          inputs:
+            paths: [ own/keep.txt, side ]
+      outputs:
+        firstLevel: !cel "[steps.firstLevel.result.status, steps.firstLevel.result.body.code, steps.firstLevel.result.body.error]"
+        sibling: !cel "steps.sibling.result.status"
+        left: !cel "[steps.left.result.files.map(f, f.path), steps.left.result.missing]"
+  # ── the first turn reverted: the write that failed left its copy behind ────
+  - name: reverted
+    invoke: !ref Chat.revertTurn
+    inputs: { turnId: !cel "steps.authored.result.turnId" }
+  - name: afterRevert
+    invoke: !ref onDisk
+    inputs:
+      paths: [apps/demo/telo.yaml, notes/b.txt, c.txt]
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        authored:
+          last: !cel "steps.authoredEnd.result.last"
+          entries: !cel "steps.authoredCheckpoint.result.entries"
+          # Five copies of what the turn wrote, and the copy the failed write
+          # stored before it failed.
+          blobs: !cel "steps.authoredCheckpoint.result.blobs"
+          written: !cel >-
+            cel.bind(o, steps.authoredEnd.result.results[1].output,
+              {'changes': o.changes.map(c, [c.path, c.status, c.before, c.after == sha256('one\ntwo\nthree\n'), c.added, c.removed]),
+               'hunks': o.hunks.map(h, [h.newStart, h.newLines, size(h.lines)])})
+          edited: !cel >-
+            cel.bind(o, steps.authoredEnd.result.results[2].output,
+              {'path': o.path,
+               'changes': o.changes.map(c, [c.path, c.status, c.before == sha256('one\ntwo\nthree\n'),
+                 c.after == sha256('one\nTWO\nthree\n'), c.added, c.removed]),
+               'hunks': o.hunks.map(h, h.lines.map(l, l.op + ' ' + l.text))})
+          deleted: !cel >-
+            steps.authoredEnd.result.results[4].output.changes.map(c,
+              [c.path, c.status, c.before == sha256('gone\n'), c.after, c.added, c.removed])
+          failedWrite: !cel "cel.bind(r, steps.authoredEnd.result.results[6], has(r.error) && r.error)"
+          # The write's own failure: a path under a regular file is absent to the checkpoint.
+          failedWriteText: !cel >-
+            cel.bind(c, string(steps.authoredEnd.result.results[6].content),
+              [c.startsWith('Error: Fs.FileWrite: cannot write '), c.contains('ERR_PATH_NOT_A_FILE')])
+        held:
+          last: !cel "steps.heldEnd.result.last"
+          entries: !cel "steps.heldCheckpoint.result.entries"
+          whileRunning: !cel "steps.whileRunning.result.files.map(f, [f.path, f.status, f.changedSince])"
+        gone:
+          error: !cel "cel.bind(r, steps.goneEnd.result.results[0], has(r.error) && r.error)"
+          code: !cel "string(steps.goneEnd.result.results[0].content).contains('was removed; nothing was changed')"
+          entries: !cel "steps.goneCheckpoint.result.entries"
+          directory: !cel "steps.goneCheckpoint.result.directory"
+          written: !cel "size(steps.goneFile.result.missing) == 0"
+        reverted:
+          outcome: !cel "steps.reverted.result.revert.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome)"
+          missing: !cel "steps.afterRevert.result.missing"
+        cut:
+          status: !cel "steps.cutRecords.result.turns[0].status"
+          entries: !cel "steps.cutCheckpoint.result.entries"
+          summary: !cel "steps.cutRecords.result.turns[0].summary.files.map(f, f.path + ' ' + f.status)"
+          changes: !cel "steps.cutChanges.result.files.map(f, f.path + ' ' + f.status)"
+          reverted: !cel "steps.cutReverted.result.revert.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome)"
+          missing: !cel "steps.cutDisk.result.missing"
+          leftAlone: !cel "steps.cutDisk.result.files.map(f, [f.path, f.hash == sha256('user\\n')])"
+        compared:
+          changedSince: !cel "steps.comparedChanges.result.files.map(f, [f.path, f.changedSince])"
+          summary: !cel >-
+            steps.comparedRecords.result.turns[0].summary.files.map(f, [f.path, f.status, f.added, f.removed, f.firstLine])
+        nested: !cel "steps.nested.result"
+        unlistable:
+          precondition: !cel "steps.lock.result.exitCode"
+          error: !cel "cel.bind(r, steps.unlistableEnd.result.results[0], has(r.error) && r.error)"
+          # The listing's own failure, naming the directory.
+          text: !cel >-
+            cel.bind(c, string(steps.unlistableEnd.result.results[0].content),
+              [c.startsWith('Error: Fs.DirectoryListing: cannot list '), c.endsWith("/locked': permission denied (EACCES)"),
+               c.contains('ERR_PATH_NOT_A_FILE')])
+          entries: !cel "steps.unlistableCheckpoint.result.entries"
+          directory: !cel "steps.unlistableCheckpoint.result.directory"
+          file: !cel "steps.unlock.result.stdout"
+        budgeted:
+          sealed: !cel "steps.budgetedSeal.result.exitCode"
+          changes: !cel >-
+            steps.budgetedChanges.result.files.map(f,
+              [f.path, f.status, f.added, f.removed, f.firstLine, f.hunks != null, f.changedSince])
+          summary: !cel >-
+            steps.budgetedRecords.result.turns[0].summary.files.map(f, [f.path, f.status, f.added, f.removed, f.firstLine])
+        refused:
+          last: !cel "steps.refusedEnd.result.last"
+          errors: !cel "steps.refusedEnd.result.results.map(r, has(r.error) && r.error)"
+          notText: !cel "string(steps.refusedEnd.result.results[0].content).contains('ERR_FILE_NOT_TEXT: refused to edit')"
+          tooLarge: !cel >-
+            slice(steps.refusedEnd.result.results, 1, 5).map(r, string(r.content).contains('ERR_CHECKPOINT_TOO_LARGE: refused to change'))
+          notFile: !cel >-
+            [['"deep"', 5], ['"linkdir"', 6], ['"linked/link"', 7]].map(c,
+              string(steps.refusedEnd.result.results[c[1]].content).contains('ERR_PATH_NOT_A_FILE: refused to change ' + c[0]))
+          links: !cel >-
+            steps.remainingLinks.result.entries.filter(e, e.path.startsWith('link')).map(e, e.path + ' ' + e.type)
+          bytes: !cel >-
+            [1, 2].map(i, string(steps.refusedEnd.result.results[i].content).contains('"big.txt"')
+              && string(steps.refusedEnd.result.results[i].content).contains('5000 bytes')
+              && string(steps.refusedEnd.result.results[i].content).contains('4096 bytes'))
+          files: !cel >-
+            cel.bind(c, string(steps.refusedEnd.result.results[3].content),
+              c.contains('"many"') && c.contains('1001 files') && c.contains('1000 files'))
+          listedSizes: !cel >-
+            cel.bind(c, string(steps.refusedEnd.result.results[4].content),
+              c.contains('"heavy"') && c.contains('6000 bytes') && c.contains('4096 bytes'))
+          stateDirectory: !cel >-
+            slice(steps.refusedEnd.result.results, 8, 15).map(r, string(r.content).contains('ERR_PATH_OUTSIDE_WORKSPACE'))
+          root: !cel >-
+            string(steps.refusedEnd.result.results[15].content)
+          entries: !cel "steps.refusedCheckpoint.result.entries"
+          directory: !cel "steps.refusedCheckpoint.result.directory"
+          remaining: !cel "size(steps.remaining.result.files)"
+          missing: !cel "steps.remaining.result.missing"
+      expected:
+        authored:
+          last: finish
+          entries:
+            - apps/demo/telo.yaml absent>file
+            - notes/b.txt absent>file
+            - notes/b.txt file>file
+            - c.txt absent>file
+            - c.txt file>absent
+            - c.txt absent>file
+          blobs: 6
+          written:
+            changes: [ [ notes/b.txt, created, null, true, 3, 0 ] ]
+            hunks: [ [ 1, 3, 3 ] ]
+          edited:
+            path: ./notes//b.txt
+            changes: [ [ notes/b.txt, modified, true, true, 1, 1 ] ]
+            hunks: [ [ "context one", "removed two", "added TWO", "context three" ] ]
+          deleted: [ [ c.txt, deleted, true, null, 0, 1 ] ]
+          failedWrite: true
+          failedWriteText: [ true, false ]
+        held:
+          last: finish
+          entries: [ "d.txt absent>file" ]
+          whileRunning: [ [ d.txt, created, true ] ]
+        gone:
+          error: true
+          code: true
+          entries: []
+          directory: false
+          written: false
+        reverted:
+          outcome:
+            - apps/demo/telo.yaml created restored
+            - c.txt created restored
+            - notes/b.txt created restored
+          missing: [ apps/demo/telo.yaml, notes/b.txt, c.txt ]
+        cut:
+          status: aborted
+          entries: [ "s1.txt absent>file" ]
+          summary: [ s1.txt created ]
+          changes: [ s1.txt created ]
+          reverted: [ s1.txt created restored ]
+          missing: [ s1.txt ]
+          leftAlone: [ [ s2.txt, true ] ]
+        unlistable:
+          precondition: 0
+          error: true
+          text: [ true, true, false ]
+          entries: []
+          directory: false
+          file: "kept\n"
+        budgeted:
+          sealed: 0
+          changes:
+            - [ budget/a.txt, created, 2, 0, 1, true, false ]
+            - [ budget/b.txt, created, null, null, null, false, null ]
+            - [ budget/c.txt, created, 1, 0, 1, true, false ]
+          summary:
+            - [ budget/a.txt, created, 2, 0, 1 ]
+            - [ budget/b.txt, created, null, null, null ]
+            - [ budget/c.txt, created, 1, 0, 1 ]
+        compared:
+          changedSince:
+            - [ compare/a.txt, false ]
+            - [ compare/b.txt, null ]
+            - [ compare/c.txt, true ]
+          summary:
+            - [ compare/a.txt, created, 2, 0, 1 ]
+            - [ compare/b.txt, created, null, null, null ]
+            - [ compare/c.txt, created, null, null, null ]
+        nested:
+          firstLevel:
+            - 400
+            - ERR_PATH_OUTSIDE_WORKSPACE
+            - >-
+              ERR_PATH_OUTSIDE_WORKSPACE: refused to delete "own": it is the workspace root or holds the agent's own
+              state directory, which is never workspace content. Nothing was removed. Delete the entries inside it one
+              by one. Nothing was applied.
+          sibling: 200
+          left: [ [ own/keep.txt ], [ side ] ]
+        refused:
+          last: finish
+          errors: [ true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true ]
+          notText: true
+          tooLarge: [ true, true, true, true ]
+          notFile: [ true, true, true ]
+          links: [ "linkdir other", "linked directory", "linked/a.txt file", "linked/link other" ]
+          bytes: [ true, true ]
+          files: true
+          listedSizes: true
+          stateDirectory: [ true, true, true, true, true, true, true ]
+          root: >-
+            Error: ERR_PATH_OUTSIDE_WORKSPACE: refused to delete ".": it is the workspace root or holds the agent's own
+            state directory, which is never workspace content. Nothing was removed. Delete the entries inside it one
+            by one.
+          entries: []
+          directory: false
+          remaining: 1008
+          missing: [ .telo-agent/x.txt ]

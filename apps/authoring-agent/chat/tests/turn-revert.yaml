@@ -1,0 +1,1146 @@
+kind: Telo.Application
+metadata:
+  name: ChatTurnRevert
+  version: 1.0.0
+  description: |
+    A turn's changes and its revert over the agent's routes, offline against the
+    provider stub.
+
+    GET /chat/{turnId}/changes lists a turn's net changes with status, digests,
+    line counts, hunks, the first hunk's line and whether the file changed
+    since — also while the turn runs and on an archived conversation.
+    POST /chat/{turnId}/revert restores every file still holding what the turn
+    left and skips, with its path, one changed since through POST /workspace;
+    it moves the conversation's `revision` once, and repeating it changes no
+    file, no outcome and no revision. A recorded outcome only moves to
+    `restored`: a repeat restores a skipped path that holds the turn's content
+    again while a restored path edited since stays `restored` and is left
+    alone, and a skipped path the user put back by hand is reported `restored`
+    — each moving `revision` and `revertedAt` once. The first revert of a turn
+    that changed nothing records an empty outcome. A revert whose second path
+    cannot be written — a file stands where its parent directory must be —
+    answers 500 with the first path restored, recorded and counted in
+    `revision`. An earlier turn's path a
+    later turn changed is skipped until the later turn is reverted. A failed
+    and an aborted turn are reverted like a finished one.
+    Refused: a turn from before checkpoints existed, also one continued since
+    (409 ERR_TURN_NOT_CHECKPOINTED; its summary and its changes report
+    `files: null`), any turn of a conversation with a running turn (409
+    ERR_TURN_IN_PROGRESS with `activeTurnId`) — a turn running in another
+    conversation does not block —, an archived conversation (409
+    ERR_CONVERSATION_ARCHIVED) and a removed turn (410 ERR_JOURNAL_KEY_REMOVED
+    on both routes). The records route carries the recorded revert. A pushed
+    delete of the workspace root is refused whole (400
+    ERR_PATH_OUTSIDE_WORKSPACE) and removes nothing.
+
+    What a crash leaves is recovered when the agent boots again, shown over a
+    real restart on the same workspace: entries left unconfirmed and a
+    projection not taken at the turn's ending. An entry whose file holds what
+    the turn wrote is confirmed — the path is in the turn's summary and
+    changes, and a revert restores it; one whose file holds what it held
+    before is dropped from all three; of a recursive delete, exactly the files
+    that are gone stay recorded, and a revert restores them. An entry whose
+    directory is there but cannot be listed when its turn ends is neither
+    confirmed nor dropped: the turn still ends, the entry stays unconfirmed
+    and the file untouched, and once the directory can be listed the next boot
+    confirms it into the turn's summary.
+imports:
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: ../../../../modules/fs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+variables:
+  # This test's own workspace, emptied before each run.
+  scratch:
+    env: CHAT_TEST_TURN_REVERT_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-revert
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: client }
+throwOnHttpError: false
+# Above the default: the suite runs these beside other tests on a loaded machine.
+timeout: 60000
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Shell.Command
+metadata: { name: inWorkspace }
+host:
+  kind: Shell.LocalHost
+  cwd: !cel "variables.scratch"
+---
+kind: Run.Sequence
+metadata: { name: push }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [write]
+    properties:
+      write:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18543/workspace
+      method: POST
+      body:
+        write: !cel "inputs.write"
+outputs:
+  status: !cel "steps.post.result.status"
+---
+# Starts a turn in a conversation of its own.
+kind: Run.Sequence
+metadata: { name: begin }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message]
+    properties:
+      message: { type: string }
+steps:
+  - name: conversation
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18543/conversations, method: POST }
+  - name: start
+    invoke: !ref call
+    inputs:
+      url: http://127.0.0.1:18543/chat
+      method: POST
+      body:
+        conversationId: !cel "steps.conversation.result.body.id"
+        message: !cel "inputs.message"
+outputs:
+  conversationId: !cel "string(steps.conversation.result.body.id)"
+  turnId: !cel "string(steps.start.result.body.turnId)"
+---
+# Waits for a turn to end: its event stream read to its last frame.
+kind: Run.Sequence
+metadata: { name: ended }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    timeout: 60000
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:18543/chat/${{ inputs.turnId }}/events"
+      responseType: stream
+  - name: all
+    timeout: 60000
+    invoke: { kind: Stream.Collect }
+    inputs:
+      input: !cel "steps.get.result.body"
+---
+# One turn of scripted tool calls, run to its end.
+kind: Run.Sequence
+metadata: { name: turn }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [directive, calls]
+    properties:
+      directive: { type: string }
+      calls:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: started
+    invoke: !ref begin
+    inputs:
+      message: !cel "inputs.directive + ' STUB_CALLS:' + base64Encode(json(inputs.calls))"
+  - name: end
+    invoke: !ref ended
+    inputs: { turnId: !cel "steps.started.result.turnId" }
+outputs:
+  conversationId: !cel "steps.started.result.conversationId"
+  turnId: !cel "steps.started.result.turnId"
+---
+kind: Run.Sequence
+metadata: { name: revert }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18543/chat/${{ inputs.turnId }}/revert"
+      method: POST
+outputs:
+  status: !cel "steps.post.result.status"
+  body: !cel "steps.post.result.body"
+  # `path outcome` per file, for a 200.
+  outcome: !cel >-
+    steps.post.result.status == 200
+      ? steps.post.result.body.revert.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome) : []
+---
+kind: Run.Sequence
+metadata: { name: changes }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs:
+      url: !interpolate "http://127.0.0.1:18543/chat/${{ inputs.turnId }}/changes"
+outputs:
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+# Fails until the stub has received `count` agent requests carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubReceived }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text, count]
+    properties:
+      text: { type: string }
+      count: { type: integer }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18542/requests }
+  - name: notYet
+    if: !cel >-
+      size(steps.sent.result.body.requests.filter(r, json(r).contains(inputs.text)
+        && !json(r).contains('You name conversations'))) < inputs.count
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: The stub has not received the request yet.
+---
+# What the workspace holds at the paths the test writes: each file's content.
+kind: Run.Sequence
+metadata: { name: disk }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [paths]
+    properties:
+      paths:
+        type: array
+        items: { type: string }
+steps:
+  - name: files
+    invoke:
+      kind: Run.Projection
+      collection: !cel "inputs.paths"
+      steps:
+        - name: get
+          invoke: !ref call
+          inputs:
+            url: !cel "'http://127.0.0.1:18543/workspace/file?path=' + item"
+      outputs:
+        content: !cel "steps.get.result.status == 200 ? dyn(steps.get.result.body.content) : null"
+    inputs:
+      paths: !cel "inputs.paths"
+outputs:
+  contents: !cel "steps.files.result.map(f, f.content)"
+---
+# A turn made a turn from before checkpoints existed, in the agent's database,
+# reached from outside it.
+kind: Run.Sequence
+metadata: { name: markLegacy }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+with:
+  - kind: SQLite.Connection
+    metadata: { name: legacyDb }
+    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+  - kind: Sql.Command
+    metadata: { name: legacyCommand }
+    connection: !ref legacyDb
+steps:
+  - name: legacy
+    invoke: !ref legacyCommand
+    inputs:
+      sql: "UPDATE turns SET checkpointed = 0 WHERE turn_id = ?"
+      bindings: [ !cel "inputs.turnId" ]
+---
+# What a process killed mid-turn leaves in the database, written while the
+# agent is stopped: the turns' entries unconfirmed, and their projection as it
+# was before their ending — not `ended`, no usage, no changes.
+kind: Run.Sequence
+metadata: { name: crashResidue }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turnIds]
+    properties:
+      turnIds:
+        type: array
+        items: { type: string }
+with:
+  - kind: SQLite.Connection
+    metadata: { name: stoppedDb }
+    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+  - kind: Sql.Command
+    metadata: { name: stoppedCommand }
+    connection: !ref stoppedDb
+steps:
+  - name: unconfirm
+    invoke: !ref stoppedCommand
+    inputs:
+      sql: "UPDATE checkpoint_entries SET confirmed = 0 WHERE turn_id IN (SELECT value FROM json_each(?))"
+      bindings: [ !cel "json(inputs.turnIds)" ]
+  - name: rewind
+    invoke: !ref stoppedCommand
+    inputs:
+      sql: |
+        UPDATE turn_projections SET through_id = 1, ended = 0, tokens = 0, prompt_tokens = 0,
+                                    completion_tokens = 0, runs = '[]'
+        WHERE turn_id IN (SELECT value FROM json_each(?))
+      bindings: [ !cel "json(inputs.turnIds)" ]
+  - name: forget
+    invoke: !ref stoppedCommand
+    inputs:
+      sql: "DELETE FROM turn_changes WHERE turn_id IN (SELECT value FROM json_each(?))"
+      bindings: [ !cel "json(inputs.turnIds)" ]
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18542 }
+targets: [ !ref stub ]
+steps:
+  # Created first so the removal always has something to remove.
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      createParents: true
+  # A run cut short may have left the directory unlistable.
+  - name: unlockLeftover
+    invoke: !ref inWorkspace
+    inputs:
+      args: [sh, -c, "chmod 755 sealed 2>/dev/null; true"]
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch)"
+      recursive: true
+  - name: agent
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18543 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18542/v1
+            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        # ── changes, revert, repeat ──────────────────────────────────────────
+        - name: seed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: f2.txt, content: "old two\n" }
+              - { path: f5.txt, content: "five\n" }
+        - name: authored
+          invoke: !ref turn
+          inputs:
+            directive: write them
+            calls:
+              - { name: write_file, arguments: { path: f1.txt, content: "one\n" } }
+              - { name: write_file, arguments: { path: f2.txt, content: "new two\n" } }
+              - { name: write_file, arguments: { path: f3.txt, content: "three\n" } }
+              - { name: write_file, arguments: { path: f4.txt, content: "four\n" } }
+              - { name: delete_file, arguments: { path: f5.txt } }
+        - name: userEdit
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: f3.txt, content: "user three\n" }
+        - name: authoredChanges
+          invoke: !ref changes
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: before
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.authored.result.conversationId }}" }
+        - name: first
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: afterFirst
+          invoke: !ref disk
+          inputs: { paths: [f1.txt, f2.txt, f3.txt, f4.txt, f5.txt] }
+        - name: second
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: afterSecond
+          invoke: !ref disk
+          inputs: { paths: [f1.txt, f2.txt, f3.txt, f4.txt, f5.txt] }
+        - name: authoredRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.authored.result.conversationId }}/records" }
+        # ── a later turn changed the same path ───────────────────────────────
+        - name: third
+          invoke: !ref turn
+          inputs:
+            directive: version three
+            calls:
+              - { name: write_file, arguments: { path: p.txt, content: "v3\n" } }
+        # In a conversation of its own: the stub scripts tool calls only for a
+        # history holding none.
+        - name: fourth
+          invoke: !ref turn
+          inputs:
+            directive: version four
+            calls:
+              - { name: write_file, arguments: { path: p.txt, content: "v4\n" } }
+        - name: thirdBlocked
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.third.result.turnId" }
+        - name: fourthReverted
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.fourth.result.turnId" }
+        - name: afterFourth
+          invoke: !ref disk
+          inputs: { paths: [p.txt] }
+        - name: thirdReverted
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.third.result.turnId" }
+        - name: afterThird
+          invoke: !ref disk
+          inputs: { paths: [p.txt] }
+        # ── a failed turn: the provider refuses once the write's result is in ─
+        - name: failed
+          invoke: !ref turn
+          inputs:
+            directive: STUB_BREAK then stop
+            calls:
+              - { name: write_file, arguments: { path: g.txt, content: "g\n" } }
+        - name: failedReverted
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.failed.result.turnId" }
+        # ── an aborted turn: held after its write, then aborted ──────────────
+        - name: slow
+          invoke: !ref begin
+          inputs:
+            message: !cel >-
+              'STUB_SLOW wait here STUB_CALLS:' + base64Encode(json([{'name': 'write_file',
+                'arguments': {'path': 'h.txt', 'content': 'h\n'}}]))
+        - name: slowFirst
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: STUB_SLOW wait here, count: 1 }
+        - name: slowRelease
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18542/release, method: POST }
+        - name: slowSecond
+          retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: STUB_SLOW wait here, count: 2 }
+        # ── while it runs ────────────────────────────────────────────────────
+        - name: runningChanges
+          invoke: !ref changes
+          inputs: { turnId: !cel "steps.slow.result.turnId" }
+        - name: runningRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.slow.result.turnId" }
+        # The first conversation is not the one running: its skipped path
+        # holds the turn's content again and is restored.
+        # A path restored earlier is edited again, too.
+        - name: userUndo
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: f3.txt, content: "three\n" }
+              - { path: f2.txt, content: "user two\n" }
+        - name: elsewhere
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: afterElsewhere
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.authored.result.conversationId }}" }
+        - name: afterElsewhereDisk
+          invoke: !ref disk
+          inputs: { paths: [f1.txt, f2.txt, f3.txt, f4.txt, f5.txt] }
+        - name: abort
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18543/chat/${{ steps.slow.result.turnId }}/abort"
+            method: POST
+        - name: slowEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.slow.result.turnId" }
+        - name: abortedReverted
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.slow.result.turnId" }
+        # ── a skipped path the user put back by hand ─────────────────────────
+        - name: handSeed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: hand.txt, content: "orig\n" }
+        - name: hand
+          invoke: !ref turn
+          inputs:
+            directive: change it
+            calls:
+              - { name: write_file, arguments: { path: hand.txt, content: "agent\n" } }
+        - name: handEdit
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: hand.txt, content: "user\n" }
+        - name: handFirst
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.hand.result.turnId" }
+        - name: handBack
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: hand.txt, content: "orig\n" }
+        - name: handSecond
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.hand.result.turnId" }
+        - name: handThird
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.hand.result.turnId" }
+        # ── the first revert of a turn that changed nothing ──────────────────
+        - name: idle
+          invoke: !ref begin
+          inputs: { message: just answer }
+        - name: idleEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.idle.result.turnId" }
+        - name: idleBefore
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.idle.result.conversationId }}" }
+        - name: idleFirst
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.idle.result.turnId" }
+        - name: idleSecond
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.idle.result.turnId" }
+        # ── a turn from before checkpoints, continued since ──────────────────
+        # Its first attempt is refused by the provider; marked as a turn from
+        # before checkpoints, it is continued and writes a file.
+        - name: legacy
+          invoke: !ref turn
+          inputs:
+            directive: STUB_FAIL_ONCE an old turn
+            calls:
+              - { name: write_file, arguments: { path: k.txt, content: "k\n" } }
+        - name: legacyMark
+          invoke: !ref markLegacy
+          inputs: { turnId: !cel "steps.legacy.result.turnId" }
+        - name: legacyContinue
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18543/chat/${{ steps.legacy.result.turnId }}/continue"
+            method: POST
+        - name: legacyEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.legacy.result.turnId" }
+        - name: legacyRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.legacy.result.conversationId }}/records" }
+        - name: legacyRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.legacy.result.turnId" }
+        - name: legacyChanges
+          invoke: !ref changes
+          inputs: { turnId: !cel "steps.legacy.result.turnId" }
+        - name: afterOthers
+          invoke: !ref disk
+          inputs: { paths: [g.txt, h.txt, k.txt, hand.txt] }
+        # ── a revert whose second path cannot be written ─────────────────────
+        # The turn deleted two files; a file now stands where the second one's
+        # parent directory was.
+        - name: blockedSeed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: blocked/a.txt, content: "a\n" }
+              - { path: blocked/dir/b.txt, content: "b\n" }
+        - name: blocked
+          invoke: !ref turn
+          inputs:
+            directive: remove both
+            calls:
+              - { name: delete_file, arguments: { path: blocked/a.txt } }
+              - { name: delete_file, arguments: { path: blocked/dir/b.txt } }
+        - name: blockedDirectory
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18543/workspace
+            method: POST
+            body:
+              delete: [ blocked/dir ]
+        - name: blockedInTheWay
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: blocked/dir, content: "in the way\n" }
+        - name: blockedBefore
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.blocked.result.conversationId }}" }
+        - name: blockedRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.blocked.result.turnId" }
+        - name: blockedRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.blocked.result.conversationId }}/records" }
+        - name: blockedAfter
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.blocked.result.conversationId }}" }
+        - name: blockedDisk
+          invoke: !ref disk
+          inputs: { paths: [blocked/a.txt, blocked/dir] }
+        # ── a pushed delete of the workspace root ────────────────────────────
+        - name: wholeRoot
+          invoke: !ref call
+          inputs:
+            url: http://127.0.0.1:18543/workspace
+            method: POST
+            body:
+              delete: [ hand.txt, . ]
+        - name: afterWholeRoot
+          invoke: !ref disk
+          inputs: { paths: [hand.txt, blocked/a.txt] }
+        # ── an entry whose directory cannot be listed when its turn ends ─────
+        # The stub holds the request carrying the write's result. The entry is
+        # un-confirmed, as a cancelled call leaves it, and its directory made
+        # unlistable (mode 0311: the command succeeds only if listing it
+        # fails); then the turn is let go and ends.
+        - name: sealed
+          invoke: !ref begin
+          inputs:
+            message: !cel >-
+              'STUB_SLOW seal it STUB_CALLS:' + base64Encode(json([{'name': 'write_file',
+                'arguments': {'path': 'sealed/y.txt', 'content': 'y\n'}}]))
+        - name: sealedFirst
+          retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: STUB_SLOW seal it, count: 1 }
+        - name: sealedRelease
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18542/release, method: POST }
+        - name: sealedSecond
+          retry: { attempts: 3000, initialDelay: 100, factor: 1, jitter: none }
+          invoke: !ref stubReceived
+          inputs: { text: STUB_SLOW seal it, count: 2 }
+        - name: sealedUnconfirm
+          invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [turnId]
+                properties:
+                  turnId: { type: string }
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: sealedDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Command
+                metadata: { name: sealedCommand }
+                connection: !ref sealedDb
+            steps:
+              - name: unconfirm
+                invoke: !ref sealedCommand
+                inputs:
+                  sql: "UPDATE checkpoint_entries SET confirmed = 0 WHERE turn_id = ?"
+                  bindings: [ !cel "inputs.turnId" ]
+          inputs: { turnId: !cel "steps.sealed.result.turnId" }
+        - name: sealedLock
+          invoke: !ref inWorkspace
+          inputs:
+            args: [sh, -c, "chmod 311 sealed && ! ls sealed > /dev/null 2>&1"]
+        - name: sealedBefore
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.sealed.result.conversationId }}" }
+        - name: sealedGo
+          invoke: !ref call
+          inputs: { url: http://127.0.0.1:18542/release, method: POST }
+        - name: sealedEnd
+          invoke: !ref ended
+          inputs: { turnId: !cel "steps.sealed.result.turnId" }
+        - name: sealedAfter
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.sealed.result.conversationId }}" }
+        - name: sealedRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.sealed.result.conversationId }}/records" }
+        - name: sealedEntries
+          invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [turnId]
+                properties:
+                  turnId: { type: string }
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: endedDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Query
+                metadata: { name: endedQuery }
+                connection: !ref endedDb
+            steps:
+              - name: entries
+                invoke: !ref endedQuery
+                inputs:
+                  sql: "SELECT path, confirmed FROM checkpoint_entries WHERE turn_id = ? ORDER BY id"
+                  bindings: [ !cel "inputs.turnId" ]
+            outputs:
+              entries: !cel "steps.entries.result.rows.map(r, string(r.path) + ' ' + string(int(r.confirmed)))"
+          inputs: { turnId: !cel "steps.sealed.result.turnId" }
+        - name: sealedUnlock
+          invoke: !ref inWorkspace
+          inputs:
+            args: [sh, -c, "cat sealed/y.txt; chmod 755 sealed"]
+        # ── the turns a crash will be staged on ──────────────────────────────
+        # `held` wrote a file that still holds what it wrote; `lost` wrote one
+        # the user has put back since; `partial` deleted a tree of which one
+        # file is back.
+        - name: crashSeed
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: n.txt, content: "old\n" }
+              - { path: t/a.txt, content: "a\n" }
+              - { path: t/b.txt, content: "b\n" }
+              - { path: t/c.txt, content: "c\n" }
+        - name: held
+          invoke: !ref turn
+          inputs:
+            directive: cut short
+            calls:
+              - { name: write_file, arguments: { path: m.txt, content: "m\n" } }
+        - name: lost
+          invoke: !ref turn
+          inputs:
+            directive: never landed
+            calls:
+              - { name: write_file, arguments: { path: n.txt, content: "new\n" } }
+        - name: partial
+          invoke: !ref turn
+          inputs:
+            directive: half done
+            calls:
+              - { name: delete_file, arguments: { path: t, recursive: true } }
+        - name: crashUndo
+          invoke: !ref push
+          inputs:
+            write:
+              - { path: n.txt, content: "old\n" }
+              - { path: t/b.txt, content: "b\n" }
+        - name: heldRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.held.result.conversationId }}/records" }
+        # ── archived, then deleted ───────────────────────────────────────────
+        - name: archive
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.authored.result.conversationId }}"
+            method: PATCH
+            body: { archived: true }
+        - name: archivedRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: archivedChanges
+          invoke: !ref changes
+          inputs: { turnId: !cel "steps.authored.result.turnId" }
+        - name: delete
+          invoke: !ref call
+          inputs:
+            url: !interpolate "http://127.0.0.1:18543/conversations/${{ steps.failed.result.conversationId }}"
+            method: DELETE
+        - name: removedRevert
+          invoke: !ref revert
+          inputs: { turnId: !cel "steps.failed.result.turnId" }
+        - name: removedChanges
+          invoke: !ref changes
+          inputs: { turnId: !cel "steps.failed.result.turnId" }
+        - name: verify
+          invoke: { kind: Assert.Equals }
+          inputs:
+            actual:
+              changes:
+                status: !cel "steps.authoredChanges.result.status"
+                revert: !cel "steps.authoredChanges.result.body.revert"
+                files: !cel >-
+                  steps.authoredChanges.result.body.files.map(f, [f.path, f.status, f.added, f.removed,
+                    f.firstLine, f.changedSince, f.hunks == null ? null : dyn(size(f.hunks))])
+                digests: !cel >-
+                  cel.bind(f, steps.authoredChanges.result.body.files[1],
+                    [f.before == sha256('old two\n'), f.after == sha256('new two\n'),
+                     f.hunks[0].lines.map(l, l.op + ' ' + l.text)])
+              first:
+                status: !cel "steps.first.result.status"
+                outcome: !cel "steps.first.result.outcome"
+                revisionMoved: !cel "int(steps.first.result.body.revision) == int(steps.before.result.body.revision) + 1"
+                disk: !cel "steps.afterFirst.result.contents"
+              second:
+                outcome: !cel "steps.second.result.outcome"
+                same: !cel >-
+                  steps.second.result.body.revision == steps.first.result.body.revision
+                    && steps.second.result.body.revert.revertedAt == steps.first.result.body.revert.revertedAt
+                disk: !cel "steps.afterSecond.result.contents"
+              recorded: !cel >-
+                cel.bind(t, steps.authoredRecords.result.body.turns[0],
+                  [t.revert == steps.first.result.body.revert, t.summary.files.map(f, f.path + ' ' + f.status)])
+              laterTurn:
+                blocked: !cel "steps.thirdBlocked.result.outcome"
+                fourth: !cel "steps.fourthReverted.result.outcome"
+                afterFourth: !cel "steps.afterFourth.result.contents"
+                third: !cel "steps.thirdReverted.result.outcome"
+                afterThird: !cel "steps.afterThird.result.contents"
+              failed: !cel "steps.failedReverted.result.outcome"
+              running:
+                changes: !cel >-
+                  [steps.runningChanges.result.status,
+                   steps.runningChanges.result.body.files.map(f, f.path + ' ' + f.status)]
+                revert: !cel >-
+                  [steps.runningRevert.result.status, steps.runningRevert.result.body.code,
+                   steps.runningRevert.result.body.activeTurnId == steps.slow.result.turnId]
+                elsewhere: !cel "steps.elsewhere.result.outcome"
+                elsewhereMoved: !cel >-
+                  int(steps.elsewhere.result.body.revision) == int(steps.first.result.body.revision) + 1
+                    && steps.elsewhere.result.body.revision == steps.afterElsewhere.result.body.revision
+                    && steps.elsewhere.result.body.revert.revertedAt != steps.first.result.body.revert.revertedAt
+                elsewhereDisk: !cel "steps.afterElsewhereDisk.result.contents"
+              aborted: !cel "steps.abortedReverted.result.outcome"
+              hand:
+                first: !cel "steps.handFirst.result.outcome"
+                second: !cel "steps.handSecond.result.outcome"
+                secondMoved: !cel >-
+                  int(steps.handSecond.result.body.revision) == int(steps.handFirst.result.body.revision) + 1
+                    && steps.handSecond.result.body.revert.revertedAt != steps.handFirst.result.body.revert.revertedAt
+                thirdSame: !cel >-
+                  steps.handThird.result.body.revision == steps.handSecond.result.body.revision
+                    && steps.handThird.result.body.revert == steps.handSecond.result.body.revert
+              idle:
+                first: !cel >-
+                  [steps.idleFirst.result.status, steps.idleFirst.result.body.revert.files,
+                   steps.idleFirst.result.body.revert.revertedAt != null,
+                   int(steps.idleFirst.result.body.revision) == int(steps.idleBefore.result.body.revision) + 1]
+                secondSame: !cel >-
+                  steps.idleSecond.result.body.revision == steps.idleFirst.result.body.revision
+                    && steps.idleSecond.result.body.revert == steps.idleFirst.result.body.revert
+              legacy:
+                continued: !cel "steps.legacyContinue.result.status"
+                turn: !cel >-
+                  cel.bind(t, steps.legacyRecords.result.body.turns[0], [t.status, t.summary.files, t.revert])
+                revert: !cel "[steps.legacyRevert.result.status, steps.legacyRevert.result.body.code]"
+                changes: !cel "[steps.legacyChanges.result.status, steps.legacyChanges.result.body]"
+              others: !cel "steps.afterOthers.result.contents"
+              blocked:
+                status: !cel "steps.blockedRevert.result.status"
+                recorded: !cel >-
+                  cel.bind(r, steps.blockedRecords.result.body.turns[0].revert,
+                    r == null ? [] : r.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome))
+                revisionMoved: !cel >-
+                  int(steps.blockedAfter.result.body.revision) == int(steps.blockedBefore.result.body.revision) + 1
+                disk: !cel "steps.blockedDisk.result.contents"
+              sealed:
+                precondition: !cel "steps.sealedLock.result.exitCode"
+                # The turn ended, failed by the listing's own error.
+                turn: !cel >-
+                  cel.bind(t, steps.sealedRecords.result.body.turns[0],
+                    [t.status, string(t.error.message).startsWith('Fs.DirectoryListing: cannot list '),
+                     string(t.error.message).endsWith("/sealed': permission denied (EACCES)")])
+                revisionMoved: !cel >-
+                  int(steps.sealedAfter.result.body.revision) == int(steps.sealedBefore.result.body.revision) + 1
+                entries: !cel "steps.sealedEntries.result.entries"
+                file: !cel "steps.sealedUnlock.result.stdout"
+              wholeRoot:
+                answer: !cel "[steps.wholeRoot.result.status, steps.wholeRoot.result.body.code, steps.wholeRoot.result.body.error]"
+                disk: !cel "steps.afterWholeRoot.result.contents"
+              archived: !cel >-
+                [steps.archivedRevert.result.status, steps.archivedRevert.result.body.code,
+                 steps.archivedChanges.result.status, size(steps.archivedChanges.result.body.files)]
+              removed: !cel >-
+                [steps.removedRevert.result.status, steps.removedRevert.result.body.code,
+                 steps.removedChanges.result.status, steps.removedChanges.result.body.code]
+            expected:
+              changes:
+                status: 200
+                revert: null
+                files:
+                  - [ f1.txt, created, 1, 0, 1, false, 1 ]
+                  - [ f2.txt, modified, 1, 1, 1, false, 1 ]
+                  - [ f3.txt, created, 1, 0, 1, true, 1 ]
+                  - [ f4.txt, created, 1, 0, 1, false, 1 ]
+                  - [ f5.txt, deleted, 0, 1, null, false, null ]
+                digests: [ true, true, [ "removed old two", "added new two" ] ]
+              first:
+                status: 200
+                outcome:
+                  - f1.txt created restored
+                  - f2.txt modified restored
+                  - f3.txt created skipped
+                  - f4.txt created restored
+                  - f5.txt deleted restored
+                revisionMoved: true
+                disk: [ null, "old two\n", "user three\n", null, "five\n" ]
+              second:
+                outcome:
+                  - f1.txt created restored
+                  - f2.txt modified restored
+                  - f3.txt created skipped
+                  - f4.txt created restored
+                  - f5.txt deleted restored
+                same: true
+                disk: [ null, "old two\n", "user three\n", null, "five\n" ]
+              recorded:
+                - true
+                - [ f1.txt created, f2.txt modified, f3.txt created, f4.txt created, f5.txt deleted ]
+              laterTurn:
+                blocked: [ p.txt created skipped ]
+                fourth: [ p.txt modified restored ]
+                afterFourth: [ "v3\n" ]
+                third: [ p.txt created restored ]
+                afterThird: [ null ]
+              failed: [ g.txt created restored ]
+              running:
+                changes: [ 200, [ h.txt created ] ]
+                revert: [ 409, ERR_TURN_IN_PROGRESS, true ]
+                elsewhere:
+                  - f1.txt created restored
+                  - f2.txt modified restored
+                  - f3.txt created restored
+                  - f4.txt created restored
+                  - f5.txt deleted restored
+                elsewhereMoved: true
+                elsewhereDisk: [ null, "user two\n", null, null, "five\n" ]
+              aborted: [ h.txt created restored ]
+              hand:
+                first: [ hand.txt modified skipped ]
+                second: [ hand.txt modified restored ]
+                secondMoved: true
+                thirdSame: true
+              idle:
+                first: [ 200, [], true, true ]
+                secondSame: true
+              legacy:
+                continued: 200
+                turn: [ finished, null, null ]
+                revert: [ 409, ERR_TURN_NOT_CHECKPOINTED ]
+                changes: [ 200, { files: null, revert: null } ]
+              others: [ null, null, "k\n", "orig\n" ]
+              blocked:
+                status: 500
+                recorded: [ blocked/a.txt deleted restored ]
+                revisionMoved: true
+                disk: [ "a\n", "in the way\n" ]
+              sealed:
+                precondition: 0
+                turn: [ failed, true, true ]
+                revisionMoved: true
+                entries: [ sealed/y.txt 0 ]
+                file: "y\n"
+              wholeRoot:
+                answer:
+                  - 400
+                  - ERR_PATH_OUTSIDE_WORKSPACE
+                  - >-
+                    ERR_PATH_OUTSIDE_WORKSPACE: refused to delete ".": it is the workspace root or holds the agent's own
+                    state directory, which is never workspace content. Nothing was removed. Delete the entries inside it
+                    one by one. Nothing was applied.
+                disk: [ "orig\n", "a\n" ]
+              archived: [ 409, ERR_CONVERSATION_ARCHIVED, 200, 5 ]
+              removed: [ 410, ERR_JOURNAL_KEY_REMOVED, 410, ERR_JOURNAL_KEY_REMOVED ]
+      outputs:
+        turns: !cel >-
+          [steps.held.result, steps.lost.result, steps.partial.result]
+        heldSummary: !cel "steps.heldRecords.result.body.turns[0].summary"
+        sealed: !cel "steps.sealed.result"
+  # ── what a crash leaves, recovered at the next boot ────────────────────────
+  - name: residue
+    invoke: !ref crashResidue
+    inputs:
+      turnIds: !cel "steps.agent.result.turns.map(t, t.turnId)"
+  - name: rebooted
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: agent }
+          source: ../../telo.yaml
+          ports: { http: 18549 }
+          variables:
+            workspaceDir: !cel "variables.scratch"
+            modelEndpoint: http://127.0.0.1:18542/v1
+            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+          secrets:
+            openaiApiKey: stub-key
+      targets: [ !ref agent ]
+      steps:
+        - name: turns
+          invoke:
+            kind: Run.Projection
+            collection: !cel "inputs.turns"
+            steps:
+              - name: records
+                invoke: !ref call
+                inputs: { url: !interpolate "http://127.0.0.1:18549/conversations/${{ item.conversationId }}/records" }
+              - name: changes
+                invoke: !ref call
+                inputs: { url: !interpolate "http://127.0.0.1:18549/chat/${{ item.turnId }}/changes" }
+              - name: revert
+                invoke: !ref call
+                inputs:
+                  url: !interpolate "http://127.0.0.1:18549/chat/${{ item.turnId }}/revert"
+                  method: POST
+            outputs:
+              summary: !cel "steps.records.result.body.turns[0].summary"
+              changes: !cel "steps.changes.result.body.files.map(f, f.path + ' ' + f.status)"
+              reverted: !cel "steps.revert.result.body.revert.files.map(f, f.path + ' ' + f.status + ' ' + f.outcome)"
+          inputs:
+            turns: !cel "inputs.turns"
+        - name: disk
+          invoke:
+            kind: Run.Projection
+            collection: [m.txt, n.txt, t/a.txt, t/b.txt, t/c.txt]
+            steps:
+              - name: get
+                invoke: !ref call
+                inputs:
+                  url: !cel "'http://127.0.0.1:18549/workspace/file?path=' + item"
+            outputs:
+              content: !cel "steps.get.result.status == 200 ? dyn(steps.get.result.body.content) : null"
+        - name: sealedRecords
+          invoke: !ref call
+          inputs: { url: !interpolate "http://127.0.0.1:18549/conversations/${{ inputs.sealed.conversationId }}/records" }
+        - name: sealedEntries
+          invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                additionalProperties: false
+                required: [turnId]
+                properties:
+                  turnId: { type: string }
+            with:
+              - kind: SQLite.Connection
+                metadata: { name: rebootedDb }
+                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+              - kind: Sql.Query
+                metadata: { name: rebootedQuery }
+                connection: !ref rebootedDb
+            steps:
+              - name: entries
+                invoke: !ref rebootedQuery
+                inputs:
+                  sql: "SELECT path, confirmed FROM checkpoint_entries WHERE turn_id = ? ORDER BY id"
+                  bindings: [ !cel "inputs.turnId" ]
+            outputs:
+              entries: !cel "steps.entries.result.rows.map(r, string(r.path) + ' ' + string(int(r.confirmed)))"
+          inputs: { turnId: !cel "inputs.sealed.turnId" }
+      outputs:
+        turns: !cel "steps.turns.result"
+        disk: !cel "steps.disk.result.map(f, f.content)"
+        sealed:
+          entries: !cel "steps.sealedEntries.result.entries"
+          files: !cel "steps.sealedRecords.result.body.turns[0].summary.files.map(f, f.path + ' ' + f.status)"
+    inputs:
+      turns: !cel "steps.agent.result.turns"
+      sealed: !cel "steps.agent.result.sealed"
+  - name: recovered
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        held:
+          sameSummary: !cel "steps.rebooted.result.turns[0].summary == steps.agent.result.heldSummary"
+          files: !cel "steps.rebooted.result.turns[0].summary.files.map(f, f.path + ' ' + f.status)"
+          changes: !cel "steps.rebooted.result.turns[0].changes"
+          reverted: !cel "steps.rebooted.result.turns[0].reverted"
+        lost:
+          files: !cel "steps.rebooted.result.turns[1].summary.files"
+          usage: !cel "steps.rebooted.result.turns[1].summary.usage.totalTokens > 0"
+          changes: !cel "steps.rebooted.result.turns[1].changes"
+          reverted: !cel "steps.rebooted.result.turns[1].reverted"
+        partial:
+          files: !cel "steps.rebooted.result.turns[2].summary.files.map(f, f.path + ' ' + f.status)"
+          changes: !cel "steps.rebooted.result.turns[2].changes"
+          reverted: !cel "steps.rebooted.result.turns[2].reverted"
+        disk: !cel "steps.rebooted.result.disk"
+        sealed: !cel "steps.rebooted.result.sealed"
+      expected:
+        sealed:
+          entries: [ sealed/y.txt 1 ]
+          files: [ sealed/y.txt created ]
+        held:
+          sameSummary: true
+          files: [ m.txt created ]
+          changes: [ m.txt created ]
+          reverted: [ m.txt created restored ]
+        lost:
+          files: []
+          usage: true
+          changes: []
+          reverted: []
+        partial:
+          files: [ t/a.txt deleted, t/c.txt deleted ]
+          changes: [ t/a.txt deleted, t/c.txt deleted ]
+          reverted: [ t/a.txt deleted restored, t/c.txt deleted restored ]
+        disk: [ null, "old\n", "a\n", "b\n", "c\n" ]

@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: WatchPublishIsMonotonic
+  version: 1.0.0
+  description: |
+    A topic's version only moves forward: publishing a lower or equal version
+    after a higher one changes nothing, so a wait afterwards still sees the
+    higher version.
+imports:
+  Watch: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Watch.MemoryStore
+metadata: { name: store }
+---
+kind: Watch.Publish
+metadata: { name: publish }
+store: !ref store
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: raised
+    inputs: { topic: plan, version: 5 }
+    invoke: !ref publish
+  - name: lower
+    inputs: { topic: plan, version: 3 }
+    invoke: !ref publish
+  - name: equal
+    inputs: { topic: plan, version: 5 }
+    invoke: !ref publish
+  - name: wait
+    inputs: { topic: plan, after: 4, timeout: 50ms }
+    invoke:
+      kind: Watch.Wait
+      store: !ref store
+      maxTimeout: 30s
+  - name: assertStillHighest
+    inputs:
+      actual: !cel "steps.wait.result"
+      expected: { changed: true, version: 5 }
+    invoke: { kind: Assert.Equals }

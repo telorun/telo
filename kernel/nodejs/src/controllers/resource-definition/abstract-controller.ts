@@ -1,4 +1,9 @@
-import type { DefResolver } from "@telorun/analyzer";
+import { declaredContractShape, type ContractShapeHost } from "./declared-contract-shape.js";
+import {
+  effectiveAuthorSchema,
+  valueSchemaFromProblems,
+  type DefResolver,
+} from "@telorun/analyzer";
 import type {
   ControllerContext,
   ResourceContext,
@@ -82,6 +87,24 @@ class ResourceAbstract implements ResourceInstance {
       ctx as unknown as DefinitionScopeHost,
     );
     refuseThrowsOutsideCeiling(this.resource as unknown as ResourceDefinition, resolveDef);
+
+    // `telo check`'s twin is `VALUE_SCHEMA_FROM_INVALID`, through the same reader.
+    const [valueSchemaProblem] = valueSchemaFromProblems(
+      this.resource as unknown as Record<string, any>,
+      effectiveAuthorSchema(this.resource as unknown as ResourceDefinition, resolveDef) as
+        | Record<string, any>
+        | undefined,
+      declaredContractShape(
+        ctx as unknown as ContractShapeHost,
+        this.resource as unknown as Record<string, any>,
+      ),
+    );
+    if (valueSchemaProblem) {
+      throw new RuntimeError(
+        "ERR_VALUE_SCHEMA_FROM_INVALID",
+        `Telo.Abstract ${valueSchemaProblem.message}`,
+      );
+    }
 
     ctx.registerDefinition(this.resource);
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
