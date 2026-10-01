@@ -1,0 +1,14 @@
+# `!literal` is resolved when the manifest is compiled, so its text is judged.
+kind: Telo.Application
+metadata:
+  name: LiteralPattern
+imports:
+  Kinds: ./kinds
+targets:
+  - name: call
+    invoke: !ref late
+---
+kind: Kinds.Timed
+metadata:
+  name: late
+timeout: !literal "soon"

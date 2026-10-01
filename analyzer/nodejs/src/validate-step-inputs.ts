@@ -7,6 +7,7 @@ import { moduleAliasScope } from "./module-alias-scope.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import { checkSchemaCompatibility, navigateSchemaToExprPath } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import { plainChainOf } from "@telorun/templating";
 import { isLiveSlot, valueTypeOf } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
@@ -168,17 +169,13 @@ function checkCallSite(
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
-  // Findings AT a substituted path are about a placeholder, not about anything
-  // the author wrote — a `pattern`-constrained string or a `oneOf` of unrelated
-  // shapes cannot be satisfied by any stand-in. Structural findings (missing
-  // required, unknown property) are located at the container and survive the
-  // filter. A literal written in a value type's plain encoding is decoded by the
-  // substitution, as the kernel decodes it when it creates this resource.
-  const celPaths = new Set<string>();
-  // An enumerated call site: the kernel decodes this map when it creates the
-  // resource that holds it.
+  // A stand-in is not what the author wrote, so the validator drops what it
+  // cannot judge (`withoutStandInFindings`). A literal written in a value
+  // type's plain encoding is decoded by the substitution, as the kernel decodes
+  // it when it creates the resource that holds this enumerated call site.
+  const standIns: StandIns = new Map();
   const substituted = substituteDecodedCelFields(values, contract.schema, undefined, {
-    onSubstitute: (p) => celPaths.add(p),
+    standIns,
     // A contract may name a shape declared elsewhere. Both halves need the
     // resolver or they disagree about the same slot.
     external: (ref) => defs.schemaForId(ref),
@@ -244,8 +241,7 @@ function checkCallSite(
     }
   }
 
-  for (const issue of defs.validateResourceConfig(substituted, contract.schema)) {
-    if (celPaths.has(issue.path)) continue;
+  for (const issue of defs.validateResourceConfig(substituted, contract.schema, standIns)) {
     // A missing-required issue names the property that ISN'T there, so anchoring
     // on it finds no node. Anchor on the container that should have held it.
     const anchor = missingRequired(issue) ? containerOf(issue.path) : issue.path;

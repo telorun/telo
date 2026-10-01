@@ -1,15 +1,10 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import {
-  isRefSentinel,
-  isTaggedSentinel,
-  producedTypeOf,
-} from "@telorun/templating";
+import { isRefSentinel } from "@telorun/templating";
 import {
   celBaseOfValueType,
   celTypeOfValueType,
   hostAnchorOf,
-  isCompiledValue,
   readValueTypeSlot,
   VALUE_TYPE_BINDINGS,
   valueBrandBases,
@@ -19,6 +14,7 @@ import {
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
+import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
 
@@ -937,8 +933,6 @@ export function undeclaredKeySchema(
   return addl && typeof addl === "object" ? (addl as Record<string, any>) : undefined;
 }
 
-/** Deep-clone `data`, replacing every tagged value with a placeholder of the type
- *  it will be, so AJV can validate the literal fields without false positives. */
 /** Everything {@link substituteCelFields} does beyond walking the value.
  *
  *  One object rather than trailing positionals: the resolver is the parameter a
@@ -946,18 +940,13 @@ export function undeclaredKeySchema(
  *  `undefined`s — and a caller that stopped counting one short simply got the
  *  old blind behaviour, silently. Two of them did. */
 export interface SubstituteOptions {
-  /** Called with the dotted path of every value replaced by a placeholder.
-   *
-   *  A placeholder is a stand-in for something only known at runtime, so its
-   *  VALUE says nothing: a caller that judges constraints at these paths reports
-   *  against a value no author wrote. Some constraints cannot be satisfied by
-   *  construction at all (`pattern`, `format`, a `oneOf` of unrelated shapes),
-   *  so making every placeholder acceptable is not achievable in general —
-   *  knowing where not to look is. Structural findings survive because they are
-   *  located at the CONTAINER, not at the substituted leaf. */
-  onSubstitute?: (path: string) => void;
-  /** Dotted path of `data` within the resource, for `onSubstitute`. */
-  path?: string;
+  /** Receives every stand-in substituted, by JSON Pointer and class. A stand-in
+   *  is not what the author wrote, so a caller validating the result passes this
+   *  record to the validator, which drops the findings it excuses
+   *  (`withoutStandInFindings`). */
+  standIns?: StandIns;
+  /** JSON Pointer of `data` within the validated root, for `standIns`. */
+  pointer?: string;
   /** Resolves a named shape (`telo:<module>/<Type>`) to its schema. Without it
    *  a slot described by one reads as undescribed and every CEL leaf beneath it
    *  is handed the typeless `""` stand-in — which the shape then rejects, so a
@@ -965,19 +954,20 @@ export interface SubstituteOptions {
   external?: ExternalSchemaResolver;
 }
 
+/** Deep-clone `data`, replacing every tagged or compiled value with a stand-in
+ *  of the type it will be, so AJV can validate the literal fields. */
 export function substituteCelFields(
   data: unknown,
   schema: Record<string, any>,
   rootSchema?: Record<string, any>,
   options: SubstituteOptions = {},
 ): unknown {
-  const { onSubstitute, external } = options;
-  const path = options.path ?? "";
+  const { standIns, external } = options;
+  const pointer = options.pointer ?? "";
   const base = rootSchema ?? schema;
   const entered = resolveRefIn(schema, base, external);
   const root = entered.root;
   const resolved = selectUnionBranch(entered.schema, data, root, external);
-  const mark = () => onSubstitute?.(path);
 
   // `!ref <name>` sentinels are identity markers, not runtime values —
   // schemas that opt into `$ref: "telo://manifest#/$defs/ResourceRef"`
@@ -989,45 +979,32 @@ export function substituteCelFields(
   if (isRefSentinel(data)) {
     return data;
   }
-  // A tag whose produced type is a CONSTANT of the tag rather than a function of
-  // the slot substitutes a placeholder of THAT type: `!include-text` always
-  // produces a string and `!include-bytes` always produces bytes. Collapsing
-  // them to a slot-shaped placeholder like a CEL expression would make every
-  // slot accept both, so a byte embed at a `type: string` field passed
-  // `telo check` and failed at resource creation — and the reverse did too.
-  // Substituting the real type lets AJV and the `x-telo-type` keyword reject
-  // both directions statically, with no new diagnostic code.
+  // An expression reaches this walk as a tagged sentinel BEFORE `precompileDoc`
+  // and as a CompiledValue after — so a caller running under `compile: true`
+  // (every `telo run`, unlike `telo check`) must substitute both, or AJV sees a
+  // compiled value as a plain object and one manifest means two things
+  // depending on which command read it.
   //
-  // The engine is what says so. This used to branch on two tag names, which was
-  // the only place a tag's produced type was written down and it was written in
-  // the consumer — so a future tag producing bytes had to be added to a set here
-  // rather than declaring it.
-  if (isTaggedSentinel(data)) {
-    const produced = producedTypeOf(data.engine);
-    if (produced) return producedPlaceholder(produced, resolved);
-  }
-  if (isTaggedSentinel(data)) {
-    mark();
-    return celPlaceholderForSchema(resolved);
-  }
-  // The same fact in its second spelling. An expression reaches this walk as a
-  // tagged sentinel BEFORE `precompileDoc`, and as a
-  // CompiledValue after — so a caller running under `compile: true` (every
-  // `telo run`, unlike `telo check`) handed one to AJV as a plain object, and a
-  // slot typed `boolean` rejected a `when:` the author wrote correctly. The
-  // kernel's `stripCompiledValues` has always substituted here; missing it on
-  // this side made one manifest mean two things depending on which command read
-  // it.
-  if (isCompiledValue(data)) {
-    mark();
-    return celPlaceholderForSchema(resolved);
+  // A tag whose produced type is a CONSTANT of the tag (`!interpolate`,
+  // `!include-*`, `!module-path`) stands in as THAT type, so a byte embed at a
+  // string slot, or text at an integer slot, is still refused statically; any
+  // other expression stands in as the slot asks. The engine is what says which,
+  // never a tag name — and a tag its engine resolves now (`!literal`) is no
+  // stand-in at all: its value is judged like any literal.
+  const reading = readStandIn(data);
+  if (reading?.kind === "value") return reading.value;
+  if (reading) {
+    standIns?.set(pointer, reading.class);
+    return reading.class === "produced"
+      ? producedPlaceholder(reading.produced, resolved)
+      : celPlaceholderForSchema(resolved);
   }
   if (Array.isArray(data)) {
     const item = resolveRefIn((resolved.items ?? {}) as Record<string, any>, root, external);
     return data.map((element, i) =>
       substituteCelFields(element, item.schema, item.root, {
-        onSubstitute,
-        path: `${path}[${i}]`,
+        standIns,
+        pointer: `${pointer}/${i}`,
         external,
       }),
     );
@@ -1040,8 +1017,8 @@ export function substituteCelFields(
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       result[k] = substituteCelFields(v, (props[k] ?? undeclaredKeySchema(resolved, k) ?? {}) as Record<string, any>, root, {
-        onSubstitute,
-        path: path ? `${path}.${k}` : k,
+        standIns,
+        pointer: `${pointer}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`,
         external,
       });
     }

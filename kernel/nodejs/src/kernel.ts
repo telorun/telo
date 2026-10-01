@@ -6,6 +6,7 @@ import {
   declarationSignature,
   diffManifests,
   flattenForAnalyzer,
+  formatAjvErrors,
   flattenLoadedModule,
   implicitEvalSites,
   callableBodyField,
@@ -16,12 +17,14 @@ import {
   Loader,
   resolveSignature,
   StaticAnalyzer,
+  withoutStandInFindings,
   type DefResolver,
   type DiffEntry,
   type LoadedGraph,
   type ManifestSource,
   type ModuleSource,
   type SourceEntry,
+  type StandIns,
 } from "@telorun/analyzer";
 import {
   ensureStagedEntry,
@@ -140,7 +143,7 @@ import {
   resolveApplicationEnv,
 } from "./application-env.js";
 import { policyFingerprint } from "./runtime-registry.js";
-import { SchemaValidator } from "./schema-validator.js";
+import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
@@ -2184,15 +2187,32 @@ export class Kernel implements IKernel {
     // Schema validation runs before CEL evaluation so it sees the original manifest
     // shape. CompiledValue wrappers (from load-time precompilation) are stripped,
     // restoring the pre-CEL string view that the schema expects.
+    const standIns: StandIns = new Map();
+    const stripped = stripCompiledValues(resource, configSchema, undefined, schemaForRef, standIns);
     try {
-      this.sharedSchemaValidator
-        .compile(configSchema)
-        .validate(stripCompiledValues(resource, configSchema, undefined, schemaForRef));
+      this.sharedSchemaValidator.compile(configSchema).validate(stripped);
     } catch (error) {
-      throw new RuntimeError(
-        "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
-        `Resource does not match schema for kind ${kind}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      // A failure may be about a stand-in, which says nothing about what the
+      // author wrote — and the first error hides every one after it. Judged
+      // again on the whole error set, excusing what the analyzer excuses.
+      const remaining =
+        error instanceof SchemaValidationError && standIns.size > 0
+          ? withoutStandInFindings(
+              this.sharedSchemaValidator.allErrors(configSchema as object, stripped),
+              standIns,
+            )
+          : undefined;
+      if (remaining?.length !== 0) {
+        const reason = remaining
+          ? `Invalid value passed: ${describeValue(stripped)}. Error: ${formatAjvErrors(remaining, stripped)}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+        throw new RuntimeError(
+          "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED",
+          `Resource does not match schema for kind ${kind}: ${reason}`,
+        );
+      }
     }
 
     // Expand compile-time CEL fields before passing to the controller.

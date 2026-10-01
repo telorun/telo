@@ -1,0 +1,16 @@
+kind: Telo.Library
+metadata:
+  name: StandInLib
+include:
+  - ../cases.yaml
+imports:
+  Run: ../../../../modules/run
+  Timer: ../../../../modules/timer
+  Kinds: ../kinds
+variables:
+  word: { type: string }
+  id: { type: string }
+  seconds: { type: string }
+  millis: { type: string }
+exports:
+  resources: [standIns]

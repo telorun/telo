@@ -8,6 +8,7 @@ import {
   type RefFieldEntry,
 } from "./reference-field-map.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import { REF_VALIDATION_SKIP_KINDS as SYSTEM_KINDS } from "./system-kinds.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type AnalysisContext } from "./types.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -711,12 +712,14 @@ export function validateReferences(
             continue;
           }
           // An enumerated derived slot: the kernel decodes it at creation.
+          const standIns: StandIns = new Map();
           const substituted = substituteDecodedCelFields(site.value, site.schema, undefined, {
+            standIns,
             external: (ref) => registry.schemaForId(ref),
           });
           if (site.form !== "anchored") {
             const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
-            for (const issue of registry.validateWithRefs(substituted, site.schema)) {
+            for (const issue of registry.validateWithRefs(substituted, site.schema, standIns)) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 code: "DEPENDENT_SCHEMA_MISMATCH",
@@ -730,7 +733,7 @@ export function validateReferences(
           // Anchored at the offending node INSIDE the value, not at the slot: a
           // `returns:` list is an array of entries, and reporting every issue on
           // the `returns:` line puts them all on one line and none on the entry.
-          for (const issue of registry.validateResourceConfig(substituted, site.schema)) {
+          for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
             diagnostics.push({
               severity: DiagnosticSeverity.Error,
               code: "DEPENDENT_SCHEMA_MISMATCH",

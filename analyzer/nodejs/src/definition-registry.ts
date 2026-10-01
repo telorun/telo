@@ -15,6 +15,7 @@ import {
   type SchemaFromResolver,
 } from "./reference-reach.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
+import { withoutStandInFindings, type StandIns } from "./stand-in-findings.js";
 import {
   explainFormatErrors,
   formatSingleError,
@@ -239,17 +240,22 @@ export class DefinitionRegistry {
    * Two AJVs answering one question is what made that possible; there is now
    * one, and it is the same one `schemaCompileError` reports through.
    */
-  validateWithRefs(data: unknown, schema: Record<string, any>): string[] {
+  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    return reduceSchemaErrors(explainFormatErrors(validate.errors, data)).map(formatSingleError);
+    const errors = standIns ? withoutStandInFindings(validate.errors, standIns) : validate.errors;
+    return reduceSchemaErrors(explainFormatErrors(errors, data)).map(formatSingleError);
   }
 
   /** {@link validateWithRefs}, with the path each issue is anchored at. */
-  validateResourceConfig(data: unknown, schema: Record<string, any>): SchemaIssue[] {
+  validateResourceConfig(
+    data: unknown,
+    schema: Record<string, any>,
+    standIns?: StandIns,
+  ): SchemaIssue[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    return schemaIssues(validate.errors, data);
+    return schemaIssues(standIns ? withoutStandInFindings(validate.errors, standIns) : validate.errors, data);
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a

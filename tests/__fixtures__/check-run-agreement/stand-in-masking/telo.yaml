@@ -1,0 +1,12 @@
+# Consumes the library beside it; its entry-scoped check does not reach the
+# library's internals, so the kernel's own refusal is what remains here.
+kind: Telo.Application
+metadata:
+  name: StandInMaskingApp
+imports:
+  Lib:
+    source: ./lib
+    variables: { seconds: "5" }
+targets:
+  - name: call
+    invoke: !ref Lib.timed

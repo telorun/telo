@@ -170,6 +170,7 @@ import {
 import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import { templateCallSite } from "./derived-slots.js";
 import {
   DiagnosticSeverity,
@@ -865,7 +866,7 @@ export class StaticAnalyzer {
     // registered shape: a module-level AJV holds none, so it compiles such a
     // schema nowhere and the value goes unchecked.
     const shapeAwareValidator: ShapeAwareValidator = {
-      validate: (data, target) => defs.validateResourceConfig(data, target),
+      validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns),
       external: (ref) => defs.schemaForId(ref),
     };
 
@@ -2270,13 +2271,16 @@ export class StaticAnalyzer {
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed
         // placeholders. Through the REGISTRY, so a kind whose schema references
         // a shape declared elsewhere is checked on the instance that holds it.
+        const standIns: StandIns = new Map();
         const ajvIssues = defs.validateResourceConfig(
           // A resource's own config: the kernel decodes its plain-encoded
           // literals when it creates it.
           substituteDecodedCelFields(m, projected, undefined, {
+            standIns,
             external: (ref) => defs.schemaForId(ref),
           }),
           projected,
+          standIns,
         );
         // Phase 4: value slots that must satisfy a type declared elsewhere on
         // the resource (`x-telo-value-schema-from`) — e.g. every row of a
@@ -2543,13 +2547,14 @@ export class StaticAnalyzer {
          *  `result:` mapping, which is produced at dispatch. */
         decode = false,
       ) => {
+        const standIns: StandIns = new Map();
         const substituted = (decode ? substituteDecodedCelFields : substituteCelFields)(
           value,
           valueSchema,
           undefined,
-          { external: shapeAwareValidator.external },
+          { standIns, external: shapeAwareValidator.external },
         );
-        const issues = shapeAwareValidator.validate(substituted, valueSchema);
+        const issues = shapeAwareValidator.validate(substituted, valueSchema, standIns);
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,

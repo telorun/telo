@@ -1,0 +1,30 @@
+# A kind whose own fields carry value constraints, evaluated at creation — the
+# shape of `OTLP.Sink.timeout`.
+kind: Telo.Library
+metadata:
+  name: StandInKinds
+imports:
+  Run: ../../../../modules/run
+exports:
+  kinds: [Timed]
+---
+kind: Telo.Definition
+metadata:
+  name: Timed
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    timeout:
+      type: string
+      pattern: "^\\d+(ms|s)$"
+      x-telo-eval: compile
+    count:
+      type: integer
+      x-telo-eval: compile
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.timeout"

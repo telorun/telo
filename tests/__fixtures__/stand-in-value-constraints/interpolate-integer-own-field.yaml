@@ -1,0 +1,15 @@
+# `!interpolate` always produces a string, so an integer field refuses it.
+kind: Telo.Application
+metadata:
+  name: InterpolateIntegerOwnField
+imports:
+  Kinds: ./kinds
+targets:
+  - name: call
+    invoke: !ref counted
+---
+kind: Kinds.Timed
+metadata:
+  name: counted
+timeout: 5s
+count: !interpolate "${{ 1 }}"

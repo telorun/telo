@@ -141,4 +141,20 @@ describe("stripCompiledValues", () => {
     expect(out.a.url).toBeNull();
     expect(out.b.url).toBeNull();
   });
+
+  it("records each stand-in by JSON Pointer and class", () => {
+    const interpolated = { ...(cel("${{ s }}s") as object), engine: "interpolate" };
+    const standIns = new Map();
+    stripCompiledValues(
+      { url: cel("inputs.path"), "a/b": [interpolated] },
+      { type: "object", properties: { "a/b": { type: "array", items: { type: "string" } } } },
+      undefined,
+      undefined,
+      standIns,
+    );
+    expect([...standIns]).toEqual([
+      ["/url", "computed"],
+      ["/a~1b/0", "produced"],
+    ]);
+  });
 });

@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: StandInConsumer
+imports:
+  Lib:
+    source: ./lib
+    variables:
+      word: abc
+      id: 9b2f8a2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b
+      seconds: "5"
+      millis: "10"
+targets:
+  - !ref Lib.standIns

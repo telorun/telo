@@ -1,11 +1,12 @@
 import { isCompiledValue } from "@telorun/sdk";
-import { producedTypeOf } from "@telorun/templating";
 import {
   celPlaceholderForSchema,
   type ExternalSchemaResolver,
   producedPlaceholder,
+  readStandIn,
   resolveRefIn,
   selectUnionBranch,
+  type StandIns,
   undeclaredKeySchema,
 } from "@telorun/analyzer";
 
@@ -89,12 +90,16 @@ function isConfigAtRefSlot(value: unknown): boolean {
  *  caller's client down with `client: !cel "self.client"` hands the child the
  *  injected instance, not a ref), and a controller's object graph is
  *  arbitrarily deep and routinely cyclic — walking one overflows the stack
- *  instead of producing a diagnostic, and there is nothing inside it to strip. */
+ *  instead of producing a diagnostic, and there is nothing inside it to strip.
+ *
+ *  `standIns`, when given, receives each stand-in by JSON Pointer and class —
+ *  the record the analyzer's `withoutStandInFindings` judges a failure against. */
 export function stripCompiledValues(
   v: unknown,
   schema: Record<string, unknown> = {},
   rootSchema?: Record<string, unknown>,
   external?: ExternalSchemaResolver,
+  standIns?: StandIns,
 ): unknown {
   const root = rootSchema ?? schema;
   // Ancestors on the current path, so a genuine cycle stops while a sub-object
@@ -104,7 +109,8 @@ export function stripCompiledValues(
   const walk = (
     value: unknown,
     rawNodeSchema: Record<string, unknown>,
-    base: Record<string, unknown> = root,
+    base: Record<string, unknown>,
+    pointer: string,
   ): unknown => {
     // A UNION carries no `type` / `items` / `properties` of its own, so descending
     // through one hands every CEL leaf underneath the schema-unaware `""`
@@ -125,16 +131,16 @@ export function stripCompiledValues(
     const resolved = here.schema;
     const nodeRoot = here.root;
 
-    // The analyzer's stand-in, so a value `telo check` accepts is one the kernel
-    // accepts: two builders drift (a `minLength` the other ignores).
-    // A tag whose produced type is a constant of the tag (`!interpolate` is
-    // always a string) stands in as THAT type, so `!interpolate` at an integer
-    // slot is refused here as it is statically.
-    if (isCompiledValue(value)) {
-      const engine = (value as { engine?: unknown }).engine;
-      const produced = typeof engine === "string" ? producedTypeOf(engine) : undefined;
-      return produced
-        ? producedPlaceholder(produced as Record<string, any>, resolved as Record<string, any>)
+    // The analyzer's stand-in and its class, so a value `telo check` accepts is
+    // one the kernel accepts: two builders drift (a `minLength` the other
+    // ignores). A tag whose produced type is a constant of the tag
+    // (`!interpolate` is always a string) stands in as THAT type, so
+    // `!interpolate` at an integer slot is refused here as it is statically.
+    const reading = isCompiledValue(value) ? readStandIn(value) : undefined;
+    if (reading?.kind === "stand-in") {
+      standIns?.set(pointer, reading.class);
+      return reading.class === "produced"
+        ? producedPlaceholder(reading.produced, resolved as Record<string, any>)
         : celPlaceholderForSchema(resolved as Record<string, any>);
     }
     // A slot the schema declares as a reference is never config when it HOLDS a
@@ -148,7 +154,7 @@ export function stripCompiledValues(
     if (Array.isArray(value)) {
       const item = resolveSchemaRef((resolved.items ?? {}) as Record<string, unknown>, nodeRoot, external);
       return walkGuarded(value, () =>
-        value.map((element) => walk(element, item.schema, item.root)),
+        value.map((element, i) => walk(element, item.schema, item.root, `${pointer}/${i}`)),
       );
     }
     if (value !== null && typeof value === "object") {
@@ -161,7 +167,12 @@ export function stripCompiledValues(
       return walkGuarded(value, () => {
         const out: Record<string, unknown> = {};
         for (const [k, val] of Object.entries(value as Record<string, unknown>)) {
-          out[k] = walk(val, props[k] ?? undeclaredKeySchema(resolved, k) ?? {}, nodeRoot);
+          out[k] = walk(
+            val,
+            props[k] ?? undeclaredKeySchema(resolved, k) ?? {},
+            nodeRoot,
+            `${pointer}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`,
+          );
         }
         return out;
       });
@@ -181,5 +192,5 @@ export function stripCompiledValues(
     }
   };
 
-  return walk(v, schema);
+  return walk(v, schema, root, "");
 }

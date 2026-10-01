@@ -141,7 +141,7 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 
 | Code | What it means and what to do |
 | --- | --- |
-| `CONTRACT_INPUTS_MISMATCH` | The `inputs:` at a call site do not satisfy the target's declared `inputType`. |
+| `CONTRACT_INPUTS_MISMATCH` | The `inputs:` at a call site do not satisfy the target's declared `inputType`. It judges the values written there, not expressions: a `!cel` argument is not judged at all, and a tag with a fixed produced type (`!interpolate`, an `!include-*` embed, `!module-path`) only for that type — a string into an `integer` member is refused, while its text is held to `minLength`, `pattern` or `format` when it is produced, at dispatch (`ERR_INPUT_INVALID`). |
 | `REFERENCE_OUTPUT_MISMATCH` | A reference slot declares, through `x-telo-ref` `outputType:`, what its target must return, and the referenced resource's output contract definitely cannot be that shape — a required field missing from a closed contract, or a field of another type. Point the slot at a target returning that shape, or declare the target's `outputType` / `outputs:` to produce it. |
 | `CONTRACT_MISSING_MAPPING` | A child that inherits a controller declared its own `inputType`/`outputType` but no `inputs:`/`result:` bridge, so the inherited controller would never see the mapped shape. |
 | `CONTRACT_INPUTS_SCHEMA_FORM` | `inputs:` was written as a JSON-Schema property map. `inputs`/`outputs` are always **values**; `inputType`/`outputType` are always **schemas**. |

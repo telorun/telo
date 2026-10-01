@@ -13,6 +13,7 @@ import {
   schemaWithTagsAsText,
   TELO_FORMATS,
   VALUE_TYPE_KEYWORD_VERSION,
+  type AjvErrorLike,
   type SchemaIssue,
   type TeloFormatEntry,
 } from "@telorun/analyzer";
@@ -50,6 +51,38 @@ import {
 } from "@telorun/templating";
 
 const Ajv = AjvModule.default ?? AjvModule;
+
+/** A validator instance with every Telo keyword, the formats and the shared
+ *  manifest root. `allErrors` is the failure path's twin of the primary one. */
+function createValidatorAjv(allErrors: boolean): InstanceType<typeof Ajv> {
+  const ajv = new Ajv({
+    strict: false,
+    allErrors,
+    removeAdditional: false,
+    useDefaults: true,
+    // Required for `standaloneCode` extraction — tells AJV to keep the
+    // generated validator's source available rather than wrapping it
+    // through `new Function`. The cost at compile time is negligible.
+    code: { source: true },
+  });
+  addFormats.default(ajv);
+  // One registration site for every Telo keyword: the annotations as no-ops
+  // and `x-telo-type` as the one that actually checks. `x-telo-type` is defined
+  // as codegen in the analyzer so it inlines into the standalone validators
+  // compiled and cached below, rather than needing the implementation present
+  // at load.
+  registerTeloKeywords(ajv);
+  // Register the shared manifest root so module schemas can
+  // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
+  // bundling its own copy. Mirrors the analyzer's createAjv().
+  ajv.addSchema(ManifestRootSchema);
+  return ajv;
+}
+
+function registerOnce(ajv: InstanceType<typeof Ajv>, name: string, schema: object): void {
+  if (!ajv.getSchema(name)) ajv.addSchema(schema, name);
+}
+
 // AJV's standalone subpath is CJS — the default export shows up as either
 // the function itself or `.default` depending on how the bundler/loader
 // rewrites it. Normalise once.
@@ -236,33 +269,41 @@ export class SchemaValidator {
   }
 
   constructor() {
-    this.ajv = new Ajv({
-      strict: false,
-      removeAdditional: false,
-      useDefaults: true,
-      // Required for `standaloneCode` extraction — tells AJV to keep the
-      // generated validator's source available rather than wrapping it
-      // through `new Function`. The cost at compile time is negligible.
-      code: { source: true },
-    });
-    addFormats.default(this.ajv);
-    // One registration site for every Telo keyword: the annotations as no-ops
-    // and `x-telo-type` as the one that actually checks. `x-telo-type` is defined
-    // as codegen in the analyzer so it inlines into the standalone validators
-    // compiled and cached below, rather than needing the implementation present
-    // at load.
-    registerTeloKeywords(this.ajv);
-    // Register the shared manifest root so module schemas can
-    // `$ref: "telo://manifest#/$defs/ResourceRef"` without each manifest
-    // bundling its own copy. Mirrors the analyzer's createAjv().
-    this.ajv.addSchema(ManifestRootSchema);
+    this.ajv = createValidatorAjv(false);
   }
 
   addSchema(name: string, schema: object): void {
-    if (!this.ajv.getSchema(name)) {
-      this.ajv.addSchema(schema, name);
-    }
+    registerOnce(this.ajv, name, schema);
+    if (this.allErrorsAjv) registerOnce(this.allErrorsAjv, name, schema);
     this.rawSchemas.set(name, schema);
+  }
+
+  /** The instance {@link allErrors} compiles on: created on the first failure
+   *  that needs it, holding every shape registered so far. */
+  private allErrorsAjv: InstanceType<typeof Ajv> | undefined;
+  private allErrorsValidators = new WeakMap<object, ValidateFunction>();
+
+  /**
+   * Every error `schema` raises against `data`, where {@link compile}'s
+   * validator stops at the first.
+   *
+   * For the failure path alone: a first error may be about a stand-in, which
+   * hides whatever follows it, so a caller excusing stand-in findings needs the
+   * whole set. Compiled once per schema and kept in memory; never persisted,
+   * since nothing warms it and a run that validates cleanly never compiles it.
+   */
+  allErrors(schema: object, data: unknown): AjvErrorLike[] {
+    let validate = this.allErrorsValidators.get(schema);
+    if (!validate) {
+      if (!this.allErrorsAjv) {
+        this.allErrorsAjv = createValidatorAjv(true);
+        for (const [name, raw] of this.rawSchemas) registerOnce(this.allErrorsAjv, name, raw);
+      }
+      validate = this.allErrorsAjv.compile(this.canonicalSchema(schema)) as ValidateFunction;
+      this.allErrorsValidators.set(schema, validate);
+    }
+    const { view, context } = bigIntView(data);
+    return validate(view, context) ? [] : [...(validate.errors ?? [])];
   }
 
   getSchema(name: string): object | undefined {
@@ -311,44 +352,7 @@ export class SchemaValidator {
       if (cached) return cached;
     }
 
-    // A value type is a whole schema too: an instance has no JSON `type`, and no
-    // property map can name a property `x-telo-type`.
-    const isFullSchema =
-      ("type" in schema && typeof schema.type === "string") ||
-      "allOf" in schema ||
-      "anyOf" in schema ||
-      "oneOf" in schema ||
-      "$ref" in schema ||
-      X_TELO_TYPE in schema;
-    const normalized = isFullSchema
-      ? schema
-      : {
-          type: "object",
-          properties: schema,
-          required: Object.keys(schema),
-          additionalProperties: false,
-        };
-    const withImplicit =
-      normalized.additionalProperties === false
-        ? {
-            ...normalized,
-            properties: {
-              kind: { type: "string" },
-              metadata: { type: "object" },
-              ...normalized.properties,
-            },
-          }
-        : normalized;
-
-    const injected = withImplicit;
-
-    // Canonicalize tagged carriers (an `!interpolate` in a `description`, a
-    // `!cel` tag, …) to their bare source text so AJV can
-    // meta-validate the schema it compiles, and so the raw (warm-pass) and
-    // precompiled (runtime) views of one schema land on the same cache key. The
-    // hashed and the compiled schema are this same canonical form. See
-    // `schemaWithTagsAsText`.
-    const sanitized = schemaWithTagsAsText(stripTeloAnnotations(injected));
+    const sanitized = this.canonicalSchema(schema);
 
     const hash = createHash("sha256")
       .update(
@@ -406,6 +410,50 @@ export class SchemaValidator {
     }
 
     return validator;
+  }
+
+  /** `schema` as it is compiled and hashed: a bare property map widened to an
+   *  object schema, the implicit `kind` / `metadata` admitted beside a closed
+   *  one, annotations stripped and tagged carriers read as text. */
+  private canonicalSchema(schema: any): object {
+    // A value type is a whole schema too: an instance has no JSON `type`, and no
+    // property map can name a property `x-telo-type`.
+    const isFullSchema =
+      ("type" in schema && typeof schema.type === "string") ||
+      "allOf" in schema ||
+      "anyOf" in schema ||
+      "oneOf" in schema ||
+      "$ref" in schema ||
+      X_TELO_TYPE in schema;
+    const normalized = isFullSchema
+      ? schema
+      : {
+          type: "object",
+          properties: schema,
+          required: Object.keys(schema),
+          additionalProperties: false,
+        };
+    const withImplicit =
+      normalized.additionalProperties === false
+        ? {
+            ...normalized,
+            properties: {
+              kind: { type: "string" },
+              metadata: { type: "object" },
+              ...normalized.properties,
+            },
+          }
+        : normalized;
+
+    const injected = withImplicit;
+
+    // Canonicalize tagged carriers (an `!interpolate` in a `description`, a
+    // `!cel` tag, …) to their bare source text so AJV can
+    // meta-validate the schema it compiles, and so the raw (warm-pass) and
+    // precompiled (runtime) views of one schema land on the same cache key. The
+    // hashed and the compiled schema are this same canonical form. See
+    // `schemaWithTagsAsText`.
+    return schemaWithTagsAsText(stripTeloAnnotations(injected)) as object;
   }
 
   /** Load `<cacheDir>/<hash>.cjs` if present, else compile via AJV and

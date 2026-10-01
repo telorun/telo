@@ -1,6 +1,7 @@
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
+import type { StandIns } from "./stand-in-findings.js";
 
 /**
  * `x-telo-value-schema-from: "<field>"` — the value written at the annotated
@@ -22,7 +23,7 @@ import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.j
 /** The validator holding the registered shapes, and the resolver that lets the
  *  decoding walk see through them. */
 export interface ShapeAwareValidator {
-  validate(data: unknown, schema: Record<string, any>): SchemaIssue[];
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaIssue[];
   external: ExternalSchemaResolver;
 }
 
@@ -47,10 +48,12 @@ export function collectValueSchemaIssues(
   for (const { path, value, schema, from } of valueSchemaSites(manifest, defSchema, {
     typeManifests: allManifests,
   })) {
+    const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(value, schema, undefined, {
+      standIns,
       external: validator.external,
     });
-    for (const issue of validator.validate(substituted, schema)) {
+    for (const issue of validator.validate(substituted, schema, standIns)) {
       issues.push({
         message: `\`${path}\` does not satisfy the type declared at \`${from}\`: ${issue.message}`,
         path: issue.path ? `${path}.${issue.path}` : path,

@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata:
+  name: StandInEntry
+include:
+  - ./cases.yaml
+imports:
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Kinds: ./kinds
+variables:
+  word: { env: STAND_IN_WORD, type: string, default: abc }
+  id: { env: STAND_IN_ID, type: string, default: 9b2f8a2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b }
+  seconds: { env: STAND_IN_SECONDS, type: string, default: "5" }
+  millis: { env: STAND_IN_MILLIS, type: string, default: "10" }
+targets:
+  - !ref standIns

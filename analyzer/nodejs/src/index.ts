@@ -446,6 +446,8 @@ export {
 } from "./schema-compat.js";
 export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
+export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
+export type { StandInClass, StandInReading, StandIns } from "./stand-in-findings.js";
 export {
   ajvErrorToPath,
   explainFormatErrors,

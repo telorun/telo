@@ -67,6 +67,8 @@ targets:
   - !ref interpolateHoleDynNullAtRuntime
   - !ref interpolateIntegerSlot
   - !ref interpolateIntegerSlotAtRuntime
+  - !ref standInMasking
+  - !ref standInMaskingAtRuntime
   - !ref hostPathInterpolated
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
@@ -1494,6 +1496,26 @@ metadata:
 source: ./__fixtures__/check-run-agreement/interpolate-integer-slot/telo.yaml
 expect:
   runFails: "/count must be integer"
+---
+# A stand-in is judged only for what its tag guarantees, so an `!interpolate`
+# failing a `pattern` is excused while a literal beside it violating one is
+# refused — statically, and at creation even though the stand-in's failure is
+# the first the kernel's validator meets.
+kind: Assert.Manifest
+metadata:
+  name: standInMasking
+source: ./__fixtures__/check-run-agreement/stand-in-masking/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/code must match pattern"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInMaskingAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-masking/telo.yaml
+expect:
+  runFails: "/code must match pattern"
 ---
 # `!interpolate` at a host-path slot: a plain string whatever its text, refused
 # statically at the slot and at creation by the slot's own schema.
