@@ -2195,12 +2195,19 @@ export class Kernel implements IKernel {
       // A failure may be about a stand-in, which says nothing about what the
       // author wrote — and the first error hides every one after it. Judged
       // again on the whole error set, excusing what the analyzer excuses.
-      const remaining =
+      const findings =
         error instanceof SchemaValidationError && standIns.size > 0
-          ? withoutStandInFindings(
-              this.sharedSchemaValidator.allErrors(configSchema as object, stripped),
+          ? this.sharedSchemaValidator.findingsFor(configSchema)
+          : undefined;
+      const all = findings?.(configSchema, stripped);
+      const remaining =
+        findings && all
+          ? withoutStandInFindings(all, {
+              value: stripped,
+              schema: configSchema as Record<string, any>,
               standIns,
-            )
+              validate: findings,
+            })
           : undefined;
       if (remaining?.length !== 0) {
         const reason = remaining

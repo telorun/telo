@@ -131,7 +131,8 @@ When an incoming HTTP request is received, the underlying framework must normali
 ```
 
 - All `headers` keys MUST be normalized to lowercase.
-- If the `content-type` is `application/json`, the `body` MUST be parsed into a native object/dictionary before evaluation.
+- If the `content-type` is `application/json`, the `body` MUST be parsed into its native JSON value before evaluation — an object, an array, a string, a number.
+- `request.body` is **untyped** in a route's `inputs:` (and in `notFoundHandler.inputs`) until the route's `request.schema.body` declares it. A body is whatever the client sent, so an undeclared one passes `telo check` into a handler argument of any type (`items: !cel "request.body"` into an array) and its members are read unchecked; what the handler then receives is held to its `inputType` at dispatch. Declaring `request.schema.body` types `request.body` and everything beneath it, so a misspelled field is `CEL_UNKNOWN_FIELD` and a body wired into an argument of another type is `CEL_TYPE_ERROR`. `request.query`, `request.headers` and `request.params` are maps whether or not a schema is declared.
 - A slot of `request.schema` declaring `type: integer` arrives in CEL as an `int`, whatever number form the client sent it in — `request.body.price + 1` is integer arithmetic.
 - A slot of `request.schema` declaring a value type with a plain encoding (`x-telo-type: Telo.Timestamp`, `Telo.Duration`, `Telo.Bytes`) is validated — and documented in the OpenAPI document — as the text a client sends (`type: string, format: date-time` for a timestamp), and arrives in CEL as the value itself: `request.body.at + duration('1h')` is timestamp arithmetic. Text the type's encoding does not read is a 400 with the envelope below, one detail per refused field, its `path` naming the field inside the location (`at`, `items[0].at`).
 

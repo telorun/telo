@@ -8,10 +8,15 @@
  * `dyn` expression passes the checker, and the value it produces must still be
  * what the slot declares; a sink's `when` that produces the string `"false"` is
  * refused rather than read as "not false".
+ *
+ * A written value holding results is held, with them, to the keywords that
+ * relate its parts (`uniqueItems`, `const`, `enum`): before evaluation those
+ * are decided on the written parts alone, so two expressions producing the same
+ * item of a `uniqueItems` list are refused here.
  */
 import { compiledResultSlots, formatSlotPath, type ExternalSchemaResolver } from "@telorun/analyzer";
-import { detachSnapshotValue, isCompiledValue } from "@telorun/sdk";
-import type { SchemaValidator } from "./schema-validator.js";
+import { detachSnapshotValue, isCompiledValue, type DataValidator } from "@telorun/sdk";
+import { SchemaValidationError, type SchemaValidator } from "./schema-validator.js";
 
 /** A slot's schema as a document of its own: wrapped, so the validator reads
  *  it as a whole schema however few keywords it has, with the `$defs` its
@@ -58,12 +63,30 @@ export function refuseMistypedResults(
     // A detached copy: the validator fills schema defaults in place, and the
     // result may be an object other readers share (`variables.x`, a published
     // `resources.x`). The controller receives exactly what the expression made.
-    if (check.isValid(detachSnapshotValue(slot.value))) continue;
     const path = [options.prefix, formatSlotPath(slot.segments)].filter(Boolean).join(".") || "/";
+    if (slot.holdsResults) {
+      const problem = contentProblem(check, slot.value);
+      if (problem) throw refuse(path, problem);
+      continue;
+    }
+    if (check.isValid(detachSnapshotValue(slot.value))) continue;
     throw refuse(
       path,
       `must be ${expectedOf(slot.schema)}, but the expression produced ${describeProduced(slot.value)}`,
     );
+  }
+}
+
+/** What a written value's content keywords refuse about it now that the
+ *  results inside it exist, in the validator's own words. */
+function contentProblem(check: DataValidator, value: unknown): string | undefined {
+  try {
+    check.validate(detachSnapshotValue(value));
+    return undefined;
+  } catch (error) {
+    if (!(error instanceof SchemaValidationError)) throw error;
+    const problems = error.issues.map((issue) => issue.message.replace(/^\/ /, ""));
+    return `${problems.join("; ")}, once its expressions are evaluated`;
   }
 }
 

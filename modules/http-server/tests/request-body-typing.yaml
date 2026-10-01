@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: RequestBodyTypingTest
+  version: 1.0.0
+  description: |
+    `request.body` is untyped until the route's `request.schema.body` declares
+    it: a body is whatever the client sent, so an undeclared one wires into a
+    slot of any type and its members stay readable. Declaring it types the same
+    expression, and `request.headers` is a map whatever the route declares.
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+  - !ref testDeclaredBodyIsTyped
+  - !ref testHeadersAreAMap
+---
+kind: Run.Value
+metadata: { name: countItems }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items: { type: array, items: { type: string } }
+value:
+  count: !cel "size(inputs.items)"
+  first: !cel "inputs.items[0]"
+---
+kind: Run.Value
+metadata: { name: echoNote }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [note]
+    properties:
+      note: { type: string }
+value:
+  note: !cel "inputs.note"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /items, method: POST }
+    handler: !ref countItems
+    inputs:
+      items: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+  - request: { path: /note, method: POST }
+    handler: !ref echoNote
+    inputs:
+      note: !cel "request.body.note"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8992
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref server
+steps:
+  - name: sendArray
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8992/items
+      method: POST
+      body: ["a", "b"]
+  - name: sendObject
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8992/note
+      method: POST
+      body: { note: "kept" }
+  - name: assertBothReached
+    inputs:
+      actual:
+        items: !cel "steps.sendArray.result.body"
+        note: !cel "steps.sendObject.result.body"
+      expected:
+        items: { count: 2, first: "a" }
+        note: { note: "kept" }
+    invoke:
+      kind: Assert.Equals
+---
+kind: Assert.Manifest
+metadata: { name: testDeclaredBodyIsTyped }
+source: ./__fixtures__/request-body-declared-object.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "source is 'object', target expects 'array'"
+---
+kind: Assert.Manifest
+metadata: { name: testHeadersAreAMap }
+source: ./__fixtures__/request-headers-into-string.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "source is 'object', target expects 'string'"

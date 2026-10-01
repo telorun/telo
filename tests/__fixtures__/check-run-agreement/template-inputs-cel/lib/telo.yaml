@@ -1,0 +1,38 @@
+# A template kind's top-level `inputs:` written as an expression whose type the
+# dispatch target's contract refuses: `telo check` reports it at the argument.
+# The kernel's refusal of the same value is `../computed.yaml`.
+kind: Telo.Library
+metadata:
+  name: TemplateInputsCel
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Telo.Definition
+metadata:
+  name: Counted
+  description: Hands its body a fixed count.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [count]
+        properties:
+          count: { type: integer }
+    value: { ok: true }
+invoke: !ref body
+inputs:
+  count: !cel "'abc'"
+---
+kind: Self.Counted
+metadata:
+  name: call

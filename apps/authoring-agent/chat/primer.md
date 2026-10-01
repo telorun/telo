@@ -1928,11 +1928,14 @@ the `imports` map.
   `ERR_MANIFEST_VALIDATION_FAILED`). Every expression's result is held to the
   type it flows into the same way: a field's own type, and for a `!cel`
   ARGUMENT — in a step's `inputs:`, a boot target's, a route's or any other
-  handler's `inputs:` map — the target's declared input type (`CEL_TYPE_ERROR`:
-  `returns 'string' but consume's declared inputType expects 'integer'`). A
-  value read from a source that may be NULL (an output or variable declared
-  nullable) into a field or argument that takes no null is refused the same
-  way: guard it, `!cel "x != null ? x : <fallback>"`.
+  handler's `inputs:` map, a templated `Telo.Definition`'s top-level `inputs:`
+  — the target's declared input type (`CEL_TYPE_ERROR`:
+  `returns 'string' but consume's declared inputType expects 'integer'`). An
+  integer fits a `number` slot; a `number` does not fit an `integer` one —
+  convert it, `!cel "int(x)"`. A value read from a source that may be NULL (an
+  output or variable declared nullable, directly or through a `$ref`) into a
+  field or argument that takes no null is refused the same way: guard it,
+  `!cel "x != null ? x : <fallback>"`.
 - Two more tags embed a file that ships beside the manifest:
   `!include-text path` yields the file's contents as a string,
   `!include-bytes path` yields raw bytes (a `Uint8Array` — what a
@@ -2129,7 +2132,11 @@ a standalone resource.
 This is because CEL is evaluated in the DISPATCH SITE's scope, not the
 resource's:
   - inside an Http.Api route (its `inputs:` and `returns:` bodies) `request` is
-    in scope: `request.body.*`, `request.params.*`, `request.query.*`.
+    in scope: `request.body.*`, `request.params.*`, `request.query.*`. The
+    body is UNTYPED until the route's `request.schema.body` declares it — an
+    undeclared body is whatever the client sent, so nothing about it is
+    checked; declare the schema and `request.body.*` is typed, a misspelled
+    field and a mistyped argument become check errors.
   - inside a Run.Sequence step's `inputs:`, `steps.*` and the sequence's own
     `inputs.*` are in scope.
 A resource defined on its own has NONE of these in scope — writing

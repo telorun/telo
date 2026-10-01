@@ -6,7 +6,7 @@ metadata:
 imports:
   Run: ../../../../modules/run
 exports:
-  kinds: [Timed]
+  kinds: [Timed, Waiting]
 ---
 kind: Telo.Definition
 metadata:
@@ -28,3 +28,26 @@ resources:
     metadata:
       name: echo
     value: !cel "self.timeout"
+---
+# An own field that is a union of references alone.
+kind: Telo.Definition
+metadata:
+  name: Waiting
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    wait:
+      x-telo-eval: compile
+      anyOf:
+        - { $ref: "#/$defs/Seconds" }
+        - { $ref: "#/$defs/Count" }
+  $defs:
+    Seconds: { type: string, pattern: "^\\d+s$" }
+    Count: { type: integer }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.wait"

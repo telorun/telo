@@ -1,0 +1,41 @@
+# The kernel's half of `lib/telo.yaml`. A kind document is checked wherever it is
+# loaded, so no consumer of that library is silent about it; here the value's
+# type is hidden from the checker instead, and the dispatch contract is what
+# refuses it.
+kind: Telo.Application
+metadata:
+  name: TemplateInputsCelComputed
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - name: called
+    invoke: !ref call
+---
+kind: Telo.Definition
+metadata:
+  name: Counted
+  description: Hands its body a fixed count.
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [count]
+        properties:
+          count: { type: integer }
+    value: { ok: true }
+invoke: !ref body
+inputs:
+  count: !cel "dyn('abc')"
+---
+kind: Self.Counted
+metadata:
+  name: call

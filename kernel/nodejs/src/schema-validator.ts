@@ -10,11 +10,12 @@ import {
   ManifestRootSchema,
   registerTeloKeywords,
   schemaIssues,
+  SchemaNodeValidator,
   schemaWithTagsAsText,
   TELO_FORMATS,
   VALUE_TYPE_KEYWORD_VERSION,
-  type AjvErrorLike,
   type SchemaIssue,
+  type SchemaNodeFindings,
   type TeloFormatEntry,
 } from "@telorun/analyzer";
 import { CEL_SCALAR_FORMS, PLAIN_ENCODINGS, VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
@@ -53,11 +54,13 @@ import {
 const Ajv = AjvModule.default ?? AjvModule;
 
 /** A validator instance with every Telo keyword, the formats and the shared
- *  manifest root. `allErrors` is the failure path's twin of the primary one. */
-function createValidatorAjv(allErrors: boolean): InstanceType<typeof Ajv> {
+ *  manifest root. `locating` is the failure path's twin of the primary one:
+ *  every error, each naming the schema node that raised it. */
+function createValidatorAjv(locating: boolean): InstanceType<typeof Ajv> {
   const ajv = new Ajv({
     strict: false,
-    allErrors,
+    allErrors: locating,
+    verbose: locating,
     removeAdditional: false,
     useDefaults: true,
     // Required for `standaloneCode` extraction — tells AJV to keep the
@@ -274,36 +277,39 @@ export class SchemaValidator {
 
   addSchema(name: string, schema: object): void {
     registerOnce(this.ajv, name, schema);
-    if (this.allErrorsAjv) registerOnce(this.allErrorsAjv, name, schema);
+    if (this.locating) registerOnce(this.locating.ajv, name, schema);
     this.rawSchemas.set(name, schema);
   }
 
-  /** The instance {@link allErrors} compiles on: created on the first failure
-   *  that needs it, holding every shape registered so far. */
-  private allErrorsAjv: InstanceType<typeof Ajv> | undefined;
-  private allErrorsValidators = new WeakMap<object, ValidateFunction>();
+  /** The instance {@link findingsFor} validates on: created on the first
+   *  failure that needs it, holding every shape registered so far. */
+  private locating: { ajv: InstanceType<typeof Ajv>; nodes: SchemaNodeValidator } | undefined;
 
   /**
-   * Every error `schema` raises against `data`, where {@link compile}'s
-   * validator stops at the first.
+   * Validation of `schema`, or of any node of it, that reports every error —
+   * where {@link compile}'s validator stops at the first — each naming the
+   * schema node that raised it.
    *
    * For the failure path alone: a first error may be about a stand-in, which
    * hides whatever follows it, so a caller excusing stand-in findings needs the
-   * whole set. Compiled once per schema and kept in memory; never persisted,
-   * since nothing warms it and a run that validates cleanly never compiles it.
+   * whole set, and decides a union by asking each branch on its own. Compiled
+   * once per node and kept in memory; never persisted, since nothing warms it
+   * and a run that validates cleanly never compiles it.
    */
-  allErrors(schema: object, data: unknown): AjvErrorLike[] {
-    let validate = this.allErrorsValidators.get(schema);
-    if (!validate) {
-      if (!this.allErrorsAjv) {
-        this.allErrorsAjv = createValidatorAjv(true);
-        for (const [name, raw] of this.rawSchemas) registerOnce(this.allErrorsAjv, name, raw);
-      }
-      validate = this.allErrorsAjv.compile(this.canonicalSchema(schema)) as ValidateFunction;
-      this.allErrorsValidators.set(schema, validate);
+  findingsFor(schema: object): SchemaNodeFindings {
+    if (!this.locating) {
+      const ajv = createValidatorAjv(true);
+      for (const [name, raw] of this.rawSchemas) registerOnce(ajv, name, raw);
+      const nodes = new SchemaNodeValidator(ajv, {
+        canonical: (whole) => this.canonicalSchema(whole),
+        run: (validate, value) => {
+          const { view, context } = bigIntView(value);
+          return validate(view, context);
+        },
+      });
+      this.locating = { ajv, nodes };
     }
-    const { view, context } = bigIntView(data);
-    return validate(view, context) ? [] : [...(validate.errors ?? [])];
+    return this.locating.nodes.findingsFor(schema);
   }
 
   getSchema(name: string): object | undefined {

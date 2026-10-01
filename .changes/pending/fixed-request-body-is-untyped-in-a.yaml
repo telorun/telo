@@ -1,0 +1,7 @@
+modules:
+  modules/http-server: Fixed
+body: "`request.body` is untyped in a route's `inputs:` and in `notFoundHandler.inputs`
+  until the route's `request.schema.body` declares it. It was declared an object, which
+  a request never guaranteed — a posted JSON array is accepted — so `telo check` refused
+  `!cel \"request.body\"` wired into an argument of any other type. `request.query`,
+  `request.headers` and `request.params` stay maps."

@@ -451,7 +451,16 @@ export type {
 } from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
 export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
-export type { StandInClass, StandInReading, StandIns } from "./stand-in-findings.js";
+export type {
+  LocatedFinding,
+  SchemaNodeFindings,
+  StandInClass,
+  StandInJudgment,
+  StandInReading,
+  StandIns,
+} from "./stand-in-findings.js";
+export { SchemaNodeValidator } from "./schema-node-validator.js";
+export type { NodeValidatingAjv, SchemaNodeValidatorOptions } from "./schema-node-validator.js";
 export {
   ajvErrorToPath,
   explainFormatErrors,

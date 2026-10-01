@@ -15,12 +15,14 @@ import {
   type SchemaFromResolver,
 } from "./reference-reach.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
+import { SchemaNodeValidator } from "./schema-node-validator.js";
 import { withoutStandInFindings, type StandIns } from "./stand-in-findings.js";
 import {
   explainFormatErrors,
   formatSingleError,
   reduceSchemaErrors,
   schemaIssues,
+  type AjvErrorLike,
   type SchemaIssue,
 } from "./schema-error-report.js";
 import { effectiveAuthorSchema } from "./extends-resolution.js";
@@ -61,6 +63,10 @@ export class DefinitionRegistry {
    *  across analyze() calls and no unbounded growth across the process lifetime. */
   private readonly ajv = createAjv();
   private readonly registeredSchemaIds = new Set<string>();
+  /** Every schema `ajv` holds by id, as registered — what {@link nodeValidator}'s
+   *  instance is given, so a reference resolves there as it does here. */
+  private readonly registeredSchemas: Array<{ schema: object; id: string }> = [];
+  private nodes: { ajv: ReturnType<typeof createAjv>; validator: SchemaNodeValidator } | undefined;
   private readonly compiledValidators = new WeakMap<Record<string, any>, CompiledValidator>();
   /** The subset of `registeredSchemaIds` claimed by a kind's schema. Kinds and
    *  named `Telo.Type`s share one `telo://<module>/<Name>` id space, so this is
@@ -194,14 +200,51 @@ export class DefinitionRegistry {
    * which wraps `compile` for this same reason.
    */
   private tryAddSchema(schema: Record<string, any>, id: string, trusted = false): boolean {
+    const registered = schemaWithTagsAsText(schema) as object;
     try {
       // `trusted` skips meta-validation; only for the built-ins, whose validity
       // their own test asserts.
-      this.ajv.addSchema(schemaWithTagsAsText(schema) as object, id, undefined, !trusted);
-      return true;
+      this.ajv.addSchema(registered, id, undefined, !trusted);
     } catch {
       return false;
     }
+    this.registeredSchemas.push({ schema: registered, id });
+    this.nodes?.ajv.addSchema(registered, id, undefined, false);
+    return true;
+  }
+
+  /**
+   * Validates one node of a schema inside its own document, for the stand-in
+   * judge. On an instance of its own: locating a finding's node needs verbose
+   * errors, and verbose errors would change what every other failure reads as.
+   * Created by the first failure that has a union to decide.
+   */
+  private nodeValidator(): SchemaNodeValidator {
+    if (!this.nodes) {
+      const ajv = createAjv({ verbose: true });
+      for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
+      const validator = new SchemaNodeValidator(ajv, {
+        canonical: (schema) => schemaWithTagsAsText(schema) as object,
+      });
+      this.nodes = { ajv, validator };
+    }
+    return this.nodes.validator;
+  }
+
+  /** `errors` without what the stand-ins in `data` excuse. */
+  private judged(
+    errors: AjvErrorLike[] | null | undefined,
+    data: unknown,
+    schema: Record<string, any>,
+    standIns: StandIns | undefined,
+  ): AjvErrorLike[] | null | undefined {
+    if (!standIns) return errors;
+    return withoutStandInFindings(errors, {
+      value: data,
+      schema,
+      standIns,
+      validate: (node, value) => this.nodeValidator().findingsFor(schema)(node, value),
+    });
   }
 
   /** True when a schema is registered under `id` (a canonical `telo://` type id
@@ -243,7 +286,7 @@ export class DefinitionRegistry {
   validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    const errors = standIns ? withoutStandInFindings(validate.errors, standIns) : validate.errors;
+    const errors = this.judged(validate.errors, data, schema, standIns);
     return reduceSchemaErrors(explainFormatErrors(errors, data)).map(formatSingleError);
   }
 
@@ -255,7 +298,7 @@ export class DefinitionRegistry {
   ): SchemaIssue[] {
     const validate = this.compiledFor(schema);
     if (!validate || validate(data)) return [];
-    return schemaIssues(standIns ? withoutStandInFindings(validate.errors, standIns) : validate.errors, data);
+    return schemaIssues(this.judged(validate.errors, data, schema, standIns), data);
   }
 
   /** Memoized per schema OBJECT — the analyzer validates every resource of a

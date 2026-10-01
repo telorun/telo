@@ -1,0 +1,35 @@
+# Two stand-ins are never compared with each other, but two equal literals
+# beside them are duplicates the author wrote.
+kind: Telo.Application
+metadata:
+  name: UniqueItemsLiteralDuplicate
+imports:
+  Run: ../../../modules/run
+variables:
+  word: { env: STAND_IN_WORD, type: string, default: abc }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    invoke: !ref consume
+    inputs:
+      tags:
+        - !interpolate "a-${{ variables.word }}"
+        - !cel "'b-' + variables.word"
+        - same
+        - same
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      tags: { type: array, uniqueItems: true, items: { type: string } }
+value: { ok: true }

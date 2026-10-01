@@ -14,3 +14,31 @@ variables:
   millis: { env: STAND_IN_MILLIS, type: string, default: "10" }
 targets:
   - !ref standIns
+  - name: namedWait
+    invoke: !ref interpolatedNamedWait
+---
+# An own field whose union names shapes: declared here, in the module declaring
+# them, since a kind's own schema reaches a named shape only there.
+kind: Telo.Definition
+metadata:
+  name: NamedWaiting
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    wait:
+      x-telo-eval: compile
+      anyOf:
+        - { $ref: "telo://Self/Seconds" }
+        - { $ref: "telo://Self/Count" }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.wait"
+---
+kind: Self.NamedWaiting
+metadata:
+  name: interpolatedNamedWait
+wait: !interpolate "${{ variables.seconds }}s"

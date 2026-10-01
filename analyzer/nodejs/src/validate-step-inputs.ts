@@ -5,7 +5,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
-import { inlineNamedShapes, navigateSchemaToExprPath } from "./schema-compat.js";
+import { navigateSchemaToExprPath } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { plainChainOf } from "@telorun/templating";
@@ -32,31 +32,14 @@ export interface StepInputIssue {
  *
  * What the CEL value/slot join needs to judge the map's `!cel` leaves: AJV sees
  * an expression only as its stand-in, so an expression's TYPE is compared with
- * its slot there, exactly as for a resource's own fields. `schema` has every
- * named shape inlined, because that walk follows document-local references only.
+ * its slot there, exactly as for a resource's own fields. `schema` is the
+ * contract as declared; the join reads its references.
  */
 export interface CallSiteArguments {
   path: string;
   values: unknown;
   schema: Record<string, any>;
   targetLabel: string;
-}
-
-const inlinedContracts = new WeakMap<
-  DefinitionRegistry,
-  WeakMap<Record<string, any>, Record<string, any>>
->();
-
-/** A contract's schema with its named shapes inlined, once per contract. */
-function inlinedContract(schema: Record<string, any>, defs: DefinitionRegistry): Record<string, any> {
-  let perRegistry = inlinedContracts.get(defs);
-  if (!perRegistry) inlinedContracts.set(defs, (perRegistry = new WeakMap()));
-  let inlined = perRegistry.get(schema);
-  if (!inlined) {
-    inlined = inlineNamedShapes(schema, (ref) => defs.schemaForId(ref));
-    perRegistry.set(schema, inlined);
-  }
-  return inlined;
 }
 
 /** The per-declaring-module alias tables and the entry's own modules. */
@@ -205,7 +188,7 @@ function checkCallSite(
   argumentMaps?.push({
     path: site.path,
     values,
-    schema: inlinedContract(contract.schema, defs),
+    schema: contract.schema,
     targetLabel,
   });
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);

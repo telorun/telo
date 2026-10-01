@@ -1,0 +1,42 @@
+kind: Telo.Library
+metadata:
+  name: RequestBodyDeclaredObjectFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Value
+metadata: { name: countItems }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [items]
+    properties:
+      items: { type: array, items: { type: string } }
+value:
+  count: !cel "size(inputs.items)"
+---
+# The route declares its body an object, so the whole body is one — and no
+# longer fits a slot that takes an array.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /items
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            items: { type: array, items: { type: string } }
+    handler: !ref countItems
+    inputs:
+      items: !cel "request.body"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

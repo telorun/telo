@@ -18,11 +18,22 @@
  * A tag the engine resolves to a plain value at compile time is not a stand-in:
  * the value is known, and it is judged like any literal.
  *
- * The filter runs on RAW validator errors, before union reduction collapses them
- * into issues, because a union is judged per branch: one whose branch failed only
- * on findings a stand-in excuses is satisfied, and its errors go with it. Shared
- * by every analyzer substitution site and by the kernel's create-time validation,
- * so `telo check` and the runtime excuse exactly the same findings.
+ * One principle decides everything else: a finding stands only if it holds for
+ * every value the stand-ins could take.
+ *
+ * - **A union** is decided by validating its value against each branch ON ITS
+ *   OWN and judging that branch's findings by these same rules. A validator's
+ *   flat error list cannot say which branch — if any — raised a finding inside a
+ *   referenced shape, so nothing is attributed by reading it: a finding is the
+ *   union's only when a branch validated alone reproduces it.
+ * - **A content keyword** (`uniqueItems`, `const`, `enum`) raised at a value that
+ *   CONTAINS a stand-in compares placeholders, so it is decided on the parts the
+ *   author wrote.
+ *
+ * The judge runs on RAW validator errors, before union reduction collapses them
+ * into issues. Shared by every analyzer substitution site and by the kernel's
+ * create-time validation, so `telo check` and the runtime excuse exactly the
+ * same findings.
  */
 
 import { isCompiledValue } from "@telorun/sdk";
@@ -111,18 +122,53 @@ const VALUE_CONSTRAINT_KEYWORDS: ReadonlySet<string> = new Set([
 
 const UNION_KEYWORDS: ReadonlySet<string> = new Set(["anyOf", "oneOf"]);
 
+/** Keywords that compare a value's parts with each other or with a constant, so
+ *  a stand-in INSIDE the value decides them without being the value judged. */
+const CONTENT_KEYWORDS: ReadonlySet<string> = new Set(["uniqueItems", "const", "enum"]);
+
+/**
+ * A finding with the schema node that raised it, as the validator itself
+ * reports it (AJV's `verbose` errors). `schemaPath` cannot stand in for the
+ * node: inside a referenced shape it is relative to that shape, so two findings
+ * with one path may come from two documents.
+ */
+export interface LocatedFinding extends AjvErrorLike {
+  /** The failing keyword's own value — a union's branch list. */
+  schema?: unknown;
+  /** The schema node holding the failing keyword. */
+  parentSchema?: unknown;
+}
+
+/**
+ * Every finding `node` raises against `value`, validated inside the document
+ * that declares `node` so its own `#/…` references resolve, each finding located.
+ * `undefined` when the node cannot be validated on its own.
+ */
+export type SchemaNodeFindings = (
+  node: object,
+  value: unknown,
+) => readonly LocatedFinding[] | undefined;
+
+/** What the judge decides over: one validated value, and the means to ask about
+ *  a part of its schema. */
+export interface StandInJudgment {
+  /** The value that was validated, stand-ins in place. */
+  value: unknown;
+  /** The schema it was validated against. */
+  schema: Record<string, any>;
+  /** Every stand-in in `value`, by JSON Pointer. */
+  standIns: ReadonlyMap<string, StandInClass>;
+  validate: SchemaNodeFindings;
+}
+
 /** A `oneOf` that failed because SEVERAL branches matched: which one a value
  *  takes is decided by its content, so it is value-level. */
 function isAmbiguousOneOf(error: AjvErrorLike): boolean {
   return error.keyword === "oneOf" && Array.isArray(error.params?.passingSchemas);
 }
 
-function isUnionFailure(error: AjvErrorLike): boolean {
-  return UNION_KEYWORDS.has(error.keyword ?? "") && !isAmbiguousOneOf(error);
-}
-
-function isAtOrUnder(path: string, ancestor: string): boolean {
-  return ancestor === "" || path === ancestor || path.startsWith(`${ancestor}/`);
+function isUnion(error: AjvErrorLike): boolean {
+  return UNION_KEYWORDS.has(error.keyword ?? "");
 }
 
 /** True when a stand-in excuses this finding: it sits at or below a computed
@@ -138,97 +184,248 @@ function excused(error: AjvErrorLike, standIns: ReadonlyMap<string, StandInClass
   return false;
 }
 
-function segments(schemaPath: string): string[] {
-  return schemaPath.split("/");
+function escapeSegment(key: string): string {
+  return key.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
-/**
- * Whether an error raised before a union's own error belongs to it.
- *
- * AJV reports a union's branch errors contiguously, immediately before the
- * union's error. A branch written inline is reported under the union's
- * `schemaPath`; one written as a `$ref` under the target's — another document, or
- * a `$defs` / `definitions` entry. Anything else at the same value node is a
- * sibling keyword evaluated before the union began, and ends its run.
- */
-function ownedBy(error: AjvErrorLike, union: AjvErrorLike): boolean {
-  if (!isAtOrUnder(error.instancePath ?? "", union.instancePath ?? "")) return false;
-  const unionPath = union.schemaPath ?? "";
-  const path = error.schemaPath ?? "";
-  if (path.startsWith(`${unionPath}/`)) return true;
-  if (path.startsWith("#") !== unionPath.startsWith("#")) return true;
-  const a = segments(path);
-  const b = segments(unionPath);
-  let common = 0;
-  while (common < a.length && common < b.length && a[common] === b[common]) common++;
-  if (common === 0) return true;
-  const next = a[common];
-  return next === "$defs" || next === "definitions";
-}
-
-/** The branch index an error sits under, when it is reported under the union's
- *  own `schemaPath`. */
-function branchIndexOf(error: AjvErrorLike, union: AjvErrorLike): number | undefined {
-  const prefix = `${union.schemaPath ?? ""}/`;
-  const path = error.schemaPath ?? "";
-  if (!path.startsWith(prefix)) return undefined;
-  const index = Number(path.slice(prefix.length).split("/")[0]);
-  return Number.isInteger(index) ? index : undefined;
-}
-
-/**
- * Drop every finding a stand-in excuses, judging each failed union per branch.
- *
- * A union is satisfied when one of its branches failed only on excused findings;
- * then the union's error and every error its branches raised are dropped. Errors
- * from a `$ref` branch carry no branch index, so consecutive ones are judged as
- * one branch — which can only keep a finding, never drop one a single branch
- * would have kept.
- */
-export function withoutStandInFindings<E extends AjvErrorLike>(
-  errors: readonly E[] | null | undefined,
-  standIns: ReadonlyMap<string, StandInClass>,
-): E[] {
-  if (!errors || errors.length === 0) return [];
-  if (standIns.size === 0) return [...errors];
-  const live: (E | undefined)[] = [...errors];
-  for (let k = 0; k < live.length; k++) {
-    const union = live[k];
-    if (!union || !(isUnionFailure(union) || isAmbiguousOneOf(union))) continue;
-    const owned: number[] = [];
-    for (let j = k - 1; j >= 0; j--) {
-      const candidate = live[j];
-      if (!candidate) continue;
-      if (!ownedBy(candidate, union)) break;
-      owned.unshift(j);
-    }
-    let satisfied: boolean;
-    if (isAmbiguousOneOf(union)) {
-      satisfied = excused(union, standIns);
-    } else {
-      const branches: number[][] = [];
-      let unindexed: number[] | undefined;
-      const byIndex = new Map<number, number[]>();
-      for (const j of owned) {
-        const index = branchIndexOf(live[j]!, union);
-        if (index === undefined) {
-          if (!unindexed) branches.push((unindexed = []));
-          unindexed.push(j);
-          continue;
-        }
-        unindexed = undefined;
-        let branch = byIndex.get(index);
-        if (!branch) {
-          byIndex.set(index, (branch = []));
-          branches.push(branch);
-        }
-        branch.push(j);
-      }
-      satisfied = branches.some((branch) => branch.every((j) => excused(live[j]!, standIns)));
-    }
-    if (!satisfied) continue;
-    live[k] = undefined;
-    for (const j of owned) live[j] = undefined;
+/** The value at a JSON Pointer under `root`. */
+function valueAt(root: unknown, pointer: string): unknown {
+  let current = root;
+  for (const segment of pointer.split("/").slice(1)) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[
+      segment.replace(/~1/g, "/").replace(/~0/g, "~")
+    ];
   }
-  return live.filter((error): error is E => error !== undefined && !excused(error, standIns));
+  return current;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+/** Structural equality over JSON data, as the validator's own `uniqueItems`
+ *  compares; an instance is equal only to itself. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a)) {
+    return Array.isArray(b) && a.length === b.length && a.every((item, i) => sameValue(item, b[i]));
+  }
+  if (!isPlainObject(a) || !isPlainObject(b)) return false;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && sameValue(a[key], b[key]))
+  );
+}
+
+/** Whether two values are of one kind — what a produced stand-in fixes about
+ *  the value it stands for. */
+function sameKind(a: unknown, b: unknown): boolean {
+  if (a === null || b === null) return a === b;
+  if (typeof a !== "object" || typeof b !== "object") return typeof a === typeof b;
+  return Array.isArray(a) === Array.isArray(b) && Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
+}
+
+/** One union, decided: whether a branch accepts the value for some reading of
+ *  its stand-ins, and every finding its branches raise, counted. */
+interface UnionVerdict {
+  satisfied: boolean;
+  reproduced: ReadonlyMap<string, number>;
+}
+
+/** The fields a finding is rendered and anchored from, without the validator's
+ *  references into its schema and data. */
+function plainFinding(finding: LocatedFinding): AjvErrorLike {
+  return {
+    ...(finding.keyword !== undefined ? { keyword: finding.keyword } : {}),
+    ...(finding.instancePath !== undefined ? { instancePath: finding.instancePath } : {}),
+    ...(finding.schemaPath !== undefined ? { schemaPath: finding.schemaPath } : {}),
+    ...(finding.message !== undefined ? { message: finding.message } : {}),
+    ...(finding.params !== undefined ? { params: finding.params } : {}),
+  };
+}
+
+/**
+ * Drop every finding a stand-in excuses.
+ *
+ * A failed union is decided by validating its value against each branch on its
+ * own and judging that branch's findings by this same rule, recursively: the
+ * union is satisfied when one branch has no surviving finding, and then its own
+ * finding and the findings its branches reproduce are dropped — counted, so a
+ * finding raised once more than the branches reproduce (a sibling reference to
+ * the shape a branch names) is kept that once. An unsatisfied union keeps its
+ * findings, minus those individually excused. A union the validator does not
+ * locate is kept with everything raised around it.
+ *
+ * `uniqueItems`, `const` and `enum` at a value CONTAINING a stand-in are decided
+ * on the written parts: `uniqueItems` stands only for two equal items neither of
+ * which is or holds a stand-in, and names that pair; `const` / `enum` only when
+ * no allowed value agrees with what was written.
+ */
+export function withoutStandInFindings(
+  errors: readonly LocatedFinding[] | null | undefined,
+  judgment: StandInJudgment,
+): AjvErrorLike[] {
+  if (!errors || errors.length === 0) return [];
+  const { standIns } = judgment;
+  if (standIns.size === 0) return [...errors];
+
+  const holdsStandIn = (path: string): boolean => {
+    for (const pointer of standIns.keys()) if (pointer.startsWith(`${path}/`)) return true;
+    return false;
+  };
+  const isOrHoldsStandIn = (path: string): boolean => standIns.has(path) || holdsStandIn(path);
+
+  /** Whether `allowed` is what `written` could become: equal where the author
+   *  wrote a value, anything of the stand-in's kind where they did not. */
+  const agrees = (written: unknown, allowed: unknown, path: string): boolean => {
+    const standIn = standIns.get(path);
+    if (standIn === "computed") return true;
+    if (standIn === "produced") return sameKind(written, allowed);
+    if (Array.isArray(written)) {
+      return (
+        Array.isArray(allowed) &&
+        written.length === allowed.length &&
+        written.every((item, i) => agrees(item, allowed[i], `${path}/${i}`))
+      );
+    }
+    if (!isPlainObject(written) || !isPlainObject(allowed)) return sameValue(written, allowed);
+    const keys = Object.keys(written);
+    return (
+      keys.length === Object.keys(allowed).length &&
+      keys.every(
+        (key) =>
+          Object.hasOwn(allowed, key) &&
+          agrees(written[key], allowed[key], `${path}/${escapeSegment(key)}`),
+      )
+    );
+  };
+
+  /** The finding as it stands once the stand-ins are accounted for, or
+   *  `undefined` when they excuse it. */
+  const standing = (finding: LocatedFinding): LocatedFinding | undefined => {
+    if (excused(finding, standIns)) return undefined;
+    const keyword = finding.keyword ?? "";
+    const path = finding.instancePath ?? "";
+    if (!CONTENT_KEYWORDS.has(keyword) || !holdsStandIn(path)) return finding;
+    const written = valueAt(judgment.value, path);
+    if (keyword !== "uniqueItems") {
+      const allowed =
+        keyword === "const" ? [finding.params?.allowedValue] : finding.params?.allowedValues;
+      if (!Array.isArray(allowed)) return finding;
+      return allowed.some((value) => agrees(written, value, path)) ? undefined : finding;
+    }
+    if (!Array.isArray(written)) return finding;
+    for (let i = written.length; i--; ) {
+      if (isOrHoldsStandIn(`${path}/${i}`)) continue;
+      for (let j = i; j--; ) {
+        if (isOrHoldsStandIn(`${path}/${j}`) || !sameValue(written[i], written[j])) continue;
+        return {
+          ...finding,
+          params: { i, j },
+          message: `must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
+        };
+      }
+    }
+    return undefined;
+  };
+
+  const nodeIds = new WeakMap<object, number>();
+  let nextNodeId = 0;
+  const nodeId = (node: unknown): string => {
+    if (node === null || typeof node !== "object") return "-";
+    let id = nodeIds.get(node);
+    if (id === undefined) nodeIds.set(node, (id = nextNodeId++));
+    return String(id);
+  };
+  /** What makes two findings one: where, what, raised by which node, how. */
+  const findingKey = (finding: LocatedFinding): string =>
+    [
+      finding.instancePath ?? "",
+      finding.keyword ?? "",
+      nodeId(finding.parentSchema),
+      JSON.stringify(finding.params ?? {}),
+    ].join("\0");
+
+  // A union is judged once per (union node, value location).
+  const verdicts = new Map<string, UnionVerdict | undefined>();
+
+  const verdictOf = (union: LocatedFinding): UnionVerdict | undefined => {
+    const node = union.parentSchema;
+    const branches = union.schema;
+    if (node === null || typeof node !== "object" || !Array.isArray(branches)) return undefined;
+    const path = union.instancePath ?? "";
+    const key = [nodeId(node), union.keyword, path].join("\0");
+    if (verdicts.has(key)) return verdicts.get(key);
+    // Unlocated until decided: a union reached again while it is being judged
+    // is kept, never guessed at.
+    verdicts.set(key, undefined);
+    const value = valueAt(judgment.value, path);
+    const reproduced = new Map<string, number>();
+    let satisfied = false;
+    for (const branch of branches) {
+      if (branch === null || typeof branch !== "object") return undefined;
+      const raised = judgment.validate(branch, value);
+      if (!raised) return undefined;
+      const findings = raised.map((finding) => ({
+        ...finding,
+        instancePath: `${path}${finding.instancePath ?? ""}`,
+      }));
+      for (const finding of findings) {
+        const findingId = findingKey(finding);
+        reproduced.set(findingId, (reproduced.get(findingId) ?? 0) + 1);
+      }
+      if (surviving(findings).length === 0) satisfied = true;
+    }
+    // Which of several matching branches a value takes is decided by its
+    // content, so that failure is excused where the value is a stand-in's.
+    const verdict = {
+      satisfied: isAmbiguousOneOf(union) ? excused(union, standIns) : satisfied,
+      reproduced,
+    };
+    verdicts.set(key, verdict);
+    return verdict;
+  };
+
+  const surviving = (findings: readonly LocatedFinding[]): LocatedFinding[] => {
+    const live: (LocatedFinding | undefined)[] = [...findings];
+    // Outermost first: a validator reports a union after everything its
+    // branches raised, nested unions included.
+    for (let k = live.length - 1; k >= 0; k--) {
+      const union = live[k];
+      if (!union || !isUnion(union)) continue;
+      const verdict = verdictOf(union);
+      if (!verdict?.satisfied) continue;
+      live[k] = undefined;
+      const owed = new Map(verdict.reproduced);
+      for (let j = k - 1; j >= 0; j--) {
+        const candidate = live[j];
+        if (!candidate) continue;
+        const candidateId = findingKey(candidate);
+        const count = owed.get(candidateId) ?? 0;
+        if (count === 0) continue;
+        owed.set(candidateId, count - 1);
+        live[j] = undefined;
+      }
+    }
+    const out: LocatedFinding[] = [];
+    for (const finding of live) {
+      const kept = finding && standing(finding);
+      if (kept) out.push(kept);
+    }
+    return out;
+  };
+
+  // Only a union needs its node: every other finding is decided where it sits.
+  const located =
+    errors.every((error) => !isUnion(error) || typeof error.parentSchema === "object")
+      ? errors
+      : judgment.validate(judgment.schema, judgment.value);
+  // No located twin of the list: nothing is attributed to a union, so every
+  // union stays, with what was raised around it.
+  const judged = located && located.length > 0 ? located : errors;
+  return surviving(judged).map(plainFinding);
 }

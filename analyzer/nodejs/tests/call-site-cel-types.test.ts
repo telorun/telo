@@ -305,57 +305,58 @@ describe("a nullable source into a slot that takes no null", () => {
   });
 });
 
+const stream = (of: unknown) => ({ "x-telo-type": { name: "Telo.Stream", of } });
+const holding = (members: Record<string, any>) => ({
+  type: "object",
+  required: Object.keys(members),
+  properties: members,
+});
+
+/** What is reported for `produced` flowing into `slot` through a plain chain. */
+const atCallSite = (produced: Record<string, any>, slot: Record<string, any>) =>
+  diagnose([
+    {
+      kind: "srv.Value",
+      metadata: { name: "produce" },
+      outputType: jsonSchema({ type: "object", properties: { out: produced } }),
+      value: {},
+    },
+    {
+      kind: "srv.Value",
+      metadata: { name: "take" },
+      inputType: jsonSchema({ type: "object", properties: { arg: slot } }),
+      value: {},
+    },
+    sequence([
+      { name: "made", invoke: ref("produce") },
+      { name: "call", invoke: ref("take"), inputs: { arg: cel("steps.made.result.out") } },
+    ]),
+  ]);
+const atOwnField = (produced: Record<string, any>, slot: Record<string, any>) =>
+  diagnose(
+    [{ kind: "srv.Hold", metadata: { name: "own" }, held: cel("src") }],
+    {},
+    [
+      definition("Hold", "Telo.Invocable", {
+        type: "object",
+        properties: {
+          held: {
+            ...slot,
+            "x-telo-context": { type: "object", properties: { src: produced } },
+          },
+        },
+      }),
+    ],
+  );
+const SITES = { "a call site": atCallSite, "an own field": atOwnField };
+const judged = (found: ReturnType<typeof diagnose>) =>
+  found
+    .filter((d) => d.code === "CEL_TYPE_ERROR" || d.code === "CEL_TYPE_ARGUMENT_MISMATCH")
+    .map((d) => `${d.code}: ${d.message}`);
+
 describe("the code a plain chain's producer-schema conflict carries", () => {
-  const stream = (of: unknown) => ({ "x-telo-type": { name: "Telo.Stream", of } });
   const bytes = { "x-telo-type": "Telo.Bytes" };
   const text = { type: "string" };
-  const holding = (members: Record<string, any>) => ({
-    type: "object",
-    required: Object.keys(members),
-    properties: members,
-  });
-
-  /** The two codes reported for `produced` flowing into `slot`, with messages. */
-  const atCallSite = (produced: Record<string, any>, slot: Record<string, any>) =>
-    diagnose([
-      {
-        kind: "srv.Value",
-        metadata: { name: "produce" },
-        outputType: jsonSchema({ type: "object", properties: { out: produced } }),
-        value: {},
-      },
-      {
-        kind: "srv.Value",
-        metadata: { name: "take" },
-        inputType: jsonSchema({ type: "object", properties: { arg: slot } }),
-        value: {},
-      },
-      sequence([
-        { name: "made", invoke: ref("produce") },
-        { name: "call", invoke: ref("take"), inputs: { arg: cel("steps.made.result.out") } },
-      ]),
-    ]);
-  const atOwnField = (produced: Record<string, any>, slot: Record<string, any>) =>
-    diagnose(
-      [{ kind: "srv.Hold", metadata: { name: "own" }, held: cel("src") }],
-      {},
-      [
-        definition("Hold", "Telo.Invocable", {
-          type: "object",
-          properties: {
-            held: {
-              ...slot,
-              "x-telo-context": { type: "object", properties: { src: produced } },
-            },
-          },
-        }),
-      ],
-    );
-  const SITES = { "a call site": atCallSite, "an own field": atOwnField };
-  const judged = (found: ReturnType<typeof diagnose>) =>
-    found
-      .filter((d) => d.code === "CEL_TYPE_ERROR" || d.code === "CEL_TYPE_ARGUMENT_MISMATCH")
-      .map((d) => `${d.code}: ${d.message}`);
 
   const CASES: [string, Record<string, any>, Record<string, any>, string][] = [
     ["a type argument of one value type", stream("Telo.Bytes"), stream(text), "CEL_TYPE_ARGUMENT_MISMATCH"],
@@ -396,5 +397,128 @@ describe("the code a plain chain's producer-schema conflict carries", () => {
       expect(found[0]).toContain("/body<of>");
       expect(found[0]).toContain("/b: required by");
     });
+  });
+});
+
+describe("JSON types compared by containment", () => {
+  const integer = { type: "integer" };
+  const number = { type: "number" };
+  const port = { "x-telo-type": "Telo.TcpPort" };
+  const list = (items: Record<string, any>) => ({ type: "array", items });
+
+  const CLEAN: [string, Record<string, any>, Record<string, any>][] = [
+    ["an integer into a number", integer, number],
+    ["a port into a number", port, number],
+    ["an integer member into a number member", holding({ n: integer }), holding({ n: number })],
+    ["integer items into number items", list(integer), list(number)],
+    ["a stream of integers into a stream of numbers", stream(integer), stream(number)],
+  ];
+  const REFUSED: [string, Record<string, any>, Record<string, any>, string][] = [
+    ["a number into an integer", number, integer, "CEL_TYPE_ERROR"],
+    ["a number into a port", number, port, "CEL_TYPE_ERROR"],
+    ["a number member into an integer member", holding({ n: number }), holding({ n: integer }), "CEL_TYPE_ERROR"],
+    ["number items into integer items", list(number), list(integer), "CEL_TYPE_ERROR"],
+    [
+      "a stream of numbers into a stream of integers",
+      stream(number),
+      stream(integer),
+      "CEL_TYPE_ARGUMENT_MISMATCH",
+    ],
+  ];
+
+  describe.each(Object.entries(SITES))("at %s", (siteName, site) => {
+    it.each(CLEAN)("accepts %s", (pair, produced, slot) => {
+      expect(judged(site(produced, slot))).toEqual([]);
+    });
+
+    it.each(REFUSED)("refuses %s", (pair, produced, slot, code) => {
+      const found = judged(site(produced, slot));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith(`${code}: `)).toBe(true);
+    });
+  });
+});
+
+describe("a template definition's top-level `inputs:`", () => {
+  /** A kind dispatching to `target`, whose `count` is an integer. */
+  const wrap = (inputs: unknown, own: Record<string, any> = {}) =>
+    analyze([
+      {
+        kind: "Telo.Definition",
+        metadata: { name: "Wrap", module: "srv" },
+        capability: "Telo.Invocable",
+        schema: { type: "object" },
+        ...own,
+        invoke: ref("target"),
+        inputs,
+        resources: [{ ...consume, metadata: { name: "target" } }],
+      },
+    ]);
+  const maybe = { type: "object", properties: { limit: { type: ["integer", "null"] } } };
+
+  it("is refused for an expression of another type, naming the target's inputType", () => {
+    expect(wrap({ count: cel("'abc'") })).toEqual([
+      "inputs.count: Telo.Definition/Wrap: CEL at 'inputs.count' returns 'string' " +
+        "but target's declared inputType expects 'integer'.",
+    ]);
+  });
+
+  it.each([
+    ["self", "self.limit", { schema: maybe }],
+    ["inputs", "inputs.limit", { inputType: jsonSchema(maybe) }],
+  ])("is refused for a nullable `%s` chain", (root, chain, own) => {
+    const found = wrap({ count: cel(chain) }, own);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain(`inputs.count: Telo.Definition/Wrap: CEL at 'inputs.count' reads '${chain}', which may be null`);
+    expect(found[0]).toContain("target's declared inputType expects 'integer'");
+  });
+
+  it("reports a map written as one expression once, against the target's inputType", () => {
+    expect(wrap(cel("'abc'"))).toEqual([
+      "inputs: Telo.Definition/Wrap: CEL at 'inputs' returns 'string' " +
+        "but target's declared inputType expects 'object'.",
+    ]);
+  });
+
+  it("accepts an expression that fits", () => {
+    const sized = { type: "object", properties: { size: { type: "integer" } } };
+    expect(wrap({ count: cel("self.size"), label: cel("'x'") }, { schema: sized })).toEqual([]);
+  });
+});
+
+describe("a path that is both an own field and a call-site slot", () => {
+  const whole = (target: Record<string, any>, expression: string) =>
+    analyze([
+      {
+        kind: "srv.Value",
+        metadata: { name: "produce" },
+        outputType: jsonSchema({
+          type: "object",
+          properties: { error: { type: ["object", "null"] } },
+        }),
+        value: {},
+      },
+      target,
+      sequence([
+        { name: "made", invoke: ref("produce") },
+        { name: "call", invoke: ref((target.metadata as { name: string }).name), inputs: cel(expression) },
+      ]),
+    ]);
+
+  it.each([
+    ["a nullable chain", "steps.made.result.error", "which may be null, but consume's declared inputType expects 'object'"],
+    ["a string", "'abc'", "returns 'string' but consume's declared inputType expects 'object'"],
+  ])("reports %s once, against the target's inputType", (written, expression, said) => {
+    const found = whole(consume, expression);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain(`steps[1].inputs: srv.Sequence/main: CEL at 'steps[1].inputs'`);
+    expect(found[0]).toContain(said);
+  });
+
+  it("reports a string once against the field, where the target declares no inputType", () => {
+    const open = { kind: "srv.Value", metadata: { name: "open" }, value: {} };
+    expect(whole(open, "'abc'")).toEqual([
+      "steps[1].inputs: srv.Sequence/main: CEL at 'steps[1].inputs' returns 'string' but the field expects 'object'.",
+    ]);
   });
 });

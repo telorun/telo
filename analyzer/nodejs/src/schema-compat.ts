@@ -28,8 +28,10 @@ const Ajv = (AjvModule as any).default ?? AjvModule;
  *
  *  Called once for the module-level instance and once per
  *  DefinitionRegistry instance. */
-export function createAjv(): InstanceType<typeof Ajv> {
-  const instance = new Ajv({ allErrors: true, strict: false });
+export function createAjv(options: { verbose?: boolean } = {}): InstanceType<typeof Ajv> {
+  // `verbose` makes each error name the schema node that raised it — what the
+  // stand-in judge locates a union by.
+  const instance = new Ajv({ allErrors: true, strict: false, verbose: options.verbose === true });
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
@@ -119,6 +121,12 @@ export function checkSchemaCompatibility(
 }
 
 type RefResolver = ((ref: string) => Record<string, any> | undefined) | undefined;
+
+/** JSON types compare by containment: every `integer` is a `number`, so one
+ *  satisfies a slot declaring the other, and not the reverse. */
+function jsonTypeSatisfies(source: string, target: string): boolean {
+  return source === target || (source === "integer" && target === "number");
+}
 
 function deref(schema: Record<string, any>, resolveRef: RefResolver): Record<string, any> {
   if (!resolveRef || typeof schema.$ref !== "string") return schema;
@@ -223,11 +231,11 @@ function compare(
   }
 
   // One side declares a value type and the other does not. A `json`
-  // representation refines a base type, so it is compared through that base — a
-  // `Telo.TcpPort` into a plain `integer` slot is gradual typing working. An
-  // `instance` is not JSON at all, so ANY declared JSON type on the other side is
-  // a definite conflict; a side declaring no type at all is still saying nothing
-  // and stays compatible.
+  // representation refines a base type, so it stands as that base on the side
+  // declaring it — a `Telo.TcpPort` into a plain `integer` or `number` slot is
+  // gradual typing working. An `instance` is not JSON at all, so ANY declared
+  // JSON type on the other side is a definite conflict; a side declaring no type
+  // at all is still saying nothing and stays compatible.
   if (Boolean(sourceType) !== Boolean(targetType)) {
     const declared = (sourceType ?? targetType)!;
     const other = sourceType ? target : source;
@@ -245,7 +253,10 @@ function compare(
     if (declared.entry && typeof other.type === "string") {
       const base = celBaseOfValueType(declared.entry);
       const asJson = base === undefined ? undefined : declared.entry.base;
-      if (asJson !== other.type) {
+      const fits =
+        asJson !== undefined &&
+        (sourceType ? jsonTypeSatisfies(asJson, other.type) : jsonTypeSatisfies(other.type, asJson));
+      if (!fits) {
         issues.push(
           `${path || "/"}: value type mismatch — ${
             sourceType ? `${roles.source} is` : `${roles.target} expects`
@@ -261,7 +272,7 @@ function compare(
   if (
     typeof source.type === "string" &&
     typeof target.type === "string" &&
-    source.type !== target.type
+    !jsonTypeSatisfies(source.type, target.type)
   ) {
     issues.push(
       `${path || "/"}: type mismatch — ${roles.source} is '${source.type}', ${roles.target} expects '${target.type}'`,
@@ -781,6 +792,9 @@ export function resolveRefIn(
 /** Looks a registered schema up by its `$id`. */
 export type ExternalSchemaResolver = (ref: string) => Record<string, any> | undefined;
 
+/** The keys a reference node is made of — what an expansion replaces. */
+export const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
+
 /**
  * A copy of `schema` with every named shape it references — at the root and at
  * any depth — replaced by the shape itself.
@@ -792,8 +806,6 @@ export type ExternalSchemaResolver = (ref: string) => Record<string, any> | unde
  * recursive shape finite; document-local `#/…` references belong to the document
  * they sit in and are left too.
  */
-const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
-
 export function inlineNamedShapes(
   schema: Record<string, any>,
   resolve: ExternalSchemaResolver,
