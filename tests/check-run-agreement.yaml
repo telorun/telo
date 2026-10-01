@@ -97,6 +97,7 @@ targets:
   - !ref hostPathLiteralPrefix
   - !ref hostPathComputedAtRuntime
   - !ref modulePathMissingAtRuntime
+  - !ref includeMissingInPathImport
   - !ref hostPathUntypedSource
   - !ref hostPathUntypedSourceAtRuntime
   - !ref hostPathKindDefault
@@ -1286,7 +1287,7 @@ expect:
   runFails: "ERR_HOST_PATH_RELATIVE"
 ---
 # A `!module-path` naming nothing: the loader asks the source and reports it,
-# and the kernel refuses it when the resource holding it is created.
+# and the kernel refuses the load on the same finding.
 kind: Assert.Manifest
 metadata:
   name: modulePathMissingAtRuntime
@@ -1295,7 +1296,20 @@ expect:
   errors:
     - code: MODULE_PATH_NOT_FOUND
       message: "names 'no-such-directory', and there is nothing there"
-  runFails: "ERR_MODULE_PATH_NOT_FOUND"
+  runFails: "names 'no-such-directory', and there is nothing there"
+---
+# An `!include-text` naming nothing in a library reached by a path import: the
+# consumer's check reports it at the library's line, and the kernel refuses the
+# load rather than failing when the resource holding it is created.
+kind: Assert.Manifest
+metadata:
+  name: includeMissingInPathImport
+source: ./__fixtures__/check-run-agreement/include-missing/telo.yaml
+expect:
+  errors:
+    - code: INCLUDE_FILE_NOT_FOUND
+      message: "names 'primer.md', and there is nothing there"
+  runFails: "names 'primer.md', and there is nothing there"
 ---
 # A host path read from a source declared a plain string carries relative text
 # through unresolved: reported at the slot that reads it…

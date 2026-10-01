@@ -187,7 +187,7 @@ function includeEngine(name: string, produced: Record<string, unknown>): Templat
       // A malformed path claims nothing. `analyze` is what says why, so
       // claiming a half-understood path here would produce a second, worse
       // report from publish about the same mistake.
-      return path ? [{ path }] : [];
+      return path ? [{ path, notFoundCode: "INCLUDE_FILE_NOT_FOUND" }] : [];
     },
   };
 }

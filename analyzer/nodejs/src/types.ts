@@ -137,6 +137,15 @@ export interface ManifestSource {
    *  `telo.yaml`. Optional — only filesystem-capable sources implement this;
    *  without it a `!module-path` naming nothing is refused by the runtime alone. */
   exists?(base: string, relative: string): Promise<boolean>;
+
+  /** Where `relative`, resolved as `exists` resolves it, is on this host — for
+   *  a message a reader acts on. Optional, like `exists`. */
+  locate?(base: string, relative: string): string;
+
+  /** The entry names of the directory at `relative`, resolved as `exists`
+   *  resolves it, or `undefined` when there is no directory there. Optional —
+   *  without it a missing file is reported with no suggestion. */
+  listDirectory?(base: string, relative: string): Promise<string[] | undefined>;
 }
 
 export interface LoadOptions {

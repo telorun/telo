@@ -440,6 +440,40 @@ describe("OciTransport round-trip against a mock registry", () => {
     });
   });
 
+  it("writes author annotations beside the derived ones, replacing the published set", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] }, {
+      annotations: { "com.example.note": "first" },
+    });
+    await t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] }, {
+      annotations: { "com.example.other": "second" },
+    });
+
+    expect(reg.manifestJson("aws/telo-s3", "1.2.0").annotations).toEqual({
+      "org.opencontainers.image.title": "s3",
+      "org.opencontainers.image.version": "1.2.0",
+      "com.example.other": "second",
+    });
+  });
+
+  it("refuses an author annotation on a derived key before pushing anything", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(mockRegistry().impl);
+    const t = new OciTransport();
+
+    // MANIFEST declares no license: the key is still the metadata's to write.
+    await expect(
+      t.publish("oci://reg.test/aws/telo-s3", { manifest: MANIFEST, layers: [] }, {
+        annotations: { "org.opencontainers.image.licenses": "MIT" },
+      }),
+    ).rejects.toThrow(/set metadata\.license in telo\.yaml/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("rejects a host-only destination instead of deriving the repo from metadata", async () => {
     process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
     const reg = mockRegistry();

@@ -68,9 +68,6 @@ services:
       # Dev and the e2e suite re-register repeatedly from one address, so lift
       # the ceiling here — otherwise a second test run inside the window 429s.
       REGISTER_RATE_LIMIT: "1000"
-      # The image's released CLI, on PATH — see the note on the `development`
-      # stage in apps/hub/Dockerfile.
-      TELO_BIN: /usr/local/bin/telo
       TELO_CACHE_DIR: /telo-cache
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8040/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

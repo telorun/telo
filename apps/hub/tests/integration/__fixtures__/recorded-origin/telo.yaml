@@ -1,0 +1,123 @@
+# A stand-in origin, as the hub's origin reads see it: run as
+# `<teloCommand> module versions <ref> --json` or
+# `<teloCommand> module manifest <ref>@<version> --json`, it answers with what is
+# recorded for that ref — each one a module the hub must refuse:
+#
+# - `oci://example.test/stale-app@1.0.0`: a Telo.Application as a CLI that
+#   predates the `application` field reports it — everything else
+#   `telo module manifest --json` reports, and no contract.
+# - `oci://example.test/definition-root@1.0.0` (ingested) and
+#   `oci://example.test/definition-first` (registered, one version, 1.0.0): a file
+#   whose first document is a Telo.Definition, followed by a versioned
+#   Telo.Library.
+kind: Telo.Application
+metadata:
+  name: RecordedOrigin
+  version: 1.0.0
+  description: >-
+    Answers the hub's `telo module versions --json` and `telo module manifest
+    --json` reads with what is recorded for the requested ref.
+imports:
+  Console: ../../../../../../modules/console
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+variables:
+  group:
+    type: string
+    arg: { position: 0 }
+    default: ""
+  verb:
+    type: string
+    arg: { position: 1 }
+    default: ""
+  ref:
+    type: string
+    arg: { position: 2 }
+    default: ""
+  json:
+    type: boolean
+    arg: json
+    default: false
+targets:
+  - !ref answer
+---
+kind: Run.Sequence
+metadata:
+  name: answer
+steps:
+  - name: verbGate
+    if: !cel "variables.group != 'module' || !(variables.verb in ['versions', 'manifest']) || !variables.json"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_FIXTURE_UNSUPPORTED_READ
+          message: !interpolate "this origin answers only `module versions|manifest <ref> --json`, not `${{ variables.group }} ${{ variables.verb }}`"
+  # What `module versions` reports, newest first.
+  - name: versions
+    value:
+      oci://example.test/definition-first: [1.0.0]
+  # What `module manifest` reports.
+  - name: manifests
+    value:
+      oci://example.test/stale-app@1.0.0:
+        ref: oci://example.test/stale-app@1.0.0
+        cacheKey: oci/example.test/stale-app/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Application
+          metadata:
+            name: StaleApp
+            version: 1.0.0
+          variables:
+            greeting:
+              env: GREETING
+              type: string
+              default: hello
+        integrity: sha256-VhS4Qh8GkpaS4kW0l3PhD1Zz1yJ0jH8dG0Ybq1c2b2E
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/definition-root@1.0.0:
+        ref: oci://example.test/definition-root@1.0.0
+        cacheKey: oci/example.test/definition-root/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Definition
+          metadata:
+            name: Greeter
+          capability: Telo.Invocable
+          schema:
+            type: object
+          ---
+          kind: Telo.Library
+          metadata:
+            name: DefinitionRoot
+            version: 1.0.0
+        integrity: sha256-2mcx3BNE8y0FfpWZw3YkM8Vh2cHgqS0b1Zk6nHnAq0Q
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+      oci://example.test/definition-first@1.0.0:
+        ref: oci://example.test/definition-first@1.0.0
+        cacheKey: oci/example.test/definition-first/1.0.0/telo.yaml
+        manifest: |
+          kind: Telo.Definition
+          metadata:
+            name: Greeter
+          capability: Telo.Invocable
+          schema:
+            type: object
+          ---
+          kind: Telo.Library
+          metadata:
+            name: DefinitionFirst
+            version: 1.0.0
+        integrity: sha256-QYx3n0Jm0p4Y0z4mJmQy6m7l3oK0kQqg5W5m7q8r9s0
+        runtime: { runtimes: {}, languages: [], portable: true, kinds: [] }
+  - name: recorded
+    value: !cel "variables.verb == 'versions' ? steps.versions.result : steps.manifests.result"
+  - name: refGate
+    if: !cel "!(variables.ref in steps.recorded.result)"
+    then:
+      - name: unknownRef
+        throw:
+          code: ERR_FIXTURE_UNSUPPORTED_READ
+          message: !interpolate "this origin records no `${{ variables.verb }}` answer for ${{ variables.ref }}"
+  - name: print
+    invoke: !ref Console.write
+    inputs:
+      output: !cel >-
+        json(steps.recorded.result[variables.ref]) + '\n'

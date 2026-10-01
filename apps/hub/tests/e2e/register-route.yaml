@@ -7,13 +7,21 @@ metadata:
     (POST /register), run against a live hub at http://localhost:8040. Covers
     the validate-and-schedule success path (a reachable Telo module returns 202
     and its status reaches `ready`), the inline-error path (an unresolvable ref
-    returns 400 with a reason, never tracked), and the two rejection gates.
+    returns 400 with a reason, never tracked), the two rejection gates, and a
+    Telo.Application: accepted, indexed with its declared contract, found only
+    when a search asks for applications, and never offered as a ref to import.
+
+    The application is `examples/agent-console` at a fixed commit of the
+    repository, read over its raw GitHub URL, so the contract asserted here
+    cannot move under the test.
 
     202, not 200: the ref is validated and recorded synchronously while the
     indexing itself is a durable run, so "accepted" is what the response can
     honestly claim. `GET /register/status?ref=` is what says when the module is
     actually searchable.
 imports:
+  McpClient: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
+  Yaml: oci://ghcr.io/telorun/yaml@0.10.3#sha256-xgWF987hJC2tA6q4SP3BUhSzZz2eSbVmVUK4DVOGupk
   Timer: oci://ghcr.io/telorun/timer@0.8.3#sha256-OlGVb6Q4aFilkXVAiB9ZK6V0aF6l-Th1jHxzUuGnYZw
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
   Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
@@ -23,7 +31,8 @@ targets:
   - !ref register_StatusReachesReady
   - !ref register_InvalidRefReturns400
   - !ref register_LocalPathRejected
-  - !ref register_ApplicationRejected
+  - !ref register_NonModuleRefused
+  - !ref register_ApplicationAccepted
 ---
 # A reachable Telo module (the seeded console module) validates and registers.
 # Re-registering an already-tracked ref is idempotent (INSERT ... ON CONFLICT
@@ -202,32 +211,166 @@ steps:
           identical: { const: true }
         required: [existingStatus, missingStatus, identical]
 ---
-# Only a Telo.Library is registerable — an Application cannot be imported, so it
-# defines no importable kinds and would store a record that indexes nothing.
+# A file with no module document is refused before anything is recorded: the
+# origin read cannot name a version of it. This is the CLI's refusal, reached
+# before the hub's own root-kind check, which only a file whose first document is
+# not a module doc while a later one is would reach.
 kind: Run.Sequence
-metadata: { name: register_ApplicationRejected }
+metadata: { name: register_NonModuleRefused }
 steps:
   - name: hit
     invoke:
       kind: HttpClient.Request
-      metadata: { name: PostApplicationRef }
+      metadata: { name: PostNonModuleRef }
       url: http://localhost:8040/register
       method: POST
-      # Fetches the manifest from raw.githubusercontent.com before it can read
-      # the root doc's kind, so this one is network-bound as well.
       timeout: 30000
       body:
-        ref: https://raw.githubusercontent.com/telorun/telo/refs/heads/main/examples/agent-console/telo.yaml
+        ref: https://raw.githubusercontent.com/telorun/telo/f2ac6357f1a4844afb1ff7b946d6176dd63f0d23/tests/__fixtures__/non-library-import-target.yaml
   - name: assert
     inputs:
       status: !cel "steps.hit.result.status"
       error: !cel "steps.hit.result.body.error"
     invoke:
       kind: Assert.Schema
-      metadata: { name: AssertApplicationRejected }
+      metadata: { name: AssertNonModuleRefused }
       schema:
         type: object
         properties:
           status: { const: 400 }
-          error: { type: string, pattern: "only a Telo.Library can be registered" }
+          error: { type: string, pattern: "declares no metadata\\.version" }
         required: [status, error]
+---
+# An application registers like a library and is indexed by what it asks of
+# whoever runs it. Search offers it only to a caller that asks for applications,
+# and the ref completions — which offer refs to import — never do.
+kind: Run.Sequence
+metadata: { name: register_ApplicationAccepted }
+steps:
+  - name: register
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: PostApplicationRef }
+      url: http://localhost:8040/register
+      method: POST
+      timeout: 30000
+      body:
+        ref: https://raw.githubusercontent.com/telorun/telo/f2ac6357f1a4844afb1ff7b946d6176dd63f0d23/examples/agent-console/telo.yaml
+  - name: poll
+    invoke:
+      kind: Run.Loop
+      maxIterations: 30
+      condition: !cel "iteration == 0 || previous.status.result.body.status != 'ready'"
+      steps:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs:
+            duration: 2s
+        - name: status
+          invoke:
+            kind: HttpClient.Request
+            metadata: { name: GetApplicationStatus }
+            url: http://localhost:8040/register/status?ref=https%3A%2F%2Fraw.githubusercontent.com%2Ftelorun%2Ftelo%2Ff2ac6357f1a4844afb1ff7b946d6176dd63f0d23%2Fexamples%2Fagent-console%2Ftelo.yaml
+            method: GET
+            timeout: 10000
+      outputs:
+        status: !cel "steps.status.result.status"
+        body: !cel "steps.status.result.body"
+  - name: detail
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: GetApplicationDetail }
+      url: http://localhost:8040/module?ref=https%3A%2F%2Fraw.githubusercontent.com%2Ftelorun%2Ftelo%2Ff2ac6357f1a4844afb1ff7b946d6176dd63f0d23%2Fexamples%2Fagent-console%2Ftelo.yaml
+      method: GET
+  - name: byDefault
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: SearchApplicationByDefault }
+      url: "http://localhost:8040/search/resources?q=agent%20console"
+      method: GET
+  - name: asApplication
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: SearchApplicationEntry }
+      url: "http://localhost:8040/search/resources?q=agent%20console&entry=application"
+      method: GET
+  - name: allThree
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: SearchEveryEntry }
+      url: "http://localhost:8040/search/resources?q=console&entry=kind&entry=instance&entry=application"
+      method: GET
+  - name: refs
+    invoke:
+      kind: HttpClient.Request
+      metadata: { name: RefsForApplication }
+      url: http://localhost:8040/refs?q=agent-console
+      method: GET
+  - name: suggest
+    invoke:
+      kind: McpClient.ToolsCall
+      metadata: { name: SuggestApplicationRef }
+      client:
+        kind: McpClient.HttpClient
+        url: http://localhost:8040/mcp
+        clientInfo: { name: telo-test, version: 1.0.0 }
+    inputs:
+      name: suggest_module_refs
+      arguments:
+        query: agent-console
+  - name: suggested
+    invoke: { kind: Yaml.Parse }
+    inputs:
+      text: !cel "steps.suggest.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        registered: !cel "steps.register.result.status"
+        status: !cel "steps.poll.result.body.status"
+        application: !cel "steps.detail.result.body.application"
+        kinds: !cel "steps.detail.result.body.kinds"
+        exportedResources: !cel "steps.detail.result.body.exportedResources"
+        runtime: !cel "steps.detail.result.body.module.runtime"
+        inDefaultSearch: !cel >-
+          steps.byDefault.result.body.hits.exists(h, h.module.ref.endsWith('/examples/agent-console/telo.yaml'))
+        applicationHits: !cel >-
+          steps.asApplication.result.body.hits
+            .filter(h, h.module.ref.endsWith('/examples/agent-console/telo.yaml'))
+            .map(h, [h.entry, h.name, h.kind, h.kindRef, h.capability, h.runtime])
+        entriesRanked: !cel >-
+          ['kind', 'instance', 'application'].map(t,
+            steps.allThree.result.body.hits.exists(h, h.entry == t))
+        refs: !cel >-
+          steps.refs.result.body.refs.filter(r, r.ref.endsWith('/examples/agent-console/telo.yaml')).size()
+        suggested: !cel >-
+          steps.suggested.result.docs[0].refs.filter(r, r.ref.endsWith('/examples/agent-console/telo.yaml')).size()
+      expected:
+        registered: 202
+        status: ready
+        application:
+          variables:
+            - name: historyFile
+              description: ""
+              required: false
+              env: HISTORY_FILE
+              default: ./tmp/agent-history.sqlite
+              arg: null
+              schema: { type: string, x-telo-type: Telo.HostPath }
+          secrets:
+            - name: openaiApiKey
+              description: ""
+              required: true
+              env: OPENAI_API_KEY
+              schema: { type: string }
+          ports: []
+        kinds: []
+        exportedResources: []
+        runtime: null
+        inDefaultSearch: false
+        applicationHits:
+          - [application, AgentConsole, Application, "", "", null]
+        entriesRanked: [true, true, true]
+        refs: 0
+        suggested: 0
+    invoke:
+      kind: Assert.Equals

@@ -39,6 +39,7 @@ metadataFilter:
 
 - Operators are capped at the **intersection** of what all intended backends can push down natively (flat keys only — no dotted paths, regex, or `$exists` in v1).
 - A backend that cannot translate an operator **throws** — it never silently ignores it or post-filters in memory, so the same manifest yields the same result on every backend.
+- `Match` filters **before** it takes its `topK`: an entry the filter excludes never takes a match's place, results come best first, and a result holds `min(topK, matching)` entries unless a backend on an approximate index reaches the scan bound it documents.
 - Each backend documents its operator → native mapping.
 
 ## Example

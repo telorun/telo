@@ -298,14 +298,15 @@ export function useWorkspaceLifecycle({
     }));
   }
 
-  // "Open in Telo Studio": when launched with `?open=<url>`, resolve the
-  // manifest and its same-origin relative cascade into an import plan and
+  // "Open in Telo Studio": when launched with `?open=<url or pinned oci ref>`,
+  // resolve the manifest (and an http root's same-origin cascade) into a plan and
   // always surface it for confirmation before persisting. Takes precedence
   // over the silent auto-restore below. Runs once per mount.
   useEffect(() => {
     if (remoteImportRef.current) return;
     const url = readManifestUrlParam(window.location.search);
     if (!url) return;
+    const pageFragment = window.location.hash;
     remoteImportRef.current = true;
     autoRestoredRef.current = true;
     clearManifestUrlParam();
@@ -315,7 +316,9 @@ export function useWorkspaceLifecycle({
     (async () => {
       try {
         const adapter = createVirtualWorkspaceAdapter();
-        const plan = await buildRemoteImportPlan(url, adapter, createManifestSources(settings));
+        const plan = await buildRemoteImportPlan(url, adapter, createManifestSources(settings), {
+          pageFragment,
+        });
         if (!cancelled) setPendingImport({ adapter, plan });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));

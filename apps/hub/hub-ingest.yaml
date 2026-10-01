@@ -17,8 +17,9 @@ metadata:
   name: HubIngest
   description: >-
     Ingests one published module version: reads its manifest from the origin,
-    caches it to the manifest bucket, writes its metadata, resource kinds and
-    exported instances in one transaction, and re-embeds the latest version.
+    caches it to the manifest bucket, writes its metadata, resource kinds,
+    exported instances and an application's declared inputs in one transaction,
+    and re-embeds the latest version.
 requires:
   # `resources:` inputs on a library.
   telo: ">=0.83.0"
@@ -42,7 +43,7 @@ imports:
     resources:
       shellHost: !ref shellHost
     variables:
-      teloBin: !cel "variables.teloBin"
+      teloCommand: !cel "variables.teloCommand"
 resources:
   connection:
     kind: Postgres.Connection
@@ -65,16 +66,20 @@ resources:
     kind: Shell.LocalHost
     description: Forwarded to the origin reader — where the telo CLI runs.
 variables:
-  teloBin:
-    type: string
-    default: telo
+  # Forwarded to the origin reader: the command its reads run.
+  teloCommand:
+    type: array
+    items: { type: string }
+    minItems: 1
+    default: [telo]
   # The revision of this ingest pipeline. Raising it makes every tracked version
   # due exactly once, which is the whole-registry re-ingest control — and what
   # replaced the per-column backfill probes, each of which had to be added and
-  # read one at a time.
+  # read one at a time. 6 records each version's root kind and an application's
+  # contract, and stops storing an application's own kinds as exported.
   ingestRev:
     type: integer
-    default: 5
+    default: 6
 exports:
   resources:
     - ingestVersion
@@ -149,6 +154,37 @@ steps:
               message: !cel >-
                 'telo module manifest ' + inputs.ref + '@' + inputs.version + ' failed: '
                   + steps.manifest.result.error
+      # The root kind is recorded from the manifest and nothing else, so a root
+      # that is neither module kind is refused rather than recorded as one.
+      - name: rootGate
+        if: !cel "!(steps.manifest.result.docs[0].kind in ['Telo.Library', 'Telo.Application'])"
+        then:
+          - name: refuseRoot
+            throw:
+              code: INGEST_ROOT_KIND_UNSUPPORTED
+              message: !cel >-
+                'the root document of ' + inputs.ref + '@' + inputs.version + ' is '
+                  + steps.manifest.result.docs[0].kind
+                  + '; only a Telo.Library or Telo.Application is indexed'
+      # An application is indexed by its declared contract, which the CLI reports
+      # as `application`. A CLI too old to report it would leave the application
+      # indexed with an empty contract, which reads as "asks for nothing" — so the
+      # version is refused. A refused version never reaches the current
+      # `ingest_rev`, so every reconcile pass claims it again, and it is indexed on
+      # the first pass after the origin reads run a telo that reports the field.
+      - name: contractGate
+        if: !cel >-
+          steps.manifest.result.docs[0].kind == 'Telo.Application'
+            && steps.manifest.result.payload.?application.orValue(null) == null
+        then:
+          - name: refuseContract
+            throw:
+              code: INGEST_CONTRACT_MISSING
+              message: !cel >-
+                'telo module manifest ' + inputs.ref + '@' + inputs.version
+                  + ' --json reported no `application` field for a Telo.Application — '
+                  + 'the telo running the origin reads predates it; point TELO_COMMAND '
+                  + 'at the telo that runs this hub'
       # The CLI gives a local module no cache location, since no editor reads
       # one from the public cache; the hub still keeps its manifest so
       # `get_module_manifest` answers for it, under a key of its own that no
@@ -270,7 +306,8 @@ inputType:
       # Where the manifest was cached — the CLI's key, or the hub's own for a
       # local module.
       cacheKey: { type: string }
-      # `telo module manifest --json` verbatim: cache key, integrity, runtime.
+      # `telo module manifest --json` verbatim: cache key, integrity, runtime,
+      # and an application's declared contract.
       payload: { type: object, additionalProperties: true }
       # The parsed manifest documents.
       docs: { type: array }
@@ -286,6 +323,7 @@ steps:
   #     missing `exports.kinds` list means no restriction, a declared list gates
   #     to the listed names. Re-exported entries (`Alias.Kind`) name another
   #     module's kind, never a local definition, so they don't mark local rows.
+  #     An application exports nothing, so none of its kinds is exported.
   #   extends / replacedBy — BOTH are alias-qualified kinds (`Cache.Store`,
   #     `Self.Migrations`), and an alias is private to the manifest that declares
   #     it, so it means nothing to anyone else. Resolving the prefix through the
@@ -310,9 +348,10 @@ steps:
         'abstract': d.kind == 'Telo.Abstract',
         'description': d.metadata.?description.orValue(''),
         'categories': d.metadata.?categories.orValue(inputs.docs[0].metadata.?categories.orValue([])),
-        'exported': 'exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
-          ? inputs.docs[0].exports.kinds.exists(k, k == d.metadata.name)
-          : true,
+        'exported': inputs.docs[0].kind == 'Telo.Application' ? false
+          : ('exports' in inputs.docs[0] && 'kinds' in inputs.docs[0].exports
+            ? inputs.docs[0].exports.kinds.exists(k, k == d.metadata.name)
+            : true),
         'deprecated_reason': d.metadata.?deprecated.?reason.orValue(''),
         'extends_kind': [d.?extends.orValue(''), d.metadata.?deprecated.?replacedBy.orValue('')]
           .map(v, v == '' ? '' : v.split('.')[1])[0],
@@ -449,7 +488,7 @@ steps:
           (module_id, version, digest, module_name, description, repository, license, manifest_key,
            categories, category_labels, integrity,
            homepage, deprecated_reason, replaced_by, runtimes, runtimes_full, languages, portable,
-           runtimes_asked)
+           runtimes_asked, root_kind)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
                 ARRAY(SELECT category_slug(l) FROM unnest($9::text[]) AS l), $9::text[],
                 COALESCE($10, ''),
@@ -460,7 +499,7 @@ steps:
                 -- decided here from $18.
                 CASE WHEN $18 THEN $14::text[] END,
                 $15::text[], $16::text[], $17,
-                TRUE)
+                TRUE, $19)
         ON CONFLICT (module_id, version) DO UPDATE SET
           digest = EXCLUDED.digest,
           module_name = EXCLUDED.module_name,
@@ -479,6 +518,7 @@ steps:
           languages = EXCLUDED.languages,
           portable = EXCLUDED.portable,
           runtimes_asked = TRUE,
+          root_kind = EXCLUDED.root_kind,
           tracked_at = NOW()
       bindings:
         - !cel "inputs.moduleId"
@@ -509,6 +549,8 @@ steps:
         # kernel can run ('{}'), and recording '{}' for an old CLI would store a
         # false fact that never self-corrects once the binary is upgraded.
         - !cel "'runtime' in inputs.payload"
+        # The root kind, from the manifest: `Library` or `Application`.
+        - !cel "inputs.docs[0].kind == 'Telo.Application' ? 'Application' : 'Library'"
   - name: clearKinds
     invoke: !ref exec
     inputs:
@@ -562,6 +604,44 @@ steps:
         - !cel "inputs.version"
         - !cel "json(steps.kindRows.result)"
         - !cel "inputs.ref"
+  # An application's declared contract, one row per input, stored as the CLI
+  # reports it. The binding's parts are columns; the value schema and default
+  # are stored opaque, since the hub interprets neither. A secret keeps no
+  # default and a type-only schema, whatever the payload carried.
+  - name: clearInputs
+    invoke: !ref exec
+    inputs:
+      sql: DELETE FROM application_inputs WHERE module_id = $1 AND version = $2
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+  - name: insertInputs
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        INSERT INTO application_inputs
+          (module_id, version, block, name, ordinal, description, required, env,
+           arg_form, arg_flag, arg_short, arg_position, protocol, default_value, schema)
+        SELECT $1, $2, b.block, e.value->>'name', e.ord::int,
+               COALESCE(e.value->>'description', ''), (e.value->>'required')::boolean,
+               COALESCE(e.value->>'env', ''),
+               e.value->'arg'->>'form', e.value->'arg'->>'flag', e.value->'arg'->>'short',
+               (e.value->'arg'->>'position')::int,
+               CASE WHEN b.block = 'ports' THEN e.value->>'protocol' END,
+               CASE WHEN b.block = 'secrets' THEN NULL ELSE e.value->'default' END,
+               CASE WHEN b.block = 'secrets'
+                    THEN jsonb_strip_nulls(jsonb_build_object(
+                           'type', e.value->'schema'->'type',
+                           'x-telo-type', e.value->'schema'->'x-telo-type'))
+                    ELSE e.value->'schema' END
+        FROM (VALUES ('variables'), ('secrets'), ('ports')) AS b(block)
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(NULLIF($3, '')::jsonb -> b.block, '[]'::jsonb))
+          WITH ORDINALITY AS e(value, ord)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel >-
+          inputs.docs[0].kind == 'Telo.Application' ? json(inputs.payload.application) : ''
   - name: clearReexports
     invoke: !ref exec
     inputs:
@@ -655,9 +735,11 @@ inputType:
       version: { type: string }
       docs: { type: array }
 steps:
-  # Read back the just-inserted entries — every exported kind and instance, as
-  # search ranks them — for their ids: the vector id is the `search_entries`
-  # id, the join key the RRF search fuses on.
+  # Read back the just-inserted entries — every exported kind, instance and
+  # application, as search ranks them — for their ids: the vector id is the
+  # `search_entries` id, the join key the RRF search fuses on. Each vector carries
+  # its entry type, which search filters the nearest-neighbour lookup by, so an
+  # entry type a caller did not ask for never takes a neighbour's place.
   - name: kindRows
     invoke: !ref query
     inputs:
@@ -681,15 +763,18 @@ steps:
       # Composed passage: the entry's name + capability (an instance also names
       # the kind it is one of) + curated description, framed by the owning
       # module's name + description. The curated line is the primary signal.
+      # An application IS its module, so its passage is its name and
+      # description alone.
       - name: passages
         invoke: !ref embedPassage
         inputs:
           input: !cel >-
-            steps.kindRows.result.rows.map(r,
-              r.name + (r.entry == 'instance' ? ', a ready-made ' + r.kind : '')
+            steps.kindRows.result.rows.map(r, r.entry == 'application'
+              ? r.name + '. ' + r.description
+              : r.name + (r.entry == 'instance' ? ', a ready-made ' + r.kind : '')
                 + (r.capability != '' ? ' (' + r.capability + ')' : '') + '. ' + r.description +
-              ' — from module ' + inputs.docs[0].metadata.name + ': ' +
-              inputs.docs[0].metadata.?description.orValue(''))
+                ' — from module ' + inputs.docs[0].metadata.name + ': ' +
+                inputs.docs[0].metadata.?description.orValue(''))
       - name: upsert
         invoke: !ref vectorUpsert
         inputs:
@@ -697,7 +782,8 @@ steps:
             enumerate(steps.kindRows.result.rows).map(e, {
               'id': string(e.value.id),
               'vector': steps.passages.result.embeddings[e.index],
-              'metadata': {'module_id': inputs.moduleId, 'version': inputs.version, 'name': e.value.name}
+              'metadata': {'module_id': inputs.moduleId, 'version': inputs.version,
+                           'name': e.value.name, 'entry': e.value.entry}
             })
 ---
 # One reconcile pass: every registered module's versions are enumerated, each

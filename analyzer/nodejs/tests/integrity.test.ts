@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HttpSource } from "../src/sources/http-source.js";
 import {
+  ManifestNotFoundError,
   sha256Base64Url,
   splitIntegrity,
   verifyIntegrity,
@@ -105,6 +106,16 @@ describe("source read verification", () => {
     vi.stubGlobal("fetch", mockFetch(yaml));
     const src = new HttpSource();
     await expect(src.read("https://x.example/lib/telo.yaml")).resolves.toMatchObject({ text: yaml });
+  });
+
+  it("HttpSource throws ManifestNotFoundError on a 404", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404, statusText: "Not Found" })) as unknown as typeof fetch,
+    );
+    const error = await new HttpSource().read("https://x.example/lib/telo.yaml").catch((e) => e);
+    expect(error).toBeInstanceOf(ManifestNotFoundError);
+    expect(error).toMatchObject({ url: "https://x.example/lib/telo.yaml", status: 404 });
   });
 
   it("HttpSource verifies the fetched bytes", async () => {

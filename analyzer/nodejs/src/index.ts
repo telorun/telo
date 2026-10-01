@@ -513,6 +513,14 @@ export type {
   FlagArgBinding,
   PositionalArgBinding,
 } from "./application-arguments.js";
+export { readApplicationContract } from "./application-contract.js";
+export type {
+  ApplicationContract,
+  ApplicationContractArg,
+  ApplicationContractPort,
+  ApplicationContractSecret,
+  ApplicationContractVariable,
+} from "./application-contract.js";
 export {
   decodePlainLiterals,
   mapTextLeaves,
@@ -544,6 +552,7 @@ export {
   verifiedFetch,
   sha256Base64Url,
   IntegrityError,
+  ManifestNotFoundError,
 } from "./sources/integrity.js";
 export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";

@@ -39,8 +39,8 @@ force-push — for this change and this branch only. Merging is never yours.
 - **Push** with `git push -u origin <branch>`.
 - **Open the PR** against `main` with `gh pr create`. The body is:
   - what the change does, stated as behaviour.
-  
-  End the body with the attribution line the session asks for.
+
+  Add **no** attribution line (no "Generated with Claude Code" footer).
 
 ## 3. Keep CI green
 

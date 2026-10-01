@@ -957,6 +957,22 @@ export class Kernel implements IKernel {
         versionConflicts.map(staticDiagnosticToRuntime),
       );
     }
+    // A tagged file claim naming nothing fails at resource creation anyway; the
+    // loader already knows, so refuse before booting anything — and so that
+    // `telo install`'s analyze-only pass fails the build that would ship it.
+    const missingFiles = analysisGraph.moduleFileDiagnostics;
+    if (missingFiles.length > 0) {
+      throw new RuntimeError(
+        "ERR_MANIFEST_VALIDATION_FAILED",
+        missingFiles
+          .map((d) => {
+            const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
+            return filePath ? `${filePath}: ${d.message}` : d.message;
+          })
+          .join("\n"),
+        missingFiles.map(staticDiagnosticToRuntime),
+      );
+    }
     for (const d of analysisGraph.versionDiagnostics) {
       if (d.code === "MODULE_VERSION_HOISTED") {
         this.logging.kernelLogger().warn(d.message, { "telo.diagnostic.code": d.code });

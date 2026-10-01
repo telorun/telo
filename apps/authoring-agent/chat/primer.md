@@ -38,6 +38,12 @@ module's for that kind; do that only when the kind belongs to a different
 domain than the module around it. Categories are a facet, never search text —
 keep them out of `description`.
 
+A `Telo.Application` you publish is indexed by the hub too, as an
+APPLICATION: its `metadata.description` is its search text (what it does, in
+the words a searcher would type) and its `metadata.categories` its facet, read
+exactly as a library's are, beside the `variables:` / `secrets:` / `ports:` it
+declares.
+
 `metadata` also takes optional descriptive fields — `version`, `description`,
 `repository` (where the module is developed), `homepage`, `documentation`,
 `license`. Nothing resolves or fetches by them (a module's location is its
@@ -1935,8 +1941,10 @@ the `imports` map.
   MODULE ROOT (the directory holding `telo.yaml`) — never to the file the tag
   was written in, never absolute, no URL, no glob, and never above the module
   root; and the tag only belongs INSIDE a resource, because the file is read
-  when that resource is created. `telo publish` adds a named file to the
-  artifact automatically, so do NOT restate it in `files:`. A path that must
+  when that resource is created. A named file that is not there is
+  `INCLUDE_FILE_NOT_FOUND` — create the file, never drop the tag. `telo
+  publish` adds a named file to the artifact automatically, so do NOT restate
+  it in `files:`. A path that must
   be computed is not expressible — embed the closed set and select with
   `!cel`, or read the file at runtime with `Fs.File` when it does not ship
   with the module.
@@ -2188,7 +2196,14 @@ them before writing any resource from a module you did not author yourself:
     rejected, and a real-but-wrong one hides the kind you are looking for
     behind an empty result that reads as "Telo cannot do this". An empty
     result is a reason to search again more broadly, never a conclusion that
-    the capability is missing.
+    the capability is missing. The optional `entry` argument picks what is
+    ranked: `kind`, `instance` and `application`, default `[kind, instance]`.
+    Include `application` only when the user wants an existing runnable
+    application: an `application` hit is run by its pinned ref
+    (`telo run oci://…@<version>#<pin>`) or stood up with `App.Instance`, and
+    is NEVER written in `imports:` — an Application cannot be imported. Its
+    `application` field lists the variables, secrets and ports it asks for.
+    `runtime` cannot be combined with `application`.
   - `get_module_manifest` — fetch a module's `telo.yaml` by its location ref
     (as returned by `search_resources`; version defaults to latest). Its
     `Telo.Definition` docs ARE JSON Schemas: the EXACT field names, types, and

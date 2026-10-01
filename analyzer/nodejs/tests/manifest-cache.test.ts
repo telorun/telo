@@ -8,7 +8,11 @@ import {
   ociManifestCacheCoords,
   urlManifestCacheCoords,
 } from "../src/sources/manifest-cache.js";
-import { IntegrityError, sha256Base64Url } from "../src/sources/integrity.js";
+import {
+  IntegrityError,
+  ManifestNotFoundError,
+  sha256Base64Url,
+} from "../src/sources/integrity.js";
 
 describe("manifestCacheKey", () => {
   it("builds <transport>/<host>/<path…>/<version>/telo.yaml", () => {
@@ -94,11 +98,11 @@ describe("ManifestCacheSource", () => {
 
   const manifest = "kind: Telo.Library\nmetadata:\n  name: s3\n  version: 1.2.0\n";
 
-  function stubFetch(text: string, ok = true) {
+  function stubFetch(text: string, ok = true, status = ok ? 200 : 404, statusText = ok ? "OK" : "Not Found") {
     const fetchMock = vi.fn(async () => ({
       ok,
-      status: ok ? 200 : 404,
-      statusText: ok ? "OK" : "Not Found",
+      status,
+      statusText,
       arrayBuffer: async () => new TextEncoder().encode(text).buffer,
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -135,9 +139,9 @@ describe("ManifestCacheSource", () => {
     stubFetch("kind: Telo.Library\nmetadata: { name: tampered }\n");
     const source = new ManifestCacheSource("http://cache.test");
     const hash = await sha256Base64Url(new TextEncoder().encode(manifest));
-    await expect(source.read(`oci://ghcr.io/aws/telo-s3@1.2.0#sha256-${hash}`)).rejects.toBeInstanceOf(
-      IntegrityError,
-    );
+    const error = await source.read(`oci://ghcr.io/aws/telo-s3@1.2.0#sha256-${hash}`).catch((e) => e);
+    expect(error).toBeInstanceOf(IntegrityError);
+    expect(error).not.toBeInstanceOf(ManifestNotFoundError);
   });
 
   it("surfaces a fetch failure with the cache URL", async () => {
@@ -146,6 +150,32 @@ describe("ManifestCacheSource", () => {
     await expect(source.read("oci://ghcr.io/aws/telo-s3@1.2.0")).rejects.toThrow(
       /404.*http:\/\/cache\.test\/oci\/ghcr\.io\/aws\/telo-s3\/1\.2\.0\/telo\.yaml/,
     );
+  });
+
+  it.each([
+    [404, "Not Found"],
+    [410, "Gone"],
+  ] as const)("throws ManifestNotFoundError on %i, naming the fetched URL", async (status, statusText) => {
+    stubFetch("", false, status, statusText);
+    const source = new ManifestCacheSource("http://cache.test");
+    const error = await source.read("oci://ghcr.io/aws/telo-s3@1.2.0").catch((e) => e);
+    expect(error).toBeInstanceOf(ManifestNotFoundError);
+    expect(error).toMatchObject({
+      url: "http://cache.test/oci/ghcr.io/aws/telo-s3/1.2.0/telo.yaml",
+      status,
+    });
+    expect(error.message).toMatch(
+      new RegExp(`${status}.*http://cache\\.test/oci/ghcr\\.io/aws/telo-s3/1\\.2\\.0/telo\\.yaml`),
+    );
+  });
+
+  it("keeps any other non-OK status a plain Error", async () => {
+    stubFetch("", false, 500, "Internal Server Error");
+    const source = new ManifestCacheSource("http://cache.test");
+    const error = await source.read("oci://ghcr.io/aws/telo-s3@1.2.0").catch((e) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ManifestNotFoundError);
+    expect(error.message).toMatch(/500 Internal Server Error/);
   });
 
   it("rejects an unaddressable ref with an actionable message", async () => {

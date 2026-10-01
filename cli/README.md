@@ -117,7 +117,10 @@ image for an architecture other than the build machine's.
 
 - `--bump patch|minor|major` — Bump all controller package versions before publishing. Also bumps `metadata.version` in the manifest.
 - `--dry-run` — Show what would happen without writing files or publishing anything.
+- `--annotation <key>=<value>` — Write an annotation onto the pushed OCI manifest (repeatable). The key is reverse-domain (`com.example.note`); the `org.opencontainers.image.*` keys telo derives from `metadata` are refused. The pushed set replaces what a republish carried. Annotations are outside the integrity pin.
 - `--skip-controllers` — Skip the controller build/publish/PURL-rewrite loop and only run static analysis and push the artifact to the OCI registry. Use this when controller packages have already been published by another tool (e.g. Changesets in CI). Mutually exclusive with `--bump`.
+
+A version that is already published can be pushed again only when it produces an identical `telo.yaml`; a changed one is refused, because a published version's pin never moves.
 
 
 ---
@@ -348,7 +351,7 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 
 **Arguments:**
 
-- `path` - Path to a YAML manifest file, a directory containing `telo.yaml`, or an HTTP(S) URL.
+- `path` - Path to a YAML manifest file, a directory containing `telo.yaml`, an HTTP(S) URL, or a published application's OCI ref. A pinned ref — `oci://<host>/<repo>@<version>#sha256-<pin>` — is verified against its pin before anything runs, and a mismatch names the ref, the expected pin and the actual one; an unpinned ref runs unverified. See [Distributing an application](/guides/distributing-an-application).
 
 **Options:**
 

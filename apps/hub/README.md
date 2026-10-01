@@ -69,6 +69,18 @@ being linearized into a chain.
   you may write `!ref Alias.writeLine` but not what you get. Both are empty for
   a **re-export**, whose declaring doc belongs to another module; `declared`
   (the verbatim entry) is what tells the two apart.
+- **Indexes applications by their declared contract.** A `Telo.Application`
+  registers like a library — ref, versions, pins, digest tracking, cached
+  manifest — and is indexed by what it asks of whoever runs it: every
+  `variables:`, `secrets:` and `ports:` entry, as `telo module manifest --json`
+  reports it under `application`. Its own kinds are stored but never exported,
+  since an application exports nothing. Search offers applications only to a
+  caller that asks for them (`entry=application`).
+- **Serves no artifact files.** The hub serves no file an artifact ships — no
+  README, no images, no payload. It indexes an application's declared contract
+  and caches its `telo.yaml` alone; a consumer that wants a file the artifact
+  carries reads it from the artifact at the pinned ref and verifies it against
+  the `layers:` index the pin covers.
 - **Groups modules two ways, so discovery works without a query.** The
   *declared* axis is `metadata.categories` — an open vocabulary of domain
   labels a module (or an individual kind, which overrides its module's) puts
@@ -100,10 +112,10 @@ being linearized into a chain.
 
 | Verb | Path |
 | --- | --- |
-| `telo search "<query>"` | `GET /search/modules?q=…&category=…&runtime=…&limit=…&offset=…` (grouped by module) |
-| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&runtime=…` (flat kind hits) |
+| `telo search "<query>"` | `GET /search/modules?q=…&category=…&runtime=…&entry=…&limit=…&offset=…` (grouped by module) |
+| `telo search --kinds "<query>"` | `GET /search/resources?q=…&category=…&runtime=…&entry=…` (flat hits) |
 | ref autocomplete | `GET /refs?q=…` (pg_trgm fuzzy, lexical) |
-| browse the category facet | `GET /categories` (slug + module and kind counts) |
+| browse the category facet | `GET /categories?entry=…` (slug + module and kind counts) |
 | backends of a contract | `GET /implementations?ref=…&kind=…` |
 | ready-made instances of a kind | `GET /instances?ref=…&kind=…` |
 | everything about one module | `GET /module?ref=…&version=…` |
@@ -139,6 +151,57 @@ same four. An instance takes its runtime reach and capability from its kind's
 row (portable when there is none, e.g. a `Telo.Function`), and its categories
 from its own kind when its module declares that kind, else from its module.
 A re-exported instance is its declaring module's entry, not a second one.
+
+**Applications are an opt-in entry type.** `entry` — repeatable on HTTP
+(`entry=kind&entry=instance&entry=application`), an array on `search_resources`
+and `list_categories` — picks the entry types to rank: `kind`, `instance`,
+`application`. Omitted, it is `[kind, instance]`, so an existing caller is still
+offered kinds and instances only; an unknown value is a `400` / JSON-RPC `-32602`. All
+selected types are ranked together by the one hybrid rule. The default excludes
+applications because the caller of a search is usually composing a manifest, and
+an application is something you run, never something you import. Every vector
+carries its entry type, and an application never takes a kind's or an instance's
+place in a default search: the lookup applies the entry filter before it takes
+its nearest `topK` (`VectorStore.Match`'s contract). The pgvector store walks its
+index until `topK` entries of the requested types are found, up to
+`hnsw.max_scan_tuples` entries (20,000 by default) — beyond that bound a default
+search's vector arm returns fewer entries. Likewise an application's module decides
+a category's label only when applications are asked for.
+
+An application hit is the module itself: `entry: "application"`, `name` its
+`metadata.name`, `kind: "Application"`, `kindRef: ""`, `capability: ""`,
+`runtime: null`, the `module` object, and its contract as `application`:
+
+```text
+{ "variables": [{ "name", "description", "required", "env", "default", "arg", "schema" }],
+  "secrets":   [{ "name", "description", "required", "env", "schema" }],
+  "ports":     [{ "name", "description", "required", "env", "default", "arg", "protocol" }] }
+```
+
+`required` is true when the entry declares no `default:`; `env` is `''` when
+unbound; `arg` is `null`, `{ form: "flag", flag, short }` or
+`{ form: "position", position }`. A secret carries no `default` and only its
+`type` / `x-telo-type` as `schema` — no value of a secret is stored, indexed or
+served. An application is embedded from its name and description, matched
+lexically over those plus every input's name, env binding and description, filed
+under its module's categories, and never folds as a sibling. On
+`/search/modules` an application module carries `module.runtime: null` and its
+contract as `application`.
+
+**An application's runtime reach is not indexed**, because it depends on the
+application's whole import closure rather than on anything it declares. So a
+`runtime` filter combined with `application` in `entry` is refused — HTTP `400`
+`{ code: "ERR_RUNTIME_FILTER_UNSUPPORTED", error }`, JSON-RPC `-32602` with
+`data.code` — rather than answered with a guess.
+
+`/categories` and `list_categories` take the same `entry` with the same
+default: a category is listed when an entry of a requested type declares it, and
+`modules` counts modules with such an entry. The category guard on `/search/*`
+judges `category` against the vocabulary of the requested types.
+
+`/refs` and `suggest_module_refs` complete a ref to import, so they leave out a
+module whose latest version is recorded as an application. A module with no
+ingested version, or whose root kind is not recorded, stays listed.
 
 **A module hit names its implementations.** `/search/modules` carries
 `implementations: [{ ref, name }]` — the modules whose exported kinds extend any
@@ -328,8 +391,12 @@ to hit forces a navigation per candidate to answer "what else is in here?".
 
 Everything a module page renders, in one call: the module's metadata, every
 exported kind with its own capability, contract, runtime and deprecation, the
-exported singleton instances, and the tracked version list. `version` selects a
-tracked version and defaults to the latest.
+exported singleton instances, the tracked version list, and `application` — an
+application's declared contract in the shape above, `null` for a library.
+`version` selects a tracked version and defaults to the latest. For an
+application `kinds` and `exportedResources` are `[]` and `module.runtime` is
+`null`; its versions and pins are where a library's are (`module.integrity`,
+`/module/versions`, `list_module_versions`).
 
 It exists because a search hit cannot answer this question. `/search/*` is
 ranked and returns only the latest version and only the kinds that matched a
@@ -372,14 +439,16 @@ modules than it did.
 | `ALLOW_LOCAL_REFS` | `true` lets `SEED_REFS` name a `./`-relative module directory read from the hub's own disk (default `false`; set by the compose stack) |
 | `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `*/15 * * * *`) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
-| `INGEST_REV` | Revision of the ingest pipeline (default `5`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
-| `TELO_BIN` | Path of the telo CLI the origin reads shell out to (default `telo`) |
+| `INGEST_REV` | Revision of the ingest pipeline (default `6`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `TELO_COMMAND` | The command the origin reads run, as a JSON array: a program and its leading arguments (default `["telo"]`). It must be the same telo generation as the hub, since ingest reads that CLI's `module manifest --json` contract |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
 | `TELO_EGRESS` | `public-only` refuses origin fetches to private/loopback/link-local hosts (set in the production image) |
 
 `TRACK_INTERVAL` and `TRACK_LOOP` are **gone**; `TRACK_CRON` and `TRACK_ENABLED`
-replace them.
+replace them. `TELO_BIN` is **gone** too: `TELO_COMMAND` replaces it, as an array
+so the command may carry leading arguments (the development image runs the
+checkout's CLI as `["/telo/node_modules/.bin/bun","/telo/cli/nodejs/bin/telo.ts"]`).
 
 ## Run locally
 
@@ -427,9 +496,9 @@ Modules enter the index two ways:
      (`https://evil.com@internal/…`).
   3. **Resolution check** — `telo module versions`, then `telo module manifest`
      at the latest version, confirm it's a real Telo module. The manifest's root
-     doc must be a **`Telo.Library`**: an Application is a runnable root that
-     cannot be imported, so it defines no importable kinds and would store a
-     record indexing nothing.
+     doc must be a **`Telo.Library`** or a **`Telo.Application`**; anything else is
+     refused with "the root document of `<ref>` is `<kind>`; only a Telo.Library
+     or Telo.Application can be registered".
   4. **Insert, then schedule the latest version** — the row is written and the
      latest version is claimed and handed to a durable run, and the response is
      `202`. The request path never ingests: a `200` used to mean *searchable*,
@@ -533,6 +602,20 @@ UPDATE version_ingest SET claimed_at = NULL WHERE module_id = $1 AND version = $
 Clearing `last_error` alone does **not** make a version due — the digest still
 matches and the revision is still current. Raising `INGEST_REV` re-ingests
 everything, once.
+
+Revision `6` records each version's root kind (`module_versions.root_kind`,
+`Library` or `Application`), stores an application's contract
+(`application_inputs`) and stops storing an application's own kinds as exported.
+The root kind can only be learned by reading the manifest, so deploying it
+re-ingests every tracked version once; until a version is re-ingested its root
+kind is NULL, which every reader treats as not an application, and its vectors
+carry no entry type and take no part in the vector arm. An application
+version whose `telo module manifest --json` payload carries no `application`
+field is refused (`INGEST_CONTRACT_MISSING` in `version_ingest.last_error`)
+rather than indexed as asking for nothing — `TELO_COMMAND` names a telo older
+than the hub. A refused version never reaches the current `ingest_rev`, so every
+reconcile pass claims it again: point `TELO_COMMAND` at the hub's telo and the
+next pass indexes it.
 
 ## Limitations & follow-ups
 

@@ -56,6 +56,14 @@ describe("splitRunInvocation — the application's arguments start after the pat
     });
   });
 
+  it("takes a pinned oci:// ref as the manifest path", () => {
+    const ref = "oci://ghcr.io/acme/hello-app@0.1.0#sha256-viMWXJ7B89yRyqL4NaGWZVtFkOg8QPzlJb2UFwz7YeA";
+    expect(splitRunInvocation(["run", ref, "--greeting", "hi"], COMMANDS)).toEqual({
+      cliTokens: ["run", ref],
+      applicationArgs: ["--greeting", "hi"],
+    });
+  });
+
   it("leaves every other command untouched", () => {
     const tokens = ["check", "a.yaml", "--verbose"];
     expect(splitRunInvocation(tokens, COMMANDS)).toEqual({ cliTokens: tokens, applicationArgs: undefined });

@@ -1,0 +1,14 @@
+# Embeds a file that is not beside it.
+kind: Telo.Library
+metadata:
+  name: IncludeMissingLib
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Run.Sequence
+metadata:
+  name: prompt
+steps:
+  - name: primer
+    value: !include-text ./primer.md
