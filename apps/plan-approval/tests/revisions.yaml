@@ -1,0 +1,317 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRevisions
+  version: 1.0.0
+  description: |
+    Submissions and revisions over the agent API, comments and decisions over the
+    review API. A plan's hash is the SHA-256 of its body and its item IDs are the
+    headings and list items led by an ID; resubmitting or re-revising the same
+    body creates nothing; a line inside a fenced code block is never an item.
+    Unknown products, unlinked repositories, repeated item
+    IDs, stale bases, unknown items and unknown revisions are refused with their
+    codes. An approval binds to the latest revision's hash, a later revision voids
+    it and returns the plan to `revised`, and a decision on an older revision is
+    ERR_REVISION_SUPERSEDED.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/revisions
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18742, throwOnHttpError: false }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: bodies
+    value:
+      first: "# Rollout\n\n## S1 Build the thing\n- **C2**: check it\n1. AB12 ship it\n- a note, not an item\n"
+      second: "# Rollout\n\n## S1 Build the thing\n- **C2**: check it twice\n1. AB12 ship it\n- D4 announce\n"
+      repeated: "## S1 one\n## S1 again\n"
+      fenced: "## S1 Upload\n\n```bash\n# S1 bucket setup\n```\n\n~~~yaml\n- S3 is not an item\n~~~\n\n- C4 after the blocks\n"
+      # A block indented under a list item; a CRLF body whose last ID ends its
+      # line; a four-backtick fence wrapping a three-backtick block; a line
+      # starting with an inline code span; an unterminated fence.
+      fenceShapes:
+        - "- S1 Upload\n  - detail\n    ```bash\n    # S1 bucket setup\n    ```\n- C4 after"
+        - "## S1 Upload\r\n\r\n```bash\r\n# S9 comment\r\n```\r\n\r\n## S2\r\n- C4 after\r\n"
+        - "## S1 Docs\n\n````markdown\n```\n- S8 inside\n```\n````\n\n## S2 Next\n- C3 thing"
+        - "## S1 Docs\n```x``` is a span\n- C2 after"
+        - "## S1 Docs\n~~~\n- C2 inside"
+  - name: run
+    inputs: !cel "steps.bodies.result"
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [first, second, repeated, fenced, fenceShapes]
+          properties:
+            first: { type: string }
+            second: { type: string }
+            repeated: { type: string }
+            fenced: { type: string }
+            fenceShapes: { type: array, items: { type: string } }
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18742 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: otherProduct
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: other, name: Other } }
+        - name: repo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: submit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: feat/rollout, loop: L-1, title: Rollout, body: !cel "inputs.first" }
+        - name: resubmit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: feat/rollout, loop: L-1, title: Rollout, body: !cel "inputs.first" }
+        - name: unknownProduct
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: ghost, repo: api, branch: b, loop: L-2, title: T, body: !cel "inputs.first" }
+        - name: notInProduct
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: other, repo: api, branch: b, loop: L-2, title: T, body: !cel "inputs.first" }
+        - name: repeatedItems
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: b, loop: L-2, title: T, body: !cel "inputs.repeated" }
+        - name: fencedSubmit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: b, loop: L-3, title: T, body: !cel "inputs.fenced" }
+        - name: fencedPlan
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/plans/' + string(steps.fencedSubmit.result.body.planId)" }
+        - name: shapes
+          inputs: { bodies: !cel "inputs.fenceShapes" }
+          invoke:
+            kind: Run.Projection
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [bodies]
+                properties:
+                  bodies: { type: array, items: { type: string } }
+            collection: !cel "inputs.bodies"
+            steps:
+              - name: submit
+                invoke: !ref call
+                inputs:
+                  url: /api/agent/plans
+                  method: POST
+                  body: { product: acme, repo: api, branch: b, loop: !cel "'L-shape-' + string(index)", title: T, body: !cel "string(item)" }
+              - name: read
+                invoke: !ref call
+                inputs: { url: !cel "'/api/agent/plans/' + string(steps.submit.result.body.planId)" }
+            outputs:
+              items: !cel "steps.read.result.body.latestRevision.items"
+        - name: plan
+          value: !cel "string(steps.submit.result.body.planId)"
+        - name: comment
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/comments'"
+            method: POST
+            body: { author: rita, body: Why now?, revision: 1 }
+        - name: itemComment
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/comments'"
+            method: POST
+            body: { author: rita, body: Check what?, revision: 1, item: C2 }
+        - name: unknownItem
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/comments'"
+            method: POST
+            body: { author: rita, body: Hm, revision: 1, item: Z9 }
+        - name: unknownRevision
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/comments'"
+            method: POST
+            body: { author: rita, body: Hm, revision: 9 }
+        - name: approve
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 1, hash: !cel "sha256(inputs.first)" }
+        - name: approved
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/plans/' + steps.plan.result" }
+        - name: noSummary
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: !cel "inputs.second", base: !cel "sha256(inputs.first)" }
+        - name: revise
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: !cel "inputs.second", summary: Check twice and announce., base: !cel "sha256(inputs.first)" }
+        - name: reviseAgain
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: !cel "inputs.second", summary: Same body., base: !cel "sha256(inputs.second)" }
+        - name: stale
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: "## S1 other\n", summary: Other., base: !cel "sha256(inputs.first)" }
+        - name: repeatedRevision
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: !cel "inputs.repeated", summary: Repeats., base: !cel "sha256(inputs.second)" }
+        - name: oldDecision
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 1, hash: !cel "sha256(inputs.first)" }
+        - name: missingDecision
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 5, hash: !cel "sha256(inputs.first)" }
+        - name: changesWithoutNote
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: request_changes, revision: 2, hash: !cel "sha256(inputs.second)" }
+        - name: changes
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: request_changes, revision: 2, hash: !cel "sha256(inputs.second)", note: Say who announces. }
+        - name: detail
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + steps.plan.result" }
+        - name: unknownPlan
+          invoke: !ref call
+          inputs: { url: /api/review/plans/no-such-plan }
+      outputs:
+        submit: !cel "[steps.submit.result.status, steps.submit.result.body.seq, steps.submit.result.body.hash == sha256(inputs.first), steps.submit.result.body.created, steps.submit.result.body.cursor]"
+        resubmit: !cel "[steps.resubmit.result.status, steps.resubmit.result.body.planId == steps.plan.result, steps.resubmit.result.body.created]"
+        unknownProduct: !cel "[steps.unknownProduct.result.status, steps.unknownProduct.result.body.code, steps.unknownProduct.result.body.error.contains('/settings')]"
+        notInProduct: !cel "[steps.notInProduct.result.status, steps.notInProduct.result.body.code, steps.notInProduct.result.body.error.contains('/settings')]"
+        repeatedItems: !cel "[steps.repeatedItems.result.status, steps.repeatedItems.result.body.code]"
+        fenced: !cel "[steps.fencedSubmit.result.status, steps.fencedPlan.result.body.latestRevision.items]"
+        fenceShapes: !cel "steps.shapes.result.map(s, s.items)"
+        comment: !cel "[steps.comment.result.status, steps.itemComment.result.status]"
+        unknownItem: !cel "[steps.unknownItem.result.status, steps.unknownItem.result.body.code]"
+        unknownRevision: !cel "[steps.unknownRevision.result.status, steps.unknownRevision.result.body.code]"
+        approve: !cel "[steps.approve.result.status, steps.approve.result.body.state]"
+        approved: !cel "[steps.approved.result.body.state, steps.approved.result.body.approvedSeq, steps.approved.result.body.approvedHash == sha256(inputs.first)]"
+        noSummary: !cel "steps.noSummary.result.status"
+        revise: !cel "[steps.revise.result.status, steps.revise.result.body.seq, steps.revise.result.body.created]"
+        reviseAgain: !cel "[steps.reviseAgain.result.status, steps.reviseAgain.result.body.seq, steps.reviseAgain.result.body.created]"
+        stale: !cel "[steps.stale.result.status, steps.stale.result.body.code, steps.stale.result.body.data.latestSeq]"
+        repeatedRevision: !cel "[steps.repeatedRevision.result.status, steps.repeatedRevision.result.body.code]"
+        oldDecision: !cel "[steps.oldDecision.result.status, steps.oldDecision.result.body.code, steps.oldDecision.result.body.data.latestSeq]"
+        missingDecision: !cel "[steps.missingDecision.result.status, steps.missingDecision.result.body.code]"
+        changesWithoutNote: !cel "steps.changesWithoutNote.result.status"
+        changes: !cel "[steps.changes.result.status, steps.changes.result.body.state]"
+        plan: !cel "[steps.detail.result.body.plan.state, steps.detail.result.body.plan.approvedHash, steps.detail.result.body.lastReviewedRevision]"
+        revisions: !cel "steps.detail.result.body.revisions.map(r, [r.seq, r.hash == sha256(r.body), r.summary, r.items])"
+        timeline: !cel "steps.detail.result.body.events.map(e, [e.seq, e.type, e.source, e.revision])"
+        unknownPlan: !cel "[steps.unknownPlan.result.status, steps.unknownPlan.result.body.code]"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        submit: [201, 1, true, true, 1]
+        resubmit: [200, true, false]
+        unknownProduct: [422, ERR_PRODUCT_NOT_FOUND, true]
+        notInProduct: [422, ERR_REPO_NOT_IN_PRODUCT, true]
+        repeatedItems: [422, ERR_DUPLICATE_ITEM_ID]
+        fenced: [201, [S1, C4]]
+        fenceShapes: [[S1, C4], [S1, S2, C4], [S1, S2, C3], [S1, C2], [S1]]
+        comment: [201, 201]
+        unknownItem: [422, ERR_ITEM_NOT_FOUND]
+        unknownRevision: [422, ERR_REVISION_NOT_FOUND]
+        approve: [201, approved]
+        approved: [approved, 1, true]
+        noSummary: 400
+        revise: [201, 2, true]
+        reviseAgain: [200, 2, false]
+        stale: [409, ERR_STALE_BASE, 2]
+        repeatedRevision: [422, ERR_DUPLICATE_ITEM_ID]
+        oldDecision: [409, ERR_REVISION_SUPERSEDED, 2]
+        missingDecision: [422, ERR_REVISION_NOT_FOUND]
+        changesWithoutNote: 400
+        changes: [201, changes_requested]
+        plan: [changes_requested, null, 2]
+        revisions:
+          - [1, true, null, [S1, C2, AB12]]
+          - [2, true, Check twice and announce., [S1, C2, AB12, D4]]
+        timeline:
+          - [1, submitted, agent, 1]
+          - [2, comment, reviewer, 1]
+          - [3, comment, reviewer, 1]
+          - [4, decision, reviewer, 1]
+          - [5, approval_voided, agent, 1]
+          - [6, revised, agent, 2]
+          - [7, decision, reviewer, 2]
+        unknownPlan: [404, ERR_PLAN_NOT_FOUND]

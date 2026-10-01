@@ -1,0 +1,3 @@
+#!/bin/sh
+# Lists no sessions; the fixture never gets as far as running a command.
+echo "[]"

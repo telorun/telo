@@ -12,6 +12,8 @@ Several kinds of work stop mid-invocation and wait for a value that another call
 
 Telo has this only in durable form. `Durable.Await` requires a replayed `Durable.Run` region and parks the run, and `Local.Deliver` is its engine-specific delivery half. Work that is not durable, and should not be, has no primitive. It ends up polling a store in a loop, which adds latency to every wait, knows nothing of cancellation, and silently assumes one process.
 
+A version signal that any number of waiters share, with no payload — long polling on a cursor — is not this problem; it is `watch` (`Watch.Wait` / `Watch.Publish`).
+
 ## Solution
 
 A new module, **`rendezvous`** (`metadata.name: Rendezvous`), with two invocable kinds, a store contract, and an in-memory backend.

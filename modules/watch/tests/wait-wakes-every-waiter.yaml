@@ -1,0 +1,63 @@
+kind: Telo.Application
+metadata:
+  name: WatchWaitWakesEveryWaiter
+  version: 1.0.0
+  description: |
+    Three calls wait on one topic while a fourth publishes a version above their
+    cursor. Every waiter is woken by the one publish and returns the new
+    version, long before its own timeout.
+imports:
+  Watch: ../
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Watch.MemoryStore
+metadata: { name: store }
+---
+kind: Watch.Wait
+metadata: { name: wait }
+store: !ref store
+maxTimeout: 30s
+---
+kind: Run.Projection
+metadata: { name: waitersAndPublisher }
+collection: !cel "['wait', 'wait', 'wait', 'publish']"
+concurrency: 4
+steps:
+  - name: role
+    if: !cel "item == 'publish'"
+    then:
+      # Long enough that every waiter has opened before the publish lands.
+      - name: pause
+        inputs: { duration: 200ms }
+        invoke: { kind: Timer.Delay }
+      - name: publish
+        inputs: { topic: plan, version: 1 }
+        invoke:
+          kind: Watch.Publish
+          store: !ref store
+    else:
+      - name: waited
+        inputs: { topic: plan, after: 0, timeout: 30s }
+        invoke: !ref wait
+outputs:
+  role: !cel "item"
+  signal: !cel "item == 'wait' ? steps.waited.result : null"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: run
+    invoke: !ref waitersAndPublisher
+  - name: assertEveryWaiterWoke
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        - { role: wait, signal: { changed: true, version: 1 } }
+        - { role: wait, signal: { changed: true, version: 1 } }
+        - { role: wait, signal: { changed: true, version: 1 } }
+        - { role: publish, signal: null }
+    invoke: { kind: Assert.Equals }

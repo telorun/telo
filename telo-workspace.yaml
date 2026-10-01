@@ -16,6 +16,10 @@ release:
   modules:
     - modules/*
     - apps/*
+    # The plan-approval apps run from a checkout and are never published.
+    - "!apps/plan-approval"
+    - "!apps/plan-approval-runner"
+    - "!apps/plan-approval-runner-protocol"
     # A blueprint is a whole-application kind, published apart from the module
     # namespace: `oci://ghcr.io/telorun/blueprints/<name>`.
     - path: blueprints/*

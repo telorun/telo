@@ -13,6 +13,7 @@ interface CommandInput {
   env?: Record<string, string | null>;
   stdin?: string;
   timeoutMs?: number;
+  cwd?: string;
 }
 
 class ShellCommandResource implements ResourceInstance {
@@ -30,7 +31,7 @@ class ShellCommandResource implements ResourceInstance {
     );
     const spec = toCommandSpec(input, "Shell.Command");
     return host
-      .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs }, ctx)
+      .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs, cwd: input.cwd }, ctx)
       .buffered();
   }
 }

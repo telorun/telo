@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: WatchWaitRefusedInDurableRun
+  version: 1.0.0
+  description: |
+    A wait lives only in the call that opened it, so a durable body — which is
+    replayed after a restart — cannot hold one. `telo check` refuses the
+    placement and points at durable waiting instead.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: test }
+source: ./__fixtures__/wait-in-durable-run.yaml
+expect:
+  errors:
+    - code: ZONE_ATTRIBUTE_VIOLATED
+      message: "wait for a delivery with Durable.Await instead"

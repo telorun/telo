@@ -1,0 +1,779 @@
+kind: Telo.Application
+metadata:
+  name: PlanApproval
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: LicenseRef-SustainableUse
+  description: |
+    Plan approval for agent sessions across products and repositories. Agents
+    submit plans and revisions over /api/agent/ and long-poll a plan's events;
+    reviewers comment and decide over /api/review/, bound to one revision; per-
+    machine runners report their Claude sessions and long-poll a command feed that
+    wakes a session when its plan is decided. Unauthenticated, for a trusted local
+    network: a request whose Origin differs from its own host is refused.
+requires:
+  # A `Telo.HostPath` variable at `SQLite.Connection.file` is refused before
+  # 0.98.0.
+  telo: ">=0.98.0"
+imports:
+  Plans:
+    source: ./plans
+    resources:
+      connection: !ref db
+    variables:
+      longPollCap: !cel "variables.longPollCap"
+  SQLite: ../../modules/sqlite
+  Http: ../../modules/http-server
+  Scheduler: ../../modules/scheduler
+  Run: ../../modules/run
+ports:
+  http:
+    env: PORT
+    default: 8080
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: Telo.HostPath
+    default: plan-approval.sqlite
+  # The built review UI. Required: the server has no UI of its own to fall back to.
+  uiDir:
+    env: UI_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+  # The longest a long poll holds a request, whatever its `wait` asks for.
+  longPollCap:
+    env: LONG_POLL_CAP
+    type: string
+    x-telo-type: Telo.Duration
+    default: 30s
+targets:
+  - !ref Plans.schema
+  - !ref webhookRelay
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+# The only webhook delivery path: every second, up to four due outbox rows.
+kind: Scheduler.Interval
+metadata: { name: webhookRelay }
+every: 1s
+invoke: !ref Plans.flushOutbox
+---
+# Refuses a browser request made from another site: an Origin header that is
+# present and names a different host than the request itself. A request with no
+# Origin (a CLI, an agent, a server) passes. Not authentication — see README.
+kind: Run.Sequence
+metadata: { name: sameOrigin }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [origin, host]
+    properties:
+      # Empty when the request carries no such header.
+      origin: { type: string }
+      host: { type: string }
+steps:
+  - name: originHost
+    value: !cel "trimPrefix(trimPrefix(inputs.origin, 'http://'), 'https://')"
+  - name: check
+    if: !cel "inputs.origin != '' && steps.originHost.result != inputs.host"
+    then:
+      - name: refuse
+        throw:
+          code: ERR_ORIGIN_NOT_ALLOWED
+          message: !cel "'Origin ' + inputs.origin + ' may not call this server; it only answers pages it serves itself.'"
+---
+kind: Http.Server
+metadata: { name: server }
+host: 0.0.0.0
+port: !cel "ports.http"
+# Every coded failure a route does not render itself, with its code.
+catches:
+  - status: 500
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+mounts:
+  - path: /api/agent
+    mount: !ref agentApi
+    guard:
+      invoke: !ref sameOrigin
+      inputs:
+        origin: !cel "'origin' in request.headers ? string(request.headers['origin']) : ''"
+        host: !cel "'host' in request.headers ? string(request.headers['host']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_ORIGIN_NOT_ALLOWED'"
+          status: 403
+          content:
+            application/json:
+              body: { error: !cel "error.message", code: ERR_ORIGIN_NOT_ALLOWED }
+  - path: /api/review
+    mount: !ref reviewApi
+    guard:
+      invoke: !ref sameOrigin
+      inputs:
+        origin: !cel "'origin' in request.headers ? string(request.headers['origin']) : ''"
+        host: !cel "'host' in request.headers ? string(request.headers['host']) : ''"
+      catches:
+        - when: !cel "error.code == 'ERR_ORIGIN_NOT_ALLOWED'"
+          status: 403
+          content:
+            application/json:
+              body: { error: !cel "error.message", code: ERR_ORIGIN_NOT_ALLOWED }
+  - path: /
+    mount:
+      kind: Http.Static
+      root: !cel "variables.uiDir"
+      spaFallback: true
+---
+# Agents and runners. There is no decision route here: deciding is a reviewer's.
+kind: Http.Api
+metadata: { name: agentApi }
+catches:
+  - when: !cel "error.code == 'ERR_PLAN_NOT_FOUND'"
+    status: 404
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  - when: !cel "error.code in ['ERR_PRODUCT_NOT_FOUND', 'ERR_REPO_NOT_IN_PRODUCT', 'ERR_DUPLICATE_ITEM_ID', 'ERR_REPO_NOT_FOUND', 'ERR_REPO_NOT_SERVED', 'ERR_OUTCOME_INVALID']"
+    status: 422
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  # A stale base carries the latest revision, so the agent can re-read it.
+  - when: !cel "error.code == 'ERR_STALE_BASE'"
+    status: 409
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code", data: !cel "error.data" } } }
+  - when: !cel "error.code in ['ERR_PLAN_CLOSED', 'ERR_INVALID_TRANSITION', 'ERR_RUNNER_REPLACED', 'ERR_SESSION_OWNED']"
+    status: 409
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  - when: !cel "error.code in ['ERR_RUNNER_NOT_FOUND', 'ERR_COMMAND_NOT_FOUND']"
+    status: 404
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+routes:
+  - request:
+      path: /plans
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [product, repo, branch, loop, title, body]
+          properties:
+            product: { type: string, minLength: 1 }
+            repo: { type: string, minLength: 1 }
+            branch: { type: string, minLength: 1 }
+            loop: { type: string, minLength: 1, description: "The agent's own work item the plan belongs to." }
+            session: { type: string, format: uuid, description: "The Claude session that wrote the plan." }
+            title: { type: string, minLength: 1, maxLength: 300 }
+            body: { type: string, minLength: 1, maxLength: 200000 }
+    handler: !ref Plans.submitPlan
+    inputs:
+      product: !cel "request.body.product"
+      repo: !cel "request.body.repo"
+      branch: !cel "request.body.branch"
+      loop: !cel "request.body.loop"
+      session: !cel "has(request.body.session) ? request.body.session : ''"
+      title: !cel "request.body.title"
+      body: !cel "request.body.body"
+    returns:
+      - status: 201
+        when: !cel "result.created"
+        content: { application/json: { body: !cel "result" } }
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}/revisions
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [body, summary, base]
+          properties:
+            body: { type: string, minLength: 1, maxLength: 200000 }
+            summary: { type: string, minLength: 1, maxLength: 2000 }
+            base: { type: string, pattern: "^[0-9a-f]{64}$", description: The hash of the revision this one revises. }
+            session: { type: string, format: uuid }
+    handler: !ref Plans.revisePlan
+    inputs:
+      planId: !cel "request.params.id"
+      body: !cel "request.body.body"
+      summary: !cel "request.body.summary"
+      base: !cel "request.body.base"
+      session: !cel "has(request.body.session) ? request.body.session : ''"
+    returns:
+      - status: 201
+        when: !cel "result.created"
+        content: { application/json: { body: !cel "result" } }
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}/withdraw
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+    handler: !ref Plans.withdrawPlan
+    inputs:
+      planId: !cel "request.params.id"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+    handler: !ref Plans.agentPlan
+    inputs:
+      planId: !cel "request.params.id"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result.plan" } }
+  # The per-plan long poll: returns at once when there are events after `after`,
+  # otherwise waits up to `wait` (capped by LONG_POLL_CAP) for one.
+  - request:
+      path: /plans/{id}/events
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        query:
+          type: object
+          properties:
+            after: { type: integer, minimum: 0 }
+            # A query parameter arrives as text, so it is read with duration().
+            wait: { type: string, pattern: "^([0-9]+(\\.[0-9]+)?(h|m|s|ms|us|µs|ns))+$", description: "A duration (`25s`, `1m30s`)." }
+    handler: !ref Plans.planEvents
+    inputs:
+      planId: !cel "request.params.id"
+      after: !cel "has(request.query.after) ? request.query.after : 0"
+      wait: !cel "duration(has(request.query.wait) ? request.query.wait : '0s')"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}/reports
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [kind, body]
+          properties:
+            kind: { type: string, enum: [progress, final] }
+            body: { type: string, minLength: 1, maxLength: 100000 }
+            state: { type: string, enum: [in_progress, completed, parked] }
+    handler: !ref Plans.reportPlan
+    inputs:
+      planId: !cel "request.params.id"
+      kind: !cel "request.body.kind"
+      body: !cel "request.body.body"
+      state: !cel "has(request.body.state) ? request.body.state : ''"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # A link's status comes from a closed vocabulary per type.
+  - request:
+      path: /plans/{id}/links
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        body:
+          type: object
+          required: [type, url, status]
+          properties:
+            type: { type: string, enum: [branch, pull-request, commit] }
+            url: { type: string, format: uri }
+            status: { type: string }
+          oneOf:
+            - properties:
+                type: { const: branch }
+                status: { enum: [open, merged, deleted] }
+            - properties:
+                type: { const: pull-request }
+                status: { enum: [draft, open, merged, closed] }
+            - properties:
+                type: { const: commit }
+                status: { enum: [local, pushed] }
+    handler: !ref Plans.upsertLink
+    inputs:
+      planId: !cel "request.params.id"
+      type: !cel "request.body.type"
+      url: !cel "request.body.url"
+      status: !cel "request.body.status"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # Runner protocol. Request bodies are inline copies of the
+  # PlanApprovalRunnerProtocol shapes, mapped field by field into operations
+  # whose contracts ARE those shapes; responses are the operation's result.
+  - request:
+      path: /runners/{name}
+      method: PUT
+      schema:
+        params:
+          type: object
+          required: [name]
+          properties: { name: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [instance, repos, sessions]
+          properties:
+            instance: { type: string, format: uuid }
+            repos:
+              type: array
+              items: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+            sessions:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, repo]
+                properties:
+                  id: { type: string, format: uuid }
+                  repo: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+    handler: !ref Plans.reportRunner
+    inputs:
+      name: !cel "request.params.name"
+      report:
+        instance: !cel "request.body.instance"
+        repos: !cel "request.body.repos"
+        sessions: !cel "request.body.sessions"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /runners/{name}/commands
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [name]
+          properties: { name: { type: string } }
+        query:
+          type: object
+          required: [instance]
+          properties:
+            instance: { type: string, format: uuid }
+            after: { type: integer, minimum: 0 }
+            # A query parameter arrives as text, so it is read with duration().
+            wait: { type: string, pattern: "^([0-9]+(\\.[0-9]+)?(h|m|s|ms|us|µs|ns))+$", description: "A duration (`25s`, `1m30s`)." }
+            limit: { type: integer, minimum: 1, maximum: 100 }
+    handler: !ref Plans.commandFeed
+    inputs:
+      name: !cel "request.params.name"
+      instance: !cel "request.query.instance"
+      after: !cel "has(request.query.after) ? request.query.after : 0"
+      wait: !cel "duration(has(request.query.wait) ? request.query.wait : '0s')"
+      limit: !cel "has(request.query.limit) ? request.query.limit : 50"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /runners/{name}/commands/{seq}/outcome
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [name, seq]
+          properties:
+            name: { type: string }
+            seq: { type: integer, minimum: 1 }
+        body:
+          type: object
+          required: [instance, state]
+          properties:
+            instance: { type: string, format: uuid }
+            state: { type: string, enum: [done, failed] }
+            session: { type: string, format: uuid }
+            error:
+              type: object
+              additionalProperties: false
+              required: [code, message]
+              properties:
+                code: { type: string }
+                message: { type: string }
+          oneOf:
+            - additionalProperties: false
+              properties:
+                instance: {}
+                state: { const: done }
+                session: {}
+            - additionalProperties: false
+              required: [error]
+              properties:
+                instance: {}
+                state: { const: failed }
+                error: {}
+    handler: !ref Plans.commandOutcome
+    inputs:
+      name: !cel "request.params.name"
+      seq: !cel "request.params.seq"
+      outcome: !cel >-
+        has(request.body.error)
+          ? {'instance': request.body.instance, 'state': request.body.state, 'error': request.body.error}
+          : has(request.body.session)
+            ? {'instance': request.body.instance, 'state': request.body.state, 'session': request.body.session}
+            : {'instance': request.body.instance, 'state': request.body.state}
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+---
+# Reviewers. Every write carries a self-declared `author`, stored verbatim and
+# unverified.
+kind: Http.Api
+metadata: { name: reviewApi }
+catches:
+  - when: !cel "error.code in ['ERR_PLAN_NOT_FOUND', 'ERR_RUNNER_NOT_FOUND', 'ERR_SESSION_NOT_FOUND']"
+    status: 404
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  - when: !cel "error.code in ['ERR_PRODUCT_NOT_FOUND', 'ERR_REVISION_NOT_FOUND', 'ERR_ITEM_NOT_FOUND', 'ERR_REPO_NOT_SERVED']"
+    status: 422
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  # A superseded revision carries the latest one, so the reviewer can re-read it.
+  - when: !cel "error.code == 'ERR_REVISION_SUPERSEDED'"
+    status: 409
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code", data: !cel "error.data" } } }
+  - when: !cel "error.code in ['ERR_PRODUCT_EXISTS', 'ERR_REPO_EXISTS', 'ERR_INVALID_TRANSITION']"
+    status: 409
+    content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+routes:
+  - request:
+      path: /products
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [slug, name]
+          properties:
+            slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$", maxLength: 64 }
+            name: { type: string, minLength: 1, maxLength: 200 }
+            deadline: { x-telo-type: Telo.Duration, description: "How long a submitted or revised plan may wait before it is overdue (`48h`)." }
+            webhookUrl: { type: string, format: uri }
+    handler: !ref Plans.createProduct
+    inputs:
+      slug: !cel "request.body.slug"
+      name: !cel "request.body.name"
+      deadlineSeconds: !cel "has(request.body.deadline) ? request.body.deadline.getSeconds() : -1"
+      webhookUrl: !cel "has(request.body.webhookUrl) ? request.body.webhookUrl : ''"
+    returns:
+      - status: 201
+        content: { application/json: { body: !cel "result.product" } }
+  - request:
+      path: /products
+      method: GET
+    handler: !ref Plans.listProducts
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # A full replacement of the settings: an omitted deadline or webhook is cleared.
+  - request:
+      path: /products/{slug}
+      method: PUT
+      schema:
+        params:
+          type: object
+          required: [slug]
+          properties: { slug: { type: string } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [name]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 200 }
+            deadline: { x-telo-type: Telo.Duration }
+            webhookUrl: { type: string, format: uri }
+    handler: !ref Plans.updateProduct
+    inputs:
+      slug: !cel "request.params.slug"
+      name: !cel "request.body.name"
+      deadlineSeconds: !cel "has(request.body.deadline) ? request.body.deadline.getSeconds() : -1"
+      webhookUrl: !cel "has(request.body.webhookUrl) ? request.body.webhookUrl : ''"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result.product" } }
+    catches:
+      - when: !cel "error.code == 'ERR_PRODUCT_NOT_FOUND'"
+        status: 404
+        content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  - request:
+      path: /products/{slug}/history
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [slug]
+          properties: { slug: { type: string } }
+    handler: !ref Plans.productHistory
+    inputs:
+      slug: !cel "request.params.slug"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "error.code == 'ERR_PRODUCT_NOT_FOUND'"
+        status: 404
+        content: { application/json: { body: { error: !cel "error.message", code: !cel "error.code" } } }
+  - request:
+      path: /repos
+      method: POST
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [slug, url, products]
+          properties:
+            slug: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$", maxLength: 64 }
+            url: { type: string, minLength: 1, description: The repository's remote URL. }
+            products: { type: array, minItems: 1, items: { type: string } }
+    handler: !ref Plans.createRepo
+    inputs:
+      slug: !cel "request.body.slug"
+      url: !cel "request.body.url"
+      products: !cel "request.body.products"
+    returns:
+      - status: 201
+        content: { application/json: { body: !cel "result.repo" } }
+  - request:
+      path: /repos
+      method: GET
+    handler: !ref Plans.listRepos
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # The inbox. `age` keeps plans whose latest revision is at least that old.
+  - request:
+      path: /plans
+      method: GET
+      schema:
+        query:
+          type: object
+          properties:
+            product: { type: string }
+            repo: { type: string }
+            status:
+              type: string
+              enum: [submitted, changes_requested, revised, approved, rejected, withdrawn, in_progress, completed, parked]
+            age: { type: string, pattern: "^([0-9]+(\\.[0-9]+)?(h|m|s|ms|us|µs|ns))+$", description: "A duration (`25s`, `1m30s`)." }
+    handler: !ref Plans.listPlans
+    inputs:
+      product: !cel "has(request.query.product) ? request.query.product : ''"
+      repo: !cel "has(request.query.repo) ? request.query.repo : ''"
+      state: !cel "has(request.query.status) ? request.query.status : ''"
+      olderThanSeconds: !cel "has(request.query.age) ? duration(request.query.age).getSeconds() : -1"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+    handler: !ref Plans.planDetail
+    inputs:
+      planId: !cel "request.params.id"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}/history
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+    handler: !ref Plans.planHistory
+    inputs:
+      planId: !cel "request.params.id"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /plans/{id}/comments
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [author, body, revision]
+          properties:
+            author: { type: string, minLength: 1, maxLength: 100 }
+            body: { type: string, minLength: 1, maxLength: 20000 }
+            revision: { type: integer, minimum: 1 }
+            item: { type: string, pattern: "^[A-Z]+[0-9]+$" }
+    handler: !ref Plans.commentPlan
+    inputs:
+      planId: !cel "request.params.id"
+      author: !cel "request.body.author"
+      body: !cel "request.body.body"
+      revision: !cel "request.body.revision"
+      item: !cel "has(request.body.item) ? request.body.item : ''"
+    returns:
+      - status: 201
+        content: { application/json: { body: !cel "result" } }
+  # A decision on the latest revision. Requesting changes requires a note.
+  - request:
+      path: /plans/{id}/decisions
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+        body:
+          type: object
+          additionalProperties: false
+          required: [author, decision, revision, hash]
+          properties:
+            author: { type: string, minLength: 1, maxLength: 100 }
+            decision: { type: string, enum: [approve, request_changes, reject] }
+            revision: { type: integer, minimum: 1 }
+            hash: { type: string, pattern: "^[0-9a-f]{64}$" }
+            note: { type: string, minLength: 1, maxLength: 20000 }
+          if:
+            properties: { decision: { const: request_changes } }
+          then:
+            required: [note]
+    handler: !ref Plans.decidePlan
+    inputs:
+      planId: !cel "request.params.id"
+      author: !cel "request.body.author"
+      decision: !cel "request.body.decision"
+      revision: !cel "request.body.revision"
+      hash: !cel "request.body.hash"
+      note: !cel "has(request.body.note) ? request.body.note : ''"
+    returns:
+      - status: 201
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /runners
+      method: GET
+    handler: !ref Plans.listRunners
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /runners/{name}/sessions
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [name]
+          properties: { name: { type: string } }
+        query:
+          type: object
+          properties:
+            state: { type: string, enum: [active, inactive] }
+            order: { type: string, enum: [asc, desc] }
+            after: { type: integer, minimum: 0 }
+            before: { type: integer, minimum: 1 }
+            limit: { type: integer, minimum: 1, maximum: 500 }
+    handler: !ref Plans.runnerSessions
+    inputs:
+      name: !cel "request.params.name"
+      state: !cel "has(request.query.state) ? request.query.state : ''"
+      order: !cel "has(request.query.order) ? request.query.order : 'asc'"
+      after: !cel "has(request.query.after) ? request.query.after : 0"
+      before: !cel "has(request.query.before) ? request.query.before : 0"
+      limit: !cel "has(request.query.limit) ? request.query.limit : 100"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  - request:
+      path: /runners/{name}/commands
+      method: GET
+      schema:
+        params:
+          type: object
+          required: [name]
+          properties: { name: { type: string } }
+        query:
+          type: object
+          properties:
+            order: { type: string, enum: [asc, desc] }
+            after: { type: integer, minimum: 0 }
+            before: { type: integer, minimum: 1 }
+            limit: { type: integer, minimum: 1, maximum: 500 }
+    handler: !ref Plans.runnerCommands
+    inputs:
+      name: !cel "request.params.name"
+      order: !cel "has(request.query.order) ? request.query.order : 'asc'"
+      after: !cel "has(request.query.after) ? request.query.after : 0"
+      before: !cel "has(request.query.before) ? request.query.before : 0"
+      limit: !cel "has(request.query.limit) ? request.query.limit : 100"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+  # Start a session on a runner, in a repository it serves, or stop one it owns.
+  # Never a path or a permission mode: those are the runner's own configuration.
+  - request:
+      path: /runners/{name}/commands
+      method: POST
+      schema:
+        params:
+          type: object
+          required: [name]
+          properties: { name: { type: string } }
+        body:
+          type: object
+          required: [author, type]
+          properties:
+            author: { type: string, minLength: 1, maxLength: 100 }
+            type: { type: string, enum: [start, stop] }
+            repo: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+            prompt: { type: string, minLength: 1, maxLength: 8000 }
+            session: { type: string, format: uuid }
+          oneOf:
+            - additionalProperties: false
+              required: [repo, prompt]
+              properties:
+                author: {}
+                type: { const: start }
+                repo: {}
+                prompt: {}
+            - additionalProperties: false
+              required: [session]
+              properties:
+                author: {}
+                type: { const: stop }
+                session: {}
+    handler: !ref Plans.createRunnerCommand
+    inputs:
+      name: !cel "request.params.name"
+      author: !cel "request.body.author"
+      type: !cel "request.body.type"
+      repo: !cel "has(request.body.repo) ? request.body.repo : ''"
+      prompt: !cel "has(request.body.prompt) ? request.body.prompt : ''"
+      session: !cel "has(request.body.session) ? request.body.session : ''"
+    returns:
+      - status: 201
+        content: { application/json: { body: !cel "result" } }

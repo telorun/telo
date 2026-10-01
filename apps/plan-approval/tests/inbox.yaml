@@ -1,0 +1,163 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalInbox
+  version: 1.0.0
+  description: |
+    The reviewer inbox across products and repositories, filtered by product,
+    repository, status and age, with `overdue` computed when read: a submitted
+    or revised plan whose product has a deadline and whose latest revision is
+    older than it. An approved plan, a plan of a product with no deadline and a
+    fresh plan are not overdue.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/inbox
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18744, throwOnHttpError: true }
+---
+kind: Run.Sequence
+metadata: { name: submit }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [product, repo, loop]
+    properties:
+      product: { type: string }
+      repo: { type: string }
+      loop: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: /api/agent/plans
+      method: POST
+      body: { product: !cel "inputs.product", repo: !cel "inputs.repo", branch: main, loop: !cel "inputs.loop", title: !cel "inputs.loop", body: !cel "'## S1 ' + inputs.loop" }
+outputs:
+  id: !cel "string(steps.post.result.body.planId)"
+  hash: !cel "string(steps.post.result.body.hash)"
+---
+# The inbox for a query string, as [loop, overdue] pairs.
+kind: Run.Sequence
+metadata: { name: inbox }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [query]
+    properties:
+      query: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: !cel "'/api/review/plans' + inputs.query" }
+outputs:
+  plans: !cel "steps.get.result.body.plans.map(p, [p.loop, p.overdue])"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18744 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: acme
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme, deadline: 1s } }
+        - name: other
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: other, name: Other } }
+        - name: api
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: web
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: web, url: "git@example.com:acme/web.git", products: [acme, other] } }
+        - name: p1
+          invoke: !ref submit
+          inputs: { product: acme, repo: api, loop: p1 }
+        - name: p2
+          invoke: !ref submit
+          inputs: { product: acme, repo: web, loop: p2 }
+        - name: p3
+          invoke: !ref submit
+          inputs: { product: other, repo: web, loop: p3 }
+        - name: approveP2
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.p2.result.id + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 1, hash: !cel "steps.p2.result.hash" }
+        - name: fresh
+          invoke: !ref inbox
+          inputs: { query: "" }
+        - name: age
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 2200ms }
+        - name: p4
+          invoke: !ref submit
+          inputs: { product: acme, repo: api, loop: p4 }
+        - name: all
+          invoke: !ref inbox
+          inputs: { query: "" }
+        - name: byProduct
+          invoke: !ref inbox
+          inputs: { query: "?product=other" }
+        - name: byRepo
+          invoke: !ref inbox
+          inputs: { query: "?repo=api" }
+        - name: byStatus
+          invoke: !ref inbox
+          inputs: { query: "?status=approved" }
+        - name: byAge
+          invoke: !ref inbox
+          inputs: { query: "?age=2s&product=acme" }
+      outputs:
+        fresh: !cel "steps.fresh.result.plans"
+        all: !cel "steps.all.result.plans"
+        byProduct: !cel "steps.byProduct.result.plans"
+        byRepo: !cel "steps.byRepo.result.plans"
+        byStatus: !cel "steps.byStatus.result.plans"
+        byAge: !cel "steps.byAge.result.plans"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        fresh: [[p3, false], [p2, false], [p1, false]]
+        all: [[p4, false], [p3, false], [p2, false], [p1, true]]
+        byProduct: [[p3, false]]
+        byRepo: [[p4, false], [p1, true]]
+        byStatus: [[p2, false]]
+        byAge: [[p2, false], [p1, true]]

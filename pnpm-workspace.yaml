@@ -1,6 +1,7 @@
 packages:
   - apps/studio
   - apps/hub-web
+  - apps/plan-approval-web
   - apps/docker-runner
   - apps/k8s-runner
   - benchmarks/*

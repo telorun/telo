@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: WebhookReceiver
+  version: 1.0.0
+  description: |
+    Records every webhook POSTed to /hook and lists them, oldest first, at
+    GET /received. Kept in memory: a restarted receiver starts empty.
+imports:
+  Sql: ../../../../../modules/sql
+  SQLite: ../../../../../modules/sqlite
+  Http: ../../../../../modules/http-server
+  Run: ../../../../../modules/run
+ports:
+  http:
+    env: PORT
+    default: 18799
+targets:
+  - !ref schema
+  - !ref server
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: received }
+table: received
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  body: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: schema }
+connection: !ref db
+tables: [ !ref received ]
+---
+kind: Http.Server
+metadata: { name: server }
+port: !cel "ports.http"
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /hook, method: POST }
+    handler: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: !sql "INSERT INTO received (body) VALUES (${{ json(request.body) }})"
+    returns:
+      - status: 204
+  - request: { path: /received, method: GET }
+    handler:
+      kind: Run.Sequence
+      steps:
+        - name: query
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: "SELECT json_group_array(json(body)) AS bodies FROM (SELECT body FROM received ORDER BY id)"
+      outputs:
+        received: !cel "parseJson(string(steps.query.result.rows[0].bodies))"
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }

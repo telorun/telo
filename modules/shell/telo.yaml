@@ -23,16 +23,16 @@ exports:
 # Consumers (Shell.Command / Shell.CommandStream) reference it via
 # `x-telo-ref: Self.Host`; a concrete implementation (Shell.LocalHost,
 # or a future ShellSsh.Host) satisfies the ref. The host owns command
-# composition — `<shell> -c <command>`, env merge, and cwd — so the operations
-# stay backend-agnostic.
+# composition — `<shell> -c <command>`, env merge, and resolving a call's `cwd`
+# over its own — so the operations stay backend-agnostic.
 kind: Telo.Abstract
 metadata:
   name: Host
   description: >-
     Where shell commands run — the local machine, a remote host over SSH, a container,
     a cluster pod. It owns how a command line is composed, which interpreter runs it,
-    the working directory it starts in and the base environment per-call overlays
-    merge over, so the commands themselves stay independent of the target.
+    and the base working directory and environment that each call's own directory
+    and variables overlay, so the commands themselves stay independent of the target.
 capability: Telo.Provider
 ---
 kind: Telo.Definition
@@ -88,6 +88,14 @@ inputType:
         description: Kill the command and fail after this many milliseconds.
         type: integer
         minimum: 1
+      cwd:
+        title: Working directory
+        description: >-
+          Directory this call starts in, overlaid on the host's working directory.
+          A relative path is resolved against the host's working directory. Not a
+          security boundary.
+        type: string
+        minLength: 1
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -167,6 +175,14 @@ inputType:
         description: Kill the command and fail after this many milliseconds.
         type: integer
         minimum: 1
+      cwd:
+        title: Working directory
+        description: >-
+          Directory this call starts in, overlaid on the host's working directory.
+          A relative path is resolved against the host's working directory. Not a
+          security boundary.
+        type: string
+        minLength: 1
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -215,7 +231,10 @@ schema:
   properties:
     cwd:
       title: Working directory
-      description: Directory commands start in (default the process working directory). Not a security boundary.
+      description: >-
+        Directory commands start in (default the process working directory), and
+        the base a call's relative `cwd` is resolved against. Not a security
+        boundary.
       type: string
     shell:
       title: Shell interpreter

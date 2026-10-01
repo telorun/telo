@@ -297,6 +297,14 @@ jobs:
       - name: Run the blueprint test suites (bun)
         run: pnpm run telo ./blueprints/test-suite.yaml
 
+      # The plan-approval apps import the workspace by relative path and run
+      # offline, but the root suite excludes `apps/**`, so they run here.
+      - name: Run the plan-approval server test suite (bun)
+        run: pnpm run telo ./apps/plan-approval/test-suite.yaml
+
+      - name: Run the plan-approval runner test suite (bun)
+        run: pnpm run telo ./apps/plan-approval-runner/test-suite.yaml
+
   integration:
     name: "Linux: integration tests (Postgres)"
     runs-on: ubuntu-latest

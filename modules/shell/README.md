@@ -9,8 +9,8 @@ later (drivers ship as their own modules and extend `Shell.Host`, mirroring the
 
 - **`Shell.Host`** — abstract execution target (`Telo.Provider`). A driver's
   instance exposes the spawn primitive the operations call. The host owns
-  command composition (`<shell> -c <command>`, env merge, cwd), so the
-  operations are backend-agnostic.
+  command composition (`<shell> -c <command>`, env merge, resolving a call's
+  `cwd` over its own), so the operations are backend-agnostic.
 - **`Shell.Command`** — run a program on a `host`; buffered
   `{ stdout, stderr, exitCode }`. A non-zero exit is **returned, not thrown** —
   branch on `result.exitCode`. Spawn failures and timeouts throw. Give it
@@ -24,10 +24,24 @@ later (drivers ship as their own modules and extend `Shell.Host`, mirroring the
 - **`Shell.LocalHost`** — bundled local driver (`extends Shell.Host`), runs via
   Node `child_process`.
 
+## Working directory
+
+`cwd` on a host sets the directory commands start in; a call may choose its own
+with the `cwd` input, which overlays the host's the way the `env` input overlays
+its environment. A relative per-call `cwd` is resolved against the host's
+working directory. See [docs/working-directory.md](docs/working-directory.md).
+
+```yaml
+kind: Shell.Command
+metadata: { name: build }
+host: !ref Local
+# invoked with inputs { args: ["make"], cwd: "services/api" }
+# → runs in <host cwd>/services/api
+```
+
 ## Confinement
 
-`cwd` on a host sets the directory commands start in — it is **not** a security
-boundary. A shell string can `cd` elsewhere, use absolute paths, or spawn
+Neither `cwd` — the host's or a call's — is a security boundary. A shell string can `cd` elsewhere, use absolute paths, or spawn
 children, so it cannot bound what runs. Real isolation comes from where the host
 runs (the runner sandbox), not this field.
 

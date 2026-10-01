@@ -22,7 +22,10 @@ requires:
   # `entry` unbound — cel-js throws, and the throw is reported as a rule defect
   # on a line the consumer cannot act on. Verified by execution: 0.82.0 against a
   # manifest that exercises SQL_ENUM_NOT_DECLARED reports exactly that.
-  telo: ">=0.82.1"
+  # 0.90.0: `Transaction` declares `throws: { inherit: true }` over a reference
+  # to its body rather than a step array; an older analyzer refuses that shape
+  # (INHERIT_WITHOUT_STEP_CONTEXT). Verified by execution against 0.89.0.
+  telo: ">=0.90.0"
 exports:
   kinds:
     - Connection
@@ -234,6 +237,10 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlTransactionController
+# A throw from the body rolls the transaction back and propagates unchanged, so
+# what the transaction can throw is what its body can.
+throws:
+  inherit: true
 schema:
   type: object
   required:

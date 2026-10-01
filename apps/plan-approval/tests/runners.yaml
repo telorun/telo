@@ -1,0 +1,546 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunners
+  version: 1.0.0
+  description: |
+    The runner protocol over HTTP, with no runner process: registration and its
+    refusals (unregistered repository, a session outside the served ones, a
+    session another runner owns); plans carrying `session` and the derived
+    `runner`; the catch-up wake written when a decided plan's session is first
+    reported, and none when the agent wrote after the decision; a reviewer's
+    decision returning a waiting feed within milliseconds; a comment waking
+    nothing; a newer decision and an agent write superseding the pending wake;
+    start and stop from the review API, which takes no path and names a start's
+    session rather than minting its ID; a start's done outcome naming its
+    session, which makes the session the runner's and writes the wake its plan
+    owed, and ERR_OUTCOME_INVALID for a done start without a session or a
+    session on anything else; outcomes and their refusals; the feed's
+    page limit and cursor; instance fencing — a replaced instance's report,
+    feed read and outcome are 409 ERR_RUNNER_REPLACED; and the review lists of
+    commands and sessions paged from either end, bounded by `after` and `before`,
+    with `cursor` the last key in page order.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/runners
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18749, throwOnHttpError: false }
+---
+kind: Run.Sequence
+metadata: { name: report }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [runner, instance, repos, sessions]
+    properties:
+      runner: { type: string }
+      instance: { type: string }
+      repos: { type: array }
+      sessions: { type: array }
+steps:
+  - name: put
+    invoke: !ref call
+    inputs:
+      url: !cel "'/api/agent/runners/' + inputs.runner"
+      method: PUT
+      body: { instance: !cel "inputs.instance", repos: !cel "inputs.repos", sessions: !cel "inputs.sessions" }
+outputs:
+  answer: !cel "[steps.put.result.status, 'code' in steps.put.result.body ? steps.put.result.body.code : 'ok']"
+---
+# A runner's feed read: [status, [[seq, type, state-relevant fields]], cursor].
+kind: Run.Sequence
+metadata: { name: feed }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [query]
+    properties:
+      query: { type: string }
+steps:
+  - name: start
+    value: !cel "nowMillis()"
+  - name: get
+    invoke: !ref call
+    inputs: { url: !cel "'/api/agent/runners/r1/commands?' + inputs.query" }
+  - name: end
+    value: !cel "nowMillis()"
+outputs:
+  elapsed: !cel "steps.end.result - steps.start.result"
+  status: !cel "steps.get.result.status"
+  body: !cel "steps.get.result.body"
+---
+# One page of a review list, as [keys, cursor]: command seqs, or session IDs.
+kind: Run.Sequence
+metadata: { name: page }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [url]
+    properties:
+      url: { type: string }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: !cel "inputs.url" }
+outputs:
+  page: !cel >-
+    ['commands' in steps.get.result.body
+      ? steps.get.result.body.commands.map(c, string(c.seq))
+      : steps.get.result.body.sessions.map(s, string(s.id)),
+     steps.get.result.body.cursor]
+---
+kind: Run.Sequence
+metadata: { name: decide }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [plan, decision, revision, hash]
+    properties:
+      plan: { type: string }
+      decision: { type: string }
+      revision: { type: integer }
+      hash: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: !cel "'/api/review/plans/' + inputs.plan + '/decisions'"
+      method: POST
+      body: { author: rita, decision: !cel "inputs.decision", revision: !cel "inputs.revision", hash: !cel "inputs.hash", note: Because. }
+outputs:
+  status: !cel "steps.post.result.status"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: ids
+    value:
+      i1: 0b6d8f52-5f4b-4b8e-9d3e-3a1f1c2d0001
+      i2: 0b6d8f52-5f4b-4b8e-9d3e-3a1f1c2d0002
+      s1: 5e0c1a7e-1111-4c1a-8a51-000000000001
+      s2: 5e0c1a7e-1111-4c1a-8a51-000000000002
+      s4: 5e0c1a7e-1111-4c1a-8a51-000000000004
+      s5: 5e0c1a7e-1111-4c1a-8a51-000000000005
+  - name: run
+    inputs: !cel "steps.ids.result"
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [i1, i2, s1, s2, s4, s5]
+          properties:
+            i1: { type: string }
+            i2: { type: string }
+            s1: { type: string }
+            s2: { type: string }
+            s4: { type: string }
+            s5: { type: string }
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18749 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+            longPollCap: !cel "duration('2s')"
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: api
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: web
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: web, url: "git@example.com:acme/web.git", products: [acme] } }
+        - name: register
+          invoke: !ref report
+          inputs: { runner: r1, instance: !cel "inputs.i1", repos: [api], sessions: [] }
+        - name: unknownRepo
+          invoke: !ref report
+          inputs: { runner: r1, instance: !cel "inputs.i1", repos: [api, ghost], sessions: [] }
+        - name: unservedSession
+          invoke: !ref report
+          inputs: { runner: r1, instance: !cel "inputs.i1", repos: [api], sessions: !cel "[{'id': inputs.s1, 'repo': 'web'}]" }
+        # Decided before its session is known to any runner.
+        - name: p1
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-1, title: One, body: "## S1 one", session: !cel "inputs.s1" }
+        - name: p1Changes
+          invoke: !ref decide
+          inputs: { plan: !cel "string(steps.p1.result.body.planId)", decision: request_changes, revision: 1, hash: !cel "string(steps.p1.result.body.hash)" }
+        # Decided, then written to by the agent: no wake is owed.
+        - name: p2
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-2, title: Two, body: "## S1 two", session: !cel "inputs.s2" }
+        - name: p2Approve
+          invoke: !ref decide
+          inputs: { plan: !cel "string(steps.p2.result.body.planId)", decision: approve, revision: 1, hash: !cel "string(steps.p2.result.body.hash)" }
+        - name: p2Report
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + string(steps.p2.result.body.planId) + '/reports'"
+            method: POST
+            body: { kind: progress, body: started, state: in_progress }
+        - name: beforeReport
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        - name: associate
+          invoke: !ref report
+          inputs:
+            runner: r1
+            instance: !cel "inputs.i1"
+            repos: [api]
+            sessions: !cel "[{'id': inputs.s1, 'repo': 'api'}, {'id': inputs.s2, 'repo': 'api'}]"
+        - name: catchUp
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        - name: ownedElsewhere
+          invoke: !ref report
+          inputs: { runner: r2, instance: !cel "inputs.i2", repos: [api], sessions: !cel "[{'id': inputs.s1, 'repo': 'api'}]" }
+        - name: agentView
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/plans/' + string(steps.p1.result.body.planId)" }
+        - name: comment
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + string(steps.p1.result.body.planId) + '/comments'"
+            method: POST
+            body: { author: rita, body: One more thing, revision: 1 }
+        - name: afterComment
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=' + string(int(steps.catchUp.result.body.cursor)) + '&wait=0s'" }
+        # A feed long poll and, 300ms into it, a new decision on the plan.
+        - name: race
+          inputs:
+            query: !cel "'instance=' + inputs.i1 + '&after=' + string(int(steps.catchUp.result.body.cursor)) + '&wait=10s'"
+            plan: !cel "string(steps.p1.result.body.planId)"
+            hash: !cel "string(steps.p1.result.body.hash)"
+          invoke:
+            kind: Run.Projection
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [query, plan, hash]
+                properties:
+                  query: { type: string }
+                  plan: { type: string }
+                  hash: { type: string }
+            collection: [poll, decide]
+            concurrency: 2
+            steps:
+              - name: branch
+                if: !cel "item == 'poll'"
+                then:
+                  - name: wait
+                    invoke: !ref feed
+                    inputs: { query: !cel "inputs.query" }
+                else:
+                  - name: pause
+                    invoke: { kind: Timer.Delay }
+                    inputs: { duration: 300ms }
+                  - name: decided
+                    invoke: !ref decide
+                    inputs: { plan: !cel "inputs.plan", decision: approve, revision: 1, hash: !cel "inputs.hash" }
+            outputs:
+              result: !cel "item == 'poll' ? steps.wait.result : {'status': steps.decided.result.status}"
+        - name: onePending
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        - name: revise
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + string(steps.p1.result.body.planId) + '/revisions'"
+            method: POST
+            body: { body: "## S1 one, again", summary: Again., base: !cel "string(steps.p1.result.body.hash)" }
+        - name: afterRevise
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        - name: start
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: start, repo: api, prompt: Tidy the README } }
+        - name: startUnserved
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: start, repo: web, prompt: x } }
+        - name: startWithPath
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: start, repo: api, prompt: x, cwd: /etc } }
+        - name: startWithOption
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: start, repo: api, prompt: "--permission-mode=bypassPermissions" } }
+        - name: stopUnknown
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: stop, session: 5e0c1a7e-1111-4c1a-8a51-00000000ffff } }
+        - name: unknownRunner
+          invoke: !ref call
+          inputs: { url: /api/review/runners/nobody/commands, method: POST, body: { author: rita, type: stop, session: !cel "inputs.s1" } }
+        - name: stop
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: stop, session: !cel "inputs.s1" } }
+        - name: pageOfOne
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0&limit=1'" }
+        - name: fullFeed
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        # Decided before its session is known: the start that reports it owes a wake.
+        - name: p4
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-4, title: Four, body: "## S1 four", session: !cel "inputs.s4" }
+        - name: p4Changes
+          invoke: !ref decide
+          inputs: { plan: !cel "string(steps.p4.result.body.planId)", decision: request_changes, revision: 1, hash: !cel "string(steps.p4.result.body.hash)" }
+        - name: doneWithoutSession
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.start.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done }
+        - name: stopWithSession
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.stop.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done, session: !cel "inputs.s1" }
+        - name: failedWithoutError
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.stop.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: failed }
+        - name: r2
+          invoke: !ref report
+          inputs: { runner: r2, instance: !cel "inputs.i2", repos: [api], sessions: !cel "[{'id': inputs.s5, 'repo': 'api'}]" }
+        - name: startOwnedElsewhere
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.startWithOption.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done, session: !cel "inputs.s5" }
+        - name: done
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.start.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done, session: !cel "inputs.s4" }
+        - name: doneAgain
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.start.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done, session: !cel "inputs.s4" }
+        - name: startedView
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/plans/' + string(steps.p4.result.body.planId)" }
+        - name: caughtUp
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=' + string(int(steps.stop.result.body.seq))" }
+        - name: failed
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/runners/r1/commands/' + string(int(steps.stop.result.body.seq)) + '/outcome'"
+            method: POST
+            body: { instance: !cel "inputs.i1", state: failed, error: { code: ERR_CLAUDE_FAILED, message: no such session } }
+        - name: missingCommand
+          invoke: !ref call
+          inputs:
+            url: /api/agent/runners/r1/commands/99/outcome
+            method: POST
+            body: { instance: !cel "inputs.i1", state: failed, error: { code: X, message: x } }
+        - name: replace
+          invoke: !ref report
+          inputs: { runner: r1, instance: !cel "inputs.i2", repos: [api], sessions: !cel "[{'id': inputs.s1, 'repo': 'api'}]" }
+        - name: replacedReport
+          invoke: !ref report
+          inputs: { runner: r1, instance: !cel "inputs.i1", repos: [api], sessions: [] }
+        - name: replacedFeed
+          invoke: !ref feed
+          inputs: { query: !cel "'instance=' + inputs.i1 + '&after=0'" }
+        - name: replacedOutcome
+          invoke: !ref call
+          inputs:
+            url: /api/agent/runners/r1/commands/1/outcome
+            method: POST
+            body: { instance: !cel "inputs.i1", state: done }
+        - name: unknownFeed
+          invoke: !ref call
+          inputs: { url: !cel "'/api/agent/runners/nobody/commands?instance=' + inputs.i1" }
+        - name: history
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands }
+        - name: runners
+          invoke: !ref call
+          inputs: { url: /api/review/runners }
+        - name: active
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/sessions?state=active }
+        - name: paging
+          invoke:
+            kind: Run.Projection
+            collection:
+              - /api/review/runners/r1/commands?order=desc&limit=2
+              - /api/review/runners/r1/commands?order=desc&before=5&limit=2
+              - /api/review/runners/r1/commands?order=desc&before=3&limit=2
+              - /api/review/runners/r1/commands?order=desc&before=1&limit=2
+              - /api/review/runners/r1/commands?order=desc&after=3
+              - /api/review/runners/r2/commands?order=desc
+              - /api/review/runners/r1/commands?after=4&limit=1
+              - /api/review/runners/r1/commands?after=6
+              - /api/review/runners/r1/sessions?order=desc
+              - /api/review/runners/r1/sessions?state=inactive&order=desc&limit=1
+              - /api/review/runners/r1/sessions?state=inactive
+            steps:
+              - name: read
+                invoke: !ref page
+                inputs: { url: !cel "string(item)" }
+            outputs:
+              page: !cel "steps.read.result.page"
+        - name: firstInactive
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/sessions?state=inactive&order=desc&limit=1 }
+        - name: olderInactive
+          invoke: !ref page
+          inputs: { url: !cel "'/api/review/runners/r1/sessions?state=inactive&order=desc&limit=1&before=' + string(int(steps.firstInactive.result.body.cursor))" }
+      outputs:
+        register: !cel "steps.register.result.answer"
+        unknownRepo: !cel "steps.unknownRepo.result.answer"
+        unservedSession: !cel "steps.unservedSession.result.answer"
+        beforeReport: !cel "steps.beforeReport.result.body.commands"
+        catchUp: !cel "steps.catchUp.result.body.commands.map(c, [c.type, c.session == inputs.s1, c.repo, c.plan == steps.p1.result.body.planId, c.decision, c.planSeq])"
+        ownedElsewhere: !cel "steps.ownedElsewhere.result.answer"
+        agentView: !cel "[steps.agentView.result.body.session == inputs.s1, steps.agentView.result.body.runner]"
+        afterComment: !cel "[steps.afterComment.result.body.commands, steps.afterComment.result.body.cursor == steps.catchUp.result.body.cursor]"
+        woken: !cel "[steps.race.result[0].result.elapsed < 800, steps.race.result[0].result.body.commands.map(c, [c.type, c.decision]), steps.race.result[1].result.status]"
+        onePending: !cel "steps.onePending.result.body.commands.map(c, [c.type, c.decision])"
+        afterRevise: !cel "steps.afterRevise.result.body.commands"
+        start: !cel "[steps.start.result.status, steps.start.result.body]"
+        startUnserved: !cel "[steps.startUnserved.result.status, steps.startUnserved.result.body.code]"
+        startWithPath: !cel "steps.startWithPath.result.status"
+        startWithOption: !cel "[steps.startWithOption.result.status, has(steps.startWithOption.result.body.seq)]"
+        outcomeRefusals: !cel >-
+          [[steps.doneWithoutSession.result.status, steps.doneWithoutSession.result.body.code],
+           [steps.stopWithSession.result.status, steps.stopWithSession.result.body.code],
+           steps.failedWithoutError.result.status,
+           [steps.startOwnedElsewhere.result.status, steps.startOwnedElsewhere.result.body.code]]
+        stopUnknown: !cel "[steps.stopUnknown.result.status, steps.stopUnknown.result.body.code]"
+        unknownRunner: !cel "[steps.unknownRunner.result.status, steps.unknownRunner.result.body.code]"
+        stop: !cel "steps.stop.result.status"
+        startedView: !cel "[steps.startedView.result.body.session == inputs.s4, steps.startedView.result.body.runner]"
+        caughtUp: !cel "steps.caughtUp.result.body.commands.map(c, [c.type, c.session == inputs.s4, c.plan == steps.p4.result.body.planId, c.decision])"
+        pageOfOne: !cel "[size(steps.pageOfOne.result.body.commands), steps.pageOfOne.result.body.cursor == steps.pageOfOne.result.body.commands[0].seq]"
+        fullFeed: !cel >-
+          steps.fullFeed.result.body.commands.map(c, c.type == 'start'
+            ? [c.type, c.repo, c.prompt, c.author, c.sessionName.matches('^plan-approval-[0-9a-f-]{36}$'), 'session' in c]
+            : [c.type, c.repo, c.session == inputs.s1, c.author])
+        outcomes: !cel "[steps.done.result.status, steps.doneAgain.result.status, steps.doneAgain.result.body.code, steps.failed.result.status, steps.missingCommand.result.status, steps.missingCommand.result.body.code]"
+        replace: !cel "steps.replace.result.answer"
+        replaced: !cel "[steps.replacedReport.result.answer, [steps.replacedFeed.result.status, steps.replacedFeed.result.body.code], [steps.replacedOutcome.result.status, steps.replacedOutcome.result.body.code]]"
+        unknownFeed: !cel "[steps.unknownFeed.result.status, steps.unknownFeed.result.body.code]"
+        history: !cel "steps.history.result.body.commands.map(c, [c.seq, c.type, c.state, c.error, c.sessionName != null, c.session == inputs.s4])"
+        runners: !cel "steps.runners.result.body.runners.map(r, [r.name, r.repos, size(r.activeSessions), r.lastSeenAt != ''])"
+        active: !cel "steps.active.result.body.sessions.map(s, [s.id == inputs.s1, s.repo, s.state])"
+        commandPages: !cel "steps.paging.result.filter(p, size(p.page[0]) == 0 || !p.page[0][0].contains('-')).map(p, p.page)"
+        sessionPages: !cel >-
+          (steps.paging.result.filter(p, size(p.page[0]) > 0 && p.page[0][0].contains('-')).map(p, p.page[0])
+            + [steps.olderInactive.result.page[0]])
+            .map(ids, ids.map(id, id == inputs.s1 ? 's1' : id == inputs.s2 ? 's2' : id == inputs.s4 ? 's4' : id))
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        register: [200, ok]
+        unknownRepo: [422, ERR_REPO_NOT_FOUND]
+        unservedSession: [422, ERR_REPO_NOT_SERVED]
+        beforeReport: []
+        catchUp: [[wake, true, api, true, request_changes, 2]]
+        ownedElsewhere: [409, ERR_SESSION_OWNED]
+        agentView: [true, r1]
+        afterComment: [[], true]
+        woken: [true, [[wake, approve]], 201]
+        onePending: [[wake, approve]]
+        afterRevise: []
+        start: [201, { seq: 3 }]
+        startUnserved: [422, ERR_REPO_NOT_SERVED]
+        startWithPath: 400
+        startWithOption: [201, true]
+        outcomeRefusals: [[422, ERR_OUTCOME_INVALID], [422, ERR_OUTCOME_INVALID], 400, [409, ERR_SESSION_OWNED]]
+        stopUnknown: [404, ERR_SESSION_NOT_FOUND]
+        unknownRunner: [404, ERR_RUNNER_NOT_FOUND]
+        stop: 201
+        startedView: [true, r1]
+        caughtUp: [[wake, true, true, request_changes]]
+        pageOfOne: [1, true]
+        fullFeed: [[start, api, Tidy the README, rita, true, false], [start, api, "--permission-mode=bypassPermissions", rita, true, false], [stop, api, true, rita]]
+        outcomes: [200, 409, ERR_INVALID_TRANSITION, 200, 404, ERR_COMMAND_NOT_FOUND]
+        replace: [200, ok]
+        replaced: [[409, ERR_RUNNER_REPLACED], [409, ERR_RUNNER_REPLACED], [409, ERR_RUNNER_REPLACED]]
+        unknownFeed: [404, ERR_RUNNER_NOT_FOUND]
+        history:
+          - [1, wake, superseded, null, false, false]
+          - [2, wake, superseded, null, false, false]
+          - [3, start, done, null, true, true]
+          - [4, start, pending, null, true, false]
+          - [5, stop, failed, { code: ERR_CLAUDE_FAILED, message: no such session }, false, false]
+          - [6, wake, pending, null, false, true]
+        runners: [[r1, [api], 1, true], [r2, [api], 1, true]]
+        active: [[true, api, active]]
+        # Commands 1–6: the newest page, `before` down to the oldest and past it
+        # (the cursor stays at the bound), the window above `after`, a runner
+        # with none, and ascending pages as before.
+        commandPages:
+          - [["6", "5"], 5]
+          - [["4", "3"], 3]
+          - [["2", "1"], 1]
+          - [[], 1]
+          - [["6", "5", "4"], 4]
+          - [[], 0]
+          - [["5"], 5]
+          - [[], 6]
+        # The runner's sessions newest first; the inactive ones a page at a time
+        # from the newest, then oldest first.
+        sessionPages:
+          - [s4, s2, s1]
+          - [s4]
+          - [s2, s4]
+          - [s2]

@@ -131,6 +131,32 @@ naming a bound statement directly: a statement's `transaction:` ref and the
 transaction's `steps:` ref are both injection sites, so wiring them to each
 other is an init-order cycle, while a step's `invoke:` resolves at dispatch.
 
+## Throws inside the body
+
+A throw from the body rolls the transaction back and propagates unchanged, so
+`Sql.Transaction` declares `throws: { inherit: true }`: what it can throw is
+what its body can. A route whose handler is a transaction can therefore name a
+body's structured code in `catches:` — `telo check` accepts it and the runtime
+renders it, with every write made before the throw already discarded:
+
+```yaml
+kind: Sql.Transaction
+metadata: { name: openAccount }
+connection: !ref appDb
+steps: !ref openAccountSteps   # inserts, then `throw: { code: ACCOUNT_REJECTED }`
+---
+kind: Http.Api
+metadata: { name: accountsApi }
+routes:
+  - request: { path: /accounts, method: POST }
+    handler: !ref openAccount
+    returns:
+      - status: 201
+    catches:
+      - when: !cel "error.code == 'ACCOUNT_REJECTED'"
+        status: 409
+```
+
 ## Migrations
 
 A schema resource runs each pending migration in a transaction — every
