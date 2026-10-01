@@ -1,0 +1,57 @@
+# A step argument reading a value its producer declares nullable, into a slot
+# that takes no null: `telo check` reports it at the argument, and the kernel
+# refuses the null at dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: CelArgumentNullable
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: attempt
+    invoke: !ref produce
+  - name: release
+    invoke: !ref consume
+    inputs:
+      failure: !cel "steps.attempt.result.error"
+---
+kind: Run.Value
+metadata:
+  name: produce
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [error]
+    properties:
+      error:
+        anyOf:
+          - type: object
+            required: [message]
+            properties:
+              message: { type: string }
+          - type: "null"
+value:
+  error: !cel "null"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [failure]
+    properties:
+      failure:
+        type: object
+        required: [message]
+        properties:
+          message: { type: string }
+value: { ok: true }

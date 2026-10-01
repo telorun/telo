@@ -48,8 +48,8 @@ outputType:
     type: object
     properties:
       bytes:
-        type: object
-        description: Single Uint8Array formed by concatenating every chunk in `input`.
+        x-telo-type: Telo.Bytes
+        description: Every chunk in `input`, concatenated into one run of bytes.
     required: [ bytes ]
     additionalProperties: false
 schema:

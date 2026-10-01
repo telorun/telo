@@ -132,10 +132,11 @@ steps:
   - name: badInput
     try:
       - name: callWithString
-        # Deliberately invalid, routed through CEL: a literal is rejected by
-        # `telo check`, and this test is about the RUNTIME contract boundary.
+        # Deliberately invalid, routed through `dyn(...)`: a literal or a typed
+        # expression is rejected by `telo check`, and this test is about the
+        # RUNTIME contract boundary.
         inputs:
-          a: !cel "'not a number'"
+          a: !cel "dyn('not a number')"
           b: 5
         invoke: !ref addNumbers
     catch:

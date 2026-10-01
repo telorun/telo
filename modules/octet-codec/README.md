@@ -1,6 +1,6 @@
 # Octet Codec
 
-Raw-bytes codec — `Uint8Array` stream ↔ `Uint8Array`. The encoder passes byte chunks through unchanged; the decoder collects every chunk into a single buffer.
+Raw-bytes codec — byte stream ↔ bytes. The encoder passes byte chunks through unchanged; the decoder collects every chunk into one run of bytes, declared as `Telo.Bytes`, so its `bytes` output fits any slot that takes bytes and no slot declared as a JSON type.
 
 ## Why use this
 
@@ -12,8 +12,8 @@ Raw-bytes codec — `Uint8Array` stream ↔ `Uint8Array`. The encoder passes byt
 
 | Kind | Purpose |
 | --- | --- |
-| `Octet.Encoder` | Pass an async iterable of `Uint8Array` chunks through unchanged. |
-| `Octet.Decoder` | Collect every chunk into a single `Uint8Array`. |
+| `Octet.Encoder` | Pass a stream of byte chunks through unchanged. |
+| `Octet.Decoder` | Collect every chunk into one run of bytes (`bytes`, a `Telo.Bytes`). |
 
 ## Example
 
@@ -37,7 +37,7 @@ metadata: { name: Collect }
 steps:
   - name: source
     invoke: !ref Chunks
-  - name: bytes                 # { bytes: Uint8Array } — every chunk concatenated
+  - name: bytes                 # { bytes } — every chunk concatenated, as bytes
     inputs: { input: !cel "steps.source.result.output" }
     invoke: !ref ReadBytes
 ```

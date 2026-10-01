@@ -45,7 +45,7 @@ scale: 2
 
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
-| `data` | `Uint8Array` | yes | Buffered PDF bytes (e.g. the `bytes` produced by `Octet.Decoder`, or an `S3.Get` body collected to bytes). |
+| `data` | bytes (`Telo.Bytes`) | yes | The PDF document. Supply it from a byte-producing resource (e.g. the `bytes` produced by `Octet.Decoder`, or an `S3.Get` body collected to bytes), an `!include-bytes` embed, or base64url text. |
 | `page` | `integer` | no (default `1`) | 1-based page number to render. |
 | `format` | `png` \| `jpeg` \| `webp` | no | Output image format. Takes precedence over the resource-level `format`. |
 | `quality` | integer | no | Encoder quality (1–100) for the lossy formats; ignored for `png`. |
@@ -54,7 +54,7 @@ scale: 2
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `image` | `Uint8Array` | Rendered page as buffered image bytes in the chosen format. |
+| `image` | bytes (`Telo.Bytes`) | The rendered page, as image bytes in the chosen format. |
 | `width` | `integer` | Rendered image width in pixels (page width × scale). |
 | `height` | `integer` | Rendered image height in pixels (page height × scale). |
 | `pageCount` | `integer` | Total number of pages in the document. |
@@ -65,4 +65,5 @@ scale: 2
 
 | Code | Raised when |
 |------|-------------|
-| `ERR_INVALID_INPUT` | `data` is not a `Uint8Array`, the bytes are not parseable as a PDF, `page` exceeds the document's page count, `format` is not `png`/`jpeg`/`webp`, or `quality` is not an integer between 1 and 100. |
+| `ERR_INVALID_INPUT` | `data` is not parseable as a PDF, `page` exceeds the document's page count, `format` is not `png`/`jpeg`/`webp`, or `quality` is not an integer between 1 and 100. |
+| `ERR_INPUT_INVALID` | An argument does not satisfy the input contract — `data` is not bytes, or `page` is below 1. Raised before the controller runs. |

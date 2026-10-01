@@ -171,6 +171,7 @@ import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-sign
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
+import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
 import { templateCallSite } from "./derived-slots.js";
 import {
   DiagnosticSeverity,
@@ -225,7 +226,11 @@ import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
-import { collectRefInputIssues, collectStepInputIssues } from "./validate-step-inputs.js";
+import {
+  collectRefInputIssues,
+  collectStepInputIssues,
+  type CallSiteArguments,
+} from "./validate-step-inputs.js";
 import { collectReferenceOutputIssues } from "./validate-reference-output.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -296,6 +301,8 @@ function resolveSelfOrAlias(
 }
 
 const SOURCE = "telo-analyzer";
+/** The CEL root a step body's results are read through. */
+const STEPS_ROOT = "steps.";
 
 /** How to name the owner of a resolved contract in a diagnostic. When the
  *  contract came from the definition's direct parent, echo the author's own
@@ -1960,7 +1967,13 @@ export class StaticAnalyzer {
       manifest: ResourceManifest;
       resource: { kind: string; name: string };
       filePath?: string;
+      /** Set for a call-site argument: the target whose declared inputType the
+       *  slot's schema is. */
+      callTarget?: string;
     })[] = [];
+    // A call site reached by two enumerations (a boot target's inline step is a
+    // step and a reference slot) contributes each argument leaf once.
+    const callSiteSlotPaths = new Map<ResourceManifest, Set<string>>();
     const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
     // The expression's source, for what its text alone decides.
     const celSourceByPath = new Map<ResourceManifest, Map<string, string>>();
@@ -2731,6 +2744,7 @@ export class StaticAnalyzer {
                 },
               });
             }
+            const argumentMaps: CallSiteArguments[] = [];
             const inputIssues = [
               ...collectRefInputIssues(
                 m as Record<string, any>,
@@ -2739,6 +2753,7 @@ export class StaticAnalyzer {
                 defs,
                 aliases,
                 { aliasesByModule, rootModules, libraries },
+                argumentMaps,
               ),
               ...collectStepInputIssues(
               m as Record<string, any>,
@@ -2749,8 +2764,27 @@ export class StaticAnalyzer {
               aliases,
               { aliasesByModule, rootModules, libraries },
               celStepContextSchema,
+              argumentMaps,
               ),
             ];
+            // An argument map's `!cel` leaves are slots of the same join a
+            // resource's own fields feed: AJV sees an expression only as its
+            // stand-in, so its TYPE is held to the target's contract there.
+            for (const site of argumentMaps) {
+              for (const slot of collectCelValueSlots(site.values, site.schema, site.path)) {
+                let seen = callSiteSlotPaths.get(m);
+                if (!seen) callSiteSlotPaths.set(m, (seen = new Set()));
+                if (seen.has(slot.path)) continue;
+                seen.add(slot.path);
+                celReturnSlots.push({
+                  manifest: m,
+                  resource: { kind: m.kind, name: stepName ?? "" },
+                  filePath: stepFile,
+                  ...slot,
+                  callTarget: site.targetLabel,
+                });
+              }
+            }
             for (const issue of inputIssues) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
@@ -2759,9 +2793,7 @@ export class StaticAnalyzer {
                 message:
                   issue.code === "LIVE_VALUE_RETRIED"
                     ? `${m.kind}/${stepName}: at '${issue.path}', ${issue.message}`
-                    : issue.code
-                      ? `${m.kind}/${stepName}: inputs at '${issue.path}' flow into ${issue.targetLabel} with disagreeing type arguments: ${issue.message}`
-                      : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+                    : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
                 data: {
                   resource: { kind: m.kind, name: stepName ?? "" },
                   filePath: stepFile,
@@ -3086,7 +3118,15 @@ export class StaticAnalyzer {
           const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
           if (chain) {
             const produced = navigateSchemaToExprPath(chainContext, chain);
-            if (produced) {
+            // An undeclared step result is typed by the permissive fallback: an
+            // absence of a claim, not a producer saying `object`. Asked of the
+            // step map itself, because the context is a copy of it.
+            const undeclared =
+              celStepContextSchema !== undefined &&
+              chain.startsWith(STEPS_ROOT) &&
+              navigateSchemaToExprPath(celStepContextSchema, chain.slice(STEPS_ROOT.length)) ===
+                PERMISSIVE_CONTRACT;
+            if (produced && !undeclared) {
               let byPath = celSourceSchemaByPath.get(m);
               if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
               byPath.set(path, produced);
@@ -3213,6 +3253,9 @@ export class StaticAnalyzer {
       const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
       const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";
       const baseType = type.split("<")[0]!;
+      // What declares the slot, as a message names it.
+      const holder =
+        slot.callTarget !== undefined ? `${slot.callTarget}'s declared inputType` : "the field";
       const hostPath = holdsHostPath(target);
       const fits = celTypeSatisfiesJsonSchema(
         baseType,
@@ -3257,10 +3300,29 @@ export class StaticAnalyzer {
                 severity: DiagnosticSeverity.Error,
                 code: "CEL_TYPE_ERROR",
                 source: SOURCE,
-                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
+                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but ${holder} expects '${expected}'.`,
                 data,
               },
         );
+        continue;
+      }
+      // A null is refused at a slot that takes none, whatever the rest of the
+      // producer's type is — and the CEL type does not carry it. Only a plain
+      // chain has a producer schema to read; a guarded, computed or `dyn`
+      // expression says nothing here and is left to the runtime.
+      const nullable = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
+      if (!result && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
+        const chain = expression.trim();
+        diagnostics.push({
+          severity: DiagnosticSeverity.Error,
+          code: "CEL_TYPE_ERROR",
+          source: SOURCE,
+          message:
+            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads '${chain}', ` +
+            `which may be null, but ${holder} expects '${describeSlotType(target)}', which does not ` +
+            `admit null. Guard it: '${chain} != null ? ${chain} : <a value for the null case>'.`,
+          data,
+        });
         continue;
       }
       // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
@@ -3314,7 +3376,7 @@ export class StaticAnalyzer {
         });
         continue;
       }
-      const { compatible, issues } = checkSchemaCompatibility(
+      const { compatible, issues, conflicts } = checkSchemaCompatibility(
         produced,
         target,
         (ref: string) => defs.schemaForId(ref),
@@ -3331,15 +3393,30 @@ export class StaticAnalyzer {
                 `whose declared shape disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${issues.join("; ")}.`,
               data,
             }
-          : {
-              severity: DiagnosticSeverity.Error,
-              code: "CEL_TYPE_ARGUMENT_MISMATCH",
-              source: SOURCE,
-              message:
-                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-                `whose type arguments disagree with the field's: ${issues.join("; ")}.`,
-              data,
-            },
+          : conflicts.every((conflict) => conflict.beneathTypeArgument)
+            ? {
+                // Every conflict sits beneath a type argument of a value type
+                // both sides name; one outside makes it a shape misfit.
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_TYPE_ARGUMENT_MISMATCH",
+                source: SOURCE,
+                message:
+                  `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+                  `whose type arguments disagree with ${
+                    slot.callTarget !== undefined ? holder : "the field's"
+                  }: ${issues.join("; ")}.`,
+                data,
+              }
+            : {
+                severity: DiagnosticSeverity.Error,
+                code: "CEL_TYPE_ERROR",
+                source: SOURCE,
+                message:
+                  `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads ` +
+                  `'${expression.trim()}', whose declared shape does not fit what ${holder} expects: ` +
+                  `${issues.join("; ")}.`,
+                data,
+              },
       );
     }
 

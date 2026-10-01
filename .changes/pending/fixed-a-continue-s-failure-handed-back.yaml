@@ -1,0 +1,7 @@
+modules:
+  apps/authoring-agent: Fixed
+body: A continue's failure handed back to its turn's key is guarded against a takeover
+  that reported no error, which `telo check` now requires of a value its producer
+  declares nullable. The system prompt states that a `!cel` argument is held to the
+  target's declared input type and that a nullable source must be guarded, so the prompt
+  id changes.

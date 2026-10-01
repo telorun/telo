@@ -602,12 +602,13 @@ inputType:
         type: string
         description: The PKCE secret from the matching authorization. Omit only when PKCE is disabled.
       iss:
-        type: string
+        type: [string, "null"]
         description: >-
           The issuer from the authorization response, verified against the declared
-          one. Required when the server advertises that it sends the parameter —
-          omitting it there is refused rather than silently skipped, since a
-          missing `iss` is exactly what a mix-up attack produces.
+          one; null means the response carried none. Required when the server
+          advertises that it sends the parameter — a missing one there is refused
+          rather than silently skipped, since a missing `iss` is exactly what a
+          mix-up attack produces.
 outputType:
   kind: Telo.JsonSchema
   schema:

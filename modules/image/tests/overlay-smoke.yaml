@@ -6,7 +6,8 @@ metadata:
     Smoke test for Image.Overlay — draws a labelled box and an off-canvas box
     (clipped, not rejected) onto a 120×80 Image.Blank canvas and asserts the
     output is a PNG with unchanged dimensions. Further sequences assert that
-    a zero-width shape and undecodable bytes raise ERR_INVALID_INPUT.
+    a zero-width shape and undecodable bytes raise ERR_INVALID_INPUT, and
+    that an `image` that is not bytes is refused with ERR_INPUT_INVALID.
 imports:
   Image: ../
   JS: ../../javascript
@@ -16,6 +17,7 @@ targets:
   - !ref testOverlay
   - !ref testZeroWidthShape
   - !ref testUndecodableBytes
+  - !ref testNonBytesImage
 ---
 kind: Image.Blank
 metadata: { name: canvas }
@@ -153,3 +155,29 @@ steps:
             properties:
               code: { const: ERR_INVALID_INPUT }
             required: [ code ]
+---
+# A value that is not bytes is refused by the input contract, before the
+# controller runs. `dyn(...)` hides its type from `telo check`, which refuses a
+# map at a byte slot.
+kind: Run.Sequence
+metadata: { name: testNonBytesImage }
+steps:
+  - name: tryNonBytes
+    try:
+      - name: nonBytes
+        inputs:
+          image: !cel "dyn({'not': 'bytes'})"
+          shapes:
+            - { x: 0, y: 0, width: 5, height: 5 }
+        invoke: !ref draw
+    catch:
+      - name: caught
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+        invoke: { kind: Assert.Equals }
+  - name: refused
+    inputs:
+      actual: !cel "has(steps.caught)"
+      expected: true
+    invoke: { kind: Assert.Equals }

@@ -57,7 +57,7 @@ label: { color: "#FFFFFF", placement: top-left }
 
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
-| `image` | `Uint8Array` | yes | Buffered image bytes — PNG, JPEG, or WebP (anything the canvas decoder reads). |
+| `image` | bytes (`Telo.Bytes`) | yes | The image to draw on — PNG, JPEG, or WebP (anything the canvas decoder reads). Supply it from a byte-producing resource, an `!include-bytes` embed, or base64url text. |
 | `shapes` | `array` | yes | Rectangles to draw; at least one. |
 | `format` | `png` \| `jpeg` \| `webp` | no | Output image format. Takes precedence over the resource-level `format`. |
 | `quality` | integer | no | Encoder quality (1–100) for the lossy formats; ignored for `png`. |
@@ -75,7 +75,7 @@ Each `shapes[]` entry:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `image` | `Uint8Array` | Annotated image as buffered bytes in the chosen format. |
+| `image` | bytes (`Telo.Bytes`) | The annotated image, as image bytes in the chosen format. |
 | `width` | integer | Image width in pixels (unchanged from the input). |
 | `height` | integer | Image height in pixels (unchanged from the input). |
 | `mediaType` | string | MIME type of the encoded image (`image/png`, `image/jpeg`, or `image/webp`). |
@@ -84,4 +84,5 @@ Each `shapes[]` entry:
 
 | Code | When |
 |------|------|
-| `ERR_INVALID_INPUT` | `image` is not a `Uint8Array` or not decodable as an image; a shape has non-finite coordinates or non-positive width/height; `format` is not `png`/`jpeg`/`webp`; or `quality` is not an integer between 1 and 100. |
+| `ERR_INPUT_INVALID` | An argument does not satisfy the input contract — `image` is not bytes, or a shape's width or height is not positive. Raised before the controller runs. |
+| `ERR_INVALID_INPUT` | `image` is not decodable as an image; a shape has non-finite coordinates or non-positive width/height; `format` is not `png`/`jpeg`/`webp`; or `quality` is not an integer between 1 and 100. |

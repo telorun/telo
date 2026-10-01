@@ -52,7 +52,7 @@ Sign in from a terminal, then call an API with the stored grant:
 
 ```yaml
 kind: Telo.Application
-metadata: { name: sheets-demo, version: 1.0.0 }
+metadata: { name: SheetsDemo, version: 1.0.0 }
 imports:
   OAuth: oci://ghcr.io/telorun/oauth-client@<version>
   Http: oci://ghcr.io/telorun/http-client@<version>
@@ -114,21 +114,35 @@ steps:
     invoke: !ref Authorize
     inputs:
       redirectUri: !cel "resources.Loopback.status.redirectUri"
-  - invoke: !ref Console.writeLine
+  - name: prompt
+    invoke: !ref Console.writeLine
     inputs:
-      output: !cel "'Open this URL to authorize:\n' + steps.auth.result.url"
+      output: !cel "'Open this URL to authorize: ' + steps.auth.result.url"
   - name: redirect
     invoke: !ref AwaitRedirect
     inputs:
       state: !cel "steps.auth.result.state"
+  # The user declined, or the server rejected the request: there is no code.
+  - name: refused
+    if: !cel "steps.redirect.result.code == null"
+    then:
+      - name: stop
+        throw:
+          code: ERR_SIGN_IN_REFUSED
+          message: The authorization server returned no code.
+          data:
+            error: !cel "steps.redirect.result.error"
   - name: tokens
     invoke: !ref Exchange
     inputs:
-      code: !cel "steps.redirect.result.code"
+      # `code` is declared nullable, so it is guarded; the step above already
+      # stopped the flow when it is null.
+      code: !cel "steps.redirect.result.code != null ? steps.redirect.result.code : ''"
       codeVerifier: !cel "steps.auth.result.codeVerifier"
       redirectUri: !cel "steps.auth.result.redirectUri"
-      iss: !cel "steps.redirect.result.iss"      # verified against the declared issuer
-  - invoke: !ref SaveGrant
+      iss: !cel "steps.redirect.result.iss"      # verified against the declared issuer; null when none was sent
+  - name: saved
+    invoke: !ref SaveGrant
     inputs:
       tokens: !cel "steps.tokens.result"
 ```

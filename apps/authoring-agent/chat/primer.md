@@ -1925,8 +1925,14 @@ the `imports` map.
   `!cel "variables.flag"` over a string). `telo check` reports a predicate
   typed as anything else (`CEL_TYPE_ERROR`); a value only known at run is
   refused there with `ERR_PREDICATE_NOT_BOOLEAN` (a sink's `when` at load with
-  `ERR_MANIFEST_VALIDATION_FAILED`). Every compile-time expression's result is
-  held to its field's type the same way.
+  `ERR_MANIFEST_VALIDATION_FAILED`). Every expression's result is held to the
+  type it flows into the same way: a field's own type, and for a `!cel`
+  ARGUMENT — in a step's `inputs:`, a boot target's, a route's or any other
+  handler's `inputs:` map — the target's declared input type (`CEL_TYPE_ERROR`:
+  `returns 'string' but consume's declared inputType expects 'integer'`). A
+  value read from a source that may be NULL (an output or variable declared
+  nullable) into a field or argument that takes no null is refused the same
+  way: guard it, `!cel "x != null ? x : <fallback>"`.
 - Two more tags embed a file that ships beside the manifest:
   `!include-text path` yields the file's contents as a string,
   `!include-bytes path` yields raw bytes (a `Uint8Array` — what a
@@ -3369,10 +3375,13 @@ pass can reach any of these, and a manifest that checks clean tells you nothing
 about them — which is exactly why "it checks" is never the sentence you finish on.
 
 **Values that only exist at dispatch.** A contract is enforced when the call
-happens, so a CEL expression producing the wrong shape is `ERR_INPUT_INVALID` /
-`ERR_OUTPUT_INVALID` at run, not a check error — the checker sees an expression,
-not its value. The same goes for a `.status` field read before the resource
-reporting it has started (`ERR_OBSERVED_STATE_UNAVAILABLE`).
+happens. The checker holds a `!cel` argument to the target's input type by the
+expression's TYPE, so a string where an integer is declared is a check error;
+what it cannot see is the VALUE — a number out of range, text failing a
+`pattern`, a `dyn` or undeclared result of the wrong shape — and those are
+`ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` at run. The same goes for a `.status`
+field read before the resource reporting it has started
+(`ERR_OBSERVED_STATE_UNAVAILABLE`).
 
 **Behaviour.** The wiring can be perfect and the logic wrong: a filter that
 matches nothing, a join on the wrong key, a total that sums the wrong column.

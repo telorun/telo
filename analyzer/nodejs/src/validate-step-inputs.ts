@@ -5,11 +5,11 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
-import { checkSchemaCompatibility, navigateSchemaToExprPath } from "./schema-compat.js";
+import { inlineNamedShapes, navigateSchemaToExprPath } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { plainChainOf } from "@telorun/templating";
-import { isLiveSlot, valueTypeOf } from "@telorun/sdk";
+import { isLiveSlot } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
 import {
   slotCallSites,
@@ -23,9 +23,40 @@ export interface StepInputIssue {
   path: string;
   targetLabel: string;
   message: string;
-  /** Set when the issue is a type-argument disagreement rather than a contract
-   *  shape violation — the two read differently and deserve their own code. */
-  code?: "CEL_TYPE_ARGUMENT_MISMATCH" | "LIVE_VALUE_RETRIED";
+  /** Set when the issue is not a contract shape violation. */
+  code?: "LIVE_VALUE_RETRIED";
+}
+
+/**
+ * One call site's argument map beside the contract it is written against.
+ *
+ * What the CEL value/slot join needs to judge the map's `!cel` leaves: AJV sees
+ * an expression only as its stand-in, so an expression's TYPE is compared with
+ * its slot there, exactly as for a resource's own fields. `schema` has every
+ * named shape inlined, because that walk follows document-local references only.
+ */
+export interface CallSiteArguments {
+  path: string;
+  values: unknown;
+  schema: Record<string, any>;
+  targetLabel: string;
+}
+
+const inlinedContracts = new WeakMap<
+  DefinitionRegistry,
+  WeakMap<Record<string, any>, Record<string, any>>
+>();
+
+/** A contract's schema with its named shapes inlined, once per contract. */
+function inlinedContract(schema: Record<string, any>, defs: DefinitionRegistry): Record<string, any> {
+  let perRegistry = inlinedContracts.get(defs);
+  if (!perRegistry) inlinedContracts.set(defs, (perRegistry = new WeakMap()));
+  let inlined = perRegistry.get(schema);
+  if (!inlined) {
+    inlined = inlineNamedShapes(schema, (ref) => defs.schemaForId(ref));
+    perRegistry.set(schema, inlined);
+  }
+  return inlined;
 }
 
 /** The per-declaring-module alias tables and the entry's own modules. */
@@ -115,12 +146,14 @@ export function collectStepInputIssues(
   scopes: CallScopes,
   /** The typed `steps.<name>.result` context for this resource. Supplied by the
    *  caller because building it is analyzer state; without it the contract check
-   *  still runs and only the type-argument comparison is skipped. */
+   *  still runs and only the live-value check is skipped. */
   stepContext?: Record<string, any>,
+  /** Receives each site's argument map, for the CEL value/slot join. */
+  argumentMaps?: CallSiteArguments[],
 ): StepInputIssue[] {
   const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
   return stepCallSites(manifest, defSchema, ctx).flatMap((site) =>
-    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, stepContext),
+    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, stepContext, argumentMaps),
   );
 }
 
@@ -141,10 +174,12 @@ export function collectRefInputIssues(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
+  /** Receives each site's argument map, for the CEL value/slot join. */
+  argumentMaps?: CallSiteArguments[],
 ): StepInputIssue[] {
   const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
   return slotCallSites(manifest, sites, ctx).flatMap((site) =>
-    checkCallSite(site, manifest, allManifests, defs, aliases, scopes),
+    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, undefined, argumentMaps),
   );
 }
 
@@ -160,12 +195,19 @@ function checkCallSite(
   aliases: AliasResolver,
   scopes: CallScopes,
   stepContext?: Record<string, any>,
+  argumentMaps?: CallSiteArguments[],
 ): StepInputIssue[] {
   const out: StepInputIssue[] = [];
   const { contract, values, invoke, invokedManifest, invokedDefinition } = site;
   if (!contract) return out;
   const targetLabel =
     (invoke.name as string | undefined) ?? (invoke.kind as string | undefined) ?? "the invoked resource";
+  argumentMaps?.push({
+    path: site.path,
+    values,
+    schema: inlinedContract(contract.schema, defs),
+    targetLabel,
+  });
   const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
@@ -180,11 +222,14 @@ function checkCallSite(
     // resolver or they disagree about the same slot.
     external: (ref) => defs.schemaForId(ref),
   });
-  // The type-argument check, at the one site where a produced value's schema
-  // meets a consuming slot's. The roots a plain chain may name here, each paired
-  // with the schema it is navigated against: `steps.` is the step map (analyzer
-  // state, supplied by the caller), `inputs.` the ENCLOSING kind's own declared
-  // inputType — how a value produced outside this resource reaches a step at all.
+  // A LIVE value is consumed by reading, so it exists exactly once — and
+  // re-attempting a dispatch that already read it re-sends nothing. Both facts
+  // are already declared: the value's liveness by its value type, and the
+  // re-attempt by the retry policy. No kind is named. The roots a plain chain
+  // may name here, each paired with the schema it is navigated against: `steps.`
+  // is the step map (analyzer state, supplied by the caller), `inputs.` the
+  // ENCLOSING kind's own declared inputType — how a value produced outside this
+  // resource reaches a step at all.
   const roots: Array<[string, Record<string, any>]> = [];
   if (stepContext) roots.push(["steps.", stepContext]);
   const ownContract = resolveContract(
@@ -195,48 +240,25 @@ function checkCallSite(
   );
   if (ownContract) roots.push(["inputs.", ownContract.schema]);
 
-  if (roots.length > 0) {
+  if (roots.length > 0 && site.step) {
     for (const [inputName, inputValue] of Object.entries(values)) {
       const chain = plainChainOf(inputValue);
       const root = chain ? roots.find(([prefix]) => chain.startsWith(prefix)) : undefined;
       if (!chain || !root) continue;
       const produced = navigateSchemaToExprPath(root[1], chain.slice(root[0].length));
       const slotSchema = (contract.schema.properties as Record<string, any> | undefined)?.[inputName];
-      if (!produced || !slotSchema) continue;
-      // A LIVE value is consumed by reading, so it exists exactly once — and
-      // re-attempting a dispatch that already read it re-sends nothing. Both
-      // facts are already declared: the value's liveness by its value type, and
-      // the re-attempt by the retry policy. No kind is named.
-      if (isLiveSlot(produced)) {
-        const retry = site.step
-          ? declaredRetry(site.step.value, site.step.schema, invokedManifest, invokedDefinition)
-          : undefined;
-        if (retry !== undefined) {
-          out.push({
-            path: `${site.path}.${inputName}`,
-            targetLabel,
-            message:
-              `'${inputName}' is a live value, which is consumed by reading and so exists ` +
-              `once — but ${retry} re-attempts the dispatch, and a re-attempt would pass ` +
-              `nothing. Collect it to a value first, or chunk the work so each attempt ` +
-              `carries its own replayable piece.`,
-            code: "LIVE_VALUE_RETRIED",
-          });
-          continue;
-        }
-      }
-      // ONLY a type-argument disagreement, which is what the code says: both
-      // sides must declare a value type for the question to be about arguments.
-      if (!valueTypeOf(produced) || !valueTypeOf(slotSchema)) continue;
-      const { compatible, issues } = checkSchemaCompatibility(produced, slotSchema, (ref) =>
-        defs.schemaForId(ref),
-      );
-      if (compatible) continue;
+      if (!produced || !slotSchema || !isLiveSlot(produced)) continue;
+      const retry = declaredRetry(site.step.value, site.step.schema, invokedManifest, invokedDefinition);
+      if (retry === undefined) continue;
       out.push({
         path: `${site.path}.${inputName}`,
         targetLabel,
-        message: issues.join("; "),
-        code: "CEL_TYPE_ARGUMENT_MISMATCH",
+        message:
+          `'${inputName}' is a live value, which is consumed by reading and so exists ` +
+          `once — but ${retry} re-attempts the dispatch, and a re-attempt would pass ` +
+          `nothing. Collect it to a value first, or chunk the work so each attempt ` +
+          `carries its own replayable piece.`,
+        code: "LIVE_VALUE_RETRIED",
       });
     }
   }

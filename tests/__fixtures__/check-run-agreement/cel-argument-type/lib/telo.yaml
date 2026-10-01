@@ -1,0 +1,32 @@
+# A step argument written as an expression whose type the target's contract
+# refuses: `telo check` reports it at the argument, and the kernel refuses the
+# value at dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: CelArgumentType
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: counted
+    invoke: !ref consume
+    inputs:
+      count: !cel "'abc'"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [count]
+    properties:
+      count: { type: integer }
+value: { ok: true }

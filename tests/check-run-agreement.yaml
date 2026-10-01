@@ -69,6 +69,10 @@ targets:
   - !ref interpolateIntegerSlotAtRuntime
   - !ref standInMasking
   - !ref standInMaskingAtRuntime
+  - !ref celArgumentType
+  - !ref celArgumentTypeAtRuntime
+  - !ref celArgumentNullable
+  - !ref celArgumentNullableAtRuntime
   - !ref hostPathInterpolated
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
@@ -1516,6 +1520,42 @@ metadata:
 source: ./__fixtures__/check-run-agreement/stand-in-masking/telo.yaml
 expect:
   runFails: "/code must match pattern"
+---
+# A `!cel` argument is held to the target's declared inputType by its type:
+# a string where the contract declares an integer…
+kind: Assert.Manifest
+metadata:
+  name: celArgumentType
+source: ./__fixtures__/check-run-agreement/cel-argument-type/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "returns 'string' but consume's declared inputType expects 'integer'"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentTypeAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-type/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":\"abc\"}. Error: /count must be integer"
+---
+# …and a value its producer declares nullable where the contract takes no null.
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullable
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "reads 'steps.attempt.result.error', which may be null"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullableAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable/telo.yaml
+expect:
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"failure\":null}. Error: /failure must be object"
 ---
 # `!interpolate` at a host-path slot: a plain string whatever its text, refused
 # statically at the slot and at creation by the slot's own schema.

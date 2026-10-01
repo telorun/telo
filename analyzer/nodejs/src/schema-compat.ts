@@ -51,6 +51,15 @@ const compiledSchemaValidators = new WeakMap<Record<string, any>, ReturnType<typ
 export interface CompatibilityResult {
   compatible: boolean;
   issues: string[];
+  /** Each issue with where it lies, in `issues` order. */
+  conflicts: CompatibilityConflict[];
+}
+
+export interface CompatibilityConflict {
+  message: string;
+  /** True when the conflict sits beneath a type argument of a value type both
+   *  sides name; a union's takes the union's own position. */
+  beneathTypeArgument: boolean;
 }
 
 /** How an issue names the two sides — the value produced, and the slot it must
@@ -100,9 +109,13 @@ export function checkSchemaCompatibility(
   resolveRef?: (ref: string) => Record<string, any> | undefined,
   roles: CompatibilityRoles = DEFAULT_ROLES,
 ): CompatibilityResult {
-  const issues: string[] = [];
-  compare(source, target, "", issues, resolveRef, new Set(), roles);
-  return { compatible: issues.length === 0, issues };
+  const conflicts: CompatibilityConflict[] = [];
+  compare(source, target, "", conflicts, resolveRef, new Set(), roles, false);
+  return {
+    compatible: conflicts.length === 0,
+    issues: conflicts.map((conflict) => conflict.message),
+    conflicts,
+  };
 }
 
 type RefResolver = ((ref: string) => Record<string, any> | undefined) | undefined;
@@ -116,11 +129,15 @@ function compare(
   rawSource: Record<string, any>,
   rawTarget: Record<string, any>,
   path: string,
-  issues: string[],
+  conflicts: CompatibilityConflict[],
   resolveRef: RefResolver,
   seen: Set<string>,
   roles: CompatibilityRoles,
+  beneathTypeArgument: boolean,
 ): void {
+  const issues = {
+    push: (message: string) => conflicts.push({ message, beneathTypeArgument }),
+  };
   if (!rawSource || !rawTarget || typeof rawSource !== "object" || typeof rawTarget !== "object") {
     return;
   }
@@ -159,12 +176,12 @@ function compare(
     const reasons: string[] = [];
     for (const left of lefts) {
       for (const right of rights) {
-        const probe: string[] = [];
+        const probe: CompatibilityConflict[] = [];
         // A fresh `seen` per probe: a pair rejected on one branch must not mark
         // a reference pair visited for the next, which would silently pass it.
-        compare(left, right, path, probe, resolveRef, new Set(seen), roles);
+        compare(left, right, path, probe, resolveRef, new Set(seen), roles, beneathTypeArgument);
         if (probe.length === 0) return;
-        reasons.push(...probe);
+        reasons.push(...probe.map((conflict) => conflict.message));
       }
     }
     issues.push(
@@ -195,10 +212,11 @@ function compare(
         sourceArg as Record<string, any>,
         targetArg as Record<string, any>,
         `${path}<${argument}>`,
-        issues,
+        conflicts,
         resolveRef,
         seen,
         roles,
+        true,
       );
     }
     return;
@@ -258,10 +276,11 @@ function compare(
       source.items as Record<string, any>,
       target.items as Record<string, any>,
       `${path}[]`,
-      issues,
+      conflicts,
       resolveRef,
       seen,
       roles,
+      beneathTypeArgument,
     );
   }
 
@@ -279,7 +298,16 @@ function compare(
     const srcProp = sourceProps[field];
     const tgtProp = targetProps[field];
     if (tgtProp && srcProp) {
-      compare(srcProp, tgtProp, `${path}/${field}`, issues, resolveRef, seen, roles);
+      compare(
+        srcProp,
+        tgtProp,
+        `${path}/${field}`,
+        conflicts,
+        resolveRef,
+        seen,
+        roles,
+        beneathTypeArgument,
+      );
     }
   }
 }
