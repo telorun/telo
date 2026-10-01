@@ -1,0 +1,26 @@
+# Calls a kind whose required member is defaulted on a property of a node the
+# contract reaches through its own `$defs`, sending the container and leaving
+# the member out: the check judges the call with the default filled, as the
+# kernel dispatches it, so it is clean and the call returns.
+kind: Telo.Application
+metadata:
+  name: ContractDefaultBehindRefFilledApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../modules/run
+targets:
+  - !ref calls
+---
+kind: Lib.OptionsTarget
+metadata:
+  name: optionsTarget
+---
+kind: Run.Sequence
+metadata:
+  name: calls
+steps:
+  - name: call
+    invoke: !ref optionsTarget
+    inputs:
+      options: {}

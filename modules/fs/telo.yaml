@@ -32,13 +32,20 @@ kind: Telo.Definition
 metadata:
   name: File
   description: >-
-    Reads a file from the local filesystem and returns its contents plus byte
-    size — utf8 text by default, or the raw bytes base64-encoded with
-    `encoding: base64`. Buffered whole into memory (no streaming), and the
-    invoke path resolves against the resource's `cwd` unless it is absolute.
+    Reads a file from the local filesystem and returns its contents with its
+    byte size and the sha256 digest of its bytes — utf8 text by default, or the
+    raw bytes base64-encoded. Buffered whole into memory, so a byte limit can
+    refuse a larger file before any of it is read. The path resolves against
+    the resource's working directory unless it is absolute.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileController
+throws:
+  codes:
+    ERR_FILE_TOO_LARGE:
+      description: >-
+        The file is larger than the call's `maxBytes`. Raised before its content
+        is read; `error.data` carries `path`, `size` and `maxBytes`.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -57,12 +64,19 @@ inputType:
         type: string
         enum: [utf8, base64]
         default: utf8
+      maxBytes:
+        title: Max bytes
+        description: >-
+          The largest file this call reads. A larger one fails with
+          `ERR_FILE_TOO_LARGE` before its content is read. Omitted: no limit.
+        type: integer
+        minimum: 0
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    required: [content, size]
+    required: [content, size, sha256]
     properties:
       content:
         title: Content
@@ -72,6 +86,12 @@ outputType:
         title: Size
         description: File size in bytes.
         type: integer
+      sha256:
+        title: SHA-256
+        description: >-
+          sha256 hex digest of the file's bytes — the same value a tree snapshot
+          reports as the file's `hash`.
+        type: string
 schema:
   type: object
   additionalProperties: false
@@ -240,16 +260,16 @@ schema:
 ---
 # List a directory. Each entry is `{ name, path, type, size }`; `path` is
 # relative to `cwd` so it can be fed back as an input. `recursive` walks
-# subdirectories.
+# subdirectories; `limit` / `cursor` page the result, in path order.
 kind: Telo.Definition
 metadata:
   name: DirectoryListing
   description: >-
     Lists the contents of a directory, returning one entry per item with its
-    base name, path, type (file / directory / other) and size in bytes. Set
-    `recursive` to walk subdirectories too, and exclude entries by base name at
-    any depth. Entry paths come back relative to the resource's `cwd`, so they
-    can be fed straight into a read, write or remove call.
+    base name, path, type (file / directory / other) and size in bytes, sorted
+    by path. Walks subdirectories on request, excludes entries by base name at
+    any depth, and pages a large tree with a limit and a cursor. Entry paths
+    are relative to the working directory, ready for a read, write or remove.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryListingController
@@ -278,6 +298,20 @@ inputType:
           node_modules, .git, .telo.
         type: array
         items: { type: string }
+      limit:
+        title: Limit
+        description: >-
+          The most entries to return. When more remain, the result carries
+          `nextCursor`, and nothing past the page is listed or measured.
+          Omitted: every entry.
+        type: integer
+        minimum: 1
+      cursor:
+        title: Cursor
+        description: >-
+          Where to continue: the `nextCursor` of the previous page of the same
+          listing. Only entries after it are returned.
+        type: string
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -285,8 +319,17 @@ outputType:
     additionalProperties: false
     required: [entries]
     properties:
+      nextCursor:
+        title: Next cursor
+        description: >-
+          Pass as `cursor` to get the entries after this page. Absent when the
+          listing is complete.
+        type: string
       entries:
         title: Entries
+        description: >-
+          The entries, sorted by path — the whole path compared by Unicode code
+          point; one page of them when `limit` is set.
         type: array
         items:
           type: object
@@ -383,8 +426,9 @@ schema:
   examples:
     - cwd: /srv/workspace
 ---
-# A recursive content-hash walk of a directory: every regular file as
-# `{ path, hash }` (sha256 hex of its bytes), `path` relative to `cwd`. Unlike
+# A content-hash walk of the requested files and directories: every regular
+# file as `{ path, hash, size }` (sha256 hex of its bytes), `path` relative to
+# `cwd`, and the requested paths that do not exist as `missing`. Unlike
 # DirectoryListing's `size`, a content hash is a reliable change detector
 # (equal size != equal content), so two snapshots diff to an exact change set.
 # `exclude` skips entries by base name (e.g. node_modules, .git) at any depth.
@@ -392,10 +436,11 @@ kind: Telo.Definition
 metadata:
   name: TreeSnapshot
   description: >-
-    Walks a directory tree and returns every file as a path plus the sha256 digest
-    of its bytes, sorted by path. Hashing content rather than comparing sizes or
-    timestamps means two snapshots diff into an exact change set — for detecting
-    edits, syncing or caching. Entries can be excluded by base name at any depth.
+    Content-hashes files and directory trees: every file at or under the requested
+    paths comes back with its path, byte size and the sha256 digest of its bytes,
+    sorted by path, and requested paths that do not exist are listed apart. Two
+    snapshots diff into an exact change set — for detecting edits, syncing or
+    caching. Entries can be excluded by base name at any depth.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#TreeSnapshotController
@@ -405,17 +450,20 @@ inputType:
     type: object
     additionalProperties: false
     properties:
-      path:
-        title: Path
+      paths:
+        title: Paths
         description: >-
-          Directory to walk, relative to `cwd`. Omitted or empty walks `cwd`
-          itself.
-        type: string
+          The files and directories to snapshot, each relative to `cwd`: a file
+          contributes itself, a directory every file beneath it. Omitted
+          snapshots `cwd` itself; an empty list snapshots nothing.
+        type: array
+        items: { type: string }
       exclude:
         title: Exclude
         description: >-
           Base names to skip at any depth (a directory match is not descended).
           Typically vendor / build / cache dirs like node_modules, .git, dist.
+          A requested path is never excluded itself.
         type: array
         items: { type: string }
 outputType:
@@ -423,16 +471,18 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    required: [files]
+    required: [files, missing]
     properties:
       files:
         title: Files
-        description: One entry per regular file, sorted by path.
+        description: >-
+          One entry per regular file, sorted by path — the whole path compared by
+          Unicode code point.
         type: array
         items:
           type: object
           additionalProperties: false
-          required: [path, hash]
+          required: [path, hash, size]
           properties:
             path:
               description: Path relative to `cwd`.
@@ -440,6 +490,16 @@ outputType:
             hash:
               description: sha256 hex digest of the file's bytes.
               type: string
+            size:
+              description: File size in bytes.
+              type: integer
+      missing:
+        title: Missing
+        description: >-
+          The requested `paths` at which nothing exists, as they were written.
+          Empty when every requested path exists.
+        type: array
+        items: { type: string }
 schema:
   type: object
   additionalProperties: false

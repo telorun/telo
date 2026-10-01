@@ -1,0 +1,205 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiToolChoiceRequest
+  version: 1.0.0
+  description: |
+    Each of the four model kinds sends the call's `toolChoice` as `tool_choice`,
+    beside the tools it still declares.
+
+    Offline: a local server answers every call with the `tool_choice` it
+    received as the model's answer text — as a JSON body for the buffered kinds
+    and, under a second mount, as an event stream for the streaming ones.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Server: ../../http-server
+  Run: ../../run
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: echoClient }
+baseUrl: http://localhost:8876/v1
+---
+kind: Http.Request
+metadata: { name: echoRequest }
+client: !ref echoClient
+---
+kind: Http.Client
+metadata: { name: streamClient }
+baseUrl: http://localhost:8876/stream/v1
+---
+kind: Http.Request
+metadata: { name: streamRequest }
+client: !ref streamClient
+---
+kind: OpenAI.ChatModel
+metadata: { name: chat }
+model: gpt-test
+request: !ref echoRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStream }
+model: gpt-test
+request: !ref streamRequest
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: responses }
+model: gpt-test
+request: !ref echoRequest
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: responsesStream }
+model: gpt-test
+request: !ref streamRequest
+---
+kind: Run.Value
+metadata: { name: noop }
+value: {}
+---
+# One request for all four kinds: tools declared, and a choice not to use them.
+kind: Run.Value
+metadata: { name: request }
+value:
+  messages:
+    - role: user
+      content: [{ type: text, text: wrap up }]
+  tools:
+    - name: get_weather
+      parameters:
+        type: object
+        properties:
+          city: { type: string }
+  toolChoice: none
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: EchoApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  choices:
+                    - message:
+                        content: !cel "string(size(request.body.tools)) + ' tool, tool_choice ' + string(request.body.tool_choice)"
+                      finish_reason: stop
+                  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  status: completed
+                  output:
+                    - type: message
+                      content:
+                        - type: output_text
+                          text: !cel "string(size(request.body.tools)) + ' tool, tool_choice ' + string(request.body.tool_choice)"
+                  usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+  - kind: Server.Api
+    metadata: { name: EchoStreamApi }
+    routes:
+      - request:
+          path: /chat/completions
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: !interpolate |
+                  data: {"choices":[{"delta":{"content":"${{ string(size(request.body.tools)) }} tool, tool_choice ${{ string(request.body.tool_choice) }}"},"finish_reason":"stop"}]}
+
+                  data: [DONE]
+      - request:
+          path: /responses
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: !interpolate |
+                  event: response.output_text.delta
+                  data: {"type":"response.output_text.delta","delta":"${{ string(size(request.body.tools)) }} tool, tool_choice ${{ string(request.body.tool_choice) }}"}
+
+                  event: response.completed
+                  data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}
+  - kind: Server.Server
+    metadata: { name: EchoServer }
+    port: 8876
+    baseUrl: http://localhost:8876
+    openapi:
+      info: { title: Fake OpenAI API, version: 1.0.0 }
+    mounts:
+      - path: /v1
+        mount: !ref EchoApi
+      - path: /stream/v1
+        mount: !ref EchoStreamApi
+targets:
+  - !ref EchoServer
+steps:
+  - name: request
+    invoke: !ref request
+  - name: chat
+    inputs: !cel "steps.request.result"
+    invoke: !ref chat
+  - name: responses
+    inputs: !cel "steps.request.result"
+    invoke: !ref responses
+  - name: chatStream
+    inputs: !cel "steps.request.result"
+    invoke: !ref chatStream
+  - name: chatStreamParts
+    inputs:
+      input: !cel "steps.chatStream.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: responsesStream
+    inputs: !cel "steps.request.result"
+    invoke: !ref responsesStream
+  - name: responsesStreamParts
+    inputs:
+      input: !cel "steps.responsesStream.result.output"
+    invoke:
+      kind: Stream.Collect
+  - name: assertSent
+    inputs:
+      actual:
+        chat: !cel "steps.chat.result.text"
+        responses: !cel "steps.responses.result.text"
+        chatStream: !cel "steps.chatStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+        responsesStream: !cel "steps.responsesStreamParts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
+      expected:
+        chat: "1 tool, tool_choice none"
+        responses: "1 tool, tool_choice none"
+        chatStream: "1 tool, tool_choice none"
+        responsesStream: "1 tool, tool_choice none"
+    invoke:
+      kind: Assert.Equals

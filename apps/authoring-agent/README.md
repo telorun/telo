@@ -20,7 +20,13 @@ is used: one that is absolute, holds a backslash, starts with a drive letter or
 has a `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by
 `write_file`, `edit_file`, `read_file`, `list_dir`, `delete_file`, `telo_check`
 and `run_manifest`, for every argument of the `telo` tool, and by the
-`/workspace` routes (400, nothing applied). The rule is lexical: it judges the
+`/workspace` routes (400, nothing applied). A path naming the agent's state
+directory, or anything inside it, is refused the same way, by the same tools
+and routes. So is a removal — `delete_file`, recursive or not, and each
+`delete` entry of `POST /workspace` — naming the workspace root or a directory
+the state directory lies beneath: refused whole, before anything is listed,
+captured or removed, and the root wherever the state directory is. The rule is
+lexical: it judges the
 text of a path argument — not where a symbolic link inside the workspace
 points, and not what a file the agent wrote goes on to reference: `telo check`
 follows a manifest's `imports:` wherever they lead and quotes what it cannot
@@ -52,7 +58,8 @@ arrangement, and setting `WORKSPACE_DIR` is the whole of it.
 ### The agent's own state
 
 The agent keeps its state in `AGENT_STATE_DIR`, which defaults to `.telo-agent`
-inside the workspace. Today that directory holds one file, `agent.sqlite`:
+inside the workspace. It holds `agent.sqlite` and, once a turn has changed a
+file, `checkpoints/`. `agent.sqlite` holds:
 
 - **the turn journal** (`turn_journal`, `turn_journal_keys`) — every record of
   every turn, under the turn's id. It is the one source of truth: the event
@@ -62,17 +69,23 @@ inside the workspace. Today that directory holds one file, `agent.sqlite`:
   journal keys: a turn's status is read from its key;
 - **`messages` and `turn_projections`** — the model's history, projected from the
   journal (below). Disposable: dropped, they are rebuilt from the journal;
-- **`turn_admissions`** — the records an `Idempotency-Key` replays from.
+- **`turn_admissions`** — the records an `Idempotency-Key` replays from;
+- **`checkpoint_entries`, `turn_reverts`, `turn_changes`** — what each turn's
+  file tools changed, what a revert of it did, and the projection its summary
+  is read from (see Checkpoints).
 
-Nothing else is created there until a feature needs it.
+`checkpoints/<turnId>/<sha256>` holds the copies those entries name: a file as
+it was before a turn's tool changed it, and as the tool left it. One directory
+per turn, never shared between turns, removed with the turn.
 
 It lives on the workspace volume because the container is the ephemeral part. A
 co-resident agent's workspace is the session volume, which outlives the
 container, so restarting the agent on the same `WORKSPACE_DIR` keeps its
 conversations. `.telo-agent` is not workspace content: `GET /workspace`, the
 per-turn `WORKSPACE STATE:` listing and the `list_dir` tool all leave it out,
-Studio never syncs it in either direction, and the system prompt tells the agent
-never to read, write or delete it.
+Studio never syncs it in either direction, and every tool and both `/workspace`
+routes refuse a path inside it with `ERR_PATH_OUTSIDE_WORKSPACE` — as they do
+the removal of a directory holding it, or of the workspace root.
 
 ## Asking before building
 
@@ -260,6 +273,8 @@ back into a question, never quietly replaced with a guess.
 | `GET /chat/{turnId}/events` | The turn's records as SSE frames, replayed and then tailed (below) |
 | `POST /chat/{turnId}/abort` | Cancel the turn's running attempt. No body. `200 {cancelled}` (below) |
 | `POST /chat/{turnId}/continue` | Continue an interrupted turn inside the same turn. No body. `200 {turnId, fromId}` (below) |
+| `GET /chat/{turnId}/changes` | What the turn changed on balance, as diffs. `200 { files, revert }` (see Checkpoints) |
+| `POST /chat/{turnId}/revert` | Put back what the turn changed. No body. `200 { revert, revision }` (see Checkpoints) |
 | `POST /conversations` | Mint a conversation. `201` Conversation (see Conversations) |
 | `GET /conversations?limit=&archived=&q=&before=&beforeId=` | List conversations, newest activity first. `200 { conversations, next }` |
 | `GET /conversations/{id}` | One conversation. `200` Conversation |
@@ -269,7 +284,7 @@ back into a question, never quietly replaced with a guess.
 | `POST /conversations/{id}/branch` | A new conversation copying every turn through `{ throughTurnId }`. `201` Conversation |
 | `GET /conversations/{id}/records` | The conversation's turns and their records, paged (below) |
 | `GET /workspace` | Content-hash tree, for diffing against the client's own files |
-| `POST /workspace` | Apply an explicit write/delete change set |
+| `POST /workspace` | Apply an explicit write/delete change set. `503 ERR_WORKSPACE_BUSY` when the workspace stays locked (see Checkpoints) |
 | `GET /workspace/file?path=` | One file's contents |
 | `GET /capabilities` | The capability document — who this agent is and what it serves (see The capability document) |
 | `GET /health` | `200 { status: "up" }` — liveness. Unguarded |
@@ -335,8 +350,10 @@ refusal releases the key, so retrying after a 429 is a fresh attempt rather than
 a replay of the refusal. Without the header nothing is deduplicated. Send one key
 per message, and the same key on every retry of that message.
 
-One turn at a time per conversation: `ERR_TURN_IN_PROGRESS` is what stops two
-model turns writing the same workspace at once. That lock is held in memory.
+One turn at a time per conversation: `ERR_TURN_IN_PROGRESS` refuses a second
+turn in the same conversation. Turns of different conversations can run at
+once; what keeps two writers off the same file is the workspace write lease
+(see Checkpoints). Both locks are held in memory.
 There is deliberately no single-file write route — a change set of one is the
 same thing without a second set of concurrency rules.
 
@@ -364,7 +381,7 @@ the event stream from the last id it saw. Refusals, checked in this order:
 
 | Status | `code` | Meaning |
 | --- | --- | --- |
-| 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed |
+| 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed — also while it is marked removed and its cleanup has not finished |
 | 404 | `ERR_TURN_NOT_FOUND` | No such turn on this agent |
 | 410 / 409 | `ERR_CONVERSATION_REMOVED` / `ERR_CONVERSATION_ARCHIVED` | Its conversation was deleted, or is archived |
 | 409 | `ERR_TURN_IN_PROGRESS` | A turn of the conversation is still running — this one (its stream was lost, not its work) or a later one. Carries `activeTurnId` |
@@ -397,7 +414,8 @@ reported — each agent call, and the calls that named and summarized the
 conversation — all derived from the live turns when read, never stored.
 `revision` counts changes, and it and `updatedAt` move together, in the same
 transaction as the change, on: a turn's admission, a continue, a turn's ending,
-a generated title applied, a PATCH, a truncation and the deletion. A client
+a generated title applied, a PATCH, a truncation, the deletion, and a revert
+that recorded an outcome. A client
 that polls `GET /conversations/{id}` and sees `revision` move re-reads the
 records.
 
@@ -473,7 +491,7 @@ the moment its id does. The turn then records, in order:
 | `tool-call`, `tool-result` | A tool the model called, and what came back (`toolCall.id` = `toolResult.toolCallId`) |
 | `provider-state` | The model's own replay material (encrypted reasoning); nothing to render |
 | `step-finish` | The end of one model call, with its usage |
-| `finish` | The end of the turn, with the usage of every call summed |
+| `finish` | The end of the turn, with the usage of every call summed; `limit: "max-steps"` when the turn spent its step budget (below) |
 
 A turn that fails records no terminal record of its own: the journal marks the
 key failed with the error's code, message and data, and every reader is told.
@@ -483,6 +501,16 @@ journal fails as `ERR_JOURNAL_WRITER_LOST` once its writer has been silent for 3
 seconds — and `aborted` when a user's abort failed it with
 `ERR_INVOKE_CANCELLED`. A shutdown cancels a turn the same way, and that turn
 stays `failed`, so it can be continued.
+
+**A spent step budget is a completed turn, not a failure.** A turn may take 40
+model calls. When they are spent, one more call is made in which the model may
+not use a tool — the tools stay declared, with `tool_choice: "none"` — and
+writes a wrap-up: what is done, what is not, and the next step. The turn ends
+`finished`, settled and projected like any other, with a summary, and its
+`finish` record carries `limit: "max-steps"`. A client offers "Continue" on such
+a turn by starting a NEW turn whose message is `Continue.`; the agent's prompt
+tells it to resume the next step it listed. `POST /chat/{turnId}/continue` stays
+what it was: another attempt at an *interrupted* turn.
 
 **`GET /chat/{turnId}/events`** streams them as SSE frames: each record is a
 `message` event whose `id:` line is the record's id and whose data is
@@ -496,8 +524,10 @@ nobody started is 404 `ERR_TURN_NOT_FOUND`; a removed one is 410
 `ERR_JOURNAL_KEY_REMOVED` for `RETENTION_DAYS` after its removal.
 
 **`GET /conversations/{id}/records?fromTurn=&fromId=&limit=`** returns
-`{ turns: [{ turnId, status, error, startedAt, records: [{ id, data }] }], next }`
-— `limit` records per page (default 2000, at most 10000). Each turn's status and
+`{ turns: [{ turnId, status, error, startedAt, summary, revert, records: [{ id, data }] }], next }`
+— `limit` records per page (default 2000, at most 10000). `summary` is null
+while the turn runs and `revert` null until the turn was reverted (see
+Checkpoints). Each turn's status and
 error come from the same snapshot its page was planned from, so a turn that ends
 while the page is read is reported `running` with the records up to that point,
 and a client attaching to its event stream from the last of them receives the
@@ -527,7 +557,213 @@ every attempt in order. The last recorded provider state is replayed only to an
 attempt running on the model that produced it, and never across a summary.
 `rebuildProjection` (exported by the chat library) projects a conversation again
 from its journal; `catchUpProjections` runs at boot and projects every turn a
-migration left unprojected.
+migration left unprojected, and every turn whose projection was not taken at
+its ending — one a crash cut off.
+
+### Checkpoints
+
+**Every change `write_file`, `edit_file` and `delete_file` make is checkpointed
+under its turn, before the workspace is touched.** Per call: the files it
+touches are found (the path; for a recursive delete, every regular file under
+it), the bounds below are checked, each file's current copy is stored under
+`checkpoints/<turnId>/<sha256>`, one entry per path is recorded — turn, path,
+the digest before (null: the file did not exist) and the digest the call will
+leave (null: deleted) — only while the turn exists and is not removed, then the
+file is written and the entries confirmed. A continued attempt keeps the turn
+id, so its entries extend the same checkpoint. The digest after a write is that
+of the exact bytes written, and that copy is stored too. A call for a turn
+removed meanwhile is refused and removes the copies it stored, so copies exist
+only under live turns; the copies of a write that failed stay in the turn's
+directory and go with the turn.
+
+**An entry is settled, never assumed.** An entry of a live turn whose write is
+not known to have happened is settled from the file it names: confirmed when
+the file holds the entry's "after" (for a deletion: the path is absent),
+removed otherwise. Entries of a turn marked removed go with that turn's
+removal instead. Settlement happens at three moments. By the failing call
+itself; a cancelled call leaves its entries to its turn's ending: a call that
+fails after recording its entries settles them before it raises, so a
+recursive delete that fails part-way keeps an entry for each file already
+gone. At a turn's ending, which settles what that turn left before its summary
+is projected. And at boot, which settles every unconfirmed entry of a live
+turn before any route is served — which is how a change a killed process
+wrote, with no tool result to show for it, is still in the
+turn's summary and changes and can be reverted. The summary, the changes route
+and a revert read confirmed entries only.
+
+**What is at a path is learned from metadata, never by reading it.** A path's
+kind and size come from its parent directory's listing. A directory at a
+`write_file` or `edit_file` path is refused without being walked, and a file
+over the byte bound is refused from its listed size; the one read of a file's
+content is the bounded capture read whose digest is the entry's "before".
+
+**Only those three tools are checkpointed.** A file a manifest writes when
+`run_manifest` runs it, or a writing `telo` subcommand an operator added to
+`teloVerbs`, changes the workspace outside the checkpoint: it is not in a turn's
+changes and a revert never touches it. The prompt tells the agent never to use
+a run to change files it authored.
+
+The tools' structured `output` (on the `tool-result` record; the text the model
+reads is unchanged) gains `changes` — a list of Change: none or one for a write
+or an edit, one per deleted file — and, for a write or an edit, `hunks`, that
+call's own line diff:
+
+```
+Change = { path, status: "created" | "modified" | "deleted",
+           before: <sha256> | null, after: <sha256> | null,
+           added: <int> | null, removed: <int> | null }
+Hunk   = { oldStart, oldLines, newStart, newLines,
+           lines: [{ op: "context" | "added" | "removed", text, noNewline? }] }
+```
+
+`added`, `removed` and `hunks` are null when a side is not UTF-8 text (its
+bytes do not decode to text that re-encodes to the same digest) or is larger
+than the diff compares (262144 bytes), or the turn's diff budget (4194304
+bytes of copies, taken in path order) is spent. The budget covers a turn's
+diff as a whole — in its summary and on the changes route alike: a file is
+read and compared when the sizes of its two copies fit what the budget has
+left; one that does not fit is not read, and a later, smaller one may still
+fit. Such a file is still listed, with its `path`, `status`, `before`, `after`,
+`checkExitCode` and `changedSince`.
+
+**Bounds.** One tool call may capture at most `MAX_CHECKPOINT_BYTES` of
+"before" copies and at most `MAX_CHECKPOINT_FILES` files. A recursive delete is
+enumerated first, metadata only and page by page, stopping at the first bound
+crossed, so no content is read before both pass; every capture read is bounded
+by what the byte bound has left. Tool errors the checkpoint adds — each leads
+its message with its code, since the message is all the model receives:
+
+| `code` | When |
+| --- | --- |
+| `ERR_CHECKPOINT_TOO_LARGE` | The call would capture more bytes or files than one call may. Names the path, what was reached and the bound; nothing was changed |
+| `ERR_FILE_NOT_TEXT` | `edit_file` on a file whose bytes are not UTF-8 text; nothing was written |
+| `ERR_WORKSPACE_BUSY` | The workspace lease stayed held through every retry (below); nothing was changed |
+| `ERR_PATH_OUTSIDE_WORKSPACE` | The path is inside the agent's state directory, or `delete_file` names the workspace root or a directory holding the state directory — refused before anything is listed, captured or removed (or the path is outside the workspace, as before) |
+| `ERR_PATH_NOT_A_FILE` | The path is not a regular file: a directory at a `write_file` / `edit_file` path, or a symbolic link, a device or a socket at any of the three tools' paths. A recursive delete of a tree holding such an entry is refused whole, naming the first one, and so is one whose root is a symbolic link — the link is never followed. Nothing was changed |
+
+A `delete_file` on a directory without `recursive` is refused by the removal
+itself, as before.
+
+**`GET /chat/{turnId}/changes`** answers `200 { files, revert }`. `files` is the
+turn's NET changes — one per path whose first "before" differs from its last
+confirmed "after" — each a Change plus `firstLine` (the line its first hunk
+starts at in the new file; null for a deleted file, a non-comparable one and
+one the turn's diff budget did not reach), `hunks` (from the first
+"before" to the last confirmed "after"; null for the same files) and `changedSince`, which has
+three states: `true` (the workspace file now differs from what the turn left —
+a file of another kind or size counts as changed without being read, and a
+deletion is judged from metadata), `false` (it still holds what the turn
+left) and `null` (not compared). One request reads at most 4194304 bytes of
+workspace files to answer it, in path order — an allowance of its own, beside
+the diff budget: a file that must be read and does not fit what is left is
+`null`, never `true` or `false`, and a later, smaller one may still fit.
+`revert` is the recorded revert, null until one ran. It
+is served for an archived conversation and while the turn runs (its confirmed
+entries so far). A turn that ran before the agent kept checkpoints answers
+`200 { files: null, revert: null }` — the same meaning as its summary's
+`files: null`.
+
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed — its conversation deleted or truncated |
+| 404 | `ERR_TURN_NOT_FOUND` | No such turn on this agent |
+| 404 / 410 | `ERR_CONVERSATION_NOT_FOUND` / `ERR_CONVERSATION_REMOVED` | Its conversation, as the records route answers |
+
+**`POST /chat/{turnId}/revert`** (no body) answers `200 { revert, revision }`:
+
+```
+revert = { revertedAt, files: [{ path, status, outcome: "restored" | "skipped" }] }
+```
+
+Per path, from what the file holds NOW: a file holding what the turn left is
+put back to what it held before (its copy rewritten, or the file deleted when
+the turn created it) — `restored`; a file already holding the "before" is
+`restored` with nothing written; anything else was changed since and is
+`skipped`, never overwritten. The file is read only when its size is that of
+one of the turn's two copies of the path; any other size is a change, unread.
+Files only: a directory the turn's files lived in is neither removed nor
+recreated empty. ANY turn may be reverted, not only the latest; a path a later
+turn changed is skipped until that turn is reverted.
+
+**What a revert records.** A path's outcome is written the first time the path
+is evaluated and afterwards only moves to `restored` — when the file is
+replaced, or is found already holding the "before" (a path the user put back
+by hand). A path restored earlier and edited since stays `restored` and is
+left alone. `revertedAt`, `revision` and `updatedAt` move exactly when a
+path's outcome was written or changed — also when the revert then stops, at
+503 or at a path it cannot write (500): what it recorded is stamped before it
+answers — or when the turn's first revert runs to its end, even with nothing
+to restore or every path skipped (`files: []` for a turn that changed
+nothing). A revert refused or failed before any outcome was written leaves
+`revert` null and `revision` where it was. So `revert` being non-null means at
+least one path was evaluated, or a revert of a turn with nothing to restore
+completed — not that every path was restored. Repeating a revert that changes
+no outcome changes no file, no `revertedAt` and no `revision`. The reverted fact is state on the turn, not a journal
+record: it shows as `revert` here, on the changes route and on the turn's
+entry of the records route.
+
+Refusals, checked in this order:
+
+| Status | `code` | Meaning |
+| --- | --- | --- |
+| 410 | `ERR_JOURNAL_KEY_REMOVED` | The turn was removed |
+| 404 | `ERR_TURN_NOT_FOUND` | No such turn on this agent |
+| 404 | `ERR_CONVERSATION_NOT_FOUND` | Its conversation is hidden: a branch still being assembled |
+| 410 | `ERR_CONVERSATION_REMOVED` | Its conversation was deleted |
+| 409 | `ERR_CONVERSATION_ARCHIVED` | Its conversation is archived |
+| 409 | `ERR_TURN_IN_PROGRESS` | A turn of THIS conversation is running. Carries `activeTurnId`. A turn running in another conversation does not block |
+| 409 | `ERR_TURN_NOT_CHECKPOINTED` | The turn ran before the agent kept checkpoints — also when it was continued since |
+| 503 | `ERR_WORKSPACE_BUSY` | The workspace lease stayed held through every retry; paths already restored stay restored and recorded, and the revert can be repeated |
+
+A turn from before checkpoints that is continued after the upgrade writes
+through the same tools — bounded, leased and recorded like any other — and
+stays a turn from before checkpoints: its summary's and its changes' `files`
+are null and a revert of it is refused.
+
+**The workspace write lease.** One lease over the whole workspace is held by
+`write_file`, `edit_file` and `delete_file` (capture and write are one hold),
+by `POST /workspace` (the whole change set is one hold) and by a revert (one
+hold per batch of up to 25 paths, in path order: within one hold the batch's
+paths get their kind and size from one listing per parent directory, then each
+is compared, replaced and recorded in turn). Whoever finds it taken waits for it:
+up to 200 further attempts, 5 ms apart at first and doubling to at most 50 ms,
+each wait drawn at random up to that — about 5 seconds in expectation and
+never more than about 10 — then gives up: a tool with an error leading
+`ERR_WORKSPACE_BUSY`, `POST /workspace` and the revert with 503
+`ERR_WORKSPACE_BUSY`. The wait is a bound on how long a caller is kept, not a
+promise of entry: a refused caller resends, and refusal under load is
+expected. A revert pauses 100 ms between holds, so a push or a tool waiting
+behind a long revert gets in. `run_manifest`, the `telo` tool and anything
+outside the agent do not take it. What it guarantees: **a revert never
+overwrites a change written through the agent** — a tool's or a pushed one.
+What it does not: a process writing the disk directly can land a write within
+one hold — between the listing a revert's batch starts from, or a path's
+comparison, and that path's replacement — and is overwritten.
+
+**The summary.** Every ended turn's entry on the records route carries
+`summary`, projected from its checkpoint's confirmed entries and its records
+at every ending — completed, failed, aborted — and at boot for a turn a crash
+cut off:
+
+```
+summary = { files, check, runs, usage }
+```
+
+- `files` — one Change per path the turn changed on balance, each with
+  `firstLine` (null for a deleted file, a non-comparable one and one the
+  turn's diff budget did not reach) and `checkExitCode`: the exit code of the
+  last `write_file`, `edit_file` or `telo_check` result for that path (null
+  for a deleted file).
+  Null for a turn that ran before the agent kept checkpoints.
+- `check` — `"failing"` when any created or modified file's known
+  `checkExitCode` is non-zero; `"clean"` when every one is known and 0; null
+  when the turn created and modified nothing, or when none failed and at least
+  one such file has no check result.
+- `runs` — every `run_manifest` call that returned a result, in order, as
+  `{ path, exitCode }`. A call refused as a tool error is not a run.
+- `usage` — `{ promptTokens, completionTokens, totalTokens }` over every model
+  call of every attempt: the agent's steps, the naming call and the summary
+  call — what the turn's settled amount counts.
 
 **The history is bounded.** Every tool result feeds the model at most
 `MAX_TOOL_RESULT_BYTES` of text; a longer one keeps its first bytes and ends with
@@ -574,12 +810,18 @@ in the conversation's `totalTokens`.
 ### Retention
 
 **What the agent keeps, and for how long.** A conversation — its title, its
-turns' journal records and their projected history — is kept until it is
+turns' journal records, their projected history, and their checkpoints: the
+entries in `agent.sqlite` and the file copies under
+`<AGENT_STATE_DIR>/checkpoints/<turnId>/`, which are copies of workspace files
+as they were before and after each change — is kept until it is
 deleted or until it has not changed for `RETENTION_DAYS`, whichever comes first.
 Retention then deletes it **whole**, through the same path `DELETE
 /conversations/{id}` takes: a tombstone, every turn marked, then every turn's
-journal key and its `messages`, `turn_projections` and `turns` rows — nothing of
-a conversation outlives it. The tombstone (id and timestamps only) answers 410
+journal key, its checkpoint directory, and its `messages`, `turn_projections`,
+checkpoint and `turns` rows — nothing of a conversation outlives it. A
+truncation removes its turns the same way, and a branch copies each turn's
+checkpoint — entries, copies in a directory of its own, and a recorded revert —
+so it outlives its source. The tombstone (id and timestamps only) answers 410
 for another `RETENTION_DAYS`, then is forgotten and the id answers 404; a
 removed turn's event stream answers 410 as long (the journal's removal marker).
 A conversation whose latest turn is running, or that changed during the sweep,
@@ -607,7 +849,8 @@ client no longer seeds history, because the agent keeps it.
   agent: { name, version },
   prompt: { id },
   auth: "none" | "bearer",
-  features: ["conversations", "conversation-truncation", "conversation-branching"],
+  features: ["conversations", "conversation-truncation", "conversation-branching",
+             "turn-changes", "turn-revert", "turn-summary", "turn-conclusion"],
   manifestRuns: true | false
 }
 ```
@@ -616,8 +859,13 @@ client no longer seeds history, because the agent keeps it.
 the agent runs with. `features` says which surfaces a client may offer:
 `conversations` (the conversation routes, their refusals on `POST /chat`,
 export), `conversation-truncation` (`DELETE /conversations/{id}/turns`: Retry,
-Edit & resend, Delete from here) and `conversation-branching`
-(`POST /conversations/{id}/branch`). A client ignores an entry it does not know
+Edit & resend, Delete from here), `conversation-branching`
+(`POST /conversations/{id}/branch`), `turn-changes`
+(`GET /chat/{turnId}/changes`, and `changes` / `hunks` in the file tools'
+`output`), `turn-revert` (`POST /chat/{turnId}/revert`), `turn-summary`
+(`summary` and `revert` on the records route) and `turn-conclusion` (a spent
+step budget ends in a wrap-up, its `finish` carrying `limit: "max-steps"`). A
+client ignores an entry it does not know
 and treats a missing one as unsupported. `manifestRuns` is `ALLOW_MANIFEST_RUNS`.
 
 ## Configuration
@@ -642,6 +890,8 @@ Variables:
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `MAX_CONTEXT_TOKENS` | `120000` | The context, in tokens, a conversation may reach before its older turns are summarized (see The model's history) (at least 8, so the summary's cap is at least 1 token) |
 | `MAX_TOOL_RESULT_BYTES` | `32768` | The most UTF-8 bytes of text one tool result feeds the model; a longer one is cut and marked `[truncated: …]` |
+| `MAX_CHECKPOINT_BYTES` | `16777216` | The most bytes of "before" copies one `write_file` / `edit_file` / `delete_file` call may capture into its turn's checkpoint; over it the call is refused with `ERR_CHECKPOINT_TOO_LARGE` before anything changes |
+| `MAX_CHECKPOINT_FILES` | `1000` | The most files one such call may capture — what bounds a recursive delete (at least 1) |
 | `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated origins a browser may call the guarded routes from (see Routes) |
@@ -685,6 +935,10 @@ The tools are the security boundary, and they are declared:
 - **File tools** (`write_file`, `edit_file`, `read_file`, `list_dir`,
   `delete_file`) are rooted at `WORKSPACE_DIR`, and a path outside it is
   refused (see The workspace).
+- **Every change `write_file`, `edit_file` and `delete_file` make is
+  checkpointed** under its turn before the file is touched, within
+  `MAX_CHECKPOINT_BYTES` and `MAX_CHECKPOINT_FILES` per call, so the user can
+  see a turn's changes and revert them (see Checkpoints).
 - **A write or edit whose resulting content holds a credential is refused**
   with `ERR_SECRET_IN_MANIFEST` before anything is written, naming each line
   and rule — `secret-scan`'s `credentialFindings`: provider key prefixes, PEM
@@ -814,6 +1068,37 @@ and deletion beside a continue), `conversation-truncation.yaml`,
 agent on a database written before conversations existed. `context-floor.yaml`
 pins that the agent refuses to boot with `maxContextTokens` below 8, naming
 the variable.
+
+The checkpoint cases script tool calls the same way; the stub can also fail a
+turn after its tools ran (`STUB_BREAK`) and keep asking for a tool until tools
+are forbidden (`STUB_LOOP`). `turn-checkpoints.yaml` pins what the three file
+tools record — entries, copies, `changes` and `hunks`, a failed write leaving
+no entry while a revert still restores the turn's earlier changes, a user's
+push mid-turn not charged to the turn, a write for a removed turn leaving no
+checkpoint directory — and every refusal (`ERR_FILE_NOT_TEXT`,
+`ERR_CHECKPOINT_TOO_LARGE` for bytes, for 1001 files and for listed sizes,
+`ERR_PATH_NOT_A_FILE` for a directory, a link to one and a tree holding a
+link, the state directory, a delete of the workspace root) — and that an
+aborted turn's ending settles entries left unconfirmed, and that an agent whose
+state directory lies two levels down refuses a pushed delete of the first
+level. `turn-revert.yaml` drives both routes: changes as
+diffs, a revert that restores and skips, what repeating it records, a path a
+later turn changed, a failed and an aborted turn, a revert stopped by a path
+it cannot write, a turn from before checkpoints continued since, every
+refusal, and a pushed delete of the workspace root; then it restarts the agent on
+the same workspace over what a crash leaves — unconfirmed entries and a
+projection not taken at the ending — and reads the settled entries and the
+summary back. `turn-summary.yaml` pins the summary after each ending and after
+a continue, and a turn that spends a two-step budget ending in a wrap-up.
+`workspace-lease.yaml` races a revert against pushes and an edit against a
+push, judged by where they end with either side resending; and it holds the
+lease on purpose — a push whose change set names a named pipe stops inside
+its hold until the test reads the pipe — to show a revert and a push waiting
+and then getting in, and, with the lease taken between two holds of a long
+revert and kept, every caller refused: both routes, the tool, and the long
+revert with what it had restored recorded.
+`checkpoint-removal.yaml` pins that deletion, truncation and the
+sweep remove a turn's checkpoint, and that a branch's copy outlives its source.
 
 ```bash
 pnpm run telo apps/authoring-agent/test-suite-e2e.yaml

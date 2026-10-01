@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MessageBlock } from "./MessageBlock";
 import type { AssistantMessage, AssistantPart } from "@/agent";
 
@@ -28,7 +29,7 @@ const questions = (label: string) =>
   "\n```";
 
 describe("MessageBlock", () => {
-  it("renders thought, card, thought, card, text in the order they streamed", () => {
+  it("renders thought, card, thought, card, text in the order they streamed", async () => {
     const { container } = renderTurn(
       [
         { kind: "thinking", text: "first thought" },
@@ -39,6 +40,8 @@ describe("MessageBlock", () => {
       ],
       { completed: true },
     );
+    // The four steps of an ended turn are folded into one group.
+    await userEvent.click(screen.getByRole("button", { name: /4 steps/ }));
 
     const text = container.textContent ?? "";
     const order = ["Thought process", "read_file", "Thought process", "write_file", "All done."];
@@ -59,6 +62,31 @@ describe("MessageBlock", () => {
     expect(screen.queryByText("first thought")).toBeNull();
     expect(screen.getByText("second thought")).toBeTruthy();
     expect(screen.getByText("Thinking…")).toBeTruthy();
+  });
+
+  it("folds two or more steps in a row into one group: open while the turn streams, folded once it ends", async () => {
+    const steps: AssistantPart[] = [
+      { kind: "text", text: "On it." },
+      { kind: "thinking", text: "plan" },
+      tool("read_file"),
+      { kind: "tool", tool: { toolCallId: "x", name: "write_file", state: "error", output: "ERR_FILE_NOT_TEXT" } },
+      { kind: "tool", tool: { toolCallId: "r", name: "run_manifest", state: "done", run: { exitCode: 1, output: "", messages: "" } } },
+      { kind: "text", text: "Done." },
+      tool("list_dir"),
+    ];
+
+    renderTurn(steps, { pending: true });
+    expect(screen.getByRole("button", { name: "4 steps · 2 failed" })).toBeTruthy();
+    expect(screen.getByText("read_file")).toBeTruthy();
+    cleanup();
+
+    renderTurn(steps, { completed: true });
+    expect(screen.queryByText("read_file")).toBeNull();
+    // A single step between two pieces of the reply stays as it is.
+    expect(screen.getByText("list_dir")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "4 steps · 2 failed" }));
+    expect(screen.getByText("read_file")).toBeTruthy();
   });
 
   it("reads questions from the last text segment only", () => {

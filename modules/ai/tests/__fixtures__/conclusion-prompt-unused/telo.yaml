@@ -1,0 +1,21 @@
+# An agent setting `conclusionPrompt` while its step budget ends by returning:
+# the prompt is sent only by the concluding call, so nothing would ever use it.
+# Refused by `telo check` at the declaration, and by the controller when the
+# resource is created.
+kind: Telo.Library
+metadata:
+  name: ConclusionPromptUnused
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+exports:
+  resources: [agent]
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model: !ref echo
+onMaxSteps: return
+conclusionPrompt: "Wrap up."

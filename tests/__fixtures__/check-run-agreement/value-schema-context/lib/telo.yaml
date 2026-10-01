@@ -1,0 +1,85 @@
+# A kind whose `context` input is typed by what every reader it holds declares
+# (`x-telo-value-schema-from` inside its `inputType`). `callWithoutTurn` calls it
+# with no `context`: the omitted input is its default `{}`, which the reader's
+# declared type refuses — this library's own `telo check` reports the call, and
+# the kernel refuses the same call when it is dispatched.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaContextLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind types caller data from the type its referenced
+    readers declare, called once without the data they require.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [callWithoutTurn]
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    contextType:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { read: true }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      context:
+        type: object
+        default: {}
+        x-telo-value-schema-from: /readers/*/contextType
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        x-telo-ref: { kind: Self.Reader, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body
+---
+kind: Self.Reader
+metadata:
+  name: turnReader
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+---
+kind: Self.Caller
+metadata:
+  name: caller
+readers:
+  - !ref turnReader
+---
+kind: Run.Sequence
+metadata:
+  name: callWithoutTurn
+steps:
+  - name: call
+    invoke: !ref caller
+    inputs: {}

@@ -2,6 +2,7 @@ import {
   CEL_SCALAR_FORMS,
   celScalarTypeOf,
   isLiveSlot,
+  parseCanonicalTypeSchemaId,
   type ResourceDefinition,
   type ResourceManifest,
   scalarFormOfJsonType,
@@ -18,8 +19,11 @@ import {
   type DefResolver,
   effectiveContractField,
 } from "./extends-resolution.js";
+import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { resolveRefIn } from "./schema-compat.js";
-import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { resolveContractValueSchemas, type ValueSchemaHost } from "./value-schema-slot.js";
+import { namedContractShape, type NamedContractShape } from "./validate-value-schema-location.js";
 import {
   manifestListScope,
   resolveSchemaProjections,
@@ -163,7 +167,7 @@ export function resolveContract(
     const schema = resolveTypeFieldToSchema(own, scope.typeManifestsFor(definition));
     if (schema) {
       return {
-        schema: projectionResolved(schema, manifest, scope, definition, projectionFailures),
+        schema: declarationResolved(schema, manifest, scope, definition, projectionFailures),
         origin: "instance",
       };
     }
@@ -175,39 +179,133 @@ export function resolveContract(
   const schema = resolveTypeFieldToSchema(declared, scope.typeManifestsFor(declarer));
   if (!schema) return undefined;
   return {
-    schema: projectionResolved(schema, manifest, scope, declarer, projectionFailures),
+    schema: declarationResolved(schema, manifest, scope, declarer, projectionFailures),
     origin: "kind",
     declaredBy: declarer,
   };
 }
 
 /**
- * A contract may be DECLARATION-derived: a kind whose `outputType` projects the
- * declaration of a resource it references (a repository typing its rows from
- * the table it reads). The manifest is in hand here and nowhere later, so this
- * is where the projection is resolved — and it is resolved for a kind-declared
- * contract and an instance-declared one alike, since either may carry one.
+ * A contract may be DECLARATION-derived, two ways: a node projecting the
+ * declaration of a resource it references (`x-telo-schema-projection-from` — a
+ * repository typing its rows from the table it reads), and a node held to a type
+ * the declaration names (`x-telo-value-schema-from` — caller data typed by
+ * whoever reads it). The manifest is in hand here and nowhere later, so this is
+ * where both are resolved — for a kind-declared contract and an
+ * instance-declared one alike, since either may carry one.
  */
-function projectionResolved(
+function declarationResolved(
   schema: Record<string, any>,
   manifest: Record<string, any> | undefined,
   scope: ContractScope,
   declarer: ResourceDefinition | undefined,
   failures?: ProjectionFailure[],
 ): Record<string, any> {
-  return resolveSchemaProjections(
-    schema,
-    manifest,
-    manifestListScope(
-      scope.typeManifestsFor(declarer),
-      (kind, declaration) =>
-        scope.resolveDefinition(kind, declaration as ResourceDefinition | undefined) as
-          | Record<string, any>
-          | undefined,
-      scope.projectionModules,
-    ),
-    failures,
-  ) as Record<string, any>;
+  const host = valueSchemaHostOf(scope, declarer);
+  const projected = resolveSchemaProjections(schema, manifest, host.scope, failures);
+  return resolveContractValueSchemas(projected, manifest, host) as Record<string, any>;
+}
+
+/** What resolving a named shape reads from its host. */
+export interface NamedShapeScope {
+  /** The declarations a module-and-name lookup searches. */
+  readonly typeManifests: Record<string, any>[];
+  /** The holder's import table, and each imported library's own declarations. */
+  readonly modules?: Pick<ProjectionModules, "moduleForAlias" | "libraries">;
+}
+
+/**
+ * The ONE declaration a type field names, with its `extends` parents folded as
+ * contract typing folds them — or undefined when the field holds its schema
+ * itself, or names nothing.
+ *
+ * A named shape is identified by module and name, never by name across the
+ * set: a reference stamped with a module-scoped id resolves in that module, an
+ * alias-qualified one in the module `holder`'s own import table gives for the
+ * alias, and an unqualified or `Self` one — a bare string included — in the
+ * holder's module. A name that module does not declare contributes nothing.
+ */
+export function resolveNamedShape(
+  typeField: unknown,
+  holder: Record<string, any> | undefined,
+  scope: NamedShapeScope,
+): NamedContractShape | undefined {
+  const named = namedContractShape(typeField);
+  if (!named) return undefined;
+  const stamped =
+    typeField && typeof typeField === "object"
+      ? parseCanonicalTypeSchemaId((typeField as Record<string, unknown>).$ref)
+      : null;
+  const holderMetadata = holder?.metadata as { module?: unknown; declaringModule?: unknown } | undefined;
+  const holderModule =
+    typeof holderMetadata?.declaringModule === "string"
+      ? holderMetadata.declaringModule
+      : typeof holderMetadata?.module === "string"
+        ? holderMetadata.module
+        : undefined;
+
+  let module = holderModule;
+  if (stamped) {
+    module = stamped.moduleName;
+  } else if (named.alias !== undefined && named.alias !== "Self") {
+    module = scope.modules?.moduleForAlias(holderModule, named.alias);
+    if (module === undefined) return undefined;
+  }
+  const name = stamped?.typeName ?? named.name;
+
+  const isShape = (candidate: Record<string, any> | undefined): boolean =>
+    !!candidate &&
+    isTypeKind(candidate.kind, scope.typeManifests) &&
+    !!candidate.schema &&
+    typeof candidate.schema === "object";
+  const declared =
+    scope.typeManifests.find((candidate) => {
+      const metadata = candidate?.metadata as
+        | { name?: unknown; module?: unknown; declaringModule?: unknown }
+        | undefined;
+      return (
+        metadata?.name === name &&
+        (metadata.module === module || (module !== undefined && metadata.declaringModule === module)) &&
+        isShape(candidate)
+      );
+    }) ??
+    (module !== undefined
+      ? (scope.modules?.libraries?.declaration(module, name) as Record<string, any> | undefined)
+      : undefined);
+  if (!isShape(declared)) return undefined;
+
+  const schema = resolveTypeFieldToSchema(
+    { schema: declared!.schema, extends: declared!.extends },
+    scope.typeManifests,
+  );
+  return schema ? { name: named.name, schema } : undefined;
+}
+
+/** How an `x-telo-value-schema-from` location is read in a contract scope: it
+ *  crosses references the way a projection hop does, a type field NAMING a
+ *  shape resolves by {@link resolveNamedShape} with the declaration holding it
+ *  as holder, and an inline or raw one through the general resolver. */
+export function valueSchemaHostOf(
+  scope: ContractScope,
+  declarer?: ResourceDefinition,
+): ValueSchemaHost {
+  const typeManifests = scope.typeManifestsFor(declarer);
+  const declarations = manifestListScope(
+    typeManifests,
+    (kind, declaration) =>
+      scope.resolveDefinition(kind, declaration as ResourceDefinition | undefined) as
+        | Record<string, any>
+        | undefined,
+    scope.projectionModules,
+  );
+  const shapes: NamedShapeScope = { typeManifests, modules: scope.projectionModules };
+  return {
+    scope: declarations,
+    typeSchemaOf: (value, holder) =>
+      namedContractShape(value)
+        ? resolveNamedShape(value, holder, shapes)?.schema
+        : resolveTypeFieldToSchema(value, typeManifests),
+  };
 }
 
 /** {@link resolveContract}, falling back to {@link PERMISSIVE_CONTRACT}. For
@@ -220,6 +318,31 @@ export function resolveContractSchema(
   scope: ContractScope,
 ): Record<string, any> {
   return resolveContract(direction, manifest, definition, scope)?.schema ?? PERMISSIVE_CONTRACT;
+}
+
+type RefResolver = (ref: string) => Record<string, any> | undefined;
+
+/**
+ * What a `$ref` in a contract names, and the document its target's own `#…`
+ * references resolve against: a named shape through `resolveRef`, a `#…` pointer
+ * against the contract's own document — where a type reached by
+ * `x-telo-value-schema-from` is carried (`resolveContractValueSchemas`), and
+ * what a validator follows too. `document` is undefined once a walk has left
+ * the contract for a named shape, whose own pointers are not followed.
+ */
+function contractRefTarget(
+  ref: string,
+  document: Record<string, any> | undefined,
+  resolveRef?: RefResolver,
+): { target: Record<string, any>; document: Record<string, any> | undefined } | undefined {
+  if (ref.startsWith("#")) {
+    const target = document ? resolveSchemaPointer(document, ref) : undefined;
+    return target && typeof target === "object" && !Array.isArray(target)
+      ? { target: target as Record<string, any>, document }
+      : undefined;
+  }
+  const target = resolveRef?.(ref);
+  return target ? { target, document: undefined } : undefined;
 }
 
 /**
@@ -254,7 +377,7 @@ export function withLiveValuesSkipped(
    *  the live value is traversed after all. */
   resolveRef?: (ref: string) => Record<string, any> | undefined,
 ): Record<string, any> {
-  return stripLive(schema, [], resolveRef);
+  return stripLive(schema, [], resolveRef, schema);
 }
 
 function stripLive(
@@ -263,12 +386,13 @@ function stripLive(
   // different parents must be stripped twice (a global `seen` would hand the
   // second parent the unstripped original), while a cycle must still terminate.
   path: readonly object[],
-  resolveRef?: (ref: string) => Record<string, any> | undefined,
+  resolveRef: RefResolver | undefined,
+  document: Record<string, any> | undefined,
 ): any {
   if (Array.isArray(node)) {
     let changed = false;
     const items = node.map((item) => {
-      const next = stripLive(item, path, resolveRef);
+      const next = stripLive(item, path, resolveRef, document);
       if (next !== item) changed = true;
       return next;
     });
@@ -291,10 +415,11 @@ function stripLive(
   // the resolved target unconditionally would break schema identity — the
   // compiled-validator cache is keyed on it — and would move the target out of
   // the document whose `$defs` its own internal `$ref`s resolve against.
-  if (resolveRef && typeof schema.$ref === "string") {
-    const target = resolveRef(schema.$ref);
-    if (target && !path.includes(target)) {
-      const stripped = stripLive(target, [...path, schema], resolveRef);
+  if (typeof schema.$ref === "string") {
+    const followed = contractRefTarget(schema.$ref, document, resolveRef);
+    if (followed && !path.includes(followed.target)) {
+      const { target } = followed;
+      const stripped = stripLive(target, [...path, schema], resolveRef, followed.document);
       if (stripped === target) return node;
       const { $ref: _ref, ...siblings } = schema;
       return Object.keys(siblings).length > 0 ? { ...stripped, ...siblings } : stripped;
@@ -318,7 +443,7 @@ function stripLive(
     let mapChanged = false;
     const next: Record<string, any> = {};
     for (const [name, child] of Object.entries(map)) {
-      const stripped = stripLive(child, here, resolveRef);
+      const stripped = stripLive(child, here, resolveRef, document);
       if (stripped !== child) mapChanged = true;
       next[name] = stripped;
     }
@@ -330,7 +455,7 @@ function stripLive(
   for (const key of ["items", "allOf", "anyOf", "oneOf"] as const) {
     const child = schema[key];
     if (child === undefined) continue;
-    const next = stripLive(child, here, resolveRef);
+    const next = stripLive(child, here, resolveRef, document);
     if (next !== child) {
       result[key] = next;
       changed = true;
@@ -356,14 +481,21 @@ export function defaultBearingPaths(
 
   // Path-scoped, for the same reason as the stream walk: a shared subschema
   // reached from two parents contributes a path under each.
-  const walk = (node: unknown, path: string[], chain: readonly object[]): void => {
+  const walk = (
+    node: unknown,
+    path: string[],
+    chain: readonly object[],
+    within: Record<string, any> | undefined,
+  ): void => {
     if (!node || typeof node !== "object") return;
     let s = node as Record<string, any>;
+    let document = within;
     if (chain.includes(s)) return;
-    if (resolveRef && typeof s.$ref === "string") {
-      const target = resolveRef(s.$ref);
-      if (!target || chain.includes(target)) return;
-      s = { ...target, ...s, $ref: undefined };
+    if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
+      const followed = contractRefTarget(s.$ref, document, resolveRef);
+      if (!followed || chain.includes(followed.target)) return;
+      s = { ...followed.target, ...s, $ref: undefined };
+      document = followed.document;
     }
     const here = [...chain, node as object];
 
@@ -371,17 +503,105 @@ export function defaultBearingPaths(
 
     const properties = s.properties as Record<string, any> | undefined;
     if (properties) {
-      for (const [key, child] of Object.entries(properties)) walk(child, [...path, key], here);
+      for (const [key, child] of Object.entries(properties)) {
+        walk(child, [...path, key], here, document);
+      }
     }
     for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
       const list = s[branch];
-      if (Array.isArray(list)) for (const child of list) walk(child, path, here);
+      if (Array.isArray(list)) for (const child of list) walk(child, path, here, document);
     }
-    if (s.items) walk(s.items, [...path, "[]"], here);
+    if (s.items) walk(s.items, [...path, "[]"], here, document);
   };
 
-  walk(schema, [], []);
+  walk(schema, [], [], schema);
   return out;
+}
+
+/**
+ * `value` with every `default:` the contract declares filled in where the value
+ * leaves the property out — what the kernel's binding hands the target, so a
+ * call site is judged on the arguments the target will receive. Defaults are
+ * read where a validator fills them: off a property's own schema (a `default`
+ * beside a `$ref` counts, one on the node the `$ref` names does not), under
+ * `properties`, inside list items and through `allOf`; the descent into values
+ * that are present follows a `$ref`. Copy-on-write; `onFill` names each path a
+ * default was written at.
+ */
+export function withContractDefaults(
+  value: unknown,
+  schema: Record<string, any>,
+  resolveRef?: (ref: string) => Record<string, any> | undefined,
+  onFill?: (path: string) => void,
+): unknown {
+  type Entered = { s: Record<string, any>; document: Record<string, any> | undefined };
+  const deref = (
+    node: unknown,
+    chain: readonly object[],
+    document: Record<string, any> | undefined,
+  ): Entered | undefined => {
+    if (!node || typeof node !== "object" || chain.includes(node)) return undefined;
+    const s = node as Record<string, any>;
+    if (typeof s.$ref !== "string" || (!resolveRef && !s.$ref.startsWith("#"))) {
+      return { s, document };
+    }
+    const followed = contractRefTarget(s.$ref, document, resolveRef);
+    if (!followed || chain.includes(followed.target)) return undefined;
+    return { s: { ...followed.target, ...s, $ref: undefined }, document: followed.document };
+  };
+
+  const fill = (
+    data: unknown,
+    node: unknown,
+    path: string,
+    chain: readonly object[],
+    within: Record<string, any> | undefined,
+  ): unknown => {
+    const entered = deref(node, chain, within);
+    if (!entered) return data;
+    const { s, document } = entered;
+    const here = [...chain, node as object];
+    let out = data;
+    if (Array.isArray(s.allOf)) {
+      for (const member of s.allOf) out = fill(out, member, path, here, document);
+    }
+
+    const properties = s.properties as Record<string, unknown> | undefined;
+    if (properties && isPlainRecord(out)) {
+      for (const [key, child] of Object.entries(properties)) {
+        const at = path === "" ? key : `${path}.${key}`;
+        const current = (out as Record<string, unknown>)[key];
+        let next = current;
+        if (current === undefined) {
+          // The property's OWN schema, as a validator reads it: a default on the
+          // node a `$ref` names is not the property's.
+          if (!child || typeof child !== "object" || !("default" in child)) continue;
+          onFill?.(at);
+          next = structuredClone((child as Record<string, unknown>).default);
+        }
+        next = fill(next, child, at, here, document);
+        if (next !== current) out = { ...(out as Record<string, unknown>), [key]: next };
+      }
+    }
+    if (s.items && !Array.isArray(s.items) && Array.isArray(out)) {
+      let moved = false;
+      const items = out.map((item, index) => {
+        const next = fill(item, s.items, `${path}[${index}]`, here, document);
+        if (next !== item) moved = true;
+        return next;
+      });
+      if (moved) out = items;
+    }
+    return out;
+  };
+
+  return fill(value, schema, "", [], schema);
+}
+
+function isPlainRecord(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }
 
 /** Every path in `schema` the author marked `x-telo-sensitive: true` — the
@@ -524,14 +744,21 @@ export function declaredScalarPaths(
 ): DeclaredScalarPath[] {
   const out: DeclaredScalarPath[] = [];
 
-  const walk = (node: unknown, path: string[], chain: readonly object[]): void => {
+  const walk = (
+    node: unknown,
+    path: string[],
+    chain: readonly object[],
+    within: Record<string, any> | undefined,
+  ): void => {
     if (!node || typeof node !== "object") return;
     let s = node as Record<string, any>;
+    let document = within;
     if (chain.includes(s)) return;
-    if (resolveRef && typeof s.$ref === "string") {
-      const target = resolveRef(s.$ref);
-      if (!target || chain.includes(target)) return;
-      s = { ...target, ...s, $ref: undefined };
+    if (typeof s.$ref === "string" && (resolveRef || s.$ref.startsWith("#"))) {
+      const followed = contractRefTarget(s.$ref, document, resolveRef);
+      if (!followed || chain.includes(followed.target)) return;
+      s = { ...followed.target, ...s, $ref: undefined };
+      document = followed.document;
     }
     const here = [...chain, node as object];
 
@@ -550,16 +777,18 @@ export function declaredScalarPaths(
 
     const properties = s.properties as Record<string, any> | undefined;
     if (properties) {
-      for (const [key, child] of Object.entries(properties)) walk(child, [...path, key], here);
+      for (const [key, child] of Object.entries(properties)) {
+        walk(child, [...path, key], here, document);
+      }
     }
     for (const branch of ["allOf", "anyOf", "oneOf"] as const) {
       const list = s[branch];
-      if (Array.isArray(list)) for (const child of list) walk(child, path, here);
+      if (Array.isArray(list)) for (const child of list) walk(child, path, here, document);
     }
-    if (s.items) walk(s.items, [...path, "[]"], here);
+    if (s.items) walk(s.items, [...path, "[]"], here, document);
   };
 
-  walk(schema, [], []);
+  walk(schema, [], [], schema);
   return out;
 }
 

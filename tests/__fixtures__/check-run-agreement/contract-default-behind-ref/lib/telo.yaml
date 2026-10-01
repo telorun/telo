@@ -1,0 +1,124 @@
+# Kinds whose contracts reach a `default:` through a reference — a `#…` pointer
+# into the contract's own `$defs`, and a named shape.
+#
+# A default is filled where a property's own schema declares it. `LocalTarget`
+# and `NamedTarget` require an input declared ONLY by reference to a node that
+# carries the default, so it is not the property's and is not filled: a call
+# leaving the input out is refused, by this library's own `telo check` and by
+# the kernel when the call is dispatched. `OptionsTarget` declares the default
+# on a property of the node its reference names, so a call that sends the
+# container and leaves that member out receives it filled.
+kind: Telo.Library
+metadata:
+  name: ContractDefaultBehindRef
+  version: 1.0.0
+  description: >-
+    Fixture library whose kinds declare an input by reference to a node carrying
+    a default, or to a node whose property carries one.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [callLocal, callNamed]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Depth
+schema:
+  type: integer
+  default: 3
+---
+kind: Telo.Definition
+metadata:
+  name: LocalTarget
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [depth]
+    properties:
+      depth: { $ref: "#/$defs/Depth" }
+    $defs:
+      Depth:
+        type: integer
+        default: 3
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: NamedTarget
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [depth]
+    properties:
+      depth: !ref Depth
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: OptionsTarget
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [options]
+    properties:
+      options: { $ref: "#/$defs/Options" }
+    $defs:
+      Options:
+        type: object
+        required: [depth]
+        properties:
+          depth:
+            type: integer
+            default: 3
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body
+---
+kind: Self.LocalTarget
+metadata:
+  name: localTarget
+---
+kind: Self.NamedTarget
+metadata:
+  name: namedTarget
+---
+kind: Run.Sequence
+metadata:
+  name: callLocal
+steps:
+  - name: call
+    invoke: !ref localTarget
+    inputs: {}
+---
+kind: Run.Sequence
+metadata:
+  name: callNamed
+steps:
+  - name: call
+    invoke: !ref namedTarget
+    inputs: {}

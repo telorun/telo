@@ -1,3 +1,4 @@
+import { declaredContractShape, type ContractShapeHost } from "./declared-contract-shape.js";
 import type {
   ControllerContext,
   ResourceContext,
@@ -15,6 +16,7 @@ import {
   inheritedCapability,
   nearestName,
   templateTargetProblems,
+  valueSchemaFromProblems,
   type DefResolver,
 } from "@telorun/analyzer";
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
@@ -147,6 +149,25 @@ class ResourceDefinition implements ResourceInstance {
       this.resource.status = effectiveStatusSchema(
         this.resource as ResourceDefinitionManifest,
         resolveDef,
+      );
+    }
+
+    // `telo check`'s twin is `VALUE_SCHEMA_FROM_INVALID`, through the same
+    // reader — refused here so a dependency's kind, which the entry-scoped check
+    // never reports, fails at registration. After the schema stamp: a location
+    // may name a field an ancestor declares.
+    const [valueSchemaProblem] = valueSchemaFromProblems(
+      this.resource as unknown as Record<string, any>,
+      this.resource.schema as Record<string, any> | undefined,
+      declaredContractShape(
+        ctx as unknown as ContractShapeHost,
+        this.resource as unknown as Record<string, any>,
+      ),
+    );
+    if (valueSchemaProblem) {
+      throw new RuntimeError(
+        "ERR_VALUE_SCHEMA_FROM_INVALID",
+        `Telo.Definition ${valueSchemaProblem.message}`,
       );
     }
 

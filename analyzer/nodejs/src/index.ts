@@ -248,6 +248,13 @@ export type {
 } from "./reference-reach.js";
 export { scopeSlotProblems } from "./validate-scope-slots.js";
 export type { ScopeSlotProblem } from "./validate-scope-slots.js";
+export { namedContractShape, valueSchemaFromProblems } from "./validate-value-schema-location.js";
+export type {
+  NamedContractShape,
+  ValueSchemaFromProblem,
+} from "./validate-value-schema-location.js";
+export { resolveContractValueSchemas } from "./value-schema-slot.js";
+export type { ValueSchemaHost } from "./value-schema-slot.js";
 export {
   hasDeclaredUse,
   isRefSlot,
@@ -444,7 +451,11 @@ export {
   selectUnionBranch,
   undeclaredKeySchema,
 } from "./schema-compat.js";
-export type { CompatibilityResult, ExternalSchemaResolver } from "./schema-compat.js";
+export type {
+  CompatibilityResult,
+  ExternalSchemaResolver,
+  StandInOptions,
+} from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
 export {
   ajvErrorToPath,

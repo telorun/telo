@@ -10,6 +10,7 @@ const bridge: WorkspaceBridge = {
   snapshot: async () => new Map(),
   readFile: async () => "",
   applyChanges: async () => undefined,
+  editorFile: () => null,
 };
 
 beforeEach(installAgentGlobals);

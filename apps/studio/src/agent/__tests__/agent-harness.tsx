@@ -1,11 +1,15 @@
-import { expect, vi } from "vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, expect, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 import { AgentProvider, useAgent } from "../context";
 import type { RecordsPage } from "../records";
 import { AGENT_PANEL_DEFAULT_WIDTH, saveAgentSettings, saveConversationId } from "../storage";
 import type { Conversation, JournalRecord, TurnRecords, WorkspaceBridge } from "../types";
+
+// A provider left mounted keeps its identity timer and revision poll running
+// into the next test, or into a torn-down environment.
+afterEach(() => cleanup());
 
 /** The provider under test, on a dev-override agent, with a conversation open
  *  and a workspace registered, talking to a fetch stub that also serves the
@@ -150,6 +154,7 @@ const bridge: WorkspaceBridge = {
   snapshot: async () => new Map(),
   readFile: async () => "",
   applyChanges: async () => undefined,
+  editorFile: () => null,
 };
 
 export function installAgentGlobals() {

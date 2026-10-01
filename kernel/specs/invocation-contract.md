@@ -1,5 +1,5 @@
 ---
-description: "v1.0 spec: the invocation contract — how a resource's declared inputType/outputType is resolved, bound, default-filled and enforced at dispatch, and how contract violations are reported"
+description: "v1.0 spec: the invocation contract — how a resource's declared inputType/outputType is resolved, typed by the declaration it is bound to, bound, default-filled and enforced at dispatch, and how contract violations are reported"
 ---
 
 # Telo Invocation Contract Specification (v1.0)
@@ -21,7 +21,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
 **MAY**, and **RECOMMENDED** are to be interpreted as described in RFC 2119.
 
 **In scope:** contract resolution along `extends`, the mapping requirement,
-binding and the verbs it covers, default-fill semantics and traversal order,
+contract nodes typed by the bound declaration, binding and the verbs it covers, default-fill semantics and traversal order,
 validation and what it exempts, error codes and their status against `throws:`
 unions, and ordering relative to the dispatch span.
 
@@ -107,6 +107,99 @@ accept a resource; it never carried the dispatch contract. Whether a particular
 slot may hold a resource whose contract differs from the slot's declared kind is
 a wiring question, decided per slot by whether the caller can supply the
 arguments at all.
+
+### 2.4 Nodes typed by the declaration
+
+A contract node MAY carry `x-telo-value-schema-from: <location>`. The value at
+that node must then satisfy, **beside the node's own keywords**, every type the
+location names from the declaration the contract is bound to. This is how a kind
+whose instances forward caller data to resources they reference lets those
+resources say what the data must be: the type is declared once, where the data
+is read, and the caller-facing contract is derived from it.
+
+**The location** is relative to the bound declaration and is one of:
+
+- a **field name** (`contextType`) — the declaration's own top-level field;
+- a **JSON Pointer** (`/providers/*/contextType`, RFC 6901 escaping) — walked
+  from the declaration's root, one segment per field, where the segment `*`
+  ranges over **every item of a list**.
+
+**Crossing a reference.** When the value reached so far sits at one of the
+holding declaration's reference sites — the sites the runtime substitutes with a
+live instance, as its kind's schema declares them — and segments remain, the walk
+continues **inside the declaration that reference names**, to any depth. Each
+reference MUST be resolved in the scope of the module that declared the
+declaration holding it (the bound resource's own scope only for the first one):
+a bare name means that module's resource, an alias goes through that module's
+imports. A value at any other path is data, whatever its shape, and the walk
+continues through it as plain fields.
+
+**What a location yields.** Every value the walk ends at is read as a **type
+field**, in the forms `inputType` / `outputType` accept (a named type by
+reference, an inline type, a raw JSON Schema), resolved in the scope of the
+declaration holding it. The node's effective schema is the node as written,
+without the annotation, plus an `allOf` holding every type reached — so the value
+MUST satisfy all of them. Types combine by conjunction, never by merging: two
+types that each close their own property set cannot both hold, and that is the
+contract's answer rather than something a runtime repairs.
+
+**Each reached type is its own document.** Its document-local references — `#`,
+`#/$defs/…`, `#/definitions/…`, any `#/…` pointer — MUST resolve against that
+type and never against the contract it types, so a type that names its own
+definitions, or itself, constrains the value exactly as it does anywhere else,
+and two reached types declaring a definition of the same name do not meet. A
+reference to a named shape inside it resolves as written. Everything a runtime
+reads off a declared node — a `default:` to fill (§4.2), a scalar's
+representation (§4.3), a sensitive mark — it MUST read through a reached type as
+through any other part of the contract.
+
+**Nothing found contributes nothing.** A branch of the walk that reaches no value
+— an absent field, a list with no items, a value that is not a container — a
+value that names no type, and a declaration that does not declare the field all
+leave the node exactly as written. A node no branch typed is validated by its own
+keywords alone. A runtime MUST NOT raise for any of these: a referenced resource
+of a kind that declares no such field is an ordinary participant.
+
+**When.** The derivation is a fact about the manifest and its references, so it
+MUST be resolved against the declarations as the runtime holds them — including
+a reference a static checker could not follow, such as a resource a library
+receives from its importer — and MUST be in force by the first dispatch. The
+node's own `default:` is filled before validation like any other (§4.2), so an
+omitted value is judged as its default. A static checker MUST judge an omitted
+value as that default and MUST NOT judge a computed value as it: an expression
+may yield what the default lacks.
+
+**A location nothing can be written at is refused when the kind is registered**,
+with `ERR_VALUE_SCHEMA_FROM_INVALID`: an annotation that is not a non-empty
+string, a pointer with an empty segment, or a location whose segments — up to
+the first reference slot — name something the kind's own author schema (with
+inheritance resolved) does not declare. A segment is declared when it is a
+property of the node reached (through a document-local `$ref`, an `allOf` /
+`anyOf` / `oneOf` branch, or a map's value schema), or `*` at a node declaring
+`items`. Past a reference slot the location continues in another declaration,
+whose kind the schema does not fix, and is not judged; nor is a node typed from
+elsewhere. Refusing at registration covers a dependency's kind, which a
+consumer's static check does not report.
+
+The same annotation on a **configuration** slot of a kind's `schema:` reads its
+location by these rules and is a static check of the value written there; it has
+no dispatch behaviour. The registration refusal covers it all the same: the
+location is judged wherever the kind writes the annotation — in its `schema:`,
+its `inputType` or its `outputType`, written there or in the named shape the
+field names, as that field resolves — in whichever module declares the shape,
+the kind's own or one reached through an import alias, with the shape's
+`extends` parents folded, so an annotation a parent shape declares is the
+child's — and a kind carrying an unwritable one in any of them MUST be
+refused with `ERR_VALUE_SCHEMA_FROM_INVALID`. A runtime MUST read that shape
+from the declarations it holds when the kind is registered, never from created
+instances. A field that resolves to no declaration is not judged; it names no
+contract (§5.1). A named shape's annotation is
+judged per kind, against the schema of each kind whose contract field names the
+shape; a shape no kind's contract field names is not judged, nor is one reached
+only by a reference from inside a contract, which is not typed either. An
+annotation is read at a schema position only: a property an author NAMED
+`default`, `const`, `enum` or `examples` is a schema, while the value under the
+keyword of that name is data, neither typed nor judged.
 
 ## 3. Binding
 
@@ -199,7 +292,10 @@ paths is derivable from the compiled schema, so the copy is bounded by the
 schema's defaults rather than by the size of the payload.
 
 A default MUST be applied only where the property is absent. An explicit `null`
-is a value, not an absence.
+is a value, not an absence. The default applied is the one written on the
+property's OWN schema — one written beside a `$ref` counts, one declared on the
+node the reference names does not — and a checker that fills defaults before
+judging a call MUST read them by the same rule.
 
 Defaults inside composition keywords (`anyOf`, `oneOf`) are **NOT RECOMMENDED** in
 a contract. Which branch a validator evaluates — and therefore which default it
@@ -362,6 +458,7 @@ their own rendering of bytes, because their formats define one: a log record's
 | `ERR_INPUT_INVALID`         | inputs did not satisfy the resolved `inputType`           |
 | `ERR_OUTPUT_INVALID`        | a result did not satisfy the resolved `outputType`        |
 | `ERR_CONTRACT_UNRESOLVABLE` | a declared contract resolved to no schema at all          |
+| `ERR_VALUE_SCHEMA_FROM_INVALID` | a kind's `x-telo-value-schema-from` names a location nothing can be written at (§2.4); raised at registration |
 
 A declared contract that cannot be resolved — a named type that never registered
 — MUST raise rather than degrade to "unvalidated". Silently disabling
@@ -443,7 +540,15 @@ A conforming runtime:
 12. binds module calls per module scope at creation, refusing and deferring as
     §7.1 states, and evaluates them as §7.2 and §7.3 state;
 13. binds every function's `call` and hands a native function's controller the
-    function context, as §7.4 states.
+    function context, as §7.4 states;
+14. types a contract node carrying `x-telo-value-schema-from` by every type its
+    location reaches, resolving each reference crossed in the scope of the
+    module that declared its holder, leaves a node nothing typed as written, and
+    resolves each reached type's document-local references against that type,
+    and refuses an unreachable location at registration in every position a kind
+    writes the annotation — in its `schema:`, its `inputType` or its
+    `outputType`, written there or in the named shape the field names,
+    resolved across imports and with its `extends` parents folded (§2.4).
 
 ## 7. Module functions
 

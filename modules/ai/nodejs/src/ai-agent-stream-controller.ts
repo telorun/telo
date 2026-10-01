@@ -20,12 +20,20 @@ import {
   type AssembledTools,
   type ToolProviderEntry,
 } from "./agent-tools.js";
+import {
+  conclusionRequest,
+  MAX_STEPS_LIMIT,
+  stepBudget,
+  type StepBudget,
+  type StepBudgetConfig,
+} from "./step-budget.js";
 import { toolResultByteLimit } from "./tool-result-bound.js";
 import type {
   AgentStreamPart,
   AiModelStreamInstance,
   FinishReason,
   Message,
+  ModelInvokeInput,
   ToolCall,
   Usage,
 } from "./types.js";
@@ -40,13 +48,11 @@ import type {
  * agents cannot drift on tool semantics. The loop runs lazily inside the returned
  * Stream — see `runLoop()` for the part order and the cancellation contract.
  */
-interface AiAgentStreamResource {
+interface AiAgentStreamResource extends StepBudgetConfig {
   metadata: { name: string; module?: string };
   model: AiModelStreamInstance;
   system?: string;
   options?: Record<string, unknown>;
-  maxSteps?: number;
-  onMaxSteps?: "throw" | "return";
   onToolError?: "feedback" | "throw";
   maxToolResultBytes?: number | bigint;
   toolProviders?: ToolProviderEntry[];
@@ -60,6 +66,7 @@ interface AiAgentStreamInputs {
   /** Opaque state a previous run's `provider-state` part carried, handed to the
    *  first model call so a conversation's reasoning continues across turns. */
   providerState?: unknown;
+  context?: Record<string, unknown>;
 }
 
 interface AiAgentStreamOutput {
@@ -74,14 +81,15 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
   private readonly maxToolResultBytes: number | undefined;
 
+  private readonly budget: StepBudget;
+
   constructor(
     private readonly resource: AiAgentStreamResource,
     private readonly ctx: ResourceContext,
   ) {
-    this.maxToolResultBytes = toolResultByteLimit(
-      resource.maxToolResultBytes,
-      `Ai.AgentStream "${resource.metadata.name}"`,
-    );
+    const label = `Ai.AgentStream "${resource.metadata.name}"`;
+    this.maxToolResultBytes = toolResultByteLimit(resource.maxToolResultBytes, label);
+    this.budget = stepBudget(resource, label);
   }
 
   async invoke(
@@ -109,7 +117,14 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
     return {
       output: new Stream(
-        this.runLoop(messages, mergedOptions, this.assembled, inputs.providerState, ctx),
+        this.runLoop(
+          messages,
+          mergedOptions,
+          this.assembled,
+          inputs.providerState,
+          inputs.context ?? {},
+          ctx,
+        ),
       ),
     };
   }
@@ -123,7 +138,9 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
    * `text-delta`, `reasoning-delta`, `content-part` and `provider-state` parts
    * forward verbatim, a `tool-call` forwards with the id it keeps for the rest of
    * the run, and each executed tool emits a `tool-result`. Provider state is also
-   * kept and replayed to the next call.
+   * kept and replayed to the next call. When `maxSteps` calls pass without the
+   * model finishing, `onMaxSteps` decides: reject, finish, or make one concluding
+   * call first — the last two marking the terminal `finish` `limit: max-steps`.
    *
    * Cancellation is re-checked after every part, between calls and before each
    * tool, and the invocation's context reaches every model call and every tool —
@@ -140,12 +157,12 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     options: Record<string, unknown>,
     tools: AssembledTools,
     initialProviderState: unknown,
+    context: Record<string, unknown>,
     ctx?: InvokeContext,
   ): AsyncGenerator<AgentStreamPart> {
     const name = this.resource.metadata.name;
     const label = `Ai.AgentStream "${name}"`;
-    const maxSteps = this.resource.maxSteps ?? 8;
-    const onMaxSteps = this.resource.onMaxSteps ?? "throw";
+    const { maxSteps, onMaxSteps, conclusionPrompt } = this.budget;
     const onToolError = this.resource.onToolError ?? "feedback";
     const agent: AgentSpanIdentity = { kind: "Ai.AgentStream", name };
     const modelName = modelNameOf(this.resource.model);
@@ -164,7 +181,12 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
         calls += 1;
         const turn = yield* this.modelCall(
-          { messages, options, tools, providerState },
+          {
+            messages,
+            options,
+            ...(tools.toolDefs.length > 0 ? { tools: tools.toolDefs } : {}),
+            ...(providerState === undefined ? {} : { providerState }),
+          },
           { agentSpan, agent, modelName, label },
           ctx,
         );
@@ -210,6 +232,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
             this.ctx,
             agent,
             agentSpan.context,
+            context,
           );
           yield { type: "tool-result", toolResult: record };
           messages.push({ role: "tool", content: record.content, toolCallId: call.id });
@@ -224,9 +247,38 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           `${label}: did not converge within maxSteps=${maxSteps}.`,
         );
       }
-      // `onMaxSteps: "return"` — handed back as an ordinary terminal finish, so
-      // nothing in the stream marks that the agent ran out of steps rather than
-      // converging. The buffered agent warns here for the same reason.
+      if (onMaxSteps === "conclude") {
+        // One call beyond the budget, which may not use a tool: the model is asked
+        // to answer from what it has. A tool call it returns anyway is neither
+        // emitted nor run.
+        ctx?.cancellation.throwIfCancelled();
+        calls += 1;
+        const turn = yield* this.modelCall(
+          conclusionRequest(messages, conclusionPrompt, options, tools.toolDefs, providerState),
+          { agentSpan, agent, modelName, label },
+          ctx,
+          { withholdToolCalls: true },
+        );
+        finishReason = turn.finish.finishReason;
+        usage.promptTokens += turn.finish.usage.promptTokens;
+        usage.completionTokens += turn.finish.usage.completionTokens;
+        usage.totalTokens += turn.finish.usage.totalTokens;
+        yield {
+          type: "step-finish",
+          usage: withTokenQuantity(turn.finish.usage),
+          finishReason: turn.finish.finishReason,
+        };
+        const total = withTokenQuantity(usage);
+        logCompletion(this.ctx.log, "Agent stream concluded at maxSteps", total, finishReason, {
+          "ai.agent.steps": calls,
+          "ai.agent.max_steps": maxSteps,
+        });
+        await agentSpan.settle("ok", { attributes: runAttributes() });
+        yield { type: "finish", usage: total, finishReason, limit: MAX_STEPS_LIMIT };
+        return;
+      }
+      // `onMaxSteps: "return"` — the terminal finish is marked by `limit`. The
+      // buffered agent warns here for the same reason.
       const total = withTokenQuantity(usage);
       this.ctx.log.warn("Agent stream stopped at maxSteps without converging", {
         "ai.agent.max_steps": maxSteps,
@@ -234,7 +286,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         "gen_ai.usage.output_tokens": total.completionTokens,
       });
       await agentSpan.settle("ok", { attributes: runAttributes() });
-      yield { type: "finish", usage: total, finishReason };
+      yield { type: "finish", usage: total, finishReason, limit: MAX_STEPS_LIMIT };
     } catch (err) {
       await settleFailure(agentSpan, err, runAttributes());
       throw err;
@@ -251,14 +303,11 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
    * what the loop needs of it. The span stays open until the call's stream ends.
    */
   private async *modelCall(
-    request: {
-      messages: Message[];
-      options: Record<string, unknown>;
-      tools: AssembledTools;
-      providerState: unknown;
-    },
+    request: ModelInvokeInput,
     spans: { agentSpan: OpenSpan; agent: AgentSpanIdentity; modelName: string; label: string },
     ctx?: InvokeContext,
+    /** The concluding call may not use a tool: one it returns is dropped here. */
+    { withholdToolCalls = false }: { withholdToolCalls?: boolean } = {},
   ): AsyncGenerator<
     AgentStreamPart,
     {
@@ -274,15 +323,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     let finish: { usage: Usage; finishReason: FinishReason } | undefined;
     let providerState: unknown;
     try {
-      const turn = await this.resource.model.invoke(
-        {
-          messages: request.messages,
-          options: request.options,
-          ...(request.tools.toolDefs.length > 0 ? { tools: request.tools.toolDefs } : {}),
-          ...(request.providerState === undefined ? {} : { providerState: request.providerState }),
-        },
-        chatSpan.context,
-      );
+      const turn = await this.resource.model.invoke(request, chatSpan.context);
       for await (const part of turn.output) {
         // A `finish` is recorded whatever the cancellation state: the call it
         // closes completed and was billed, so its usage must still be reported.
@@ -295,6 +336,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
           text += part.delta;
           yield part;
         } else if (part.type === "tool-call") {
+          if (withholdToolCalls) continue;
           const call = normalizeToolCall(part.toolCall);
           toolCalls.push(call);
           yield { type: "tool-call", toolCall: call };

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { defaultBearingPaths, withLiveValuesSkipped } from "@telorun/analyzer";
-import { copyForDefaults, resolveBoundContract } from "../src/invocation-contract-binding.js";
+import {
+  bindContract,
+  copyForDefaults,
+  resolveBoundContract,
+} from "../src/invocation-contract-binding.js";
 import type { ContractValidatorFactory } from "../src/invocation-contract-binding.js";
 import { withBigIntsAsNumbers } from "../src/bigint-schema-view.js";
+import { SchemaValidator } from "../src/schema-validator.js";
 
 /**
  * Conformance tests for `kernel/specs/invocation-contract.md` §6, mirroring
@@ -234,5 +239,81 @@ describe("CEL integers satisfy an integer contract", () => {
   it("leaves a BigInt-free value identical", () => {
     const value = { a: 1, b: "x" };
     expect(withBigIntsAsNumbers(value)).toBe(value);
+  });
+});
+
+describe("a contract's own `#…` references are read through by every contract walk", () => {
+  /** An instance bound to `contract`, over the kernel's own validator. */
+  function bound(
+    direction: "inputType" | "outputType",
+    contract: Record<string, any>,
+    produce: (inputs: unknown) => unknown,
+  ) {
+    const validator = new SchemaValidator();
+    const factory = Object.assign((schema: unknown) => validator.compile(schema), {
+      schemaOf: (typeRef: unknown) => typeRef as Record<string, any>,
+      resolveRef: () => undefined,
+      withRules: (name: string | undefined, schema: Record<string, any>) => validator.compile(schema),
+    }) as ContractValidatorFactory;
+    const instance = { invoke: async (inputs: unknown) => produce(inputs) };
+    const resolved = resolveBoundContract(
+      direction,
+      manifest({ [direction]: contract }),
+      undefined,
+      (() => undefined) as any,
+      factory,
+    );
+    bindContract(instance as any, {
+      ...(direction === "inputType" ? { input: resolved } : { output: resolved }),
+      describeTarget: () => "m.K/r",
+    });
+    return instance;
+  }
+
+  it("fills a default behind one into a copy, leaving the caller's value as sent", async () => {
+    const received: unknown[] = [];
+    const instance = bound(
+      "inputType",
+      {
+        type: "object",
+        properties: { options: { $ref: "#/$defs/Options" } },
+        $defs: {
+          Options: {
+            type: "object",
+            required: ["depth"],
+            properties: { depth: { type: "integer", default: 3 } },
+          },
+        },
+      },
+      (inputs) => received.push(inputs),
+    );
+    const sent = { options: {} };
+    await instance.invoke(sent);
+    expect(received).toEqual([{ options: { depth: 3 } }]);
+    expect(sent).toEqual({ options: {} });
+  });
+
+  it("normalizes a scalar declared behind one on the way out", async () => {
+    const instance = bound(
+      "outputType",
+      {
+        type: "object",
+        properties: { count: { $ref: "#/$defs/Count" } },
+        $defs: { Count: { type: "integer" } },
+      },
+      () => ({ count: 5 }),
+    );
+    expect(await instance.invoke({})).toEqual({ count: 5n });
+  });
+
+  it("exempts a live value declared behind one from validation", () => {
+    const stripped = withLiveValuesSkipped({
+      type: "object",
+      required: ["body"],
+      properties: { body: { $ref: "#/$defs/Body" } },
+      $defs: { Body: { "x-telo-type": "Telo.Stream" } },
+    });
+    expect(stripped.properties.body).toEqual({});
+    expect(stripped.required).toEqual(["body"]);
   });
 });

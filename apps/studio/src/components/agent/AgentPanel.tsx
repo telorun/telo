@@ -3,6 +3,7 @@ import { RotateCw, Send, Square, SquarePen, X, ChevronDown } from "lucide-react"
 import {
   AGENT_PANEL_DEFAULT_WIDTH,
   AGENT_PANEL_MIN_WIDTH,
+  CONTINUE_MESSAGE,
   turnIds,
   turnOfUserMessage,
   turnRequest,
@@ -18,6 +19,8 @@ import type { MessageActionHandlers } from "./MessageActions";
 import { AgentIdentityDetails, NoAuthBadge, NoTestRunsBadge, UnsupportedFeatures } from "./AgentIdentity";
 import { ConversationSwitcher } from "./ConversationSwitcher";
 import { useTurnActions } from "./TurnActionConfirm";
+import { TurnSummaryCard } from "./TurnSummaryCard";
+import { EditorFileContext } from "./WorkspaceFileLink";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -113,7 +116,7 @@ export function AgentPanel({ className }: { className?: string }) {
   };
 
   const turnActions = useTurnActions();
-  const { features } = agent;
+  const { features, turnFeatures } = agent;
   // Copy is always offered; the rest only by an agent serving them, and never
   // on a bubble the agent has not admitted as a turn.
   const actionsFor = (m: ChatMessage): MessageActionHandlers => {
@@ -152,6 +155,20 @@ export function AgentPanel({ className }: { className?: string }) {
 
   const archived = agent.conversation?.archived === true;
   const canCompose = (agent.conversationId !== null || agent.draft) && !archived;
+
+  // A turn that spent its step budget ended in a wrap-up, and goes on as a NEW
+  // turn — never a continue of the same one, which is what Resume does for an
+  // interrupted turn. Only the conversation's last turn can be gone on from.
+  const lastMessage = agent.messages[agent.messages.length - 1];
+  const continuable =
+    turnFeatures.conclusion &&
+    canCompose &&
+    !agent.locked &&
+    lastMessage?.role === "assistant" &&
+    lastMessage.completed === true &&
+    lastMessage.limit === "max-steps"
+      ? lastMessage.id
+      : null;
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -267,6 +284,7 @@ export function AgentPanel({ className }: { className?: string }) {
 
       <Conversation className="min-h-0 flex-1">
         <ConversationContent className="gap-4 px-3 py-3">
+          <EditorFileContext.Provider value={agent.editorFile}>
           {agent.messages.length === 0 && (
             <ConversationEmptyState
               title="Describe what you want to build"
@@ -287,10 +305,16 @@ export function AgentPanel({ className }: { className?: string }) {
                 onRetry={i === agent.messages.length - 1 && agent.canRetry ? agent.retry : undefined}
                 actions={actionsFor(m)}
                 summaryAnchors={summaries.anchors}
+                diffs={turnFeatures.changes}
+                onContinue={m.id === continuable ? () => agent.send(CONTINUE_MESSAGE) : undefined}
               />
+              {turnFeatures.summary && m.role === "assistant" && m.summary && (
+                <TurnSummaryCard turn={m} summary={m.summary} />
+              )}
               {summaries.after.get(m.id)?.map((summary, j) => <SummaryDivider key={j} summary={summary} />)}
             </Fragment>
           ))}
+          </EditorFileContext.Provider>
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

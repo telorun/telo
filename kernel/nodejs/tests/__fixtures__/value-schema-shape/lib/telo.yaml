@@ -1,0 +1,26 @@
+# A kind naming the imported shape as its input contract, whose schema declares
+# `readers` where the inherited annotation says `reader`.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaShapeKinds
+  version: 1.0.0
+imports:
+  Shared: ../shapes
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+inputType: !ref Shared.CallerInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }

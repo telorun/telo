@@ -23,6 +23,13 @@ export interface EchoResource {
   /** Test-only: when `tools` are present and no tool result is in the conversation yet,
    *  emit this tool call instead of echoing — lets agent-loop tests run hermetically. */
   emitToolCall?: { name: string; arguments?: Record<string, unknown> };
+  /** Test-only: emit `emitToolCall` on every call that offers tools, whatever the
+   *  conversation or `toolChoice` — a model that never converges, and that
+   *  disobeys a call that may not use a tool. */
+  toolCallEveryTurn?: boolean;
+  /** Test-only: echo the request's shape after the last message's text —
+   *  ` [tools: a,b] [toolChoice: none]` — so a test sees what a call was given. */
+  echoRequest?: boolean;
   /** Test-only: reject the iteration after this many text deltas, which is how a
    *  mid-stream provider failure actually presents now that a stream fails by
    *  rejecting rather than by yielding an error part. */
@@ -58,19 +65,23 @@ export abstract class EchoBase {
     return { suffix: this.resource.suffix ?? "" };
   }
 
-  protected buildEchoText(messages: Message[]): string {
-    const last = messages[messages.length - 1];
-    return contentToText(last?.content) + (this.resource.suffix ?? "");
+  protected buildEchoText(input: ModelInvokeInput): string {
+    const last = input.messages[input.messages.length - 1];
+    const text = contentToText(last?.content) + (this.resource.suffix ?? "");
+    if (!this.resource.echoRequest) return text;
+    const tools = (input.tools ?? []).map((tool) => tool.name).join(",");
+    return `${text} [tools: ${tools}] [toolChoice: ${input.toolChoice ?? "absent"}]`;
   }
 
-  /** True on the first tool-calling turn — tools offered and nothing answered yet. */
+  /** True on the first tool-calling turn — tools offered and nothing answered yet —
+   *  and on every turn offering tools under `toolCallEveryTurn`. */
   protected shouldCallTool(input: ModelInvokeInput): boolean {
     const { messages, tools } = input;
     return (
       this.resource.emitToolCall !== undefined &&
       tools !== undefined &&
       tools.length > 0 &&
-      !messages.some((m) => m.role === "tool")
+      (this.resource.toolCallEveryTurn === true || !messages.some((m) => m.role === "tool"))
     );
   }
 

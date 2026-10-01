@@ -1,0 +1,54 @@
+# The same kind and shapes with the inherited location naming `readers`, which
+# the kind's schema declares: the kind registers, and its `context` input is
+# typed by what its readers declare.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromInheritedShapeAcceptedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names an input shape inheriting a location the
+    kind's schema declares.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.JsonSchema
+metadata:
+  name: BaseInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      default: {}
+      x-telo-value-schema-from: /readers/*/contextType
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CallerInput
+extends: BaseInput
+schema:
+  type: object
+  properties:
+    note: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType: !ref CallerInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

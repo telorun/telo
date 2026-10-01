@@ -212,6 +212,37 @@ targets:
   - !ref refSlotReachValueConjunctAtRuntime
   - !ref refSlotReachValueDiscriminated
   - !ref refSlotReachValueDiscriminatedAtRuntime
+  - !ref valueSchemaContext
+  - !ref valueSchemaContextAtRuntime
+  - !ref valueSchemaFromInvalid
+  - !ref valueSchemaFromInvalidAtRuntime
+  - !ref valueSchemaFromShape
+  - !ref valueSchemaFromShapeAtRuntime
+  - !ref valueSchemaOwnDefsLiteralRefused
+  - !ref valueSchemaOwnDefsAccepted
+  - !ref valueSchemaOwnDefsInlineAtRuntime
+  - !ref valueSchemaOwnDefsNamedAtRuntime
+  - !ref valueSchemaOwnDefsFirstAtRuntime
+  - !ref valueSchemaOwnDefsSecondAtRuntime
+  - !ref valueSchemaWholeValueAccepted
+  - !ref valueSchemaWholeValuePlainMissingAtRuntime
+  - !ref valueSchemaWholeValueInlineMissingAtRuntime
+  - !ref valueSchemaWholeValueNamedMissingAtRuntime
+  - !ref valueSchemaWholeValuePlainMistypedAtRuntime
+  - !ref valueSchemaWholeValueInlineMistypedAtRuntime
+  - !ref valueSchemaWholeValueNamedMistypedAtRuntime
+  - !ref contractDefaultBehindRef
+  - !ref contractDefaultBehindRefLocalAtRuntime
+  - !ref contractDefaultBehindRefNamedAtRuntime
+  - !ref contractDefaultBehindRefFilled
+  - !ref valueSchemaFromImportedShape
+  - !ref valueSchemaFromImportedShapeAtRuntime
+  - !ref valueSchemaFromImportedShapeAccepted
+  - !ref valueSchemaFromImportedShapeRefusedArgument
+  - !ref valueSchemaFromInheritedShape
+  - !ref valueSchemaFromInheritedShapeAtRuntime
+  - !ref valueSchemaFromInheritedShapeAccepted
+  - !ref valueSchemaFromInheritedShapeRefusedArgument
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -2160,3 +2191,323 @@ source: ./__fixtures__/check-run-agreement/ref-slot-reach/value-discriminated/te
 expect:
   errors: []
   runFails: "'inner.target' must be a `!ref` to a resource satisfying `Telo.Invocable`."
+---
+# A contract node typed by what the resources a declaration references declare
+# (`x-telo-value-schema-from` inside `inputType`): a call omitting the caller
+# data is judged with the input's default filled, and refused where it is
+# written…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaContext
+source: ./__fixtures__/check-run-agreement/value-schema-context/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs' do not satisfy caller's declared inputType: /context is missing required property 'turnId'"
+---
+# …and, from a silent consumer, by the contract the kernel binds from the live
+# declarations (`ERR_INPUT_INVALID`, matched by its message).
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaContextAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-context/telo.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaContextLib.Caller/caller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{}}. Error: /context is missing required property 'turnId'"
+---
+# An `x-telo-value-schema-from` location the kind's own schema cannot hold a
+# value at is refused at the kind, and by the kernel when it registers the
+# definition.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInvalid
+source: ./__fixtures__/check-run-agreement/value-schema-from-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "declares `x-telo-value-schema-from: /reader/*/contextType` at 'inputType.schema.properties.context.x-telo-value-schema-from'"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-from-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
+---
+# The same refusal for an annotation written in the NAMED SHAPE a contract field
+# names: the annotation is the kind's wherever its contract is written.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromShape
+source: ./__fixtures__/check-run-agreement/value-schema-from-shape/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "declares `x-telo-value-schema-from: /reader/*/contextType` through `inputType`, which names the shape 'CallerInput' carrying it at 'properties.context'"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-from-shape/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
+---
+# A reached type is a document of its own: its `#…` references — to its own
+# `$defs`, or to itself — resolve against it, never against the contract it
+# types. Literal arguments each such type refuses are reported where they are
+# written: an inline type, the same type as a named shape, each of two types
+# that both declare `$defs/Id` with different meanings, and a type that
+# references itself.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsLiteralRefused
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/literal-refused.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs.context.turnId' do not satisfy inlineCaller's declared inputType: /context/turnId must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[1].inputs.context.turnId' do not satisfy namedCaller's declared inputType: /context/turnId must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[2].inputs.context.label' do not satisfy bothCaller's declared inputType: /context/label must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[3].inputs.context.count' do not satisfy bothCaller's declared inputType: /context/count must be integer"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[4].inputs.context.parent.turnId' do not satisfy selfCaller's declared inputType: /context/parent/turnId must be string"
+---
+# Arguments those types accept, written and computed, check clean and every call
+# returns.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsAccepted
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/accepted.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A computed argument the check cannot judge is refused by the contract the
+# kernel binds (`ERR_INPUT_INVALID`, matched by its message): through an inline
+# type's own definition…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsInlineAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/computed-refused-inline.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/inlineCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{\"turnId\":42}}. Error: /context/turnId must be string"
+---
+# …a named shape's…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsNamedAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/computed-refused-named.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/namedCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{\"turnId\":42}}. Error: /context/turnId must be string"
+---
+# …and each of two types whose `$defs/Id` differ.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsFirstAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/computed-refused-first.yaml
+expect:
+  errors: []
+  runFails: "Error: /context/label must be string"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaOwnDefsSecondAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/computed-refused-second.yaml
+expect:
+  errors: []
+  runFails: "Error: /context/count must be integer"
+---
+# A whole argument computed by ONE expression, at a node whose own default does
+# not satisfy the type it is held to: the default is not what stands in for the
+# expression, so a value the type accepts checks clean and the call returns —
+# for a type requiring a member, an inline type naming its own definitions and
+# the same type as a named shape.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValueAccepted
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-accepted.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A whole argument the check cannot judge is refused by the contract the kernel
+# binds (`ERR_INPUT_INVALID`, matched by its message): one lacking the member
+# each type requires…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValuePlainMissingAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-plain-missing.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/plainCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{}}. Error: /context is missing required property 'turnId'"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValueInlineMissingAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-inline-missing.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/inlineCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{}}. Error: /context is missing required property 'turnId'"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValueNamedMissingAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-named-missing.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/namedCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{}}. Error: /context is missing required property 'turnId'"
+---
+# …and one holding a member of the wrong type.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValuePlainMistypedAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-plain-mistyped.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/plainCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{\"turnId\":42}}. Error: /context/turnId must be string"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValueInlineMistypedAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-inline-mistyped.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/inlineCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{\"turnId\":42}}. Error: /context/turnId must be string"
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaWholeValueNamedMistypedAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-own-defs/whole-value-named-mistyped.yaml
+expect:
+  errors: []
+  runFails: "ValueSchemaOwnDefs.Caller/namedCaller: inputs do not satisfy the declared inputType: Invalid value passed: {\"context\":{\"turnId\":42}}. Error: /context/turnId must be string"
+---
+# A default is filled where a property's OWN schema declares it. A required
+# input declared only by reference to a node carrying a default — a pointer into
+# the contract's own `$defs`, or a named shape — is therefore not filled: a call
+# leaving it out is refused where it is written…
+kind: Assert.Manifest
+metadata:
+  name: contractDefaultBehindRef
+source: ./__fixtures__/check-run-agreement/contract-default-behind-ref/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs' do not satisfy localTarget's declared inputType: / is missing required property 'depth'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs' do not satisfy namedTarget's declared inputType: / is missing required property 'depth'"
+---
+# …and, from a silent consumer, by the contract the kernel binds, in both
+# reference forms.
+kind: Assert.Manifest
+metadata:
+  name: contractDefaultBehindRefLocalAtRuntime
+source: ./__fixtures__/check-run-agreement/contract-default-behind-ref/local.yaml
+expect:
+  errors: []
+  runFails: "ContractDefaultBehindRef.LocalTarget/localTarget: inputs do not satisfy the declared inputType: Invalid value passed: {}. Error: / is missing required property 'depth'"
+---
+kind: Assert.Manifest
+metadata:
+  name: contractDefaultBehindRefNamedAtRuntime
+source: ./__fixtures__/check-run-agreement/contract-default-behind-ref/named.yaml
+expect:
+  errors: []
+  runFails: "ContractDefaultBehindRef.NamedTarget/namedTarget: inputs do not satisfy the declared inputType: Invalid value passed: {}. Error: / is missing required property 'depth'"
+---
+# A default on a PROPERTY of a node the contract reaches through its own `$defs`
+# is the property's own: a call sending the container and leaving the member out
+# is judged with it filled, as the kernel dispatches it — clean, and it returns.
+kind: Assert.Manifest
+metadata:
+  name: contractDefaultBehindRefFilled
+source: ./__fixtures__/check-run-agreement/contract-default-behind-ref/filled.yaml
+expect:
+  errors: []
+  runs: true
+---
+# The named shape a contract field names is judged AS THE FIELD RESOLVES — here
+# through an import alias, the shape declared by another library: refused at the
+# kind's library…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromImportedShape
+source: ./__fixtures__/check-run-agreement/value-schema-from-imported-shape/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "declares `x-telo-value-schema-from: /reader/*/contextType` through `inputType`, which names the shape 'MisplacedInput' carrying it at 'properties.context'"
+---
+# …and, from a silent consumer, when the kernel registers the kind.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromImportedShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-from-imported-shape/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
+---
+# The control: with the location naming a field the kind declares, the kind
+# registers and the annotation types its calls — a conforming argument checks
+# clean and the call returns, a violating one is reported where it is written.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromImportedShapeAccepted
+source: ./__fixtures__/check-run-agreement/value-schema-from-imported-shape/accepted.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromImportedShapeRefusedArgument
+source: ./__fixtures__/check-run-agreement/value-schema-from-imported-shape/refused-argument.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs.context.turnId' do not satisfy caller's declared inputType: /context/turnId must be string"
+---
+# …and with the shape's `extends` parents folded: an annotation the PARENT shape
+# declares is the child's, refused at the kind's library…
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInheritedShape
+source: ./__fixtures__/check-run-agreement/value-schema-from-inherited-shape/lib/telo.yaml
+expect:
+  errors:
+    - code: VALUE_SCHEMA_FROM_INVALID
+      message: "declares `x-telo-value-schema-from: /reader/*/contextType` through `inputType`, which names the shape 'CallerInput' carrying it at 'properties.context'"
+---
+# …and, from a silent consumer, when the kernel registers the kind.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInheritedShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/value-schema-from-inherited-shape/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_VALUE_SCHEMA_FROM_INVALID"
+---
+# Its control, as above.
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInheritedShapeAccepted
+source: ./__fixtures__/check-run-agreement/value-schema-from-inherited-shape/accepted.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: valueSchemaFromInheritedShapeRefusedArgument
+source: ./__fixtures__/check-run-agreement/value-schema-from-inherited-shape/refused-argument.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "inputs at 'steps[0].inputs.context.turnId' do not satisfy caller's declared inputType: /context/turnId must be string"

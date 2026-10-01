@@ -14,7 +14,8 @@ import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
 import { celEvalModeAt, kindCelEvalSites } from "./eval-paths.js";
 import { inheritedCapability, type ContractDirection, type DefResolver } from "./extends-resolution.js";
-import { resolveContract } from "./invocation-contract.js";
+import { projectionModules, resolveContract, resolveNamedShape } from "./invocation-contract.js";
+import type { NamedContractShape } from "./validate-value-schema-location.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { refSlotOfEntry, type ReachSite } from "./reference-reach.js";
@@ -174,6 +175,27 @@ export class AnalysisRegistry {
       aliasesByModule: this.aliasesByModule,
       libraries: this.libraries.current,
       ...host,
+    });
+  }
+
+  /**
+   * The named shape a contract field of `holder` names, resolved as `telo
+   * check` resolves it — by module and name, across `holder`'s imports, with
+   * the shape's `extends` parents folded — against the declarations the host
+   * holds. Undefined when the field holds its schema itself or names nothing.
+   */
+  namedShapeOf(
+    typeField: unknown,
+    holder: Record<string, any>,
+    host: Pick<DerivedSlotContext, "rootModules" | "typeManifests">,
+  ): NamedContractShape | undefined {
+    return resolveNamedShape(typeField, holder, {
+      typeManifests: host.typeManifests,
+      modules: projectionModules(this.defs, this.aliases, {
+        aliasesByModule: this.aliasesByModule,
+        rootModules: host.rootModules,
+        libraries: this.libraries.current,
+      }),
     });
   }
 

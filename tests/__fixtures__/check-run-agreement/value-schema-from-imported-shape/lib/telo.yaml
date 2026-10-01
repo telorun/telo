@@ -1,0 +1,36 @@
+# A kind whose contract is a named shape reached through an IMPORT ALIAS, and
+# the shape carries an annotation whose location says `reader` where the kind's
+# schema declares `readers`. The annotation is the kind's wherever the shape it
+# names is declared, so the kind is refused for it.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromImportedShapeLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names an imported input shape that types a node
+    from a location the kind's own schema does not declare.
+imports:
+  Shapes: ../shapes
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType: !ref Shapes.MisplacedInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

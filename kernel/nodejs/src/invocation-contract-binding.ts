@@ -12,6 +12,7 @@ import {
   effectiveContractField,
   describeProjectionFailure,
   resolveSchemaProjections,
+  resolveContractValueSchemas,
   type ProjectionFailure,
   type DefResolver,
   withLiveValuesSkipped,
@@ -145,8 +146,9 @@ export function resolveBoundContract(
   resolveDef: DefResolver,
   factory: ContractValidatorFactory,
   /**
-   * Resolves a DECLARATION-derived slot (`x-telo-schema-projection-from`) to the
-   * shape the referenced declaration projects to.
+   * Resolves a DECLARATION-derived slot — `x-telo-schema-projection-from`, to the
+   * shape the referenced declaration projects to, and `x-telo-value-schema-from`,
+   * to every type its location names.
    *
    * The kernel resolves it for the same reason the analyzer does, and it must be
    * the SAME resolution: a projected contract enforced statically and not at
@@ -211,6 +213,16 @@ export function resolveBoundContract(
             `would enforce nothing where it promises a declared shape.`,
         );
       }
+    }
+    if (projections) {
+      // A node held to a type the declaration names (`x-telo-value-schema-from`)
+      // — resolved against the LIVE declarations, so a reference `telo check`
+      // could not follow (a library's resource input) is typed here.
+      projected = resolveContractValueSchemas(
+        projected,
+        manifest as unknown as Record<string, any>,
+        { scope: projections, typeSchemaOf: (value) => factory.schemaOf(value) },
+      ) as Record<string, any>;
     }
     shaped = { schema, projected };
     return shaped;

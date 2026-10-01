@@ -6,7 +6,8 @@ import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
  * Ai.Tools — the built-in Ai.ToolProvider implementation: a static list of tools, each
  * wrapping any Telo.Invocable. `listTools()` returns the declared descriptors;
  * `callTool()` dispatches to the matching invocable, applying optional `inputs:`/`result:`
- * CEL mappings (evaluated per call via `ctx.expandValue`).
+ * CEL mappings (evaluated per call via `ctx.expandValue`); `inputs:` reads the model's
+ * `arguments` and the agent's caller data as `context`.
  *
  * Each call goes through the kernel's traced dispatch, as a route handler does, so
  * the tool resource's own span, its `<name>.Invoked` events and its declared span
@@ -23,7 +24,8 @@ interface ToolEntry {
   name?: string;
   description?: string;
   parameters: Record<string, unknown>;
-  /** Raw CEL template mapping model `arguments` → the invocable's input. */
+  /** Raw CEL template mapping model `arguments` and caller `context` → the
+   *  invocable's input. */
   inputs?: Record<string, unknown>;
   /** Raw CEL template shaping the invocable's `result` into the fed-back value:
    *  a string, or a content part / list of parts for a multimodal result. */
@@ -76,14 +78,16 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
     name: string,
     args: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    context?: Record<string, unknown>,
   ): Promise<unknown> {
-    return (await this.callToolWithOutput(name, args, invokeCtx)).result;
+    return (await this.callToolWithOutput(name, args, invokeCtx, context)).result;
   }
 
   async callToolWithOutput(
     name: string,
     args: Record<string, unknown>,
     invokeCtx?: InvokeContext,
+    context: Record<string, unknown> = {},
   ): Promise<{ output: unknown; result: unknown }> {
     const index = this.resource.tools.findIndex((entry, i) => this.toolName(entry, i) === name);
     if (index === -1) {
@@ -106,7 +110,9 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
     const kind = identity?.kind ?? this.refs[index]?.kind ?? "";
     const target = identity?.name ?? this.refs[index]?.name ?? name;
     const invokeInput =
-      entry.inputs !== undefined ? this.ctx.expandValue(entry.inputs, { arguments: args }) : args;
+      entry.inputs !== undefined
+        ? this.ctx.expandValue(entry.inputs, { arguments: args, context })
+        : args;
     const output = await this.ctx.invokeResolved(
       kind,
       target,

@@ -1,0 +1,64 @@
+# Caller data typed where it is read: `turnTools` declares the `context` its
+# mapping reads, so the agent mounting it requires that data of its caller.
+# `callWithoutContext` leaves it out; run from a consumer, the agent's bound
+# contract refuses the call before the model is asked anything.
+kind: Telo.Library
+metadata:
+  name: AgentContextMissing
+  version: 1.0.0
+  description: Fixture library whose agent call omits the caller data its tool provider declares.
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+exports:
+  resources: [callWithoutContext]
+---
+# Reaching the model at all would fail the run with this code instead.
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+failOn:
+  message: "hello"
+  code: ERR_MODEL_REACHED
+  reason: the model received a request
+---
+kind: Run.Value
+metadata: { name: recorder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      id: { type: string }
+value:
+  id: !cel "inputs.id"
+---
+kind: Ai.Tools
+metadata: { name: turnTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [turnId]
+    properties:
+      turnId: { type: string }
+tools:
+  - tool: !ref recorder
+    name: record_turn
+    parameters: { type: object, additionalProperties: false }
+    inputs:
+      id: !cel "context.turnId"
+---
+kind: Ai.Agent
+metadata: { name: turnAgent }
+model: !ref echo
+toolProviders:
+  - provider: !ref turnTools
+---
+kind: Run.Sequence
+metadata: { name: callWithoutContext }
+steps:
+  - name: call
+    invoke: !ref turnAgent
+    inputs:
+      prompt: "hello"

@@ -1,0 +1,55 @@
+# A kind whose contract is a named shape that INHERITS its annotation: the
+# shape `extends` a parent whose `context` node names a location saying `reader`
+# where the kind's schema declares `readers`. A parent's annotation is the
+# child's, so the kind is refused for it.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromInheritedShapeLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind names an input shape inheriting, from the shape
+    it extends, a location the kind's own schema does not declare.
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.JsonSchema
+metadata:
+  name: BaseInput
+schema:
+  type: object
+  properties:
+    context:
+      type: object
+      default: {}
+      x-telo-value-schema-from: /reader/*/contextType
+---
+kind: Telo.JsonSchema
+metadata:
+  name: CallerInput
+extends: BaseInput
+schema:
+  type: object
+  properties:
+    note: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Caller
+capability: Telo.Invocable
+inputType: !ref CallerInput
+schema:
+  type: object
+  properties:
+    readers:
+      type: array
+      items:
+        type: object
+        properties:
+          contextType:
+            x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: body
+    value: { called: true }
+invoke: !ref body

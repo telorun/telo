@@ -1,5 +1,12 @@
 import type { RecordsPage } from "./records";
-import type { AgentIdentityState, Conversation, ConversationPage, TreeFile } from "./types";
+import type {
+  AgentIdentityState,
+  Conversation,
+  ConversationPage,
+  TreeFile,
+  TurnChanges,
+  TurnRevert,
+} from "./types";
 
 export type { TreeFile };
 
@@ -10,8 +17,10 @@ function delay(ms: number): Promise<void> {
 /**
  * Fetch that rides out a proxy warm-up: a fronting proxy (Caddy) returns 503
  * until it has detected the freshly-launched per-session upstream, and a network
- * error means it isn't reachable yet. Retries a few times with a capped backoff
- * (~10s total), then surfaces the last result. Every attempt sends the same
+ * error means it isn't reachable yet. The agent's own 503 `ERR_WORKSPACE_BUSY`
+ * — a revert or a pushed change set that found the workspace locked — is
+ * resent the same way, which is what that refusal asks for. Retries a few times
+ * with a capped backoff (~10s total), then surfaces the last result. Every attempt sends the same
  * `init`, so a POST /chat whose first attempt did land is recognised by its
  * `Idempotency-Key` rather than starting a second turn.
  */
@@ -167,6 +176,13 @@ function readConversationBody(body: unknown, what: string): Conversation {
     archived: c.archived === true,
     revision: c.revision,
   };
+}
+
+/** A recorded revert as the wire carries it; null when there is none. */
+function readRevert(value: unknown): TurnRevert | null {
+  const revert = value as { revertedAt?: unknown; files?: unknown } | null | undefined;
+  if (!revert || typeof revert !== "object" || !Array.isArray(revert.files)) return null;
+  return { revertedAt: String(revert.revertedAt ?? ""), files: revert.files as TurnRevert["files"] };
 }
 
 /** The `Authorization` header a token requires, merged into `headers`. Nothing
@@ -383,12 +399,45 @@ export class AgentClient {
     return { kind: "continued", turnId: String(body.turnId ?? turnId), fromId: body.fromId };
   }
 
-  /** GET /workspace → the agent's content-hash tree. */
+  /** GET /chat/{turnId}/changes → the turn's net changes as diffs, and its
+   *  recorded revert. `files: null` for a turn from before checkpoints. Refused
+   *  404 `ERR_TURN_NOT_FOUND` / 410 `ERR_JOURNAL_KEY_REMOVED`, or as its
+   *  conversation is. */
+  async turnChanges(turnId: string): Promise<TurnChanges> {
+    const what = `GET /chat/${turnId}/changes`;
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/changes`), this.init());
+    if (!res.ok) throw await requestError(res, what);
+    const body = await readBody(res, what);
+    return {
+      files: Array.isArray(body.files) ? (body.files as NonNullable<TurnChanges["files"]>) : null,
+      revert: readRevert(body.revert),
+    };
+  }
+
+  /** POST /chat/{turnId}/revert, no body → what each path's revert did, and the
+   *  conversation's revision after it. Refused 409 `ERR_TURN_IN_PROGRESS` /
+   *  `ERR_CONVERSATION_ARCHIVED` / `ERR_TURN_NOT_CHECKPOINTED`, 404 / 410 for a
+   *  turn or conversation that is gone, and 503 `ERR_WORKSPACE_BUSY` once the
+   *  resends are spent. */
+  async revertTurn(turnId: string): Promise<{ revert: TurnRevert; revision?: number }> {
+    const what = `POST /chat/${turnId}/revert`;
+    const res = await fetchRetrying(this.url(`/chat/${encodeURIComponent(turnId)}/revert`), this.init({ method: "POST" }));
+    if (!res.ok) throw await requestError(res, what);
+    const body = await readBody(res, what);
+    const revert = readRevert(body.revert);
+    if (!revert) throw new Error(`${what} succeeded but returned no revert.`);
+    return { revert, ...(typeof body.revision === "number" ? { revision: body.revision } : {}) };
+  }
+
+  /** GET /workspace → the agent's content-hash tree. An answer carrying no
+   *  file list is a failed read, never an empty tree: an empty tree is what
+   *  licenses deleting the editor's copies of a reverted turn's files. */
   async workspaceTree(): Promise<TreeFile[]> {
     const res = await fetchRetrying(this.url("/workspace"), this.init());
     if (!res.ok) throw failure(res, "GET /workspace");
     const body = await res.json();
-    return Array.isArray(body.files) ? body.files : [];
+    if (!Array.isArray(body?.files)) throw new Error("GET /workspace returned no file list.");
+    return body.files;
   }
 
   /** POST /workspace — apply an explicit write/delete change set (Fs.TreeSync). */

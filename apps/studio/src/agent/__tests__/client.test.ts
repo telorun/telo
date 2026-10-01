@@ -158,3 +158,46 @@ describe("AgentClient.capabilities", () => {
     await expect(client.capabilities()).resolves.toEqual({ state: "unavailable" });
   });
 });
+
+describe("AgentClient.revertTurn", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("resends a revert the agent refused with 503 ERR_WORKSPACE_BUSY", async () => {
+    const revert = { revertedAt: "2026-09-30T10:00:00.000Z", files: [{ path: "a.yaml", status: "modified", outcome: "restored" }] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(503, { error: "The workspace is busy.", code: "ERR_WORKSPACE_BUSY" }))
+      .mockResolvedValueOnce(json(200, { revert, revision: 8 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = new AgentClient("http://agent").revertTurn("t1");
+    await vi.runAllTimersAsync();
+
+    await expect(pending).resolves.toEqual({ revert, revision: 8 });
+    expect(fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit).method} ${url}`)).toEqual([
+      "POST http://agent/chat/t1/revert",
+      "POST http://agent/chat/t1/revert",
+    ]);
+  });
+});
+
+describe("AgentClient.workspaceTree", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects an answer carrying no file list, and reads an empty list as an empty tree", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(200, {})).mockResolvedValueOnce(json(200, { files: [] })));
+    const client = new AgentClient("http://agent");
+
+    await expect(client.workspaceTree()).rejects.toThrow("GET /workspace returned no file list.");
+    await expect(client.workspaceTree()).resolves.toEqual([]);
+  });
+});

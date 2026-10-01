@@ -17,7 +17,8 @@ export type AgentStreamPart =
   | { type: "tool-result"; toolResult: ToolResult }
   // Closes one model call; the next text starts a segment of its own.
   | { type: "step-finish"; usage?: Usage; finishReason?: string }
-  | { type: "finish"; usage?: Usage; finishReason?: string }
+  // `limit: "max-steps"`: the turn spent its step budget and ended in a wrap-up.
+  | { type: "finish"; usage?: Usage; finishReason?: string; limit?: string }
   // Opens another attempt at an interrupted turn; `note` is what its model was
   // told about the interruption.
   | { type: "turn-continued"; note: string; model?: string }
@@ -56,7 +57,61 @@ export interface TurnRecords {
   status: "running" | "finished" | "failed" | "aborted";
   error: TurnError | null;
   startedAt?: string;
+  /** Null while the turn runs; absent from an agent that keeps no summaries. */
+  summary?: TurnSummary | null;
+  /** Null until a revert of the turn recorded an outcome. */
+  revert?: TurnRevert | null;
   records: JournalRecord[];
+}
+
+/** One file a turn's tools changed. `added` / `removed` are null for a file
+ *  that is not text, or is larger than the agent compares. */
+export interface FileChange {
+  path: string;
+  status: "created" | "modified" | "deleted";
+  before: string | null;
+  after: string | null;
+  added: number | null;
+  removed: number | null;
+}
+
+export interface DiffLine {
+  op: "context" | "added" | "removed";
+  text: string;
+  noNewline?: boolean;
+}
+
+/** One hunk of a line diff, as the agent computed it. Line numbers are 1-based. */
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+/** What an ended turn did. `files: null` is a turn from before the agent kept
+ *  checkpoints: what it changed is unknown, not nothing. */
+export interface TurnSummary {
+  files: Array<FileChange & { firstLine: number | null; checkExitCode: number | null }> | null;
+  check: "clean" | "failing" | null;
+  runs: Array<{ path: string; exitCode: number }>;
+  usage: Usage;
+}
+
+/** The recorded outcome of reverting a turn. Present means a revert was
+ *  evaluated, not that every path was restored. */
+export interface TurnRevert {
+  revertedAt: string;
+  files: Array<{ path: string; status: FileChange["status"]; outcome: "restored" | "skipped" }>;
+}
+
+/** `GET /chat/{turnId}/changes`: the turn's net changes as diffs.
+ *  `changedSince`: whether the workspace file no longer holds what the turn
+ *  left — null when the agent did not compare it. */
+export interface TurnChanges {
+  files: Array<FileChange & { firstLine: number | null; hunks: DiffHunk[] | null; changedSince: boolean | null }> | null;
+  revert: TurnRevert | null;
 }
 
 export interface ToolCall {
@@ -109,6 +164,18 @@ export interface ToolCallView {
    *  result's structured `output`. */
   checkExitCode?: number;
   diagnostics?: CheckDiagnostic[];
+  /** The tool's structured result, verbatim; absent while it runs, on an error
+   *  and from an agent that reports none. */
+  structured?: unknown;
+  /** The file a write, an edit or a check named. */
+  path?: string;
+  /** What a file tool's call changed: none or one entry for a write or an
+   *  edit, one per file for a delete. */
+  changes?: FileChange[];
+  /** A write's or an edit's own line diff; null when a side is not comparable. */
+  hunks?: DiffHunk[] | null;
+  /** A command's exit code, stdout and stderr. */
+  run?: { exitCode: number; output: string; messages: string };
 }
 
 /**
@@ -163,6 +230,14 @@ export interface AssistantMessage {
    *  there is anything to resume. Absent on transcripts persisted before it
    *  existed; those read as unfinished, which shows no button on its own. */
   completed?: boolean;
+  /** The `finish` record's `limit`: `max-steps` when the turn spent its step
+   *  budget and ended in a wrap-up. */
+  limit?: string;
+  /** What the turn did, from the records route once the turn has ended. */
+  summary?: TurnSummary;
+  /** The recorded outcome of reverting the turn, from the records route or
+   *  from this client's own revert. */
+  revert?: TurnRevert;
   /** Shown before the agent admitted its turn: no turn of the agent's yet. */
   local?: boolean;
 }
@@ -224,9 +299,9 @@ export interface AgentIdentity {
   /** `"none"` or `"bearer"` today; kept as the agent's own word, so a mode this
    *  client does not know is not mistaken for one it does. */
   auth: string;
-  /** The optional surfaces this agent serves (`conversations`,
-   *  `conversation-truncation`, `conversation-branching`); absent from an agent
-   *  that predates them. Entries this client does not know are ignored. */
+  /** The optional surfaces this agent serves (`agent-features.ts` names the
+   *  ones this client knows); absent from an agent that predates them. Entries
+   *  this client does not know are ignored. */
   features?: string[];
   /** Whether the agent may run manifests and their tests; absent = unknown. */
   manifestRuns?: boolean;
@@ -273,4 +348,8 @@ export interface WorkspaceBridge {
   readFile(path: string): Promise<string>;
   /** Apply agent → editor changes through WorkspaceAdapter + afterFileMutation. */
   applyChanges(writes: Array<{ path: string; content: string }>, deletes: string[]): Promise<void>;
+  /** The editor's own path for the file a workspace-relative path names, or
+   *  null when it names none: an absolute path, a URL, one that leaves the
+   *  workspace. The one place an agent's path becomes an editor's. */
+  editorFile(path: string): string | null;
 }

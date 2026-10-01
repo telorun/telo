@@ -40,6 +40,7 @@ import {
   normalizeDeclaredScalars,
   registerTeloKeywords,
   type DeclaredScalarPath,
+  type NamedContractShape,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -591,6 +592,15 @@ export class ResourceContextImpl implements ResourceContext {
    */
   resolveDeclaredManifest(name: string, alias?: string): ResourceManifest | undefined {
     return this.owningContext.resolveDeclaredManifest?.(name, alias);
+  }
+
+  /** The named shape a contract field of `holder` names, read from the
+   *  declarations the load holds. */
+  resolveNamedContractShape(
+    typeField: unknown,
+    holder: Record<string, any>,
+  ): NamedContractShape | undefined {
+    return this.kernel.resolveNamedContractShape(typeField, holder);
   }
 
   resolveRef<T>(

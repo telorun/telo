@@ -19,7 +19,7 @@ export const SYNC_EXCLUDED_DIRS: ReadonlySet<string> = new Set([
   ".telo-agent",
 ]);
 
-function included(workspace: AgentWorkspace, path: string): boolean {
+function included(workspace: Pick<AgentWorkspace, "excludedPaths">, path: string): boolean {
   if (workspace.excludedPaths.has(path)) return false;
   return !path.split("/").some((segment) => SYNC_EXCLUDED_DIRS.has(segment));
 }
@@ -110,4 +110,81 @@ export async function pullFile(
 ): Promise<void> {
   const content = await workspace.readFile(path);
   await bridge.applyChanges([{ path, content }], []);
+}
+
+/** The editor's file for a path the agent named, or null when the path names
+ *  none: one the two sides do not share is refused here, before the bridge is
+ *  asked — the exclusions are this module's rule, never the bridge's. */
+export function sharedEditorFile(
+  workspace: Pick<AgentWorkspace, "excludedPaths">,
+  bridge: WorkspaceBridge,
+  path: string,
+): string | null {
+  return included(workspace, path) ? bridge.editorFile(path) : null;
+}
+
+/** A reverted turn: each path its recorded revert marks restored, with the
+ *  digests the turn's summary records for it (null: no file). */
+export interface RevertedTurn {
+  turnId: string;
+  files: Array<{ path: string; before: string | null; after: string | null }>;
+}
+
+/**
+ * Bring the editor's copies in line with reverts the agent recorded, whoever
+ * asked for them. What licenses changing an editor file is three facts about
+ * its path together — the recorded revert marks it restored (the only paths a
+ * `RevertedTurn` carries), the workspace's tree now holds `before` there, and
+ * the editor's copy is byte-identical to `after` — with nothing remembered
+ * about earlier syncs:
+ *
+ * - the workspace does not hold `before` — nothing, and nothing reported: the
+ *   revert is no longer what the workspace holds;
+ * - the editor holds `before` — nothing: already in line;
+ * - the editor holds `after` — the workspace's content replaces it, or it is
+ *   deleted when the turn had created it;
+ * - the editor holds anything else — an edit the workspace never saw: left, and
+ *   the path reported as kept, under its turn.
+ *
+ * A null `before` is held where the tree has no such path, whether it holds
+ * other files or none. A tree that cannot be read rejects: it is never taken
+ * for an empty one. One snapshot and one tree, however many turns.
+ */
+export async function applyReverted(
+  workspace: AgentWorkspace,
+  bridge: WorkspaceBridge,
+  turns: RevertedTurn[],
+): Promise<Map<string, string[]>> {
+  const kept = new Map<string, string[]>(turns.map((turn) => [turn.turnId, []]));
+  const [rawTree, rawEditor] = await Promise.all([workspace.tree(), bridge.snapshot()]);
+  const tree = new Map(includedTree(workspace, rawTree).map((f) => [f.path, f.hash]));
+  const editor = includedSnapshot(workspace, rawEditor);
+
+  const writes = new Map<string, string>();
+  const deletes = new Set<string>();
+  for (const turn of turns) {
+    for (const { path, before, after } of turn.files) {
+      if (!included(workspace, path) || (tree.get(path) ?? null) !== before) continue;
+      const local = editor.get(path) ?? null;
+      if (local === before) continue;
+      if (local !== after) {
+        kept.get(turn.turnId)?.push(path);
+      } else if (before === null) {
+        writes.delete(path);
+        deletes.add(path);
+        editor.delete(path);
+      } else {
+        deletes.delete(path);
+        writes.set(path, await workspace.readFile(path));
+        editor.set(path, before);
+      }
+    }
+  }
+  if (writes.size || deletes.size) {
+    await bridge.applyChanges(
+      [...writes].map(([path, content]) => ({ path, content })),
+      [...deletes],
+    );
+  }
+  return kept;
 }

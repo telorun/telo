@@ -1,0 +1,404 @@
+kind: Telo.Application
+metadata:
+  name: ChatTurnSummary
+  version: 1.0.0
+  description: |
+    The summary every ended turn carries on the records route, and a step budget
+    that ends in a wrap-up — offline against the provider stub, with the budget
+    lowered to two steps and manifest runs allowed.
+
+    A completed turn's summary lists the files it changed on balance, each with
+    its line counts, the first hunk's line and its last check's exit code;
+    `check` is `failing` when one of them failed and `clean` when all passed,
+    null when nothing was created or modified; `runs` lists every `run_manifest`
+    call that returned a result, never one refused as a tool error; `usage`
+    sums every model call of every attempt, the naming call included. A file
+    whose earlier content was not text has null counts, and so has one with a
+    side larger than a line diff compares (300000 bytes), the turn's other
+    files keeping theirs. The summary is null
+    while a turn runs, present after a failure and after an abort, and after a
+    continue it covers both attempts. A turn from before checkpoints existed
+    reports `files: null`.
+
+    A turn that needs more than its two steps ends completed: one more model
+    call — the tools still declared, `tool_choice: "none"`, the conclusion
+    prompt last — writes the wrap-up, the turn's `finish` record carries
+    `limit: "max-steps"`, and the turn has a summary.
+variables:
+  scratch:
+    env: CHAT_TEST_TURN_SUMMARY_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/turn-summary
+imports:
+  Chat:
+    source: ../
+    secrets:
+      openaiApiKey: stub-key
+    variables:
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
+      stateDir: !cel "variables.scratch.joinPath('state')"
+      modelEndpoint: http://127.0.0.1:18544/v1
+      teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
+      allowManifestRuns: true
+      maxSteps: 2
+  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  Fs: ../../../../modules/fs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
+  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
+  Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
+  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
+  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
+  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+targets:
+  - !ref reset
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref test
+---
+# The workspace is emptied; the state directory is not — the conversation
+# database is already open by the time a target runs.
+kind: Run.Sequence
+metadata: { name: reset }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      createParents: true
+  - name: remove
+    invoke: { kind: Fs.FileRemoval }
+    inputs:
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
+      recursive: true
+---
+kind: HttpClient.Request
+metadata: { name: call }
+---
+# The chat library's database, reached from outside it.
+kind: SQLite.Connection
+metadata: { name: libraryDb }
+file: !cel "variables.scratch.joinPath('state').joinPath('agent.sqlite')"
+---
+# Starts a turn in a conversation of its own.
+kind: Run.Sequence
+metadata: { name: begin }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message]
+    properties:
+      message: { type: string }
+      calls:
+        type: array
+        items: { type: object, additionalProperties: true }
+steps:
+  - name: conversation
+    invoke: !ref Chat.createConversation
+  - name: start
+    invoke: !ref Chat.chatStart
+    inputs:
+      conversationId: !cel "steps.conversation.result.conversation.id"
+      idempotencyKey: ""
+      clientIp: test-runner
+      message: !cel >-
+        inputs.message + (has(inputs.calls) ? ' STUB_CALLS:' + base64Encode(json(inputs.calls)) : '')
+outputs:
+  conversationId: !cel "steps.conversation.result.conversation.id"
+  turnId: !cel "steps.start.result.turnId"
+---
+# Waits for a turn's attempt to end, however it ends, and reads its turn object
+# from the records route.
+kind: Run.Sequence
+metadata: { name: ended }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversationId, turnId]
+    properties:
+      conversationId: { type: string }
+      turnId: { type: string }
+steps:
+  - name: read
+    invoke: !ref Chat.journalSource
+    inputs:
+      key: !cel "inputs.turnId"
+      fromId: 0
+  - name: drain
+    try:
+      - name: collect
+        timeout: 60000
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.read.result.output"
+    catch:
+      - name: ending
+        value: !cel "error.code"
+  - name: records
+    invoke: !ref Chat.conversationRecords
+    inputs:
+      conversationId: !cel "inputs.conversationId"
+      fromTurn: ""
+      fromId: 0
+      limit: 2000
+outputs:
+  status: !cel "steps.records.result.turns[0].status"
+  summary: !cel "steps.records.result.turns[0].summary"
+  finish: !cel >-
+    steps.records.result.turns[0].records.filter(r, r.data.type == 'finish').map(r, r.data)
+  text: !cel >-
+    join(steps.records.result.turns[0].records.filter(r, r.data.type == 'text-delta').map(r, r.data.delta), '')
+---
+# Fails until the stub has received `count` agent requests carrying `text`.
+kind: Run.Sequence
+metadata: { name: stubReceived }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text, count]
+    properties:
+      text: { type: string }
+      count: { type: integer }
+steps:
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18544/requests }
+  - name: notYet
+    if: !cel >-
+      size(steps.sent.result.body.requests.filter(r, json(r).contains(inputs.text)
+        && !json(r).contains('You name conversations'))) < inputs.count
+    then:
+      - name: waiting
+        throw:
+          code: ERR_TEST_NOT_RECEIVED_YET
+          message: The stub has not received the request yet.
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: stub }
+    source: ./__fixtures__/provider-stub/telo.yaml
+    ports: { http: 18544 }
+targets: [ !ref stub ]
+steps:
+  - name: samples
+    value:
+      valid: "kind: Telo.Library\nmetadata:\n  name: Demo\n"
+      invalid: "kind: Telo.Library\nmetadata:\n  name: 7demo\n"
+  - name: fixtures
+    invoke: !ref Chat.syncWorkspace
+    inputs:
+      delete: []
+      # `wide.txt` is 300000 bytes of text.
+      write: !cel >-
+        [{'path': 'logo.bin', 'content': '//4AAQ==', 'encoding': 'base64'},
+         {'path': 'wide.txt', 'content': 'HEAD\n' + join(range(29999).map(i, '012345678\n'), '') + 'tail\n'}]
+  # ── completed ──────────────────────────────────────────────────────────────
+  - name: mixed
+    invoke: !ref begin
+    inputs:
+      message: build it
+      calls:
+        - { name: write_file, arguments: { path: good.yaml, content: !cel "steps.samples.result.valid" } }
+        - { name: write_file, arguments: { path: ./bad.yaml, content: !cel "steps.samples.result.invalid" } }
+        - { name: write_file, arguments: { path: logo.bin, content: "now text\n" } }
+        - { name: run_manifest, arguments: { path: good.yaml } }
+        - { name: run_manifest, arguments: { path: ../outside.yaml } }
+  - name: mixedEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.mixed.result.conversationId", turnId: !cel "steps.mixed.result.turnId" }
+  - name: clean
+    invoke: !ref begin
+    inputs:
+      message: one good file
+      calls:
+        - { name: write_file, arguments: { path: clean.yaml, content: !cel "steps.samples.result.valid" } }
+        - { name: write_file, arguments: { path: scratch.yaml, content: !cel "steps.samples.result.invalid" } }
+        - { name: delete_file, arguments: { path: scratch.yaml } }
+  - name: cleanEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.clean.result.conversationId", turnId: !cel "steps.clean.result.turnId" }
+  # ── a side larger than a line diff compares ────────────────────────────────
+  - name: wide
+    invoke: !ref begin
+    inputs:
+      message: edit the wide one
+      calls:
+        - { name: edit_file, arguments: { path: wide.txt, oldString: HEAD, newString: TAIL } }
+        - { name: write_file, arguments: { path: beside.yaml, content: !cel "steps.samples.result.valid" } }
+  - name: wideEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.wide.result.conversationId", turnId: !cel "steps.wide.result.turnId" }
+  - name: idle
+    invoke: !ref begin
+    inputs: { message: just answer }
+  - name: idleEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.idle.result.conversationId", turnId: !cel "steps.idle.result.turnId" }
+  # ── failed, then continued ─────────────────────────────────────────────────
+  - name: broken
+    invoke: !ref begin
+    inputs:
+      message: STUB_BREAK after the write
+      calls:
+        - { name: write_file, arguments: { path: broken.yaml, content: !cel "steps.samples.result.valid" } }
+  - name: brokenEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.broken.result.conversationId", turnId: !cel "steps.broken.result.turnId" }
+  - name: resume
+    invoke: !ref Chat.continueTurn
+    inputs:
+      turnId: !cel "steps.broken.result.turnId"
+      clientIp: test-runner
+  - name: resumedEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.broken.result.conversationId", turnId: !cel "steps.broken.result.turnId" }
+  # ── running, then aborted ──────────────────────────────────────────────────
+  - name: slow
+    invoke: !ref begin
+    inputs:
+      message: STUB_SLOW hold on
+      calls:
+        - { name: write_file, arguments: { path: slow.yaml, content: !cel "steps.samples.result.valid" } }
+  - name: slowFirst
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW hold on, count: 1 }
+  - name: slowRelease
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18544/release, method: POST }
+  - name: slowSecond
+    retry: { attempts: 100, initialDelay: 100, factor: 1, jitter: none }
+    invoke: !ref stubReceived
+    inputs: { text: STUB_SLOW hold on, count: 2 }
+  - name: whileRunning
+    invoke: !ref Chat.conversationRecords
+    inputs:
+      conversationId: !cel "steps.slow.result.conversationId"
+      fromTurn: ""
+      fromId: 0
+      limit: 2000
+  - name: abort
+    invoke: !ref Chat.abortTurn
+    inputs: { turnId: !cel "steps.slow.result.turnId" }
+  - name: abortedEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.slow.result.conversationId", turnId: !cel "steps.slow.result.turnId" }
+  # ── a turn from before checkpoints ─────────────────────────────────────────
+  - name: legacy
+    invoke:
+      kind: Sql.Command
+      connection: !ref libraryDb
+    inputs:
+      sql: "UPDATE turns SET checkpointed = 0 WHERE turn_id = ?"
+      bindings: [ !cel "steps.idle.result.turnId" ]
+  - name: legacyEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.idle.result.conversationId", turnId: !cel "steps.idle.result.turnId" }
+  # ── a turn that needs more than two steps ──────────────────────────────────
+  - name: long
+    invoke: !ref begin
+    inputs: { message: STUB_LOOP keep listing }
+  - name: longEnd
+    invoke: !ref ended
+    inputs: { conversationId: !cel "steps.long.result.conversationId", turnId: !cel "steps.long.result.turnId" }
+  - name: sent
+    invoke: !ref call
+    inputs: { url: http://127.0.0.1:18544/requests }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        mixed:
+          status: !cel "steps.mixedEnd.result.status"
+          files: !cel >-
+            steps.mixedEnd.result.summary.files.map(f, [f.path, f.status, f.added, f.removed, f.firstLine,
+              f.checkExitCode == null ? 'none' : f.checkExitCode == 0 ? 'clean' : 'failing'])
+          digests: !cel >-
+            cel.bind(f, steps.mixedEnd.result.summary.files[1],
+              [f.before, f.after == sha256(steps.samples.result.valid)])
+          check: !cel "steps.mixedEnd.result.summary.check"
+          runs: !cel "steps.mixedEnd.result.summary.runs.map(r, [r.path, r.exitCode != 0])"
+          usage: !cel "steps.mixedEnd.result.summary.usage"
+        clean:
+          files: !cel "steps.cleanEnd.result.summary.files.map(f, f.path + ' ' + f.status)"
+          check: !cel "steps.cleanEnd.result.summary.check"
+          runs: !cel "steps.cleanEnd.result.summary.runs"
+        wide: !cel >-
+          steps.wideEnd.result.summary.files.map(f, [f.path, f.status, f.added, f.removed, f.firstLine])
+        idle:
+          files: !cel "steps.idleEnd.result.summary.files"
+          check: !cel "steps.idleEnd.result.summary.check"
+          usage: !cel "steps.idleEnd.result.summary.usage"
+        broken:
+          status: !cel "steps.brokenEnd.result.status"
+          files: !cel "steps.brokenEnd.result.summary.files.map(f, f.path + ' ' + f.status)"
+          usage: !cel "steps.brokenEnd.result.summary.usage"
+        resumed:
+          status: !cel "steps.resumedEnd.result.status"
+          files: !cel "steps.resumedEnd.result.summary.files.map(f, f.path + ' ' + f.status)"
+          usage: !cel "steps.resumedEnd.result.summary.usage"
+        running: !cel "[steps.whileRunning.result.turns[0].status, steps.whileRunning.result.turns[0].summary]"
+        aborted:
+          status: !cel "steps.abortedEnd.result.status"
+          files: !cel "steps.abortedEnd.result.summary.files.map(f, f.path + ' ' + f.status)"
+          usage: !cel "steps.abortedEnd.result.summary.usage"
+        legacy: !cel "[steps.legacyEnd.result.summary.files, steps.legacyEnd.result.summary.usage.totalTokens]"
+        conclusion:
+          status: !cel "steps.longEnd.result.status"
+          text: !cel "steps.longEnd.result.text"
+          finish: !cel "steps.longEnd.result.finish.map(f, [f.finishReason, f.limit])"
+          usage: !cel "steps.longEnd.result.summary.usage"
+          lastRequest: !cel >-
+            cel.bind(last, steps.sent.result.body.requests[size(steps.sent.result.body.requests) - 1],
+              [size(last.tools) > 0, last.tool_choice,
+               json(last.input[size(last.input) - 1]).contains('You have used every step this turn may take')])
+      expected:
+        mixed:
+          status: finished
+          files:
+            - [ bad.yaml, created, 3, 0, 1, failing ]
+            - [ good.yaml, created, 3, 0, 1, clean ]
+            - [ logo.bin, modified, null, null, null, failing ]
+          digests: [ null, true ]
+          check: failing
+          runs: [ [ good.yaml, true ] ]
+          usage: { promptTokens: 30, completionTokens: 15, totalTokens: 45 }
+        clean:
+          files: [ clean.yaml created ]
+          check: clean
+          runs: []
+        wide:
+          - [ beside.yaml, created, 3, 0, 1 ]
+          - [ wide.txt, modified, null, null, null ]
+        idle:
+          files: []
+          check: null
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 }
+        broken:
+          status: failed
+          files: [ broken.yaml created ]
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 }
+        resumed:
+          status: finished
+          files: [ broken.yaml created ]
+          usage: { promptTokens: 30, completionTokens: 15, totalTokens: 45 }
+        running: [ running, null ]
+        aborted:
+          status: aborted
+          files: [ slow.yaml created ]
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30 }
+        legacy: [ null, 30 ]
+        conclusion:
+          status: finished
+          text: stub wrap-up
+          finish: [ [ stop, max-steps ] ]
+          usage: { promptTokens: 40, completionTokens: 20, totalTokens: 60 }
+          lastRequest: [ true, none, true ]

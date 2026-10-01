@@ -1,0 +1,11 @@
+# Runs the library's agent call that omits the caller data its tool provider
+# requires. This consumer's entry-scoped check is silent about the library's call
+# site, so the agent's bound contract is what refuses it.
+kind: Telo.Application
+metadata:
+  name: AgentContextMissingApp
+  version: 1.0.0
+imports:
+  Lib: ./agent-context
+targets:
+  - !ref Lib.callWithoutContext

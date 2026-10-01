@@ -117,6 +117,23 @@ describe("watch sessions over the /v1 contract", () => {
     );
   });
 
+  it("refuses a workspace answer with no file list, and reads an empty list as an empty workspace", async () => {
+    let tree: unknown = {};
+    stubFetch((url) =>
+      url.endsWith("/workspace")
+        ? json(tree)
+        : json({ sessionId: "s1", streamUrl: "/v1/sessions/s1/events", createdAt: "" }),
+    );
+
+    const session = await httpRunnerAdapter.start({ ...REQUEST, mode: "watch" }, CONFIG);
+    await expect(session.workspaceTree!()).rejects.toThrow(
+      "Couldn't read the workspace — runner returned no file list.",
+    );
+
+    tree = { files: [] };
+    await expect(session.workspaceTree!()).resolves.toEqual([]);
+  });
+
   it("reads a resume 404 as 'start a fresh session', not as an error", async () => {
     stubFetch((url) =>
       url.endsWith("/resume")
