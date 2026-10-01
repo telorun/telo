@@ -312,8 +312,9 @@ const holding = (members: Record<string, any>) => ({
   properties: members,
 });
 
-/** What is reported for `produced` flowing into `slot` through a plain chain. */
-const atCallSite = (produced: Record<string, any>, slot: Record<string, any>) =>
+/** What is reported for `produced` — or its `member` (`.a`) — flowing into
+ *  `slot` through a plain chain. */
+const atCallSite = (produced: Record<string, any>, slot: Record<string, any>, member = "") =>
   diagnose([
     {
       kind: "srv.Value",
@@ -329,12 +330,12 @@ const atCallSite = (produced: Record<string, any>, slot: Record<string, any>) =>
     },
     sequence([
       { name: "made", invoke: ref("produce") },
-      { name: "call", invoke: ref("take"), inputs: { arg: cel("steps.made.result.out") } },
+      { name: "call", invoke: ref("take"), inputs: { arg: cel(`steps.made.result.out${member}`) } },
     ]),
   ]);
-const atOwnField = (produced: Record<string, any>, slot: Record<string, any>) =>
+const atOwnField = (produced: Record<string, any>, slot: Record<string, any>, member = "") =>
   diagnose(
-    [{ kind: "srv.Hold", metadata: { name: "own" }, held: cel("src") }],
+    [{ kind: "srv.Hold", metadata: { name: "own" }, held: cel(`src${member}`) }],
     {},
     [
       definition("Hold", "Telo.Invocable", {
@@ -435,6 +436,59 @@ describe("JSON types compared by containment", () => {
       const found = judged(site(produced, slot));
       expect(found).toHaveLength(1);
       expect(found[0]!.startsWith(`${code}: `)).toBe(true);
+    });
+  });
+});
+
+describe("a member read through a union in its producer's schema", () => {
+  const hostPath = { "x-telo-type": "Telo.HostPath" };
+  const text = { type: "string" };
+  /** Two alternatives each declaring `a` as given, told apart by another member. */
+  const either = (first: Record<string, any>, second: Record<string, any> = first) => ({
+    anyOf: [
+      { type: "object", properties: { a: first, kind: text } },
+      { type: "object", properties: { a: second, other: text } },
+    ],
+  });
+  const reported = (found: ReturnType<typeof diagnose>) => found.map((d) => `${d.code}: ${d.message}`);
+
+  describe.each(Object.entries(SITES))("at %s", (siteName, site) => {
+    it("fits a slot of the type every alternative declares for it", () => {
+      expect(reported(site(either(text), text, ".a"))).toEqual([]);
+    });
+
+    it("is refused by the member's own type, not by the union it passed through", () => {
+      const found = reported(site(either(text), { type: "integer" }, ".a"));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith("CEL_TYPE_ERROR: ")).toBe(true);
+      expect(found[0]).toContain("source is 'string', target expects 'integer'");
+      expect(found[0]).not.toContain("no alternative matches");
+    });
+
+    it("is refused where an alternative declares it nullable", () => {
+      const found = reported(site(either(text, { type: ["string", "null"] }), text, ".a"));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith("CEL_TYPE_ERROR: ")).toBe(true);
+      expect(found[0]).toMatch(/reads '[a-z.]+\.a', which may be null/);
+    });
+
+    it("is not nullable for a `null` alternative crossed on the way", () => {
+      const produced = { anyOf: [{ type: "object", properties: { a: text } }, { type: "null" }] };
+      expect(reported(site(produced, text, ".a"))).toEqual([]);
+    });
+
+    it("is a host path where every alternative declares one, and an untyped source where one declares a string", () => {
+      expect(reported(site(either(hostPath), hostPath, ".a"))).toEqual([]);
+      const found = reported(site(either(text), hostPath, ".a"));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith("HOST_PATH_UNTYPED_SOURCE: ")).toBe(true);
+      expect(found[0]).toContain("the value it reads is declared 'string'");
+    });
+
+    it("keeps a stream-element conflict a type-argument mismatch", () => {
+      const found = reported(site(either(stream("Telo.Bytes")), stream(text), ".a"));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith("CEL_TYPE_ARGUMENT_MISMATCH: ")).toBe(true);
     });
   });
 });

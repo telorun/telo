@@ -22,7 +22,9 @@
  * A reference already being expanded is left as written, which keeps a
  * recursive shape finite and reads as a node that says nothing.
  */
+import { valueTypeOf } from "@telorun/sdk";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { deepEquals } from "./migrations/match.js";
 import { REFERENCE_KEYS, type ExternalSchemaResolver } from "./schema-compat.js";
 
 type Schema = Record<string, any>;
@@ -122,16 +124,23 @@ function referenced(
   return isSchema(target) ? { schema: target, root } : undefined;
 }
 
-/** `at` with every reference it IS followed; what it holds beneath is left. */
-function enter(at: Declared, external: ExternalSchemaResolver | undefined): Declared {
-  const followed = new Set<Schema>();
-  while (typeof at.schema.$ref === "string" && !followed.has(at.schema)) {
-    followed.add(at.schema);
+/** `at` with every reference it IS followed, and whether each one could be:
+ *  one that names nothing, one whose document is not known, or one already
+ *  open leaves `followed` false. */
+function enter(
+  at: Declared,
+  external: ExternalSchemaResolver | undefined,
+): { at: Declared; followed: boolean } {
+  const seen = new Set<Schema>();
+  while (typeof at.schema.$ref === "string") {
+    if (seen.has(at.schema)) return { at, followed: false };
+    seen.add(at.schema);
     const next = referenced(at.schema, at.root, external);
-    if (!next) break;
+    if (!next) return { at, followed: false };
+    if (at.schema.$ref.startsWith("#") && !at.root) return { at: next, followed: false };
     at = next;
   }
-  return at;
+  return { at, followed: true };
 }
 
 function expand(
@@ -187,13 +196,91 @@ export function shapeNamedBy(
 
 const CHAIN_SEGMENT = /^([a-zA-Z_][a-zA-Z0-9_]*)((?:\[\d+\])*)$/;
 
+/** One hop of a chain: a member by name, or — undefined — an index. */
+type Hop = string | undefined;
+
+/** What `node` itself declares for `hop`. */
+const declaredFor = (node: Schema, hop: Hop): unknown =>
+  hop === undefined ? node.items : (node.properties as Schema | undefined)?.[hop];
+
+/** True when no value `node` admits has `hop`, so the access fails there at run:
+ *  its declared type leaves out the container the hop reads, or it is a closed
+ *  object that does not declare the member. */
+function cannotHold(node: Schema, hop: Hop): boolean {
+  const holds = (value: unknown) => (hop === undefined ? Array.isArray(value) : isSchema(value));
+  const entry = valueTypeOf(node);
+  if (entry?.representation === "instance") return true;
+  const container = hop === undefined ? "array" : "object";
+  const type: unknown = node.type ?? entry?.base;
+  if (typeof type === "string" ? type !== container : Array.isArray(type) && !type.includes(container)) {
+    return true;
+  }
+  if ("const" in node && !holds(node.const)) return true;
+  if (Array.isArray(node.enum) && !node.enum.some(holds)) return true;
+  return (
+    hop !== undefined &&
+    node.additionalProperties === false &&
+    node.patternProperties === undefined &&
+    !(isSchema(node.properties) && Object.hasOwn(node.properties, hop))
+  );
+}
+
+/** Nodes held by node and root, each once. */
+class DeclaredSet {
+  private readonly roots = new Map<Schema, Set<Schema | undefined>>();
+  readonly members: Declared[] = [];
+
+  has(at: Declared): boolean {
+    return this.roots.get(at.schema)?.has(at.root) ?? false;
+  }
+
+  add(at: Declared): void {
+    if (this.has(at)) return;
+    let roots = this.roots.get(at.schema);
+    if (!roots) this.roots.set(at.schema, (roots = new Set()));
+    roots.add(at.root);
+    this.members.push(at);
+  }
+}
+
+const ANNOTATION_KEYS: ReadonlySet<string> = new Set(["title", "description", "$comment"]);
+
+/** The alternatives of a node that is a union and constrains nothing else. */
+function bareUnion(shape: Schema): Schema[] | undefined {
+  const keys = Object.keys(shape).filter((key) => !ANNOTATION_KEYS.has(key));
+  if (keys.length !== 1 || (keys[0] !== "anyOf" && keys[0] !== "oneOf")) return undefined;
+  const alternatives: unknown = shape[keys[0]];
+  return Array.isArray(alternatives) && alternatives.length > 0 && alternatives.every(isSchema)
+    ? alternatives
+    : undefined;
+}
+
 /**
  * The shape a plain member chain (`steps.encode.result.rows[0].id`) is declared
  * to hold in `context`, or undefined when the context does not declare it.
  *
- * `navigateSchemaToExprPath` with references read: one is followed at every hop
- * and the tail is returned as the shape it names. A union reached before the
- * chain ends is returned as that union, as there.
+ * A reference is followed at every hop and the tail is returned as the shape it
+ * names. A chain that ends on a union holds that union.
+ *
+ * **A chain that continues past a union (`anyOf` / `oneOf`) is read in every
+ * alternative.** A union's own `properties` (`items`, for an index) are read
+ * first; where they do not declare the hop, each alternative is one of:
+ *
+ *  - it declares the hop — the chain continues inside it;
+ *  - no value of it has the hop — its declared type leaves out an object (an
+ *    array, for an index), or it is a closed object that omits the member — so
+ *    the access fails there at run and it contributes nothing;
+ *  - it could hold the hop and says nothing of it (an open object without the
+ *    member, an untyped node, a reference that cannot be followed, a union
+ *    already open) — the whole chain claims nothing;
+ *  - itself a union — distributed the same way.
+ *
+ * What the chain holds is then the flat `anyOf` of what the remaining
+ * alternatives declare at its tail, a bare union there contributing its own
+ * alternatives, structurally equal ones collapsed — and that one shape itself
+ * where they all agree. Nothing is claimed when no alternative remains. A
+ * `null` alternative crossed on the way is dropped, so it does not make the
+ * tail nullable.
  *
  * `context` is assembled from several declarations, so it is no document's
  * root: the chain enters one where it reaches a node recorded with
@@ -204,29 +291,67 @@ export function navigateDeclaredChain(
   chain: string,
   external?: ExternalSchemaResolver,
 ): Schema | undefined {
-  // The node as written: the tail is named from there, so keywords written
-  // beside a reference stay on the shape.
-  let written = declaredAt(context, undefined);
-  let at = enter(written, external);
-  const step = (node: Schema) => {
-    written = declaredAt(node, at.root);
-    at = enter(written, external);
+  // Nodes as written: the tail is named from there, so keywords written beside
+  // a reference stay on the shape.
+  let held: Declared[] = [declaredAt(context, undefined)];
+  let crossedUnion = false as boolean;
+
+  /** Every held node moved one hop on; false when the chain claims nothing. */
+  const advance = (hop: Hop): boolean => {
+    const next = new DeclaredSet();
+    const open = new Set<Schema>();
+    const distributed = new DeclaredSet();
+    const reach = (written: Declared, alternative: boolean): boolean => {
+      const { at, followed } = enter(written, external);
+      const own = declaredFor(at.schema, hop);
+      // An alternative behind a reference that cannot be followed says nothing,
+      // whatever is written beside it.
+      if (!followed && (alternative || !isSchema(own))) return false;
+      if (isSchema(own)) {
+        next.add(declaredAt(own, at.root));
+        return true;
+      }
+      if (cannotHold(at.schema, hop)) return true;
+      const alternatives: unknown = at.schema.anyOf ?? at.schema.oneOf;
+      if (!Array.isArray(alternatives) || alternatives.length === 0) return false;
+      if (open.has(at.schema)) return false;
+      if (distributed.has(at)) return true;
+      crossedUnion = true;
+      open.add(at.schema);
+      const claimed = alternatives.every(
+        // `false` admits no value; any other non-schema says nothing.
+        (branch) =>
+          isSchema(branch) ? reach(declaredAt(branch, at.root), true) : branch === false,
+      );
+      open.delete(at.schema);
+      distributed.add(at);
+      return claimed;
+    };
+    if (!held.every((written) => reach(written, false))) return false;
+    held = next.members;
+    return held.length > 0;
   };
-  const named = () => shapeNamedBy(written.schema, written.root, external);
-  if (!chain) return named();
-  for (const part of chain.split(".")) {
-    if (at.schema.anyOf || at.schema.oneOf) return named();
-    const match = part.match(CHAIN_SEGMENT);
-    if (!match) return undefined;
-    const [, ident, indices] = match as unknown as [string, string, string];
-    const member = (at.schema.properties as Schema | undefined)?.[ident];
-    if (!isSchema(member)) return undefined;
-    step(member);
-    for (let i = (indices.match(/\[/g) ?? []).length; i > 0; i--) {
-      if (at.schema.anyOf || at.schema.oneOf) return named();
-      if (!isSchema(at.schema.items)) return undefined;
-      step(at.schema.items);
+
+  if (chain) {
+    for (const part of chain.split(".")) {
+      const match = part.match(CHAIN_SEGMENT);
+      if (!match) return undefined;
+      const [, ident, indices] = match as unknown as [string, string, string];
+      if (!advance(ident)) return undefined;
+      for (let i = (indices.match(/\[/g) ?? []).length; i > 0; i--) {
+        if (!advance(undefined)) return undefined;
+      }
     }
   }
-  return named();
+
+  const named = held.map((written) => shapeNamedBy(written.schema, written.root, external));
+  if (!crossedUnion) return named[0];
+  const tails: Schema[] = [];
+  const contribute = (shape: Schema): void => {
+    const alternatives = bareUnion(shape);
+    if (alternatives) alternatives.forEach(contribute);
+    else if (!tails.some((tail) => deepEquals(tail, shape))) tails.push(shape);
+  };
+  named.forEach(contribute);
+  return tails.length === 1 ? tails[0] : { anyOf: tails };
 }
