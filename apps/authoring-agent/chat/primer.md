@@ -837,6 +837,10 @@ When you AUTHOR a durable manifest:
     since collapse suppresses per-step records but never a direct one.
   - A wait inside a `concurrency:` fan-out parks its OWN BRANCH; the siblings
     finish first. Nothing to declare — it is how it behaves.
+  - A request waiting on ANOTHER call's write (long polling) is `Watch.Wait` on
+    a topic's version cursor, woken by `Watch.Publish` after the write commits —
+    read the database, wait on the version just read, read again. It is never
+    durable, so never inside a durable body (ZONE_ATTRIBUTE_VIOLATED).
   - A `Local.Resumer` holds the process open for as long as it polls. That is
     right for an app whose job is recovery, and wrong for a one-shot script.
 

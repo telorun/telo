@@ -1,0 +1,112 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalDemoSeed
+  version: 1.0.0
+  description: |
+    The demo seed (`demo/telo.yaml`) run once against a fresh server: what the
+    review API then shows is the product with its deadline and webhook, the
+    repository, the runner with its one active session, and one plan of that
+    session at revision 2 — a `<script>` line in its body, the items the
+    revision declares, the revision's summary, and the branch link.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/demo
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18750, throwOnHttpError: true }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18750 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        # One-shot: starting it waits for its seed to finish.
+        - name: seed
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: App.Instance
+                metadata: { name: demo }
+                source: ../demo/telo.yaml
+                variables:
+                  serverUrl: http://127.0.0.1:18750
+            targets: [ !ref demo ]
+            steps:
+              - name: seeded
+                value: true
+        - name: products
+          invoke: !ref call
+          inputs: { url: /api/review/products }
+        - name: repos
+          invoke: !ref call
+          inputs: { url: /api/review/repos }
+        - name: runners
+          invoke: !ref call
+          inputs: { url: /api/review/runners }
+        - name: plans
+          invoke: !ref call
+          inputs: { url: /api/review/plans }
+        - name: detail
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + string(steps.plans.result.body.plans[0].id)" }
+      outputs:
+        products: !cel "steps.products.result.body.products.map(p, [p.slug, p.name, p.deadline, p.webhookUrl])"
+        repos: !cel "steps.repos.result.body.repos.map(r, [r.slug, r.url, r.products])"
+        runners: !cel >-
+          steps.runners.result.body.runners.map(r, [r.name, r.repos, r.activeSessions.map(s, s.repo),
+            r.activeSessions[0].id == steps.plans.result.body.plans[0].session])
+        plans: !cel >-
+          steps.plans.result.body.plans.map(p, [p.title, p.product, p.repo, p.branch, p.loop, p.state,
+            p.runner, p.latestRevision.seq, p.latestRevision.items])
+        revisions: !cel >-
+          steps.detail.result.body.revisions.map(r, [r.seq, r.summary, r.items,
+            r.body.contains("<script>alert('raw HTML renders as text')</script>")])
+        links: !cel "steps.detail.result.body.links.map(l, [l.type, l.url, l.status])"
+        timeline: !cel "steps.detail.result.body.events.map(e, [e.type, e.source])"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        products: [[acme, Acme, 1s, "http://127.0.0.1:9/plan-approval-hook"]]
+        repos: [[api, "git@example.com:acme/api.git", [acme]]]
+        runners: [[workstation, [api], [api], true]]
+        plans:
+          - [Rate-limit the public API, acme, api, feature/rate-limit, rate-limit, revised, workstation, 2, [S1, S2, C1, S3, M1]]
+        revisions:
+          - [1, null, [S1, S2, C1, C2], true]
+          - [2, "Raise the limit, drop the burst, add monitoring.", [S1, S2, C1, S3, M1], true]
+        links: [[branch, "https://example.com/acme/api/tree/feature/rate-limit", open]]
+        timeline: [[submitted, agent], [revised, agent], [link, agent]]

@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunnerOutcomes
+  version: 1.0.0
+  description: |
+    What the runner does when the server does not take a command's outcome,
+    against a real server and the stub Claude CLI holding the wake's claude
+    call open. A wake superseded while it runs: the refused `done` is logged
+    once at info, naming the command, and the runner goes on to run the next
+    wake. A runner replaced while a wake runs: the refused post ends it with
+    the HTTP status error, and the wake stays pending. Each fixture fails only
+    once it has verified the command states itself, so its stderr — which holds
+    the runner's log and error — can be read here.
+imports:
+  Assert: ../../../modules/assert
+targets:
+  - !ref supersededWake
+  - !ref replacedInstance
+---
+kind: Assert.Manifest
+metadata: { name: supersededWake }
+source: ./__fixtures__/superseded-wake/telo.yaml
+expect:
+  runFails: '"level":"INFO","severity":9,"msg":"The server did not record the outcome of command 2 (wake, done): Command 2 is already superseded'
+---
+kind: Assert.Manifest
+metadata: { name: replacedInstance }
+source: ./__fixtures__/replaced-instance/telo.yaml
+expect:
+  runFails: "HTTP 409 error from http://127.0.0.1:18772/api/agent/runners/r1/commands/2/outcome"

@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: WatchWaitTimeout
+  version: 1.0.0
+  description: |
+    Running out of time is a result, not an error: a wait whose cursor is not
+    passed returns `changed: false` with the version the store knows. The same
+    cursor can be waited on again, since a timed-out wait leaves nothing
+    behind, and `maxTimeout` caps a call asking for longer.
+imports:
+  Watch: ../
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Watch.MemoryStore
+metadata: { name: store }
+---
+kind: Watch.Wait
+metadata: { name: wait }
+store: !ref store
+maxTimeout: 30s
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: publish
+    inputs: { topic: plan, version: 5 }
+    invoke:
+      kind: Watch.Publish
+      store: !ref store
+  - name: timedOut
+    inputs: { topic: plan, after: 5, timeout: 50ms }
+    invoke: !ref wait
+  - name: waitedAgain
+    inputs: { topic: plan, after: 5, timeout: 50ms }
+    invoke: !ref wait
+  # An hour asked for, 50ms allowed: the test finishing is the cap holding.
+  - name: capped
+    inputs: { topic: plan, after: 5, timeout: 1h }
+    invoke:
+      kind: Watch.Wait
+      store: !ref store
+      maxTimeout: 50ms
+  - name: assertTimeoutsAreData
+    inputs:
+      actual:
+        timedOut: !cel "steps.timedOut.result"
+        waitedAgain: !cel "steps.waitedAgain.result"
+        capped: !cel "steps.capped.result"
+      expected:
+        timedOut: { changed: false, version: 5 }
+        waitedAgain: { changed: false, version: 5 }
+        capped: { changed: false, version: 5 }
+    invoke: { kind: Assert.Equals }

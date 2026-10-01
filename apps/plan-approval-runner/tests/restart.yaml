@@ -1,0 +1,298 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunnerRestart
+  version: 1.0.0
+  description: |
+    The runner keeps no state: a restarted runner re-reads the feed from the
+    start and executes exactly the commands still pending — two starts queued
+    while it was down — and none it had already finished. A pending start whose
+    session claude already lists under its name is not started again: its
+    outcome names that session. Restarted serving
+    fewer repositories, it ends the wake for a session in the repository it no
+    longer serves `failed` ERR_REPO_NOT_SERVED.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Shell: ../../../modules/shell
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_RUNNER_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval-runner/tests/.scratch/restart
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18762, throwOnHttpError: true }
+---
+kind: Run.Loop
+metadata: { name: awaitCommand }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [seq]
+    properties:
+      seq: { type: integer }
+condition: !cel "previous == null || previous.read.result.command.state == 'pending'"
+maxIterations: 100
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 100ms }
+  - name: read
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [seq]
+          properties:
+            seq: { type: integer }
+      steps:
+        - name: get
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands }
+      outputs:
+        command: !cel "steps.get.result.body.commands.filter(c, int(c.seq) == inputs.seq)[0]"
+    inputs: { seq: !cel "inputs.seq" }
+outputs:
+  command: !cel "steps.read.result.command"
+---
+kind: Run.Sequence
+metadata: { name: queue }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [repo, prompt]
+    properties:
+      repo: { type: string }
+      prompt: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: /api/review/runners/r1/commands
+      method: POST
+      body: { author: rita, type: start, repo: !cel "inputs.repo", prompt: !cel "inputs.prompt" }
+outputs:
+  seq: !cel "int(steps.post.result.body.seq)"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: machineState
+    invoke: { kind: Fs.DirectoryCreation, cwd: !module-path ./__fixtures__/machines/restart }
+    inputs: { path: state, createParents: true }
+  - name: resetMachine
+    invoke: { kind: Fs.FileRemoval, cwd: !module-path ./__fixtures__/machines/restart }
+    inputs: { path: state, recursive: true }
+  - name: dirs
+    value:
+      alpha: !module-path ./__fixtures__/repos/restart-alpha
+      beta: !module-path ./__fixtures__/repos/restart-beta
+      claude: !module-path ./__fixtures__/machines/restart/claude
+  - name: run
+    inputs: { alpha: !cel "string(steps.dirs.result.alpha)", claude: !cel "string(steps.dirs.result.claude)" }
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [alpha, claude]
+          properties:
+            alpha: { type: string }
+            claude: { type: string }
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../../plan-approval/telo.yaml
+          ports: { http: 18762 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+            longPollCap: !cel "duration('500ms')"
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: alphaRepo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: alpha, url: "git@example.com:acme/alpha.git", products: [acme] } }
+        - name: betaRepo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: beta, url: "git@example.com:acme/beta.git", products: [acme] } }
+        - name: firstRunner
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: App.Instance
+                metadata: { name: runner }
+                source: ../telo.yaml
+                awaitStart: false
+                variables:
+                  serverUrl: http://127.0.0.1:18762
+                  runnerName: r1
+                  repos:
+                    alpha: !module-path ./__fixtures__/repos/restart-alpha
+                    beta: !module-path ./__fixtures__/repos/restart-beta
+                  permissionMode: acceptEdits
+                  claudeProgram: !module-path ./__fixtures__/machines/restart/claude
+            targets: [ !ref runner ]
+            steps:
+              - name: registered
+                invoke:
+                  kind: Run.Loop
+                  condition: !cel "previous == null || size(previous.get.result.body.runners) == 0"
+                  maxIterations: 100
+                  steps:
+                    - name: pause
+                      invoke: { kind: Timer.Delay }
+                      inputs: { duration: 100ms }
+                    - name: get
+                      invoke: !ref call
+                      inputs: { url: /api/review/runners }
+              - name: first
+                invoke: !ref queue
+                inputs: { repo: alpha, prompt: first }
+              - name: firstDone
+                invoke: !ref awaitCommand
+                inputs: { seq: !cel "steps.first.result.seq" }
+              - name: inBeta
+                invoke: !ref queue
+                inputs: { repo: beta, prompt: in beta }
+              - name: inBetaDone
+                invoke: !ref awaitCommand
+                inputs: { seq: !cel "steps.inBeta.result.seq" }
+            outputs:
+              betaSession: !cel "string(steps.inBetaDone.result.command.session)"
+        # The runner is down from here until the second one starts.
+        - name: plan
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: beta, branch: main, loop: L-1, title: Beta, body: "## S1 beta", session: !cel "steps.firstRunner.result.betaSession" }
+        - name: second
+          invoke: !ref queue
+          inputs: { repo: alpha, prompt: second }
+        - name: third
+          invoke: !ref queue
+          inputs: { repo: alpha, prompt: third }
+        - name: approve
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + string(steps.plan.result.body.planId) + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 1, hash: !cel "string(steps.plan.result.body.hash)" }
+        # A start whose session claude already lists under its name, as when a
+        # runner started it and died before posting the outcome.
+        - name: begun
+          invoke: !ref queue
+          inputs: { repo: alpha, prompt: begun before }
+        - name: whileDown
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands }
+        - name: beganAlready
+          invoke: { kind: Shell.Command, host: { kind: Shell.LocalHost } }
+          inputs:
+            args: !cel >-
+              [inputs.claude, '--bg', '--name',
+                string(steps.whileDown.result.body.commands.filter(c, int(c.seq) == steps.begun.result.seq)[0].sessionName),
+                'begun by an earlier runner']
+            cwd: !cel "inputs.alpha"
+        - name: secondRunner
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: App.Instance
+                metadata: { name: runner }
+                source: ../telo.yaml
+                awaitStart: false
+                variables:
+                  serverUrl: http://127.0.0.1:18762
+                  runnerName: r1
+                  repos:
+                    alpha: !module-path ./__fixtures__/repos/restart-alpha
+                  permissionMode: acceptEdits
+                  claudeProgram: !module-path ./__fixtures__/machines/restart/claude
+            targets: [ !ref runner ]
+            steps:
+              - name: secondDone
+                invoke: !ref awaitCommand
+                inputs: { seq: 3 }
+              - name: thirdDone
+                invoke: !ref awaitCommand
+                inputs: { seq: 4 }
+              - name: wake
+                invoke: !ref awaitCommand
+                inputs: { seq: 5 }
+              - name: begunDone
+                invoke: !ref awaitCommand
+                inputs: { seq: 6 }
+            outputs:
+              wake: !cel "steps.wake.result.command"
+              begun: !cel "steps.begunDone.result.command"
+        - name: calls
+          invoke: { kind: Fs.File, cwd: !module-path ./__fixtures__/machines/restart }
+          inputs: { path: state/calls }
+        - name: registry
+          invoke: { kind: Fs.File, cwd: !module-path ./__fixtures__/machines/restart }
+          inputs: { path: state/registry.json }
+        - name: history
+          invoke: !ref call
+          inputs: { url: /api/review/runners/r1/commands }
+      outputs:
+        whileDown: !cel "steps.whileDown.result.body.commands.map(c, [c.seq, c.type, c.state])"
+        wake: !cel "[steps.secondRunner.result.wake.type, steps.secondRunner.result.wake.state, steps.secondRunner.result.wake.error.code]"
+        # The runner's starts, by repository directory: [directory is alpha, prompt].
+        starts: !cel >-
+          steps.calls.result.content.split('\n').filter(l, l != '').map(l, parseJson(l))
+            .filter(c, size(c.argv) == 6 && c.argv[1] == '--name')
+            .map(c, [c.cwd == inputs.alpha, c.argv[5].split('\n\n')[1]])
+        begun: !cel >-
+          [steps.secondRunner.result.begun.state,
+           parseJson(steps.registry.result.content).filter(e, e.name == steps.secondRunner.result.begun.sessionName)
+             .map(e, e.sessionId == steps.secondRunner.result.begun.session)]
+        history: !cel "steps.history.result.body.commands.map(c, [c.seq, c.type, c.state])"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        whileDown:
+          - [1, start, done]
+          - [2, start, done]
+          - [3, start, pending]
+          - [4, start, pending]
+          - [5, wake, pending]
+          - [6, start, pending]
+        wake: [wake, failed, ERR_REPO_NOT_SERVED]
+        starts: [[true, first], [false, in beta], [true, second], [true, third]]
+        begun: [done, [true]]
+        history:
+          - [1, start, done]
+          - [2, start, done]
+          - [3, start, done]
+          - [4, start, done]
+          - [5, wake, failed]
+          - [6, start, done]

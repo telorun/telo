@@ -1,5 +1,6 @@
 import { SEVERITY, type InvokeContext, type Logger, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { spawn, type ChildProcess } from "node:child_process";
+import { resolve as resolvePath } from "node:path";
 import type {
   BufferedResult,
   CommandSpec,
@@ -271,10 +272,11 @@ class LocalShellHost implements ShellHost, ResourceInstance {
 
   exec(commandSpec: CommandSpec, options: RunOptions, ctx?: InvokeContext): ExecutionHandle {
     const { file, args, label } = resolveInvocation(this.shell, commandSpec);
+    const cwd = options.cwd === undefined ? this.cwd : resolvePath(this.cwd, options.cwd);
     const spec: SpawnSpec = {
       file,
       args,
-      cwd: this.cwd,
+      cwd,
       env: mergeEnv(this.hostEnv, this.baseEnv, options.env),
       signal: ctx?.cancellation.signal,
       timeoutMs: options.timeoutMs,
@@ -285,7 +287,7 @@ class LocalShellHost implements ShellHost, ResourceInstance {
       this.log.debug("Running command", {
         "process.command_line": label,
         "process.executable.name": file,
-        "process.working_directory": this.cwd,
+        "process.working_directory": cwd,
       });
     }
     return {

@@ -1,0 +1,40 @@
+kind: Telo.Application
+metadata:
+  name: MisspelledFeedField
+  version: 1.0.0
+  description: |
+    The runner's feed call, as the runner declares it, and a reader that
+    misspells a field of its page.
+imports:
+  RunnerProtocol: ../../../../plan-approval-runner-protocol
+  Run: ../../../../../modules/run
+  HttpClient: ../../../../../modules/http-client
+targets:
+  - !ref cycle
+---
+kind: Run.Sequence
+metadata: { name: cycle }
+steps:
+  - name: pending
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [after]
+          properties:
+            after: { type: integer }
+      outputType: !ref RunnerProtocol.CommandPage
+      steps:
+        - name: get
+          invoke: { kind: HttpClient.Request }
+          inputs:
+            url: http://127.0.0.1:18767/api/agent/runners/r1/commands
+            query: { after: !cel "string(inputs.after)" }
+      outputs:
+        commands: !cel "steps.get.result.body.commands"
+        cursor: !cel "steps.get.result.body.cursor"
+    inputs: { after: 0 }
+  - name: next
+    value: !cel "steps.pending.result.cusor"

@@ -1,0 +1,200 @@
+kind: Telo.Application
+metadata:
+  name: RunnerReplacedMidCommand
+  version: 1.0.0
+  description: |
+    Another instance takes the runner's name while it is waking a session: the
+    server refuses the outcome post, the runner exits with that error, and the
+    wake stays pending for the instance that replaced it.
+imports:
+  App: ../../../../../modules/app
+  Fs: ../../../../../modules/fs
+  HttpClient: ../../../../../modules/http-client
+  Run: ../../../../../modules/run
+  Timer: ../../../../../modules/timer
+variables:
+  scratch:
+    env: PLAN_APPROVAL_RUNNER_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval-runner/tests/.scratch/replaced-instance
+  # The server's UI directory: `!module-path` cannot reach outside this fixture.
+  uiDir:
+    env: PLAN_APPROVAL_RUNNER_TEST_UI
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval-runner/tests/__fixtures__/ui
+targets:
+  - !ref prepare
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: prepare }
+steps:
+  - name: scratch
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: machine
+    invoke: { kind: Fs.DirectoryCreation, cwd: !module-path ./machine }
+    inputs: { path: state, createParents: true }
+  - name: resetMachine
+    invoke: { kind: Fs.FileRemoval, cwd: !module-path ./machine }
+    inputs: { path: state, recursive: true }
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:18772
+  throwOnHttpError: true
+---
+# The server, then — once the repository it serves is registered, since the
+# runner refuses to report one the server does not know — the runner.
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: server }
+    source: ../../../../plan-approval/telo.yaml
+    ports: { http: 18772 }
+    variables:
+      dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+      uiDir: !cel "variables.uiDir"
+      longPollCap: !cel "duration('500ms')"
+targets: [ !ref server ]
+steps:
+  - name: product
+    invoke: !ref call
+    inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+  - name: repo
+    invoke: !ref call
+    inputs: { url: /api/review/repos, method: POST, body: { slug: alpha, url: "git@example.com:acme/alpha.git", products: [acme] } }
+  - name: withRunner
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: runner }
+          source: ../../../telo.yaml
+          # The runner's target is its endless loop, so it never finishes dispatching.
+          awaitStart: false
+          variables:
+            serverUrl: http://127.0.0.1:18772
+            runnerName: r1
+            repos:
+              alpha: !module-path ./repo
+            permissionMode: plan
+            claudeProgram: !module-path ./machine/claude
+      targets: [ !ref runner ]
+      steps:
+        # While the runner is inside wake 2's claude call, another instance takes the
+        # runner's name. Once the call returns, the outcome post is refused
+        # (ERR_RUNNER_REPLACED), which must end the runner and leave the wake pending.
+        # Fails — so this run's stderr, with the runner's own error, is what the test
+        # reads — only when the runner exited non-zero and the wake is still pending.
+        - name: held
+          # A session started through the runner, a plan submitted from it and approved,
+          # and the runner inside the claude call that wakes it: the stub holds a resume
+          # open until `state/release` exists.
+          invoke:
+            kind: Run.Sequence
+            steps:
+              - name: registered
+                invoke:
+                  kind: Run.Loop
+                  condition: !cel "previous == null || size(previous.get.result.body.runners) == 0"
+                  maxIterations: 100
+                  steps:
+                    - name: pause
+                      invoke: { kind: Timer.Delay }
+                      inputs: { duration: 100ms }
+                    - name: get
+                      invoke: !ref call
+                      inputs: { url: /api/review/runners }
+              - name: start
+                invoke: !ref call
+                inputs: { url: /api/review/runners/r1/commands, method: POST, body: { author: rita, type: start, repo: alpha, prompt: Work on it } }
+              - name: started
+                invoke:
+                  kind: Run.Loop
+                  condition: !cel "previous == null || previous.read.result.states != [[1, 'start', 'done']]"
+                  maxIterations: 100
+                  steps:
+                    - name: pause
+                      invoke: { kind: Timer.Delay }
+                      inputs: { duration: 100ms }
+                    - name: read
+                      invoke: !ref history
+              - name: session
+                invoke: !ref history
+              - name: plan
+                invoke: !ref call
+                inputs:
+                  url: /api/agent/plans
+                  method: POST
+                  body: { product: acme, repo: alpha, branch: main, loop: L-1, title: Plan, body: "## S1 do it", session: !cel "string(steps.session.result.session)" }
+              - name: approve
+                invoke: !ref call
+                inputs:
+                  url: !cel "'/api/review/plans/' + string(steps.plan.result.body.planId) + '/decisions'"
+                  method: POST
+                  body: { author: rita, decision: approve, revision: 1, hash: !cel "string(steps.plan.result.body.hash)" }
+              - name: held
+                invoke:
+                  kind: Run.Loop
+                  condition: !cel "previous == null || !previous.calls.result.content.contains('--resume')"
+                  maxIterations: 100
+                  steps:
+                    - name: pause
+                      invoke: { kind: Timer.Delay }
+                      inputs: { duration: 100ms }
+                    - name: calls
+                      invoke: { kind: Fs.File, cwd: !module-path ./machine }
+                      inputs: { path: state/calls }
+            outputs:
+              plan: !cel "string(steps.plan.result.body.planId)"
+              hash: !cel "string(steps.plan.result.body.hash)"
+        - name: replace
+          invoke: !ref call
+          inputs:
+            url: /api/agent/runners/r1
+            method: PUT
+            body: { instance: 0b6d8f52-5f4b-4b8e-9d3e-3a1f1c2d0002, repos: [alpha], sessions: [] }
+        - name: release
+          invoke: { kind: Fs.FileWrite, cwd: !module-path ./machine }
+          inputs: { path: state/release, content: "" }
+        # Bounded by the test's own run limit.
+        - name: exited
+          while: !cel "resources.runner.status.exitCode == null"
+          do:
+            - name: pause
+              invoke: { kind: Timer.Delay }
+              inputs: { duration: 100ms }
+        - name: after
+          invoke: !ref history
+        - name: verified
+          if: !cel >-
+            steps.after.result.states == [[1, 'start', 'done'], [2, 'wake', 'pending']]
+              && resources.runner.status.exitCode != 0
+          then:
+            - name: report
+              throw:
+                code: ERR_SCENARIO_HELD
+                message: The runner exited non-zero and wake 2 is still pending.
+---
+# The runner's command history, as [seq, type, state] and the first command's session.
+kind: Run.Sequence
+metadata: { name: history }
+steps:
+  - name: get
+    invoke: !ref call
+    inputs: { url: /api/review/runners/r1/commands }
+outputs:
+  states: !cel "steps.get.result.body.commands.map(c, [int(c.seq), string(c.type), string(c.state)])"
+  session: !cel "size(steps.get.result.body.commands) > 0 ? steps.get.result.body.commands[0].session : null"

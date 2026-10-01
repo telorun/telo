@@ -1,0 +1,36 @@
+kind: Telo.Application
+metadata:
+  name: WatchWaitInDurableRun
+  version: 1.0.0
+  description: >-
+    A wait inside a durable body. Never run — it exists so a test can assert
+    that `telo check` refuses the placement.
+imports:
+  Watch: ../../
+  Local: ../../../durable-local
+  Journal: ../../../durable-journal-file
+variables:
+  journalDir:
+    env: WATCH_DURABLE_PROBE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/watch-durable-probe
+targets:
+  - name: start
+    invoke: !ref approval
+---
+kind: Watch.MemoryStore
+metadata: { name: store }
+---
+kind: Local.Workflow
+metadata: { name: approval }
+journal:
+  kind: Journal.Journal
+  directory: !cel "variables.journalDir"
+steps:
+  - name: waitForDecision
+    inputs: { topic: plan, after: 0, timeout: 30s }
+    invoke:
+      kind: Watch.Wait
+      store: !ref store
+      maxTimeout: 30s

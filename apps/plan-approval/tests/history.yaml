@@ -1,0 +1,170 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalHistory
+  version: 1.0.0
+  description: |
+    Both history exports — a plan's (the plan, every revision with its body,
+    hash, summary and item IDs, every event in seq order with its source) and a
+    product's (the product and each of its plans' documents) — and that a
+    server restarted on the same DB_FILE serves the same state: the plan page
+    and the plan history read the same after the restart as before it. An
+    unknown product's history is 404.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval/tests/.scratch/history
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18748, throwOnHttpError: false }
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch)", createParents: true }
+  - name: before
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18748 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: repo
+          invoke: !ref call
+          inputs: { url: /api/review/repos, method: POST, body: { slug: api, url: "git@example.com:acme/api.git", products: [acme] } }
+        - name: submit
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-1, title: Ship, body: "## S1 ship" }
+        - name: plan
+          value: !cel "string(steps.submit.result.body.planId)"
+        - name: comment
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/comments'"
+            method: POST
+            body: { author: rita, body: Which ship?, revision: 1, item: S1 }
+        - name: revise
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/agent/plans/' + steps.plan.result + '/revisions'"
+            method: POST
+            body: { body: "## S1 ship the boat", summary: Named the ship., base: !cel "string(steps.submit.result.body.hash)" }
+        - name: approve
+          invoke: !ref call
+          inputs:
+            url: !cel "'/api/review/plans/' + steps.plan.result + '/decisions'"
+            method: POST
+            body: { author: rita, decision: approve, revision: 2, hash: !cel "string(steps.revise.result.body.hash)", note: Go. }
+        - name: second
+          invoke: !ref call
+          inputs:
+            url: /api/agent/plans
+            method: POST
+            body: { product: acme, repo: api, branch: main, loop: L-2, title: Other, body: "## S1 other" }
+        - name: detail
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + steps.plan.result" }
+        - name: history
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + steps.plan.result + '/history'" }
+        - name: productHistory
+          invoke: !ref call
+          inputs: { url: /api/review/products/acme/history }
+        - name: unknownProduct
+          invoke: !ref call
+          inputs: { url: /api/review/products/ghost/history }
+      outputs:
+        plan: !cel "steps.plan.result"
+        detail: !cel "steps.detail.result.body"
+        history: !cel "steps.history.result.body"
+        productHistory: !cel "steps.productHistory.result.body"
+        unknownProduct: !cel "[steps.unknownProduct.result.status, steps.unknownProduct.result.body.code]"
+  - name: after
+    inputs: { plan: !cel "steps.before.result.plan" }
+    invoke:
+      kind: Run.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [plan]
+          properties:
+            plan: { type: string }
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../telo.yaml
+          ports: { http: 18748 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+      targets: [ !ref server ]
+      steps:
+        - name: detail
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + inputs.plan" }
+        - name: history
+          invoke: !ref call
+          inputs: { url: !cel "'/api/review/plans/' + inputs.plan + '/history'" }
+      outputs:
+        detail: !cel "steps.detail.result.body"
+        history: !cel "steps.history.result.body"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        plan: !cel "[steps.before.result.history.plan.id, steps.before.result.history.plan.state, steps.before.result.history.plan.title]"
+        revisions: !cel "steps.before.result.history.revisions.map(r, [r.seq, r.body, r.hash == sha256(r.body), r.summary, r.items])"
+        events: !cel "steps.before.result.history.events.map(e, [e.seq, e.type, e.source, e.author])"
+        productHistory: !cel >-
+          [steps.before.result.productHistory.product.slug,
+           steps.before.result.productHistory.plans.map(p, [p.plan.loop, size(p.revisions), size(p.events)])]
+        planHistoryIsItsDocument: !cel "steps.before.result.productHistory.plans.exists(p, p == steps.before.result.history)"
+        unknownProduct: !cel "steps.before.result.unknownProduct"
+        detailSurvives: !cel "steps.after.result.detail == steps.before.result.detail"
+        historySurvives: !cel "steps.after.result.history == steps.before.result.history"
+      expected:
+        plan: [!cel "steps.before.result.plan", approved, Ship]
+        revisions:
+          - [1, "## S1 ship", true, null, [S1]]
+          - [2, "## S1 ship the boat", true, Named the ship., [S1]]
+        events:
+          - [1, submitted, agent, null]
+          - [2, comment, reviewer, rita]
+          - [3, revised, agent, null]
+          - [4, decision, reviewer, rita]
+        productHistory: [acme, [[L-2, 1, 1], [L-1, 2, 4]]]
+        planHistoryIsItsDocument: true
+        unknownProduct: [404, ERR_PRODUCT_NOT_FOUND]
+        detailSurvives: true
+        historySurvives: true

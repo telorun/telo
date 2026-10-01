@@ -1,0 +1,298 @@
+kind: Telo.Application
+metadata:
+  name: PlanApprovalRunnerStarts
+  version: 1.0.0
+  description: |
+    The runner starting sessions against a real server, with the stub Claude CLI
+    as the machine's claude. A start runs `claude --bg --name <sessionName>
+    --permission-mode <mode> <framed prompt>` in the repository's mapped
+    directory with PLAN_APPROVAL_URL in its environment — the prompt one
+    argument after a fixed header line, whatever it starts with — and reports
+    the session claude listed under that name in its `done` outcome. A non-zero
+    exit, an untrusted directory, a missing directory and a start claude lists
+    nothing for each end the command `failed`. Only running background sessions
+    in served repositories are reported, each under the deepest mapped
+    directory holding it, and the reports carry only repository slugs.
+imports:
+  App: ../../../modules/app
+  Fs: ../../../modules/fs
+  HttpClient: ../../../modules/http-client
+  Run: ../../../modules/run
+  Shell: ../../../modules/shell
+  Timer: ../../../modules/timer
+  Assert: ../../../modules/assert
+variables:
+  scratch:
+    env: PLAN_APPROVAL_RUNNER_TEST_SCRATCH
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/plan-approval-runner/tests/.scratch/starts
+targets:
+  - !ref test
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:18761, throwOnHttpError: true }
+---
+# A start from the review API, awaited to its outcome.
+kind: Run.Sequence
+metadata: { name: start }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [repo, prompt]
+    properties:
+      repo: { type: string }
+      prompt: { type: string }
+steps:
+  - name: post
+    invoke: !ref call
+    inputs:
+      url: /api/review/runners/r1/commands
+      method: POST
+      body: { author: rita, type: start, repo: !cel "inputs.repo", prompt: !cel "inputs.prompt" }
+  - name: settled
+    # Waits until runner r1's command `seq` is no longer pending; answers it.
+    invoke:
+      kind: Run.Loop
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [seq]
+          properties:
+            seq: { type: integer }
+      condition: !cel "previous == null || previous.read.result.command.state == 'pending'"
+      maxIterations: 100
+      steps:
+        - name: pause
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 100ms }
+        - name: read
+          invoke:
+            kind: Run.Sequence
+            inputType:
+              kind: Telo.JsonSchema
+              schema:
+                type: object
+                required: [seq]
+                properties:
+                  seq: { type: integer }
+            steps:
+              - name: get
+                invoke: !ref call
+                inputs: { url: /api/review/runners/r1/commands }
+            outputs:
+              command: !cel "steps.get.result.body.commands.filter(c, int(c.seq) == inputs.seq)[0]"
+          inputs: { seq: !cel "inputs.seq" }
+      outputs:
+        command: !cel "steps.read.result.command"
+    inputs: { seq: !cel "int(steps.post.result.body.seq)" }
+outputs:
+  command: !cel "steps.settled.result.command"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: prepare
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch.joinPath('outside'))", createParents: true }
+  - name: reset
+    invoke: { kind: Fs.FileRemoval }
+    inputs: { path: !cel "string(variables.scratch)", recursive: true }
+  - name: recreate
+    invoke: { kind: Fs.DirectoryCreation }
+    inputs: { path: !cel "string(variables.scratch.joinPath('outside'))", createParents: true }
+  - name: machineState
+    invoke: { kind: Fs.DirectoryCreation, cwd: !module-path ./__fixtures__/machines/starts }
+    inputs: { path: state, createParents: true }
+  - name: resetMachine
+    invoke: { kind: Fs.FileRemoval, cwd: !module-path ./__fixtures__/machines/starts }
+    inputs: { path: state, recursive: true }
+  - name: untrust
+    invoke: { kind: Fs.FileWrite, cwd: !module-path ./__fixtures__/repos/untrusted }
+    inputs: { path: .claude-stub/untrusted, content: "", createParents: true }
+  - name: dirs
+    value:
+      alpha: !module-path ./__fixtures__/repos/starts-alpha
+      nested: !module-path ./__fixtures__/repos/starts-alpha/nested
+      untrusted: !module-path ./__fixtures__/repos/untrusted
+      claude: !module-path ./__fixtures__/machines/starts/claude
+  # A session on this machine outside every mapped directory.
+  - name: outside
+    invoke: { kind: Shell.Command, host: { kind: Shell.LocalHost } }
+    inputs:
+      args: !cel "[string(steps.dirs.result.claude), '--bg', 'outside the mapped directories']"
+      cwd: !cel "string(variables.scratch.joinPath('outside'))"
+  - name: run
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: server }
+          source: ../../plan-approval/telo.yaml
+          ports: { http: 18761 }
+          variables:
+            dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
+            uiDir: !module-path ./__fixtures__/ui
+            longPollCap: !cel "duration('500ms')"
+      targets: [ !ref server ]
+      steps:
+        - name: product
+          invoke: !ref call
+          inputs: { url: /api/review/products, method: POST, body: { slug: acme, name: Acme } }
+        - name: repos
+          invoke:
+            kind: Run.Iteration
+            collection: [alpha, nested, untrusted, gone]
+            steps:
+              - name: register
+                invoke: !ref call
+                inputs:
+                  url: /api/review/repos
+                  method: POST
+                  body: { slug: !cel "string(item)", url: !cel "'git@example.com:acme/' + string(item) + '.git'", products: [acme] }
+        - name: withRunner
+          invoke:
+            kind: Run.Sequence
+            with:
+              - kind: App.Instance
+                metadata: { name: runner }
+                source: ../telo.yaml
+                # The runner's target is its endless loop, so it never finishes
+                # dispatching; `registered` below orders what follows.
+                awaitStart: false
+                variables:
+                  serverUrl: http://127.0.0.1:18761
+                  runnerName: r1
+                  repos:
+                    alpha: !module-path ./__fixtures__/repos/starts-alpha
+                    nested: !module-path ./__fixtures__/repos/starts-alpha/nested
+                    untrusted: !module-path ./__fixtures__/repos/untrusted
+                    gone: !cel "variables.scratch.joinPath('gone')"
+                  permissionMode: plan
+                  claudeProgram: !module-path ./__fixtures__/machines/starts/claude
+            targets: [ !ref runner ]
+            steps:
+              - name: registered
+                invoke:
+                  kind: Run.Loop
+                  condition: !cel "previous == null || size(previous.get.result.body.runners) == 0"
+                  maxIterations: 100
+                  steps:
+                    - name: pause
+                      invoke: { kind: Timer.Delay }
+                      inputs: { duration: 100ms }
+                    - name: get
+                      invoke: !ref call
+                      inputs: { url: /api/review/runners }
+              - name: tidy
+                invoke: !ref start
+                inputs: { repo: alpha, prompt: Tidy the README }
+              - name: nested
+                invoke: !ref start
+                inputs: { repo: nested, prompt: Nested work }
+              # Prompts that would read as an option, a subcommand, a slash
+              # command and a flag-like list item if passed bare.
+              - name: framed
+                invoke:
+                  kind: Run.Projection
+                  collection: ["--permission-mode=bypassPermissions", doctor, /permissions, "- item"]
+                  steps:
+                    - name: started
+                      invoke: !ref start
+                      inputs: { repo: alpha, prompt: !cel "string(item)" }
+                  outputs: !cel "steps.started.result.command"
+              - name: failing
+                invoke: !ref start
+                inputs: { repo: alpha, prompt: please FAIL now }
+              - name: vanishing
+                invoke: !ref start
+                inputs: { repo: alpha, prompt: VANISH at once }
+              - name: untrusted
+                invoke: !ref start
+                inputs: { repo: untrusted, prompt: Anything }
+              - name: missingDir
+                invoke: !ref start
+                inputs: { repo: gone, prompt: Anything }
+              # A cycle's report after the last start.
+              - name: cycle
+                invoke: { kind: Timer.Delay }
+                inputs: { duration: 1200ms }
+              - name: sessions
+                invoke: !ref call
+                inputs: { url: /api/review/runners/r1/sessions?state=active }
+              - name: runners
+                invoke: !ref call
+                inputs: { url: /api/review/runners }
+            outputs:
+              tidy: !cel "steps.tidy.result.command"
+              nested: !cel "steps.nested.result.command"
+              framed: !cel "steps.framed.result"
+              failing: !cel "steps.failing.result.command"
+              vanishing: !cel "steps.vanishing.result.command"
+              untrusted: !cel "steps.untrusted.result.command"
+              missingDir: !cel "steps.missingDir.result.command"
+              sessions: !cel "steps.sessions.result.body.sessions"
+              runners: !cel "steps.runners.result.body.runners"
+      outputs: !cel "steps.withRunner.result"
+  - name: calls
+    invoke: { kind: Fs.File, cwd: !module-path ./__fixtures__/machines/starts }
+    inputs: { path: state/calls }
+  - name: registry
+    invoke: { kind: Fs.File, cwd: !module-path ./__fixtures__/machines/starts }
+    inputs: { path: state/registry.json }
+  - name: seen
+    value:
+      calls: !cel "steps.calls.result.content.split('\\n').filter(l, l != '').map(l, parseJson(l)).filter(c, size(c.argv) > 2 && c.argv[2].startsWith('plan-approval-'))"
+      registry: !cel "parseJson(steps.registry.result.content)"
+      started: !cel "[steps.run.result.tidy] + steps.run.result.framed"
+      # Every start that reached claude, in the order it did.
+      issued: !cel >-
+        [steps.run.result.tidy, steps.run.result.nested] + steps.run.result.framed
+          + [steps.run.result.failing, steps.run.result.vanishing, steps.run.result.untrusted]
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        states: !cel "[steps.seen.result.started.map(c, c.state), steps.run.result.nested.state]"
+        sessionsAreClaudes: !cel >-
+          (steps.seen.result.started + [steps.run.result.nested]).map(c,
+            steps.seen.result.registry.exists(e, e.name == c.sessionName && e.sessionId == c.session))
+        argv: !cel >-
+          steps.seen.result.calls.map(c, c.argv)
+            == steps.seen.result.issued.map(c, ['--bg', '--name', c.sessionName, '--permission-mode', 'plan',
+                 'Task from a reviewer, sent through the plan-approval runner:\n\n' + c.prompt])
+        cwds: !cel >-
+          steps.seen.result.calls.map(c, c.cwd) == [string(steps.dirs.result.alpha), string(steps.dirs.result.nested),
+            string(steps.dirs.result.alpha), string(steps.dirs.result.alpha), string(steps.dirs.result.alpha),
+            string(steps.dirs.result.alpha), string(steps.dirs.result.alpha), string(steps.dirs.result.alpha),
+            string(steps.dirs.result.untrusted)]
+        urls: !cel "distinct(steps.seen.result.calls.map(c, c.url))"
+        failing: !cel "[steps.run.result.failing.state, steps.run.result.failing.error, steps.run.result.failing.session]"
+        vanishing: !cel "[steps.run.result.vanishing.state, steps.run.result.vanishing.error]"
+        untrusted: !cel "[steps.run.result.untrusted.state, steps.run.result.untrusted.error.code, steps.run.result.untrusted.error.message.contains('Workspace not trusted')]"
+        missingDir: !cel "[steps.run.result.missingDir.state, steps.run.result.missingDir.error != null]"
+        reported: !cel >-
+          steps.run.result.sessions.map(s, [s.repo, (steps.seen.result.started + [steps.run.result.nested]).exists(c, c.session == s.id)])
+        runnerRepos: !cel "steps.run.result.runners.map(r, r.repos)"
+        # What the runner reports; a failed outcome carries claude's own message,
+        # which may name a directory.
+        noPathInReports: !cel "!json([steps.run.result.runners, steps.run.result.sessions]).contains('/')"
+      expected:
+        states: [[done, done, done, done, done], done]
+        sessionsAreClaudes: [true, true, true, true, true, true]
+        argv: true
+        cwds: true
+        urls: ["http://127.0.0.1:18761"]
+        failing: [failed, { code: ERR_CLAUDE_FAILED, message: "The Claude CLI exited with 3: stub: the prompt asked to fail\n" }, null]
+        vanishing:
+          - failed
+          - code: ERR_CLAUDE_FAILED
+            message: !cel "'claude lists no session named ' + steps.run.result.vanishing.sessionName + ' after starting it in repository alpha.'"
+        untrusted: [failed, ERR_CLAUDE_FAILED, true]
+        missingDir: [failed, true]
+        reported: [[alpha, true], [nested, true], [alpha, true], [alpha, true], [alpha, true], [alpha, true]]
+        runnerRepos: [[alpha, nested, untrusted, gone]]
+        noPathInReports: true

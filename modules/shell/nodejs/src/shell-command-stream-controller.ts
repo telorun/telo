@@ -19,6 +19,7 @@ interface CommandInput {
   env?: Record<string, string | null>;
   stdin?: string;
   timeoutMs?: number;
+  cwd?: string;
 }
 
 class ShellCommandStreamResource implements ResourceInstance {
@@ -36,7 +37,7 @@ class ShellCommandStreamResource implements ResourceInstance {
     );
     const spec = toCommandSpec(input, "Shell.CommandStream");
     const iterable = host
-      .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs }, ctx)
+      .exec(spec, { env: input.env, stdin: input.stdin, timeoutMs: input.timeoutMs, cwd: input.cwd }, ctx)
       .stream();
     return { output: new Stream(iterable) };
   }
