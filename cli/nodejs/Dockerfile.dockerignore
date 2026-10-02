@@ -21,9 +21,12 @@
 !package.json
 # The root `prepare` derives TELO_SURFACE_VERSION from the changesets `fixed`
 # group and the pending changesets; it reads every member of that group,
-# language-server included, and writes the engine's identity into it.
+# language-server and cel included, and writes the engine's identity into it.
+# A line member the CLI does not otherwise need is still read here, so leaving
+# one out fails the image build rather than merely shipping less.
 !.changeset
 !packages/language-server
+!cel/nodejs
 !packages/editor-protocol
 !pnpm-*
 !tsconfig.base.json

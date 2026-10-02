@@ -5,6 +5,7 @@
   "fixed": [
     [
       "@telorun/sdk",
+      "@telorun/cel",
       "@telorun/templating",
       "@telorun/analyzer",
       "@telorun/kernel",

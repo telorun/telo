@@ -106,6 +106,22 @@ jobs:
       - name: Check the controller protocol
         run: pnpm run check:controller-protocol
 
+      # `@telorun/cel`'s own suite deliberately runs with no vectors directory
+      # reachable, so the conformance replay lives under its own config and is
+      # driven only from here. This is the one artifact naming
+      # `templating/cel-conformance`, and it holds the engine to every row at both
+      # the check and the value level: a row carrying a cel-spec answer must be
+      # answered or excused BY NAME, or the gate fails. Unwired, the two
+      # completeness invariants it enforces ran only when a human typed the path.
+      - name: Check the CEL conformance vectors
+        run: pnpm run check:cel-conformance
+
+      # `build` compiles the library config (`src` only), so a type error in the
+      # package's own tests or in its conformance drivers was invisible to every
+      # gate — and one was live. This covers `src`, `tests` and `conformance`.
+      - name: Check the CEL package's types
+        run: pnpm --filter @telorun/cel run check:types
+
       - name: Check module manifests
         run: pnpm run check modules/*/telo.yaml packages/runner-core/workspace-app/telo.yaml
 

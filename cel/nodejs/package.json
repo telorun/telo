@@ -1,0 +1,58 @@
+{
+  "name": "@telorun/cel",
+  "version": "0.106.0",
+  "description": "The Common Expression Language for Telo: read, type-check and evaluate an expression, hold it as a tree, write it back.",
+  "keywords": [
+    "telo",
+    "cel",
+    "expression",
+    "parser"
+  ],
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/telorun/telo.git",
+    "directory": "cel/nodejs"
+  },
+  "homepage": "https://github.com/telorun/telo#readme",
+  "bugs": {
+    "url": "https://github.com/telorun/telo/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**",
+    "src/**"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:conformance": "vitest run --config vitest.conformance.config.ts",
+    "check:types": "tsc -p tsconfig.json --noEmit",
+    "check:browser-safe": "node scripts/check-browser-safe.mjs",
+    "check:signatures": "pnpm run build && node scripts/check-signatures.mjs",
+    "prepack": "cp ../../LICENSE .",
+    "postpack": "rm -f LICENSE"
+  },
+  "dependencies": {
+    "re2js": "2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}
