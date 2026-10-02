@@ -797,6 +797,132 @@
       }
     },
     {
+      "id": "module-calls/receiver/catalog_method_name",
+      "tag": "cel",
+      "source": "Billing.lower('A')",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.lower": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "a"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "Billing.lower",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "string"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.lower",
+            "arguments": [
+              "A"
+            ]
+          }
+        ],
+        "value": "a"
+      }
+    },
+    {
+      "id": "module-calls/receiver/literal_guard_passed_over",
+      "tag": "cel",
+      "source": "Billing.format(1.5, '.2q')",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.format": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "EUR 2.00"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "Billing.format",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "double"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.format",
+            "arguments": [
+              1.5,
+              ".2q"
+            ]
+          }
+        ],
+        "value": "EUR 2.00"
+      }
+    },
+    {
       "id": "module-calls/arguments/types_and_chains",
       "tag": "cel",
       "source": "Billing.total(order.net, order.qty * 2, 'x', [1])",
@@ -1205,6 +1331,280 @@
       }
     },
     {
+      "id": "module-calls/arguments/declared_function",
+      "tag": "cel",
+      "source": "Billing.total(twice(2))",
+      "functions": [
+        {
+          "signature": "twice(int): int",
+          "result": {
+            "$telo": "int",
+            "value": "4"
+          }
+        }
+      ],
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "twice",
+              "form": "global",
+              "arity": 1,
+              "start": 14,
+              "end": 22
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "4"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "module-calls/arguments/declared_function_fails",
+      "tag": "cel",
+      "source": "Billing.total(broken(2))",
+      "functions": [
+        {
+          "signature": "broken(int): int",
+          "error": "broken: no answer"
+        }
+      ],
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "broken",
+              "form": "global",
+              "arity": 1,
+              "start": 14,
+              "end": 23
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "broken: no answer"
+        }
+      }
+    },
+    {
+      "id": "module-calls/arguments/type_and_optional_values",
+      "tag": "cel",
+      "source": "Billing.describe(int, optional.none(), t, o)",
+      "bindings": {
+        "o": {
+          "$cel": "optional",
+          "value": "x"
+        },
+        "t": {
+          "$cel": "type",
+          "value": "string"
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.describe": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "described"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "Billing.describe",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 4,
+              "arguments": [
+                {
+                  "type": "type",
+                  "chain": [
+                    "int"
+                  ]
+                },
+                {
+                  "type": "optional<T>"
+                },
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "t"
+                  ]
+                },
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "o"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 44,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "none",
+              "form": "receiver",
+              "arity": 0,
+              "start": 22,
+              "end": 37
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 44
+            }
+          ],
+          "refs": [
+            "int",
+            "o",
+            "optional",
+            "t"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.describe",
+            "arguments": [
+              {
+                "$cel": "type",
+                "value": "int"
+              },
+              {
+                "$cel": "optional"
+              },
+              {
+                "$cel": "type",
+                "value": "string"
+              },
+              {
+                "$cel": "optional",
+                "value": "x"
+              }
+            ]
+          }
+        ],
+        "value": "described"
+      }
+    },
+    {
       "id": "module-calls/result/operator_checks",
       "tag": "cel",
       "source": "Billing.total(1, 2) + 1",
@@ -1502,6 +1902,86 @@
           "A",
           "B"
         ]
+      }
+    },
+    {
+      "id": "module-calls/result/optional",
+      "tag": "cel",
+      "source": "Billing.find(1).orValue(0) + 1",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.find": {
+            "returns": "optional<int>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$cel": "optional",
+              "value": {
+                "$telo": "int",
+                "value": "3"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "orValue",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 26
+            },
+            {
+              "name": "Billing.find",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.find",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "4"
+        }
       }
     },
     {
@@ -3322,6 +3802,91 @@
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
           "message": "the hole '${{ Billing.tags() }}' at offset 6 of !interpolate \"Tags: ${{ Billing.tags() }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "module-calls/holes/interpolate_stops_at_first_failure",
+      "tag": "interpolate",
+      "source": "${{ Billing.nothing() }} ${{ Billing.total(1) }}",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.nothing": {
+            "returns": "dyn",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": null
+          },
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "Billing.nothing",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 4,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 29,
+              "end": 45,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 21
+            },
+            {
+              "start": 29,
+              "end": 45
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.nothing",
+            "arguments": []
+          }
+        ],
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ Billing.nothing() }}' at offset 0 of !interpolate \"${{ Billing.nothing() }} ${{ Billing.total(1) }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
     },

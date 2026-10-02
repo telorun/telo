@@ -92,11 +92,28 @@ export interface DialectExpect {
 /** The tags a dialect row may name. */
 export const DIALECT_TAGS = ["cel", "interpolate", "sql"];
 
-const frameArgs = (name: string, args: unknown[]): string =>
-  `${name}(${args.map((arg) => encodeTypedFrame(arg)).join(", ")})`;
+/** A row whose evaluation handed a conformance handler a value the typed frame
+ *  cannot write: the handler set is not defined over it, so the row has no answer. */
+export class MalformedRowError extends Error {}
+
+const handlerRefusals: MalformedRowError[] = [];
+
+function frameArgs(name: string, args: unknown[]): string {
+  try {
+    return `${name}(${args.map((arg) => encodeTypedFrame(arg)).join(", ")})`;
+  } catch (cause) {
+    const refusal = new MalformedRowError(
+      `the handler '${name}' was handed a value the typed frame cannot write (${(cause as Error).message})`,
+      { cause },
+    );
+    handlerRefusals.push(refusal);
+    throw refusal;
+  }
+}
 
 /** The conformance handler set: each host handler answers with its own name and
- *  the typed-frame text of every argument it was handed. */
+ *  the typed-frame text of every argument it was handed. It is defined only over
+ *  values the typed frame writes. */
 export const CONFORMANCE_HANDLERS: CelHandlers = {
   sha256: (...args) => frameArgs("sha256", args),
   md5: (...args) => frameArgs("md5", args),
@@ -289,11 +306,17 @@ export async function evaluateDialectRow(
     Object.entries(row.bindings ?? {}).map(([name, value]) => [name, codec.decode(value)]),
   );
   if (modules) activation[MODULE_CALL_DISPATCH_KEY] = dispatchTableOf(modules, codec, dispatched);
+  handlerRefusals.length = 0;
+  let answer: { result: unknown } | { error: ConformanceError };
   try {
-    return { ...outcome, compiled: shape, result: await compiled.call(activation) };
+    answer = { result: await compiled.call(activation) };
   } catch (err) {
-    return { ...outcome, compiled: shape, error: conformanceError(err) };
+    answer = { error: conformanceError(err) };
   }
+  // Read off the handler, not off what evaluation threw: an operator may absorb the error.
+  const refusal = handlerRefusals[0];
+  if (refusal) throw new MalformedRowError(`The row '${row.id}' is malformed: ${refusal.message}`, { cause: refusal });
+  return { ...outcome, compiled: shape, ...answer };
 }
 
 export async function runDialectRow(

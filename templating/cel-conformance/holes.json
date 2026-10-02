@@ -455,6 +455,52 @@
       }
     },
     {
+      "id": "holes/grammar/single_quoted_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ 'a\rb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Newlines not allowed in single-quoted strings\n\n>    1 | 'a\rb'\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Newlines not allowed in single-quoted strings\n\n>    1 | 'a\rb'\n           ^"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/single_quoted_line_separator",
+      "tag": "interpolate",
+      "source": "${{ 'a b' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a b"
+      }
+    },
+    {
       "id": "holes/grammar/raw_string",
       "tag": "interpolate",
       "source": "${{ r'a\\n}}' }}",
@@ -472,6 +518,46 @@
           "volatile": false
         },
         "value": "a\\n}}"
+      }
+    },
+    {
+      "id": "holes/grammar/upper_raw_string",
+      "tag": "interpolate",
+      "source": "${{ R'a\\n}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\\n}}"
+      }
+    },
+    {
+      "id": "holes/grammar/upper_bytes_string",
+      "tag": "interpolate",
+      "source": "${{ B'}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "}}"
       }
     },
     {
@@ -784,6 +870,60 @@
           "volatile": false
         },
         "value": "v|v"
+      }
+    },
+    {
+      "id": "holes/grammar/every_trimmed_character",
+      "tag": "interpolate",
+      "source": "${{\t\n\u000b\f\r                  　﻿x\t\n\u000b\f\r                  　﻿}}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 28,
+              "end": 29
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "v"
+      }
+    },
+    {
+      "id": "holes/grammar/padding_not_trimmed",
+      "tag": "interpolate",
+      "source": "${{x }}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected character: \n\n>    1 | x\n         ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 3,
+              "end": 5
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected character: \n\n>    1 | x\n         ^"
+        }
       }
     },
     {

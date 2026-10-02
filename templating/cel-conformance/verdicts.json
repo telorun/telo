@@ -399,6 +399,117 @@
       }
     },
     {
+      "id": "verdicts/CEL_TYPE_ERROR/read_types_distinct_without_index",
+      "tag": "cel",
+      "source": "a + b + xs[0]",
+      "declarations": {
+        "a": "int",
+        "b": "int",
+        "xs": "list<string>"
+      },
+      "bindings": {
+        "a": {
+          "$telo": "int",
+          "value": "1"
+        },
+        "b": {
+          "$telo": "int",
+          "value": "2"
+        },
+        "xs": [
+          "s"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "int"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [
+            "a",
+            "b",
+            "xs"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: dyn<int> + dyn<string>\n\n>    1 | a + b + xs[0]\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/highlight_second_line",
+      "tag": "cel",
+      "source": "'😀' ==\n  1 + 'a'",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    2 |   1 + 'a'\n           ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/highlight_utf16_column",
+      "tag": "cel",
+      "source": "['😀😀', 1 + 'a']",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    1 | ['😀😀', 1 + 'a']\n                  ^"
+        }
+      }
+    },
+    {
       "id": "verdicts/CEL_TYPE_ERROR/undeclared_field",
       "tag": "cel",
       "source": "variables.prt + 1",
@@ -1614,6 +1725,1374 @@
         "error": {
           "code": null,
           "message": "Unknown variable: body\n\n>    1 | body.text\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/past_a_stream_object_form",
+      "tag": "cel",
+      "source": "feed.text",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'feed' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "feed"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: feed\n\n>    1 | feed.text\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/past_another_value_type",
+      "tag": "cel",
+      "source": "port.x",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "port"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: x\n\n>    1 | port.x\n              ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/no_properties",
+      "tag": "cel",
+      "source": "name.first",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: first\n\n>    1 | name.first\n              ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/additional_properties_schema",
+      "tag": "cel",
+      "source": "labels.other",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'labels.other' is not defined (available: env)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "labels"
+          ],
+          "volatile": false
+        },
+        "value": "x"
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/additional_properties_false",
+      "tag": "cel",
+      "source": "closed.b",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'closed.b' is not defined (available: a)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [
+            "closed"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: b\n\n>    1 | closed.b\n                ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/index_into_properties",
+      "tag": "cel",
+      "source": "labels['other'].x",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "labels"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: x\n\n>    1 | labels['other'].x\n                         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/tuple_items",
+      "tag": "cel",
+      "source": "pair[0].b",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "pair"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: b\n\n>    1 | pair[0].b\n                 ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/nullable_element",
+      "tag": "cel",
+      "source": "rows[0].zzz",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'rows.[*].zzz' is not defined (available: v)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [
+            "rows"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: zzz\n\n>    1 | rows[0].zzz\n                 ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/other_keywords_not_read",
+      "tag": "cel",
+      "source": "either.zzz == linked.zzz",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [
+            "either",
+            "linked"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: zzz\n\n>    1 | either.zzz == linked.zzz\n                ^"
         }
       }
     },
@@ -2992,6 +4471,621 @@
           "volatile": false
         },
         "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/type_null",
+      "tag": "cel",
+      "source": "gone.x",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'gone' may be null — guard it (e.g. 'gone != null && …' or 'gone == null ? … : gone.x') before accessing '.x'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "gone"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: x\n\n>    1 | gone.x\n              ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/method_call_is_not_a_dereference",
+      "tag": "cel",
+      "source": "maybe.size() + size(maybe)",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "size",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 12
+            },
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 15,
+              "end": 26
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [
+            "maybe"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "4"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/past_an_index_not_judged",
+      "tag": "cel",
+      "source": "rows[0].v",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "rows"
+          ],
+          "volatile": false
+        },
+        "value": "x"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/other_keywords_not_read",
+      "tag": "cel",
+      "source": "either.a + linked.a",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [
+            "either",
+            "linked"
+          ],
+          "volatile": false
+        },
+        "value": "xx"
       }
     },
     {
@@ -6134,6 +8228,34 @@
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
           "message": "the hole '${{ b.c }}' at offset 10 of !interpolate \"${{ a }}\\n\\\"${{ b.c }}\\\"\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/source_written_as_json",
+      "tag": "interpolate",
+      "source": "é\t\u001f /😀${{ x }}\b\f\r",
+      "bindings": {
+        "x": null
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 12,
+              "end": 13
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 8 of !interpolate \"é\\t\\u001f /😀${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
     },
