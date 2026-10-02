@@ -2493,45 +2493,18 @@
     {
       "id": "verdicts/CEL_UNKNOWN_FIELD/index_into_properties",
       "tag": "cel",
-      "source": "labels['other'].x",
+      "source": "labels['other'].zzz",
       "bindings": {
-        "closed": {
-          "a": "x"
-        },
-        "either": {
-          "a": "x"
-        },
-        "gone": null,
         "labels": {
           "env": "dev",
-          "other": "x"
-        },
-        "linked": {
-          "a": "x"
-        },
-        "maybe": "ab",
-        "name": "Ada",
-        "pair": [
-          {
-            "a": "x"
+          "other": {
+            "x": "v"
           }
-        ],
-        "port": {
-          "$telo": "int",
-          "value": "8080"
-        },
-        "rows": [
-          {
-            "v": "x"
-          }
-        ]
+        }
       },
       "context": {
         "type": "object",
         "properties": {
-          "name": {
-            "type": "string"
-          },
           "labels": {
             "type": "object",
             "properties": {
@@ -2540,81 +2513,13 @@
               }
             },
             "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "closed": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
-          },
-          "pair": {
-            "type": "array",
-            "items": [
-              {
-                "type": "object",
-                "properties": {
-                  "a": {
-                    "type": "string"
-                  }
-                }
-              }
-            ]
-          },
-          "rows": {
-            "type": "array",
-            "items": {
-              "type": [
-                "object",
-                "null"
-              ],
+              "type": "object",
               "properties": {
-                "v": {
+                "x": {
                   "type": "string"
                 }
               }
             }
-          },
-          "either": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "a": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "linked": {
-            "$ref": "#/definitions/target",
-            "nullable": true
-          },
-          "gone": {
-            "type": "null"
-          },
-          "maybe": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "feed": {
-            "x-telo-type": {
-              "name": "Telo.Stream",
-              "of": "Telo.Bytes"
-            }
-          },
-          "port": {
-            "x-telo-type": "Telo.TcpPort"
           }
         }
       },
@@ -2626,7 +2531,7 @@
           "regions": [
             {
               "start": 0,
-              "end": 17
+              "end": 19
             }
           ],
           "refs": [
@@ -2636,7 +2541,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: x\n\n>    1 | labels['other'].x\n                         ^"
+          "message": "No such key: zzz\n\n>    1 | labels['other'].zzz\n                         ^"
         }
       }
     },
@@ -2787,6 +2692,70 @@
         "error": {
           "code": null,
           "message": "No such key: b\n\n>    1 | pair[0].b\n                 ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/tuple_items_with_additional_properties",
+      "tag": "cel",
+      "source": "tuple[0].zzz",
+      "bindings": {
+        "tuple": [
+          {
+            "a": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "tuple": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "b": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'tuple.[*].zzz' is not defined (available: b)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "tuple"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: zzz\n\n>    1 | tuple[0].zzz\n                  ^"
         }
       }
     },

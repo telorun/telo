@@ -22,6 +22,23 @@ export interface ConformanceValueCodec {
 
 const CEL_TAG = "$cel";
 
+const UNPAIRED_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+/** Where a parsed conformance file holds a string — a value or a key — with an
+ *  unpaired surrogate, as a JSON pointer; undefined when it holds none. Such a
+ *  string is outside the CEL value domain, so the file is malformed. */
+export function unpairedSurrogateAt(document: unknown, path = ""): string | undefined {
+  if (typeof document === "string") return UNPAIRED_SURROGATE.test(document) ? path : undefined;
+  if (document === null || typeof document !== "object") return undefined;
+  for (const [key, entry] of Object.entries(document)) {
+    const at = `${path}/${key}`;
+    if (UNPAIRED_SURROGATE.test(key)) return at;
+    const found = unpairedSurrogateAt(entry, at);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 function refuse(path: readonly string[], detail: string): Error {
   return new Error(`Cannot write a conformance value: '/${path.join("/")}' ${detail}.`);
 }

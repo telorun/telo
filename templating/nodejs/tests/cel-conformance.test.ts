@@ -25,7 +25,7 @@ import {
   runLanguageRow,
   type LanguageRow,
 } from "./cel-conformance-language.js";
-import { conformanceValueCodec } from "./cel-conformance-value.js";
+import { conformanceValueCodec, unpairedSurrogateAt } from "./cel-conformance-value.js";
 
 const DIRECTORY = new URL("../../cel-conformance/", import.meta.url);
 const DIALECT_FILES = ["catalog.json", "holes.json", "module-calls.json", "types.json", "verdicts.json"];
@@ -123,6 +123,10 @@ describe("CEL conformance vectors", () => {
   it("drives every file in the directory", () => {
     const files = readdirSync(DIRECTORY).filter((name) => name !== "README.md");
     expect(files.sort()).toEqual(DRIVEN);
+  });
+
+  it.each(DRIVEN)("holds no string with an unpaired surrogate in %s", (name) => {
+    expect(unpairedSurrogateAt(JSON.parse(readFileSync(new URL(name, DIRECTORY), "utf8")))).toBeUndefined();
   });
 
   it("reads a well-formed language file", () => {

@@ -1049,6 +1049,39 @@
           "message": "Unknown variable: s\n\n>    1 | size(s)\n              ^"
         }
       }
+    },
+    {
+      "id": "types/optional/none",
+      "tag": "cel",
+      "source": "optional.none()",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<T>",
+          "calls": [
+            {
+              "name": "none",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "optional"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
     }
   ]
 }

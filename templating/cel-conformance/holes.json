@@ -455,6 +455,32 @@
       }
     },
     {
+      "id": "holes/grammar/escaped_line_feed",
+      "tag": "interpolate",
+      "source": "${{ 'a\\\nb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Invalid escape sequence: \\\n\n\n>    1 | 'a\\\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Invalid escape sequence: \\\n\n\n>    1 | 'a\\\n           ^"
+        }
+      }
+    },
+    {
       "id": "holes/grammar/single_quoted_carriage_return",
       "tag": "interpolate",
       "source": "${{ 'a\rb' }}",

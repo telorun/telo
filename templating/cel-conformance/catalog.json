@@ -2335,6 +2335,37 @@
       }
     },
     {
+      "id": "catalog/slice/utf16_positions",
+      "tag": "cel",
+      "source": "slice('a😀b', 3, 4)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "slice",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "b"
+      }
+    },
+    {
       "id": "catalog/slice/list",
       "tag": "cel",
       "source": "slice([1, 2, 3, 4], 1, 3)",

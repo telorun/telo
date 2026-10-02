@@ -4,6 +4,7 @@
  * JSON Schema inputs; then `compile` and evaluate without them, a row's module
  * functions bound as the dispatch table.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { Environment } from "@marcbachmann/cel-js";
 import { encodeTypedFrame, RuntimeError, Stream } from "@telorun/sdk";
 import { builtinEngines } from "../src/builtins.js";
@@ -92,22 +93,20 @@ export interface DialectExpect {
 /** The tags a dialect row may name. */
 export const DIALECT_TAGS = ["cel", "interpolate", "sql"];
 
-/** A row whose evaluation handed a conformance handler a value the typed frame
- *  cannot write: the handler set is not defined over it, so the row has no answer. */
-export class MalformedRowError extends Error {}
-
-const handlerRefusals: MalformedRowError[] = [];
+/** The typed frame's refusals of handler arguments, kept by the row evaluation
+ *  they happened in. */
+const handlerRefusals = new AsyncLocalStorage<string[]>();
 
 function frameArgs(name: string, args: unknown[]): string {
   try {
     return `${name}(${args.map((arg) => encodeTypedFrame(arg)).join(", ")})`;
-  } catch (cause) {
-    const refusal = new MalformedRowError(
-      `the handler '${name}' was handed a value the typed frame cannot write (${(cause as Error).message})`,
-      { cause },
-    );
-    handlerRefusals.push(refusal);
-    throw refusal;
+  } catch (err) {
+    if ((err as { code?: unknown }).code === "ERR_TYPED_FRAME_UNENCODABLE") {
+      handlerRefusals
+        .getStore()
+        ?.push(`the handler '${name}' was handed a value the typed frame cannot write (${(err as Error).message})`);
+    }
+    throw err;
   }
 }
 
@@ -306,16 +305,21 @@ export async function evaluateDialectRow(
     Object.entries(row.bindings ?? {}).map(([name, value]) => [name, codec.decode(value)]),
   );
   if (modules) activation[MODULE_CALL_DISPATCH_KEY] = dispatchTableOf(modules, codec, dispatched);
-  handlerRefusals.length = 0;
-  let answer: { result: unknown } | { error: ConformanceError };
-  try {
-    answer = { result: await compiled.call(activation) };
-  } catch (err) {
-    answer = { error: conformanceError(err) };
-  }
-  // Read off the handler, not off what evaluation threw: an operator may absorb the error.
-  const refusal = handlerRefusals[0];
-  if (refusal) throw new MalformedRowError(`The row '${row.id}' is malformed: ${refusal.message}`, { cause: refusal });
+  const refusals: string[] = [];
+  const answer = await handlerRefusals.run(
+    refusals,
+    async (): Promise<{ result: unknown } | { error: ConformanceError }> => {
+      try {
+        return { result: await compiled.call(activation) };
+      } catch (err) {
+        return { error: conformanceError(err) };
+      }
+    },
+  );
+  // The handler set is defined only over values the typed frame writes, so such
+  // a row has no answer. Read off the handler, not off what evaluation threw:
+  // an operator may absorb the error.
+  if (refusals.length > 0) throw new Error(`The row '${row.id}' is malformed: ${refusals[0]}`);
   return { ...outcome, compiled: shape, ...answer };
 }
 

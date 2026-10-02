@@ -2,7 +2,7 @@ import { Optional } from "@marcbachmann/cel-js";
 import { Duration, UnsignedInt } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { buildCelLanguageEnvironment } from "../src/cel/environment.js";
-import { conformanceValueCodec } from "./cel-conformance-value.js";
+import { conformanceValueCodec, unpairedSurrogateAt } from "./cel-conformance-value.js";
 
 const env = buildCelLanguageEnvironment();
 const codec = conformanceValueCodec(env);
@@ -60,5 +60,19 @@ describe("conformance value", () => {
     ["a plain map out of key order", { b: 1, a: 2 }],
   ])("refuses to read %s", (name, node) => {
     expect(() => codec.decode(node)).toThrow(/Cannot read a conformance value/);
+  });
+});
+
+describe("a conformance file holding an unpaired surrogate", () => {
+  it.each([
+    ["a value written as an escape", '{"rows":[{"id":"a","source":"x","bindings":{"x":"\\ud83d"}}]}', "/rows/0/bindings/x"],
+    ["a value written raw", `{"rows":[{"source":"${"\ude00"}"}]}`, "/rows/0/source"],
+    ["a key", '{"rows":[{"bindings":{"\\udc00":1}}]}', "/rows/0/bindings/\udc00"],
+  ])("is found in %s", (name, text, at) => {
+    expect(unpairedSurrogateAt(JSON.parse(text))).toBe(at);
+  });
+
+  it("is not found where every surrogate is paired", () => {
+    expect(unpairedSurrogateAt(JSON.parse('{"rows":[{"source":"\\ud83d\\ude00 \ud83d\ude00"}]}'))).toBeUndefined();
   });
 });
