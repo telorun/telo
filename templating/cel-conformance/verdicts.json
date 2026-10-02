@@ -1,0 +1,6251 @@
+{
+  "rows": [
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/expression",
+      "tag": "cel",
+      "source": "1 +",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 3
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/unterminated_string",
+      "tag": "cel",
+      "source": "'abc",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unterminated string\n\n>    1 | 'abc\n         ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 4
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unterminated string\n\n>    1 | 'abc\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/hole_never_closes",
+      "tag": "interpolate",
+      "source": "${{ a }} then ${{ {'b': 1 }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/hole_never_closes_sql",
+      "tag": "sql",
+      "source": "UPDATE t SET a = ${{ a }}, b = ${{ b",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!sql: the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/hole_expression",
+      "tag": "interpolate",
+      "source": "Hello ${{ 1 + }}!",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 13
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_SYNTAX_ERROR/hole_expression_sql",
+      "tag": "sql",
+      "source": "SELECT ${{ 1 + }}, ${{ ) }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+            },
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected token: RPAREN\n\n>    1 | )\n         ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 14
+            },
+            {
+              "start": 23,
+              "end": 24
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/operator",
+      "tag": "cel",
+      "source": "1 + 'a'",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    1 | 1 + 'a'\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/argument_type",
+      "tag": "cel",
+      "source": "lower(1)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'lower(int)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 8,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'lower(int)'\n\n>    1 | lower(1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/arity_lists_signatures",
+      "tag": "cel",
+      "source": "lower('a', 'b')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'lower(string, string)' Registered: lower(string): string."
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'lower(string, string)'\n\n>    1 | lower('a', 'b')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/dyn_hint",
+      "tag": "cel",
+      "source": "x in 1",
+      "declarations": {
+        "x": "dyn"
+      },
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: dyn in int (`dyn` is a value with no static type here — declare `outputType:` on the resource producing it, or convert at the call site.)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: dyn in int\n\n>    1 | x in 1\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/dyn_hint_with_signatures",
+      "tag": "cel",
+      "source": "x.now()",
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'dyn.now()' Registered: now(): google.protobuf.Timestamp. (`dyn` is a value with no static type here — declare `outputType:` on the resource producing it, or convert at the call site.)"
+            }
+          ],
+          "calls": [
+            {
+              "name": "now",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 7,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": true
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.now()'\n\n>    1 | x.now()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/read_types",
+      "tag": "cel",
+      "source": "port + '/tcp' + dir",
+      "declarations": {
+        "port": "Telo.TcpPort",
+        "dir": "Telo.HostPath"
+      },
+      "bindings": {
+        "dir": "/d",
+        "port": {
+          "$telo": "int",
+          "value": "80"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: Telo.TcpPort + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "Telo.TcpPort",
+            "Telo.HostPath"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [
+            "dir",
+            "port"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: dyn<int> + string\n\n>    1 | port + '/tcp' + dir\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/undeclared_field",
+      "tag": "cel",
+      "source": "variables.prt + 1",
+      "declarations": {
+        "variables": {
+          "fields": {
+            "port": "int"
+          }
+        }
+      },
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "No such key: prt"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_TYPE_ERROR/module_call_type_unknown",
+      "tag": "cel",
+      "source": "Billing.untyped(1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.untyped": {
+            "returns": "NoSuchType",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "1"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Unknown type: NoSuchType"
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.untyped",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.untyped",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "1"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/root",
+      "tag": "cel",
+      "source": "fff",
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'fff' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 3
+            }
+          ],
+          "refs": [
+            "fff"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: fff\n\n>    1 | fff\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/roots_not_declared",
+      "tag": "cel",
+      "source": "fff",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 3
+            }
+          ],
+          "refs": [
+            "fff"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: fff\n\n>    1 | fff\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/beside_declared",
+      "tag": "cel",
+      "source": "known + missing",
+      "declarations": {
+        "known": "int"
+      },
+      "bindings": {
+        "known": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "int",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "known",
+            "missing"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: missing\n\n>    1 | known + missing\n                 ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/once_per_root",
+      "tag": "cel",
+      "source": "missing.a + missing.b + other",
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'other' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [
+            "missing",
+            "other"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: missing\n\n>    1 | missing.a + missing.b + other\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/bound_names_are_not_roots",
+      "tag": "cel",
+      "source": "[1].all(x, x > 0) && cel.bind(y, 2, y > 1)",
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "all",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 42
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/module_hint",
+      "tag": "cel",
+      "source": "Foo.bar(1) + dbb.query(Foo.baz)",
+      "rootsDeclared": true,
+      "couldNameModule": [
+        "Foo"
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `query`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'dbb' — nothing by that name is in scope here."
+            }
+          ],
+          "calls": [
+            {
+              "name": "bar",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 10
+            },
+            {
+              "name": "query",
+              "form": "receiver",
+              "arity": 1,
+              "start": 13,
+              "end": 31
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [
+            "Foo",
+            "dbb"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1) + dbb.query(Foo.baz)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_IDENTIFIER/module_name_is_not_a_root",
+      "tag": "cel",
+      "source": "Billing.total(missing)",
+      "rootsDeclared": true,
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "missing"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "missing"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "Unknown variable: missing\n\n>    1 | Billing.total(missing)\n                       ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/context_chain",
+      "tag": "cel",
+      "source": "request.query.nme",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.query.nme' is not defined (available: name)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: nme\n\n>    1 | request.query.nme\n                       ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/context_root",
+      "tag": "cel",
+      "source": "reqest.query",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'reqest' is not defined (available: request, error, codes, note, body)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "reqest"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: reqest\n\n>    1 | reqest.query\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/list_element",
+      "tag": "cel",
+      "source": "request.items[0].amont",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.items.[*].amont' is not defined (available: amount)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: amont\n\n>    1 | request.items[0].amont\n                          ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/map_value",
+      "tag": "cel",
+      "source": "request.tags['a'].lbel",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.tags.[*].lbel' is not defined (available: label)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: lbel\n\n>    1 | request.tags['a'].lbel\n                           ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/open_object",
+      "tag": "cel",
+      "source": "request.headers.accept",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: accept\n\n>    1 | request.headers.accept\n                         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/open_context",
+      "tag": "cel",
+      "source": "request.query.nme",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: nme\n\n>    1 | request.query.nme\n                       ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/past_a_stream",
+      "tag": "cel",
+      "source": "body.text",
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'body' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [
+            "body"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: body\n\n>    1 | body.text\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/every_chain",
+      "tag": "cel",
+      "source": "request.query.nme + request.qery.name",
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.query.nme' is not defined (available: name)"
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.qery' is not defined (available: query, items, headers, tags)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: nme\n\n>    1 | request.query.nme + request.qery.name\n                       ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/explained",
+      "tag": "cel",
+      "source": "variables.prt + 1",
+      "declarations": {
+        "variables": {
+          "fields": {
+            "port": "int"
+          }
+        }
+      },
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "explain": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'variables.prt' is not defined (available: port)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/explained_once_with_context",
+      "tag": "cel",
+      "source": "variables.prt + 1",
+      "declarations": {
+        "variables": {
+          "fields": {
+            "port": "int"
+          }
+        }
+      },
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "explain": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'variables.prt' is not defined (available: port)"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/explain_never_overrules_the_checker",
+      "tag": "cel",
+      "source": "variables.prt + 1",
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "explain": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/explain_other_rejection",
+      "tag": "cel",
+      "source": "other.x + variables.port + 'a'",
+      "declarations": {
+        "variables": {
+          "fields": {
+            "port": "int"
+          }
+        }
+      },
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "explain": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "dyn",
+            "int"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [
+            "other",
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: other\n\n>    1 | other.x + variables.port + 'a'\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/explain_yields_to_call_audit",
+      "tag": "cel",
+      "source": "lowr(variables.prt)",
+      "declarations": {
+        "variables": {
+          "fields": {
+            "port": "int"
+          }
+        }
+      },
+      "bindings": {
+        "variables": {
+          "port": {
+            "$telo": "int",
+            "value": "8080"
+          }
+        }
+      },
+      "explain": {
+        "type": "object",
+        "properties": {
+          "variables": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `lowr`. Every function taking 1 argument: abs, avg, base64Decode, base64Encode, bool, bytes, bytesFromBase64, bytesToBase64, ceil, coalesce, compact, dateIn, distinct, double, duration, dyn, enumerate, flatten, floor, has, int, isoIn, json, keys, lower, max, md5, min, nowIso, parseJson, range, reverse, round, sha1, sha256, sha512, size, sort, startOfMonth, string, sum, timestamp, today, trim, type, uint, upper, urlDecode, urlEncode, uuidValidate, uuidVersion, values. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "lowr",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [
+            "variables"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'lowr(dyn)'\n\n>    1 | lowr(variables.prt)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/module_call_result",
+      "tag": "cel",
+      "source": "Billing.invoice(1).lines[0].qy + Billing.invoice(2).amont",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.invoice": {
+            "returns": "map<string, dyn>",
+            "deterministic": true,
+            "hostBacked": false,
+            "resultSchema": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "qty": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "result": {
+              "amount": 12.5,
+              "lines": [
+                {
+                  "qty": {
+                    "$telo": "int",
+                    "value": "2"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'Billing.invoice(…).lines.[*].qy' is not defined (available: qty)"
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'Billing.invoice(…).amont' is not defined (available: amount, lines)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.invoice",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.invoice",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 33,
+              "end": 51,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 57
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.invoice",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "No such key: qy\n\n>    1 | Billing.invoice(1).lines[0].qy + Billing.invoice(2).amont\n                                     ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/one_candidate_fix",
+      "tag": "cel",
+      "source": "uppe('a')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "upper('a')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "uppe",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | uppe('a')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/several_candidates",
+      "tag": "cel",
+      "source": "no()",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `no`. Closest taking 0 arguments: `now`, `nowIso`, `nowMillis`, `nowSeconds`. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "no",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 4
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 4
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'no()'\n\n>    1 | no()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/no_candidate",
+      "tag": "cel",
+      "source": "frobnicate()",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `frobnicate`. Every function taking 0 arguments: now, nowIso, nowMillis, nowSeconds, today, uuidv1, uuidv4, uuidv6, uuidv7. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "frobnicate",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'frobnicate()'\n\n>    1 | frobnicate()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/method_fix",
+      "tag": "cel",
+      "source": "'endsWit'.endsWit('t')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `endsWit`. Closest taking 1 argument: `endsWith`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "'endsWit'.endsWith('t')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "endsWit",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.endsWit(string)'\n\n>    1 | 'endsWit'.endsWit('t')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/method_no_candidate",
+      "tag": "cel",
+      "source": "'a'.frobnicate()",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `frobnicate`. Every method taking 0 arguments: base64, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, hasValue, hex, join, json, lowerAscii, none, size, string, trim, upperAscii, value. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "frobnicate",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.frobnicate()'\n\n>    1 | 'a'.frobnicate()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/every_call",
+      "tag": "cel",
+      "source": "uppe('a') + lowe('b')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "upper('a') + lowe('b')"
+              }
+            },
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `lowe`. Closest taking 1 argument: `lower`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "uppe('a') + lower('b')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "uppe",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9
+            },
+            {
+              "name": "lowe",
+              "form": "global",
+              "arity": 1,
+              "start": 12,
+              "end": 21
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | uppe('a') + lowe('b')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FUNCTION/module_call_skipped",
+      "tag": "cel",
+      "source": "Billing.format(2) + uppe('a')",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.format": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "EUR 2.00"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "Billing.format(2) + upper('a')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.format",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uppe",
+              "form": "global",
+              "arity": 1,
+              "start": 20,
+              "end": 29
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | Billing.format(2) + uppe('a')\n                             ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/global_written_as_method",
+      "tag": "cel",
+      "source": "'A'.lower()",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('A')\n  not:    'A'.lower()\nRegistered: lower(string): string.",
+              "fix": {
+                "replacement": "lower('A')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 'A'.lower()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/global_written_as_method_with_arguments",
+      "tag": "cel",
+      "source": "'a-b'.replace('-', '+')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`replace` is a global function, not a method — pass the value to it:\n  write:  replace('a-b', '-', '+')\n  not:    'a-b'.replace('-', '+')\nRegistered: replace(string, string, string): string.",
+              "fix": {
+                "replacement": "replace('a-b', '-', '+')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "replace",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.replace(string, string)'\n\n>    1 | 'a-b'.replace('-', '+')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/method_written_as_global",
+      "tag": "cel",
+      "source": "startsWith(key, 'x')",
+      "bindings": {
+        "key": "xy"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  key.startsWith('x')\n  not:    startsWith(key, 'x')\nRegistered: string.startsWith(string): bool.",
+              "fix": {
+                "replacement": "key.startsWith('x')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "startsWith",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [
+            "key"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'startsWith(dyn, string)'\n\n>    1 | startsWith(key, 'x')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/receiver_parenthesized",
+      "tag": "cel",
+      "source": "startsWith(a + b, 'x')",
+      "bindings": {
+        "a": "x",
+        "b": "y"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  (a + b).startsWith('x')\n  not:    startsWith(a + b, 'x')\nRegistered: string.startsWith(string): bool.",
+              "fix": {
+                "replacement": "(a + b).startsWith('x')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "startsWith",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'startsWith(dyn, string)'\n\n>    1 | startsWith(a + b, 'x')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/literal_receiver_parenthesized",
+      "tag": "cel",
+      "source": "startsWith('abc', 'a')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  ('abc').startsWith('a')\n  not:    startsWith('abc', 'a')\nRegistered: string.startsWith(string): bool.",
+              "fix": {
+                "replacement": "('abc').startsWith('a')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "startsWith",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'startsWith(string, string)'\n\n>    1 | startsWith('abc', 'a')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_WRONG_CALL_FORM/nested_call",
+      "tag": "cel",
+      "source": "1 + size('a'.lower())",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('a')\n  not:    'a'.lower()\nRegistered: lower(string): string.",
+              "fix": {
+                "replacement": "1 + size(lower('a'))"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 21
+            },
+            {
+              "name": "lower",
+              "form": "receiver",
+              "arity": 0,
+              "start": 9,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 1 + size('a'.lower())\n                  ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/member",
+      "tag": "cel",
+      "source": "error.code",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/index",
+      "tag": "cel",
+      "source": "codes[0]",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'codes' may be null — guard it (e.g. 'codes != null && …' or 'codes == null ? … : codes[index]') before accessing '[index]'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [
+            "codes"
+          ],
+          "volatile": false
+        },
+        "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/value_itself",
+      "tag": "cel",
+      "source": "note",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 4
+            }
+          ],
+          "refs": [
+            "note"
+          ],
+          "volatile": false
+        },
+        "value": "n"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_and",
+      "tag": "cel",
+      "source": "error != null && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_or",
+      "tag": "cel",
+      "source": "error == null || error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_ternary_then",
+      "tag": "cel",
+      "source": "error != null ? error.code : 'none'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_ternary_else",
+      "tag": "cel",
+      "source": "error == null ? 'none' : error.code",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_negated",
+      "tag": "cel",
+      "source": "!(error == null) && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_null_on_the_left",
+      "tag": "cel",
+      "source": "null != error && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_conjunction",
+      "tag": "cel",
+      "source": "error != null && codes != null && error.code == codes[0]",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 56
+            }
+          ],
+          "refs": [
+            "codes",
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_disjunction_else",
+      "tag": "cel",
+      "source": "error == null || codes == null ? 'none' : error.code + codes[0]",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 63
+            }
+          ],
+          "refs": [
+            "codes",
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "E1E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_wrong_way_and",
+      "tag": "cel",
+      "source": "error == null && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_wrong_way_or",
+      "tag": "cel",
+      "source": "error != null || error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_wrong_branch",
+      "tag": "cel",
+      "source": "error != null ? 'some' : error.code",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "some"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_disjunction_proves_nothing",
+      "tag": "cel",
+      "source": "(error != null || codes != null) && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 54
+            }
+          ],
+          "refs": [
+            "codes",
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/guard_of_another_value",
+      "tag": "cel",
+      "source": "codes != null && error.code == 'E1'",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "codes",
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/in_index_expression",
+      "tag": "cel",
+      "source": "request.items[size(error.code) - 2].amount",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n",
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 14,
+              "end": 30
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 42
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "value": 1.5
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/in_comprehension",
+      "tag": "cel",
+      "source": "request.items.all(i, error.code == 'E1')",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n",
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "all",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 40
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 40
+            }
+          ],
+          "refs": [
+            "error",
+            "request"
+          ],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/in_module_call_argument",
+      "tag": "cel",
+      "source": "Billing.total(error.code)",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "error",
+                    "code"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              "E1"
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/bound_name_is_not_the_field",
+      "tag": "cel",
+      "source": "cel.bind(error, {'code': 'E2'}, error.code)",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 43
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "E2"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/open_context",
+      "tag": "cel",
+      "source": "error.code",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/hole_is_nullable",
+      "tag": "interpolate",
+      "source": "Note: ${{ note }}, codes ${{ codes }}",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'note' may be null, and a null has no text — guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
+            },
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'codes' may be null, and a null has no text — guard it in the hole (e.g. '${{ codes != null ? codes : \"\" }}')."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 14
+            },
+            {
+              "start": 29,
+              "end": 34
+            }
+          ],
+          "refs": [
+            "codes",
+            "note"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ codes }}' at offset 25 of !interpolate \"Note: ${{ note }}, codes ${{ codes }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/hole_guarded",
+      "tag": "interpolate",
+      "source": "Note: ${{ note == null ? '-' : note }}",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 35
+            }
+          ],
+          "refs": [
+            "note"
+          ],
+          "volatile": false
+        },
+        "value": "Note: n"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/hole_dereference",
+      "tag": "interpolate",
+      "source": "Code: ${{ error.code }}",
+      "bindings": {
+        "codes": [
+          "E1"
+        ],
+        "error": {
+          "code": "E1"
+        },
+        "note": "n"
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 20
+            }
+          ],
+          "refs": [
+            "error"
+          ],
+          "volatile": false
+        },
+        "value": "Code: E1"
+      }
+    },
+    {
+      "id": "verdicts/CEL_INVALID_ARGUMENT/literal",
+      "tag": "cel",
+      "source": "format(1.5, '.2q')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format(1.5, '.2q')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_INVALID_ARGUMENT/negative_literal",
+      "tag": "cel",
+      "source": "round(1.5, -1)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "round: decimal places must be an integer 0-10, got -1 (in `round(1.5, -1)`)"
+            }
+          ],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "round: decimal places must be an integer 0-10, got -1"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_INVALID_ARGUMENT/beside_a_type_error",
+      "tag": "cel",
+      "source": "format('x', '.2q')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format('x', '.2q')`)"
+            },
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'format(string, string)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'format(string, string)'\n\n>    1 | format('x', '.2q')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_INVALID_ARGUMENT/every_call",
+      "tag": "cel",
+      "source": "fixed(1.0, 11) + fixed(2.0, 12)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "fixed: decimal places must be an integer 0-10, got 11 (in `fixed(1.0, 11)`)"
+            },
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "fixed: decimal places must be an integer 0-10, got 12 (in `fixed(2.0, 12)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 17,
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "fixed: decimal places must be an integer 0-10, got 11"
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_INVALID_ARGUMENT/computed_argument",
+      "tag": "cel",
+      "source": "format(1.5, spec)",
+      "bindings": {
+        "spec": ".2q"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "spec"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
+        }
+      }
+    },
+    {
+      "id": "verdicts/BINDING_NAME_RESERVED/comprehension_variable",
+      "tag": "cel",
+      "source": "[1].map(Billing, Billing + 1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "BINDING_NAME_RESERVED",
+              "message": "'Billing' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Billing.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+            }
+          ],
+          "type": "list<int>",
+          "calls": [
+            {
+              "name": "map",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": [
+          {
+            "$telo": "int",
+            "value": "2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "verdicts/BINDING_NAME_RESERVED/cel_bind",
+      "tag": "cel",
+      "source": "cel.bind(Self, 1, Self + 1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "BINDING_NAME_RESERVED",
+              "message": "'Self' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Self.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+            }
+          ],
+          "type": "int",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": {
+          "$telo": "int",
+          "value": "2"
+        }
+      }
+    },
+    {
+      "id": "verdicts/BINDING_NAME_RESERVED/once_per_name",
+      "tag": "cel",
+      "source": "[1].exists(Shop, Shop > 0) && [2].all(Shop, Shop > 1) && [3].all(Telo, Telo > 2)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "BINDING_NAME_RESERVED",
+              "message": "'Shop' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Shop.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+            },
+            {
+              "code": "BINDING_NAME_RESERVED",
+              "message": "'Telo' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Telo.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+            }
+          ],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "exists",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 26
+            },
+            {
+              "name": "all",
+              "form": "receiver",
+              "arity": 2,
+              "start": 30,
+              "end": 53
+            },
+            {
+              "name": "all",
+              "form": "receiver",
+              "arity": 2,
+              "start": 57,
+              "end": 80
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 80
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": true
+      }
+    },
+    {
+      "id": "verdicts/BINDING_NAME_RESERVED/no_name_set",
+      "tag": "cel",
+      "source": "[1].map(Billing, Billing + 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<int>",
+          "calls": [
+            {
+              "name": "map",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "verdicts/INTERPOLATION_HOLE_NOT_CONVERTIBLE/list",
+      "tag": "interpolate",
+      "source": "items: ${{ request.items }}",
+      "declarations": {
+        "request": {
+          "fields": {
+            "items": "list<string>"
+          }
+        }
+      },
+      "bindings": {
+        "request": {
+          "items": [
+            "a"
+          ]
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ request.items }}' is list<string>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 24
+            }
+          ],
+          "refs": [
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ request.items }}' at offset 7 of !interpolate \"items: ${{ request.items }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/INTERPOLATION_HOLE_NOT_CONVERTIBLE/after_a_clean_hole",
+      "tag": "interpolate",
+      "source": "${{ 'ok' }} then ${{ {'a': [1]} }} then ${{ [true] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ {'a': [1]} }}' is map<string, list<int>>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            },
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ [true] }}' is list<bool>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 8
+            },
+            {
+              "start": 21,
+              "end": 31
+            },
+            {
+              "start": 44,
+              "end": 50
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ {'a': [1]} }}' at offset 17 of !interpolate \"${{ 'ok' }} then ${{ {'a': [1]} }} then ${{ [true] }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/INTERPOLATION_HOLE_NOT_CONVERTIBLE/yields_to_the_holes_own_diagnostic",
+      "tag": "interpolate",
+      "source": "${{ [1 + 'a'] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    1 | [1 + 'a']\n          ^"
+        }
+      }
+    },
+    {
+      "id": "verdicts/INTERPOLATION_HOLE_NOT_CONVERTIBLE/not_under_sql",
+      "tag": "sql",
+      "source": "SELECT ${{ [1, 2] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT ",
+            ""
+          ],
+          "values": [
+            [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "verdicts/INTERPOLATION_HOLE_NOT_CONVERTIBLE/not_under_cel",
+      "tag": "cel",
+      "source": "[1, 2]",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<int>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/null",
+      "tag": "interpolate",
+      "source": "Hello ${{ name }}!",
+      "bindings": {
+        "name": null
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ name }}' at offset 6 of !interpolate \"Hello ${{ name }}!\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/list_in_second_hole",
+      "tag": "interpolate",
+      "source": "${{ a }}\n\"${{ b.c }}\"",
+      "bindings": {
+        "a": "x",
+        "b": {
+          "c": []
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            },
+            {
+              "start": 14,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ b.c }}' at offset 10 of !interpolate \"${{ a }}\\n\\\"${{ b.c }}\\\"\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/map",
+      "tag": "interpolate",
+      "source": "${{ m }}",
+      "bindings": {
+        "m": {}
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            }
+          ],
+          "refs": [
+            "m"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ m }}' at offset 0 of !interpolate \"${{ m }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/module_call_result",
+      "tag": "interpolate",
+      "source": "${{ Billing.nothing() }}",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.nothing": {
+            "returns": "dyn",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": null
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "Billing.nothing",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 4,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.nothing",
+            "arguments": []
+          }
+        ],
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ Billing.nothing() }}' at offset 0 of !interpolate \"${{ Billing.nothing() }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/string_passes",
+      "tag": "interpolate",
+      "source": "${{ s }}",
+      "bindings": {
+        "s": "text"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            }
+          ],
+          "refs": [
+            "s"
+          ],
+          "volatile": false
+        },
+        "value": "text"
+      }
+    }
+  ]
+}

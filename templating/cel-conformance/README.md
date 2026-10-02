@@ -7,7 +7,9 @@ The files split along one line:
 - **`language.json`** — the bare CEL language: cel-spec's `simple` conformance suite as the language environment answers it.
 - **`catalog.json`** — Telo's function catalog: every function in every overload it registers, every refusal a function makes, the literal guards that refuse an argument statically, and every host-backed handler's call, as the dialect environment answers them.
 - **`types.json`** — Telo's types: every nominal value brand and the live `Stream` type.
-- The remaining dialect files — interpolation holes, module calls and the analyzer-facing verdicts — arrive with their own sections of this README.
+- **`holes.json`** — the hole grammar of the tags that hold text with `${{ … }}` holes, and what `interpolate` and `sql` make of the holes.
+- **`module-calls.json`** — calls on a module's name: what resolves as one, how it is typed, and how it is dispatched.
+- **`verdicts.json`** — every diagnostic code and Telo error code the tag engines emit, each in each circumstance it is reported.
 
 ## Files
 
@@ -22,7 +24,7 @@ A file is one JSON object. The language file names the cel-spec commit its rows 
 
 ## Rows
 
-A row is an object with these keys. A key whose value would be empty is omitted — except `expect`, which every row carries.
+A row is an object with these keys. A key whose value would be empty is omitted — except `expect`, which every row carries. The rule governs a row's own keys: a list under `expect` is written even when empty.
 
 - `id` — unique in the file. For a language row, `<file-stem>/<section>/<test>` of the cel-spec test it came from; where a section repeats a test name, the n-th occurrence (n ≥ 2), counted in cel-spec file order before any test is dropped, is `<file-stem>/<section>/<test>#<n>`. For a dialect row, `<file-stem>/<subject>/<case>`: the catalog function or the type the row is about, and a name for the case.
 - `source` — the CEL expression.
@@ -33,7 +35,7 @@ A row is an object with these keys. A key whose value would be empty is omitted 
 - `expect` — the answer; see below.
 - `deviation` — language rows only: where the answer differs from cel-spec's, or the row could not carry a cel-spec input; see below.
 - `divergence` — language rows only: the Node engine's answer leaves the CEL value domain, so `expect` is not its answer; see [Divergences](#divergences).
-- `tag`, `context`, `explain`, `rootsDeclared`, `couldNameModule` — dialect rows only; see [Dialect rows](#dialect-rows).
+- `tag`, `context`, `explain`, `rootsDeclared`, `couldNameModule`, `modules` — dialect rows only; see [Dialect rows](#dialect-rows) and [Module calls](#module-calls).
 
 A row carrying any other key is malformed.
 
@@ -45,6 +47,8 @@ Then exactly one of:
 
 - `value` — the evaluation result, a conformance value;
 - `error` — the error evaluation threw.
+
+A row carrying `modules` also carries `expect.dispatched`; see [Module calls](#module-calls).
 
 A runner computes the whole `expect` and compares it to the row's by deep equality. Nothing is compared partially.
 
@@ -143,18 +147,19 @@ The Node runner, for a divergence row, asserts that the check equals `expect.che
 
 ## Dialect rows
 
-A dialect row runs against the **dialect environment**: the language environment plus Telo's function catalog and the `Stream` type, with the conformance handler set (below) installed as its host handlers. It drives the seams of the TAG ENGINE the row names — for a `cel` row, the engine's `analyze`, then its `compile` and an evaluation of what it compiled — and every row runs both halves:
+A dialect row runs against the **dialect environment**: the language environment plus Telo's function catalog and the `Stream` type, with the conformance handler set (below) installed as its host handlers. It drives the seams of the TAG ENGINE the row names — `cel`, `interpolate` or `sql`: the engine's `analyze`, then its `compile` and an evaluation of what it compiled — and every row runs both halves:
 
-- **Static** — a copy of the dialect environment plus every nominal value brand (each brand as a type of its own; its conversion to its base, `int(<brand>)` over an int and `string(<brand>)` over a string; `string(<brand>)` where the base is not a string; and, for a brand whose values come from the host, `<brand>.joinPath(string)` typed back to the brand), then the row's `declarations` and `functions`. The engine analyzes `source` against it, given the row's `context`, `explain`, `rootsDeclared` and `couldNameModule`.
-- **Runtime** — a copy of the dialect environment plus the row's `functions`, **without** its `declarations` and without the brands: at runtime a branded value is its base. The engine compiles `source`, and the compiled expression is evaluated with `bindings` as the activation; a result that is a promise is awaited.
+- **Static** — a copy of the dialect environment plus every nominal value brand (each brand as a type of its own; its conversion to its base, `int(<brand>)` over an int and `string(<brand>)` over a string; `string(<brand>)` where the base is not a string; and, for a brand whose values come from the host, `<brand>.joinPath(string)` typed back to the brand), then the row's `declarations` and `functions`. The engine analyzes `source` against it, given the row's `context`, `explain`, `rootsDeclared`, `couldNameModule` and `modules`.
+- **Runtime** — a copy of the dialect environment plus the row's `functions`, **without** its `declarations` and without the brands: at runtime a branded value is its base. The engine compiles `source` against the row's module names, and the compiled value is evaluated with `bindings` as the activation and the row's module functions bound as the dispatch table; a result that is a promise is awaited.
 
 ### Dialect row keys
 
-- `tag` — the tag whose engine the row drives, without its `!`: `cel`. Every dialect row carries it.
+- `tag` — the tag whose engine the row drives, without its `!`: `cel` (the whole source is one expression), `interpolate` or `sql` (text with holes; see [Holes](#holes)). Every dialect row carries it.
 - `context` — the site's context, a JSON Schema: what the engine receives as the schema member-access chains are checked against (an unknown field, a nullable dereference, member access past a live value). Absent means an open context, against which no chain is judged.
 - `explain` — the schema of the names the site reads, JSON Schema: consulted only to explain a rejection the checker already made. Absent means the engine has none to consult.
 - `rootsDeclared` — `true` when the environment declares every name legal at the site, so a root identifier it does not know is reported as unknown. Absent means the check is off.
 - `couldNameModule` — the list of names the host's naming rule says could denote a module; every other name could not. Absent means the host supplies no rule.
+- `modules` — the declaring module's names and the module functions the host answers for; see [Module calls](#module-calls). Absent means no name set: every call is an ordinary one.
 
 ### The dialect `check`
 
@@ -165,11 +170,60 @@ A dialect row's `expect.check` is an object with these fields, a field marked op
 - `calls` — every function call in the source, in source order, each `{ "name", "form", "moduleCall"?, "arity", "arguments"?, "start", "end", "deterministic"?, "hostBacked"? }`: the name called (for a module call, the qualified name as written), `form` `global` for `f(x)` or `receiver` for `x.f()`, `moduleCall` `true` for a call that resolved to a module's function, `arity` the argument count as written (the receiver excluded), for a module call its `arguments` (each `{ "type"?, "chain"? }`: the type the checker gave it and, for a plain member chain, the chain), the call's start and end offsets, and whether it is `deterministic` and `hostBacked` — both taken from the catalog function of that name, and absent when no catalog function has it (a module call carries them only as the host reports them).
 - `stringLiteral` (optional) — the string the whole expression is a literal of.
 - `readTypes` (optional) — when the checker rejected the expression, the distinct types the checker gives the plain member chains it reads (a chain with an index is not one), in the order first read.
-- `regions` — where the tag's CEL sits in the source, each `{ "start", "end" }`: the whole source for `cel`.
+- `regions` — where the tag's CEL sits in the source, each `{ "start", "end" }`: the whole source for `cel`, each hole's expression in order for a tag with holes, and none when the holes cannot be read.
 - `refs` — the root identifiers the compiled expression reads, sorted.
 - `volatile` — whether the compiled expression calls a catalog function whose result differs per call.
 
 `refs` and `volatile` are what compiling answers. When compilation throws, `check` keeps everything the static half answered and carries neither `refs` nor `volatile`, nothing is evaluated, and the compile error is the row's `error`, as `{ "code", "message" }`. Every offset counts UTF-16 code units from the start of `source`. Then, as in every row, exactly one of `value` or `error` — the evaluation's result or the error compiling or evaluating threw (see [Errors](#errors)).
+
+### Holes
+
+The `interpolate` and `sql` tags hold text with holes, and one grammar reads both.
+
+- A hole opens at `${{`. Outside a hole nothing else is special: `$`, `{`, `${`, `{{` and `}}` are text.
+- A hole closes at the first `}}` that is outside a CEL string literal and outside any `{` the hole's own text opened. A `}` closing such a brace closes no hole, and a `}` outside every brace that is not followed by a second `}` leaves the hole unclosed.
+- A string literal inside a hole is CEL's: `'…'` and `"…"`, their triple-quoted forms, and the `r` and `b` prefixes in either case. In a string without the `r` prefix a backslash takes the next character with it, so an escaped quote does not end the string. A raw string is read whole too: a `}}` inside it closes no hole, and a backslash before any character but the string's own quote is kept as written. A string that is not triple-quoted ends at a newline unterminated, and so does its hole; a triple-quoted one may span lines. Not yet pinned: where a hole ends when a raw string holds a backslash directly before its own quote, and a string under a two-letter prefix.
+- A literal `${{` is written as a hole that yields it: `${{ '${{' }}`.
+- A hole that never closes makes the whole scalar unreadable, at the offset of its `${{`. Statically that is one `CEL_SYNTAX_ERROR` — `the hole opened at offset <n> never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened` — with no calls and no regions, whatever holes precede it; compiling throws the same sentence behind `!<tag>: `, with no code.
+- A hole's expression is its body with the surrounding whitespace removed; an empty body is an empty expression, which CEL refuses.
+
+A scalar has one of four shapes: `none` (no hole), `lone-hole` (exactly one hole with only whitespace around it), `interpolated` (any other readable text with holes) and `malformed` (a hole that never closes). Both tags read the first three alike: a lone hole under `interpolate` is still text, and the whitespace around it is kept.
+
+Statically each hole's expression is analyzed exactly as a `cel` row's source is, in order, with every site input of the row; `check` is their sum. `diagnostics` holds each hole's diagnostics in hole order, worded as they are under `cel`: a highlight inside a message quotes the hole's expression alone, and a `fix` is re-anchored — its `replacement` is the whole scalar with that one hole's expression replaced. `calls` holds each hole's calls with offsets counted in the scalar. There is no `type`, `stringLiteral` or `readTypes`. Compiling compiles each hole; `refs` is the sorted union over the holes and `volatile` holds when any hole is volatile. A hole CEL cannot parse fails the compile with CEL's own error for that expression.
+
+**`interpolate`** yields a string: the text between the holes joined with `string(<hole>)` for each hole — CEL's own conversion in the dialect environment, never the host language's. A string is itself, an int and a uint their decimal digits, a bool `true` or `false`, a double as `string()` writes it, bytes their UTF-8 text, a timestamp RFC 3339 in UTC with milliseconds (`2026-03-15T10:30:00.000Z`), a duration its seconds (`5400s`). Holes are evaluated and converted left to right, and the first failure is the row's error.
+
+A hole that analyzed clean gets one more verdict. When its expression is a plain member chain whose `context` schema admits null, it is `CEL_NULLABLE_ACCESS` — `'<chain>' may be null, and a null has no text — guard it in the hole (e.g. '${{ <chain> != null ? <chain> : "" }}').`. Otherwise, when its checked type is one no one-argument global `string()` overload of the static environment accepts — `dyn` always passes, and a nominal brand converts — it is `INTERPOLATION_HOLE_NOT_CONVERTIBLE`: `the hole '${{ <expr> }}' is <type>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel.`. A hole with a diagnostic of its own gets neither.
+
+At evaluation a hole whose value `string()` refuses fails with the code `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE`: `the hole '${{ <expr> }}' at offset <n> of !interpolate <source> evaluated to <what>, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole.` — `<n>` the offset of the hole's `${{`, `<source>` the whole scalar written as a JSON string, and `<what>` `null`, `a list` or `a map`. Not yet pinned: how the message names a value that is not null, a list or a map — an optional, a type — and, with it, the static refusal of the holes `${{ optional.of(1) }}` and `${{ int }}`.
+
+**`sql`** keeps the text and the holes apart, so that a consumer binds each value instead of splicing it. It yields a map of three entries: `__teloParameterized`, always `true`; `fragments`, the text before, between and after the holes — one more than there are holes, an empty string where a hole touches an edge or another hole; and `values`, each hole's value in order, unconverted. Any value is accepted, null included, so `sql` adds no verdict of its own to a hole. The text is never parsed as SQL: a hole inside a quoted SQL string or a comment is a hole.
+
+### Module calls
+
+An expression is compiled and analyzed against a **name set** as well as an environment: the names of the module declaring it. A row gives both under `modules`:
+
+```json
+{ "names": [ "<name>", … ],
+  "functions": { "<qualified name>": { "returns", "deterministic", "hostBacked", "resultSchema"?, "result" | "error" } } }
+```
+
+- `names` — the name set, handed to both halves.
+- `functions` — the module functions the host resolved, by qualified name (`<name>.<function>`); omitted when there are none. An entry is a function the host resolved, and the host answers for it whole — its type and both flags together; a qualified name the host did not resolve has no entry. For each: `returns`, the type the host answers as the call's type, in cel-js spelling; `deterministic` and `hostBacked`, the flags the host reports for it; `resultSchema`, the JSON Schema of its result, when the host has one; and what the function does when dispatched — `result`, the conformance value it returns, or `error`, the `{ "code", "message" }` it throws.
+
+**What is a module call.** A call is a module call exactly when it is written on a receiver that is a bare identifier in the name set: `Billing.total(x)`. Its qualified name is the receiver and the function name as written. Nothing else is one: a call whose receiver is a field access (`a.Billing.total(1)`), a call on a name outside the set, a method called on a module call's result, and a name of the set read as a value or through a member (`Billing`, `Billing.rate`) are all ordinary CEL. A call with no receiver is always the catalog's, so `format(…)` and `Billing.format(…)` never meet. A module call whose function carries the name of a comprehension macro (`Billing.map(x, x)`) is a module call, its arguments ordinary expressions.
+
+The receiver of a module call names a module, not a value: it is not among `refs`, is not judged as a root identifier, and is read against no schema. The arguments are ordinary expressions, analyzed and evaluated where they are written. A name of the set bound inside the expression — a comprehension variable, a `cel.bind` name — could never be read through a call, and is reported once per name as `BINDING_NAME_RESERVED`.
+
+**How it is checked.** The call has the type `returns` names, so an operator or a function over it is checked against that type; a qualified name with no `functions` entry is `dyn`, and a `returns` naming no type of the environment is a `CEL_TYPE_ERROR`. A member read off the call is checked against `resultSchema` exactly as a chain is against `context`, the call standing as `<qualified name>(…)` and an index as `[*]`: an undeclared member is `CEL_UNKNOWN_FIELD`. With no `resultSchema` nothing is judged.
+
+In `calls`, a module call is `{ "name": <qualified name>, "form": "receiver", "moduleCall": true, "arity", "arguments", "start", "end" }`, with `deterministic` and `hostBacked` as its `functions` entry gives them and neither when it has no entry. `arguments` has one entry per argument: `type`, the type the checker gave it, absent when the expression did not check far enough to type it; and `chain`, when the argument is a plain member chain with no index, rooted at a name the expression does not itself bind. The catalog's classification passes a module call over: it is never an unknown function, a wrong call form or a literal-guard refusal.
+
+**How it is dispatched.** The runtime half binds the row's `functions` as the dispatch table — qualified name to function — under a key no expression can name. Evaluating a module call looks its qualified name up first: with none bound it fails, before any argument is evaluated, with `unbound function '<qualified name>' — nothing is bound under that name in this scope. '<name>' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named '<function>' and exports it.` and no code. Otherwise the arguments are evaluated left to right and the function is handed their values in order; the call's value is its `result`, or the evaluation fails with its `error`, code and message unchanged.
+
+`expect.dispatched` is every dispatch evaluation made, in the order made, each `{ "name", "arguments" }`: the qualified name and the values handed over, as conformance values. Every row carrying `modules` carries it; no other row does.
+
+**The unknown-identifier hint.** Under `rootsDeclared`, an undeclared root identifier is `CEL_UNKNOWN_IDENTIFIER` — `unknown identifier '<name>' — nothing by that name is in scope here.`, once per name. When that name is written as the receiver of a call and `couldNameModule` lists it, the message continues ` To call a function another module declares, '<name>' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name.`; without `couldNameModule`, or for a name it does not list, it does not.
 
 ### The conformance handler set
 
@@ -214,8 +268,16 @@ Where a function checks its literal arguments, its refusal is also made statical
 
 `types.json` holds, for every nominal value brand, a row declaring a variable of it and reading it, its conversion to its base, its `string()` rendering, an operator its base accepts refused on the brand, and — for a brand whose values come from the host — `joinPath` typed back to the brand; and for the live `Stream` type, a value passed through and member access refused. No conformance value carries a live `Stream`, so a `Stream` row binds nothing and records what the engine answers without the value.
 
+### `holes.json`, `module-calls.json` and `verdicts.json`
+
+`holes.json` holds the hole grammar through both hole tags: each of the four scalar shapes; a hole holding a string with `}}` in each quoting, a map literal, an escaped quote, a raw string and a string broken by a newline; a literal `${{`; each way a hole fails to close; adjacent, repeated, padded, unpadded and empty holes; offsets past a character outside the basic plane. For `interpolate` it holds the conversion of every type `string()` accepts, a brand, the static refusal of a list, a map and a null, the refusal of a null, a list and a map at evaluation, and the nullable-chain hole with and without its guard. It holds a diagnostic, each kind of `fix` and the call offsets re-anchored onto the scalar; and for `sql`, what it yields for typed values, for a null, a list and a map, and for a hole that fails. Its `cel` rows (`holes/language/*`) pin what the language itself reads of the two cases the hole grammar leaves unpinned: a raw string with a backslash before its own quote, at its end and doubled at its end, and a string under each two-letter prefix.
+
+`module-calls.json` holds a call through each kind of name a set holds — an import alias, `Self`, the module's own name, `Telo` — and every reading that is not a module call; the arguments as the check saw them; the call typed by `returns` and its member reads checked against `resultSchema`; the flags with and without a `functions` entry; dispatch inside a comprehension, nested, repeated, skipped by a short circuit, failing as scripted with and without a code, and unbound; the unknown-identifier hint with and without the host's rule; and a module call inside a hole of each hole tag.
+
+`verdicts.json` holds a row for every diagnostic code and every Telo error code the three tag engines can emit, its rows named `verdicts/<code>/<case>`: each code in each circumstance the engine reports it, the circumstances that look alike and report nothing beside them (a guard that clears `CEL_NULLABLE_ACCESS`, a schema too open to judge, a site that does not vouch for its roots), and every `fix` the engine offers — the rename of an unknown function with exactly one candidate, and a call moved to its other form, the receiver parenthesized when it must be. A verdict a hole carries over unchanged from its expression is pinned once, under `cel`, in `verdicts.json`, and its re-anchoring in `holes.json`; `verdicts.json` holds hole rows only for what a hole tag adds or words itself — the unreadable hole, the nullable hole and the two conversion refusals.
+
 ## Runners
 
-A runner executes every row of every file it drives and never skips one. It fails when the directory holds a file it does not drive, when a row carries an unknown key or lacks `expect`, when an `id` repeats, and when the number of rows it executed differs from the number in the file. It also fails when a catalog overload the dialect environment registers is dispatched by no `catalog.json` row that evaluates to a value, when a catalog function's literal check fires in no `catalog.json` row, when an RE2 parse-error kind of the vocabulary above is the refusal of no `catalog.json` row, and when a nominal brand the value types define is declared by no `types.json` row — each counted from what the engine, its kind vocabulary and the value-type vocabulary register, never from a list kept beside the rows.
+A runner executes every row of every file it drives and never skips one. It fails when the directory holds a file it does not drive, when a row carries an unknown key or lacks `expect`, when an `id` repeats, and when the number of rows it executed differs from the number in the file. It also fails when a catalog overload the dialect environment registers is dispatched by no `catalog.json` row that evaluates to a value, when a catalog function's literal check fires in no `catalog.json` row, when an RE2 parse-error kind of the vocabulary above is the refusal of no `catalog.json` row, when a nominal brand the value types define is declared by no `types.json` row, and when a diagnostic code or Telo error code the tag engines can emit is reported by no `verdicts.json` row, as a diagnostic's `code` or the `code` of the row's `error` — each counted from what the engine, its kind vocabulary, the value-type vocabulary and the engine's verdict vocabulary state, never from a list kept beside the rows. Each engine declares its verdict vocabulary once — its diagnostic codes and its error codes — its type system holds every place it builds a diagnostic or throws a coded error to that declaration, and a runner reads the declaration. A diagnostic code is satisfied only by a diagnostic's `code`, an error code only by a row's `expect.error.code`.
 
 The Node runner is `templating/nodejs/tests/cel-conformance.test.ts`.

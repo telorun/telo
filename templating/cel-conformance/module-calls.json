@@ -1,0 +1,3463 @@
+{
+  "rows": [
+    {
+      "id": "module-calls/name/import_alias",
+      "tag": "cel",
+      "source": "Billing.total(2, 3)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              },
+              {
+                "$telo": "int",
+                "value": "3"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "module-calls/name/self",
+      "tag": "cel",
+      "source": "Self.double(4)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Self.double": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "8"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Self.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Self.double",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "4"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "8"
+        }
+      }
+    },
+    {
+      "id": "module-calls/name/own_module_name",
+      "tag": "cel",
+      "source": "Shop.double(4)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Shop.double": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "8"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Shop.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Shop.double",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "4"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "8"
+        }
+      }
+    },
+    {
+      "id": "module-calls/name/telo",
+      "tag": "cel",
+      "source": "Telo.version()",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Telo.version": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "1.2.3"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "Telo.version",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Telo.version",
+            "arguments": []
+          }
+        ],
+        "value": "1.2.3"
+      }
+    },
+    {
+      "id": "module-calls/name/outside_the_set",
+      "tag": "cel",
+      "source": "Other.total(2, 3)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `total`. Every method taking 2 arguments: all, exists, exists_one, filter, indexOf, lastIndexOf, map, split, substring. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "total",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "Other"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.total(int, int)'\n\n>    1 | Other.total(2, 3)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/name/no_name_set",
+      "tag": "cel",
+      "source": "Billing.total(2, 3)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `total`. Every method taking 2 arguments: all, exists, exists_one, filter, indexOf, lastIndexOf, map, split, substring. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "total",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [
+            "Billing"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.total(int, int)'\n\n>    1 | Billing.total(2, 3)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/name/as_a_value",
+      "tag": "cel",
+      "source": "Billing",
+      "bindings": {
+        "Billing": "a value"
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "Billing"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": "a value"
+      }
+    },
+    {
+      "id": "module-calls/name/member_read",
+      "tag": "cel",
+      "source": "Billing.rate",
+      "bindings": {
+        "Billing": {
+          "rate": 0.5
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.rate": {
+            "returns": "double",
+            "deterministic": false,
+            "hostBacked": true,
+            "result": 0.2
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "Billing"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": 0.5
+      }
+    },
+    {
+      "id": "module-calls/receiver/field_access",
+      "tag": "cel",
+      "source": "a.Billing.total(1)",
+      "bindings": {
+        "a": {
+          "Billing": "x"
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `total`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "total",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [
+            "a"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.total(int)'\n\n>    1 | a.Billing.total(1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/receiver/call_result",
+      "tag": "cel",
+      "source": "Billing.tags().size()",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.tags": {
+            "returns": "list<string>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "size",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 21
+            },
+            {
+              "name": "Billing.tags",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.tags",
+            "arguments": []
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "2"
+        }
+      }
+    },
+    {
+      "id": "module-calls/receiver/catalog_name_beside_module",
+      "tag": "cel",
+      "source": "format(1234.5, ',.2f') + ' / ' + Billing.format(2)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.format": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "EUR 2.00"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.format",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 33,
+              "end": 50,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 50
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.format",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "value": "1,234.50 / EUR 2.00"
+      }
+    },
+    {
+      "id": "module-calls/receiver/catalog_name_alone",
+      "tag": "cel",
+      "source": "format(1234.5, ',.2f')",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.format": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "EUR 2.00"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": "1,234.50"
+      }
+    },
+    {
+      "id": "module-calls/receiver/macro_name",
+      "tag": "cel",
+      "source": "Billing.map(x, x)",
+      "bindings": {
+        "x": "v"
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.map": {
+            "returns": "dyn",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "mapped"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.map",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "x"
+                  ]
+                },
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "x"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.map",
+            "arguments": [
+              "v",
+              "v"
+            ]
+          }
+        ],
+        "value": "mapped"
+      }
+    },
+    {
+      "id": "module-calls/arguments/types_and_chains",
+      "tag": "cel",
+      "source": "Billing.total(order.net, order.qty * 2, 'x', [1])",
+      "declarations": {
+        "order": {
+          "fields": {
+            "net": "double",
+            "qty": "int"
+          }
+        }
+      },
+      "bindings": {
+        "order": {
+          "net": 9.5,
+          "qty": {
+            "$telo": "int",
+            "value": "3"
+          }
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 4,
+              "arguments": [
+                {
+                  "type": "double",
+                  "chain": [
+                    "order",
+                    "net"
+                  ]
+                },
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "list<int>"
+                }
+              ],
+              "start": 0,
+              "end": 49,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 49
+            }
+          ],
+          "refs": [
+            "order"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              9.5,
+              {
+                "$telo": "int",
+                "value": "6"
+              },
+              "x",
+              [
+                {
+                  "$telo": "int",
+                  "value": "1"
+                }
+              ]
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "module-calls/arguments/indexed_chain",
+      "tag": "cel",
+      "source": "Billing.total(order.lines[0], order)",
+      "bindings": {
+        "order": {
+          "lines": [
+            {
+              "$telo": "int",
+              "value": "4"
+            }
+          ]
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "dyn"
+                },
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "order"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 36
+            }
+          ],
+          "refs": [
+            "order"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "4"
+              },
+              {
+                "lines": [
+                  {
+                    "$telo": "int",
+                    "value": "4"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "module-calls/arguments/none",
+      "tag": "cel",
+      "source": "Billing.tags()",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.tags": {
+            "returns": "list<string>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "Billing.tags",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.tags",
+            "arguments": []
+          }
+        ],
+        "value": [
+          "a",
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "module-calls/arguments/ill_typed",
+      "tag": "cel",
+      "source": "Billing.total(1 + 'a')",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {}
+              ],
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    1 | Billing.total(1 + 'a')\n                       ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/arguments/refs_exclude_receiver",
+      "tag": "cel",
+      "source": "Billing.total(price.amount)",
+      "bindings": {
+        "price": {
+          "amount": 2.5
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "price",
+                    "amount"
+                  ]
+                }
+              ],
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "price"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              2.5
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "5"
+        }
+      }
+    },
+    {
+      "id": "module-calls/result/operator_checks",
+      "tag": "cel",
+      "source": "Billing.total(1, 2) + 1",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "6"
+        }
+      }
+    },
+    {
+      "id": "module-calls/result/operator_refused",
+      "tag": "cel",
+      "source": "Billing.total(1, 2) + 'x'",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "no such overload: dyn<int> + string\n\n>    1 | Billing.total(1, 2) + 'x'\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/result/dyn",
+      "tag": "cel",
+      "source": "Billing.any(1) + 'x'",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.any": {
+            "returns": "dyn",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "anything"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "Billing.any",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.any",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "value": "anythingx"
+      }
+    },
+    {
+      "id": "module-calls/result/list",
+      "tag": "cel",
+      "source": "Billing.tags().map(t, upper(t))",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.tags": {
+            "returns": "list<string>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "map",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 31
+            },
+            {
+              "name": "Billing.tags",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "upper",
+              "form": "global",
+              "arity": 1,
+              "start": 22,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.tags",
+            "arguments": []
+          }
+        ],
+        "value": [
+          "A",
+          "B"
+        ]
+      }
+    },
+    {
+      "id": "module-calls/result/member_read",
+      "tag": "cel",
+      "source": "Billing.invoice(1).amount",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.invoice": {
+            "returns": "map<string, dyn>",
+            "deterministic": true,
+            "hostBacked": false,
+            "resultSchema": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "qty": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "result": {
+              "amount": 12.5,
+              "lines": [
+                {
+                  "qty": {
+                    "$telo": "int",
+                    "value": "2"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.invoice",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.invoice",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "value": 12.5
+      }
+    },
+    {
+      "id": "module-calls/result/unknown_member",
+      "tag": "cel",
+      "source": "Billing.invoice(1).amont",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.invoice": {
+            "returns": "map<string, dyn>",
+            "deterministic": true,
+            "hostBacked": false,
+            "resultSchema": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "qty": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "result": {
+              "amount": 12.5,
+              "lines": [
+                {
+                  "qty": {
+                    "$telo": "int",
+                    "value": "2"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'Billing.invoice(…).amont' is not defined (available: amount, lines)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.invoice",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.invoice",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "No such key: amont\n\n>    1 | Billing.invoice(1).amont\n                            ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/result/unknown_nested_member",
+      "tag": "cel",
+      "source": "Billing.invoice(1).lines[0].qy",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.invoice": {
+            "returns": "map<string, dyn>",
+            "deterministic": true,
+            "hostBacked": false,
+            "resultSchema": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number"
+                },
+                "lines": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "qty": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "result": {
+              "amount": 12.5,
+              "lines": [
+                {
+                  "qty": {
+                    "$telo": "int",
+                    "value": "2"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'Billing.invoice(…).lines.[*].qy' is not defined (available: qty)"
+            }
+          ],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.invoice",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.invoice",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "No such key: qy\n\n>    1 | Billing.invoice(1).lines[0].qy\n                                     ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/result/member_without_schema",
+      "tag": "cel",
+      "source": "Billing.receipt(1).amont",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.receipt": {
+            "returns": "map<string, dyn>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "amount": 12.5
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.receipt",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.receipt",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "No such key: amont\n\n>    1 | Billing.receipt(1).amont\n                            ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/flags/from_host",
+      "tag": "cel",
+      "source": "Billing.rate() * 2.0",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.rate": {
+            "returns": "double",
+            "deterministic": false,
+            "hostBacked": true,
+            "result": 0.2
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "Billing.rate",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 0,
+              "end": 14,
+              "deterministic": false,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.rate",
+            "arguments": []
+          }
+        ],
+        "value": 0.4
+      }
+    },
+    {
+      "id": "module-calls/flags/none_given",
+      "tag": "cel",
+      "source": "Billing.missing(1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.missing",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "unbound function 'Billing.missing' — nothing is bound under that name in this scope. 'Billing' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'missing' and exports it."
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/in_comprehension",
+      "tag": "cel",
+      "source": "[1, 2, 3].map(i, Billing.total(i, i * 10))",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<int>",
+          "calls": [
+            {
+              "name": "map",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 42
+            },
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 17,
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 42
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "10"
+              }
+            ]
+          },
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              },
+              {
+                "$telo": "int",
+                "value": "20"
+              }
+            ]
+          },
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "3"
+              },
+              {
+                "$telo": "int",
+                "value": "30"
+              }
+            ]
+          }
+        ],
+        "value": [
+          {
+            "$telo": "int",
+            "value": "5"
+          },
+          {
+            "$telo": "int",
+            "value": "5"
+          },
+          {
+            "$telo": "int",
+            "value": "5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "module-calls/dispatch/in_predicate",
+      "tag": "cel",
+      "source": "xs.all(x, Billing.ok(x))",
+      "bindings": {
+        "xs": [
+          "a",
+          "b"
+        ]
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.ok": {
+            "returns": "bool",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": true
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "all",
+              "form": "receiver",
+              "arity": 2,
+              "start": 0,
+              "end": 24
+            },
+            {
+              "name": "Billing.ok",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn"
+                }
+              ],
+              "start": 10,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [
+            "xs"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.ok",
+            "arguments": [
+              "a"
+            ]
+          },
+          {
+            "name": "Billing.ok",
+            "arguments": [
+              "b"
+            ]
+          }
+        ],
+        "value": true
+      }
+    },
+    {
+      "id": "module-calls/dispatch/nested",
+      "tag": "cel",
+      "source": "Billing.outer(Billing.inner(1), Self.double(2))",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.outer": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "2"
+            }
+          },
+          "Billing.inner": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "1"
+            }
+          },
+          "Self.double": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "8"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.outer",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 47,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.inner",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 14,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Self.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 32,
+              "end": 46,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 47
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.inner",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "name": "Self.double",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          },
+          {
+            "name": "Billing.outer",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "8"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "2"
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/repeated",
+      "tag": "cel",
+      "source": "Billing.total(1) + Billing.total(2) + Billing.total(1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 19,
+              "end": 35,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 38,
+              "end": 54,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 54
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          },
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "15"
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/short_circuit",
+      "tag": "cel",
+      "source": "false && Billing.ok(1)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.ok": {
+            "returns": "bool",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": true
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "Billing.ok",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 9,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "value": false
+      }
+    },
+    {
+      "id": "module-calls/dispatch/ternary_branch",
+      "tag": "cel",
+      "source": "x ? Billing.total(1) : Self.double(2)",
+      "bindings": {
+        "x": false
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          },
+          "Self.double": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "8"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 4,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Self.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 23,
+              "end": 37,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Self.double",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "$telo": "int",
+          "value": "8"
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/scripted_error",
+      "tag": "cel",
+      "source": "Billing.fail(1) + 1",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.fail": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "error": {
+              "code": null,
+              "message": "Billing.fail: the ledger is closed"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.fail",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.fail",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": null,
+          "message": "Billing.fail: the ledger is closed"
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/scripted_error_with_code",
+      "tag": "cel",
+      "source": "Billing.total(1) + Billing.refuse(2)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          },
+          "Billing.refuse": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "error": {
+              "code": "ERR_LEDGER_CLOSED",
+              "message": "the ledger is closed"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.refuse",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 19,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 36
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "name": "Billing.refuse",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "error": {
+          "code": "ERR_LEDGER_CLOSED",
+          "message": "the ledger is closed"
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/unbound",
+      "tag": "cel",
+      "source": "Billing.missing(Billing.total(1))",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Billing.missing",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 33
+            },
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 16,
+              "end": 32,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 33
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "unbound function 'Billing.missing' — nothing is bound under that name in this scope. 'Billing' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'missing' and exports it."
+        }
+      }
+    },
+    {
+      "id": "module-calls/dispatch/unbound_no_functions",
+      "tag": "cel",
+      "source": "Self.double(4)",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "Self.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "unbound function 'Self.double' — nothing is bound under that name in this scope. 'Self' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'double' and exports it."
+        }
+      }
+    },
+    {
+      "id": "module-calls/hint/could_name_module",
+      "tag": "cel",
+      "source": "Foo.bar(1)",
+      "rootsDeclared": true,
+      "couldNameModule": [
+        "Foo"
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name."
+            }
+          ],
+          "calls": [
+            {
+              "name": "bar",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "Foo"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/hint/could_not_name_module",
+      "tag": "cel",
+      "source": "dbb.query(1)",
+      "rootsDeclared": true,
+      "couldNameModule": [
+        "Foo"
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `query`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'dbb' — nothing by that name is in scope here."
+            }
+          ],
+          "calls": [
+            {
+              "name": "query",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "dbb"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.query(int)'\n\n>    1 | dbb.query(1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/hint/no_host_rule",
+      "tag": "cel",
+      "source": "Foo.bar(1)",
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here."
+            }
+          ],
+          "calls": [
+            {
+              "name": "bar",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "Foo"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/hint/not_a_call_receiver",
+      "tag": "cel",
+      "source": "Foo + 1",
+      "rootsDeclared": true,
+      "couldNameModule": [
+        "Foo"
+      ],
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here."
+            }
+          ],
+          "type": "int",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "Foo"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: Foo\n\n>    1 | Foo + 1\n         ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/hint/beside_a_module_call",
+      "tag": "cel",
+      "source": "Billing.total(1) + Foo.bar(2)",
+      "rootsDeclared": true,
+      "couldNameModule": [
+        "Foo"
+      ],
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+            },
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'Foo' — nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name."
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "bar",
+              "form": "receiver",
+              "arity": 1,
+              "start": 19,
+              "end": 29
+            }
+          ],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [
+            "Foo"
+          ],
+          "volatile": false
+        },
+        "dispatched": [],
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Billing.total(1) + Foo.bar(2)\n                            ^"
+        }
+      }
+    },
+    {
+      "id": "module-calls/holes/interpolate",
+      "tag": "interpolate",
+      "source": "Total: ${{ Billing.total(2, 3) }} (${{ Billing.format(2) }})",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          },
+          "Billing.format": {
+            "returns": "string",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": "EUR 2.00"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 2,
+              "arguments": [
+                {
+                  "type": "int"
+                },
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 11,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Billing.format",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "int"
+                }
+              ],
+              "start": 39,
+              "end": 56,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 11,
+              "end": 30
+            },
+            {
+              "start": 39,
+              "end": 56
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              },
+              {
+                "$telo": "int",
+                "value": "3"
+              }
+            ]
+          },
+          {
+            "name": "Billing.format",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
+        "value": "Total: 5 (EUR 2.00)"
+      }
+    },
+    {
+      "id": "module-calls/holes/interpolate_not_convertible",
+      "tag": "interpolate",
+      "source": "Tags: ${{ Billing.tags() }}",
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.tags": {
+            "returns": "list<string>",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ Billing.tags() }}' is list<string>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [
+            {
+              "name": "Billing.tags",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 0,
+              "arguments": [],
+              "start": 10,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 10,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.tags",
+            "arguments": []
+          }
+        ],
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ Billing.tags() }}' at offset 6 of !interpolate \"Tags: ${{ Billing.tags() }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "module-calls/holes/sql",
+      "tag": "sql",
+      "source": "SELECT ${{ Billing.total(id) }}, ${{ Self.double(id) }}",
+      "bindings": {
+        "id": {
+          "$telo": "int",
+          "value": "7"
+        }
+      },
+      "modules": {
+        "names": [
+          "Billing",
+          "Self",
+          "Shop",
+          "Telo"
+        ],
+        "functions": {
+          "Billing.total": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "5"
+            }
+          },
+          "Self.double": {
+            "returns": "int",
+            "deterministic": true,
+            "hostBacked": false,
+            "result": {
+              "$telo": "int",
+              "value": "8"
+            }
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "Billing.total",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "id"
+                  ]
+                }
+              ],
+              "start": 11,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "Self.double",
+              "form": "receiver",
+              "moduleCall": true,
+              "arity": 1,
+              "arguments": [
+                {
+                  "type": "dyn",
+                  "chain": [
+                    "id"
+                  ]
+                }
+              ],
+              "start": 37,
+              "end": 52,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 11,
+              "end": 28
+            },
+            {
+              "start": 37,
+              "end": 52
+            }
+          ],
+          "refs": [
+            "id"
+          ],
+          "volatile": false
+        },
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "7"
+              }
+            ]
+          },
+          {
+            "name": "Self.double",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "7"
+              }
+            ]
+          }
+        ],
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT ",
+            ", ",
+            ""
+          ],
+          "values": [
+            {
+              "$telo": "int",
+              "value": "5"
+            },
+            {
+              "$telo": "int",
+              "value": "8"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

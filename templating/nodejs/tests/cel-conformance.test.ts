@@ -7,6 +7,7 @@ import { valueBrandBases } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { CEL_FUNCTIONS, RE2_PATTERN_ERROR_KINDS } from "../src/cel/catalog.js";
 import { buildCelEnvironment, buildCelLanguageEnvironment } from "../src/cel/environment.js";
+import { CEL_VERDICT_CODES } from "../src/cel/verdict-codes.js";
 import {
   catalogOverloads,
   CONFORMANCE_HANDLERS,
@@ -27,7 +28,8 @@ import {
 import { conformanceValueCodec } from "./cel-conformance-value.js";
 
 const DIRECTORY = new URL("../../cel-conformance/", import.meta.url);
-const DRIVEN = ["catalog.json", "language.json", "types.json"];
+const DIALECT_FILES = ["catalog.json", "holes.json", "module-calls.json", "types.json", "verdicts.json"];
+const DRIVEN = [...DIALECT_FILES, "language.json"].sort();
 const ROW_KEYS = new Set([
   "id",
   "source",
@@ -50,8 +52,10 @@ const DIALECT_ROW_KEYS = new Set([
   "explain",
   "rootsDeclared",
   "couldNameModule",
+  "modules",
   "expect",
 ]);
+const MODULE_FUNCTION_KEYS = ["returns", "deterministic", "hostBacked", "resultSchema", "result", "error"];
 const OUT_OF_DOMAIN_TYPES = ["int", "uint", "google.protobuf.Timestamp", "google.protobuf.Duration"];
 
 interface LanguageFile {
@@ -70,10 +74,9 @@ interface DialectFile {
 
 const readDialectFile = (name: string) =>
   JSON.parse(readFileSync(new URL(name, DIRECTORY), "utf8")) as DialectFile;
-const dialectFiles: Record<string, DialectFile> = {
-  "catalog.json": readDialectFile("catalog.json"),
-  "types.json": readDialectFile("types.json"),
-};
+const dialectFiles: Record<string, DialectFile> = Object.fromEntries(
+  DIALECT_FILES.map((name) => [name, readDialectFile(name)]),
+);
 const dialectEnv = buildCelEnvironment(CONFORMANCE_HANDLERS);
 const dialectCodec = conformanceValueCodec(dialectEnv);
 
@@ -167,6 +170,15 @@ describe("CEL conformance vectors", () => {
       expect(DIALECT_TAGS, row.id).toContain(row.tag);
       expect(ids.has(row.id), `row id ${row.id} repeats`).toBe(false);
       ids.add(row.id);
+      if (!row.modules) continue;
+      expect(Object.keys(row.modules).filter((key) => key !== "names" && key !== "functions"), row.id).toEqual([]);
+      expect(row.modules.names.length, `row ${row.id} names no module`).toBeGreaterThan(0);
+      for (const [qualified, fn] of Object.entries(row.modules.functions ?? {})) {
+        const at = `${row.id}: ${qualified}`;
+        expect(Object.keys(fn).filter((key) => !MODULE_FUNCTION_KEYS.includes(key)), at).toEqual([]);
+        for (const key of ["returns", "deterministic", "hostBacked"]) expect(fn, at).toHaveProperty(key);
+        expect("result" in fn !== "error" in fn, `${at} scripts exactly one of a result and an error`).toBe(true);
+      }
     }
   });
 
@@ -176,7 +188,7 @@ describe("CEL conformance vectors", () => {
   });
 
   let executed = 0;
-  const executedDialect: Record<string, number> = { "catalog.json": 0, "types.json": 0 };
+  const executedDialect: Record<string, number> = Object.fromEntries(DIALECT_FILES.map((name) => [name, 0]));
   const evaluatedOverloads = new Set<string>();
 
   for (const [name, file] of Object.entries(dialectFiles)) {
@@ -225,6 +237,19 @@ describe("CEL conformance vectors", () => {
       dialectFiles["types.json"]!.rows.flatMap((row) => Object.values(row.declarations ?? {}).flatMap(declaredTypes)),
     );
     expect(Object.keys(valueBrandBases()).filter((brand) => !declared.has(brand))).toEqual([]);
+  });
+
+  it("reports every code of the engine's verdict vocabulary in some verdicts.json row", () => {
+    const diagnosed = new Set<string | null>();
+    const thrown = new Set<string | null>();
+    for (const row of dialectFiles["verdicts.json"]!.rows) {
+      for (const diagnostic of row.expect.check.diagnostics) diagnosed.add(diagnostic.code);
+      if (row.expect.error) thrown.add(row.expect.error.code);
+    }
+    expect({
+      diagnostics: CEL_VERDICT_CODES.diagnostics.filter((code) => !diagnosed.has(code)),
+      errors: CEL_VERDICT_CODES.errors.filter((code) => !thrown.has(code)),
+    }).toEqual({ diagnostics: [], errors: [] });
   });
 
   it("executed every dialect row", () => {

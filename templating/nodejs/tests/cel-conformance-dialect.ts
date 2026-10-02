@@ -1,13 +1,15 @@
 /**
  * A dialect row driven through its tag engine's own seams: `analyze` in the
  * dialect environment with the nominal brands, the row's declarations and its
- * JSON Schema inputs; then `compile` and evaluate without them.
+ * JSON Schema inputs; then `compile` and evaluate without them, a row's module
+ * functions bound as the dispatch table.
  */
 import type { Environment } from "@marcbachmann/cel-js";
-import { encodeTypedFrame, Stream } from "@telorun/sdk";
+import { encodeTypedFrame, RuntimeError, Stream } from "@telorun/sdk";
 import { builtinEngines } from "../src/builtins.js";
 import { CEL_FUNCTIONS, type CelHandlers } from "../src/cel/catalog.js";
 import { buildCelLanguageEnvironment, deriveSignatures } from "../src/cel/environment.js";
+import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "../src/cel/module-call.js";
 import { registerValueBrands } from "../src/cel/value-brands.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../src/engine.js";
 import { conformanceError, type ConformanceError, type ConformanceFunction } from "./cel-conformance-language.js";
@@ -15,6 +17,26 @@ import type { ConformanceValue, ConformanceValueCodec } from "./cel-conformance-
 
 /** A cel-js type string, or a record whose fields are declarations in turn. */
 export type Declaration = string | { fields: Record<string, Declaration> };
+
+/** A module function as the host answers for it, and what it does when dispatched. */
+export interface ModuleFunction {
+  returns: string;
+  deterministic: boolean;
+  hostBacked: boolean;
+  resultSchema?: Record<string, unknown>;
+  result?: ConformanceValue;
+  error?: ConformanceError;
+}
+
+export interface DialectModules {
+  names: string[];
+  functions?: Record<string, ModuleFunction>;
+}
+
+export interface DialectDispatch {
+  name: string;
+  arguments: ConformanceValue[];
+}
 
 export interface DialectRow {
   id: string;
@@ -27,6 +49,7 @@ export interface DialectRow {
   explain?: Record<string, unknown>;
   rootsDeclared?: true;
   couldNameModule?: string[];
+  modules?: DialectModules;
   expect: DialectExpect;
 }
 
@@ -61,12 +84,13 @@ export interface DialectCheck {
 
 export interface DialectExpect {
   check: DialectCheck;
+  dispatched?: DialectDispatch[];
   value?: ConformanceValue;
   error?: ConformanceError;
 }
 
 /** The tags a dialect row may name. */
-export const DIALECT_TAGS = ["cel"];
+export const DIALECT_TAGS = ["cel", "interpolate", "sql"];
 
 const frameArgs = (name: string, args: unknown[]): string =>
   `${name}(${args.map((arg) => encodeTypedFrame(arg)).join(", ")})`;
@@ -145,15 +169,30 @@ function staticEnvironment(env: Environment, row: DialectRow, codec: Conformance
   return withFunctions(cloned, row, codec);
 }
 
+const moduleFunctionOf = (modules: DialectModules, qualified: string): ModuleFunction | undefined =>
+  modules.functions && Object.hasOwn(modules.functions, qualified) ? modules.functions[qualified] : undefined;
+
 function analyzeEnvOf(celEnv: Environment, row: DialectRow): AnalyzeEnv {
   const explain = row.explain;
   const couldNameModule = row.couldNameModule;
+  const modules = row.modules;
   return {
     celEnv,
     contextSchema: row.context ?? null,
     ...(row.rootsDeclared ? { rootsDeclared: true } : {}),
     ...(explain ? { explainSchema: () => explain } : {}),
     ...(couldNameModule ? { couldNameModule: (name: string) => couldNameModule.includes(name) } : {}),
+    ...(modules
+      ? {
+          moduleNames: new Set(modules.names),
+          moduleCallType: (qualified: string) => moduleFunctionOf(modules, qualified)?.returns,
+          moduleCallResult: (qualified: string) => moduleFunctionOf(modules, qualified)?.resultSchema,
+          moduleCallFlags: (qualified: string) => {
+            const fn = moduleFunctionOf(modules, qualified);
+            return fn && { deterministic: fn.deterministic, hostBacked: fn.hostBacked };
+          },
+        }
+      : {}),
   };
 }
 
@@ -197,28 +236,63 @@ export function analyzeDialectRow(
   };
 }
 
+/** The row's module functions as the dispatch table evaluation reads, each
+ *  recording the call it was handed before it answers as scripted. */
+function dispatchTableOf(
+  modules: DialectModules,
+  codec: ConformanceValueCodec,
+  dispatched: DialectDispatch[],
+): ModuleCallDispatch {
+  return new Map(
+    Object.entries(modules.functions ?? {}).map(([qualified, fn]) => [
+      qualified,
+      (args: readonly unknown[]) => {
+        dispatched.push({ name: qualified, arguments: args.map((arg) => codec.encode(arg)) });
+        if (fn.error) {
+          throw fn.error.code === null ? new Error(fn.error.message) : new RuntimeError(fn.error.code, fn.error.message);
+        }
+        if (fn.result === undefined) throw new Error(`The module function '${qualified}' scripts neither a result nor an error`);
+        return codec.decode(fn.result);
+      },
+    ]),
+  );
+}
+
 /** The runtime half: `compile` without declarations or brands, then evaluation
- *  with the bindings as the activation. */
+ *  with the bindings as the activation and the row's module functions bound as
+ *  the dispatch table. */
 export async function evaluateDialectRow(
   env: Environment,
   codec: ConformanceValueCodec,
   row: DialectRow,
-): Promise<{ compiled?: { refs: string[]; volatile: boolean } } & ({ result: unknown } | { error: ConformanceError })> {
+): Promise<
+  { compiled?: { refs: string[]; volatile: boolean }; dispatched?: DialectDispatch[] } & (
+    | { result: unknown }
+    | { error: ConformanceError }
+  )
+> {
   const engine = engineOf(row.tag);
+  const modules = row.modules;
+  const dispatched: DialectDispatch[] = [];
+  const outcome = modules ? { dispatched } : {};
   let compiled: { refs?: readonly string[]; volatile?: boolean; call: (ctx: Record<string, unknown>) => unknown };
   try {
-    compiled = engine.compile(row.source, { celEnv: withFunctions(env, row, codec) }) as typeof compiled;
+    compiled = engine.compile(row.source, {
+      celEnv: withFunctions(env, row, codec),
+      ...(modules ? { moduleNames: new Set(modules.names) } : {}),
+    }) as typeof compiled;
   } catch (err) {
-    return { error: conformanceError(err) };
+    return { ...outcome, error: conformanceError(err) };
   }
   const shape = { refs: [...(compiled.refs ?? [])].sort(), volatile: compiled.volatile === true };
-  const activation = Object.fromEntries(
+  const activation: Record<string, unknown> = Object.fromEntries(
     Object.entries(row.bindings ?? {}).map(([name, value]) => [name, codec.decode(value)]),
   );
+  if (modules) activation[MODULE_CALL_DISPATCH_KEY] = dispatchTableOf(modules, codec, dispatched);
   try {
-    return { compiled: shape, result: await compiled.call(activation) };
+    return { ...outcome, compiled: shape, result: await compiled.call(activation) };
   } catch (err) {
-    return { compiled: shape, error: conformanceError(err) };
+    return { ...outcome, compiled: shape, error: conformanceError(err) };
   }
 }
 
@@ -230,6 +304,7 @@ export async function runDialectRow(
   const check = analyzeDialectRow(env, codec, row);
   const outcome = await evaluateDialectRow(env, codec, row);
   const full: DialectCheck = outcome.compiled ? { ...check, ...outcome.compiled } : check;
-  if ("error" in outcome) return { check: full, error: outcome.error };
-  return { check: full, value: codec.encode(outcome.result) };
+  const answered = { check: full, ...(outcome.dispatched ? { dispatched: outcome.dispatched } : {}) };
+  if ("error" in outcome) return { ...answered, error: outcome.error };
+  return { ...answered, value: codec.encode(outcome.result) };
 }

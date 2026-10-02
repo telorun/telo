@@ -1,8 +1,9 @@
 import { Environment, EvaluationError, type ASTNode } from "@marcbachmann/cel-js";
-import { RuntimeError, type CompiledValue } from "@telorun/sdk";
+import type { CompiledValue } from "@telorun/sdk";
 import { nullableValueChain } from "../cel/analyze.js";
 import { literalFragments, type InterpolationHole } from "../cel/interpolation-holes.js";
-import type { AnalyzeEnv, AnalyzeResult, EngineDiagnostic, TemplatingEngine } from "../engine.js";
+import { celVerdictError, type CelAnalyzeResult, type CelDiagnostic } from "../cel/verdict-codes.js";
+import type { AnalyzeEnv, TemplatingEngine } from "../engine.js";
 import { analyzeHoles, compileHoles, holeRegions, requireHoles } from "./hole-analysis.js";
 
 const INTERPOLATE_ENGINE = "interpolate";
@@ -59,10 +60,10 @@ export const interpolateEngine: TemplatingEngine = {
  *  whether it may be null, and whether CEL can turn its type into text at all. */
 function holeVerdict(
   hole: InterpolationHole,
-  result: AnalyzeResult,
+  result: CelAnalyzeResult,
   ast: ASTNode | undefined,
   env: AnalyzeEnv,
-): readonly EngineDiagnostic[] {
+): readonly CelDiagnostic[] {
   if (ast && env.contextSchema) {
     const chain = nullableValueChain(ast, env.contextSchema as Record<string, any>);
     if (chain !== null) {
@@ -119,7 +120,7 @@ function stringConversion(env: Environment): Conversion {
       return program({ value }) as string;
     } catch (error) {
       if (!(error instanceof EvaluationError)) throw error;
-      throw new RuntimeError(
+      throw celVerdictError(
         "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
         `the hole '\${{ ${hole.expr} }}' at offset ${hole.start} of !interpolate ${JSON.stringify(source)} ` +
           `evaluated to ${runtimeTypeOf(value)}, which CEL's string() cannot convert to text. ` +
