@@ -2446,10 +2446,10 @@ importers:
         specifier: 'catalog:'
         version: 3.1.2
       re2js:
-        specifier: ^2.8.3
+        specifier: 2.8.3
         version: 2.8.3
       uuid:
-        specifier: ^14.0.1
+        specifier: 14.0.1
         version: 14.0.1
       yaml:
         specifier: ^2.8.3

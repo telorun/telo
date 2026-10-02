@@ -2,6 +2,7 @@ import type { ASTNode, Environment } from "@marcbachmann/cel-js";
 import { CEL_FUNCTIONS, type CelFunctionDoc } from "./catalog.js";
 import { moduleCallOf } from "./module-call.js";
 import type { CallSite, DiagnosticFix, EngineDiagnostic } from "../engine.js";
+import type { CelCallAudit, CelDiagnostic } from "./verdict-codes.js";
 
 /** Classifies every function call in a CEL expression against the environment's
  *  own function registry.
@@ -295,9 +296,9 @@ export function auditCalls(
   /** The flags of the module functions the expression calls, from whoever
    *  resolves them. */
   moduleCallFlags?: ModuleCallFlags,
-): CallAudit {
+): CelCallAudit {
   const index = functionIndex(env);
-  const diagnostics: EngineDiagnostic[] = [];
+  const diagnostics: CelDiagnostic[] = [];
   const unresolved: string[] = [];
   const calls = collectCalls(ast, index, moduleCallFlags);
 
@@ -352,7 +353,7 @@ export function auditCalls(
     unresolved.push(call.name);
   }
 
-  const argumentIssues: EngineDiagnostic[] = [];
+  const argumentIssues: CelDiagnostic[] = [];
   for (const call of calls) {
     const check = ARG_CHECKS.get(call.name);
     if (!check) continue;

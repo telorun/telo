@@ -1,0 +1,2779 @@
+{
+  "rows": [
+    {
+      "id": "holes/shape/none",
+      "tag": "interpolate",
+      "source": "plain text, no hole",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "plain text, no hole"
+      }
+    },
+    {
+      "id": "holes/shape/lone_hole",
+      "tag": "interpolate",
+      "source": "${{ x }}",
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "5"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "5"
+      }
+    },
+    {
+      "id": "holes/shape/lone_hole_padded",
+      "tag": "interpolate",
+      "source": "  ${{ x }}\n",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "  v\n"
+      }
+    },
+    {
+      "id": "holes/shape/interpolated",
+      "tag": "interpolate",
+      "source": "Hello ${{ name }}!",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "value": "Hello Ada!"
+      }
+    },
+    {
+      "id": "holes/shape/malformed",
+      "tag": "interpolate",
+      "source": "Hello ${{ name",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 6 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 6 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/shape/sql_none",
+      "tag": "sql",
+      "source": "SELECT 1",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT 1"
+          ],
+          "values": []
+        }
+      }
+    },
+    {
+      "id": "holes/shape/sql_lone_hole",
+      "tag": "sql",
+      "source": "${{ x }}",
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "5"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "",
+            ""
+          ],
+          "values": [
+            {
+              "$telo": "int",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/shape/sql_interpolated",
+      "tag": "sql",
+      "source": "SELECT * FROM t WHERE id = ${{ id }} AND name = ${{ name }}",
+      "bindings": {
+        "id": {
+          "$telo": "int",
+          "value": "7"
+        },
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 31,
+              "end": 33
+            },
+            {
+              "start": 52,
+              "end": 56
+            }
+          ],
+          "refs": [
+            "id",
+            "name"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT * FROM t WHERE id = ",
+            " AND name = ",
+            ""
+          ],
+          "values": [
+            {
+              "$telo": "int",
+              "value": "7"
+            },
+            "Ada"
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/shape/sql_malformed",
+      "tag": "sql",
+      "source": "SELECT ${{ id",
+      "bindings": {
+        "id": {
+          "$telo": "int",
+          "value": "7"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 7 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!sql: the hole opened at offset 7 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/single_quoted_closer",
+      "tag": "interpolate",
+      "source": "${{ 'a}}b' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a}}b"
+      }
+    },
+    {
+      "id": "holes/grammar/double_quoted_closer",
+      "tag": "interpolate",
+      "source": "${{ \"}}\" }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "}}"
+      }
+    },
+    {
+      "id": "holes/grammar/escaped_quote",
+      "tag": "interpolate",
+      "source": "${{ 'it\\'s }}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "it's }}"
+      }
+    },
+    {
+      "id": "holes/grammar/map_literal",
+      "tag": "interpolate",
+      "source": "${{ {'a': 1}['a'] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1"
+      }
+    },
+    {
+      "id": "holes/grammar/nested_map_literal",
+      "tag": "interpolate",
+      "source": "${{ {'a': {'b': 2}}.a.b }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2"
+      }
+    },
+    {
+      "id": "holes/grammar/map_literal_then_brace",
+      "tag": "interpolate",
+      "source": "${{ {'a': 1}.a }}}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1}"
+      }
+    },
+    {
+      "id": "holes/grammar/triple_single_quoted",
+      "tag": "interpolate",
+      "source": "${{ '''it's }} here''' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "it's }} here"
+      }
+    },
+    {
+      "id": "holes/grammar/triple_double_quoted",
+      "tag": "interpolate",
+      "source": "${{ \"\"\"a \"}}\" b\"\"\" }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a \"}}\" b"
+      }
+    },
+    {
+      "id": "holes/grammar/triple_quoted_newline",
+      "tag": "interpolate",
+      "source": "${{ '''a\n}}''' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\n}}"
+      }
+    },
+    {
+      "id": "holes/grammar/single_quoted_newline",
+      "tag": "interpolate",
+      "source": "${{ 'a\n' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/escaped_line_feed",
+      "tag": "interpolate",
+      "source": "${{ 'a\\\nb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Invalid escape sequence: \\\n\n\n>    1 | 'a\\\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Invalid escape sequence: \\\n\n\n>    1 | 'a\\\n           ^"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/single_quoted_carriage_return",
+      "tag": "interpolate",
+      "source": "${{ 'a\rb' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Newlines not allowed in single-quoted strings\n\n>    1 | 'a\rb'\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Newlines not allowed in single-quoted strings\n\n>    1 | 'a\rb'\n           ^"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/single_quoted_line_separator",
+      "tag": "interpolate",
+      "source": "${{ 'a b' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a b"
+      }
+    },
+    {
+      "id": "holes/grammar/raw_string",
+      "tag": "interpolate",
+      "source": "${{ r'a\\n}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\\n}}"
+      }
+    },
+    {
+      "id": "holes/grammar/upper_raw_string",
+      "tag": "interpolate",
+      "source": "${{ R'a\\n}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\\n}}"
+      }
+    },
+    {
+      "id": "holes/grammar/upper_bytes_string",
+      "tag": "interpolate",
+      "source": "${{ B'}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "}}"
+      }
+    },
+    {
+      "id": "holes/grammar/bytes_string",
+      "tag": "interpolate",
+      "source": "${{ b'}}' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "}}"
+      }
+    },
+    {
+      "id": "holes/grammar/literal_opener",
+      "tag": "interpolate",
+      "source": "${{ '${{' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "${{"
+      }
+    },
+    {
+      "id": "holes/grammar/literal_opener_in_text",
+      "tag": "interpolate",
+      "source": "write ${{ '${{' }} name }} for a hole",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "write ${{ name }} for a hole"
+      }
+    },
+    {
+      "id": "holes/grammar/nothing_else_special",
+      "tag": "interpolate",
+      "source": "cost: $5 {x} ${ y } }} $ {{ z }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "cost: $5 {x} ${ y } }} $ {{ z }}"
+      }
+    },
+    {
+      "id": "holes/grammar/unterminated",
+      "tag": "interpolate",
+      "source": "a ${{ x",
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 2 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 2 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/unterminated_second_hole",
+      "tag": "interpolate",
+      "source": "${{ 1 }} and ${{ b",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 13 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 13 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/unterminated_string",
+      "tag": "interpolate",
+      "source": "${{ 'abc }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/single_closing_brace",
+      "tag": "interpolate",
+      "source": "${{ x } }}",
+      "bindings": {
+        "x": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/unbalanced_map_brace",
+      "tag": "interpolate",
+      "source": "${{ {'a': 1} }",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+            }
+          ],
+          "calls": [],
+          "regions": []
+        },
+        "error": {
+          "code": null,
+          "message": "!interpolate: the hole opened at offset 0 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/adjacent_holes",
+      "tag": "interpolate",
+      "source": "${{ a }}${{ b }}",
+      "bindings": {
+        "a": "x",
+        "b": "y"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            },
+            {
+              "start": 12,
+              "end": 13
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": false
+        },
+        "value": "xy"
+      }
+    },
+    {
+      "id": "holes/grammar/multiple_holes",
+      "tag": "interpolate",
+      "source": "${{ a }}-${{ b }}-${{ a }}",
+      "bindings": {
+        "a": "x",
+        "b": "y"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            },
+            {
+              "start": 13,
+              "end": 14
+            },
+            {
+              "start": 22,
+              "end": 23
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": false
+        },
+        "value": "x-y-x"
+      }
+    },
+    {
+      "id": "holes/grammar/no_padding",
+      "tag": "interpolate",
+      "source": "${{x}}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 3,
+              "end": 4
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "v"
+      }
+    },
+    {
+      "id": "holes/grammar/trimmed_padding",
+      "tag": "interpolate",
+      "source": "${{   x \t}}|${{\n  x\n}}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            },
+            {
+              "start": 18,
+              "end": 19
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "v|v"
+      }
+    },
+    {
+      "id": "holes/grammar/every_trimmed_character",
+      "tag": "interpolate",
+      "source": "${{\t\n\u000b\f\r                  　﻿x\t\n\u000b\f\r                  　﻿}}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 28,
+              "end": 29
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": "v"
+      }
+    },
+    {
+      "id": "holes/grammar/padding_not_trimmed",
+      "tag": "interpolate",
+      "source": "${{x }}",
+      "bindings": {
+        "x": "v"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected character: \n\n>    1 | x\n         ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 3,
+              "end": 5
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected character: \n\n>    1 | x\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/empty_hole",
+      "tag": "interpolate",
+      "source": "a ${{ }} b",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected token: EOF"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 6
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected token: EOF"
+        }
+      }
+    },
+    {
+      "id": "holes/grammar/utf16_offsets",
+      "tag": "interpolate",
+      "source": "😀 ${{ upper('é') }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "upper",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 7,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "😀 É"
+      }
+    },
+    {
+      "id": "holes/language/raw_backslash_before_quote",
+      "tag": "cel",
+      "source": "r'\\''",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "stringLiteral": "\\'",
+          "regions": [
+            {
+              "start": 0,
+              "end": 5
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "\\'"
+      }
+    },
+    {
+      "id": "holes/language/raw_trailing_backslash",
+      "tag": "cel",
+      "source": "r'\\'",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unterminated string\n\n>    1 | r'\\'\n          ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 4
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unterminated string\n\n>    1 | r'\\'\n          ^"
+        }
+      }
+    },
+    {
+      "id": "holes/language/raw_two_trailing_backslashes",
+      "tag": "cel",
+      "source": "r'a\\\\'",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [],
+          "stringLiteral": "a\\\\",
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a\\\\"
+      }
+    },
+    {
+      "id": "holes/language/prefix_rb",
+      "tag": "cel",
+      "source": "rb'x'",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected character: '''\n\n>    1 | rb'x'\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 5
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected character: '''\n\n>    1 | rb'x'\n           ^"
+        }
+      }
+    },
+    {
+      "id": "holes/language/prefix_br",
+      "tag": "cel",
+      "source": "br'x'",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_SYNTAX_ERROR",
+              "message": "Unexpected character: '''\n\n>    1 | br'x'\n           ^"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 5
+            }
+          ]
+        },
+        "error": {
+          "code": null,
+          "message": "Unexpected character: '''\n\n>    1 | br'x'\n           ^"
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/string",
+      "tag": "interpolate",
+      "source": "${{ 'text' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "text"
+      }
+    },
+    {
+      "id": "holes/interpolate/int",
+      "tag": "interpolate",
+      "source": "${{ 42 }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 6
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "42"
+      }
+    },
+    {
+      "id": "holes/interpolate/uint",
+      "tag": "interpolate",
+      "source": "${{ 42u }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "42"
+      }
+    },
+    {
+      "id": "holes/interpolate/double",
+      "tag": "interpolate",
+      "source": "${{ 2.5 }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2.5"
+      }
+    },
+    {
+      "id": "holes/interpolate/double_integral",
+      "tag": "interpolate",
+      "source": "${{ 1.0 }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1"
+      }
+    },
+    {
+      "id": "holes/interpolate/bool",
+      "tag": "interpolate",
+      "source": "${{ 1 < 2 }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "true"
+      }
+    },
+    {
+      "id": "holes/interpolate/bytes",
+      "tag": "interpolate",
+      "source": "${{ b'h\\xc3\\xa9' }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "hé"
+      }
+    },
+    {
+      "id": "holes/interpolate/timestamp",
+      "tag": "interpolate",
+      "source": "${{ timestamp('2026-03-15T10:30:00Z') }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 37
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 37
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2026-03-15T10:30:00.000Z"
+      }
+    },
+    {
+      "id": "holes/interpolate/duration",
+      "tag": "interpolate",
+      "source": "${{ duration('1h30m') }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 21
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "5400s"
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_values",
+      "tag": "interpolate",
+      "source": "${{ a }} ${{ b }} ${{ c }} ${{ d }} ${{ e }} ${{ f }} ${{ g }} ${{ h }}",
+      "bindings": {
+        "a": {
+          "$telo": "int",
+          "value": "7"
+        },
+        "b": {
+          "$telo": "uint",
+          "value": "7"
+        },
+        "c": 2.5,
+        "d": false,
+        "e": {
+          "$telo": "bytes",
+          "value": "aGk"
+        },
+        "f": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-03-15T10:30:00.000Z"
+        },
+        "g": {
+          "$telo": "google.protobuf.Duration",
+          "value": "5400s"
+        },
+        "h": "s"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 5
+            },
+            {
+              "start": 13,
+              "end": 14
+            },
+            {
+              "start": 22,
+              "end": 23
+            },
+            {
+              "start": 31,
+              "end": 32
+            },
+            {
+              "start": 40,
+              "end": 41
+            },
+            {
+              "start": 49,
+              "end": 50
+            },
+            {
+              "start": 58,
+              "end": 59
+            },
+            {
+              "start": 67,
+              "end": 68
+            }
+          ],
+          "refs": [
+            "a",
+            "b",
+            "c",
+            "d",
+            "e",
+            "f",
+            "g",
+            "h"
+          ],
+          "volatile": false
+        },
+        "value": "7 7 2.5 false hi 2026-03-15T10:30:00.000Z 5400s s"
+      }
+    },
+    {
+      "id": "holes/interpolate/brand",
+      "tag": "interpolate",
+      "source": "port ${{ p }} under ${{ d }}",
+      "declarations": {
+        "p": "Telo.TcpPort",
+        "d": "Telo.HostPath"
+      },
+      "bindings": {
+        "p": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "d": "/data"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 9,
+              "end": 10
+            },
+            {
+              "start": 24,
+              "end": 25
+            }
+          ],
+          "refs": [
+            "d",
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": "port 8080 under /data"
+      }
+    },
+    {
+      "id": "holes/interpolate/list_static",
+      "tag": "interpolate",
+      "source": "${{ [1, 2] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ [1, 2] }}' is list<int>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ [1, 2] }}' at offset 0 of !interpolate \"${{ [1, 2] }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/map_static",
+      "tag": "interpolate",
+      "source": "${{ {'a': 1} }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ {'a': 1} }}' is map<string, int>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ {'a': 1} }}' at offset 0 of !interpolate \"${{ {'a': 1} }}\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/null_static",
+      "tag": "interpolate",
+      "source": "${{ null }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ null }}' is null, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 4,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ null }}' at offset 0 of !interpolate \"${{ null }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/declared_list_static",
+      "tag": "interpolate",
+      "source": "tags: ${{ tags }}",
+      "declarations": {
+        "tags": "list<string>"
+      },
+      "bindings": {
+        "tags": [
+          "a"
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ tags }}' is list<string>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "tags"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ tags }}' at offset 6 of !interpolate \"tags: ${{ tags }}\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_null",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "bindings": {
+        "x": null
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_list",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "bindings": {
+        "x": [
+          {
+            "$telo": "int",
+            "value": "1"
+          }
+        ]
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a list, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/dyn_map",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "bindings": {
+        "x": {
+          "k": "v"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ x }}' at offset 2 of !interpolate \"a ${{ x }} b\" evaluated to a map, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/unbound",
+      "tag": "interpolate",
+      "source": "a ${{ x }} b",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 6,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: x\n\n>    1 | x\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/nullable_chain",
+      "tag": "interpolate",
+      "source": "Note: ${{ note }}",
+      "bindings": {
+        "note": null
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'note' may be null, and a null has no text — guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "note"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+          "message": "the hole '${{ note }}' at offset 6 of !interpolate \"Note: ${{ note }}\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+        }
+      }
+    },
+    {
+      "id": "holes/interpolate/nullable_chain_guarded",
+      "tag": "interpolate",
+      "source": "Note: ${{ note != null ? note : '' }}",
+      "bindings": {
+        "note": null
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 10,
+              "end": 34
+            }
+          ],
+          "refs": [
+            "note"
+          ],
+          "volatile": false
+        },
+        "value": "Note: "
+      }
+    },
+    {
+      "id": "holes/interpolate/refs_and_volatility",
+      "tag": "interpolate",
+      "source": "${{ b.c }} ${{ size(uuidv4()) }} ${{ a }}",
+      "bindings": {
+        "a": "x",
+        "b": {
+          "c": "y"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 15,
+              "end": 29
+            },
+            {
+              "name": "uuidv4",
+              "form": "global",
+              "arity": 0,
+              "start": 20,
+              "end": 28,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 7
+            },
+            {
+              "start": 15,
+              "end": 29
+            },
+            {
+              "start": 37,
+              "end": 38
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": true
+        },
+        "value": "y 36 x"
+      }
+    },
+    {
+      "id": "holes/anchoring/wrong_call_form_fix",
+      "tag": "interpolate",
+      "source": "Hello ${{ name.lower() }}!",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower(name)\n  not:    name.lower()\nRegistered: lower(string): string.",
+              "fix": {
+                "replacement": "Hello ${{ lower(name) }}!"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "receiver",
+              "arity": 0,
+              "start": 10,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 10,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.lower()'\n\n>    1 | name.lower()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/anchoring/rename_fix",
+      "tag": "interpolate",
+      "source": "Hello ${{ uppe(name) }}!",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
+              "fix": {
+                "replacement": "Hello ${{ upper(name) }}!"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "uppe",
+              "form": "global",
+              "arity": 1,
+              "start": 10,
+              "end": 20
+            }
+          ],
+          "regions": [
+            {
+              "start": 10,
+              "end": 20
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'uppe(dyn)'\n\n>    1 | uppe(name)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/anchoring/fix_in_second_hole",
+      "tag": "interpolate",
+      "source": "${{ upper(a) }} and ${{ startsWith(b, 'x') }}.",
+      "bindings": {
+        "a": "x",
+        "b": "y"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  b.startsWith('x')\n  not:    startsWith(b, 'x')\nRegistered: string.startsWith(string): bool.",
+              "fix": {
+                "replacement": "${{ upper(a) }} and ${{ b.startsWith('x') }}."
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "upper",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 12,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "startsWith",
+              "form": "global",
+              "arity": 2,
+              "start": 24,
+              "end": 42
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 12
+            },
+            {
+              "start": 24,
+              "end": 42
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'startsWith(dyn, string)'\n\n>    1 | startsWith(b, 'x')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/anchoring/diagnostics_in_hole_order",
+      "tag": "interpolate",
+      "source": "${{ 1 + 'a' }} ${{ fixed(1.0, 11) }} ${{ [1] }}",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no such overload: int + string"
+            },
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "fixed: decimal places must be an integer 0-10, got 11 (in `fixed(1.0, 11)`)"
+            },
+            {
+              "code": "INTERPOLATION_HOLE_NOT_CONVERTIBLE",
+              "message": "the hole '${{ [1] }}' is list<int>, which CEL's string() cannot convert to text. Convert it inside the hole (e.g. join a list, or read the field you meant), or write the whole value as !cel."
+            }
+          ],
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 19,
+              "end": 33,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 4,
+              "end": 11
+            },
+            {
+              "start": 19,
+              "end": 33
+            },
+            {
+              "start": 41,
+              "end": 44
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such overload: int + string\n\n>    1 | 1 + 'a'\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/anchoring/call_offsets",
+      "tag": "interpolate",
+      "source": "a ${{ upper('x') }} b ${{ lower('Y') + trim(' z ') }}",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "upper",
+              "form": "global",
+              "arity": 1,
+              "start": 6,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "lower",
+              "form": "global",
+              "arity": 1,
+              "start": 26,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "trim",
+              "form": "global",
+              "arity": 1,
+              "start": 39,
+              "end": 50,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 6,
+              "end": 16
+            },
+            {
+              "start": 26,
+              "end": 50
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a X b yz"
+      }
+    },
+    {
+      "id": "holes/anchoring/site_inputs_reach_each_hole",
+      "tag": "interpolate",
+      "source": "Hi ${{ nme }} of ${{ request.query.nme }}",
+      "declarations": {
+        "request": "dyn"
+      },
+      "bindings": {
+        "request": {
+          "headers": {
+            "host": "example.test"
+          },
+          "items": [
+            {
+              "amount": 1.5
+            }
+          ],
+          "query": {
+            "name": "Ada"
+          },
+          "tags": {
+            "a": {
+              "label": "first"
+            }
+          }
+        }
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "rootsDeclared": true,
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_IDENTIFIER",
+              "message": "unknown identifier 'nme' — nothing by that name is in scope here."
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'nme' is not defined (available: request, error, codes, note, body)"
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'request.query.nme' is not defined (available: name)"
+            }
+          ],
+          "calls": [],
+          "regions": [
+            {
+              "start": 7,
+              "end": 10
+            },
+            {
+              "start": 21,
+              "end": 38
+            }
+          ],
+          "refs": [
+            "nme",
+            "request"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: nme\n\n>    1 | nme\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/anchoring/sql_fix",
+      "tag": "sql",
+      "source": "SELECT * FROM t WHERE name = ${{ name.lower() }}",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower(name)\n  not:    name.lower()\nRegistered: lower(string): string.",
+              "fix": {
+                "replacement": "SELECT * FROM t WHERE name = ${{ lower(name) }}"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "receiver",
+              "arity": 0,
+              "start": 33,
+              "end": 45,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 33,
+              "end": 45
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'dyn.lower()'\n\n>    1 | name.lower()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "holes/sql/typed_values",
+      "tag": "sql",
+      "source": "INSERT INTO t VALUES (${{ at }}, ${{ n + 1 }}, ${{ flag }})",
+      "bindings": {
+        "at": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-03-15T10:30:00.000Z"
+        },
+        "flag": true,
+        "n": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 26,
+              "end": 28
+            },
+            {
+              "start": 37,
+              "end": 42
+            },
+            {
+              "start": 51,
+              "end": 55
+            }
+          ],
+          "refs": [
+            "at",
+            "flag",
+            "n"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "INSERT INTO t VALUES (",
+            ", ",
+            ", ",
+            ")"
+          ],
+          "values": [
+            {
+              "$telo": "google.protobuf.Timestamp",
+              "value": "2026-03-15T10:30:00.000Z"
+            },
+            {
+              "$telo": "int",
+              "value": "2"
+            },
+            true
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/sql/null_list_and_map",
+      "tag": "sql",
+      "source": "SELECT ${{ x }}, ${{ [1, 2] }}, ${{ {'a': 1} }}",
+      "bindings": {
+        "x": null
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 12
+            },
+            {
+              "start": 21,
+              "end": 27
+            },
+            {
+              "start": 36,
+              "end": 44
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT ",
+            ", ",
+            ", ",
+            ""
+          ],
+          "values": [
+            null,
+            [
+              {
+                "$telo": "int",
+                "value": "1"
+              },
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ],
+            {
+              "a": {
+                "$telo": "int",
+                "value": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/sql/nullable_chain",
+      "tag": "sql",
+      "source": "SELECT ${{ note }}",
+      "bindings": {
+        "note": null
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "tags": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "error": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              }
+            }
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "x-telo-type": "Telo.Stream"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 15
+            }
+          ],
+          "refs": [
+            "note"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT ",
+            ""
+          ],
+          "values": [
+            null
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/sql/quoted_text_is_not_cel",
+      "tag": "sql",
+      "source": "SELECT '${{ name }}' -- ${{ name }}",
+      "bindings": {
+        "name": "Ada"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 12,
+              "end": 16
+            },
+            {
+              "start": 28,
+              "end": 32
+            }
+          ],
+          "refs": [
+            "name"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT '",
+            "' -- ",
+            ""
+          ],
+          "values": [
+            "Ada",
+            "Ada"
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/sql/refs_and_volatility",
+      "tag": "sql",
+      "source": "SELECT ${{ b.c }}, ${{ size(uuidv4()) }}, ${{ a }}",
+      "bindings": {
+        "a": "x",
+        "b": {
+          "c": "y"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 23,
+              "end": 37
+            },
+            {
+              "name": "uuidv4",
+              "form": "global",
+              "arity": 0,
+              "start": 28,
+              "end": 36,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 11,
+              "end": 14
+            },
+            {
+              "start": 23,
+              "end": 37
+            },
+            {
+              "start": 46,
+              "end": 47
+            }
+          ],
+          "refs": [
+            "a",
+            "b"
+          ],
+          "volatile": true
+        },
+        "value": {
+          "__teloParameterized": true,
+          "fragments": [
+            "SELECT ",
+            ", ",
+            ", ",
+            ""
+          ],
+          "values": [
+            "y",
+            {
+              "$telo": "int",
+              "value": "36"
+            },
+            "x"
+          ]
+        }
+      }
+    },
+    {
+      "id": "holes/sql/hole_error",
+      "tag": "sql",
+      "source": "SELECT ${{ a }}, ${{ missing }}",
+      "bindings": {
+        "a": "x"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "calls": [],
+          "regions": [
+            {
+              "start": 11,
+              "end": 12
+            },
+            {
+              "start": 21,
+              "end": 28
+            }
+          ],
+          "refs": [
+            "a",
+            "missing"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "Unknown variable: missing\n\n>    1 | missing\n         ^"
+        }
+      }
+    }
+  ]
+}

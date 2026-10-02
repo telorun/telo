@@ -5,15 +5,8 @@ import {
   readInterpolationHoles,
   type InterpolationHole,
 } from "../cel/interpolation-holes.js";
-import type {
-  AnalyzeEnv,
-  AnalyzeResult,
-  CallSite,
-  CompileEnv,
-  DiagnosticFix,
-  EngineDiagnostic,
-  ExpressionRegion,
-} from "../engine.js";
+import type { CelAnalyzeResult, CelDiagnostic } from "../cel/verdict-codes.js";
+import type { AnalyzeEnv, CallSite, CompileEnv, DiagnosticFix, ExpressionRegion } from "../engine.js";
 import { analyzeCelWithTree } from "./cel.js";
 
 /** The holes of a scalar a hole-bearing tag compiles, or a thrown error naming
@@ -56,15 +49,15 @@ export function analyzeHoles(
   env: AnalyzeEnv,
   perHole?: (
     hole: InterpolationHole,
-    result: AnalyzeResult,
+    result: CelAnalyzeResult,
     ast: ASTNode | undefined,
-  ) => readonly EngineDiagnostic[],
-): AnalyzeResult {
+  ) => readonly CelDiagnostic[],
+): CelAnalyzeResult {
   const reading = readInterpolationHoles(source);
   if (!reading.ok) {
     return { diagnostics: [{ code: "CEL_SYNTAX_ERROR", message: reading.message }], calls: [] };
   }
-  const diagnostics: EngineDiagnostic[] = [];
+  const diagnostics: CelDiagnostic[] = [];
   const calls: CallSite[] = [];
   for (const hole of reading.holes) {
     const { result, ast } = analyzeCelWithTree(hole.expr, env);
