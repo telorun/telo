@@ -44,8 +44,8 @@
   "dependencies": {
     "@marcbachmann/cel-js": "7.6.1",
     "d3-format": "catalog:",
-    "re2js": "^2.8.3",
-    "uuid": "^14.0.1",
+    "re2js": "2.8.3",
+    "uuid": "14.0.1",
     "yaml": "^2.8.3"
   },
   "devDependencies": {

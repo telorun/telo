@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { RE2JS } from "re2js";
+import { describe, expect, it, vi } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { analyzeCelExpression } from "../src/engines/cel.js";
 
@@ -179,5 +180,26 @@ describe("cel.bind", () => {
     expect(env.celEnv.evaluate("cel.bind(c, 150, string(c / 100) + '.' + string(c % 100))")).toBe(
       "1.50",
     );
+  });
+});
+
+describe("literal guards", () => {
+  it("report only a refusal — any other failure propagates with its cause, as no diagnostic", () => {
+    const cause = new TypeError("injected");
+    const compile = vi.spyOn(RE2JS, "compile").mockImplementation(() => {
+      throw cause;
+    });
+    try {
+      let failure: unknown;
+      try {
+        analyze("regexExtract('abc', 'b')");
+      } catch (e) {
+        failure = e;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).cause).toBe(cause);
+    } finally {
+      compile.mockRestore();
+    }
   });
 });

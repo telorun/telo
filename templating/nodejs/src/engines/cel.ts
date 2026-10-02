@@ -16,13 +16,8 @@ import {
   unresolvedCallReceivers,
   type ModuleCall,
 } from "../cel/module-call.js";
-import type {
-  AnalyzeEnv,
-  AnalyzeResult,
-  CallSite,
-  EngineDiagnostic,
-  TemplatingEngine,
-} from "../engine.js";
+import type { CelAnalyzeResult, CelDiagnostic } from "../cel/verdict-codes.js";
+import type { AnalyzeEnv, CallSite, TemplatingEngine } from "../engine.js";
 
 /** Statically analyze one CEL expression against the effective context schema:
  *  parse → classify every call → type-check → validate member-access chains →
@@ -35,7 +30,7 @@ import type {
  *  "no matching overload" survive next to the diagnostic that actually
  *  explained it, and left `${{ }}` interpolations chain-validated but never
  *  type-checked at all. */
-export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeResult {
+export function analyzeCelExpression(source: string, env: AnalyzeEnv): CelAnalyzeResult {
   return analyzeCelWithTree(source, env).result;
 }
 
@@ -44,8 +39,8 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): AnalyzeRe
 export function analyzeCelWithTree(
   source: string,
   env: AnalyzeEnv,
-): { result: AnalyzeResult; ast?: ASTNode } {
-  const out: EngineDiagnostic[] = [];
+): { result: CelAnalyzeResult; ast?: ASTNode } {
+  const out: CelDiagnostic[] = [];
 
   let parsed: ReturnType<typeof env.celEnv.parse>;
   try {
@@ -231,10 +226,10 @@ export function analyzeCelWithTree(
  *  reported in its own words. The explain schema is not the checker's
  *  environment, so a chain is reported only when the checker rejects it too;
  *  otherwise the rejection was about something else and keeps its own words. */
-function explainUnknownFields(ast: ASTNode, env: AnalyzeEnv): EngineDiagnostic[] {
+function explainUnknownFields(ast: ASTNode, env: AnalyzeEnv): CelDiagnostic[] {
   const schema = env.explainSchema?.();
   if (!schema) return [];
-  const out: EngineDiagnostic[] = [];
+  const out: CelDiagnostic[] = [];
   const reported = new Set<string>();
   for (const chain of extractAccessChains(ast)) {
     const message = validateChainAgainstSchema(chain, schema as Record<string, any>);

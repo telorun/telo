@@ -92,12 +92,19 @@ const ENVIRONMENT_OPTIONS = {
  *  registered one differ for a third of the entries. Asking for the base set
  *  directly needs no matching at all. */
 export function celBuiltinFunctions(): ReturnType<Environment["getDefinitions"]>["functions"] {
-  return new Environment(ENVIRONMENT_OPTIONS).getDefinitions().functions;
+  return buildCelLanguageEnvironment().getDefinitions().functions;
+}
+
+/** The bare CEL language under Telo's options: cel-js's built-ins and nothing
+ *  else — no catalog, no `Stream`. The dialect is built on it, and the
+ *  language conformance vectors (`templating/cel-conformance/`) run against it. */
+export function buildCelLanguageEnvironment(): Environment {
+  return new Environment(ENVIRONMENT_OPTIONS);
 }
 
 export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): Environment {
   const h: CelHandlers = { ...STUB_HANDLERS, ...handlers };
-  let env = new Environment(ENVIRONMENT_OPTIONS);
+  let env = buildCelLanguageEnvironment();
   for (const fn of CEL_FUNCTIONS) {
     const impl = fn.build(h);
     // `register` lists one cel-js signature per arity (overloaded functions).
