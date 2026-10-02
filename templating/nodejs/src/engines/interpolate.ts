@@ -4,7 +4,13 @@ import { nullableValueChain } from "../cel/analyze.js";
 import { literalFragments, type InterpolationHole } from "../cel/interpolation-holes.js";
 import { celVerdictError, type CelAnalyzeResult, type CelDiagnostic } from "../cel/verdict-codes.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../engine.js";
-import { analyzeHoles, compileHoles, holeRegions, requireHoles } from "./hole-analysis.js";
+import {
+  analyzeHoles,
+  compileHoles,
+  holeRegions,
+  holesRepeatable,
+  requireHoles,
+} from "./hole-analysis.js";
 
 const INTERPOLATE_ENGINE = "interpolate";
 
@@ -53,6 +59,10 @@ export const interpolateEngine: TemplatingEngine = {
 
   expressionRegions(source) {
     return holeRegions(source);
+  },
+
+  repeatable(source, celEnv) {
+    return holesRepeatable(source, celEnv);
   },
 };
 

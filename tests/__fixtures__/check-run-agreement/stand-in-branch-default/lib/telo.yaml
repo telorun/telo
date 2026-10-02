@@ -1,0 +1,44 @@
+# A union whose object alternative requires a member it merely defaults. A
+# `default:` inside an alternative is never applied when the union is decided,
+# so the member is missing — for a literal, and for a stand-in that otherwise
+# fits: refused by `telo check` here, and by the kernel at creation for a
+# consumer.
+kind: Telo.Library
+metadata:
+  name: StandInBranchDefault
+imports:
+  Run: ../../../../../modules/run
+variables:
+  seconds: { type: string }
+exports:
+  resources: [thing]
+---
+kind: Telo.Definition
+metadata:
+  name: Thing
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    retry:
+      x-telo-eval: compile
+      anyOf:
+        - type: object
+          required: [mode, base]
+          additionalProperties: false
+          properties:
+            mode: { type: string, default: backoff }
+            base: { type: string, pattern: "^\\d+s$" }
+        - type: integer
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.retry"
+---
+kind: Self.Thing
+metadata:
+  name: thing
+retry:
+  base: !interpolate "${{ variables.seconds }}s"

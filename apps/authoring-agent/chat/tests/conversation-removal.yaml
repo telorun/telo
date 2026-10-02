@@ -814,7 +814,9 @@ steps:
     inputs:
       turnId: !cel "steps.backTurn.result.turnId"
       writer: taken-over
-      failure: !cel "steps.takeOver.result.error"
+      failure: !cel >-
+        steps.takeOver.result.error != null ? steps.takeOver.result.error
+        : {'message': 'the takeover reported no error'}
   - name: after
     invoke: !ref libraryRead
     inputs: { key: !cel "steps.backTurn.result.turnId", limit: 0 }

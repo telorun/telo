@@ -160,7 +160,6 @@ import {
   celTypeSatisfiesJsonSchema,
   checkSchemaCompatibility,
   unionBranches,
-  inlineNamedShapes,
   navigateSchemaToExprPath,
   resolveRefIn,
   fittingUnionBranches,
@@ -168,12 +167,16 @@ import {
   substituteCelFields,
   validateAgainstSchema,
   VALUE_BRAND_BASE,
+  type ExternalSchemaResolver,
   type SchemaIssue,
 } from "./schema-compat.js";
+import { navigateDeclaredChain, shapeNamedBy } from "./referenced-shape.js";
 import { declaredResultSchemaAt, RETURNS_FROM_ANNOTATION } from "./callable-signature.js";
 import { collectValueSchemaIssues, type ShapeAwareValidator } from "./validate-value-schema.js";
 import { valueSchemaFromProblems } from "./validate-value-schema-location.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
+import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
 import { templateCallSite } from "./derived-slots.js";
 import {
   DiagnosticSeverity,
@@ -227,7 +230,11 @@ import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
 import { validateBaseMapping } from "./validate-base-mapping.js";
 import { validateInvocationContract } from "./validate-invocation-contract.js";
-import { collectRefInputIssues, collectStepInputIssues } from "./validate-step-inputs.js";
+import {
+  collectRefInputIssues,
+  collectStepInputIssues,
+  type CallSiteArguments,
+} from "./validate-step-inputs.js";
 import { collectReferenceOutputIssues } from "./validate-reference-output.js";
 import { validateNestedInlineResources } from "./validate-nested-inline.js";
 import { validateProviderCoherence } from "./validate-provider-coherence.js";
@@ -298,6 +305,8 @@ function resolveSelfOrAlias(
 }
 
 const SOURCE = "telo-analyzer";
+/** The CEL root a step body's results are read through. */
+const STEPS_ROOT = "steps.";
 
 /** How to name the owner of a resolved contract in a diagnostic. When the
  *  contract came from the definition's direct parent, echo the author's own
@@ -654,25 +663,50 @@ export interface CelValueSlot {
  *  "no matching overload" used to survive next to the diagnostic that explained
  *  it. What this walk supplies is the half the engine cannot know: the declared
  *  type of the slot the value flows into. The comparison happens once both are
- *  in hand (`reportCelReturnMismatches`). A document-local `$ref` is followed
- *  against `root`, the kind schema the walk started from — the eval-path reader
- *  follows it too, so a slot it marks evaluated is a slot whose type is known. */
+ *  in hand (`judgeSlot`, the join after the CEL walk). A reference is followed
+ *  on the way down — a document-local one against the root of the document the
+ *  walk is in, a named shape through `external`, which makes that shape the
+ *  document — and each slot's schema is returned as the shape it names, read
+ *  against that same root (`referenced-shape.ts`). */
 function collectCelValueSlots(
+  data: unknown,
+  schema: Record<string, any>,
+  path: string,
+  external: ExternalSchemaResolver,
+): CelValueSlot[] {
+  return declaredCelSlots(data, schema, path, schema, external).map((slot) => ({
+    path: slot.path,
+    schema: namedSlotShape(slot, external),
+  }));
+}
+
+/** A pure-CEL leaf with the schema node declared for it, as written, and the
+ *  root of the document that node sits in. With no root the schema is already
+ *  the shape it names. */
+interface DeclaredCelSlot extends CelValueSlot {
+  readonly root?: Record<string, any>;
+}
+
+const namedSlotShape = (slot: DeclaredCelSlot, external: ExternalSchemaResolver) =>
+  slot.root ? shapeNamedBy(slot.schema, slot.root, external) : slot.schema;
+
+function declaredCelSlots(
   data: unknown,
   raw: Record<string, any>,
   path: string,
-  base: Record<string, any> = raw,
-): CelValueSlot[] {
-  const slots: CelValueSlot[] = [];
-  const { schema, root } = resolveRefIn(raw, base);
+  base: Record<string, any>,
+  external: ExternalSchemaResolver,
+): DeclaredCelSlot[] {
+  const slots: DeclaredCelSlot[] = [];
 
   // A tag whose produced type is fixed (`!interpolate`, `!literal`, an embed)
   // is checked against the slot through its placeholder; only a `!cel` value's
   // type is the expression's own.
   if (isTaggedSentinel(data)) {
-    if (data.engine === CEL_ENGINE && schema) slots.push({ path, schema });
+    if (data.engine === CEL_ENGINE && raw) slots.push({ path, schema: raw, root: base });
     return slots;
   }
+  const { schema, root } = resolveRefIn(raw, base, external);
 
   // A union has no `items` / `properties` of its own: continue through the ONE
   // branch the value was written against — the selection the placeholder walk
@@ -680,30 +714,38 @@ function collectCelValueSlots(
   // branch is guessed: each leaf is held to the union of what every fitting
   // branch declares at its path, so it is refused only when none accepts it.
   if (data !== null && typeof data === "object") {
-    const fits = fittingUnionBranches(schema, data, root);
+    const fits = fittingUnionBranches(schema, data, root, external);
     if (fits && fits.length > 1) {
-      const byPath = new Map<string, Record<string, any>[]>();
+      const byPath = new Map<string, DeclaredCelSlot[]>();
       for (const branch of fits) {
-        for (const slot of collectCelValueSlots(data, branch, path, root)) {
-          const schemas = byPath.get(slot.path) ?? [];
-          if (!schemas.includes(slot.schema)) schemas.push(slot.schema);
-          byPath.set(slot.path, schemas);
+        for (const slot of declaredCelSlots(data, branch, path, root, external)) {
+          const held = byPath.get(slot.path) ?? [];
+          if (!held.some((other) => other.schema === slot.schema)) held.push(slot);
+          byPath.set(slot.path, held);
         }
       }
-      for (const [slotPath, schemas] of byPath) {
-        slots.push({ path: slotPath, schema: schemas.length === 1 ? schemas[0]! : { anyOf: schemas } });
+      for (const [slotPath, held] of byPath) {
+        if (held.length === 1) {
+          slots.push(held[0]!);
+          continue;
+        }
+        // Each alternative is read in its own document before they are joined.
+        slots.push({
+          path: slotPath,
+          schema: { anyOf: held.map((slot) => namedSlotShape(slot, external)) },
+        });
       }
       return slots;
     }
   }
-  const selected = selectUnionBranch(schema, data, root);
-  const entered = selected === schema ? { schema, root } : resolveRefIn(selected, root);
+  const selected = selectUnionBranch(schema, data, root, external);
+  const entered = selected === schema ? { schema, root } : resolveRefIn(selected, root, external);
   const node = entered.schema;
 
   if (Array.isArray(data)) {
     const itemSchema = (node.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
-      slots.push(...collectCelValueSlots(data[i], itemSchema, `${path}[${i}]`, entered.root));
+      slots.push(...declaredCelSlots(data[i], itemSchema, `${path}[${i}]`, entered.root, external));
     }
   } else if (data !== null && typeof data === "object") {
     const props = (node.properties ?? {}) as Record<string, any>;
@@ -713,11 +755,12 @@ function collectCelValueSlots(
         : {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       slots.push(
-        ...collectCelValueSlots(
+        ...declaredCelSlots(
           v,
           (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
           entered.root,
+          external,
         ),
       );
     }
@@ -868,7 +911,7 @@ export class StaticAnalyzer {
     // registered shape: a module-level AJV holds none, so it compiles such a
     // schema nowhere and the value goes unchecked.
     const shapeAwareValidator: ShapeAwareValidator = {
-      validate: (data, target) => defs.validateResourceConfig(data, target),
+      validate: (data, target, standIns) => defs.validateResourceConfig(data, target, standIns),
       external: (ref) => defs.schemaForId(ref),
     };
 
@@ -1983,11 +2026,37 @@ export class StaticAnalyzer {
     // Every pure-CEL leaf, with the slot it flows into. Compared against the
     // type the engine walk resolves, once both halves exist — see
     // `collectCelValueSlots`.
-    const celReturnSlots: (CelValueSlot & {
+    type JoinSlot = CelValueSlot & {
       manifest: ResourceManifest;
       resource: { kind: string; name: string };
       filePath?: string;
-    })[] = [];
+      /** Set for a call-site argument: the target whose declared inputType the
+       *  slot's schema is. */
+      callTarget?: string;
+    };
+    const celReturnSlots: JoinSlot[] = [];
+    const namedShape: ExternalSchemaResolver = (ref) => defs.schemaForId(ref);
+    // A call site reached by two enumerations (a boot target's inline step is a
+    // step and a reference slot) contributes each argument leaf once.
+    const callSiteSlots = new Map<ResourceManifest, Map<string, JoinSlot>>();
+    // An argument map's `!cel` leaves are slots of the same join a resource's
+    // own fields feed: AJV sees an expression only as its stand-in, so its TYPE
+    // is held to the target's contract there.
+    const joinCallSite = (
+      manifest: ResourceManifest,
+      resource: { kind: string; name: string },
+      filePath: string | undefined,
+      site: CallSiteArguments,
+    ) => {
+      let seen = callSiteSlots.get(manifest);
+      if (!seen) callSiteSlots.set(manifest, (seen = new Map()));
+      for (const slot of collectCelValueSlots(site.values, site.schema, site.path, namedShape)) {
+        if (seen.has(slot.path)) continue;
+        const joined = { manifest, resource, filePath, ...slot, callTarget: site.targetLabel };
+        seen.set(slot.path, joined);
+        celReturnSlots.push(joined);
+      }
+    };
     const celTypeByPath = new Map<ResourceManifest, Map<string, string>>();
     // The expression's source, for what its text alone decides.
     const celSourceByPath = new Map<ResourceManifest, Map<string, string>>();
@@ -2269,7 +2338,7 @@ export class StaticAnalyzer {
         // Phase 1: collect the pure-CEL leaves and the schema of the slot each
         // flows into. The expression's own type is resolved later, by the
         // engine walk that owns type-checking; this half only knows the target.
-        for (const slot of collectCelValueSlots(m, schema, "")) {
+        for (const slot of collectCelValueSlots(m, schema, "", namedShape)) {
           celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
         }
         // A kind's own schema may point a slot at a PROJECTION — of a resource it
@@ -2309,13 +2378,16 @@ export class StaticAnalyzer {
         // Phase 2+3: AJV on substituted data — CEL fields replaced with typed
         // placeholders. Through the REGISTRY, so a kind whose schema references
         // a shape declared elsewhere is checked on the instance that holds it.
+        const standIns: StandIns = new Map();
         const ajvIssues = defs.validateResourceConfig(
           // A resource's own config: the kernel decodes its plain-encoded
           // literals when it creates it.
           substituteDecodedCelFields(m, projected, undefined, {
+            standIns,
             external: (ref) => defs.schemaForId(ref),
           }),
           projected,
+          standIns,
         );
         // Phase 4: value slots that must satisfy a type declared elsewhere on
         // the resource (`x-telo-value-schema-from`) — e.g. every row of a
@@ -2583,13 +2655,14 @@ export class StaticAnalyzer {
          *  `result:` mapping, which is produced at dispatch. */
         decode = false,
       ) => {
+        const standIns: StandIns = new Map();
         const substituted = (decode ? substituteDecodedCelFields : substituteCelFields)(
           value,
           valueSchema,
           undefined,
-          { external: shapeAwareValidator.external },
+          { standIns, external: shapeAwareValidator.external },
         );
-        const issues = shapeAwareValidator.validate(substituted, valueSchema);
+        const issues = shapeAwareValidator.validate(substituted, valueSchema, standIns);
         for (const issue of issues) {
           diagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -2624,6 +2697,13 @@ export class StaticAnalyzer {
           templateInputs.path,
           true,
         );
+        // The expression half of the same site.
+        joinCallSite(m, resource, filePath, {
+          path: templateInputs.path,
+          values: templateInputs.values,
+          schema: templateInputs.contract.schema,
+          targetLabel: (templateInputs.invoke.name ?? templateInputs.invoke.kind) as string,
+        });
       }
 
       // Top-level `result:` is a post-call mapping that must satisfy THIS
@@ -2766,6 +2846,7 @@ export class StaticAnalyzer {
                 },
               });
             }
+            const argumentMaps: CallSiteArguments[] = [];
             const inputIssues = [
               ...collectRefInputIssues(
                 m as Record<string, any>,
@@ -2774,6 +2855,7 @@ export class StaticAnalyzer {
                 defs,
                 aliases,
                 { aliasesByModule, rootModules, libraries },
+                argumentMaps,
               ),
               ...collectStepInputIssues(
               m as Record<string, any>,
@@ -2784,8 +2866,12 @@ export class StaticAnalyzer {
               aliases,
               { aliasesByModule, rootModules, libraries },
               celStepContextSchema,
+              argumentMaps,
               ),
             ];
+            for (const site of argumentMaps) {
+              joinCallSite(m, { kind: m.kind, name: stepName ?? "" }, stepFile, site);
+            }
             for (const issue of inputIssues) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
@@ -2794,9 +2880,7 @@ export class StaticAnalyzer {
                 message:
                   issue.code === "LIVE_VALUE_RETRIED"
                     ? `${m.kind}/${stepName}: at '${issue.path}', ${issue.message}`
-                    : issue.code
-                      ? `${m.kind}/${stepName}: inputs at '${issue.path}' flow into ${issue.targetLabel} with disagreeing type arguments: ${issue.message}`
-                      : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+                    : `${m.kind}/${stepName}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
                 data: {
                   resource: { kind: m.kind, name: stepName ?? "" },
                   filePath: stepFile,
@@ -3120,8 +3204,28 @@ export class StaticAnalyzer {
             effectiveContext ?? kernelGlobals.forResource(m as unknown as ResourceManifest);
           const chain = plainChainOf(makeTaggedSentinel(engineName, expr));
           if (chain) {
-            const produced = navigateSchemaToExprPath(chainContext, chain);
-            if (produced) {
+            // Read as the shape it names: a reference at a hop or at the tail
+            // is followed, so what a producer declares behind one is judged. A
+            // step chain is read off the step map itself, where each result is
+            // the document its target declared; the context is a copy of it,
+            // in which no pointer can be traced to its document.
+            const produced =
+              celStepContextSchema !== undefined && chain.startsWith(STEPS_ROOT)
+                ? navigateDeclaredChain(
+                    celStepContextSchema,
+                    chain.slice(STEPS_ROOT.length),
+                    namedShape,
+                  )
+                : navigateDeclaredChain(chainContext, chain, namedShape);
+            // An undeclared step result is typed by the permissive fallback: an
+            // absence of a claim, not a producer saying `object`. Asked of the
+            // step map itself, because the context is a copy of it.
+            const undeclared =
+              celStepContextSchema !== undefined &&
+              chain.startsWith(STEPS_ROOT) &&
+              navigateSchemaToExprPath(celStepContextSchema, chain.slice(STEPS_ROOT.length)) ===
+                PERMISSIVE_CONTRACT;
+            if (produced && !undeclared) {
               let byPath = celSourceSchemaByPath.get(m);
               if (!byPath) celSourceSchemaByPath.set(m, (byPath = new Map()));
               byPath.set(path, produced);
@@ -3236,18 +3340,22 @@ export class StaticAnalyzer {
     // here: the engine resolved the expression's type during the walk above,
     // and the schema walk recorded the slot. An expression that failed to check
     // recorded no type and is already reported by its own diagnostic.
-    for (const slot of celReturnSlots) {
+    const judgeSlot = (slot: JoinSlot): AnalysisDiagnostic | undefined => {
       const type = celTypeByPath.get(slot.manifest)?.get(slot.path);
-      if (type === undefined) continue;
+      if (type === undefined) return undefined;
       // A field whose value IS a callable's result is held to the declared
-      // result rather than to its own schema, which cannot know it.
+      // result rather than to its own schema, which cannot know it. The declared
+      // result is a document of its own.
       const result = declaredResultSchemaAt(slot.schema, slot.manifest, (schema) =>
-        inlineNamedShapes(schema, (id) => defs.schemaForId(id)),
+        shapeNamedBy(schema, schema, namedShape),
       );
       const target = result ?? slot.schema;
       const data = { resource: slot.resource, filePath: slot.filePath, path: slot.path };
       const expression = celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "";
       const baseType = type.split("<")[0]!;
+      // What declares the slot, as a message names it.
+      const holder =
+        slot.callTarget !== undefined ? `${slot.callTarget}'s declared inputType` : "the field";
       const hostPath = holdsHostPath(target);
       const fits = celTypeSatisfiesJsonSchema(
         baseType,
@@ -3263,7 +3371,7 @@ export class StaticAnalyzer {
       // not text at all is an ordinary type mismatch.
       if (!fits && hostPath && (baseType === "string" || VALUE_BRAND_BASE[baseType] === "string")) {
         const leading = leadingRelativeLiteral(expression, target);
-        diagnostics.push({
+        return {
           severity: DiagnosticSeverity.Error,
           code: leading !== undefined ? "HOST_PATH_RELATIVE" : "HOST_PATH_UNTYPED_SOURCE",
           source: SOURCE,
@@ -3274,29 +3382,43 @@ export class StaticAnalyzer {
               : `this expression produces a plain '${type}'.`) +
             ` ${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
           data,
-        });
-        continue;
+        };
       }
       if (!fits) {
         const expected = describeSlotType(target);
-        diagnostics.push(
-          result
-            ? {
-                severity: DiagnosticSeverity.Error,
-                code: "FUNCTION_RETURN_MISMATCH",
-                source: SOURCE,
-                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but '${slot.schema[RETURNS_FROM_ANNOTATION]}' declares '${expected}'.`,
-                data,
-              }
-            : {
-                severity: DiagnosticSeverity.Error,
-                code: "CEL_TYPE_ERROR",
-                source: SOURCE,
-                message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but the field expects '${expected}'.`,
-                data,
-              },
-        );
-        continue;
+        return result
+          ? {
+              severity: DiagnosticSeverity.Error,
+              code: "FUNCTION_RETURN_MISMATCH",
+              source: SOURCE,
+              message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but '${slot.schema[RETURNS_FROM_ANNOTATION]}' declares '${expected}'.`,
+              data,
+            }
+          : {
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_TYPE_ERROR",
+              source: SOURCE,
+              message: `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' returns '${type}' but ${holder} expects '${expected}'.`,
+              data,
+            };
+      }
+      // A null is refused at a slot that takes none, whatever the rest of the
+      // producer's type is — and the CEL type does not carry it. Only a plain
+      // chain has a producer schema to read; a guarded, computed or `dyn`
+      // expression says nothing here and is left to the runtime.
+      const nullable = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
+      if (!result && nullable && producerAdmitsNull(nullable) && !slotAdmitsNull(target)) {
+        const chain = expression.trim();
+        return {
+          severity: DiagnosticSeverity.Error,
+          code: "CEL_TYPE_ERROR",
+          source: SOURCE,
+          message:
+            `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads '${chain}', ` +
+            `which may be null, but ${holder} expects '${describeSlotType(target)}', which does not ` +
+            `admit null. Guard it: '${chain} != null ? ${chain} : <a value for the null case>'.`,
+          data,
+        };
       }
       // The type fits; do its ARGUMENTS agree? Covariant and gradual — an
       // omitted argument is *any* in both directions, so an unmigrated producer
@@ -3307,7 +3429,7 @@ export class StaticAnalyzer {
         ? leadingRelativeLiteral(celSourceByPath.get(slot.manifest)?.get(slot.path) ?? "", target)
         : undefined;
       if (leading !== undefined) {
-        diagnostics.push({
+        return {
           severity: DiagnosticSeverity.Error,
           code: "HOST_PATH_RELATIVE",
           source: SOURCE,
@@ -3316,11 +3438,10 @@ export class StaticAnalyzer {
             `this expression builds a path starting with '${leading}', which is relative. ` +
             `${HOST_PATH_SOURCES}${alsoAccepts(target)}`,
           data,
-        });
-        continue;
+        };
       }
       const produced = celSourceSchemaByPath.get(slot.manifest)?.get(slot.path);
-      if (!produced) continue;
+      if (!produced) return undefined;
       // A host path forwarded from a source DECLARED as something else — a
       // plain `type: string` field or variable — carries whatever relative text
       // it was given, and is refused at creation for every consumer. The source
@@ -3334,7 +3455,7 @@ export class StaticAnalyzer {
           produced["x-telo-type"] !== undefined ||
           unionBranches(produced) !== undefined)
       ) {
-        diagnostics.push({
+        return {
           severity: DiagnosticSeverity.Error,
           code: "HOST_PATH_UNTYPED_SOURCE",
           source: SOURCE,
@@ -3346,36 +3467,67 @@ export class StaticAnalyzer {
             `value against the working directory; any other source must already hold an ` +
             `absolute one.`,
           data,
-        });
-        continue;
+        };
       }
-      const { compatible, issues } = checkSchemaCompatibility(
+      const { compatible, issues, conflicts } = checkSchemaCompatibility(
         produced,
         target,
-        (ref: string) => defs.schemaForId(ref),
+        namedShape,
       );
-      if (compatible) continue;
-      diagnostics.push(
-        result
+      if (compatible) return undefined;
+      return result
+        ? {
+            severity: DiagnosticSeverity.Error,
+            code: "FUNCTION_RETURN_MISMATCH",
+            source: SOURCE,
+            message:
+              `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
+              `whose declared shape disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${issues.join("; ")}.`,
+            data,
+          }
+        : conflicts.every((conflict) => conflict.beneathTypeArgument)
           ? {
-              severity: DiagnosticSeverity.Error,
-              code: "FUNCTION_RETURN_MISMATCH",
-              source: SOURCE,
-              message:
-                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-                `whose declared shape disagrees with '${slot.schema[RETURNS_FROM_ANNOTATION]}': ${issues.join("; ")}.`,
-              data,
-            }
-          : {
+              // Every conflict sits beneath a type argument of a value type
+              // both sides name; one outside makes it a shape misfit.
               severity: DiagnosticSeverity.Error,
               code: "CEL_TYPE_ARGUMENT_MISMATCH",
               source: SOURCE,
               message:
                 `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' produces a value ` +
-                `whose type arguments disagree with the field's: ${issues.join("; ")}.`,
+                `whose type arguments disagree with ${
+                  slot.callTarget !== undefined ? holder : "the field's"
+                }: ${issues.join("; ")}.`,
               data,
-            },
-      );
+            }
+          : {
+              severity: DiagnosticSeverity.Error,
+              code: "CEL_TYPE_ERROR",
+              source: SOURCE,
+              message:
+                `${slot.resource.kind}/${slot.resource.name}: CEL at '${slot.path}' reads ` +
+                `'${expression.trim()}', whose declared shape does not fit what ${holder} expects: ` +
+                `${issues.join("; ")}.`,
+              data,
+            };
+    };
+    // A path that is both an own-field slot and a call-site slot (a whole-map
+    // `inputs: !cel`) is held to both declarations and reported once: the
+    // call-site judgment when it fails, the own-field one only when it passes.
+    const callSiteVerdicts = new Map<JoinSlot, AnalysisDiagnostic | undefined>();
+    for (const slot of celReturnSlots) {
+      if (slot.callTarget !== undefined) {
+        if (!callSiteVerdicts.has(slot)) callSiteVerdicts.set(slot, judgeSlot(slot));
+        const verdict = callSiteVerdicts.get(slot);
+        if (verdict) diagnostics.push(verdict);
+        continue;
+      }
+      const twin = callSiteSlots.get(slot.manifest)?.get(slot.path);
+      if (twin) {
+        if (!callSiteVerdicts.has(twin)) callSiteVerdicts.set(twin, judgeSlot(twin));
+        if (callSiteVerdicts.get(twin)) continue;
+      }
+      const verdict = judgeSlot(slot);
+      if (verdict) diagnostics.push(verdict);
     }
 
     // Validate resource references (Phase 3)

@@ -34,15 +34,14 @@ cwd: !cel "variables.fixturesDir"
 kind: Run.Sequence
 metadata: { name: testContentGuard }
 steps:
-  # The analyzer substitutes a byte placeholder for a CEL leaf at a byte slot — it
-  # cannot know what the expression evaluates to — so this passes `telo check` and
-  # the input contract is what must catch it at dispatch.
+  # `dyn(...)` hides the value's type from `telo check`, which would refuse a map
+  # at a byte slot, so the input contract is what must catch it at dispatch.
   - name: rejectsNonBytesFromCel
     try:
       - name: invoke
         inputs:
           path: bad.bin
-          content: !cel "{'foo': 'bar'}"
+          content: !cel "dyn({'foo': 'bar'})"
           createParents: true
         invoke: !ref write
     catch:

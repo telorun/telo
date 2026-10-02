@@ -4,6 +4,7 @@ import { collectRefs, isInlineResource } from "./reference-field-map.js";
 import type { ExternalSchemaResolver } from "./schema-compat.js";
 import { collectProperties, resolveRef } from "./schema-compat.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import type { SchemaIssue } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
@@ -32,7 +33,7 @@ export interface InlineDefinitionLookup {
  * the caller supplies the one that holds the shapes.
  */
 export interface InlineConfigValidator {
-  validate(data: unknown, schema: Record<string, any>): SchemaIssue[];
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaIssue[];
   external: ExternalSchemaResolver;
 }
 
@@ -139,7 +140,9 @@ export function validateNestedInlineResources(
     const data = { ...inline, metadata: { name: "__inline__", ...existingMeta } };
     // A resource's own config, inline or standalone: the kernel decodes its
     // plain-encoded literals when it creates it.
+    const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(data, effectiveSchema, effectiveSchema, {
+      standIns,
       external: validator.external,
     });
     // The same two passes the top-level resource loop runs, on the same
@@ -150,7 +153,7 @@ export function validateNestedInlineResources(
     // metadata; `x-telo-value-schema-from` reads sibling fields off the
     // resource, which are present either way.
     const inlineIssues = [
-      ...validator.validate(substituted, effectiveSchema),
+      ...validator.validate(substituted, effectiveSchema, standIns),
       ...collectValueSchemaIssues(data, schema, allManifests, validator),
     ];
     for (const issue of inlineIssues) {

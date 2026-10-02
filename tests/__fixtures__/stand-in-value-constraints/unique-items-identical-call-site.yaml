@@ -1,0 +1,33 @@
+# One deterministic expression written twice is a duplicate the author wrote:
+# whatever it evaluates to, both items are that value.
+kind: Telo.Application
+metadata:
+  name: UniqueItemsIdenticalCallSite
+imports:
+  Run: ../../../modules/run
+variables:
+  word: { env: STAND_IN_WORD, type: string, default: abc }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    invoke: !ref consume
+    inputs:
+      tags:
+        - !cel "variables.word"
+        - !cel "variables.word"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      tags: { type: array, uniqueItems: true, items: { type: string } }
+value: { ok: true }

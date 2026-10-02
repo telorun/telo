@@ -1,0 +1,35 @@
+kind: Telo.Library
+metadata:
+  name: RequestHeadersIntoStringFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Run.Value
+metadata: { name: echoNote }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [note]
+    properties:
+      note: { type: string }
+value:
+  note: !cel "inputs.note"
+---
+# `request.headers` is a map whether or not the route declares a schema, so it
+# does not fit a slot that takes a string.
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /note, method: POST }
+    handler: !ref echoNote
+    inputs:
+      note: !cel "request.headers"
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

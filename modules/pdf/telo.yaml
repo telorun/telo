@@ -493,17 +493,16 @@ throws:
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        data is not a Uint8Array, is not parseable as a PDF, page is out of
-        range, format is not png/jpeg/webp, or quality is not an integer
-        between 1 and 100.
+        data is not parseable as a PDF, page is out of range, format is not
+        png/jpeg/webp, or quality is not an integer between 1 and 100.
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       data:
-        type: object
-        description: Buffered PDF bytes (a Uint8Array, e.g. the `bytes` produced by Octet.Decoder).
+        x-telo-type: Telo.Bytes
+        description: The PDF document, as bytes.
       page:
         type: integer
         minimum: 1
@@ -526,8 +525,8 @@ outputType:
     type: object
     properties:
       image:
-        type: object
-        description: Rendered page as buffered image bytes (a Uint8Array) in the chosen format.
+        x-telo-type: Telo.Bytes
+        description: The rendered page, as image bytes in the chosen format.
       width:
         type: integer
         description: Rendered image width in pixels (page width × scale).
@@ -661,17 +660,17 @@ throws:
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        data is not a Uint8Array or not parseable as a PDF, a field's page is
-        out of range, a field name collides (within the input or with an
-        existing document field), or a box falls outside the page bounds.
+        data is not parseable as a PDF, a field's page is out of range, a field
+        name collides (within the input or with an existing document field), or
+        a box falls outside the page bounds.
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       data:
-        type: object
-        description: Buffered PDF bytes (a Uint8Array).
+        x-telo-type: Telo.Bytes
+        description: The PDF document, as bytes.
       fields:
         type: array
         minItems: 1
@@ -724,8 +723,8 @@ outputType:
     type: object
     properties:
       data:
-        type: object
-        description: New PDF as buffered bytes (a Uint8Array) with the AcroForm fields added.
+        x-telo-type: Telo.Bytes
+        description: The new PDF document with the AcroForm fields added, as bytes.
     required: [ data ]
     additionalProperties: false
 schema:

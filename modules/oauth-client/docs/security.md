@@ -29,13 +29,19 @@ check. A missing `iss` from a server that says it sends one is exactly what the
 attack produces, so skipping the check there would remove the defence precisely
 when it is needed.
 
-For the terminal flow this means wiring the redirect's `iss` into the exchange:
+For the terminal flow this means wiring the redirect's `iss` into the exchange.
+The exchange takes it as it arrives — null when the response carried none, which
+is what its issuer check then judges — while `code`, null only when the redirect
+carried an error instead, is guarded after a step that stops the flow in that
+case:
 
 ```yaml
 - name: tokens
   invoke: !ref Exchange
   inputs:
-    code: !cel "steps.redirect.result.code"
+    code: !cel "steps.redirect.result.code != null ? steps.redirect.result.code : ''"
+    codeVerifier: !cel "steps.auth.result.codeVerifier"
+    redirectUri: !cel "steps.auth.result.redirectUri"
     iss: !cel "steps.redirect.result.iss"
 ```
 

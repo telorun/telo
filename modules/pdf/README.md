@@ -13,9 +13,13 @@ extraction use pdf.js; field writing uses pdf-lib.
   (points, bottom-left origin) happens inside the controller. The rasterizer reports the `scale` it
   rendered at, so the contract is wirable — pass `result.scale` into the
   `Pdf.FormFields` invocation instead of keeping two config values in sync.
-- **Bytes in, bytes out** — both kinds take and produce buffered `Uint8Array`
-  payloads, so they compose with `S3.Get`/`S3.Put`, `Octet.Decoder`, and HTTP
-  bodies without touching the filesystem.
+- **Bytes in, bytes out** — every document and image slot is declared as
+  bytes (`Telo.Bytes`), so the kinds compose with `S3.Get`/`S3.Put`,
+  `Octet.Decoder`, and HTTP bodies without touching the filesystem. A `data`
+  argument comes from a byte-producing resource, an `!include-bytes` embed, or
+  base64url text; anything else is refused before the controller runs —
+  `telo check` reports an expression of another type, and a value only known
+  at run fails the call with `ERR_INPUT_INVALID`.
 - **Actionable failures** — unparseable bytes, out-of-range pages, duplicate
   field names, and out-of-bounds boxes all raise `ERR_INVALID_INPUT` with the
   offending field and bounds spelled out.

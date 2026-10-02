@@ -67,6 +67,28 @@ targets:
   - !ref interpolateHoleDynNullAtRuntime
   - !ref interpolateIntegerSlot
   - !ref interpolateIntegerSlotAtRuntime
+  - !ref standInMasking
+  - !ref standInMaskingAtRuntime
+  - !ref standInSiblingOwnField
+  - !ref standInSiblingOwnFieldAtRuntime
+  - !ref standInSiblingCallSite
+  - !ref standInSiblingCallSiteAtRuntime
+  - !ref standInBranchDefault
+  - !ref standInBranchDefaultAtRuntime
+  - !ref standInIdenticalCallSite
+  - !ref standInIdenticalCallSiteAtRuntime
+  - !ref standInIdenticalOwnField
+  - !ref standInIdenticalOwnFieldAtRuntime
+  - !ref celArgumentType
+  - !ref celArgumentTypeAtRuntime
+  - !ref celArgumentNullable
+  - !ref celArgumentNullableAtRuntime
+  - !ref celArgumentNullableRef
+  - !ref celArgumentNullableRefAtRuntime
+  - !ref celArgumentFraction
+  - !ref celArgumentFractionAtRuntime
+  - !ref templateInputsCel
+  - !ref templateInputsCelAtRuntime
   - !ref hostPathInterpolated
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
@@ -1539,6 +1561,211 @@ metadata:
 source: ./__fixtures__/check-run-agreement/interpolate-integer-slot/telo.yaml
 expect:
   runFails: "/count must be integer"
+---
+# A stand-in is judged only for what its tag guarantees, so an `!interpolate`
+# failing a `pattern` is excused while a literal beside it violating one is
+# refused — statically, and at creation even though the stand-in's failure is
+# the first the kernel's validator meets.
+kind: Assert.Manifest
+metadata:
+  name: standInMasking
+source: ./__fixtures__/check-run-agreement/stand-in-masking/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/code must match pattern"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInMaskingAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-masking/telo.yaml
+expect:
+  runFails: "/code must match pattern"
+---
+# A stand-in that satisfies a union excuses that union alone: a reference beside
+# it on the same value still requires its member — at a resource's own field…
+kind: Assert.Manifest
+metadata:
+  name: standInSiblingOwnField
+source: ./__fixtures__/check-run-agreement/stand-in-sibling-own-field/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/cfg is missing required property 'b'"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInSiblingOwnFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-sibling-own-field/telo.yaml
+expect:
+  runFails: "Error: /cfg is missing required property 'b' [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
+---
+# …and in a call's argument.
+kind: Assert.Manifest
+metadata:
+  name: standInSiblingCallSite
+source: ./__fixtures__/check-run-agreement/stand-in-sibling-call-site/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/cfg is missing required property 'b'"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInSiblingCallSiteAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-sibling-call-site/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"cfg\":{\"a\":\"5s\"}}. Error: /cfg is missing required property 'b'"
+---
+# A `default:` inside a union alternative is never applied when the union is
+# decided, so an alternative requiring a member it merely defaults is not
+# satisfied by a stand-in that otherwise fits it.
+kind: Assert.Manifest
+metadata:
+  name: standInBranchDefault
+source: ./__fixtures__/check-run-agreement/stand-in-branch-default/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/retry matches no alternative — expected one with 'mode', or a integer"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInBranchDefaultAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-branch-default/telo.yaml
+expect:
+  runFails: "Error: /retry matches no alternative — expected one with 'mode', or a integer [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
+---
+# One deterministic expression written twice in a list of unique items is a
+# duplicate as written — in a call's argument…
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalCallSite
+source: ./__fixtures__/check-run-agreement/stand-in-identical-call-site/lib/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalCallSiteAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-identical-call-site/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"tags\":[\"abc\",\"abc\"]}. Error: /tags must NOT have duplicate items"
+---
+# …and at a resource's own field evaluated per call, which nothing expands at
+# creation.
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalOwnField
+source: ./__fixtures__/check-run-agreement/stand-in-identical-own-field/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/tags must NOT have duplicate items (items ## 0 and 1 are identical)"
+---
+kind: Assert.Manifest
+metadata:
+  name: standInIdenticalOwnFieldAtRuntime
+source: ./__fixtures__/check-run-agreement/stand-in-identical-own-field/telo.yaml
+expect:
+  runFails: "Error: /tags must NOT have duplicate items (items ## 0 and 1 are identical) [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
+---
+# A `!cel` argument is held to the target's declared inputType by its type:
+# a string where the contract declares an integer…
+kind: Assert.Manifest
+metadata:
+  name: celArgumentType
+source: ./__fixtures__/check-run-agreement/cel-argument-type/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "returns 'string' but consume's declared inputType expects 'integer'"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentTypeAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-type/telo.yaml
+expect:
+  # The message of `ERR_INPUT_INVALID`.
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":\"abc\"}. Error: /count must be integer"
+---
+# …and a value its producer declares nullable where the contract takes no null.
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullable
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "reads 'steps.attempt.result.error', which may be null"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullableAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable/telo.yaml
+expect:
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"failure\":null}. Error: /failure must be object"
+---
+# …the same nullable shape declared behind a reference, which the checker reads
+# as the shape it names…
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullableRef
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable-ref/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "reads 'steps.attempt.result.error', which may be null"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentNullableRefAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-nullable-ref/telo.yaml
+expect:
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"failure\":null}. Error: /failure must be object"
+---
+# …and a producer declared `number` into an integer slot: an integer is a
+# number, a number is not an integer.
+kind: Assert.Manifest
+metadata:
+  name: celArgumentFraction
+source: ./__fixtures__/check-run-agreement/cel-argument-fraction/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "source is 'number', target expects 'integer'"
+---
+kind: Assert.Manifest
+metadata:
+  name: celArgumentFractionAtRuntime
+source: ./__fixtures__/check-run-agreement/cel-argument-fraction/telo.yaml
+expect:
+  runFails: "Run.Value/consume: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":2.5}. Error: /count must be integer"
+---
+# A template kind's top-level `inputs:` is a call site like a step's: an
+# expression of the wrong type is reported where the kind is written…
+kind: Assert.Manifest
+metadata:
+  name: templateInputsCel
+source: ./__fixtures__/check-run-agreement/template-inputs-cel/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'inputs.count' returns 'string' but body's declared inputType expects 'integer'"
+---
+# …and refused by the kernel when the kind dispatches. A kind document is checked
+# wherever it is loaded, so no consumer is silent about it; the value's type is
+# hidden from the checker here instead.
+kind: Assert.Manifest
+metadata:
+  name: templateInputsCelAtRuntime
+source: ./__fixtures__/check-run-agreement/template-inputs-cel/computed.yaml
+expect:
+  runFails: "Run.Value/body: inputs do not satisfy the declared inputType: Invalid value passed: {\"count\":\"abc\"}. Error: /count must be integer"
 ---
 # `!interpolate` at a host-path slot: a plain string whatever its text, refused
 # statically at the slot and at creation by the slot's own schema.

@@ -6037,7 +6037,10 @@ steps:
             inputs:
               turnId: !cel "inputs.turnId"
               writer: !cel "steps.attempt.result.writer"
-              failure: !cel "steps.takeOver.result.error"
+              # Never null here: `recreated` refused a takeover reporting none.
+              failure: !cel >-
+                steps.takeOver.result.error != null ? steps.takeOver.result.error
+                : {'code': 'ERR_JOURNAL_KEY_REMOVED', 'message': 'Turn ' + inputs.turnId + ' was removed.'}
           - name: raiseHeldFailure
             throw:
               code: !cel "error.code"
@@ -6076,7 +6079,9 @@ steps:
         inputs:
           turnId: !cel "inputs.turnId"
           writer: !cel "steps.attempt.result.writer"
-          failure: !cel "steps.takeOver.result.error"
+          failure: !cel >-
+            steps.takeOver.result.error != null ? steps.takeOver.result.error
+            : {'code': 'ERR_JOURNAL_KEY_REMOVED', 'message': 'Turn ' + inputs.turnId + ' was removed.'}
       - name: refund
         invoke: !ref budget
         inputs:

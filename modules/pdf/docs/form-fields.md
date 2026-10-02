@@ -45,7 +45,7 @@ metadata: { name: AddFields }
 
 | Input | Type | Required | Description |
 |-------|------|----------|-------------|
-| `data` | `Uint8Array` | yes | Buffered PDF bytes. |
+| `data` | bytes (`Telo.Bytes`) | yes | The PDF document. Supply it from a byte-producing resource, an `!include-bytes` embed, or base64url text. |
 | `fields` | `array` | yes | Field placements; at least one entry. |
 | `scale` | `number` | no | The render scale the coordinates were measured at — wire the producing render step's `result.scale` here. Takes precedence over the resource-level `scale`. |
 
@@ -63,10 +63,11 @@ Each `fields[]` entry:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `data` | `Uint8Array` | New PDF bytes with the AcroForm fields added. The input document is not mutated. |
+| `data` | bytes (`Telo.Bytes`) | The new PDF document with the AcroForm fields added. The input document is not mutated. |
 
 ## Errors
 
 | Code | Raised when |
 |------|-------------|
-| `ERR_INVALID_INPUT` | `data` is not a `Uint8Array` or not parseable as a PDF; a field's `page` is out of range; a field `name` collides (within the input or with an existing document field); or a box falls outside the page bounds. |
+| `ERR_INPUT_INVALID` | An argument does not satisfy the input contract — `data` is not bytes, or a field's coordinates are out of the declared range. Raised before the controller runs. |
+| `ERR_INVALID_INPUT` | `data` is not parseable as a PDF; a field's `page` is out of range; a field `name` collides (within the input or with an existing document field); or a box falls outside the page bounds. |

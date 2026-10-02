@@ -1,0 +1,19 @@
+# The same deterministic expression twice in a resource's own list of unique
+# items.
+kind: Telo.Application
+metadata:
+  name: UniqueItemsIdenticalOwnField
+imports:
+  Kinds: ./kinds
+variables:
+  word: { env: STAND_IN_WORD, type: string, default: abc }
+targets:
+  - name: call
+    invoke: !ref tagged
+---
+kind: Kinds.Tagged
+metadata:
+  name: tagged
+tags:
+  - !interpolate "a-${{ variables.word }}"
+  - !interpolate "a-${{ variables.word }}"

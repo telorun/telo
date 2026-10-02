@@ -452,11 +452,25 @@ export {
   undeclaredKeySchema,
 } from "./schema-compat.js";
 export type {
+  CompatibilityConflict,
   CompatibilityResult,
   ExternalSchemaResolver,
   StandInOptions,
 } from "./schema-compat.js";
 export { schemaWithTagsAsText } from "./schema-tag-text.js";
+export { readStandIn, withoutStandInFindings } from "./stand-in-findings.js";
+export type {
+  LocatedFinding,
+  SchemaNodeFindings,
+  StandIn,
+  StandInClass,
+  StandInIdentity,
+  StandInJudgment,
+  StandInReading,
+  StandIns,
+} from "./stand-in-findings.js";
+export { SchemaNodeValidator } from "./schema-node-validator.js";
+export type { NodeValidatingAjv, SchemaNodeValidatorOptions } from "./schema-node-validator.js";
 export {
   ajvErrorToPath,
   explainFormatErrors,

@@ -170,7 +170,8 @@ steps:
   - name: tokens
     invoke: !ref exchange
     inputs:
-      code: !cel "steps.redirect.result.code"
+      # Null when the user refused, which this flow never does.
+      code: !cel "steps.redirect.result.code != null ? steps.redirect.result.code : ''"
       codeVerifier: !cel "steps.auth.result.codeVerifier"
       redirectUri: !cel "steps.auth.result.redirectUri"
       iss: !cel "steps.redirect.result.iss"
@@ -184,6 +185,61 @@ steps:
     inputs:
       actual: !cel "steps.stored.result.key"
       expected: console
+---
+# The same sign-in against a redirect carrying no `iss`: the null reaches the
+# exchange, whose own issuer check refuses it because the stand-in server's
+# discovery document advertises the parameter.
+kind: Run.Sequence
+metadata: { name: consoleLoginWithoutIss }
+with:
+  - kind: OAuth.RedirectListener
+    metadata: { name: loopback }
+  - kind: OAuth.RedirectAwait
+    metadata: { name: AwaitRedirect }
+    listener: !ref loopback
+    timeout: 30s
+targets:
+  - !ref loopback
+steps:
+  - name: auth
+    invoke: !ref authorize
+    inputs:
+      redirectUri: !cel "resources.loopback.status.redirectUri"
+      key: withoutIss
+  - name: browserRedirect
+    invoke: !ref browser
+    inputs:
+      method: GET
+      url: !cel "steps.auth.result.redirectUri + '?code=good-code&state=' + steps.auth.result.state"
+  - name: redirect
+    invoke: !ref AwaitRedirect
+    inputs:
+      state: !cel "steps.auth.result.state"
+  - name: exchanging
+    try:
+      - name: tokens
+        invoke: !ref exchange
+        inputs:
+          code: !cel "steps.redirect.result.code != null ? steps.redirect.result.code : ''"
+          codeVerifier: !cel "steps.auth.result.codeVerifier"
+          redirectUri: !cel "steps.auth.result.redirectUri"
+          iss: !cel "steps.redirect.result.iss"
+    catch:
+      # The refusal reaches a catch as the exchange's own message; what must not
+      # happen is the input contract refusing the null first.
+      - name: refused
+        value:
+          byInputContract: !cel "error.code == 'ERR_INPUT_INVALID'"
+          issuerMissing: !cel "error.message.contains(\"states it returns an 'iss' parameter, but none was passed\")"
+  - name: assertIssuerMissing
+    invoke: !ref assertEquals
+    inputs:
+      actual:
+        iss: !cel "steps.redirect.result.iss"
+        refused: !cel "has(steps.refused) ? steps.refused.result : {'exchanged': true}"
+      expected:
+        iss: null
+        refused: { byInputContract: false, issuerMissing: true }
 ---
 kind: Assert.Equals
 metadata: { name: assertEquals }
@@ -210,6 +266,10 @@ steps:
   # ---- Terminal sign-in over the loopback listener --------------------------
   - name: consoleLogin
     invoke: !ref consoleLogin
+
+  # ---- A redirect with no `iss` reaches the exchange's own issuer check -----
+  - name: consoleLoginWithoutIss
+    invoke: !ref consoleLoginWithoutIss
 
   - name: grantAfterLogin
     invoke: !ref readGrant

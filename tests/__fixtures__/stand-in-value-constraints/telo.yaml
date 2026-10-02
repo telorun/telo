@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: StandInEntry
+include:
+  - ./cases.yaml
+imports:
+  Run: ../../../modules/run
+  Timer: ../../../modules/timer
+  Kinds: ./kinds
+variables:
+  word: { env: STAND_IN_WORD, type: string, default: abc }
+  id: { env: STAND_IN_ID, type: string, default: 9b2f8a2e-3c4d-4e5f-8a6b-7c8d9e0f1a2b }
+  seconds: { env: STAND_IN_SECONDS, type: string, default: "5" }
+  millis: { env: STAND_IN_MILLIS, type: string, default: "10" }
+targets:
+  - !ref standIns
+  - name: namedWait
+    invoke: !ref interpolatedNamedWait
+---
+# An own field whose union names shapes: declared here, in the module declaring
+# them, since a kind's own schema reaches a named shape only there.
+kind: Telo.Definition
+metadata:
+  name: NamedWaiting
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    wait:
+      x-telo-eval: compile
+      anyOf:
+        - { $ref: "telo://Self/Seconds" }
+        - { $ref: "telo://Self/Count" }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.wait"
+---
+kind: Self.NamedWaiting
+metadata:
+  name: interpolatedNamedWait
+wait: !interpolate "${{ variables.seconds }}s"

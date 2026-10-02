@@ -1,0 +1,43 @@
+# A reference beside a union on one field: the reference requires `b`, and the
+# union's object branch is satisfied by a stand-in. The stand-in excuses the
+# union and nothing else, so the missing member is refused — by `telo check`
+# here, and by the kernel at creation for a consumer.
+kind: Telo.Library
+metadata:
+  name: StandInSiblingOwnField
+imports:
+  Run: ../../../../../modules/run
+variables:
+  seconds: { type: string }
+exports:
+  resources: [thing]
+---
+kind: Telo.Definition
+metadata:
+  name: Thing
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    cfg:
+      x-telo-eval: compile
+      $ref: "#/$defs/Base"
+      anyOf:
+        - type: object
+          properties:
+            a: { type: string, pattern: "^\\d+s$" }
+        - type: integer
+  $defs:
+    Base: { type: object, required: [b] }
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.cfg"
+---
+kind: Self.Thing
+metadata:
+  name: thing
+cfg:
+  a: !interpolate "${{ variables.seconds }}s"

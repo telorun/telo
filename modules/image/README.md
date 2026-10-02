@@ -12,10 +12,14 @@ bounding boxes, draw them, let it look again.
 - **One coordinate space with the pdf module** — pixels, top-left origin,
   matching what `Pdf.Rasterizer` reports and `Pdf.FormFields` consumes, so
   boxes flow between rendering, preview, and field placement untranslated.
-- **Bytes in, bytes out** — buffered `Uint8Array` payloads (PNG, JPEG, or
-  WebP in; the same set out, chosen via `format`), composing with
-  `S3.Get`/`S3.Put`, `Octet.Decoder`, and HTTP bodies without touching the
-  filesystem. Each output reports its `mediaType`.
+- **Bytes in, bytes out** — every image slot is declared as bytes
+  (`Telo.Bytes`: PNG, JPEG, or WebP in; the same set out, chosen via
+  `format`), composing with `S3.Get`/`S3.Put`, `Octet.Decoder`, and HTTP
+  bodies without touching the filesystem. An `image` argument comes from a
+  byte-producing resource, an `!include-bytes` embed, or base64url text;
+  anything else is refused before the controller runs — `telo check` reports
+  an expression of another type, and a value only known at run fails the call
+  with `ERR_INPUT_INVALID`. Each output reports its `mediaType`.
 
 ## Kinds
 

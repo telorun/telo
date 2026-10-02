@@ -1,15 +1,10 @@
 import AjvModule from "ajv";
 import addFormats from "ajv-formats";
-import {
-  isRefSentinel,
-  isTaggedSentinel,
-  producedTypeOf,
-} from "@telorun/templating";
+import { isRefSentinel } from "@telorun/templating";
 import {
   celBaseOfValueType,
   celTypeOfValueType,
   hostAnchorOf,
-  isCompiledValue,
   readValueTypeSlot,
   VALUE_TYPE_BINDINGS,
   valueBrandBases,
@@ -20,6 +15,7 @@ import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { ManifestRootSchema } from "./manifest-schemas.js";
 import { deepEquals } from "./migrations/match.js";
 import { schemaIssues, type SchemaIssue } from "./schema-error-report.js";
+import { readStandIn, type StandIns } from "./stand-in-findings.js";
 import { teloFormatOf } from "./telo-format.js";
 import { registerTeloKeywords } from "./value-type-keyword.js";
 
@@ -33,8 +29,10 @@ const Ajv = (AjvModule as any).default ?? AjvModule;
  *
  *  Called once for the module-level instance and once per
  *  DefinitionRegistry instance. */
-export function createAjv(): InstanceType<typeof Ajv> {
-  const instance = new Ajv({ allErrors: true, strict: false });
+export function createAjv(options: { verbose?: boolean } = {}): InstanceType<typeof Ajv> {
+  // `verbose` makes each error name the schema node that raised it — what the
+  // stand-in judge locates a union by.
+  const instance = new Ajv({ allErrors: true, strict: false, verbose: options.verbose === true });
   (addFormats as any).default
     ? (addFormats as any).default(instance)
     : (addFormats as any)(instance);
@@ -56,6 +54,15 @@ const compiledSchemaValidators = new WeakMap<Record<string, any>, ReturnType<typ
 export interface CompatibilityResult {
   compatible: boolean;
   issues: string[];
+  /** Each issue with where it lies, in `issues` order. */
+  conflicts: CompatibilityConflict[];
+}
+
+export interface CompatibilityConflict {
+  message: string;
+  /** True when the conflict sits beneath a type argument of a value type both
+   *  sides name; a union's takes the union's own position. */
+  beneathTypeArgument: boolean;
 }
 
 /** How an issue names the two sides — the value produced, and the slot it must
@@ -105,12 +112,22 @@ export function checkSchemaCompatibility(
   resolveRef?: (ref: string) => Record<string, any> | undefined,
   roles: CompatibilityRoles = DEFAULT_ROLES,
 ): CompatibilityResult {
-  const issues: string[] = [];
-  compare(source, target, "", issues, resolveRef, new Set(), roles);
-  return { compatible: issues.length === 0, issues };
+  const conflicts: CompatibilityConflict[] = [];
+  compare(source, target, "", conflicts, resolveRef, new Set(), roles, false);
+  return {
+    compatible: conflicts.length === 0,
+    issues: conflicts.map((conflict) => conflict.message),
+    conflicts,
+  };
 }
 
 type RefResolver = ((ref: string) => Record<string, any> | undefined) | undefined;
+
+/** JSON types compare by containment: every `integer` is a `number`, so one
+ *  satisfies a slot declaring the other, and not the reverse. */
+function jsonTypeSatisfies(source: string, target: string): boolean {
+  return source === target || (source === "integer" && target === "number");
+}
 
 function deref(schema: Record<string, any>, resolveRef: RefResolver): Record<string, any> {
   if (!resolveRef || typeof schema.$ref !== "string") return schema;
@@ -121,11 +138,15 @@ function compare(
   rawSource: Record<string, any>,
   rawTarget: Record<string, any>,
   path: string,
-  issues: string[],
+  conflicts: CompatibilityConflict[],
   resolveRef: RefResolver,
   seen: Set<string>,
   roles: CompatibilityRoles,
+  beneathTypeArgument: boolean,
 ): void {
+  const issues = {
+    push: (message: string) => conflicts.push({ message, beneathTypeArgument }),
+  };
   if (!rawSource || !rawTarget || typeof rawSource !== "object" || typeof rawTarget !== "object") {
     return;
   }
@@ -164,12 +185,12 @@ function compare(
     const reasons: string[] = [];
     for (const left of lefts) {
       for (const right of rights) {
-        const probe: string[] = [];
+        const probe: CompatibilityConflict[] = [];
         // A fresh `seen` per probe: a pair rejected on one branch must not mark
         // a reference pair visited for the next, which would silently pass it.
-        compare(left, right, path, probe, resolveRef, new Set(seen), roles);
+        compare(left, right, path, probe, resolveRef, new Set(seen), roles, beneathTypeArgument);
         if (probe.length === 0) return;
-        reasons.push(...probe);
+        reasons.push(...probe.map((conflict) => conflict.message));
       }
     }
     issues.push(
@@ -200,21 +221,22 @@ function compare(
         sourceArg as Record<string, any>,
         targetArg as Record<string, any>,
         `${path}<${argument}>`,
-        issues,
+        conflicts,
         resolveRef,
         seen,
         roles,
+        true,
       );
     }
     return;
   }
 
   // One side declares a value type and the other does not. A `json`
-  // representation refines a base type, so it is compared through that base — a
-  // `Telo.TcpPort` into a plain `integer` slot is gradual typing working. An
-  // `instance` is not JSON at all, so ANY declared JSON type on the other side is
-  // a definite conflict; a side declaring no type at all is still saying nothing
-  // and stays compatible.
+  // representation refines a base type, so it stands as that base on the side
+  // declaring it — a `Telo.TcpPort` into a plain `integer` or `number` slot is
+  // gradual typing working. An `instance` is not JSON at all, so ANY declared
+  // JSON type on the other side is a definite conflict; a side declaring no type
+  // at all is still saying nothing and stays compatible.
   if (Boolean(sourceType) !== Boolean(targetType)) {
     const declared = (sourceType ?? targetType)!;
     const other = sourceType ? target : source;
@@ -232,7 +254,10 @@ function compare(
     if (declared.entry && typeof other.type === "string") {
       const base = celBaseOfValueType(declared.entry);
       const asJson = base === undefined ? undefined : declared.entry.base;
-      if (asJson !== other.type) {
+      const fits =
+        asJson !== undefined &&
+        (sourceType ? jsonTypeSatisfies(asJson, other.type) : jsonTypeSatisfies(other.type, asJson));
+      if (!fits) {
         issues.push(
           `${path || "/"}: value type mismatch — ${
             sourceType ? `${roles.source} is` : `${roles.target} expects`
@@ -248,7 +273,7 @@ function compare(
   if (
     typeof source.type === "string" &&
     typeof target.type === "string" &&
-    source.type !== target.type
+    !jsonTypeSatisfies(source.type, target.type)
   ) {
     issues.push(
       `${path || "/"}: type mismatch — ${roles.source} is '${source.type}', ${roles.target} expects '${target.type}'`,
@@ -263,10 +288,11 @@ function compare(
       source.items as Record<string, any>,
       target.items as Record<string, any>,
       `${path}[]`,
-      issues,
+      conflicts,
       resolveRef,
       seen,
       roles,
+      beneathTypeArgument,
     );
   }
 
@@ -284,7 +310,16 @@ function compare(
     const srcProp = sourceProps[field];
     const tgtProp = targetProps[field];
     if (tgtProp && srcProp) {
-      compare(srcProp, tgtProp, `${path}/${field}`, issues, resolveRef, seen, roles);
+      compare(
+        srcProp,
+        tgtProp,
+        `${path}/${field}`,
+        conflicts,
+        resolveRef,
+        seen,
+        roles,
+        beneathTypeArgument,
+      );
     }
   }
 }
@@ -976,6 +1011,9 @@ export function resolveRefIn(
 /** Looks a registered schema up by its `$id`. */
 export type ExternalSchemaResolver = (ref: string) => Record<string, any> | undefined;
 
+/** The keys a reference node is made of — what an expansion replaces. */
+export const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
+
 /**
  * A copy of `schema` with every named shape it references — at the root and at
  * any depth — replaced by the shape itself.
@@ -987,8 +1025,6 @@ export type ExternalSchemaResolver = (ref: string) => Record<string, any> | unde
  * recursive shape finite; document-local `#/…` references belong to the document
  * they sit in and are left too.
  */
-const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
-
 export function inlineNamedShapes(
   schema: Record<string, any>,
   resolve: ExternalSchemaResolver,
@@ -1156,8 +1192,6 @@ export function undeclaredKeySchema(
   return addl && typeof addl === "object" ? (addl as Record<string, any>) : undefined;
 }
 
-/** Deep-clone `data`, replacing every tagged value with a placeholder of the type
- *  it will be, so AJV can validate the literal fields without false positives. */
 /** Everything {@link substituteCelFields} does beyond walking the value.
  *
  *  One object rather than trailing positionals: the resolver is the parameter a
@@ -1165,18 +1199,13 @@ export function undeclaredKeySchema(
  *  `undefined`s — and a caller that stopped counting one short simply got the
  *  old blind behaviour, silently. Two of them did. */
 export interface SubstituteOptions {
-  /** Called with the dotted path of every value replaced by a placeholder.
-   *
-   *  A placeholder is a stand-in for something only known at runtime, so its
-   *  VALUE says nothing: a caller that judges constraints at these paths reports
-   *  against a value no author wrote. Some constraints cannot be satisfied by
-   *  construction at all (`pattern`, `format`, a `oneOf` of unrelated shapes),
-   *  so making every placeholder acceptable is not achievable in general —
-   *  knowing where not to look is. Structural findings survive because they are
-   *  located at the CONTAINER, not at the substituted leaf. */
-  onSubstitute?: (path: string) => void;
-  /** Dotted path of `data` within the resource, for `onSubstitute`. */
-  path?: string;
+  /** Receives every stand-in substituted, by JSON Pointer, with its class and
+   *  identity. A stand-in is not what the author wrote, so a caller validating
+   *  the result passes this record to the validator, which drops the findings
+   *  it excuses (`withoutStandInFindings`). */
+  standIns?: StandIns;
+  /** JSON Pointer of `data` within the validated root, for `standIns`. */
+  pointer?: string;
   /** Resolves a named shape (`telo:<module>/<Type>`) to its schema. Without it
    *  a slot described by one reads as undescribed and every CEL leaf beneath it
    *  is handed the typeless `""` stand-in — which the shape then rejects, so a
@@ -1184,19 +1213,20 @@ export interface SubstituteOptions {
   external?: ExternalSchemaResolver;
 }
 
+/** Deep-clone `data`, replacing every tagged or compiled value with a stand-in
+ *  of the type it will be, so AJV can validate the literal fields. */
 export function substituteCelFields(
   data: unknown,
   schema: Record<string, any>,
   rootSchema?: Record<string, any>,
   options: SubstituteOptions = {},
 ): unknown {
-  const { onSubstitute, external } = options;
-  const path = options.path ?? "";
+  const { standIns, external } = options;
+  const pointer = options.pointer ?? "";
   const base = rootSchema ?? schema;
   const entered = resolveRefIn(schema, base, external);
   const root = entered.root;
   const resolved = selectUnionBranch(entered.schema, data, root, external);
-  const mark = () => onSubstitute?.(path);
 
   // `!ref <name>` sentinels are identity markers, not runtime values —
   // schemas that opt into `$ref: "telo://manifest#/$defs/ResourceRef"`
@@ -1208,45 +1238,34 @@ export function substituteCelFields(
   if (isRefSentinel(data)) {
     return data;
   }
-  // A tag whose produced type is a CONSTANT of the tag rather than a function of
-  // the slot substitutes a placeholder of THAT type: `!include-text` always
-  // produces a string and `!include-bytes` always produces bytes. Collapsing
-  // them to a slot-shaped placeholder like a CEL expression would make every
-  // slot accept both, so a byte embed at a `type: string` field passed
-  // `telo check` and failed at resource creation — and the reverse did too.
-  // Substituting the real type lets AJV and the `x-telo-type` keyword reject
-  // both directions statically, with no new diagnostic code.
+  // An expression reaches this walk as a tagged sentinel BEFORE `precompileDoc`
+  // and as a CompiledValue after — so a caller running under `compile: true`
+  // (every `telo run`, unlike `telo check`) must substitute both, or AJV sees a
+  // compiled value as a plain object and one manifest means two things
+  // depending on which command read it.
   //
-  // The engine is what says so. This used to branch on two tag names, which was
-  // the only place a tag's produced type was written down and it was written in
-  // the consumer — so a future tag producing bytes had to be added to a set here
-  // rather than declaring it.
-  if (isTaggedSentinel(data)) {
-    const produced = producedTypeOf(data.engine);
-    if (produced) return producedPlaceholder(produced, resolved, { root, external });
-  }
-  if (isTaggedSentinel(data)) {
-    mark();
-    return celPlaceholderForSchema(resolved, { root, external });
-  }
-  // The same fact in its second spelling. An expression reaches this walk as a
-  // tagged sentinel BEFORE `precompileDoc`, and as a
-  // CompiledValue after — so a caller running under `compile: true` (every
-  // `telo run`, unlike `telo check`) handed one to AJV as a plain object, and a
-  // slot typed `boolean` rejected a `when:` the author wrote correctly. The
-  // kernel's `stripCompiledValues` has always substituted here; missing it on
-  // this side made one manifest mean two things depending on which command read
-  // it.
-  if (isCompiledValue(data)) {
-    mark();
-    return celPlaceholderForSchema(resolved, { root, external });
+  // A tag whose produced type is a CONSTANT of the tag (`!interpolate`,
+  // `!include-*`, `!module-path`) stands in as THAT type, so a byte embed at a
+  // string slot, or text at an integer slot, is still refused statically; any
+  // other expression stands in as the slot asks. The engine is what says which,
+  // never a tag name — and a tag its engine resolves now (`!literal`) is no
+  // stand-in at all: its value is judged like any literal. The builder is given
+  // the resolver and the document this node sits in, so a slot whose items or
+  // required members name a shape stands in as that shape.
+  const reading = readStandIn(data);
+  if (reading?.kind === "value") return reading.value;
+  if (reading) {
+    standIns?.set(pointer, reading);
+    return reading.class === "produced"
+      ? producedPlaceholder(reading.produced, resolved, { root, external })
+      : celPlaceholderForSchema(resolved, { root, external });
   }
   if (Array.isArray(data)) {
     const item = resolveRefIn((resolved.items ?? {}) as Record<string, any>, root, external);
     return data.map((element, i) =>
       substituteCelFields(element, item.schema, item.root, {
-        onSubstitute,
-        path: `${path}[${i}]`,
+        standIns,
+        pointer: `${pointer}/${i}`,
         external,
       }),
     );
@@ -1259,8 +1278,8 @@ export function substituteCelFields(
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       result[k] = substituteCelFields(v, (props[k] ?? undeclaredKeySchema(resolved, k) ?? {}) as Record<string, any>, root, {
-        onSubstitute,
-        path: path ? `${path}.${k}` : k,
+        standIns,
+        pointer: `${pointer}/${k.replace(/~/g, "~0").replace(/\//g, "~1")}`,
         external,
       });
     }

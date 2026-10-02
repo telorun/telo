@@ -112,6 +112,10 @@ interface TemplatingEngine {
   /** Where the CEL sits inside the scalar — what editors and analysis passes
    *  read instead of recognising the tag. */
   expressionRegions?(source: string): readonly ExpressionRegion[];
+
+  /** Whether the text, written twice in one value, means one value both times —
+   *  the engine's verdict on the text alone. Absent reads as "not repeatable". */
+  repeatable?(source: string, celEnv: Environment): boolean;
 }
 ```
 

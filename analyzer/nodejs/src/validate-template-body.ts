@@ -2,6 +2,7 @@ import { nearestName } from "./nearest-name.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { inheritedCapability, type DefResolver } from "./extends-resolution.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
+import type { StandIns } from "./stand-in-findings.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateTargetProblems } from "./template-targets.js";
 import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
@@ -275,11 +276,14 @@ export function validateTemplateBody(
       if (body.definition) {
         const schema = entrySchemaFor(body.definition, registry);
         if (Object.keys(schema).length > 0) {
+          const standIns: StandIns = new Map();
           const issues = registry.validateResourceConfig(
             substituteDecodedCelFields(body.manifest, schema, undefined, {
+              standIns,
               external: (ref) => registry.schemaForId(ref),
             }),
             schema,
+            standIns,
           );
           for (const issue of issues) {
             report(

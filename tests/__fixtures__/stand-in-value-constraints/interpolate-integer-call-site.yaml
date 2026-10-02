@@ -1,0 +1,29 @@
+# `!interpolate` always produces a string, so an integer argument refuses it.
+kind: Telo.Application
+metadata:
+  name: InterpolateIntegerCallSite
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    invoke: !ref consume
+    inputs:
+      count: !interpolate "${{ 1 }}"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [count]
+    properties:
+      count: { type: integer }
+value: { ok: true }

@@ -1,6 +1,6 @@
 import { isCompiledValue } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
-import { producedTypeOf } from "../src/builtins.js";
+import { producedTypeOf, repeatableSource } from "../src/builtins.js";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { celEngine } from "../src/engines/cel.js";
 import { literalEngine } from "../src/engines/literal.js";
@@ -140,5 +140,20 @@ describe("literalEngine", () => {
     // slot-shaped placeholder rather than the string it becomes.
     expect(literalEngine.producedType?.()).toEqual({ type: "string" });
     expect(producedTypeOf("literal")).toEqual({ type: "string" });
+  });
+});
+
+describe("repeatableSource", () => {
+  it("is the engine's verdict on the text alone", () => {
+    expect(repeatableSource("cel", "variables.word.lowerAscii()", celEnv)).toBe(true);
+    expect(repeatableSource("cel", "uuidv4()", celEnv)).toBe(false);
+    // A method on a bare identifier may be a module's, whose determinism the
+    // text does not state.
+    expect(repeatableSource("cel", "Billing.tag(variables.word)", celEnv)).toBe(false);
+    expect(repeatableSource("cel", "variables.", celEnv)).toBe(false);
+    expect(repeatableSource("interpolate", "a-${{ variables.word }}", celEnv)).toBe(true);
+    expect(repeatableSource("interpolate", "a-${{ variables.word }}-${{ uuidv4() }}", celEnv)).toBe(false);
+    expect(repeatableSource("interpolate", "a-${{ variables.word", celEnv)).toBe(false);
+    expect(repeatableSource("literal", "text", celEnv)).toBe(false);
   });
 });

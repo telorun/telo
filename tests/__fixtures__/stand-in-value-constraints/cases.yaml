@@ -1,0 +1,181 @@
+# Correct values written through a tag, at slots declaring value constraints.
+# Included by the application beside it and by the library under lib/, so every
+# case is checked at the entry and created through an import.
+kind: Telo.JsonSchema
+metadata:
+  name: Row
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, code]
+  properties:
+    id: { type: string, format: uuid }
+    code: { type: string, pattern: "^[A-Z]{3}$" }
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name, prefixed, id, wait]
+    properties:
+      name: { type: string, minLength: 5 }
+      prefixed: { type: string, pattern: "^x-" }
+      id: { type: string, format: uuid }
+      wait:
+        anyOf:
+          - { type: string, pattern: "^\\d+s$" }
+          - { type: integer }
+value: { ok: true }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Seconds
+schema: { type: string, pattern: "^\\d+s$" }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Count
+schema: { type: integer }
+---
+# Unions whose branches are all references, and a list of distinct items.
+kind: Run.Value
+metadata:
+  name: consumeUnions
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      local:
+        anyOf:
+          - { $ref: "#/$defs/Seconds" }
+          - { $ref: "#/$defs/Count" }
+      named:
+        anyOf:
+          - !ref Seconds
+          - !ref Count
+      tags: { type: array, uniqueItems: true, items: { type: string } }
+    $defs:
+      Seconds: { type: string, pattern: "^\\d+s$" }
+      Count: { type: integer }
+value: { ok: true }
+---
+kind: Run.Value
+metadata:
+  name: consumeRow
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [row]
+    properties:
+      row: !ref Row
+value: { ok: true }
+---
+kind: Run.Value
+metadata:
+  name: consumeRowMap
+inputType: !ref Row
+value: { ok: true }
+---
+kind: Kinds.Timed
+metadata:
+  name: interpolatedTimeout
+timeout: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Timed
+metadata:
+  name: computedTimeout
+timeout: !cel "variables.seconds + 's'"
+---
+kind: Kinds.Timed
+metadata:
+  name: literalTimeout
+timeout: !literal "5s"
+---
+kind: Kinds.Waiting
+metadata:
+  name: interpolatedWait
+wait: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Retrying
+metadata:
+  name: interpolatedRetry
+retry:
+  base: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Branched
+metadata:
+  name: interpolatedBranch
+cfg:
+  kind: b
+  t: !interpolate "${{ variables.seconds }}s"
+---
+kind: Kinds.Tagged
+metadata:
+  name: distinctTags
+tags:
+  - !cel "'a-' + variables.word"
+  - !cel "'b-' + variables.word"
+---
+kind: Run.Sequence
+metadata:
+  name: standIns
+steps:
+  - name: callSite
+    invoke: !ref consume
+    inputs:
+      name: !interpolate "x-${{ variables.word }}"
+      prefixed: !interpolate "x-${{ variables.word }}"
+      id: !interpolate "${{ variables.id }}"
+      wait: !interpolate "${{ variables.seconds }}s"
+  - name: referencedBranches
+    invoke: !ref consumeUnions
+    inputs:
+      local: !interpolate "${{ variables.seconds }}s"
+      named: !interpolate "${{ variables.seconds }}s"
+      tags:
+        - !interpolate "a-${{ variables.word }}"
+        - !interpolate "b-${{ variables.word }}"
+  - name: computedItems
+    invoke: !ref consumeUnions
+    inputs:
+      tags:
+        - !cel "'a-' + variables.word"
+        - !cel "'b-' + variables.word"
+  - name: delay
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: !interpolate "${{ variables.millis }}ms"
+  - name: rows
+    invoke:
+      kind: Run.Iteration
+      collection: !cel "[{'id': variables.id, 'code': 'ABC'}]"
+      steps:
+        - name: nested
+          invoke: !ref consumeRow
+          inputs:
+            row: !cel "item"
+        - name: whole
+          invoke: !ref consumeRowMap
+          inputs: !cel "item"
+  - name: interpolated
+    invoke: !ref interpolatedTimeout
+  - name: computed
+    invoke: !ref computedTimeout
+  - name: literal
+    invoke: !ref literalTimeout
+  - name: wait
+    invoke: !ref interpolatedWait
+  - name: retry
+    invoke: !ref interpolatedRetry
+  - name: branch
+    invoke: !ref interpolatedBranch
+  - name: tagged
+    invoke: !ref distinctTags

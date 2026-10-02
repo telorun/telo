@@ -1,0 +1,53 @@
+kind: Telo.Application
+metadata:
+  name: ChainThroughUnionIntoInteger
+  version: 1.0.0
+  description: A member every alternative of a union declares a string, read into an integer slot.
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: produce
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      shape:
+        anyOf:
+          - type: object
+            properties:
+              a: { type: string }
+              kind: { type: string }
+          - type: object
+            properties:
+              a: { type: string }
+              other: { type: string }
+value:
+  shape: { a: x, kind: k }
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      s: { type: integer }
+value: { ok: true }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: p
+    invoke: !ref produce
+  - name: c
+    invoke: !ref consume
+    inputs:
+      s: !cel "steps.p.result.shape.a"

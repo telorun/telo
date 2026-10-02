@@ -1,0 +1,40 @@
+# A stand-in failing a value constraint ahead of a literal that violates one:
+# the stand-in is excused, the literal is refused — by `telo check` here, and
+# by the kernel at creation for a consumer, where the stand-in's failure comes
+# first and must not hide the literal's.
+kind: Telo.Library
+metadata:
+  name: StandInMasking
+imports:
+  Run: ../../../../../modules/run
+variables:
+  seconds: { type: string }
+exports:
+  resources: [timed]
+---
+kind: Telo.Definition
+metadata:
+  name: Timed
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    timeout:
+      type: string
+      pattern: "^\\d+s$"
+      x-telo-eval: compile
+    code:
+      type: string
+      pattern: "^[A-Z]{3}$"
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata:
+      name: echo
+    value: !cel "self.timeout"
+---
+kind: Self.Timed
+metadata:
+  name: timed
+timeout: !interpolate "${{ variables.seconds }}s"
+code: abc

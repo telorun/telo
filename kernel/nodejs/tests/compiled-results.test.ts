@@ -29,4 +29,21 @@ describe("refuseMistypedResults", () => {
     );
     expect(shared).toEqual({ a: "x" });
   });
+  it("refuses equal results inside a list its slot declares unique", () => {
+    const expression = { __compiled: true, call: () => undefined };
+    const schema = {
+      type: "object",
+      properties: { tags: { type: "array", uniqueItems: true, items: { type: "string" } } },
+    };
+    const held = (tags: string[]) => () =>
+      refuseMistypedResults(
+        { tags: [expression, expression] },
+        { tags },
+        schema,
+        new SchemaValidator(),
+        (path, problem) => new Error(`${path} ${problem}`),
+      );
+    expect(held(["a", "b"])).not.toThrow();
+    expect(held(["a", "a"])).toThrow(/^tags must NOT have duplicate items/);
+  });
 });

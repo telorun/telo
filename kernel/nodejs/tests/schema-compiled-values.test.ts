@@ -144,6 +144,24 @@ describe("stripCompiledValues", () => {
     expect(out.b.url).toBeNull();
   });
 
+  it("records each stand-in by JSON Pointer, with its class and identity", () => {
+    const interpolated = { ...(cel("${{ s }}s") as object), engine: "interpolate" };
+    const standIns = new Map();
+    stripCompiledValues(
+      { url: cel("inputs.path"), "a/b": [interpolated] },
+      { type: "object", properties: { "a/b": { type: "array", items: { type: "string" } } } },
+      undefined,
+      undefined,
+      standIns,
+    );
+    expect(
+      [...standIns].map(([pointer, standIn]) => [pointer, standIn.class, standIn.identity]),
+    ).toEqual([
+      ["/url", "computed", undefined],
+      ["/a~1b/0", "produced", { tag: "interpolate", text: "${{ s }}s", repeatable: true }],
+    ]);
+  });
+
   it("stands a computed list in by the shape its items name, as telo check does", () => {
     const part = {
       type: "object",

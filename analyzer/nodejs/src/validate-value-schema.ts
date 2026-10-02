@@ -1,6 +1,7 @@
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
+import type { StandIns } from "./stand-in-findings.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
 
 /**
@@ -24,7 +25,7 @@ import type { ValueSchemaHost } from "./value-schema-slot.js";
 /** The validator holding the registered shapes, and the resolver that lets the
  *  decoding walk see through them. */
 export interface ShapeAwareValidator {
-  validate(data: unknown, schema: Record<string, any>): SchemaIssue[];
+  validate(data: unknown, schema: Record<string, any>, standIns?: StandIns): SchemaIssue[];
   external: ExternalSchemaResolver;
 }
 
@@ -53,10 +54,12 @@ export function collectValueSchemaIssues(
     typeManifests: allManifests,
     valueSchemaHost,
   })) {
+    const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(value, schema, undefined, {
+      standIns,
       external: validator.external,
     });
-    for (const issue of validator.validate(substituted, schema)) {
+    for (const issue of validator.validate(substituted, schema, standIns)) {
       issues.push({
         message: `\`${path}\` does not satisfy the type declared at \`${from}\`: ${issue.message}`,
         path: issue.path ? `${path}.${issue.path}` : path,

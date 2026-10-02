@@ -70,8 +70,8 @@ outputType:
     type: object
     properties:
       image:
-        type: object
-        description: Solid-color canvas as buffered image bytes (a Uint8Array) in the chosen format.
+        x-telo-type: Telo.Bytes
+        description: The solid-color canvas, as image bytes in the chosen format.
       width:
         type: integer
         description: Canvas width in pixels (echoed back).
@@ -123,17 +123,17 @@ throws:
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        image is not a Uint8Array or not decodable as an image, a shape has
-        non-finite coordinates or non-positive width/height, format is not
-        png/jpeg/webp, or quality is not an integer between 1 and 100.
+        image is not decodable as an image, a shape has non-finite coordinates
+        or non-positive width/height, format is not png/jpeg/webp, or quality is
+        not an integer between 1 and 100.
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       image:
-        type: object
-        description: Buffered image bytes (PNG, JPEG, or WebP — anything the canvas decoder reads).
+        x-telo-type: Telo.Bytes
+        description: The image to draw on, as bytes (PNG, JPEG, or WebP — anything the canvas decoder reads).
       shapes:
         type: array
         minItems: 1
@@ -179,8 +179,8 @@ outputType:
     type: object
     properties:
       image:
-        type: object
-        description: Annotated image as buffered image bytes (a Uint8Array) in the chosen format.
+        x-telo-type: Telo.Bytes
+        description: The annotated image, as image bytes in the chosen format.
       width:
         type: integer
         description: Image width in pixels (unchanged from the input).

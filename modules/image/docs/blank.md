@@ -60,7 +60,7 @@ metadata: { name: Canvas }
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `image` | `Uint8Array` | Solid-color canvas as buffered image bytes in the chosen format. |
+| `image` | bytes (`Telo.Bytes`) | The solid-color canvas, as image bytes in the chosen format. |
 | `width` | integer | Canvas width in pixels (echoed back). |
 | `height` | integer | Canvas height in pixels (echoed back). |
 | `mediaType` | string | MIME type of the encoded image (`image/png`, `image/jpeg`, or `image/webp`). |

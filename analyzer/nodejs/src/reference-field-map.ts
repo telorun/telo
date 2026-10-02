@@ -14,6 +14,7 @@ import {
   type SchemaReach,
 } from "./reference-reach.js";
 import { substituteCelFields } from "./schema-compat.js";
+import type { StandIns } from "./stand-in-findings.js";
 
 export { readRefSlot, isRefSlot, hasDeclaredUse } from "./ref-slot.js";
 export { refSlotOfEntry } from "./reference-reach.js";
@@ -87,7 +88,7 @@ export interface SchemaFromFieldEntry {
  *  field map keeps depending on nothing. */
 export interface ValueBranchValidator {
   schemaCompileError(schema: Record<string, any>): string | undefined;
-  validateWithRefs(data: unknown, schema: Record<string, any>): string[];
+  validateWithRefs(data: unknown, schema: Record<string, any>, standIns?: StandIns): string[];
 }
 
 /**
@@ -111,13 +112,15 @@ export function satisfiesValueBranch(
   value: unknown,
   branches: readonly Record<string, any>[] | undefined,
   registry: ValueBranchValidator,
+  /** The stand-ins `value` was substituted with, when it was. */
+  standIns?: StandIns,
 ): boolean {
   if (!branches?.length) return false;
   return branches.some((branch) => {
     const schema = valueBranchSchema(branch);
     return (
       registry.schemaCompileError(schema) === undefined &&
-      registry.validateWithRefs(value, schema).length === 0
+      registry.validateWithRefs(value, schema, standIns).length === 0
     );
   });
 }
@@ -145,9 +148,11 @@ export function satisfiesSiteValue(
         ({ node, members }) =>
           members !== undefined &&
           satisfiesValueBranch(value, [node], registry) &&
-          members.every(({ member, document, value: at }) =>
-            satisfiesValueBranch(substituteCelFields(at, member, document), [member], registry),
-          ),
+          members.every(({ member, document, value: at }) => {
+            const standIns: StandIns = new Map();
+            const substituted = substituteCelFields(at, member, document, { standIns });
+            return satisfiesValueBranch(substituted, [member], registry, standIns);
+          }),
       ),
   );
 }

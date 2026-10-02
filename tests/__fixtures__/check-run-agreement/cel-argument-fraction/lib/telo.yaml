@@ -1,0 +1,48 @@
+# JSON types compare by containment, in one direction: an integer is a number,
+# a number is not an integer. A producer declared `number` yields a fraction
+# here, so `telo check` reports the argument and the kernel refuses the value
+# at dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: CelArgumentFraction
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: measured
+    invoke: !ref produce
+  - name: counted
+    invoke: !ref consume
+    inputs:
+      count: !cel "steps.measured.result.ratio"
+---
+kind: Run.Value
+metadata:
+  name: produce
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ratio]
+    properties:
+      ratio: { type: number }
+value:
+  ratio: 2.5
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [count]
+    properties:
+      count: { type: integer }
+value: { ok: true }

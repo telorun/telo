@@ -1,0 +1,43 @@
+# The same shape in a contract: an argument whose union a stand-in satisfies,
+# beside a reference requiring a member the argument does not carry. `telo
+# check` reports the missing member at the call site, and the kernel refuses
+# the value at dispatch for a consumer.
+kind: Telo.Library
+metadata:
+  name: StandInSiblingCallSite
+imports:
+  Run: ../../../../../modules/run
+variables:
+  seconds: { type: string }
+exports:
+  resources: [call]
+---
+kind: Run.Sequence
+metadata:
+  name: call
+steps:
+  - name: configured
+    invoke: !ref consume
+    inputs:
+      cfg:
+        a: !interpolate "${{ variables.seconds }}s"
+---
+kind: Run.Value
+metadata:
+  name: consume
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      cfg:
+        $ref: "#/$defs/Base"
+        anyOf:
+          - type: object
+            properties:
+              a: { type: string, pattern: "^\\d+s$" }
+          - type: integer
+    $defs:
+      Base: { type: object, required: [b] }
+value: { ok: true }

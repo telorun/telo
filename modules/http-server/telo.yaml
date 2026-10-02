@@ -517,7 +517,9 @@ schema:
                 type: object
                 properties:
                   query: { type: object, additionalProperties: true }
-                  body: { type: object, additionalProperties: true }
+                  # Untyped: no route matched, so nothing declares this body — it is
+                  # whatever the client sent.
+                  body: {}
                   headers: { type: object, additionalProperties: true }
                   params: { type: object, additionalProperties: true }
                   path: { type: string }
@@ -652,7 +654,9 @@ schema:
                   type: object
                   properties:
                     query: { type: object, additionalProperties: true }
-                    body: { type: object, additionalProperties: true }
+                    # Untyped until `request.schema.body` declares it: a body is
+                    # whatever the client sent — an array, a string, nothing.
+                    body: {}
                     headers: { type: object, additionalProperties: true }
                     params: { type: object, additionalProperties: true }
                     path: { type: string }

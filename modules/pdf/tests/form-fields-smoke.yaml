@@ -10,7 +10,8 @@ metadata:
     with both pages intact, and re-adding the same field name raises
     ERR_INVALID_INPUT, which proves the field actually persisted into the
     document. Further sequences assert the out-of-bounds-box,
-    negative-coordinate, and page-out-of-range diagnostics.
+    negative-coordinate, and page-out-of-range diagnostics, and that `data`
+    that is not bytes is refused with ERR_INPUT_INVALID.
 imports:
   Pdf: ../
   Fixture: ./__fixtures__/sample-form.yaml
@@ -21,6 +22,7 @@ targets:
   - !ref testBoxOutOfBounds
   - !ref testNegativeCoordinates
   - !ref testPageOutOfRange
+  - !ref testNonBytesData
 ---
 kind: Pdf.Rasterizer
 metadata: { name: render }
@@ -161,3 +163,29 @@ steps:
             properties:
               code: { const: ERR_INVALID_INPUT }
             required: [ code ]
+---
+# A value that is not bytes is refused by the input contract, before the
+# controller runs. `dyn(...)` hides its type from `telo check`, which refuses a
+# map at a byte slot.
+kind: Run.Sequence
+metadata: { name: testNonBytesData }
+steps:
+  - name: tryNonBytes
+    try:
+      - name: nonBytes
+        inputs:
+          data: !cel "dyn({'not': 'bytes'})"
+          fields:
+            - { name: any, type: text, page: 1, x: 10, y: 10, width: 40, height: 20 }
+        invoke: !ref addFields
+    catch:
+      - name: caught
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+        invoke: { kind: Assert.Equals }
+  - name: refused
+    inputs:
+      actual: !cel "has(steps.caught)"
+      expected: true
+    invoke: { kind: Assert.Equals }

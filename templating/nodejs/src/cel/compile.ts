@@ -1,5 +1,5 @@
 import type { CompiledValue } from "@telorun/sdk";
-import type { ASTNode, Environment } from "@marcbachmann/cel-js";
+import { ParseError, type ASTNode, type Environment } from "@marcbachmann/cel-js";
 import { extractAccessChains } from "./analyze.js";
 import { CEL_FUNCTIONS } from "./catalog.js";
 import { resolveModuleCalls } from "./module-call.js";
@@ -36,6 +36,42 @@ function callsNonDeterministic(root: ASTNode): boolean {
     return Array.isArray(args) ? args.some(visit) : visit(args);
   };
   return visit(root);
+}
+
+/** True when the expression calls a method on a bare identifier (`Billing.f(x)`).
+ *  Whether that identifier names a module is the declaring module's to say, and
+ *  the text alone does not, so every such call may be a module call. */
+function callsOnBareReceiver(root: ASTNode): boolean {
+  const visit = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(visit);
+    if (!node || typeof node !== "object" || !("op" in node)) return false;
+    const n = node as ASTNode;
+    if (n.op === "rcall" && Array.isArray(n.args)) {
+      const receiver = (n.args as unknown[])[1] as { op?: unknown } | null;
+      if (receiver && typeof receiver === "object" && receiver.op === "id") return true;
+    }
+    const args = n.args as unknown;
+    return Array.isArray(args) ? args.some(visit) : visit(args);
+  };
+  return visit(root);
+}
+
+/**
+ * Whether an expression's text, written twice in one value, means one value
+ * both times: it calls no catalog function whose result differs per call, and
+ * makes no call that may be a module's — a module function's determinism is its
+ * callee's, which the text does not say. Text that does not parse means no
+ * value, so it is not repeatable; `analyze` is what reports why.
+ */
+export function repeatableExpression(expr: string, env: Environment): boolean {
+  let ast: ASTNode;
+  try {
+    ast = env.parse(expr).ast;
+  } catch (error) {
+    if (error instanceof ParseError) return false;
+    throw error;
+  }
+  return !callsNonDeterministic(ast) && !callsOnBareReceiver(ast);
 }
 
 /** Compile a single CEL expression into a CompiledValue. Throws on syntax

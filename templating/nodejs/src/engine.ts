@@ -287,4 +287,16 @@ export interface TemplatingEngine {
    *  engine whose scalar holds no CEL. A source the engine cannot read yields
    *  no regions; `analyze` is what reports why. */
   expressionRegions?(source: string): readonly ExpressionRegion[];
+
+  /** Whether the tagged text, written twice in one value, means one value both
+   *  times — the engine's verdict on the TEXT ALONE, with no module name set and
+   *  nothing evaluated: no expression in it calls a catalog function whose
+   *  result differs per call, and none makes a call that may be a module's (a
+   *  method on a bare identifier), whose determinism is its callee's.
+   *
+   *  What lets a consumer holding two character-identical tagged scalars say
+   *  they are equal without evaluating either. Absent on an engine that gives no
+   *  such verdict, which reads as "not repeatable". A source the engine cannot
+   *  read is not repeatable; `analyze` is what reports why. */
+  repeatable?(source: string, celEnv: Environment): boolean;
 }
