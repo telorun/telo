@@ -1,0 +1,6129 @@
+{
+  "rows": [
+    {
+      "id": "catalog/join/strings",
+      "tag": "cel",
+      "source": "join(['a', 'b', 'c'], '-')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "join",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a-b-c"
+      }
+    },
+    {
+      "id": "catalog/join/mixed",
+      "tag": "cel",
+      "source": "join([1, 2.5, true, 'x'], ',')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "join",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1,2.5,true,x"
+      }
+    },
+    {
+      "id": "catalog/keys/map",
+      "tag": "cel",
+      "source": "keys({'b': 1, 'a': 2})",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "keys",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "b",
+          "a"
+        ]
+      }
+    },
+    {
+      "id": "catalog/values/map",
+      "tag": "cel",
+      "source": "values({'b': 1, 'a': 2})",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "values",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/distinct/ints",
+      "tag": "cel",
+      "source": "distinct([1, 2, 1, 3, 2])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "distinct",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          },
+          {
+            "$telo": "int",
+            "value": "3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/reverse/list",
+      "tag": "cel",
+      "source": "reverse([1, 'two', 3.0])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "reverse",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          3,
+          "two",
+          {
+            "$telo": "int",
+            "value": "1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/flatten/one_level",
+      "tag": "cel",
+      "source": "flatten([[1, 2], [3], [[4]]])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "flatten",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          },
+          {
+            "$telo": "int",
+            "value": "3"
+          },
+          [
+            {
+              "$telo": "int",
+              "value": "4"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "id": "catalog/sort/ints",
+      "tag": "cel",
+      "source": "sort([3, 1, 2])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "sort",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          },
+          {
+            "$telo": "int",
+            "value": "3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/sort/strings",
+      "tag": "cel",
+      "source": "sort(['b', 'a', 'c'])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "sort",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "a",
+          "b",
+          "c"
+        ]
+      }
+    },
+    {
+      "id": "catalog/range/three",
+      "tag": "cel",
+      "source": "range(3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<int>",
+          "calls": [
+            {
+              "name": "range",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 8,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "0"
+          },
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          {
+            "$telo": "int",
+            "value": "2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/range/negative",
+      "tag": "cel",
+      "source": "range(-2)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<int>",
+          "calls": [
+            {
+              "name": "range",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": []
+      }
+    },
+    {
+      "id": "catalog/enumerate/list",
+      "tag": "cel",
+      "source": "enumerate(['a', 'b'])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "enumerate",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "index": {
+              "$telo": "int",
+              "value": "0"
+            },
+            "value": "a"
+          },
+          {
+            "index": {
+              "$telo": "int",
+              "value": "1"
+            },
+            "value": "b"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/lower/string",
+      "tag": "cel",
+      "source": "lower('HeLLo')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "lower",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "hello"
+      }
+    },
+    {
+      "id": "catalog/lower/wrong_form",
+      "tag": "cel",
+      "source": "'HeLLo'.lower()",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('HeLLo')\n  not:    'HeLLo'.lower()\nRegistered: lower(string): string.",
+              "fix": {
+                "replacement": "lower('HeLLo')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "lower",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 'HeLLo'.lower()\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/lower/unknown_name",
+      "tag": "cel",
+      "source": "lowr('HeLLo')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FUNCTION",
+              "message": "there is no function `lowr`. Every function taking 1 argument: abs, avg, base64Decode, base64Encode, bool, bytes, bytesFromBase64, bytesToBase64, ceil, coalesce, compact, dateIn, distinct, double, duration, dyn, enumerate, flatten, floor, has, int, isoIn, json, keys, lower, max, md5, min, nowIso, parseJson, range, reverse, round, sha1, sha256, sha512, size, sort, startOfMonth, string, sum, timestamp, today, trim, type, uint, upper, urlDecode, urlEncode, uuidValidate, uuidVersion, values. Full list: `telo cel functions`."
+            }
+          ],
+          "calls": [
+            {
+              "name": "lowr",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'lowr(string)'\n\n>    1 | lowr('HeLLo')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/upper/string",
+      "tag": "cel",
+      "source": "upper('HeLLo')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "upper",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "HELLO"
+      }
+    },
+    {
+      "id": "catalog/trim/string",
+      "tag": "cel",
+      "source": "trim('  a b  ')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "trim",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a b"
+      }
+    },
+    {
+      "id": "catalog/replace/all",
+      "tag": "cel",
+      "source": "replace('a-b-c', '-', '+')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "replace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a+b+c"
+      }
+    },
+    {
+      "id": "catalog/split/empty_parts",
+      "tag": "cel",
+      "source": "split('a,b,,c', ',')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "split",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "a",
+          "b",
+          "",
+          "c"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexReplace/three_args",
+      "tag": "cel",
+      "source": "regexReplace('a1b22', '[0-9]+', '#')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 36
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a#b#"
+      }
+    },
+    {
+      "id": "catalog/regexReplace/backrefs",
+      "tag": "cel",
+      "source": "regexReplace('john smith', r'(\\w+) (\\w+)', '$2 $1')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 51,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 51
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "smith john"
+      }
+    },
+    {
+      "id": "catalog/regexReplace/flags",
+      "tag": "cel",
+      "source": "regexReplace('Hello hello', 'hello', 'x', 'i')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 4,
+              "start": 0,
+              "end": 46,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 46
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "x x"
+      }
+    },
+    {
+      "id": "catalog/regexReplace/unknown_flag",
+      "tag": "cel",
+      "source": "regexReplace('a', 'a', 'b', 'q')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexReplace: unknown regex flag 'q' (supported: i, m, s) (in `regexReplace('a', 'a', 'b', 'q')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 4,
+              "start": 0,
+              "end": 32,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 32
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexReplace: unknown regex flag 'q' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexReplace/invalid_pattern",
+      "tag": "cel",
+      "source": "regexReplace('abc', p, 'x')",
+      "bindings": {
+        "p": "("
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexReplace: invalid RE2 pattern \"(\": missing closing )"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexReplace/invalid_pattern_literal",
+      "tag": "cel",
+      "source": "regexReplace('abc', 'a)', 'x')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexReplace: invalid RE2 pattern \"a)\": unexpected ) (in `regexReplace('abc', 'a)', 'x')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexReplace: invalid RE2 pattern \"a)\": unexpected )"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexReplace/pattern_missing_repetition_argument",
+      "tag": "cel",
+      "source": "regexReplace('abc', p, 'x')",
+      "bindings": {
+        "p": "*"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexReplace: invalid RE2 pattern \"*\": missing argument to repetition operator"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexReplace/pattern_nested_repetition",
+      "tag": "cel",
+      "source": "regexReplace('abc', 'a**', 'x')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexReplace: invalid RE2 pattern \"a**\": invalid nested repetition operator (in `regexReplace('abc', 'a**', 'x')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexReplace",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexReplace: invalid RE2 pattern \"a**\": invalid nested repetition operator"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/two_args",
+      "tag": "cel",
+      "source": "regexExtract('order 42 and 7', '[0-9]+')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 40
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "42"
+      }
+    },
+    {
+      "id": "catalog/regexExtract/no_match",
+      "tag": "cel",
+      "source": "regexExtract('abc', '[0-9]+')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": ""
+      }
+    },
+    {
+      "id": "catalog/regexExtract/flags",
+      "tag": "cel",
+      "source": "regexExtract('ABC', 'b', 'i')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "B"
+      }
+    },
+    {
+      "id": "catalog/regexExtract/invalid_pattern",
+      "tag": "cel",
+      "source": "regexExtract('abc', p)",
+      "bindings": {
+        "p": "[a"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: invalid RE2 pattern \"[a\": missing closing ]"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/invalid_pattern_literal",
+      "tag": "cel",
+      "source": "regexExtract('abc', '\\\\')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtract: invalid RE2 pattern \"\\\\\": trailing backslash at end of expression (in `regexExtract('abc', '\\\\')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: invalid RE2 pattern \"\\\\\": trailing backslash at end of expression"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/unknown_flag",
+      "tag": "cel",
+      "source": "regexExtract('abc', 'b', 'x')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s) (in `regexExtract('abc', 'b', 'x')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/unknown_flag_computed",
+      "tag": "cel",
+      "source": "regexExtract('abc', 'b', f)",
+      "bindings": {
+        "f": "x"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "f"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/literal_pattern_computed_flags",
+      "tag": "cel",
+      "source": "regexExtract('abc', '(', f)",
+      "bindings": {
+        "f": "i"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtract: invalid RE2 pattern \"(\": missing closing ) (in `regexExtract('abc', '(', f)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "f"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: invalid RE2 pattern \"(\": missing closing )"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/computed_pattern_literal_flag",
+      "tag": "cel",
+      "source": "regexExtract('abc', p, 'x')",
+      "bindings": {
+        "p": "b"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s) (in `regexExtract('abc', p, 'x')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: unknown regex flag 'x' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/pattern_unsupported_perl_syntax",
+      "tag": "cel",
+      "source": "regexExtract('abc', '(?=b)')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtract: invalid RE2 pattern \"(?=b)\": invalid or unsupported Perl syntax (in `regexExtract('abc', '(?=b)')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: invalid RE2 pattern \"(?=b)\": invalid or unsupported Perl syntax"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtract/pattern_repeat_count",
+      "tag": "cel",
+      "source": "regexExtract('abc', p)",
+      "bindings": {
+        "p": "a{2,1}"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "regexExtract",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtract: invalid RE2 pattern \"a{2,1}\": invalid repeat count"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/two_args",
+      "tag": "cel",
+      "source": "regexExtractAll('a1b22c333', '[0-9]+')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "1",
+          "22",
+          "333"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/flags",
+      "tag": "cel",
+      "source": "regexExtractAll('aAbB', 'a|b', 'i')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 35,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 35
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "a",
+          "A",
+          "b",
+          "B"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/invalid_pattern",
+      "tag": "cel",
+      "source": "regexExtractAll('abc', p)",
+      "bindings": {
+        "p": "\\q"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtractAll: invalid RE2 pattern \"\\\\q\": invalid escape sequence"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/invalid_pattern_literal",
+      "tag": "cel",
+      "source": "regexExtractAll('abc', '[z-a]')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtractAll: invalid RE2 pattern \"[z-a]\": invalid character class range (in `regexExtractAll('abc', '[z-a]')`)"
+            }
+          ],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtractAll: invalid RE2 pattern \"[z-a]\": invalid character class range"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/unknown_flag",
+      "tag": "cel",
+      "source": "regexExtractAll('abc', 'b', 'gx')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexExtractAll: unknown regex flag 'x' (supported: i, m, s) (in `regexExtractAll('abc', 'b', 'gx')`)"
+            }
+          ],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 33,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 33
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtractAll: unknown regex flag 'x' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/pattern_nests_too_deeply",
+      "tag": "cel",
+      "source": "regexExtractAll('abc', p)",
+      "bindings": {
+        "p": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexExtractAll: invalid RE2 pattern \"(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))\": expression nests too deeply"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexExtractAll/pattern_nests_at_limit",
+      "tag": "cel",
+      "source": "regexExtractAll('abc', p)",
+      "bindings": {
+        "p": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexExtractAll",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": [
+          "a"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexGroups/two_args",
+      "tag": "cel",
+      "source": "regexGroups('key=value', '(\\\\w+)=(\\\\w+)')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "key",
+          "value"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexGroups/flags",
+      "tag": "cel",
+      "source": "regexGroups('KEY=v', '(key)=(.)', 'i')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          "KEY",
+          "v"
+        ]
+      }
+    },
+    {
+      "id": "catalog/regexGroups/no_match",
+      "tag": "cel",
+      "source": "regexGroups('abc', '([0-9])')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": []
+      }
+    },
+    {
+      "id": "catalog/regexGroups/invalid_pattern",
+      "tag": "cel",
+      "source": "regexGroups('abc', p)",
+      "bindings": {
+        "p": "(?P<n"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexGroups: invalid RE2 pattern \"(?P<n\": invalid named capture"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexGroups/invalid_pattern_literal",
+      "tag": "cel",
+      "source": "regexGroups('abc', '(?P<n>a)(?P<n>b)')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexGroups: invalid RE2 pattern \"(?P<n>a)(?P<n>b)\": duplicate capture group name (in `regexGroups('abc', '(?P<n>a)(?P<n>b)')`)"
+            }
+          ],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexGroups: invalid RE2 pattern \"(?P<n>a)(?P<n>b)\": duplicate capture group name"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexGroups/unknown_flag",
+      "tag": "cel",
+      "source": "regexGroups('abc', '(b)', 'u')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "regexGroups: unknown regex flag 'u' (supported: i, m, s) (in `regexGroups('abc', '(b)', 'u')`)"
+            }
+          ],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexGroups: unknown regex flag 'u' (supported: i, m, s)"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexGroups/pattern_too_large",
+      "tag": "cel",
+      "source": "regexGroups('abc', p)",
+      "bindings": {
+        "p": "(?:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa){1000}"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "regexGroups: invalid RE2 pattern \"(?:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa){1000}\": expression too large"
+        }
+      }
+    },
+    {
+      "id": "catalog/regexGroups/pattern_size_at_limit",
+      "tag": "cel",
+      "source": "regexGroups('abc', p)",
+      "bindings": {
+        "p": "(?:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa){1000}"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list<string>",
+          "calls": [
+            {
+              "name": "regexGroups",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": []
+      }
+    },
+    {
+      "id": "catalog/trimPrefix/present",
+      "tag": "cel",
+      "source": "trimPrefix('prefix-name', 'prefix-')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "trimPrefix",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 36,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 36
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "name"
+      }
+    },
+    {
+      "id": "catalog/trimPrefix/absent",
+      "tag": "cel",
+      "source": "trimPrefix('name', 'prefix-')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "trimPrefix",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 29,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 29
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "name"
+      }
+    },
+    {
+      "id": "catalog/trimSuffix/present",
+      "tag": "cel",
+      "source": "trimSuffix('name.txt', '.txt')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "trimSuffix",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "name"
+      }
+    },
+    {
+      "id": "catalog/trimSuffix/empty_suffix",
+      "tag": "cel",
+      "source": "trimSuffix('name', '')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "trimSuffix",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "name"
+      }
+    },
+    {
+      "id": "catalog/slice/bytes",
+      "tag": "cel",
+      "source": "slice(b'abcdef', 1, 3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "slice",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "bytes",
+          "value": "YmM"
+        }
+      }
+    },
+    {
+      "id": "catalog/slice/string",
+      "tag": "cel",
+      "source": "slice('hello', 1, 3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "slice",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "el"
+      }
+    },
+    {
+      "id": "catalog/slice/list",
+      "tag": "cel",
+      "source": "slice([1, 2, 3, 4], 1, 3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "slice",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "2"
+          },
+          {
+            "$telo": "int",
+            "value": "3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalog/slice/wrong_type",
+      "tag": "cel",
+      "source": "slice(42, 0, 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'slice(int, int, int)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "slice",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'slice(int, int, int)'\n\n>    1 | slice(42, 0, 1)\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/abs/int",
+      "tag": "cel",
+      "source": "abs(-3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "abs",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 7,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 3
+      }
+    },
+    {
+      "id": "catalog/abs/double",
+      "tag": "cel",
+      "source": "abs(-2.5)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "abs",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 2.5
+      }
+    },
+    {
+      "id": "catalog/abs/dyn_binding",
+      "tag": "cel",
+      "source": "abs(x)",
+      "bindings": {
+        "x": -7.25
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "abs",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 6,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "value": 7.25
+      }
+    },
+    {
+      "id": "catalog/floor/double",
+      "tag": "cel",
+      "source": "floor(2.7)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "floor",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 10,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 2
+      }
+    },
+    {
+      "id": "catalog/ceil/double",
+      "tag": "cel",
+      "source": "ceil(2.1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "ceil",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 3
+      }
+    },
+    {
+      "id": "catalog/round/double",
+      "tag": "cel",
+      "source": "round(2.5)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 10,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 3
+      }
+    },
+    {
+      "id": "catalog/round/int",
+      "tag": "cel",
+      "source": "round(3)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 8,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 3
+      }
+    },
+    {
+      "id": "catalog/round/double_digits",
+      "tag": "cel",
+      "source": "round(2.345, 2)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 2.35
+      }
+    },
+    {
+      "id": "catalog/round/int_digits",
+      "tag": "cel",
+      "source": "round(7, 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 7
+      }
+    },
+    {
+      "id": "catalog/round/digits_out_of_range",
+      "tag": "cel",
+      "source": "round(1.5, 11)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "round: decimal places must be an integer 0-10, got 11 (in `round(1.5, 11)`)"
+            }
+          ],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "round: decimal places must be an integer 0-10, got 11"
+        }
+      }
+    },
+    {
+      "id": "catalog/round/int_beyond_2_53",
+      "tag": "cel",
+      "source": "round(9007199254740993)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "round: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `round(9007199254740993)`)"
+            }
+          ],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "round: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/round/not_finite",
+      "tag": "cel",
+      "source": "round(1.0 / 0.0)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "round: expected a finite number, got null"
+        }
+      }
+    },
+    {
+      "id": "catalog/round/dyn_digits",
+      "tag": "cel",
+      "source": "round(1.25, d)",
+      "bindings": {
+        "d": {
+          "$telo": "int",
+          "value": "1"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "round",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [
+            "d"
+          ],
+          "volatile": false
+        },
+        "value": 1.3
+      }
+    },
+    {
+      "id": "catalog/min/ints",
+      "tag": "cel",
+      "source": "min([3, 1, 2])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "min",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "1"
+        }
+      }
+    },
+    {
+      "id": "catalog/min/empty",
+      "tag": "cel",
+      "source": "min([])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "min",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 7,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": null
+      }
+    },
+    {
+      "id": "catalog/max/doubles",
+      "tag": "cel",
+      "source": "max([1.5, 3.25, 2.0])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "max",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 3.25
+      }
+    },
+    {
+      "id": "catalog/sum/mixed",
+      "tag": "cel",
+      "source": "sum([1, 2, 3.5])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "double",
+          "calls": [
+            {
+              "name": "sum",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 6.5
+      }
+    },
+    {
+      "id": "catalog/avg/ints",
+      "tag": "cel",
+      "source": "avg([1, 2, 3, 4])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "avg",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": 2.5
+      }
+    },
+    {
+      "id": "catalog/avg/empty",
+      "tag": "cel",
+      "source": "avg([])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "avg",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 7,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": null
+      }
+    },
+    {
+      "id": "catalog/json/map",
+      "tag": "cel",
+      "source": "json({'a': 1, 'b': [true, null, 2.5]})",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "json",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "json({\"a\":{\"$telo\":\"int\",\"value\":\"1\"},\"b\":[true,null,2.5]})"
+      }
+    },
+    {
+      "id": "catalog/json/string",
+      "tag": "cel",
+      "source": "json('x')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "json",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 9,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "json(\"x\")"
+      }
+    },
+    {
+      "id": "catalog/parseJson/object",
+      "tag": "cel",
+      "source": "parseJson('{\"a\": 1, \"b\": [1.5, \"x\", null]}')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 44,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 44
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "a": 1,
+          "b": [
+            1.5,
+            "x",
+            null
+          ]
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/mid_text",
+      "tag": "cel",
+      "source": "parseJson('[1,]')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 3"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/end_of_input",
+      "tag": "cel",
+      "source": "parseJson('{')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 1 (unexpected end of input)"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/trailing_content",
+      "tag": "cel",
+      "source": "parseJson('1 x')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 2"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/empty",
+      "tag": "cel",
+      "source": "parseJson('')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 13,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 0 (unexpected end of input)"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/leading_zero",
+      "tag": "cel",
+      "source": "parseJson('01')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 1"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/truncated_literal",
+      "tag": "cel",
+      "source": "parseJson('tru')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 3 (unexpected end of input)"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/bad_escape",
+      "tag": "cel",
+      "source": "parseJson('\"\\\\x\"')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 2"
+        }
+      }
+    },
+    {
+      "id": "catalog/parseJson/computed",
+      "tag": "cel",
+      "source": "parseJson(x)",
+      "bindings": {
+        "x": "{\"a\": [1, 2"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "parseJson",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 12,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [
+            "x"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "parseJson: invalid JSON at offset 11 (unexpected end of input)"
+        }
+      }
+    },
+    {
+      "id": "catalog/joinPath/receiver",
+      "tag": "cel",
+      "source": "'/data'.joinPath('reports')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "joinPath",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "joinPath(\"/data\", \"reports\")"
+      }
+    },
+    {
+      "id": "catalog/joinPath/global_form",
+      "tag": "cel",
+      "source": "joinPath('/data', 'reports')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "`joinPath` is a method, not a global function — call it on the value:\n  write:  ('/data').joinPath('reports')\n  not:    joinPath('/data', 'reports')\nRegistered: Telo.HostPath.joinPath(string): Telo.HostPath, string.joinPath(string): string.",
+              "fix": {
+                "replacement": "('/data').joinPath('reports')"
+              }
+            }
+          ],
+          "calls": [
+            {
+              "name": "joinPath",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'joinPath(string, string)'\n\n>    1 | joinPath('/data', 'reports')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/base64Encode/string",
+      "tag": "cel",
+      "source": "base64Encode('hello')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "base64Encode",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "base64Encode(\"hello\")"
+      }
+    },
+    {
+      "id": "catalog/base64Decode/string",
+      "tag": "cel",
+      "source": "base64Decode('aGVsbG8=')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "base64Decode",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "base64Decode(\"aGVsbG8=\")"
+      }
+    },
+    {
+      "id": "catalog/bytesFromBase64/padded",
+      "tag": "cel",
+      "source": "bytesFromBase64('aGVsbG8=')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bytes",
+          "calls": [
+            {
+              "name": "bytesFromBase64",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 27,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "bytes",
+          "value": "aGVsbG8"
+        }
+      }
+    },
+    {
+      "id": "catalog/bytesFromBase64/url_safe_unpadded",
+      "tag": "cel",
+      "source": "bytesFromBase64('_-8')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bytes",
+          "calls": [
+            {
+              "name": "bytesFromBase64",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "bytes",
+          "value": "_-8"
+        }
+      }
+    },
+    {
+      "id": "catalog/bytesFromBase64/bad_length",
+      "tag": "cel",
+      "source": "bytesFromBase64('a')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bytes",
+          "calls": [
+            {
+              "name": "bytesFromBase64",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "bytesFromBase64: input length is not valid base64"
+        }
+      }
+    },
+    {
+      "id": "catalog/bytesFromBase64/bad_character",
+      "tag": "cel",
+      "source": "bytesFromBase64('a*==')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bytes",
+          "calls": [
+            {
+              "name": "bytesFromBase64",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "bytesFromBase64: '*' is not a base64 character"
+        }
+      }
+    },
+    {
+      "id": "catalog/bytesToBase64/bytes",
+      "tag": "cel",
+      "source": "bytesToBase64(b'hello!')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "bytesToBase64",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "aGVsbG8h"
+      }
+    },
+    {
+      "id": "catalog/urlEncode/reserved",
+      "tag": "cel",
+      "source": "urlEncode('a b&c=d/é')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "urlEncode",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a%20b%26c%3Dd%2F%C3%A9"
+      }
+    },
+    {
+      "id": "catalog/urlDecode/encoded",
+      "tag": "cel",
+      "source": "urlDecode('a%20b%26c')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "urlDecode",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "a b&c"
+      }
+    },
+    {
+      "id": "catalog/sha256/string",
+      "tag": "cel",
+      "source": "sha256('abc')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "sha256",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 13,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "sha256(\"abc\")"
+      }
+    },
+    {
+      "id": "catalog/md5/string",
+      "tag": "cel",
+      "source": "md5('abc')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "md5",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 10,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "md5(\"abc\")"
+      }
+    },
+    {
+      "id": "catalog/sha1/string",
+      "tag": "cel",
+      "source": "sha1('abc')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "sha1",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "sha1(\"abc\")"
+      }
+    },
+    {
+      "id": "catalog/sha512/string",
+      "tag": "cel",
+      "source": "sha512('abc')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "sha512",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 13,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "sha512(\"abc\")"
+      }
+    },
+    {
+      "id": "catalog/hmac/strings",
+      "tag": "cel",
+      "source": "hmac('sha256', 'key', 'message')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "hmac",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 32,
+              "deterministic": true,
+              "hostBacked": true
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 32
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "hmac(\"sha256\", \"key\", \"message\")"
+      }
+    },
+    {
+      "id": "catalog/default/null",
+      "tag": "cel",
+      "source": "default(null, 'fallback')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "default",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "fallback"
+      }
+    },
+    {
+      "id": "catalog/default/present",
+      "tag": "cel",
+      "source": "default('value', 'fallback')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "default",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "value"
+      }
+    },
+    {
+      "id": "catalog/coalesce/list",
+      "tag": "cel",
+      "source": "coalesce([null, null, 3, 4])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "coalesce",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 28,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "3"
+        }
+      }
+    },
+    {
+      "id": "catalog/coalesce/all_null",
+      "tag": "cel",
+      "source": "coalesce([null])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [
+            {
+              "name": "coalesce",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 16,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 16
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": null
+      }
+    },
+    {
+      "id": "catalog/now/type",
+      "tag": "cel",
+      "source": "type(now()) == google.protobuf.Timestamp",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "type",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 11
+            },
+            {
+              "name": "now",
+              "form": "global",
+              "arity": 0,
+              "start": 5,
+              "end": 10,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 40
+            }
+          ],
+          "refs": [
+            "google"
+          ],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/now/after_2020",
+      "tag": "cel",
+      "source": "now() > timestamp('2020-01-01T00:00:00Z')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "now",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 5,
+              "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 8,
+              "end": 41
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/nowIso/utc",
+      "tag": "cel",
+      "source": "size(nowIso()) == 24 && nowIso().endsWith('Z')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 14
+            },
+            {
+              "name": "nowIso",
+              "form": "global",
+              "arity": 0,
+              "start": 5,
+              "end": 13,
+              "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "endsWith",
+              "form": "receiver",
+              "arity": 1,
+              "start": 24,
+              "end": 46
+            },
+            {
+              "name": "nowIso",
+              "form": "global",
+              "arity": 0,
+              "start": 24,
+              "end": 32,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 46
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/nowIso/zone",
+      "tag": "cel",
+      "source": "nowIso('Asia/Kolkata').endsWith('+05:30')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "endsWith",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 41
+            },
+            {
+              "name": "nowIso",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 22,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/today/utc",
+      "tag": "cel",
+      "source": "today().matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "matches",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 47
+            },
+            {
+              "name": "today",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 7,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 47
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/today/zone",
+      "tag": "cel",
+      "source": "size(today('Pacific/Auckland')) == 10",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "size",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 31
+            },
+            {
+              "name": "today",
+              "form": "global",
+              "arity": 1,
+              "start": 5,
+              "end": 30,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/nowMillis/after_2020",
+      "tag": "cel",
+      "source": "nowMillis() > 1577836800000",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "nowMillis",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 11,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/nowSeconds/after_2020",
+      "tag": "cel",
+      "source": "nowSeconds() > 1577836800",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "nowSeconds",
+              "form": "global",
+              "arity": 0,
+              "start": 0,
+              "end": 12,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/string/timestamp",
+      "tag": "cel",
+      "source": "string(timestamp('2009-02-13T23:31:30Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 40
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2009-02-13T23:31:30.000Z"
+      }
+    },
+    {
+      "id": "catalog/string/duration",
+      "tag": "cel",
+      "source": "string(duration('1h30m'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 24
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "5400s"
+      }
+    },
+    {
+      "id": "catalog/string/duration_fraction",
+      "tag": "cel",
+      "source": "string(duration('1.5s'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "string",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 23
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1.5s"
+      }
+    },
+    {
+      "id": "catalog/int/timestamp",
+      "tag": "cel",
+      "source": "int(timestamp('2009-02-13T23:31:30Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "int",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 38,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 37
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 38
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "1234567890"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/double_grouped",
+      "tag": "cel",
+      "source": "format(1234.5678, ',.2f')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 25,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1,234.57"
+      }
+    },
+    {
+      "id": "catalog/format/double_negative",
+      "tag": "cel",
+      "source": "format(-1.5, '.2f')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "-1.50"
+      }
+    },
+    {
+      "id": "catalog/format/int_padded",
+      "tag": "cel",
+      "source": "format(42, '05d')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "00042"
+      }
+    },
+    {
+      "id": "catalog/format/percent",
+      "tag": "cel",
+      "source": "format(0.256, '.1%')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "25.6%"
+      }
+    },
+    {
+      "id": "catalog/format/unknown_type",
+      "tag": "cel",
+      "source": "format(1.0, '.2q')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format(1.0, '.2q')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn)"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/precision_out_of_range",
+      "tag": "cel",
+      "source": "format(1.0, '.11f')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: decimal places must be an integer 0-10, got 11 (in `format(1.0, '.11f')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: decimal places must be an integer 0-10, got 11"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/invalid_specifier",
+      "tag": "cel",
+      "source": "format(1.0, '..2f')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: invalid format specifier \"..2f\" (in `format(1.0, '..2f')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: invalid format specifier \"..2f\""
+        }
+      }
+    },
+    {
+      "id": "catalog/format/int_beyond_2_53",
+      "tag": "cel",
+      "source": "format(9007199254740993, '.0f')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "format: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `format(9007199254740993, '.0f')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/not_finite",
+      "tag": "cel",
+      "source": "format(1.0 / 0.0, '.2f')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "format: expected a finite number, got null"
+        }
+      }
+    },
+    {
+      "id": "catalog/format/string_argument",
+      "tag": "cel",
+      "source": "format('x', '.2f')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'format(string, string)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "format",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 18,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'format(string, string)'\n\n>    1 | format('x', '.2f')\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/fixed/double",
+      "tag": "cel",
+      "source": "fixed(3.14159, 2)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 17
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "3.14"
+      }
+    },
+    {
+      "id": "catalog/fixed/int",
+      "tag": "cel",
+      "source": "fixed(5, 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 11,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "5.0"
+      }
+    },
+    {
+      "id": "catalog/fixed/digits_out_of_range",
+      "tag": "cel",
+      "source": "fixed(1.0, 11)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "fixed: decimal places must be an integer 0-10, got 11 (in `fixed(1.0, 11)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "fixed: decimal places must be an integer 0-10, got 11"
+        }
+      }
+    },
+    {
+      "id": "catalog/fixed/int_beyond_2_53",
+      "tag": "cel",
+      "source": "fixed(9007199254740993, 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "fixed: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `fixed(9007199254740993, 1)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "fixed: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/fixed/not_finite",
+      "tag": "cel",
+      "source": "fixed(1.0 / 0.0, 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "fixed",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 19,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 19
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "fixed: expected a finite number, got null"
+        }
+      }
+    },
+    {
+      "id": "catalog/formatDuration/int",
+      "tag": "cel",
+      "source": "formatDuration(510, 480)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 24,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "1d 30m"
+      }
+    },
+    {
+      "id": "catalog/formatDuration/double",
+      "tag": "cel",
+      "source": "formatDuration(-90.4, 480)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "-1h 30m"
+      }
+    },
+    {
+      "id": "catalog/formatDuration/zero_day",
+      "tag": "cel",
+      "source": "formatDuration(10, 0)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "formatDuration: minutesPerDay must be a positive number, got 0 (in `formatDuration(10, 0)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "formatDuration: minutesPerDay must be a positive number, got 0"
+        }
+      }
+    },
+    {
+      "id": "catalog/formatDuration/int_beyond_2_53",
+      "tag": "cel",
+      "source": "formatDuration(9007199254740993, 480)",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "formatDuration: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double (in `formatDuration(9007199254740993, 480)`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 37,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "formatDuration: integer 9007199254740993 exceeds 2^53-1 and cannot be formatted exactly as a double"
+        }
+      }
+    },
+    {
+      "id": "catalog/formatDuration/not_finite",
+      "tag": "cel",
+      "source": "formatDuration(1.0 / 0.0, 480)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "formatDuration",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 30
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "formatDuration: expected a finite number, got null"
+        }
+      }
+    },
+    {
+      "id": "catalog/dateIn/utc",
+      "tag": "cel",
+      "source": "dateIn(timestamp('2026-03-01T03:00:00Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "dateIn",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 40
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2026-03-01"
+      }
+    },
+    {
+      "id": "catalog/dateIn/zone",
+      "tag": "cel",
+      "source": "dateIn(timestamp('2026-03-01T03:00:00Z'), 'America/New_York')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "dateIn",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 61,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 40
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 61
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2026-02-28"
+      }
+    },
+    {
+      "id": "catalog/dateIn/unknown_zone",
+      "tag": "cel",
+      "source": "dateIn(timestamp('2026-03-01T03:00:00Z'), 'Mars/Olympus')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "dateIn: unknown IANA time zone \"Mars/Olympus\" (in `dateIn(timestamp('2026-03-01T03:00:00Z'), 'Mars/Olympus')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "dateIn",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 57,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 7,
+              "end": 40
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 57
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "dateIn: unknown IANA time zone \"Mars/Olympus\""
+        }
+      }
+    },
+    {
+      "id": "catalog/isoIn/utc",
+      "tag": "cel",
+      "source": "isoIn(timestamp('2026-06-06T23:30:00Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "isoIn",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 40,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 6,
+              "end": 39
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 40
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2026-06-06T23:30:00.000Z"
+      }
+    },
+    {
+      "id": "catalog/isoIn/zone",
+      "tag": "cel",
+      "source": "isoIn(timestamp('2026-06-06T23:30:00Z'), 'America/Chicago')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "isoIn",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 59,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 6,
+              "end": 39
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 59
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "2026-06-06T18:30:00.000-05:00"
+      }
+    },
+    {
+      "id": "catalog/isoIn/unknown_zone",
+      "tag": "cel",
+      "source": "isoIn(timestamp('2026-06-06T23:30:00Z'), 'Nowhere/Land')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "isoIn: unknown IANA time zone \"Nowhere/Land\" (in `isoIn(timestamp('2026-06-06T23:30:00Z'), 'Nowhere/Land')`)"
+            }
+          ],
+          "type": "string",
+          "calls": [
+            {
+              "name": "isoIn",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 56,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 6,
+              "end": 39
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 56
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "isoIn: unknown IANA time zone \"Nowhere/Land\""
+        }
+      }
+    },
+    {
+      "id": "catalog/startOfMonth/utc",
+      "tag": "cel",
+      "source": "startOfMonth(timestamp('2026-03-15T10:30:00Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "startOfMonth",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 47,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 13,
+              "end": 46
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 47
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-03-01T00:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "catalog/startOfMonth/zone",
+      "tag": "cel",
+      "source": "startOfMonth(timestamp('2026-03-15T10:30:00Z'), 'Europe/Paris')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "startOfMonth",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 63,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 13,
+              "end": 46
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 63
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-02-28T23:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "catalog/startOfMonth/unknown_zone",
+      "tag": "cel",
+      "source": "startOfMonth(timestamp('2026-03-15T10:30:00Z'), 'Nowhere/Land')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "startOfMonth: unknown IANA time zone \"Nowhere/Land\" (in `startOfMonth(timestamp('2026-03-15T10:30:00Z'), 'Nowhere/Land')`)"
+            }
+          ],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "startOfMonth",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 63,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 13,
+              "end": 46
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 63
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "startOfMonth: unknown IANA time zone \"Nowhere/Land\""
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/clamps_day",
+      "tag": "cel",
+      "source": "addMonths(timestamp('2026-01-31T12:00:00Z'), 1)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 47,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 10,
+              "end": 43
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 47
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-02-28T12:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/negative",
+      "tag": "cel",
+      "source": "addMonths(timestamp('2026-03-15T10:30:00Z'), -14)",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 49,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 10,
+              "end": 43
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 49
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2025-01-15T10:30:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/zone_gap",
+      "tag": "cel",
+      "source": "addMonths(timestamp('2026-08-06T04:00:00Z'), 1, 'America/Santiago')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 67,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 10,
+              "end": 43
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 67
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "google.protobuf.Timestamp",
+          "value": "2026-09-06T04:00:00.000Z"
+        }
+      }
+    },
+    {
+      "id": "catalog/addMonths/unknown_zone",
+      "tag": "cel",
+      "source": "addMonths(timestamp('2026-03-15T10:30:00Z'), 1, 'Nowhere/Land')",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_INVALID_ARGUMENT",
+              "message": "addMonths: unknown IANA time zone \"Nowhere/Land\" (in `addMonths(timestamp('2026-03-15T10:30:00Z'), 1, 'Nowhere/Land')`)"
+            }
+          ],
+          "type": "google.protobuf.Timestamp",
+          "calls": [
+            {
+              "name": "addMonths",
+              "form": "global",
+              "arity": 3,
+              "start": 0,
+              "end": 63,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 10,
+              "end": 43
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 63
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "addMonths: unknown IANA time zone \"Nowhere/Land\""
+        }
+      }
+    },
+    {
+      "id": "catalog/compact/list",
+      "tag": "cel",
+      "source": "compact([1, null, '', 'a', []])",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "list",
+          "calls": [
+            {
+              "name": "compact",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 31,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 31
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": [
+          {
+            "$telo": "int",
+            "value": "1"
+          },
+          "a",
+          []
+        ]
+      }
+    },
+    {
+      "id": "catalog/compact/map",
+      "tag": "cel",
+      "source": "compact({'a': null, 'b': 1, 'c': ''})",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "map",
+          "calls": [
+            {
+              "name": "compact",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 37,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 37
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "b": {
+            "$telo": "int",
+            "value": "1"
+          }
+        }
+      }
+    },
+    {
+      "id": "catalog/compact/timestamp",
+      "tag": "cel",
+      "source": "compact(timestamp('2026-03-15T10:30:00Z'))",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'compact(google.protobuf.Timestamp)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "compact",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 42,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 8,
+              "end": 41
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 42
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'compact(google.protobuf.Timestamp)'\n\n>    1 | compact(timestamp('2026-03-15T10:30:00Z'))\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/merge/right_wins",
+      "tag": "cel",
+      "source": "merge({'a': 1, 'b': 2}, {'b': 3, 'c': 4})",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "map",
+          "calls": [
+            {
+              "name": "merge",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 41,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "a": {
+            "$telo": "int",
+            "value": "1"
+          },
+          "b": {
+            "$telo": "int",
+            "value": "3"
+          },
+          "c": {
+            "$telo": "int",
+            "value": "4"
+          }
+        }
+      }
+    },
+    {
+      "id": "catalog/merge/list_argument",
+      "tag": "cel",
+      "source": "merge([1], {'a': 1})",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "found no matching overload for 'merge(list<int>, map<string, int>)'"
+            }
+          ],
+          "calls": [
+            {
+              "name": "merge",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 20,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 20
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "found no matching overload for 'merge(list<int>, map<string, int>)'\n\n>    1 | merge([1], {'a': 1})\n         ^"
+        }
+      }
+    },
+    {
+      "id": "catalog/uuidv1/version",
+      "tag": "cel",
+      "source": "uuidVersion(uuidv1()) == 1",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidVersion",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidv1",
+              "form": "global",
+              "arity": 0,
+              "start": 12,
+              "end": 20,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/uuidv4/version",
+      "tag": "cel",
+      "source": "uuidVersion(uuidv4()) == 4 && uuidValidate(uuidv4())",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidVersion",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidv4",
+              "form": "global",
+              "arity": 0,
+              "start": 12,
+              "end": 20,
+              "deterministic": false,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidValidate",
+              "form": "global",
+              "arity": 1,
+              "start": 30,
+              "end": 52,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidv4",
+              "form": "global",
+              "arity": 0,
+              "start": 43,
+              "end": 51,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 52
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/uuidv6/version",
+      "tag": "cel",
+      "source": "uuidVersion(uuidv6()) == 6",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidVersion",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidv6",
+              "form": "global",
+              "arity": 0,
+              "start": 12,
+              "end": 20,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/uuidv7/version",
+      "tag": "cel",
+      "source": "uuidVersion(uuidv7()) == 7",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidVersion",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "uuidv7",
+              "form": "global",
+              "arity": 0,
+              "start": 12,
+              "end": 20,
+              "deterministic": false,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": true
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/uuidv3/named",
+      "tag": "cel",
+      "source": "uuidv3('hello', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "uuidv3",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 55,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 55
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "0bacede4-4014-3f9d-b720-173f68a1c933"
+      }
+    },
+    {
+      "id": "catalog/uuidv5/named",
+      "tag": "cel",
+      "source": "uuidv5('hello', '6ba7b810-9dad-11d1-80b4-00c04fd430c8')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "string",
+          "calls": [
+            {
+              "name": "uuidv5",
+              "form": "global",
+              "arity": 2,
+              "start": 0,
+              "end": 55,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 55
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": "9342d47a-1bab-5709-9869-c840b2eac501"
+      }
+    },
+    {
+      "id": "catalog/uuidValidate/valid",
+      "tag": "cel",
+      "source": "uuidValidate('6ba7b810-9dad-11d1-80b4-00c04fd430c8')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidValidate",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 52,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 52
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": true
+      }
+    },
+    {
+      "id": "catalog/uuidValidate/invalid",
+      "tag": "cel",
+      "source": "uuidValidate('not-a-uuid')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [
+            {
+              "name": "uuidValidate",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "catalog/uuidVersion/named",
+      "tag": "cel",
+      "source": "uuidVersion('6ba7b810-9dad-11d1-80b4-00c04fd430c8')",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "int",
+          "calls": [
+            {
+              "name": "uuidVersion",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 51,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 51
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$telo": "int",
+          "value": "1"
+        }
+      }
+    }
+  ]
+}

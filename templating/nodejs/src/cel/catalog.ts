@@ -1,7 +1,8 @@
 import { formatLocale } from "d3-format";
-import { RE2JS } from "re2js";
+import { RE2JS, RE2JSSyntaxException } from "re2js";
 import { v1, v3, v4, v5, v6, v7, validate as uuidValidate, version as uuidVersion } from "uuid";
 import { PLAIN_ENCODINGS } from "@telorun/sdk";
+import { scanJsonPrefix } from "./json-prefix-scan.js";
 
 /** Host-injected functions that need platform APIs the templating package must
  *  not import directly (Node `crypto` / `Buffer`), keeping it browser-safe. The
@@ -44,22 +45,61 @@ const RE2_FLAG: Record<string, number> = {
   s: RE2JS.DOTALL,
 };
 
-const compileRe2 = (fn: string, pattern: string, flags?: string): RE2JS => {
+/** RE2's parse-error kinds, in RE2's own words — the closed vocabulary an
+ *  invalid-pattern refusal ends with, so every engine words one identically. */
+export const RE2_PATTERN_ERROR_KINDS: readonly string[] = [
+  "missing closing )",
+  "missing closing ]",
+  "unexpected )",
+  "trailing backslash at end of expression",
+  "invalid escape sequence",
+  "invalid character class range",
+  "invalid named capture",
+  "duplicate capture group name",
+  "invalid or unsupported Perl syntax",
+  "missing argument to repetition operator",
+  "invalid nested repetition operator",
+  "invalid repeat count",
+  "expression nests too deeply",
+  "expression too large",
+];
+
+/** A refusal a catalog function makes of its arguments — the one failure a
+ *  literal guard reports. It reads as a plain `Error` wherever it is printed. */
+class CatalogRefusal extends Error {}
+Object.defineProperty(CatalogRefusal, "name", { value: "Error" });
+
+const re2Flags = (fn: string, flags: string | undefined): number => {
   let bits = 0;
   for (const c of flags ?? "") {
     if (c === "g") continue; // global is implicit in replaceAll / find-loop
     const bit = RE2_FLAG[c];
-    if (bit === undefined) throw new Error(`${fn}: unknown regex flag '${c}' (supported: i, m, s)`);
+    if (bit === undefined) throw new CatalogRefusal(`${fn}: unknown regex flag '${c}' (supported: i, m, s)`);
     bits |= bit;
   }
+  return bits;
+};
+
+/** The refusal is Telo's: the library's `error parsing regexp:` prefix and the
+ *  fragment it quotes never reach it. A failure outside the vocabulary is a
+ *  defect here, raised as one with the library's error as its cause. */
+const re2Pattern = (fn: string, pattern: string, bits: number): RE2JS => {
   try {
     return RE2JS.compile(pattern, bits);
   } catch (e) {
-    throw new Error(
-      `${fn}: invalid RE2 pattern ${JSON.stringify(pattern)}: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    const kind = e instanceof RE2JSSyntaxException ? e.error : undefined;
+    if (kind === undefined || !RE2_PATTERN_ERROR_KINDS.includes(kind)) {
+      throw new Error(
+        `${fn}: the RE2 compiler failed on pattern ${JSON.stringify(pattern)} with an error outside Telo's parse-error vocabulary`,
+        { cause: e },
+      );
+    }
+    throw new CatalogRefusal(`${fn}: invalid RE2 pattern ${JSON.stringify(pattern)}: ${kind}`);
   }
 };
+
+const compileRe2 = (fn: string, pattern: string, flags?: string): RE2JS =>
+  re2Pattern(fn, pattern, re2Flags(fn, flags));
 
 export type CelFunctionCategory =
   | "conversion"
@@ -119,13 +159,45 @@ export interface CelFunctionDoc {
   readonly checkArgs?: (literals: readonly unknown[]) => string | undefined;
 }
 
-/** Run a runtime guard for its refusal, so a `checkArgs` never restates one. */
+/** Run a runtime guard for its refusal, so a `checkArgs` never restates one.
+ *  Anything else it throws is the engine failing, not the argument. */
 const literalGuard = (run: () => void): string | undefined => {
   try {
     run();
     return undefined;
   } catch (e) {
-    return e instanceof Error ? e.message : String(e);
+    if (e instanceof CatalogRefusal) return e.message;
+    throw e;
+  }
+};
+
+/** A regex function's literal guard: the flags and the pattern, each judged
+ *  only when written as a literal, by the compile the runtime runs. */
+const regexLiteralGuard =
+  (fn: string, patternAt: number, flagsAt: number): NonNullable<CelFunctionDoc["checkArgs"]> =>
+  (literals) =>
+    literalGuard(() => {
+      const pattern = literals[patternAt];
+      const flags = literals[flagsAt];
+      const bits = typeof flags === "string" ? re2Flags(fn, flags) : 0;
+      if (typeof pattern === "string") re2Pattern(fn, pattern, bits);
+    });
+
+/** The host parser's verdict stands; Telo's scan only words its refusal. The
+ *  scan reading as JSON a text the host refused is a defect here. */
+const parseJsonText = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch (hostRefusal) {
+    const refusal = scanJsonPrefix(text);
+    if (refusal === undefined) {
+      throw new Error("parseJson: the host JSON parser refused a text Telo's scan reads as valid JSON", {
+        cause: hostRefusal,
+      });
+    }
+    throw new Error(
+      `parseJson: invalid JSON at offset ${refusal.offset}${refusal.endOfInput ? " (unexpected end of input)" : ""}`,
+    );
   }
 };
 
@@ -187,7 +259,7 @@ const MAX_EXACT_INT = 9007199254740991n;
 const formattable = (fn: string, x: unknown): number => {
   if (typeof x === "bigint") {
     if (x > MAX_EXACT_INT || x < -MAX_EXACT_INT) {
-      throw new Error(
+      throw new CatalogRefusal(
         `${fn}: integer ${x} exceeds 2^53-1 and cannot be formatted exactly as a double`,
       );
     }
@@ -199,7 +271,7 @@ const formattable = (fn: string, x: unknown): number => {
   // to remove: it looks like an answer and prints into a document. Named here
   // rather than coerced, the way an instant argument is.
   if (!Number.isFinite(n)) {
-    throw new Error(`${fn}: expected a finite number, got ${JSON.stringify(x)}`);
+    throw new CatalogRefusal(`${fn}: expected a finite number, got ${JSON.stringify(x)}`);
   }
   return n;
 };
@@ -225,7 +297,7 @@ const formatter = (fn: string, spec: unknown): ((n: number) => string) => {
   if (cached) return cached;
   const type = text.slice(-1);
   if (text !== "" && /[a-zA-Z%]/.test(type) && !FORMAT_TYPES.has(type)) {
-    throw new Error(`${fn}: unknown format type '${type}' (one of ${[...FORMAT_TYPES].join("")})`);
+    throw new CatalogRefusal(`${fn}: unknown format type '${type}' (one of ${[...FORMAT_TYPES].join("")})`);
   }
   // The `.precision` group — width is the digits BEFORE the dot, so this is the
   // only `.`-digits sequence the grammar admits.
@@ -235,7 +307,7 @@ const formatter = (fn: string, spec: unknown): ((n: number) => string) => {
   try {
     built = FORMAT_LOCALE.format(text);
   } catch {
-    throw new Error(`${fn}: invalid format specifier ${JSON.stringify(text)}`);
+    throw new CatalogRefusal(`${fn}: invalid format specifier ${JSON.stringify(text)}`);
   }
   if (formatterCache.size >= FORMATTER_CACHE_MAX) formatterCache.clear();
   formatterCache.set(text, built);
@@ -257,7 +329,7 @@ const MAX_DECIMALS = 10;
 const digitCount = (fn: string, digits: unknown): number => {
   const n = Number(digits);
   if (!Number.isInteger(n) || n < 0 || n > MAX_DECIMALS) {
-    throw new Error(
+    throw new CatalogRefusal(
       `${fn}: decimal places must be an integer 0-${MAX_DECIMALS}, got ${String(digits)}`,
     );
   }
@@ -269,11 +341,11 @@ const digitCount = (fn: string, digits: unknown): number => {
 const durationText = (minutes: unknown, minutesPerDay: unknown): string => {
   const perDay = Math.round(formattable("formatDuration", minutesPerDay));
   if (!Number.isFinite(perDay) || perDay <= 0) {
-    throw new Error(`formatDuration: minutesPerDay must be a positive number, got ${perDay}`);
+    throw new CatalogRefusal(`formatDuration: minutesPerDay must be a positive number, got ${perDay}`);
   }
   const total = Math.round(formattable("formatDuration", minutes));
   if (!Number.isFinite(total)) {
-    throw new Error(`formatDuration: minutes must be a finite number`);
+    throw new CatalogRefusal(`formatDuration: minutes must be a finite number`);
   }
   const magnitude = Math.abs(total);
   const days = Math.floor(magnitude / perDay);
@@ -298,7 +370,7 @@ const assertZone = (fn: string, tz: string): string => {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: tz });
   } catch {
-    throw new Error(`${fn}: unknown IANA time zone ${JSON.stringify(tz)}`);
+    throw new CatalogRefusal(`${fn}: unknown IANA time zone ${JSON.stringify(tz)}`);
   }
   return tz;
 };
@@ -685,6 +757,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
       "Replace every regex match (RE2 syntax) with a replacement ($1 backrefs); flags like 'i', 'm', 's'.",
     deterministic: true,
     hostBacked: false,
+    checkArgs: regexLiteralGuard("regexReplace", 1, 3),
     build: () => (s: string, pattern: string, replacement: string, flags?: string) =>
       compileRe2("regexReplace", pattern, flags).matcher(s).replaceAll(replacement),
   },
@@ -695,6 +768,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     summary: "First whole match of a regex (RE2 syntax), or '' when there is none.",
     deterministic: true,
     hostBacked: false,
+    checkArgs: regexLiteralGuard("regexExtract", 1, 2),
     build: () => (s: string, pattern: string, flags?: string) => {
       const m = compileRe2("regexExtract", pattern, flags).matcher(s);
       return m.find() ? (m.group() ?? "") : "";
@@ -707,6 +781,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     summary: "Every whole match of a regex (RE2 syntax), in order.",
     deterministic: true,
     hostBacked: false,
+    checkArgs: regexLiteralGuard("regexExtractAll", 1, 2),
     build: () => (s: string, pattern: string, flags?: string) => {
       const m = compileRe2("regexExtractAll", pattern, flags).matcher(s);
       const out: string[] = [];
@@ -722,6 +797,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
       "Capture groups of the first regex match (RE2 syntax); empty list when there is no match.",
     deterministic: true,
     hostBacked: false,
+    checkArgs: regexLiteralGuard("regexGroups", 1, 2),
     build: () => (s: string, pattern: string, flags?: string) => {
       const m = compileRe2("regexGroups", pattern, flags).matcher(s);
       if (!m.find()) return [];
@@ -899,7 +975,7 @@ export const CEL_FUNCTIONS: readonly CelFunctionDoc[] = [
     summary: "Parse a JSON string into a value (numbers come back as doubles).",
     deterministic: true,
     hostBacked: false,
-    build: () => (s: string) => JSON.parse(s),
+    build: () => (s: string) => parseJsonText(s),
   },
   // Paths. The one way to extend a host path: `variables.dataDir.joinPath('reports')`
   // keeps it a `Telo.HostPath` (the analyzer types that overload), where `+`

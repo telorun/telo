@@ -13,6 +13,7 @@ export {
   type CelFunctionCategory,
 } from "./cel/catalog.js";
 export { compileExpression } from "./cel/compile.js";
+export { registerValueBrands } from "./cel/value-brands.js";
 export {
   interpolationShape,
   literalFragments,

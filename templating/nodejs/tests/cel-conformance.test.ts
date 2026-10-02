@@ -3,8 +3,20 @@
  * of every file this runner drives is executed, and its `expect` compared whole.
  */
 import { readdirSync, readFileSync } from "node:fs";
+import { valueBrandBases } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
-import { buildCelLanguageEnvironment } from "../src/cel/environment.js";
+import { CEL_FUNCTIONS, RE2_PATTERN_ERROR_KINDS } from "../src/cel/catalog.js";
+import { buildCelEnvironment, buildCelLanguageEnvironment } from "../src/cel/environment.js";
+import {
+  catalogOverloads,
+  CONFORMANCE_HANDLERS,
+  DIALECT_TAGS,
+  dispatchTracingEnvironment,
+  evaluateDialectRow,
+  runDialectRow,
+  type Declaration,
+  type DialectRow,
+} from "./cel-conformance-dialect.js";
 import {
   checkLanguageRow,
   evaluateLanguageRow,
@@ -15,7 +27,7 @@ import {
 import { conformanceValueCodec } from "./cel-conformance-value.js";
 
 const DIRECTORY = new URL("../../cel-conformance/", import.meta.url);
-const DRIVEN = ["language.json"];
+const DRIVEN = ["catalog.json", "language.json", "types.json"];
 const ROW_KEYS = new Set([
   "id",
   "source",
@@ -26,6 +38,19 @@ const ROW_KEYS = new Set([
   "expect",
   "deviation",
   "divergence",
+]);
+const DIALECT_ROW_KEYS = new Set([
+  "id",
+  "tag",
+  "source",
+  "declarations",
+  "functions",
+  "bindings",
+  "context",
+  "explain",
+  "rootsDeclared",
+  "couldNameModule",
+  "expect",
 ]);
 const OUT_OF_DOMAIN_TYPES = ["int", "uint", "google.protobuf.Timestamp", "google.protobuf.Duration"];
 
@@ -38,6 +63,29 @@ const language = JSON.parse(readFileSync(new URL("language.json", DIRECTORY), "u
 const readme = readFileSync(new URL("README.md", DIRECTORY), "utf8");
 const env = buildCelLanguageEnvironment();
 const codec = conformanceValueCodec(env);
+
+interface DialectFile {
+  rows: DialectRow[];
+}
+
+const readDialectFile = (name: string) =>
+  JSON.parse(readFileSync(new URL(name, DIRECTORY), "utf8")) as DialectFile;
+const dialectFiles: Record<string, DialectFile> = {
+  "catalog.json": readDialectFile("catalog.json"),
+  "types.json": readDialectFile("types.json"),
+};
+const dialectEnv = buildCelEnvironment(CONFORMANCE_HANDLERS);
+const dialectCodec = conformanceValueCodec(dialectEnv);
+
+let dispatchedByRow: string[] = [];
+const tracingEnv = dispatchTracingEnvironment(CONFORMANCE_HANDLERS, (signature) => dispatchedByRow.push(signature));
+
+/** Every type a declaration names, record fields included. */
+function declaredTypes(declaration: Declaration): string[] {
+  return typeof declaration === "string"
+    ? [declaration]
+    : Object.values(declaration.fields).flatMap(declaredTypes);
+}
 
 /** The README's `## Divergences` table, one entry per line below its header. */
 function readDivergenceTable(text: string): { id: string; nodeAnswers: string; error: string }[] {
@@ -107,7 +155,82 @@ describe("CEL conformance vectors", () => {
     expect(listed).toStrictEqual(rows);
   });
 
+  it.each(Object.entries(dialectFiles))("reads a well-formed dialect file %s", (name, file) => {
+    expect(Object.keys(file), name).toEqual(["rows"]);
+    const ids = new Set<string>();
+    for (const row of file.rows) {
+      const unknown = Object.keys(row).filter((key) => !DIALECT_ROW_KEYS.has(key));
+      expect(unknown, `row ${row.id} carries unknown keys`).toEqual([]);
+      for (const key of ["id", "tag", "source", "expect"]) {
+        expect(row, `row ${row.id} has no ${key}`).toHaveProperty(key);
+      }
+      expect(DIALECT_TAGS, row.id).toContain(row.tag);
+      expect(ids.has(row.id), `row id ${row.id} repeats`).toBe(false);
+      ids.add(row.id);
+    }
+  });
+
+  it("drives the dispatch-tracing environment exactly as the dialect environment registers", () => {
+    const signatures = (e: typeof env) => e.getDefinitions().functions.map((fn) => fn.signature);
+    expect(signatures(tracingEnv)).toEqual(signatures(dialectEnv));
+  });
+
   let executed = 0;
+  const executedDialect: Record<string, number> = { "catalog.json": 0, "types.json": 0 };
+  const evaluatedOverloads = new Set<string>();
+
+  for (const [name, file] of Object.entries(dialectFiles)) {
+    describe(name, () => {
+      it.each(file.rows.map((row) => [row.id, row] as const))("%s", async (id, row) => {
+        executedDialect[name]!++;
+        expect(await runDialectRow(dialectEnv, dialectCodec, row), id).toStrictEqual(row.expect);
+        if (name !== "catalog.json" || !("value" in row.expect)) return;
+        dispatchedByRow = [];
+        await evaluateDialectRow(tracingEnv, dialectCodec, row);
+        for (const signature of dispatchedByRow) evaluatedOverloads.add(signature);
+      });
+    });
+  }
+
+  it("evaluates every catalog overload in some catalog.json row", () => {
+    const missing = catalogOverloads()
+      .map(({ signature }) => signature)
+      .filter((signature) => !evaluatedOverloads.has(signature));
+    expect(missing).toEqual([]);
+  });
+
+  it("fires every catalog literal guard statically in some catalog.json row", () => {
+    const fired = new Set<string>();
+    for (const row of dialectFiles["catalog.json"]!.rows) {
+      for (const diagnostic of row.expect.check.diagnostics) {
+        const call = / \(in `([A-Za-z_][A-Za-z0-9_]*)\(/.exec(diagnostic.message);
+        if (diagnostic.code === "CEL_INVALID_ARGUMENT" && call) fired.add(call[1]!);
+      }
+    }
+    const guarded = CEL_FUNCTIONS.filter((fn) => fn.checkArgs).map((fn) => fn.name);
+    expect(guarded.filter((fnName) => !fired.has(fnName))).toEqual([]);
+  });
+
+  it("pins every RE2 parse-error kind in some catalog.json row", () => {
+    const pinned = new Set<string>();
+    for (const row of dialectFiles["catalog.json"]!.rows) {
+      const refusal = /^[A-Za-z]+: invalid RE2 pattern "[^]*": ([^":]+)$/.exec(row.expect.error?.message ?? "");
+      if (refusal) pinned.add(refusal[1]!);
+    }
+    expect(RE2_PATTERN_ERROR_KINDS.filter((kind) => !pinned.has(kind))).toEqual([]);
+  });
+
+  it("declares a variable of every nominal brand in some types.json row", () => {
+    const declared = new Set(
+      dialectFiles["types.json"]!.rows.flatMap((row) => Object.values(row.declarations ?? {}).flatMap(declaredTypes)),
+    );
+    expect(Object.keys(valueBrandBases()).filter((brand) => !declared.has(brand))).toEqual([]);
+  });
+
+  it("executed every dialect row", () => {
+    for (const [name, file] of Object.entries(dialectFiles)) expect(executedDialect[name], name).toBe(file.rows.length);
+  });
+
   describe("language.json", () => {
     it.each(language.rows.map((row) => [row.id, row] as const))("%s", async (id, row) => {
       executed++;
