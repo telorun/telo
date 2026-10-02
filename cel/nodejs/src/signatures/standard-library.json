@@ -1,0 +1,235 @@
+{
+  "generation": 1,
+  "description": "CEL's own standard library, as declarations. No implementation, no host vocabulary.",
+  "typeConstants": ["bool", "bytes", "double", "int", "list", "map", "null_type", "string", "type", "uint"],
+  "constants": [
+    {
+      "name": "google",
+      "type": "map<string, map<string, type>>",
+      "description": "The well-known type names, so that type(x) == google.protobuf.Timestamp can be written."
+    }
+  ],
+  "functions": [
+    { "signature": "bool(bool): bool" },
+    { "signature": "bool(string): bool" },
+    { "signature": "bytes(bytes): bytes" },
+    { "signature": "bytes(string): bytes" },
+    { "signature": "double(double): double" },
+    { "signature": "double(int): double" },
+    { "signature": "double(uint): double" },
+    { "signature": "double(string): double" },
+    { "signature": "duration(string): google.protobuf.Duration" },
+    { "signature": "duration(google.protobuf.Duration): google.protobuf.Duration" },
+    { "signature": "dyn(A): dyn" },
+    { "signature": "int(int): int" },
+    { "signature": "int(uint): int" },
+    { "signature": "int(double): int" },
+    { "signature": "int(string): int" },
+    { "signature": "int(google.protobuf.Timestamp): int" },
+    { "signature": "int(google.protobuf.Duration): int" },
+    { "signature": "matches(string, string): bool" },
+    { "signature": "size(string): int" },
+    { "signature": "size(bytes): int" },
+    { "signature": "size(list<A>): int" },
+    { "signature": "size(map<K, V>): int" },
+    { "signature": "string(string): string" },
+    { "signature": "string(bool): string" },
+    { "signature": "string(int): string" },
+    { "signature": "string(uint): string" },
+    { "signature": "string(double): string" },
+    { "signature": "string(bytes): string" },
+    { "signature": "string(google.protobuf.Timestamp): string" },
+    { "signature": "string(google.protobuf.Duration): string" },
+    { "signature": "timestamp(string): google.protobuf.Timestamp" },
+    { "signature": "timestamp(int): google.protobuf.Timestamp" },
+    { "signature": "timestamp(google.protobuf.Timestamp): google.protobuf.Timestamp" },
+    { "signature": "type(int): type" },
+    { "signature": "type(uint): type" },
+    { "signature": "type(double): type" },
+    { "signature": "type(bool): type" },
+    { "signature": "type(string): type" },
+    { "signature": "type(bytes): type" },
+    { "signature": "type(null): type" },
+    { "signature": "type(type): type" },
+    { "signature": "type(list<A>): type" },
+    { "signature": "type(map<K, V>): type" },
+    { "signature": "type(google.protobuf.Timestamp): type" },
+    { "signature": "type(google.protobuf.Duration): type" },
+    { "signature": "uint(uint): uint" },
+    { "signature": "uint(int): uint" },
+    { "signature": "uint(double): uint" },
+    { "signature": "uint(string): uint" },
+
+    { "signature": "string.size(): int" },
+    { "signature": "bytes.size(): int" },
+    { "signature": "list<A>.size(): int" },
+    { "signature": "map<K, V>.size(): int" },
+    { "signature": "string.startsWith(string): bool" },
+    { "signature": "string.endsWith(string): bool" },
+    { "signature": "string.contains(string): bool" },
+    { "signature": "string.matches(string): bool" },
+    { "signature": "string.lowerAscii(): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: despite its name it lowercases every letter the host language's own casing lowercases, not the ASCII letters alone, so 'TacoC\u00c6t'.lowerAscii() answers 'tacoc\u00e6t' where the extension answers 'tacoc\u00c6t'. Kept, with that behaviour, for the manifests already written against it" },
+    { "signature": "string.upperAscii(): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: despite its name it uppercases every letter the host language's own casing uppercases, not the ASCII letters alone. Kept, with that behaviour, for the manifests already written against it" },
+    { "signature": "string.trim(): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: the characters it trims are the host language's own whitespace set, which is not the extension's (U+0085 is trimmed by one and not the other). Kept for the manifests already written against it" },
+    { "signature": "string.indexOf(string): int", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string. Kept for the manifests already written against it" },
+    { "signature": "string.indexOf(string, int): int", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string, and the index it takes is one too. Kept for the manifests already written against it" },
+    { "signature": "string.lastIndexOf(string): int", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string. Kept for the manifests already written against it" },
+    { "signature": "string.lastIndexOf(string, int): int", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string, and the index it takes is one too. Kept for the manifests already written against it" },
+    { "signature": "string.substring(int): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string. Kept for the manifests already written against it \u2014 and because an index may fall between the halves of a surrogate pair, this member can build a string holding a lone surrogate, which is outside the CEL value domain and which the conformance encoding refuses by contract" },
+    { "signature": "string.substring(int, int): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: indices are UTF-16 CODE UNITS, not code points, so a string holding a character outside the basic plane is indexed differently than the extension indexes it \u2014 a port that read this member as the extension's would index by rune and silently change the answer of every manifest that cuts a string. Kept for the manifests already written against it \u2014 and because an index may fall between the halves of a surrogate pair, this member can build a string holding a lone surrogate, which is outside the CEL value domain and which the conformance encoding refuses by contract" },
+    { "signature": "string.split(string): list<string>", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it: an empty separator splits into UTF-16 code units rather than code points, so a character outside the basic plane comes apart. Kept for the manifests already written against it" },
+    { "signature": "string.split(string, int): list<string>", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member differs from it as the one-argument form does, and a negative limit takes every part, zero takes none and a positive one keeps the remainder in the last. Kept for the manifests already written against it" },
+    { "signature": "list<string>.join(): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member computes what that equivalent computes, which is exactly why it is declared here: CEL defines no join, so a port must not take this one for CEL's. Kept for the manifests already written against it" },
+    { "signature": "list<string>.join(string): string", "spec": false, "reason": "cel-spec's standard definitions over strings are size, startsWith, endsWith, matches, contains and concatenation, and nothing else; the strings extension has an equivalent, which Telo does not ship. This member computes what that equivalent computes; CEL defines no join, so a port must not take this one for CEL's. Kept for the manifests already written against it" },
+    { "signature": "bytes.string(): string", "spec": false, "reason": "CEL converts bytes to text as string(bytes); this member form is the engine being replaced's own, kept for the manifests written against it" },
+    { "signature": "bytes.hex(): string", "spec": false, "reason": "no CEL library renders bytes as hexadecimal; kept for the manifests written against it" },
+    { "signature": "bytes.base64(): string", "spec": false, "reason": "CEL encodes base64 through its encoders extension, which this engine does not carry; kept for the manifests written against it" },
+    { "signature": "bytes.json(): dyn", "spec": false, "reason": "no CEL library parses JSON; kept for the manifests written against it", "deterministic": true },
+    { "signature": "bytes.at(int): int", "spec": false, "reason": "no CEL library indexes bytes by a member call; kept for the manifests written against it" },
+
+    { "signature": "google.protobuf.Timestamp.getDate(): int" },
+    { "signature": "google.protobuf.Timestamp.getDate(string): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfMonth(): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfMonth(string): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfWeek(): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfWeek(string): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfYear(): int" },
+    { "signature": "google.protobuf.Timestamp.getDayOfYear(string): int" },
+    { "signature": "google.protobuf.Timestamp.getFullYear(): int" },
+    { "signature": "google.protobuf.Timestamp.getFullYear(string): int" },
+    { "signature": "google.protobuf.Timestamp.getHours(): int" },
+    { "signature": "google.protobuf.Timestamp.getHours(string): int" },
+    { "signature": "google.protobuf.Timestamp.getMilliseconds(): int" },
+    { "signature": "google.protobuf.Timestamp.getMilliseconds(string): int" },
+    { "signature": "google.protobuf.Timestamp.getMinutes(): int" },
+    { "signature": "google.protobuf.Timestamp.getMinutes(string): int" },
+    { "signature": "google.protobuf.Timestamp.getMonth(): int" },
+    { "signature": "google.protobuf.Timestamp.getMonth(string): int" },
+    { "signature": "google.protobuf.Timestamp.getSeconds(): int" },
+    { "signature": "google.protobuf.Timestamp.getSeconds(string): int" },
+    { "signature": "google.protobuf.Duration.getHours(): int" },
+    { "signature": "google.protobuf.Duration.getMinutes(): int" },
+    { "signature": "google.protobuf.Duration.getSeconds(): int" },
+    { "signature": "google.protobuf.Duration.getMilliseconds(): int" }
+  ],
+  "optionalTypeConstants": ["optional_type"],
+  "optionalTypeOperators": [
+    { "operator": "==", "parameters": ["optional<A>", "optional<A>"], "returns": "bool" },
+    { "operator": "!=", "parameters": ["optional<A>", "optional<A>"], "returns": "bool" }
+  ],
+  "optionalTypeFunctions": [
+    { "signature": "type(optional<A>): type" },
+    { "signature": "optional<A>.hasValue(): bool" },
+    { "signature": "optional<A>.value(): A" },
+    { "signature": "optional<A>.or(optional<A>): optional<A>" },
+    { "signature": "optional<A>.orValue(A): A" }
+  ],
+  "operators": [
+    { "operator": "!", "parameters": ["bool"], "returns": "bool" },
+    { "operator": "-", "parameters": ["int"], "returns": "int" },
+    { "operator": "-", "parameters": ["double"], "returns": "double" },
+
+    { "operator": "+", "parameters": ["int", "int"], "returns": "int" },
+    { "operator": "+", "parameters": ["uint", "uint"], "returns": "uint" },
+    { "operator": "+", "parameters": ["double", "double"], "returns": "double" },
+    { "operator": "+", "parameters": ["string", "string"], "returns": "string" },
+    { "operator": "+", "parameters": ["bytes", "bytes"], "returns": "bytes" },
+    { "operator": "+", "parameters": ["list<A>", "list<A>"], "returns": "list<A>" },
+    {
+      "operator": "+",
+      "parameters": ["google.protobuf.Timestamp", "google.protobuf.Duration"],
+      "returns": "google.protobuf.Timestamp"
+    },
+    {
+      "operator": "+",
+      "parameters": ["google.protobuf.Duration", "google.protobuf.Timestamp"],
+      "returns": "google.protobuf.Timestamp"
+    },
+    {
+      "operator": "+",
+      "parameters": ["google.protobuf.Duration", "google.protobuf.Duration"],
+      "returns": "google.protobuf.Duration"
+    },
+
+    { "operator": "-", "parameters": ["int", "int"], "returns": "int" },
+    { "operator": "-", "parameters": ["uint", "uint"], "returns": "uint" },
+    { "operator": "-", "parameters": ["double", "double"], "returns": "double" },
+    {
+      "operator": "-",
+      "parameters": ["google.protobuf.Timestamp", "google.protobuf.Timestamp"],
+      "returns": "google.protobuf.Duration"
+    },
+    {
+      "operator": "-",
+      "parameters": ["google.protobuf.Timestamp", "google.protobuf.Duration"],
+      "returns": "google.protobuf.Timestamp"
+    },
+    {
+      "operator": "-",
+      "parameters": ["google.protobuf.Duration", "google.protobuf.Duration"],
+      "returns": "google.protobuf.Duration"
+    },
+
+    { "operator": "*", "parameters": ["int", "int"], "returns": "int" },
+    { "operator": "*", "parameters": ["uint", "uint"], "returns": "uint" },
+    { "operator": "*", "parameters": ["double", "double"], "returns": "double" },
+    { "operator": "/", "parameters": ["int", "int"], "returns": "int" },
+    { "operator": "/", "parameters": ["uint", "uint"], "returns": "uint" },
+    { "operator": "/", "parameters": ["double", "double"], "returns": "double" },
+    { "operator": "%", "parameters": ["int", "int"], "returns": "int" },
+    { "operator": "%", "parameters": ["uint", "uint"], "returns": "uint" },
+
+    { "operator": "in", "parameters": ["A", "list<A>"], "returns": "bool" },
+    { "operator": "in", "parameters": ["K", "map<K, V>"], "returns": "bool" }
+  ],
+  "symmetricOperators": [
+    {
+      "operators": ["==", "!="],
+      "types": [
+        "int",
+        "uint",
+        "double",
+        "bool",
+        "string",
+        "bytes",
+        "null",
+        "type",
+        "list<A>",
+        "map<K, V>",
+        "google.protobuf.Timestamp",
+        "google.protobuf.Duration"
+      ],
+      "returns": "bool",
+      "description": "Equality is declared per type: two values of unrelated types are not compared, and an optional is not compared at all."
+    },
+    {
+      "operators": ["<", "<=", ">", ">="],
+      "types": [
+        "int",
+        "uint",
+        "double",
+        "bool",
+        "string",
+        "bytes",
+        "google.protobuf.Timestamp",
+        "google.protobuf.Duration"
+      ],
+      "returns": "bool",
+      "description": "CEL orders every scalar type. A list and a map are comparable for equality alone."
+    }
+  ],
+  "crossNumericOperators": {
+    "operators": ["<", "<=", ">", ">="],
+    "pairs": [
+      ["int", "uint"],
+      ["int", "double"],
+      ["uint", "int"],
+      ["uint", "double"],
+      ["double", "int"],
+      ["double", "uint"]
+    ],
+    "returns": "bool",
+    "spec": false,
+    "reason": "CEL's checker is strict about the numeric types — its own suite writes dyn(1) < 2u precisely because of that — so ordering across them is an extension of what the language accepts at check time, kept because manifests rely on it. It never computes across them, and equality across them stays refused."
+  }
+}
