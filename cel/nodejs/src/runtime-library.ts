@@ -174,7 +174,8 @@ export function celTypeValueOf(value: CelValue, range?: SourceRange): CelTypeVal
 
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-function base64Text(input: Uint8Array): string {
+/** Bytes as base64 with the standard alphabet and padding. */
+export function base64Text(input: Uint8Array): string {
   let out = "";
   for (let at = 0; at < input.length; at += 3) {
     const a = input[at]!;
@@ -194,14 +195,18 @@ function hexText(input: Uint8Array): string {
   return out;
 }
 
-/** JSON as CEL values: an object is a map, an array a list, a number a double. */
-function jsonValue(parsed: unknown): CelValue {
+/**
+ * JSON as CEL values: an object is a map, an array a list, a number a double. Exported
+ * because the function catalog's `parseJson` answers the same question, and two readings
+ * of what JSON becomes would be two value domains.
+ */
+export function jsonAsCelValue(parsed: unknown): CelValue {
   if (parsed === null || typeof parsed === "boolean" || typeof parsed === "number" || typeof parsed === "string") {
     return parsed;
   }
-  if (Array.isArray(parsed)) return parsed.map(jsonValue);
+  if (Array.isArray(parsed)) return parsed.map(jsonAsCelValue);
   const out: Record<string, CelValue> = Object.create(null) as Record<string, CelValue>;
-  for (const [key, value] of Object.entries(parsed as object)) out[key] = jsonValue(value);
+  for (const [key, value] of Object.entries(parsed as object)) out[key] = jsonAsCelValue(value);
   return out;
 }
 
@@ -363,7 +368,7 @@ const IMPLEMENTATIONS = new Map<string, CelImplementation>([
       const decoded = bytesToText(bytes(args[0]!), ctx.range);
       if (typeof decoded !== "string") return decoded;
       try {
-        return jsonValue(JSON.parse(decoded));
+        return jsonAsCelValue(JSON.parse(decoded));
       } catch (cause) {
         return celError("invalid_conversion", `the bytes are not JSON: ${(cause as Error).message}`, ctx.range);
       }

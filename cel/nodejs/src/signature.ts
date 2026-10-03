@@ -14,6 +14,7 @@
  */
 
 import type { CelType } from "./cel-type.js";
+import type { CelValue } from "./cel-value.js";
 import { formatType } from "./cel-type.js";
 import type { CelImplementation } from "./runtime-library.js";
 import type { NominalResolver } from "./type-expression.js";
@@ -81,6 +82,27 @@ export function signatureKey(signature: CelSignature): string {
   return `${on}${signature.name}(${signature.parameters.map((type) => formatType(type)).join(", ")})`;
 }
 
+/**
+ * Checking the arguments a call wrote as LITERALS, where a type cannot say enough.
+ *
+ * A signature constrains types, so a guard over a VALUE — an unparseable format
+ * specifier, a decimal count out of range, an unknown time zone, a pattern the regular
+ * expression engine refuses — would otherwise fire only when the expression is evaluated,
+ * which puts a defect the source states in plain sight behind a run. A registration that
+ * carries one is asked at the call site the checker has just resolved, and a refusal is
+ * `CEL_INVALID_ARGUMENT` with the call's own range.
+ *
+ * `literals[at]` is the value of argument `at` where it was written as a literal — the
+ * receiver first, for a call written on a value, so the positions are the ones the
+ * implementation sees — and `undefined` where the argument is an expression whose value
+ * is not statically known, which a guard must SKIP rather than judge. The answer is the
+ * refusal, or nothing where there is none. A guard runs the same code the evaluation
+ * runs, so the static and dynamic answers cannot drift into disagreement.
+ */
+export type LiteralArgumentCheck = (
+  literals: readonly (CelValue | undefined)[],
+) => string | undefined;
+
 /** What a host declares about a function beyond its types. */
 export interface FunctionMetadata {
   /**
@@ -91,6 +113,8 @@ export interface FunctionMetadata {
    * that answers asynchronously does not compile.
    */
   readonly implementation?: CelImplementation;
+  /** A guard over the arguments written as literals, asked where the checker resolves the call. */
+  readonly checkArguments?: LiteralArgumentCheck;
   /** Whether two calls with the same arguments answer the same thing. Default true. */
   readonly deterministic?: boolean;
   /** Whether the implementation is supplied by the host rather than the engine. */

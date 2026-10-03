@@ -304,6 +304,25 @@ describe("evaluation", () => {
     }
   });
 
+  it("re-resolves a dotted chain when a name is declared after it was first compiled", () => {
+    // `splitDeclaredChain` is decided at COMPILE time, so a program compiled before a
+    // declaration resolved the chain against the activation instead. Serving that program
+    // afterwards is the check/run divergence the split exists to prevent, arriving through
+    // the compiled-expression cache: every other registration cleared it and these two did
+    // not. Measured before the fix: `99n` here and `1n` from a fresh environment with the
+    // same declaration — one environment answering two ways for one declaration.
+    const activation = { "a.b": { c: 99n }, a: { b: { c: 1n } } };
+    const environment = new CelEnvironment({ unlistedVariablesAreDyn: true });
+    expect(environment.evaluate("a.b.c", activation)).toBe(99n);
+    environment.registerVariable("a", "map<string, dyn>");
+    expect(environment.evaluate("a.b.c", activation)).toBe(1n);
+    expect(environment.evaluate("a.b.c", activation)).toBe(
+      new CelEnvironment({ unlistedVariablesAreDyn: true })
+        .registerVariable("a", "map<string, dyn>")
+        .evaluate("a.b.c", activation),
+    );
+  });
+
   it("reads an absolute name against the activation, past a name a comprehension bound", () => {
     expect(evaluate("['compre'].exists(y, .y == 'outer')", { y: "outer" })).toBe(true);
     expect(evaluate("['compre'].exists(y, y == 'compre')", { y: "outer" })).toBe(true);

@@ -136,6 +136,7 @@ export type {
   FunctionDefinition,
   NamespaceFunctionDeclaration,
   NamespaceListing,
+  NamespaceOptions,
   SchemaRegistrationReport,
   TypeDeclaration,
   TypeDefinitionListing,
@@ -176,7 +177,12 @@ export type {
 export type { ResolvedCall } from "./resolved-call.js";
 
 export { formatSignature, parseSignature, signatureKey } from "./signature.js";
-export type { CallForm, CelSignature, FunctionMetadata } from "./signature.js";
+export type {
+  CallForm,
+  CelSignature,
+  FunctionMetadata,
+  LiteralArgumentCheck,
+} from "./signature.js";
 
 export {
   googleTypeNames,
@@ -186,6 +192,38 @@ export {
   standardLibrarySignatures,
 } from "./standard-library.js";
 export type { StandardConstant } from "./standard-library.js";
+
+// --- the function catalog: the dialect, registered as a host registers one ------
+
+export {
+  catalogCategories,
+  catalogSignatures,
+  FUNCTION_CATALOG_GENERATION,
+  functionCatalog,
+  registerFunctionCatalog,
+} from "./function-catalog.js";
+export type { CatalogFunction, RegisterCatalogOptions } from "./function-catalog.js";
+
+export {
+  catalogGuardedNames,
+  catalogImplementation,
+  catalogImplementedKeys,
+  catalogLiteralCheck,
+} from "./catalog-runtime.js";
+export type { CatalogImplementation, CelCatalogHandlers } from "./catalog-runtime.js";
+
+export { scanJsonPrefix } from "./json-text-scan.js";
+export type { JsonRefusal } from "./json-text-scan.js";
+
+export {
+  civilTimeIn,
+  dateTextIn,
+  daysInMonth,
+  instantOfCivilTime,
+  isoTextIn,
+  knownTimeZone,
+} from "./zoned-calendar.js";
+export type { CivilTime } from "./zoned-calendar.js";
 
 export { CelTypeExpressionError, parseTypeExpression } from "./type-expression.js";
 export type { NominalResolver } from "./type-expression.js";
@@ -198,8 +236,37 @@ export { BoundedCache } from "./bounded-cache.js";
 
 export { celMapFromEntries, celMapKeys, mapKeyIdentity } from "./cel-map-value.js";
 
-export { CelEvaluationError } from "./cel-program.js";
+export { CelEvaluationError, programOfStep } from "./cel-program.js";
 export type { CelProgram, EvaluateOptions } from "./cel-program.js";
+
+// --- the emitter: JavaScript source, its key, and the one store seam --------
+
+export { ENGINE_VERSION } from "./engine-version.js";
+
+export {
+  EMITTER_FORMAT_GENERATION,
+  emittedModuleIdentity,
+  emittedModuleKey,
+  emittedModuleRefusal,
+  programsFromEmittedModule,
+  readEmittedHeader,
+} from "./emitted-module.js";
+export type {
+  EmittedFactory,
+  EmittedHeader,
+  EmittedIdentity,
+  EmittedModule,
+  EmittedModuleStore,
+  EmittedRuntime,
+  StoredEmittedModule,
+} from "./emitted-module.js";
+
+export { environmentDigest } from "./environment-digest.js";
+export type { DigestedEnvironment } from "./environment-digest.js";
+
+/** The whole contract between an emitted module and the runtime it is handed. */
+export { RUNTIME_BINDINGS } from "./js-emitter.js";
+export type { RuntimeBinding } from "./js-emitter.js";
 
 export {
   CEL_EVALUATION_CODES,
@@ -220,6 +287,7 @@ export {
   isCelTimestamp,
   isCelTypeValue,
   isCelUint,
+  literalValue,
 } from "./cel-value.js";
 export type {
   CelDuration,
@@ -237,8 +305,16 @@ export type {
   CelValueKey,
 } from "./cel-value.js";
 
-export { CALL_SITE_CACHE_CAPACITY, CelCompileError, compileTree } from "./closure-backend.js";
-export type { CompiledTree, CompileTarget, NamespaceDispatch } from "./closure-backend.js";
+export { compileTree } from "./closure-backend.js";
+export type { CompiledTree } from "./closure-backend.js";
+
+export { CALL_SITE_CACHE_CAPACITY, CelCompileError } from "./backend-runtime.js";
+export type {
+  CelStep,
+  CompileTarget,
+  EvaluationFrame,
+  NamespaceDispatch,
+} from "./backend-runtime.js";
 
 export {
   celAll,
@@ -273,11 +349,20 @@ export {
 } from "./member-read.js";
 export type { Lookup } from "./member-read.js";
 
-export { celMatches, PATTERN_CACHE_CAPACITY } from "./regular-expression.js";
+export {
+  celMatches,
+  PATTERN_CACHE_CAPACITY,
+  RE2_FLAG_LETTERS,
+  RE2_PATTERN_ERROR_KINDS,
+  re2Pattern,
+} from "./regular-expression.js";
+export type { RE2Compiled, RE2PatternRefusal } from "./regular-expression.js";
 
 export {
+  base64Text,
   celTypeValueOf,
   implementationOf,
+  jsonAsCelValue,
   implementedKeys,
   optionalOfNonZero,
   standardConstantValues,

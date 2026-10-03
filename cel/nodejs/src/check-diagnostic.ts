@@ -65,9 +65,14 @@ export interface CelCheckDiagnostic {
  * An engine error: the caller used the engine wrongly, so nothing is checked or
  * compiled. It is not a verdict about the expression — `unreadable_expression` is the
  * refusal to compile a tree the front end already reported a syntax diagnostic for,
- * which is a question the caller should have asked before compiling.
+ * which is a question the caller should have asked before compiling, and
+ * `emitted_module_rejected` is the refusal to run a loaded module whose integrity header
+ * is not the one the emission asked for.
  */
-export type CelEngineErrorCode = "namespaces_mismatch" | "unreadable_expression";
+export type CelEngineErrorCode =
+  | "namespaces_mismatch"
+  | "unreadable_expression"
+  | "emitted_module_rejected";
 
 export class CelEngineError extends Error {
   readonly code: CelEngineErrorCode;
