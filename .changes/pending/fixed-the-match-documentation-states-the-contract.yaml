@@ -1,6 +1,0 @@
-modules:
-  modules/vector-store: Fixed
-body: "The Match documentation states the contract every backend honours: the metadata
-  filter is applied before the topK cut, so an entry it excludes never takes a match's
-  place; results come best first and hold min(topK, matching) entries unless a backend
-  on an approximate index reaches the scan bound it documents."

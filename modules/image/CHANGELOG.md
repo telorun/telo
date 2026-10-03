@@ -1,4 +1,9 @@
 # Changelog
+
+## 0.8.0 - 2026-10-03
+### Added
+* Breaking: the image slots of `Image.Blank` (output `image`) and `Image.Overlay` (input `image`, output `image`) are declared as bytes (`Telo.Bytes`) instead of `type: object`. An `image` argument that is not bytes now fails the call with `ERR_INPUT_INVALID` before the controller runs, where it raised `ERR_INVALID_INPUT`, and `telo check` reports an expression of another type. The outputs no longer fit a slot declared as a JSON type; pass them to a slot declared as bytes.
+
 ## 0.7.0 - 2026-08-09
 ### Added
 * metadata.name is now Image, so the module contributes its kinds under the `Image.<Kind>` canonical prefix instead of `image.<Kind>` — a name rather than a slug, in the PascalCase form the manifest grammar asks for. Importers are unaffected: a kind is always written through the import alias the consumer picks (`<Alias>.<Kind>`), and the `exports.kinds` list is unchanged. Only a manifest that names the canonical `<module>.<Kind>` form directly — a legacy bare-string `x-telo-ref`, or a diagnostic matched by its text — sees the new prefix.## 0.6.0 - 2026-07-31

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.1 - 2026-10-03
+### Fixed
+* A structured throw inside a Sql.Transaction body can be named in a route's catches: list. The transaction now declares throws: { inherit: true }, so its throw union is its body's: telo check no longer reports UNDECLARED_THROW_CODE for such an entry, and the run renders the throw after rolling back every write made before it.
+
 ## 0.26.0 - 2026-09-29
 ### Added
 * An engine schema resource addresses the tables it lists for consumers: its instance renders the qualified, quoted name of a listed table from its own namespace and the engine's quoting (PostgreSQL qualifies with the schema's namespace, SQLite names the bare table), so a consumer reading or writing those tables no longer depends on the connection's search_path. Engine implementers add the new required member to their schema instance.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-10-03
+### Added
+* A match now returns the true nearest rows the metadata filter admits: every match runs as an iterative HNSW scan in strict distance order, scoped to its own statement, so an entry the filter excludes never takes a match's place and a topK above hnsw.ef_search is met (a plain HNSW scan filtered only its first 40 candidates and could return fewer rows or none). Breaking: pgvector 0.8.0 or later is now required; start-up refuses an older extension, naming the installed version and the remedy (ALTER EXTENSION vector UPDATE after installing pgvector 0.8.0+). The connection must expose a kysely instance, as Postgres.Connection does.
+
 ## 0.11.0 - 2026-08-23
 ### Added
 * Drops the retired `teardown()` from the surface: ai's model, image and embedding handle interfaces no longer declare it, and the run and vector-store-pgvector controllers no longer implement an empty one. Cleanup is what a controller returns from `init()` / `run()`. Nothing called these, so no behaviour changes; a third-party handle implementing `teardown()` simply has a method nobody invokes.
