@@ -1,6 +1,6 @@
 [package]
 name = "telorun-sdk-macros"
-version = "0.106.0"
+version = "0.107.0"
 edition = "2021"
 publish = false
 description = "Proc macros for the Telo SDK. The #[controller] attribute generates FFI bindings per active backend."

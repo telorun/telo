@@ -1,5 +1,44 @@
 # @telorun/cli
 
+## 0.107.0
+
+### Minor Changes
+
+- ced88ae: A file an `!include-text` / `!include-bytes` names is now checked at load, like a `!module-path`: a missing one is `INCLUDE_FILE_NOT_FOUND` in `telo check` and every editor. Both checks now cover every module the entry reaches through a filesystem-path import (`source: ./lib`), not only the entry module, since such a module is never published and so never verified on its own. Registry imports are still left to their publish.
+
+  `telo run` and `telo install` refuse the load on either finding (`ERR_MANIFEST_VALIDATION_FAILED`), before any resource is created, rather than failing when the resource holding the tag is created.
+
+  Both findings name the absolute path checked and, when one entry of that directory is a plausible typo of the missing name, offer it as a fix (`Did you mean './primr.md'?`); when the directory itself is missing they say so instead.
+
+  `telo install` now exits 1 when its analysis pass fails, printing the kernel's diagnostics and an error count; it used to warn and succeed, so an image whose manifest could not boot built green.
+
+  API: `LoadedGraph.modulePathDiagnostics` is renamed `moduleFileDiagnostics`, `EngineFileClaim` gains a required `notFoundCode` — the code an engine's missing claim is reported under — and `ManifestSource` gains optional `locate` and `listDirectory`, implemented by `LocalFileSource`.
+
+- ced88ae: `telo publish` refuses to move the pin of a published version: when the `telo.yaml` it is about to push differs from the one already published at that `metadata.version`, the publish (and `--dry-run`) fails, naming `<destination>@<version>`, both pins, and each payload layer that moved — or that the manifest itself changed. Identical bytes still republish. Previously only payload layers were compared, so a manifest-only edit silently re-pinned a published version.
+
+  `telo publish --annotation <key>=<value>` (repeatable) writes author annotations onto the pushed OCI manifest beside the ones derived from `metadata`; a derived key is refused naming the `metadata` field to set, and the pushed set replaces the published one. Transports gain `checkAuthoredAnnotations` / `publishedAnnotations` and `PublishOptions.annotations`.
+
+  `telo module manifest --json` reports a `Telo.Application`'s declared `variables`, `secrets` and `ports` as `application` (`null` for a library), read by the analyzer's new `readApplicationContract`; no secret value is ever included.
+
+### Patch Changes
+
+- Updated dependencies [e620eef]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [789a410]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [789a410]
+- Updated dependencies [e620eef]
+- Updated dependencies [5b7e56e]
+  - @telorun/analyzer@0.107.0
+  - @telorun/templating@0.107.0
+  - @telorun/kernel@0.107.0
+  - @telorun/ide-support@0.107.0
+  - @telorun/sdk@0.107.0
+
 ## 0.106.0
 
 ### Patch Changes

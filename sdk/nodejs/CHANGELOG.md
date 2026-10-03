@@ -1,5 +1,7 @@
 # @telorun/sdk
 
+## 0.107.0
+
 ## 0.106.0
 
 ### Minor Changes
@@ -1523,8 +1525,8 @@ schema` has been in the `x-telo-ref` vocabulary for exactly this relation all
 
   Failures are coded and name the contract: `ERR_REF_REQUIRED` for an unset slot,
   `ERR_REF_UNRESOLVED` for one that is set but does not resolve — e.g.
-  `` Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
-resource satisfying `std/cache#Store`  ``.
+  ``Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
+resource satisfying `std/cache#Store` ``.
 
   Phase 5 injection normally replaces the slot with the live instance (local and
   cross-module refs alike), so the common path is the guard short-circuit. A raw

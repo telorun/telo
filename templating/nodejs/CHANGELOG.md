@@ -1,5 +1,28 @@
 # @telorun/templating
 
+## 0.107.0
+
+### Minor Changes
+
+- c5528e2: `parseJson` and the regex functions (`regexReplace`, `regexExtract`, `regexExtractAll`, `regexGroups`) now refuse in Telo's own words instead of the JS engine's and the regex library's: invalid JSON is `parseJson: invalid JSON at offset <n>` (ending ` (unexpected end of input)` for a truncated text), and an invalid pattern is `<fn>: invalid RE2 pattern "<pattern>": <kind>` with `<kind>` one of RE2's parse-error kinds and no quoted fragment after it. Breaking: a regex pattern or flags argument written as a literal is now checked statically, so an invalid literal pattern or an unknown literal flag is refused at `telo check` (`CEL_INVALID_ARGUMENT`) where it used to fail only when evaluated. `re2js` (2.8.3) and `uuid` (14.0.1) are now exact dependencies rather than ranges, so the package's regex and UUID answers are pinned to the versions the conformance vectors ran against.
+- ced88ae: A file an `!include-text` / `!include-bytes` names is now checked at load, like a `!module-path`: a missing one is `INCLUDE_FILE_NOT_FOUND` in `telo check` and every editor. Both checks now cover every module the entry reaches through a filesystem-path import (`source: ./lib`), not only the entry module, since such a module is never published and so never verified on its own. Registry imports are still left to their publish.
+
+  `telo run` and `telo install` refuse the load on either finding (`ERR_MANIFEST_VALIDATION_FAILED`), before any resource is created, rather than failing when the resource holding the tag is created.
+
+  Both findings name the absolute path checked and, when one entry of that directory is a plausible typo of the missing name, offer it as a fix (`Did you mean './primr.md'?`); when the directory itself is missing they say so instead.
+
+  `telo install` now exits 1 when its analysis pass fails, printing the kernel's diagnostics and an error count; it used to warn and succeed, so an image whose manifest could not boot built green.
+
+  API: `LoadedGraph.modulePathDiagnostics` is renamed `moduleFileDiagnostics`, `EngineFileClaim` gains a required `notFoundCode` — the code an engine's missing claim is reported under — and `ManifestSource` gains optional `locate` and `listDirectory`, implemented by `LocalFileSource`.
+
+### Patch Changes
+
+- c5528e2: `buildCelLanguageEnvironment()` returns the bare CEL language environment under Telo's options — cel-js's built-ins with no Telo catalog — on which `buildCelEnvironment()` now builds the dialect.
+- c5528e2: `registerValueBrands` — the nominal value brands' static CEL registration — now lives in and is exported by `@telorun/templating`, and the analyzer registers the brands through it.
+- e620eef: A value written through a tag is no longer judged against value constraints it cannot satisfy before it exists. `telo check` and the kernel's create-time validation judge a `!cel` value not at all, and an `!interpolate`, `!include-*` or `!module-path` value only for the type the tag produces: a correct `!interpolate` at a slot declaring `minLength`, `pattern` or `format` (an argument at a call site, a resource's own field such as `OTLP.Sink.timeout`, `Timer.Delay`'s `duration`) and a `!cel` object passed into a contract whose members declare `format` or `pattern` now check and run, where they were refused with `CONTRACT_INPUTS_MISMATCH` / `SCHEMA_VIOLATION` or `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`. A string tag at an `integer` slot is still refused, and a `!literal` is judged by its text. When the kernel refuses a resource holding an expression, it names the remaining finding rather than the first error its validator met.
+
+  A stand-in excuses only what it decides. A union is decided by validating its value against each alternative on its own: one whose alternatives are all references (`anyOf: [{ $ref: … }, { $ref: … }]`, document-local or named shapes) now accepts a correct `!interpolate`, and a constraint stated beside the union — a `$ref` on the same field, or an earlier `allOf` member — is still reported (`/cfg is missing required property 'b'`) when a stand-in satisfies one of the union's alternatives. A `default:` inside a union alternative is never applied when the union is decided: a resource whose alternatives each default a discriminator is created, and an alternative requiring a member it merely defaults is not satisfied. `uniqueItems`, `const` and `enum` at a value that contains expressions are judged on the written parts: two different expressions in a `uniqueItems` list are no longer compared with each other; the same deterministic expression written twice is still refused, naming the pair (`must NOT have duplicate items (items ## 0 and 1 are identical)`), as are two equal literals beside expressions; an object with an expression member is held to an `enum` / `const` only by its written members. The values are judged again once they exist: a call's arguments at dispatch (`ERR_INPUT_INVALID`), and a resource's own field after its expressions are evaluated at creation, where equal computed items in a `uniqueItems` list, or an object matching no `enum` value, are refused with `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` naming the field.
+
 ## 0.106.0
 
 ## 0.105.0
