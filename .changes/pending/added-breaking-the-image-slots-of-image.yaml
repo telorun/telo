@@ -1,8 +1,0 @@
-modules:
-  modules/image: Added
-body: "Breaking: the image slots of `Image.Blank` (output `image`) and `Image.Overlay`
-  (input `image`, output `image`) are declared as bytes (`Telo.Bytes`) instead of `type:
-  object`. An `image` argument that is not bytes now fails the call with
-  `ERR_INPUT_INVALID` before the controller runs, where it raised `ERR_INVALID_INPUT`,
-  and `telo check` reports an expression of another type. The outputs no longer fit a
-  slot declared as a JSON type; pass them to a slot declared as bytes."

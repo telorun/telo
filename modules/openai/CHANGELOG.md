@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-10-03
+### Added
+* ChatModel, ChatModelStream, ResponsesModel and ResponsesModelStream send the model contract's toolChoice as tool_choice, beside the tools they still declare: none tells the model to answer without calling a tool, which is what an agent's concluding call asks for. It is written after the merged options, so the call's own choice is what is sent.
+
 ## 0.3.0 - 2026-08-30
 ### Added
 * The completions kinds are renamed: `OpenAI.Model` → `OpenAI.ChatModel` and `OpenAI.ModelStream` → `OpenAI.ChatModelStream`. Two pairs now play the same role over different APIs, and `Model` beside `ResponsesModel` read as though one were the model and the other a variant of it; the API qualifies both names symmetrically instead. The old names are kept for ONE release as deprecated aliases, so a manifest that moves its pin without editing `kind:` still loads and still works — each extends the renamed kind with no `base:` and no `controllers:`, inheriting the controller verbatim, and carries `metadata.deprecated` naming the replacement. Deleting them outright would have produced `UNDEFINED_KIND` naming nothing, since the edit distance from `Model` to `ChatModel` is too large for the suggestion to fire. Nothing else about the kinds changes: same fields, same behaviour, same controller. Renaming now rather than later is deliberate — it rides the release that first ships the responses pair, so a consumer takes one break instead of two.

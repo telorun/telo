@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-10-03
+### Added
+* Breaking: the document and image slots of `Pdf.Rasterizer` (input `data`, output `image`) and `Pdf.FormFields` (input `data`, output `data`) are declared as bytes (`Telo.Bytes`) instead of `type: object`. A `data` argument that is not bytes now fails the call with `ERR_INPUT_INVALID` before the controller runs, where it raised `ERR_INVALID_INPUT`, and `telo check` reports an expression of another type. The outputs no longer fit a slot declared as a JSON type; pass them to a slot declared as bytes.
+
 ## 0.9.0 - 2026-09-19
 ### Added
 * Bundled delivery: the controllers now ship inside the module's own artifact instead of the @telorun/pdf npm package, so loading them needs no package manager. Skia ships as a per-platform native file (darwin x64/arm64, linux x64/arm64 in gnu and musl, windows x64/arm64) and pdf.js's standard fonts, CMaps, wasm decoders and worker ship as the module's own assets. BREAKING: the module now requires telo >=0.91.0, and the @telorun/pdf npm package is no longer published — nothing needs to depend on it, since the controller is delivered with the module.

@@ -1,7 +1,0 @@
-modules:
-  modules/shell: Added
-body: "Shell.Command and Shell.CommandStream take an optional per-call cwd input: the
-  directory that call starts in, overlaid on the host's working directory the way env
-  overlays its environment. It works with both args and command, and a relative value is
-  resolved against the host's working directory. The value reaches every host driver
-  through the exec seam as a call-level option."

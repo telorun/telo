@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Added
-body: New `GET /modules` lists every module the hub can describe with its latest
-  version, paged by a stable sequence number, so sites can build complete sitemaps of
-  the catalogue.

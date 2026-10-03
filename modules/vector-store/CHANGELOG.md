@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.4 - 2026-10-03
+### Fixed
+* The Match documentation states the contract every backend honours: the metadata filter is applied before the topK cut, so an entry it excludes never takes a match's place; results come best first and hold min(topK, matching) entries unless a backend on an approximate index reaches the scan bound it documents.
+
 ## 0.10.2 - 2026-08-16
 ### Fixed
 * Controllers ship as one bundle per module, selected by PURL fragment, and a module-owned library is resolved at load through the import graph instead of being copied into each dependent's bundle. A shared source file compiled into two bundles was two module scopes, so state a module kept beside its instances silently became two of them.
