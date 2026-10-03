@@ -43,13 +43,17 @@
     "check:types": "tsc -p tsconfig.json --noEmit",
     "check:browser-safe": "node scripts/check-browser-safe.mjs",
     "check:signatures": "pnpm run build && node scripts/check-signatures.mjs",
+    "prepare": "node ../../scripts/generate-telo-version.mjs",
     "prepack": "cp ../../LICENSE .",
     "postpack": "rm -f LICENSE"
   },
   "dependencies": {
-    "re2js": "2.8.3"
+    "d3-format": "catalog:",
+    "re2js": "2.8.3",
+    "uuid": "14.0.1"
   },
   "devDependencies": {
+    "@types/d3-format": "^3.0.4",
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
     "typescript": "^5.0.0",

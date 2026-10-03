@@ -11,11 +11,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DRIVEN_FILE, type LanguageRow, replayLanguageRows, SPEC_CORRECTIONS } from "./language-replay.js";
 
-/** Files of the vectors this driver deliberately leaves alone, and why. */
+/**
+ * Files of the vectors this driver deliberately leaves alone, and why. The two dialect
+ * files it used to leave to "whoever registers a catalog" are now driven beside it
+ * (`dialect-replay.test.ts`): the engine carries the catalog, and a host's types reach it
+ * through `registerType`.
+ */
 const NOT_DRIVEN: Record<string, string> = {
   "README.md": "the format's own documentation",
-  "catalog.json": "a function catalog the engine does not own; driven by whoever registers one",
-  "types.json": "a type vocabulary the engine does not own",
+  "catalog.json": "the function catalog, driven by `dialect-replay.test.ts`",
+  "types.json": "a host's own types, driven by `dialect-replay.test.ts`",
   "holes.json": "the `${{ … }}` hole grammar, which is a tag's reading of a scalar and not CEL",
   "module-calls.json": "a tag engine's resolution and dispatch, through its own seams",
   "verdicts.json": "a tag engine's diagnostic and error vocabulary",

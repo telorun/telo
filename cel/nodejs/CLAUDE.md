@@ -5,15 +5,28 @@ Loaded when working under `cel/nodejs/`. Repo-wide rules live in the root `CLAUD
 
 ## The one boundary
 
-**No host vocabulary lives here.** No kind, no annotation, no value brand, no function catalog, no
-manifest word. The engine owns CEL — its grammar, its tree, its type system, its evaluation — and a
-host registers its own types and functions onto it from outside. The rule is checkable by grep: no file
-under `cel/nodejs` holds a host schema-annotation key, nor a host type prefix. That is what keeps this
-package portable to another runtime and auditable as "it implements CEL".
+**No host vocabulary lives here.** No kind, no annotation, no value brand, no manifest word. The engine
+owns CEL — its grammar, its tree, its type system, its evaluation — and a host registers its own types
+onto it from outside. The rule is checkable by grep: no file under `cel/nodejs` holds a host
+schema-annotation key, nor a host type prefix. That is what keeps this package portable to another
+runtime and auditable as "it implements CEL".
+
+**The function catalog is the one thing that LOOKS like an exception and is not.** Telo's own 67
+functions ship here, as data and implementations (below), and every one of their signatures is written
+over CEL's own types alone — `string`, `int`, `list`, `map`, `bytes`,
+`google.protobuf.Timestamp`. A value TYPE never appears in one: a port is typed as the host's own named
+type by `registerType`, and `.joinPath` keeps a host path a host path because the host declares that
+member on that type, not because this package knows what a path is. So the catalog is a set
+of functions over the language's types, which is exactly what a dialect is — and if a change ever
+seems to need a host type name in `src/`, that is the question to route rather than the line to bend.
 
 **It depends on nothing in this repository.** Third-party pure-JS dependencies are allowed; a
 workspace dependency is not, in either direction — the analyzer, templating, the SDK and the kernel
-consume this package, never the reverse.
+consume this package, never the reverse. **Three runtime dependencies, each pinned exactly**: `re2js`
+(CEL's pattern language), `d3-format` (the number-formatting specifier grammar) and `uuid`. The pins
+are exact because the conformance vectors pin those libraries' own answers — RE2's parse-error
+vocabulary and its limits, d3's rounding, the UUID values — so an upgrade is a deliberate change that
+re-runs the vectors.
 
 **The entry reaches no Node built-in**, because the analyzer loads it in a browser. The gate is
 `pnpm --filter @telorun/cel run check:browser-safe`: a real browser-platform bundle that follows
@@ -241,6 +254,59 @@ language's own casing rather than touching the ASCII letters alone. Both are wha
 and the vectors hold the engine to the recording for them — cel-spec is silent about a member it does not
 define.
 
+## The function catalog: the dialect, registered as a host registers one
+
+**Telo's 67 functions are data plus implementations, and nothing about them is privileged.**
+`src/signatures/function-catalog.json` declares them (86 signatures, documented in
+`docs/signature-data.md`), `src/catalog-runtime.ts` is what each one does, keyed by the same dispatch
+key, and `registerFunctionCatalog(environment, { handlers })` registers them through the **public**
+`CelEnvironment.registerFunction` — literally the surface a host uses, so the catalog can be left out,
+replaced function by function, or removed by name, and no code path in the engine behaves differently
+for it. A default environment has no catalog: a consumer that wants the dialect asks for it.
+
+**Nothing in it is cel-spec's, declared once for the file** rather than 67 times. The counterpart of
+that is the rule the validator enforces: a catalog signature answering the same call as a standard
+one would **replace** it silently, so none may — and `string(timestamp)`, `string(duration)` and
+`int(timestamp)`, which the catalog carried while the language did not declare them, are deliberately
+gone. The language layer declares all three, with the same call form, arity and return type, so no
+expression loses a call.
+
+**Nine functions are the host's**, each needing a facility this package may not reach — a hash, a byte
+buffer, the host's own path separator, a JSON writer: `sha256`, `md5`, `sha1`, `sha512`, `hmac`,
+`base64Encode`, `base64Decode`, `json`, `joinPath`. They are supplied through `CelCatalogHandlers` at
+registration, and one left out still REGISTERS (an analyzer never evaluates, and must still type-check
+the call) while evaluating it answers `unbound_function` **naming the function**. Never a null, never
+an empty string: a hash that answers nothing looks like a value and ends up in a cache key.
+
+**A refusal is the catalog's own words, in one voice** — `<function>: <what is wrong>`, identical on
+every engine, and the vectors record 52 of them verbatim. It is never a library's wording or the host
+language's: the regex family ends an invalid pattern with one of RE2's own parse-error kinds from a
+closed vocabulary (`RE2_PATTERN_ERROR_KINDS`) and nothing after it, and `parseJson` words its own
+offset from `src/json-text-scan.ts` rather than quoting the host parser. A refusal is thrown as
+`CatalogRefusal` by the guard that meets it and becomes a CEL **error value** at exactly one place, so
+the short-circuit rules still hold; anything else thrown while an implementation runs is this engine
+failing, not the argument, and propagates. A parse failure RE2 reports outside that closed vocabulary
+is one of those defects.
+
+**A literal-argument guard is the CHECKER's, not the implementation's.** A signature constrains types,
+so a refusal over a VALUE — an unparseable specifier, a decimal count out of range, an unknown IANA
+zone, a pattern RE2 refuses — would otherwise fire only when the expression runs, which puts a defect
+the source states behind a run. A registration may carry a `checkArguments` guard
+(`LiteralArgumentCheck`), asked where the checker resolves the call and reported as
+`CEL_INVALID_ARGUMENT` naming the call as it was written; twelve catalog functions carry one, and each
+guard runs **the very code the evaluation runs**, so the static and dynamic answers cannot drift. An
+argument that is not a literal arrives as `undefined` and a guard skips it.
+
+**Two of its families reach a host facility, by declaration.** The clock (`now`, `nowIso`, `today`,
+`nowMillis`, `nowSeconds`) and the random source behind `uuidv1`/`v4`/`v6`/`v7` are what
+`deterministic: false` MEANS, and both are present in a browser as in Node, so the browser-safety gate
+is unaffected. The language itself still reaches neither.
+
+**`telo cel functions` reads one surface** — `functionCatalog()`, which answers each function with its
+display signature, its category, its summary, its two flags and whether it guards its literals. A
+consumer never reconstructs a listing from registrations, and the data carries everything such a
+listing needs.
+
 ## The type system
 
 **JSON Schema is the checker's native input, read to full depth.** Nested objects become records of
@@ -359,6 +425,29 @@ answer.
 (`CelEngineError`, `namespaces_mismatch`) rather than checked: its qualified calls are not the ones this
 environment would have found, so every answer about it would be about a different expression.
 
+**A namespaced call is judged only against what the host DECLARED, and a host may declare less.** Two
+withholdings, each **structural rather than a flag** (`tests/namespace-declaration.test.ts`):
+
+- **An open namespace** (`registerNamespace(name, declarations, { open: true })`) declares only part of what
+  it reaches: a name it does not carry types `dyn`, is **listed as a call**, and is reported by nobody.
+  Openness is per namespace, inherited by a `clone()`, withdrawn by re-registering closed, and **in the
+  environment digest** — it decides whether an expression checks clean, so two environments differing only
+  in it must not share an emitted module.
+- **A declaration that withholds its parameter list** (`{ name, returns }` beside `{ signature }`) types the
+  call's result and leaves its arity and argument types unjudged. The two forms are exclusive **by
+  construction**: a shape that supplied parameters and asked for them to be ignored would carry a list
+  nothing reads, which no reader can tell from a list that is simply wrong. Such a declaration is listed as
+  `total(…): double`, never as a function of no arguments.
+
+**Why the engine declines rather than answers:** a host's name resolution can rest on vocabulary this
+package may not learn (an export gate, a capability, a re-export chain), and its signature grammar can be
+richer than CEL's (an optional trailing parameter, a declared JSON Schema per parameter — strictly stronger
+than CEL assignability). Judging such a call here leaves the host one move, suppressing the verdict, which
+is exactly the after-the-fact classifier this engine exists to retire. **The blind spot is written beside
+the tests:** they can show the verdict is withheld and cannot show the host reports it instead, so each
+case also asserts the call is **listed** — a verdict withheld and not listed is a verdict lost, and that is
+the failure they can see.
+
 ## The value domain: identity is a string key, never a constructor
 
 **A value says what it is under `Symbol.for("telo.cel.value")`** (`cel-value.ts`), as a string. Two
@@ -386,10 +475,19 @@ up** by any numeric type, because `{1u: 1.0}[?1.0]` reads the entry.
 ## The semantics live once, under both backends
 
 `runtime-library.ts` is what every operator and standard function **does**, keyed by the same dispatch key
-the registry resolves on; the declarations stay data. The closure backend calls through it and the emitter
-will too, so there is one answer per operation and no second copy to drift. `tests/runtime-library.test.ts`
-holds the two artifacts to each other in both directions — a declaration with no behaviour type-checks and
-then fails at evaluation, which is the failure class the engine exists to remove.
+the registry resolves on; the declarations stay data. Both backends call through it, so there is one answer
+per operation and no second copy to drift. `tests/runtime-library.test.ts` holds the two artifacts to each
+other in both directions — a declaration with no behaviour type-checks and then fails at evaluation, which
+is the failure class the engine exists to remove.
+
+**And everything AROUND a call lives once too** (`backend-runtime.ts`): admitting a host value, reading a
+member in every form, `has()`'s presence question, taking a bool operand, an aggregate's optional entry,
+reading a name or a dotted chain, and the per-call-site overload dispatch with its bounded cache. None of
+it is a tree walk and none of it is an operator, which is exactly why it cannot live in a backend — the
+closure backend compiles a tree to closures and the emitter compiles the same tree to JavaScript, and both
+call *these* functions, by reference. That is what makes "the two backends answer identically" a property
+of the wiring rather than a hope the tests confirm: the only thing the two compile differently is how
+control gets from one call to the next.
 
 **An error is a VALUE that participates in short-circuit.** `false && <missing key>` is `false` and
 `true || <missing key>` is `true`, whichever side the error is on, so every operator, comprehension step
@@ -449,7 +547,7 @@ one binding table (`comprehension-bindings.ts`); there is still no comprehension
 must stay writable back to source.
 
 **A dotted chain splits once, over the names the host declared** (`declared-chain.ts`, read by the
-checker and by this backend). A declared chain is split at COMPILE time, so evaluating it is one
+checker and by both backends). A declared chain is split at COMPILE time, so evaluating it is one
 activation read plus member reads — no search over prefixes — and a declared name the activation does not
 hold is `no_such_variable` for **that** name, never a quiet fall back to a shorter prefix holding
 something else. **The ROOT counts as a declared prefix**, and leaving it out was exactly the disagreement
@@ -461,11 +559,12 @@ where the checker has no opinion either. The checker takes its ordinary select p
 because the nullable-access rule is a fact about the expression's shape rather than about which name it
 reads — one answer to "which name", two readings of what follows it.
 
-**Overloads are resolved on the values' own types, per call site.** A statically resolved signature is not
-enough, since `dyn` reaches the runtime. A site holds its last resolution and reaches it by comparing the
-type names themselves — building a cache key per call is the allocation that costs most on the hottest
-path — with a bounded cache behind it for a polymorphic site. A container's element type is read as `dyn`
-rather than walked, so dispatch does not get more expensive as the data gets larger.
+**Overloads are resolved on the values' own types, per call site** (`CallSite`, in
+`backend-runtime.ts`, so both backends dispatch through one object). A statically resolved signature is
+not enough, since `dyn` reaches the runtime. A site holds its last resolution and reaches it by comparing
+the type names themselves — building a cache key per call is the allocation that costs most on the
+hottest path — with a bounded cache behind it for a polymorphic site. A container's element type is read
+as `dyn` rather than walked, so dispatch does not get more expensive as the data gets larger.
 
 **A registration's implementation is the host's half.** The engine's own implementations are looked up by
 dispatch key, so a registration carries one only where the host supplies it; a call that resolves to a
@@ -532,6 +631,125 @@ per environment (`DEFAULT_COMPILED_CACHE_CAPACITY`), compiled patterns (`PATTERN
 site's resolved overloads (`CALL_SITE_CACHE_CAPACITY`). Each is keyed on text an author's input decides,
 so an unbounded one is a memory leak with that input as its key.
 
+## The JS emitter, its key and its one store seam
+
+The second backend compiles a tree to **JavaScript source** (`js-emitter.ts`), as one module for a set of
+expressions (`emitted-module.ts`). It decides nothing the closure backend decides differently: what it
+produces is a tree of calls into `backend-runtime.ts`, `runtime-library.ts` and `comprehension-runtime.ts`,
+in the same order and with the same short-circuit.
+
+**The runtime is INJECTED, never imported.** The module's default export is a factory taking the runtime
+support library and answering one synchronous function per expression — a `CelStep`, which
+`programOfStep` wraps so the top of an evaluation (the thenable backstop, a surviving error becoming a
+throw) is the same code either way. The text names **no specifier of any kind**: a module importing
+`@telorun/cel` would be loadable only where that specifier resolves, which excludes a `data:` URL, a
+cache directory mounted elsewhere and a Rust host — and, worse, it would accept a version-skewed runtime
+the key cannot see. `RUNTIME_BINDINGS` is the whole contract, one table the emitter destructures from and
+`emitterRuntime` builds, so a binding one side has and the other does not cannot ship.
+
+**The key covers the ENVIRONMENT, not just the source**: a hash over the emitter's format generation
+(`EMITTER_FORMAT_GENERATION`), the engine version (`ENGINE_VERSION`), the environment digest, and the
+canonical **ordered** list of expression sources — the order being part of the identity, because the
+factory answers functions by position. The digest
+(`environment-digest.ts`) is over the environment's **resolved listing**, never its registration history:
+every function signature surviving registration and removal, every named type with its base and
+parameters, every variable with its type, every namespace with its functions, every option value, sorted.
+Keying on the history would fragment the cache into one entry per way of arriving at the same
+environment.
+
+**Why the key is that wide here.** Overloads are resolved at evaluation on the values' own types, so a
+replaced library does not change the emitted *text* the way it would in an engine that baked a resolution
+into the output. What it changes is the runtime object the module is handed — and the header repeats the
+digest, so a module can only ever run against the environment it was written for. The wide key is what
+makes the header a proof rather than a hope, and **over-keying is the safe direction**: a key too wide
+costs a recompile, a key too narrow runs the wrong code.
+
+**The integrity header carries FIVE fields, and the reason is that the provenance three answer only part
+of the question.** The measurement that settles it: two different modules of one engine against one
+environment emit **byte-identical** `format`, `engine` and `environment`. So those three catch a cache
+root shared by two engines and a stale environment, and **nothing else** — not a half-written file, not a
+hand-edited one, not a store that answered the wrong lookup. (An earlier version of this section credited
+them with all three; that was false, and it is recorded here because the claim was repeated before it was
+tested.)
+
+- `key` — the module's own **identity**, the key this text was written for. It adds no concept: the design
+  already had the name. It is in the header line **and** in the `integrity` export, so the load path
+  refuses a mismapped module even when the host imported bytes the engine never hashed.
+- `body` — the digest of the text **following the header line**. It covers every byte that is or could be
+  read as code, the `integrity` export included, and leaves only the two banner lines uncovered. It is the
+  decisive one, and the module's own banner argues for it: *edit the expression, not this* is evidence that
+  someone will edit one, and a text with an intact header, an exported factory and a matching function
+  count **runs**, whatever its body says. That is the one failure here that no retry undoes.
+
+**`body` cannot live in the export it covers** — a digest has no fixed point inside the bytes it digests —
+so it is carried only in the header line and verified only where the bytes are in hand. That is also the
+split between the two paths:
+
+- **The store-read path** (`emittedModuleRefusal`, reached through `environment.emittedModule`) has the
+  text, checks all five, and every mismatch is a **recompile that names itself** in `refused`: *the stored
+  module declares key `<x>` and the module asked for is `<y>`*, *the stored module's body does not match
+  the digest its header declares*. Never a refusal the caller has to handle, never a run.
+- **The load path** (`programsFromEmittedModule`) has an object and not the bytes, so it checks the four
+  the export carries and throws `emitted_module_rejected` — now on a `key` mismatch as well. The function
+  count stays as the cheap backstop; `key` is what actually tells two modules of one engine apart, which
+  a count can only do by luck.
+
+**The store's atomic write stays documented and no longer carries the guarantee.** Writing elsewhere and
+renaming is still how a half-written entry is *avoided*, and avoiding one is better than detecting one.
+But the guarantee rested on a promise this engine cannot check, made by a host it does not know; now the
+`body` digest **detects** a truncated or edited text, so a host that gets the write wrong costs a
+recompile.
+
+Measured on the largest module the identity gate emits — 1,771 expressions, 838 KB — over five runs: the
+body digest is **7-11 ms** and a whole store hit **9-15 ms** (the hit parses nothing, the trees being read
+through a thunk only where there is something to emit), against **29-39 ms** to emit the module. So
+verifying costs about a third of what it saves, once per module, and the hit path is digest-dominated
+rather than parse-dominated.
+
+**One store seam, and no loader.** The engine reads and writes module text by key through an interface the
+host supplies (`EmittedModuleStore`) and **touches no filesystem**. It exports no loader, because a loader
+would have to reach a filesystem (which this package may not), be `eval` (which the closure backend exists
+to avoid), or be a `data:` URL import (fine under Node, refused under a browser's content security
+policy). Nothing under `cel/nodejs` names a path outside it, the cache root included: a host anchors that.
+
+**No bare property access implements a CEL read**, and the gate for it is over the whole emitted text
+rather than over the names of a probe: every property the emitted code reads must be one of six
+structural fields (`activation`, `namespaceFunction`, `present`, `held`, `push`, `call`), so a CEL field
+name can never be among them however it was computed — which is the form (`a[request.query.k]`) no word
+list could have protected.
+
+**The digest is recomputed per emission, deliberately** (~430 µs against the standard library's 214
+signatures, once per module rather than per evaluation). Caching it would have to be invalidated by every
+registration, and a cache whose invalidation is threaded through eight mutators is exactly where a
+stale-answer defect lives in a package whose reason for existing is that an environment can change.
+
+**`EMITTER_FORMAT_GENERATION` is bumped on ANY change to the text the emitter writes for any tree** — not
+only when the module's shape changes. The narrower rule asks whoever makes the change to decide that a
+text difference is semantically neutral, and that judgement is exactly what produces the unrecoverable
+failure: this emitter's own first defect moved no signature, no code path and no library entry, and a
+module cached before the fix would have gone on answering `[2, 4, 6]` for `[3, 4, 5]` forever.
+`tests/emitter-text.test.ts` is what makes the rule checkable — it pins the digest of the code the emitter
+wrote for a corpus drawn from the package's own total enumerations (every `CelNode["kind"]`, every
+`BINDING_FORMS` entry, every call in the registry listing, plus one hand-written group for the branches no
+enumeration names), beside the generation, so a change to that text fails naming the bump it owes.
+**Verified by negative control**: reintroducing the per-function numbering fails it with that message.
+Its blind spot is written beside it and is low: the digest and the generation sit in one file and can be
+re-recorded in one edit, so what it converts is a silent wrong-code-served into a fixture diff a reviewer
+must approve. The pin is over the **factory** and not the whole text, because the envelope carries the
+engine version and the environment digest and would re-record on every release.
+
+**`ENGINE_VERSION` is GENERATED, never hand-written** (`scripts/generate-telo-version.mjs` writes
+`src/engine-version.ts` at `prepare`, gitignored and required to stay untracked, exactly as it writes the
+analyzer's surface generation and the language-server's engine identity). Its value is the telo line's
+surface generation with `+unreleased` while a line changeset is pending. A hand-written constant held to
+`package.json` by a test was the first shape and was wrong twice over: `package.json` holds the **last
+published** version while a build implements the **next** generation, so under a pending bump the
+assertion is false rather than merely weak — and the sentence claiming a test held it named a file that
+did not exist. A content digest over the engine's own declared surface was the other candidate and is
+blind in exactly the direction this field exists to look: that same temporaries defect leaves such a
+digest byte-identical, and a Rust engine sharing a cache root would have to reproduce it byte for byte,
+where the line's version is a number both halves already carry.
+
 ## `matches` is RE2
 
 CEL's pattern language is RE2 (`regular-expression.ts`, over `re2js` pinned exactly, as templating pins
@@ -543,7 +761,8 @@ dependency**, and it costs the browser bundle about 420 KB.
 
 ## The conformance replay
 
-The vectors are the cross-engine contract, and this package drives the **language rows** of them:
+The vectors are the cross-engine contract, and this package drives the **language rows** of them —
+and, since the catalog ships here, the **dialect rows** too (below):
 `conformance/language-replay.ts` holds the driver, `language-replay.test.ts` runs it. Per row it asserts
 that a row recorded as checking checks **to the recorded type, spelled as the row spells it**, that a row
 recorded as refused is refused **at the offset the recorded message's caret points at**, and that
@@ -601,6 +820,64 @@ place where comparing a message says something, and the engine reproduces all si
 the question in full and the engine's exact answer, so the gate holds such a row as tightly as a matched
 one. **The list is empty**, and is meant to stay that way — it exists so that the next question of that
 kind is written down and measured rather than absorbed into an exclusion.
+
+**A fourth driver answers the dialect files** (`conformance/dialect-replay.ts`, with the positions each
+file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 178 rows and `types.json`'s
+26, replayed in place, under the same completeness rule — every row answered, corrected with a cited
+authority, or excluded with one of the same five reasons, which **do not grow**. Today each file has
+exactly one correction and no exclusion: `catalog/string/timestamp`, which is character for character a
+language row the value replay already corrects, and `types/optional/none`, where an unresolved type
+parameter is reported as `dyn`.
+
+Three things about it are worth keeping:
+
+- **The host's vocabulary is a PARAMETER, never a name written here.** `types.json` declares variables of
+  Telo's nominal value types, so the driver takes a list of `NominalTypeDefinition`s
+  (`CEL_CONFORMANCE_HOST_TYPES`, supplied by `scripts/check-cel-conformance.mjs` exactly as the vectors'
+  path is) and registers each through `registerType` — and it **fails naming any type a row declares that
+  the list does not carry**, rather than letting an undeclared name read as whatever it would read as.
+  That is what lets the gate be driven by the host's own rows while the package stays free of a host type
+  name.
+- **A row's two halves are independent, as the format says**: the static half checks against the row's
+  declarations plus the nominal types, and the runtime half evaluates against its bindings with
+  **neither**, because at runtime a value of a nominal type IS its base. Checking first, as a language row
+  is driven, would make every row that records a refusal at check and a value at evaluation (`p + 1` over
+  a port) answer an error and compare nothing.
+- **What it compares, and what it declares it does not.** The verdict and, for a clean row, the recorded
+  type; the value, written canonically; that a row recorded as failing fails — and, where the recorded
+  message is one the CATALOG words (`<function>: …`, 52 rows) or the recorded diagnostic is a
+  literal-argument refusal (28 rows), that text **byte for byte**, which is the vectors' own rule for a
+  refusal that is Telo's words rather than an engine's. Everything else in a dialect row's `check` is the
+  TAG engine's answer about a scalar — the call listing at a scalar's offsets, the regions, the refs, the
+  volatility, a site's context schema — and is declared as answered elsewhere rather than quietly skipped.
+
+**A third driver asks a different question: do the two BACKENDS agree?**
+(`conformance/emitter-identity.ts`). The two drivers above ask whether the engine's answer is right; both
+run the closure backend, so an emitter that disagreed on two hundred rows would leave every count in this
+directory untouched. This one runs every row through both and compares the canonical text of the answer,
+so a difference of CEL type or of error range is a difference of text. Rows are grouped by the
+**environment's own digest** — which is what the key is over — and each group is emitted as one module
+and loaded once, so the gate exercises a module of 1,800-odd expressions rather than 1,800 modules of
+one, which is also how a host will use it. Its own accounting is total: compared, not read whole, or
+refused at compile by both with the same message, and the three must add up to the file.
+
+**And it is deliberately not the only identity gate, because its filter cannot reach a form no row
+writes.** The vectors are cel-spec's corpus: no comprehension over a host map, no chain into declared
+state, no host-supplied implementation, no three-argument `map` whose filter and transform differ.
+Measured rather than assumed, and on a **real defect** rather than an injected one: the emitter first
+numbered its temporaries per function, so a comprehension body's `let t0` shadowed the `t0` its caller
+held a bound value in and `cel.bind(n, 2, xs.map(e, e + n))` answered `[2, 4, 6]` for `[3, 4, 5]`. This
+driver reported **0 disagreements** over all 1,814 rows with that bug in place; the case list caught it on
+the first run. (Swapping `map/3`'s transform and filter behaves the same way.) So the two gates are
+complementary and neither is redundant: `tests/backend-identity.test.ts`'s completeness is over the
+grammar's node kinds (a `Record` over `CelNode["kind"]`, so a new node kind fails to compile until a case
+exists for it) plus every binding form the engine enumerates and every one of the **300** calls the
+registry holds over the two libraries — 214 of CEL's own and 86 of the catalog's
+(`tests/standard-library-identity.test.ts`, generated from each environment's listing rather than written
+out; a volatile call is compared by the TYPE of its answer, since two calls made a moment apart would
+differ for a reason that is not a disagreement).
+Conversely this driver catches what that one cannot: a disagreement on a value only cel-spec's corpus
+thinks to write.
 
 **The vectors directory is a parameter with no default** (`CEL_CONFORMANCE_DIR`), and nothing under
 `cel/nodejs` names a path outside `cel/nodejs`: this package's own suite must pass with no sibling
@@ -666,8 +943,18 @@ filter is a result waiting to be re-derived by hand.
 - A schema or a field map as a type → `src/json-schema-type.ts`
 - A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`
 - Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`
+- A namespace, what it declares and what it withholds → `registerNamespace` in `src/environment.ts`
+  (`NamespaceFunctionDeclaration`, `NamespaceOptions`), `qualifiedCallType` in `src/checker.ts`,
+  `tests/namespace-declaration.test.ts`
 - The library as data → `src/signatures/standard-library.json`, `src/standard-library.ts`,
   `docs/signature-data.md`
+- The CATALOG as data, and what it registers → `src/signatures/function-catalog.json`,
+  `src/function-catalog.ts` (`functionCatalog()` is the one listing surface), `docs/signature-data.md`
+- What a catalog function DOES, its refusals and its host seam → `src/catalog-runtime.ts`, with the
+  calendar in `src/zoned-calendar.ts`, the JSON offset in `src/json-text-scan.ts` and RE2's parse-error
+  vocabulary in `src/regular-expression.ts`
+- A refusal over a literal argument, at check → `LiteralArgumentCheck` in `src/signature.ts`,
+  `checkLiteralArguments` in `src/checker.ts`, the guards in `src/catalog-runtime.ts`
 - Every verdict and its range → `src/checker.ts`, `src/check-diagnostic.ts`, with the macro passes in
   `src/macro-shape.ts` and `src/macro-check.ts` and the guard rules in `src/nullable-access.ts`
 - What each call resolved to → `src/resolved-call.ts`
@@ -679,9 +966,22 @@ filter is a result waiting to be re-derived by hand.
 - A macro's meaning, as a function of its body → `src/comprehension-runtime.ts`
 - Which forms bind a value into a body → `src/comprehension-bindings.ts` (`BINDING_FORMS`)
 - What a value that must be awaited becomes, wherever one enters → `asyncValueRefused` in `src/cel-value.ts`
-- Tree to closures, and macro lowering → `src/closure-backend.ts`; the program and the top-level throw →
+- Tree to closures, and macro lowering → `src/closure-backend.ts`; tree to JavaScript source →
+  `src/js-emitter.ts`; what both backends do at a site (a host value, a member read, a bool operand, a
+  name, one call site's dispatch) → `src/backend-runtime.ts`; the program and the top-level throw →
   `src/cel-program.ts`; the activation's reads → `src/activation.ts`
+- An emitted module, its key, its five-field integrity header and the store seam →
+  `src/emitted-module.ts`, with the environment's digest in `src/environment-digest.ts`, the hash in
+  `src/sha256.ts` and the build's own identity in `src/engine-version.ts` (**generated**, gitignored)
+- Whether the two backends agree → `tests/backend-identity.test.ts` (the grammar),
+  `tests/standard-library-identity.test.ts` (every registry call),
+  `conformance/emitter-identity.ts` (every vector row), with the host that loads an emitted module in
+  `tests/emitted-host.ts` and the one call-source generator both gates read in `tests/registry-calls.ts`
+- Whether the emitter writes the text it wrote before → `tests/emitter-text.test.ts`, over
+  `tests/emitter-text-corpus.ts`, pinned in `tests/__fixtures__/emitter-text.json`
 - A bounded cache → `src/bounded-cache.ts`
 - Whether the whole package type-checks — `src`, `tests` and `conformance` → `check:types`
-- The two conformance drivers → `conformance/language-replay.ts` (check), `conformance/value-replay.ts`
-  (value), with the row encoding in `conformance/conformance-value.ts`
+- The conformance drivers → `conformance/language-replay.ts` (check), `conformance/value-replay.ts`
+  (value), `conformance/dialect-replay.ts` (the catalog and a host's types, with the positions in
+  `catalog-replay.ts` and `types-replay.ts`), with the row encoding in
+  `conformance/conformance-value.ts`

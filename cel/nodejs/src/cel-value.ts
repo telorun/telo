@@ -22,7 +22,7 @@
  * The keys are a **closed set** (`CEL_VALUE_KEYS`); a new one is a change here.
  */
 
-import type { SourceRange } from "./syntax-tree.js";
+import type { CelLiteral, SourceRange } from "./syntax-tree.js";
 
 export const CEL_VALUE_TYPE: unique symbol = Symbol.for("telo.cel.value");
 
@@ -325,4 +325,29 @@ export function asyncValueRefused(value: unknown, range?: SourceRange): CelError
     "a value that must be awaited reached evaluation, and CEL evaluates synchronously",
     range,
   );
+}
+
+/**
+ * The value a literal node denotes. A tagged literal is not a bare host value — `1` and
+ * `1u` are different expressions — so the one reading of a tag lives here, where both
+ * backends and the checker's literal-argument guard reach it rather than each keeping a
+ * switch of its own.
+ */
+export function literalValue(literal: CelLiteral): CelValue {
+  switch (literal.type) {
+    case "int":
+      return literal.value;
+    case "uint":
+      return celUint(literal.value);
+    case "double":
+      return literal.value;
+    case "string":
+      return literal.value;
+    case "bytes":
+      return literal.value;
+    case "bool":
+      return literal.value;
+    case "null":
+      return null;
+  }
 }

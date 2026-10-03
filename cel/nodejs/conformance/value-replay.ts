@@ -592,7 +592,7 @@ function pendingFor(id: string): { readonly question: string; readonly answers: 
 }
 
 /** The environment a row is EVALUATED in: its functions, and none of its declarations. */
-function evaluationEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
+export function evaluationEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvironment {
   if (!row.functions || row.functions.length === 0) return base;
   const environment = base.clone();
   // A row's declared function is cel-spec's `type_env` with no implementation behind it,
@@ -601,7 +601,7 @@ function evaluationEnvironment(base: CelEnvironment, row: LanguageRow): CelEnvir
   return environment;
 }
 
-function activationOf(row: LanguageRow): Record<string, CelValue> {
+export function activationOf(row: LanguageRow): Record<string, CelValue> {
   const activation: Record<string, CelValue> = Object.create(null) as Record<string, CelValue>;
   for (const [name, node] of Object.entries(row.bindings ?? {})) {
     activation[name] = decodeConformanceValue(node as ConformanceValue);

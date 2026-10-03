@@ -41,6 +41,7 @@ import {
   withoutNull,
   withoutParameters,
 } from "./cel-type.js";
+import { literalValue } from "./cel-value.js";
 import type { CelCheckCode, CelCheckDiagnostic, CelDiagnosticFix } from "./check-diagnostic.js";
 import { splitDeclaredChain } from "./declared-chain.js";
 import { DiagnosticList } from "./check-diagnostic.js";
@@ -61,9 +62,24 @@ import type {
   SourceRange,
 } from "./syntax-tree.js";
 
-/** A namespaced function the host has declared. */
+/**
+ * A namespaced function the host has declared.
+ *
+ * **The parameter list is optional, and withholding it is structural rather than a flag.**
+ * A host whose own signature grammar is richer than this engine's — optional trailing
+ * parameters, a declared JSON Schema per parameter — judges arity and arguments itself and
+ * declares only what this engine needs to type the call's RESULT. There is deliberately no
+ * way to supply parameters and ask for them not to be judged: that shape would let a
+ * declaration carry a list nothing reads, which is the state a reader cannot tell from a
+ * list that is simply wrong.
+ */
 export interface NamespaceFunction {
-  readonly signature: CelSignature;
+  readonly name: string;
+  readonly returns: CelType;
+  /** Absent where the host withholds it; the call's arity and arguments are then unjudged. */
+  readonly parameters?: readonly CelType[];
+  /** How the declaration is written, for a listing; absent with the parameters. */
+  readonly signature?: string;
   readonly deterministic?: boolean;
   readonly hostBacked?: boolean;
   readonly throws?: readonly string[];
@@ -81,6 +97,15 @@ export interface CheckerContext {
   readonly variable: (name: string) => CelType | undefined;
   readonly declaredVariableNames: () => readonly string[];
   readonly namespaceFunction: (namespace: string, name: string) => NamespaceFunction | undefined;
+  /**
+   * Whether a namespace declares every function reachable through it. An **open** namespace
+   * does not: a name it did not declare types `dyn`, is listed as a call, and is reported by
+   * nobody — the host resolves such a name against its own vocabulary (an export gate, a
+   * capability, a re-export chain) and words that verdict itself. Refusing it here would be
+   * this engine deciding a question only the host can answer, and the host would then have to
+   * suppress the refusal, which is the after-the-fact classifier this engine exists to retire.
+   */
+  readonly namespaceIsOpen: (namespace: string) => boolean;
   readonly options: CheckerOptions;
 }
 
@@ -570,11 +595,36 @@ class Checker implements MacroHost {
     const resolution = this.context.registry.resolve(node.name, form, args, receiver);
     if ("resolved" in resolution) {
       this.calls.push(this.dispatched(node, form, args.length, resolution.resolved, resolution.returns));
+      this.checkLiteralArguments(node, resolution.resolved);
       return resolution.returns;
     }
     this.calls.push({ name: node.name, form, arity: args.length, range: node.range });
     this.reportCallFailure(node, form, args, receiver, resolution);
     return DYN;
+  }
+
+  /**
+   * A registration's own guard over the arguments written as literals.
+   *
+   * It is asked here, where the call has just resolved, and nowhere else: a refusal over a
+   * VALUE is a verdict about the expression, so the component that decides every other
+   * verdict decides this one too — an implementation that refused the same argument at
+   * evaluation would leave a defect the source states behind a run. The refusal names the
+   * call as it was written, which is the one thing a reader needs to find it.
+   */
+  private checkLiteralArguments(
+    node: CelCallNode | CelReceiverCallNode,
+    resolved: RegisteredFunction,
+  ): void {
+    const check = resolved.metadata.checkArguments;
+    if (check === undefined) return;
+    const written = node.kind === "receiverCall" ? [node.receiver, ...node.args] : node.args;
+    const refusal = check(
+      written.map((argument) => (argument.kind === "literal" ? literalValue(argument.literal) : undefined)),
+    );
+    if (refusal === undefined) return;
+    const source = this.expression.source.slice(node.range[0], node.range[1]);
+    this.report("CEL_INVALID_ARGUMENT", `${refusal} (in \`${source}\`)`, node.range);
   }
 
   private dispatched(
@@ -708,6 +758,9 @@ class Checker implements MacroHost {
         arity: args.length,
         range: node.range,
       });
+      // An OPEN namespace declares only part of what it reaches, so a name it does not
+      // carry is not this engine's to refuse — it is listed and left to the host.
+      if (this.context.namespaceIsOpen(node.namespace)) return DYN;
       this.report(
         "FUNCTION_UNRESOLVED",
         `${JSON.stringify(node.namespace)} declares no function named ${JSON.stringify(node.name)}`,
@@ -715,30 +768,32 @@ class Checker implements MacroHost {
       );
       return DYN;
     }
-    const { signature } = declared;
-    const listed: ResolvedCall = {
+    const { parameters } = declared;
+    this.calls.push({
       name: qualified,
       form: "receiver",
       namespace: node.namespace,
       arity: args.length,
       range: node.range,
-      signature: formatSignature(signature),
-      returns: formatType(withoutParameters(signature.returns)),
+      ...(declared.signature === undefined ? {} : { signature: declared.signature }),
+      returns: formatType(withoutParameters(declared.returns)),
       deterministic: declared.deterministic ?? true,
       hostBacked: declared.hostBacked ?? false,
       ...(declared.throws ? { throws: declared.throws } : {}),
-    };
-    this.calls.push(listed);
-    if (args.length !== signature.parameters.length) {
+    });
+    // Parameters withheld: the host judges arity and arguments against its own, richer
+    // signature grammar, and this engine types the result and says nothing else.
+    if (parameters === undefined) return declared.returns;
+    if (args.length !== parameters.length) {
       this.report(
         "FUNCTION_ARITY_MISMATCH",
-        `${qualified} takes ${signature.parameters.length} argument${signature.parameters.length === 1 ? "" : "s"}, and ${args.length} ${args.length === 1 ? "is" : "are"} written`,
+        `${qualified} takes ${parameters.length} argument${parameters.length === 1 ? "" : "s"}, and ${args.length} ${args.length === 1 ? "is" : "are"} written`,
         node.range,
       );
-      return signature.returns;
+      return declared.returns;
     }
     for (const [at, argument] of args.entries()) {
-      const wanted = signature.parameters[at]!;
+      const wanted = parameters[at]!;
       if (assignable(argument, wanted)) continue;
       const mismatch = this.typeArgumentMismatch([argument, wanted]);
       this.report(
@@ -748,7 +803,7 @@ class Checker implements MacroHost {
         node.args[at]!.range,
       );
     }
-    return signature.returns;
+    return declared.returns;
   }
 }
 

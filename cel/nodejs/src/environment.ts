@@ -24,6 +24,16 @@ import type { CelExpression } from "./cel-expression.js";
 import { parseExpression, resolvedUnder } from "./cel-expression.js";
 import type { CelProgram, EvaluateOptions } from "./cel-program.js";
 import { compileExpression } from "./cel-program.js";
+import type { CompileTarget } from "./backend-runtime.js";
+import type {
+  EmittedExpression,
+  EmittedModule,
+  EmittedModuleStore,
+  EmittedRuntime,
+  StoredEmittedModule,
+} from "./emitted-module.js";
+import { emitModule, emitterRuntime, storedEmittedModule } from "./emitted-module.js";
+import { environmentDigest } from "./environment-digest.js";
 import type { CelValue } from "./cel-value.js";
 import { CEL_VALUE_KEYS } from "./cel-value.js";
 import type { CelType } from "./cel-type.js";
@@ -131,6 +141,8 @@ export interface TypeDefinitionListing {
 export interface NamespaceListing {
   readonly name: string;
   readonly functions: readonly string[];
+  /** Whether names beyond the listed ones are reachable; see {@link NamespaceOptions.open}. */
+  readonly open: boolean;
 }
 
 export interface Definitions {
@@ -157,12 +169,39 @@ export interface SchemaRegistrationReport {
   readonly recursive: readonly RecursiveSchemaReference[];
 }
 
-/** A namespaced function a host declares: its signature in global form, plus metadata. */
-export interface NamespaceFunctionDeclaration {
-  readonly signature: string;
+/**
+ * A namespaced function a host declares, in one of two forms.
+ *
+ * **`signature`** declares it whole, in global form (`total(double, int): double`), and this
+ * engine judges the call's arity and its argument types against it.
+ *
+ * **`name` + `returns`** declares the function's identity and its RESULT and **withholds the
+ * parameter list**, so arity and arguments are judged by nobody here. A host whose own
+ * signature grammar is richer than CEL's — an optional trailing parameter, a declared JSON
+ * Schema per parameter — judges them itself and strictly better. The two forms are exclusive
+ * by construction rather than by a flag: a declaration that carried parameters and asked for
+ * them to be ignored would hold a list nothing reads, which no reader can tell from a list
+ * that is simply wrong.
+ */
+export type NamespaceFunctionDeclaration = (
+  | { readonly signature: string; readonly name?: never; readonly returns?: never }
+  | { readonly name: string; readonly returns: string | CelType; readonly signature?: never }
+) & {
   readonly deterministic?: boolean;
   readonly hostBacked?: boolean;
   readonly throws?: readonly string[];
+};
+
+/** What a host says about a namespace as a whole. */
+export interface NamespaceOptions {
+  /**
+   * Whether names beyond the declared ones are reachable through it. **Open** means a name
+   * this namespace did not declare types `dyn` and is reported by nobody: the host resolves
+   * it against vocabulary this engine does not hold — an export gate, a capability, a
+   * re-export chain — and words that verdict itself. Closed (the default) makes such a name
+   * `FUNCTION_UNRESOLVED`.
+   */
+  readonly open?: boolean;
 }
 
 interface VariableRecord {
@@ -189,6 +228,8 @@ export class CelEnvironment {
   private readonly variables: Map<string, VariableRecord>;
   private readonly types: Map<string, RegisteredType>;
   private readonly namespaceFunctions: Map<string, Map<string, NamespaceFunction>>;
+  /** Namespaces that declare only part of what they reach; see {@link NamespaceOptions.open}. */
+  private readonly openNamespaces: Set<string>;
   private readonly constants: Map<string, CelValue>;
   /** Bounded: a source text is a key an author's input decides. */
   private readonly compiled: BoundedCache<string, CelProgram>;
@@ -215,6 +256,7 @@ export class CelEnvironment {
     for (const [namespace, functions] of inherited?.namespaceFunctions ?? []) {
       this.namespaceFunctions.set(namespace, new Map(functions));
     }
+    this.openNamespaces = new Set(inherited?.openNamespaces);
     this.constants = new Map(inherited?.constants);
     this.compiled = new BoundedCache(
       this.options.compiledCacheCapacity ?? DEFAULT_COMPILED_CACHE_CAPACITY,
@@ -303,6 +345,11 @@ export class CelEnvironment {
       constant: false,
       ...(metadata.description === undefined ? {} : { description: metadata.description }),
     });
+    // A declared name changes which NAME a dotted chain reads: `splitDeclaredChain` is
+    // decided at compile time from the declarations, so a program compiled before this
+    // call resolved the chain against the activation instead. Serving it afterwards is
+    // the check/run divergence that split exists to prevent, arriving through the cache.
+    this.compiled.clear();
     return this;
   }
 
@@ -317,6 +364,7 @@ export class CelEnvironment {
       constant: true,
       ...(metadata.description === undefined ? {} : { description: metadata.description }),
     });
+    this.compiled.clear();
     return this;
   }
 
@@ -383,25 +431,46 @@ export class CelEnvironment {
   registerNamespace(
     name: string,
     functions: readonly (string | NamespaceFunctionDeclaration)[] = [],
+    options: NamespaceOptions = {},
   ): this {
     normalizeNamespaces([name]);
     const declared = new Map<string, NamespaceFunction>();
     for (const declaration of functions) {
-      const entry = typeof declaration === "string" ? { signature: declaration } : declaration;
-      const signature = parseSignature(entry.signature, this.nominalResolver);
-      if (signature.form !== "global") {
-        throw new CelTypeRegistrationError(
-          `a namespaced function is declared without a receiver: ${JSON.stringify(entry.signature)}`,
-        );
-      }
-      declared.set(signature.name, {
-        signature,
+      const entry: NamespaceFunctionDeclaration =
+        typeof declaration === "string" ? { signature: declaration } : declaration;
+      const flags = {
         ...(entry.deterministic === undefined ? {} : { deterministic: entry.deterministic }),
         ...(entry.hostBacked === undefined ? {} : { hostBacked: entry.hostBacked }),
         ...(entry.throws === undefined ? {} : { throws: entry.throws }),
+      };
+      if (entry.signature !== undefined) {
+        const signature = parseSignature(entry.signature, this.nominalResolver);
+        if (signature.form !== "global") {
+          throw new CelTypeRegistrationError(
+            `a namespaced function is declared without a receiver: ${JSON.stringify(entry.signature)}`,
+          );
+        }
+        declared.set(signature.name, {
+          name: signature.name,
+          returns: signature.returns,
+          parameters: signature.parameters,
+          signature: formatSignature(signature),
+          ...flags,
+        });
+        continue;
+      }
+      declared.set(entry.name, {
+        name: entry.name,
+        returns:
+          typeof entry.returns === "string"
+            ? parseTypeExpression(entry.returns, this.nominalResolver)
+            : entry.returns,
+        ...flags,
       });
     }
     this.namespaceFunctions.set(name, declared);
+    if (options.open === true) this.openNamespaces.add(name);
+    else this.openNamespaces.delete(name);
     this.compiled.clear();
     return this;
   }
@@ -440,6 +509,7 @@ export class CelEnvironment {
       variable: (name) => this.variables.get(name)?.type,
       declaredVariableNames: () => [...this.variables.keys()],
       namespaceFunction: (namespace, name) => this.namespaceFunctions.get(namespace)?.get(name),
+      namespaceIsOpen: (namespace) => this.openNamespaces.has(namespace),
       options: {
         unlistedVariablesAreDyn: this.options.unlistedVariablesAreDyn,
         homogeneousAggregateLiterals: this.options.homogeneousAggregateLiterals,
@@ -474,7 +544,73 @@ export class CelEnvironment {
     return this.compile(source).evaluate(activation, options);
   }
 
-  private compileExpressionNow(expression: CelExpression): CelProgram {
+  // --- the emitter ---------------------------------------------------------
+
+  /**
+   * The JavaScript module for a set of expressions, emitted now: its text, its key and its
+   * integrity header. The same expressions in the same order against the same environment
+   * emit byte-identically, so a host may compare two emissions instead of trusting one.
+   *
+   * The host stores and loads the text; this package touches no filesystem and exports no
+   * loader. `emitterRuntime()` is what the loaded module's factory takes, and
+   * `programsFromEmittedModule` verifies its header before anything runs.
+   */
+  emit(sources: readonly string[]): EmittedModule {
+    return emitModule(this.target(), this.digest(), this.expressionsOf(sources));
+  }
+
+  /**
+   * The module for a set of expressions, read from the store where it holds a copy whose
+   * header matches and emitted and written where it does not — so a corrupted, stale or
+   * foreign stored copy causes a recompile rather than a run.
+   */
+  emittedModule(sources: readonly string[], store: EmittedModuleStore): StoredEmittedModule {
+    // The trees are handed over as a thunk: a hit reads a header and a digest, and parsing
+    // every expression to find out whether it needed to is work with no answer attached.
+    return storedEmittedModule(
+      this.target(),
+      this.digest(),
+      sources,
+      () => this.expressionsOf(sources),
+      store,
+    );
+  }
+
+  /** The runtime support library an emitted module's factory is handed. */
+  emitterRuntime(): EmittedRuntime {
+    return emitterRuntime(this.target());
+  }
+
+  /**
+   * This environment's digest: the order-independent hash of its resolved listing, which
+   * the key and the header are both over. A host that caches by key never needs it; a host
+   * explaining a recompile does.
+   */
+  digest(): string {
+    return environmentDigest(this);
+  }
+
+  private expressionsOf(sources: readonly string[]): readonly EmittedExpression[] {
+    return sources.map((source) => ({ source, root: this.readyExpression(this.parse(source)).root }));
+  }
+
+  /** What the backends need of this environment, built one way for both of them. */
+  private target(): CompileTarget {
+    return {
+      registry: this.registry,
+      constants: this.constants,
+      nominalArity: (name) => this.types.get(name)?.parameters.length,
+      // The same declarations the checker splits a dotted chain on.
+      declares: (name) => this.variables.has(name),
+    };
+  }
+
+  /**
+   * An expression a backend may compile: read whole, and resolved under this
+   * environment's own namespaces. Nothing is type-checked — the checker decides every
+   * verdict and a consumer that wants one asks for it.
+   */
+  private readyExpression(expression: CelExpression): CelExpression {
     if (expression.diagnostics.length > 0) {
       throw new CelEngineError(
         "unreadable_expression",
@@ -487,13 +623,11 @@ export class CelEnvironment {
         `the expression was resolved under [${expression.namespaces.join(", ")}] and this environment has [${this.namespaces().join(", ")}]`,
       );
     }
-    return compileExpression(expression, {
-      registry: this.registry,
-      constants: this.constants,
-      nominalArity: (name) => this.types.get(name)?.parameters.length,
-      // The same declarations the checker splits a dotted chain on.
-      declares: (name) => this.variables.has(name),
-    });
+    return expression;
+  }
+
+  private compileExpressionNow(expression: CelExpression): CelProgram {
+    return compileExpression(this.readyExpression(expression), this.target());
   }
 
   /**
@@ -540,8 +674,12 @@ export class CelEnvironment {
       })),
       namespaces: this.namespaces().map((name) => ({
         name,
-        functions: [...this.namespaceFunctions.get(name)!.values()].map((held) =>
-          formatSignature(held.signature),
+        open: this.openNamespaces.has(name),
+        // A declaration whose parameter list is withheld has no signature text, so it is
+        // listed by what it DOES declare — its name and its result. Printing an invented
+        // empty parameter list would read as a function of no arguments.
+        functions: [...this.namespaceFunctions.get(name)!.values()].map(
+          (held) => held.signature ?? `${held.name}(…): ${formatType(held.returns)}`,
         ),
       })),
     };

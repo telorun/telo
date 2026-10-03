@@ -1,7 +1,7 @@
 # @telorun/cel
 
 The Common Expression Language, as a library: read an expression, hold it as a tree, check it, run it,
-write it back.
+compile it to JavaScript, write it back.
 
 ```ts
 import { parseExpression, qualifiedCalls, rootReferences, serializeTree } from "@telorun/cel";
@@ -80,6 +80,13 @@ environment.check("request.query.limit").typeName; // "int"
   `CEL_WRONG_CALL_FORM`, `CEL_TYPE_ARGUMENT_MISMATCH`, `CEL_NULLABLE_ACCESS`, `CEL_INVALID_ARGUMENT`, and
   `FUNCTION_UNRESOLVED` / `FUNCTION_ARITY_MISMATCH` / `FUNCTION_ARGUMENT_MISMATCH` for a namespaced call.
   A fix, where one is offered, is the whole corrected source.
+- **A namespaced call is judged only against what you declared.** `registerNamespace("Billing", […],
+  { open: true })` makes a name you did not declare type `dyn` and report nothing — it is still **listed**
+  in `result.calls`, so you resolve it against your own vocabulary and word that verdict yourself. And a
+  declaration written `{ name: "total", returns: "double" }` instead of `{ signature }` withholds the
+  parameter list: the result is typed, the arity and argument types are yours to judge. Both are for a host
+  whose resolution or whose signature grammar is richer than CEL's; neither can be half-declared, since
+  there is no way to supply parameters and ask for them to be ignored.
 - **Three guards clear a read of something that may be null** and no others: `?:`, `&&`, `||`.
 - **The optional library enters whole** where `enableOptionalTypes` is on: `.?`, `[?]`, `[?x]`,
   `{?k: v}`, `optional.of`, `none`, `ofNonZeroValue`, `hasValue`, `value`, `or`, `orValue`, `optMap`,
@@ -99,6 +106,40 @@ The standard library is data — `src/signatures/standard-library.json`, describ
 [docs/signature-data.md](docs/signature-data.md). It is **CEL's** library: a declaration CEL itself does
 not define carries `"spec": false` and a reason saying why it is here, where the equivalent lives and how
 this member differs from it — and nineteen do.
+
+## The function catalog
+
+Beside CEL's own library there is a second one — Telo's dialect, 67 functions over 86 signatures, also
+data (`src/signatures/function-catalog.json`):
+
+```ts
+import { CelEnvironment, functionCatalog, registerFunctionCatalog } from "@telorun/cel";
+
+const environment = new CelEnvironment({ enableOptionalTypes: true });
+registerFunctionCatalog(environment, {
+  handlers: { sha256: hashHex, json: writeJson, joinPath: (base, rest) => join(base, rest) },
+});
+
+environment.evaluate("formatDuration(510, 480)"); // "1d 30m"
+functionCatalog();                                // the one listing surface: name, signature, category, summary, flags
+```
+
+- **It registers through the public surface** — `registerFunction`, once per signature — so it can be
+  left out, replaced function by function, or removed by name. A default environment has none of it.
+- **Nine functions are the host's**: `sha256`, `md5`, `sha1`, `sha512`, `hmac`, `base64Encode`,
+  `base64Decode`, `json` and `joinPath`, each needing a facility this package may not reach. One left
+  out still registers, so a consumer that only checks still type-checks the call; evaluating it answers
+  `unbound_function` naming the function.
+- **A refusal is the catalog's own words**, `<function>: <what is wrong>` — never a library's wording.
+  An invalid pattern ends with one of RE2's own parse-error kinds and nothing after it, and `parseJson`
+  words its own offset (`parseJson: invalid JSON at offset 3`).
+- **A literal argument is refused at CHECK**, not only when the expression runs: `fixed(1.0, 11)` is
+  `CEL_INVALID_ARGUMENT` naming the call, because a signature constrains types and a decimal count out
+  of range is a value. Twelve functions carry such a guard, and each runs the very code the evaluation
+  runs.
+- **Two families reach a host facility by declaration** — the clock (`now`, `nowIso`, `today`,
+  `nowMillis`, `nowSeconds`) and the random source behind the UUID functions, which is what
+  `deterministic: false` means. Both exist in a browser as in Node.
 
 ## Evaluating
 
@@ -151,25 +192,77 @@ program.evaluate({ request: { query: {} } });              // 25n
   `a[expr]`, `.?`, `[?]` and a macro's field read alike — so no key, however it was computed, reaches a
   prototype, a method or a function property. A CEL map is built prototype-free, so `__proto__`,
   `constructor` and `prototype` round-trip as data.
-- **No `eval`, no `new Function`, no disk.** A compiled expression is a tree of closures over the
-  runtime library, which is where every operator lives exactly once. In-process caches — compiled
-  expressions per environment, compiled patterns, a call site's resolved overloads — are bounded, each
-  with a declared capacity.
+- **No `eval`, no `new Function`, no disk.** `compile` builds a tree of closures over the runtime
+  library, which is where every operator lives exactly once. In-process caches — compiled expressions
+  per environment, compiled patterns, a call site's resolved overloads — are bounded, each with a
+  declared capacity.
 - `evaluateToValue` answers the error value instead of throwing, for a caller that carries errors
   itself. A namespaced call is dispatched through `namespaceFunction`, supplied per evaluation; one
   nothing binds is `unbound_function`.
+
+## Emitting JavaScript
+
+The same expressions compile to **JavaScript source**, as one module for a set of them:
+
+```ts
+const module = environment.emit(["a + b * 2", "xs.map(e, e * 2)"]);
+
+module.key;    // 64 hexadecimal characters: what a host names its stored copy by
+module.text;   // the module's source, which imports nothing
+module.header; // { format, engine, environment, key, body } — the header line's own fields
+
+// A host loads it however it loads a module, then:
+const programs = programsFromEmittedModule(loaded, module, environment.emitterRuntime());
+programs[0].evaluate({ a: 3n, b: 4n }); // 11n
+```
+
+- **Both backends answer identically, case for case** — the same value, or the same error code and the
+  same range. That is a property of the wiring rather than of the tests: every operator, comprehension,
+  member read, name read, bool operand and call-site dispatch is one function both backends call, so the
+  only thing the two compile differently is how control gets from one call to the next.
+- **The runtime is the factory's argument, never an import.** The module's default export takes the
+  runtime support library and answers one synchronous function per expression, and the text names no
+  specifier — so it loads from a `data:` URL, from a cache directory mounted anywhere, and under a host
+  whose resolver is not Node's. A module importing a package would also accept a runtime of another
+  version silently, which the key could not see.
+- **The key covers the environment, not just the source.** It hashes the emitter's format generation, the
+  engine version, the environment's digest and the ordered list of expression sources. The digest is over
+  the environment's **resolved listing** — every surviving function signature, every named type, every
+  variable, every namespace, every option — so two environments built by different registration orders
+  are one key, and a host that replaced or removed a standard function is a different one.
+- **The header is verified before anything runs, and it is five fields rather than three.** `format`,
+  `engine` and `environment` are provenance, and they are byte-identical for every module one engine
+  writes against one environment — so `key` (the module's own identity) and `body` (the digest of
+  everything after the header line) are what catch a store that answered the wrong lookup, a text
+  truncated after its header, and a text edited after it was written. `body` covers the `integrity`
+  export and so cannot live in it: the header line carries all five, the export carries the four a loaded
+  object can be held to. Every mismatch a stored **text** shows is a recompile naming itself under
+  `refused`; a loaded **module** that declares nothing, declares another key or answers the wrong number
+  of functions is refused with `CelEngineError` (`emitted_module_rejected`).
+- **One store seam, and no loader.** `environment.emittedModule(sources, store)` reads and writes module
+  text by key through an interface the host supplies; the engine touches no filesystem, and a hit parses
+  nothing. A store's write should be **atomic** — written elsewhere, then renamed — because several hosts
+  share one cache root; that is how a half-written entry is avoided, and the `body` digest is how one is
+  detected if it is not.
+- **Emission is deterministic**: the same expressions in the same order against the same environment are
+  the same bytes.
+- It is **faster, not differently behaved** — and by exactly one thing: what the closure calls cost.
+  Both backends pay the same shared runtime underneath, so an expression whose cost is a dotted-chain
+  search and a conversion is a wash, while one that calls many small operations gains.
 
 ## What it deliberately does not do
 
 - **Nothing is expanded at read time.** `has(x)`, `xs.map(i, i)` and `cel.bind(x, 1, x)` are ordinary
   call nodes in the tree; the checker lowers them, so the source stays writable from the tree.
-- **It knows no host's vocabulary.** No type name, no function catalog, no manifest word: a host
-  registers its own through `registerType` and one schema resolver.
+- **It knows no host's vocabulary.** No type name, no annotation, no manifest word: a host registers
+  its own through `registerType` and one schema resolver. The function catalog above is a set of
+  functions over CEL's own types — no signature in it names a host type — which is what a dialect is.
 - **It never type-checks on its way to evaluating.** The checker decides every verdict and a consumer
   asks for them; compiling refuses only what cannot be compiled at all — a source that did not read
   whole.
-- **It reaches no host facility.** No filesystem, no clock, no network, no Node built-in — it runs
-  unchanged in a browser.
+- **The LANGUAGE reaches no host facility.** No filesystem, no clock, no network, no Node built-in — it
+  runs unchanged in a browser, and so does the catalog: its clock and UUID functions read facilities
+  every host has, and its nine host-backed functions reach nothing at all by themselves.
 
 ## Reserved words
 

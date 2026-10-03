@@ -8,7 +8,7 @@
  */
 
 import type { CelActivation } from "./activation.js";
-import type { CelStep, CompileTarget, NamespaceDispatch } from "./closure-backend.js";
+import type { CelStep, CompileTarget, NamespaceDispatch } from "./backend-runtime.js";
 import { compileTree } from "./closure-backend.js";
 import type { CelError, CelEvaluationCode, CelValue } from "./cel-value.js";
 import { celError, isCelError, isThenable } from "./cel-value.js";
@@ -61,6 +61,17 @@ const NO_SLOTS: CelValue[] = [];
 export function compileExpression(expression: CelExpression, target: CompileTarget): CelProgram {
   const compiled = compileTree(expression.root, target);
   return new Program(expression.source, compiled.step, compiled.slots);
+}
+
+/**
+ * A program over a step a backend already built — what an emitted module's function
+ * becomes. The top of an evaluation is the same either way: the thenable backstop, and a
+ * surviving error turning into a throw. A second implementation of that top would be a
+ * second answer to "what does a caller see", which is the one thing two backends may not
+ * disagree about.
+ */
+export function programOfStep(source: string, step: CelStep, slots = 0): CelProgram {
+  return new Program(source, step, slots);
 }
 
 class Program implements CelProgram {

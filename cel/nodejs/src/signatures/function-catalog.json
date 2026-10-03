@@ -1,0 +1,788 @@
+{
+  "generation": 1,
+  "description": "The function catalog this engine registers beside CEL's own library: the dialect a manifest is written in. One entry per function, with every signature it registers, the category and the summary a listing prints, and the two flags a consumer reads - whether two calls with the same arguments answer the same thing, and whether the implementation is the host's.",
+  "spec": false,
+  "reason": "Not one function here is defined by cel-spec, and that is what a dialect IS rather than an omission: cel-spec defines the standard library (signatures/standard-library.json) and everything in this file is declared beside it. The declaration is made once for the whole file, because repeating it on 67 entries would say nothing a reader of the file does not already know - and a port reading this data inherits none of it as CEL.",
+  "categories": [
+    "collection",
+    "encoding",
+    "formatting",
+    "hashing",
+    "json",
+    "math",
+    "null",
+    "string",
+    "time",
+    "uuid"
+  ],
+  "functions": [
+    {
+      "name": "join",
+      "signature": "join(list, string): string",
+      "signatures": [
+        "join(list, string): string"
+      ],
+      "category": "collection",
+      "summary": "Join list elements into a string with a separator.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "keys",
+      "signature": "keys(map): list",
+      "signatures": [
+        "keys(map): list"
+      ],
+      "category": "collection",
+      "summary": "List a map's keys.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "values",
+      "signature": "values(map): list",
+      "signatures": [
+        "values(map): list"
+      ],
+      "category": "collection",
+      "summary": "List a map's values.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "distinct",
+      "signature": "distinct(list): list",
+      "signatures": [
+        "distinct(list): list"
+      ],
+      "category": "collection",
+      "summary": "Remove duplicate elements, preserving order.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "reverse",
+      "signature": "reverse(list): list",
+      "signatures": [
+        "reverse(list): list"
+      ],
+      "category": "collection",
+      "summary": "Reverse a list (copy; never mutates the input).",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "flatten",
+      "signature": "flatten(list): list",
+      "signatures": [
+        "flatten(list): list"
+      ],
+      "category": "collection",
+      "summary": "Flatten one level of nested lists.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "sort",
+      "signature": "sort(list): list",
+      "signatures": [
+        "sort(list): list"
+      ],
+      "category": "collection",
+      "summary": "Sort a list numerically (numbers) or lexicographically; copy.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "range",
+      "signature": "range(int): list<int>",
+      "signatures": [
+        "range(int): list<int>"
+      ],
+      "category": "collection",
+      "summary": "Integers [0, n-1] (empty for n <= 0); materializes indices for an unknown-length list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "enumerate",
+      "signature": "enumerate(list): list",
+      "signatures": [
+        "enumerate(list): list"
+      ],
+      "category": "collection",
+      "summary": "Pair each element with its zero-based position as {index, value}.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "lower",
+      "signature": "lower(string): string",
+      "signatures": [
+        "lower(string): string"
+      ],
+      "category": "string",
+      "summary": "Lowercase a string.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "upper",
+      "signature": "upper(string): string",
+      "signatures": [
+        "upper(string): string"
+      ],
+      "category": "string",
+      "summary": "Uppercase a string.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "trim",
+      "signature": "trim(string): string",
+      "signatures": [
+        "trim(string): string"
+      ],
+      "category": "string",
+      "summary": "Strip leading/trailing whitespace.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "replace",
+      "signature": "replace(string, string, string): string",
+      "signatures": [
+        "replace(string, string, string): string"
+      ],
+      "category": "string",
+      "summary": "Replace all occurrences of a substring.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "split",
+      "signature": "split(string, string): list",
+      "signatures": [
+        "split(string, string): list"
+      ],
+      "category": "string",
+      "summary": "Split a string on a separator into a list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "regexReplace",
+      "signature": "regexReplace(string, string, string, string?): string",
+      "signatures": [
+        "regexReplace(string, string, string): string",
+        "regexReplace(string, string, string, string): string"
+      ],
+      "category": "string",
+      "summary": "Replace every regex match (RE2 syntax) with a replacement ($1 backrefs); flags like 'i', 'm', 's'.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "regexExtract",
+      "signature": "regexExtract(string, string, string?): string",
+      "signatures": [
+        "regexExtract(string, string): string",
+        "regexExtract(string, string, string): string"
+      ],
+      "category": "string",
+      "summary": "First whole match of a regex (RE2 syntax), or '' when there is none.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "regexExtractAll",
+      "signature": "regexExtractAll(string, string, string?): list<string>",
+      "signatures": [
+        "regexExtractAll(string, string): list<string>",
+        "regexExtractAll(string, string, string): list<string>"
+      ],
+      "category": "string",
+      "summary": "Every whole match of a regex (RE2 syntax), in order.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "regexGroups",
+      "signature": "regexGroups(string, string, string?): list<string>",
+      "signatures": [
+        "regexGroups(string, string): list<string>",
+        "regexGroups(string, string, string): list<string>"
+      ],
+      "category": "string",
+      "summary": "Capture groups of the first regex match (RE2 syntax); empty list when there is no match.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "trimPrefix",
+      "signature": "trimPrefix(string, string): string",
+      "signatures": [
+        "trimPrefix(string, string): string"
+      ],
+      "category": "string",
+      "summary": "Strip a leading prefix if present.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "trimSuffix",
+      "signature": "trimSuffix(string, string): string",
+      "signatures": [
+        "trimSuffix(string, string): string"
+      ],
+      "category": "string",
+      "summary": "Strip a trailing suffix if present.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "slice",
+      "signature": "slice(dyn, int, int): dyn",
+      "signatures": [
+        "slice(bytes, int, int): dyn",
+        "slice(string, int, int): dyn",
+        "slice(list, int, int): dyn"
+      ],
+      "category": "collection",
+      "summary": "Take the half-open range [start, end) of a string, bytes or list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "abs",
+      "signature": "abs(dyn): double",
+      "signatures": [
+        "abs(dyn): double"
+      ],
+      "category": "math",
+      "summary": "Absolute value.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "floor",
+      "signature": "floor(dyn): double",
+      "signatures": [
+        "floor(dyn): double"
+      ],
+      "category": "math",
+      "summary": "Round down to an integer.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "ceil",
+      "signature": "ceil(dyn): double",
+      "signatures": [
+        "ceil(dyn): double"
+      ],
+      "category": "math",
+      "summary": "Round up to an integer.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "round",
+      "signature": "round(dyn, int?): double",
+      "signatures": [
+        "round(double): double",
+        "round(int): double",
+        "round(double, int): double",
+        "round(int, int): double"
+      ],
+      "category": "math",
+      "summary": "Round to the nearest integer, or to the given number of decimal places (0–10). The two-argument form shares the formatter's rounding rule, so a rounded value and the cell rendered beside it agree at the boundary. An integer past 2^53 is refused rather than rounded to a neighbour.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "min",
+      "signature": "min(list): dyn",
+      "signatures": [
+        "min(list): dyn"
+      ],
+      "category": "math",
+      "summary": "Smallest element (by numeric value); null for an empty list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "max",
+      "signature": "max(list): dyn",
+      "signatures": [
+        "max(list): dyn"
+      ],
+      "category": "math",
+      "summary": "Largest element (by numeric value); null for an empty list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "sum",
+      "signature": "sum(list): double",
+      "signatures": [
+        "sum(list): double"
+      ],
+      "category": "math",
+      "summary": "Sum of a list's numeric elements; 0 for an empty list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "avg",
+      "signature": "avg(list): dyn",
+      "signatures": [
+        "avg(list): dyn"
+      ],
+      "category": "math",
+      "summary": "Arithmetic mean of a list's numeric elements; null for an empty list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "json",
+      "signature": "json(dyn): string",
+      "signatures": [
+        "json(dyn): string"
+      ],
+      "category": "json",
+      "summary": "Serialize any value to a JSON string.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "parseJson",
+      "signature": "parseJson(string): dyn",
+      "signatures": [
+        "parseJson(string): dyn"
+      ],
+      "category": "json",
+      "summary": "Parse a JSON string into a value (numbers come back as doubles).",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "joinPath",
+      "signature": "string.joinPath(string): string",
+      "signatures": [
+        "string.joinPath(string): string"
+      ],
+      "category": "string",
+      "summary": "Join a relative path onto a path with the host's separator (`\\` on Windows). On a host path it yields a host path; an absolute argument is refused.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "base64Encode",
+      "signature": "base64Encode(string): string",
+      "signatures": [
+        "base64Encode(string): string"
+      ],
+      "category": "encoding",
+      "summary": "Encode a UTF-8 string as base64.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "base64Decode",
+      "signature": "base64Decode(string): string",
+      "signatures": [
+        "base64Decode(string): string"
+      ],
+      "category": "encoding",
+      "summary": "Decode a base64 string to UTF-8.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "bytesFromBase64",
+      "signature": "bytesFromBase64(string): bytes",
+      "signatures": [
+        "bytesFromBase64(string): bytes"
+      ],
+      "category": "encoding",
+      "summary": "Decode a base64 string to raw bytes.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "bytesToBase64",
+      "signature": "bytesToBase64(bytes): string",
+      "signatures": [
+        "bytesToBase64(bytes): string"
+      ],
+      "category": "encoding",
+      "summary": "Encode raw bytes as a base64 string.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "urlEncode",
+      "signature": "urlEncode(string): string",
+      "signatures": [
+        "urlEncode(string): string"
+      ],
+      "category": "encoding",
+      "summary": "Percent-encode a URI component.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "urlDecode",
+      "signature": "urlDecode(string): string",
+      "signatures": [
+        "urlDecode(string): string"
+      ],
+      "category": "encoding",
+      "summary": "Decode a percent-encoded URI component.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "sha256",
+      "signature": "sha256(string): string",
+      "signatures": [
+        "sha256(string): string"
+      ],
+      "category": "hashing",
+      "summary": "SHA-256 hash, hex-encoded.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "md5",
+      "signature": "md5(string): string",
+      "signatures": [
+        "md5(string): string"
+      ],
+      "category": "hashing",
+      "summary": "MD5 hash, hex-encoded.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "sha1",
+      "signature": "sha1(string): string",
+      "signatures": [
+        "sha1(string): string"
+      ],
+      "category": "hashing",
+      "summary": "SHA-1 hash, hex-encoded.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "sha512",
+      "signature": "sha512(string): string",
+      "signatures": [
+        "sha512(string): string"
+      ],
+      "category": "hashing",
+      "summary": "SHA-512 hash, hex-encoded.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "hmac",
+      "signature": "hmac(string, string, string): string",
+      "signatures": [
+        "hmac(string, string, string): string"
+      ],
+      "category": "hashing",
+      "summary": "HMAC of message under key for an algorithm (e.g. 'sha256'), hex.",
+      "deterministic": true,
+      "hostBacked": true
+    },
+    {
+      "name": "default",
+      "signature": "default(dyn, dyn): dyn",
+      "signatures": [
+        "default(dyn, dyn): dyn"
+      ],
+      "category": "null",
+      "summary": "Return the value, or the fallback when it is null.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "coalesce",
+      "signature": "coalesce(list): dyn",
+      "signatures": [
+        "coalesce(list): dyn"
+      ],
+      "category": "null",
+      "summary": "First non-null element of a list, or null.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "now",
+      "signature": "now(): timestamp",
+      "signatures": [
+        "now(): google.protobuf.Timestamp"
+      ],
+      "category": "time",
+      "summary": "Current instant as a native timestamp, for comparison and duration arithmetic.",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "nowIso",
+      "signature": "nowIso(string?): string",
+      "signatures": [
+        "nowIso(): string",
+        "nowIso(string): string"
+      ],
+      "category": "time",
+      "summary": "Current time as ISO-8601; UTC by default, or in the given IANA timezone.",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "today",
+      "signature": "today(string?): string",
+      "signatures": [
+        "today(): string",
+        "today(string): string"
+      ],
+      "category": "time",
+      "summary": "Current calendar date (YYYY-MM-DD); UTC by default, or in the given IANA timezone.",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "nowMillis",
+      "signature": "nowMillis(): int",
+      "signatures": [
+        "nowMillis(): int"
+      ],
+      "category": "time",
+      "summary": "Current time as epoch milliseconds (absolute; timezone-independent).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "nowSeconds",
+      "signature": "nowSeconds(): int",
+      "signatures": [
+        "nowSeconds(): int"
+      ],
+      "category": "time",
+      "summary": "Current time as epoch seconds (absolute; timezone-independent).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "format",
+      "signature": "format(dyn, string): string",
+      "signatures": [
+        "format(double, string): string",
+        "format(int, string): string"
+      ],
+      "category": "formatting",
+      "summary": "Format a number with a d3-format specifier (`.2f`, `,.2f`, `.1%`, `.2s`).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "fixed",
+      "signature": "fixed(dyn, int): string",
+      "signatures": [
+        "fixed(double, int): string",
+        "fixed(int, int): string"
+      ],
+      "category": "formatting",
+      "summary": "Fixed-decimal string with the given number of places (0–10).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "formatDuration",
+      "signature": "formatDuration(dyn, int): string",
+      "signatures": [
+        "formatDuration(double, int): string",
+        "formatDuration(int, int): string"
+      ],
+      "category": "formatting",
+      "summary": "Render a minute count against a declared day length: `formatDuration(510, 480)` is `1d 30m`. The day length is an argument because it is a policy, not arithmetic. The result is a rendering for a reader, not a duration literal — its `d` is the declared day, so it must not be fed back into a field that parses a duration.",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "dateIn",
+      "signature": "dateIn(timestamp, string?): string",
+      "signatures": [
+        "dateIn(google.protobuf.Timestamp): string",
+        "dateIn(google.protobuf.Timestamp, string): string"
+      ],
+      "category": "time",
+      "summary": "Calendar date (`YYYY-MM-DD`) of an instant, in an IANA zone (UTC by default).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "isoIn",
+      "signature": "isoIn(timestamp, string?): string",
+      "signatures": [
+        "isoIn(google.protobuf.Timestamp): string",
+        "isoIn(google.protobuf.Timestamp, string): string"
+      ],
+      "category": "time",
+      "summary": "ISO-8601 rendering of an instant, in an IANA zone (UTC by default).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "startOfMonth",
+      "signature": "startOfMonth(timestamp, string?): timestamp",
+      "signatures": [
+        "startOfMonth(google.protobuf.Timestamp): google.protobuf.Timestamp",
+        "startOfMonth(google.protobuf.Timestamp, string): google.protobuf.Timestamp"
+      ],
+      "category": "time",
+      "summary": "Midnight on the 1st of the instant's month, in an IANA zone (UTC by default).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "addMonths",
+      "signature": "addMonths(timestamp, int, string?): timestamp",
+      "signatures": [
+        "addMonths(google.protobuf.Timestamp, int): google.protobuf.Timestamp",
+        "addMonths(google.protobuf.Timestamp, int, string): google.protobuf.Timestamp"
+      ],
+      "category": "time",
+      "summary": "Shift an instant by whole months in an IANA zone, clamping the day of month (Jan 31 + 1 month is Feb 28).",
+      "deterministic": true,
+      "hostBacked": false,
+      "checksLiteralArguments": true
+    },
+    {
+      "name": "compact",
+      "signature": "compact(dyn): dyn",
+      "signatures": [
+        "compact(list): list",
+        "compact(map): map"
+      ],
+      "category": "collection",
+      "summary": "Drop entries whose value is null or the empty string, from a map or a list.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "merge",
+      "signature": "merge(map, map): map",
+      "signatures": [
+        "merge(map, map): map"
+      ],
+      "category": "collection",
+      "summary": "Combine two maps, with the right-hand map winning on a shared key. Use it to add to a map rather than replace it — `merge(defaults, overrides)`.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv1",
+      "signature": "uuidv1(): string",
+      "signatures": [
+        "uuidv1(): string"
+      ],
+      "category": "uuid",
+      "summary": "Time-based UUID (v1).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv4",
+      "signature": "uuidv4(): string",
+      "signatures": [
+        "uuidv4(): string"
+      ],
+      "category": "uuid",
+      "summary": "Random UUID (v4).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv6",
+      "signature": "uuidv6(): string",
+      "signatures": [
+        "uuidv6(): string"
+      ],
+      "category": "uuid",
+      "summary": "Time-ordered UUID (v6).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv7",
+      "signature": "uuidv7(): string",
+      "signatures": [
+        "uuidv7(): string"
+      ],
+      "category": "uuid",
+      "summary": "Time-ordered UUID (v7).",
+      "deterministic": false,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv3",
+      "signature": "uuidv3(string, string): string",
+      "signatures": [
+        "uuidv3(string, string): string"
+      ],
+      "category": "uuid",
+      "summary": "Name-based UUID (v3, MD5) under a namespace UUID.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidv5",
+      "signature": "uuidv5(string, string): string",
+      "signatures": [
+        "uuidv5(string, string): string"
+      ],
+      "category": "uuid",
+      "summary": "Name-based UUID (v5, SHA-1) under a namespace UUID.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidValidate",
+      "signature": "uuidValidate(string): bool",
+      "signatures": [
+        "uuidValidate(string): bool"
+      ],
+      "category": "uuid",
+      "summary": "True if the string is a valid UUID.",
+      "deterministic": true,
+      "hostBacked": false
+    },
+    {
+      "name": "uuidVersion",
+      "signature": "uuidVersion(string): int",
+      "signatures": [
+        "uuidVersion(string): int"
+      ],
+      "category": "uuid",
+      "summary": "The version number of a UUID.",
+      "deterministic": true,
+      "hostBacked": false
+    }
+  ]
+}
