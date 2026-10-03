@@ -253,14 +253,19 @@ export function Editor() {
     registerTermsGate: registerAgentTermsGate,
     retry: agentRetry,
   } = agent;
+  // The agent keeps the registered bridge as state, so its identity must follow
+  // the workspace root alone: `afterFileMutation` is a new function every
+  // render and is read through a ref, as the adapter is.
+  const afterFileMutationRef = useRef(afterFileMutation);
+  afterFileMutationRef.current = afterFileMutation;
   const workspaceBridge = useMemo<WorkspaceBridge | null>(() => {
     if (!agentRootDir) return null;
     return editorWorkspaceBridge({
       rootDir: agentRootDir,
       adapter: () => workspaceAdapterRef.current,
-      afterFileMutation,
+      afterFileMutation: (affected) => afterFileMutationRef.current(affected),
     });
-  }, [agentRootDir, afterFileMutation, workspaceAdapterRef]);
+  }, [agentRootDir, workspaceAdapterRef]);
 
   useEffect(() => {
     registerAgentWorkspace(workspaceBridge);
