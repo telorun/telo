@@ -1,5 +1,67 @@
 # @telorun/kernel
 
+## 0.107.0
+
+### Minor Changes
+
+- 789a410: `x-telo-value-schema-from` is now read inside an invocation contract (`inputType` / `outputType`) as well as on a configuration slot: the annotated node keeps its own keywords and must also satisfy every type its location names from the resource the contract belongs to. The location is a field name, as before, or a JSON Pointer from the resource root that may continue through a reference slot into the referenced resource and range over a list with `*` — so a kind can type caller data by what the resources it references declare they read. `telo check` validates a call against the derived contract (`CONTRACT_INPUTS_MISMATCH`) and the kernel binds the same one (`ERR_INPUT_INVALID`); a location that reaches nothing leaves the node as written. Each reached type is its own document: its document-local references (`#`, `#/$defs/…`, any `#/…` pointer) resolve against that type and not against the contract it types, so a type that names its own definitions holds in both halves, and a default, a scalar's representation or a sensitive mark it declares is read as anywhere else in the contract.
+
+  A location the kind's own schema cannot hold a value at is `VALUE_SCHEMA_FROM_INVALID` at the kind, and `ERR_VALUE_SCHEMA_FROM_INVALID` when the kernel registers the definition. **Breaking for a kind carrying such an annotation at a configuration slot:** the refusal judges the annotation wherever a kind writes it — in its `schema:`, its `inputType` or its `outputType`, written there or in the named shape the field names, as that field resolves — in whichever module declares the shape, the kind's own or one reached through an import alias, with the shape's `extends` parents folded, so an annotation a parent shape declares is the child's — so a kind whose configuration slot names a field its `schema:` does not declare, which loaded before and typed nothing, now fails `telo check` and is refused at registration. A named shape's annotation is judged against each kind whose contract field names the shape, and reported at that field.
+
+  `x-telo-context-from-root` keeps the annotated node's own schema keywords when the root path holds nothing, so a kind can say what a binding is when the field it is typed from is left out; a node declaring no keywords is still untyped.
+
+  The call-site argument check fills the target contract's `default:` values before validating, as the kernel does at dispatch: an omitted argument is judged as its default, so a default that does not satisfy the contract is now reported at the call. A default is read off the property's own schema, as the validator reads it: one written beside a `$ref` counts, one declared on the node the `$ref` names does not, so a required input declared only by such a reference and left out is `CONTRACT_INPUTS_MISMATCH` at the call and `ERR_INPUT_INVALID` at dispatch.
+
+  The contract walks now follow every document-local `#…` reference of the contract's own document, not only a named shape's. For an existing contract that uses its own `#/$defs/…` this corrects four things: (1) a default behind such a reference is filled into a copy, where the caller's own object used to be written into; (2) `telo check` fills such a default before judging a call, as dispatch always did — a call leaving out a member the default supplies is no longer reported, and a default that does not satisfy the contract is reported at the call; (3) **breaking for a controller that consumes such an output as a plain number:** an `integer`, `number` or unsigned scalar declared behind one is normalized on the way out and where the resource's own CEL reads `inputs`, so an integer arrives as an int64 and the consumer must accept both representations (`integerInput`); (4) a live value declared behind one is exempt from validation.
+
+  A configuration slot's location is read through the same host as a contract's, so a type field naming a shape resolves in the module that declared its holder and nowhere else — a name that module does not declare contributes nothing: a slot whose location crosses into a library declaration naming that library's own shape, which typed nothing before, now reports a literal that violates the shape as `SCHEMA_VIOLATION`.
+
+  API: `@telorun/analyzer` exports `resolveContractValueSchemas`, `valueSchemaFromProblems`, `namedContractShape`, `ValueSchemaHost`, `ValueSchemaFromProblem` and `NamedContractShape`, and `AnalysisRegistry` gains `namedShapeOf` — the shape a contract field names, resolved by module and name across the holder's imports with `extends` parents folded, which `telo check` and the kernel's registration both read.
+
+- ced88ae: A file an `!include-text` / `!include-bytes` names is now checked at load, like a `!module-path`: a missing one is `INCLUDE_FILE_NOT_FOUND` in `telo check` and every editor. Both checks now cover every module the entry reaches through a filesystem-path import (`source: ./lib`), not only the entry module, since such a module is never published and so never verified on its own. Registry imports are still left to their publish.
+
+  `telo run` and `telo install` refuse the load on either finding (`ERR_MANIFEST_VALIDATION_FAILED`), before any resource is created, rather than failing when the resource holding the tag is created.
+
+  Both findings name the absolute path checked and, when one entry of that directory is a plausible typo of the missing name, offer it as a fix (`Did you mean './primr.md'?`); when the directory itself is missing they say so instead.
+
+  `telo install` now exits 1 when its analysis pass fails, printing the kernel's diagnostics and an error count; it used to warn and succeed, so an image whose manifest could not boot built green.
+
+  API: `LoadedGraph.modulePathDiagnostics` is renamed `moduleFileDiagnostics`, `EngineFileClaim` gains a required `notFoundCode` — the code an engine's missing claim is reported under — and `ManifestSource` gains optional `locate` and `listDirectory`, implemented by `LocalFileSource`.
+
+- ced88ae: `telo publish` refuses to move the pin of a published version: when the `telo.yaml` it is about to push differs from the one already published at that `metadata.version`, the publish (and `--dry-run`) fails, naming `<destination>@<version>`, both pins, and each payload layer that moved — or that the manifest itself changed. Identical bytes still republish. Previously only payload layers were compared, so a manifest-only edit silently re-pinned a published version.
+
+  `telo publish --annotation <key>=<value>` (repeatable) writes author annotations onto the pushed OCI manifest beside the ones derived from `metadata`; a derived key is refused naming the `metadata` field to set, and the pushed set replaces the published one. Transports gain `checkAuthoredAnnotations` / `publishedAnnotations` and `PublishOptions.annotations`.
+
+  `telo module manifest --json` reports a `Telo.Application`'s declared `variables`, `secrets` and `ports` as `application` (`null` for a library), read by the analyzer's new `readApplicationContract`; no secret value is ever included.
+
+### Patch Changes
+
+- 789a410: A computed value at a slot whose items or required members name a shape is no longer refused. The stand-in built for an expression read a node that names its shape — a named shape, or a document-local `#/…` reference — as undescribed and produced `null`, which the shape then rejected: a `!cel` list at a `minItems` slot whose items are a named shape, or a whole argument map computed by one expression, failed `telo check` and load-time analysis with `CONTRACT_INPUTS_MISMATCH` (`/…/0 must be object`), a templated kind forwarding one failed with `TEMPLATE_TARGET_MISMATCH`, and a config field written that way failed with `SCHEMA_VIOLATION` and, at resource creation, `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`.
+
+  The stand-in now resolves the reference before building from a node, at every descent — the node itself, a list's items, a required member, a union branch, an `allOf` branch whose constraints are folded — with a `#/…` reference inside a named shape resolved against that shape's own document. A reference already open on the descent stands in as undescribed, so a shape that contains itself terminates. The kernel hands the same builder the resolver and document it already holds where it strips compiled values before validating a resource, so `telo check` and the kernel give such a value one verdict.
+
+  A declared `default` stands in for a computed value only when it fits the node's resolved constraints — its type, `enum` / `const`, numeric bounds, `minLength`, `minItems` and each item, an object's required members and the members its `properties` describe, and one union branch at a node with no `type` — judged with references resolved and `allOf` folded as the stand-in itself is built. A default that does not fit is passed over and the stand-in is built from those constraints; a fitting one is used unchanged, and `pattern`, JSON Schema's own formats, `not` and conditionals are not judged. This stops three refusals of a value written as one expression at a node whose default its conjoined type rejects (`default: {}` beside a type requiring a member): `CONTRACT_INPUTS_MISMATCH` at a call (`/context is missing required property …`), `SCHEMA_VIOLATION` at a config field, and `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` at resource creation. An omitted argument is still judged as its default, and a literal as written.
+
+  API: `celPlaceholderForSchema` and `producedPlaceholder` take an optional `{ root, external }` (`StandInOptions`, exported by `@telorun/analyzer`); called without it they resolve document-local references against the schema they were given and no named shape, as before.
+
+- e620eef: A value written through a tag is no longer judged against value constraints it cannot satisfy before it exists. `telo check` and the kernel's create-time validation judge a `!cel` value not at all, and an `!interpolate`, `!include-*` or `!module-path` value only for the type the tag produces: a correct `!interpolate` at a slot declaring `minLength`, `pattern` or `format` (an argument at a call site, a resource's own field such as `OTLP.Sink.timeout`, `Timer.Delay`'s `duration`) and a `!cel` object passed into a contract whose members declare `format` or `pattern` now check and run, where they were refused with `CONTRACT_INPUTS_MISMATCH` / `SCHEMA_VIOLATION` or `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED`. A string tag at an `integer` slot is still refused, and a `!literal` is judged by its text. When the kernel refuses a resource holding an expression, it names the remaining finding rather than the first error its validator met.
+
+  A stand-in excuses only what it decides. A union is decided by validating its value against each alternative on its own: one whose alternatives are all references (`anyOf: [{ $ref: … }, { $ref: … }]`, document-local or named shapes) now accepts a correct `!interpolate`, and a constraint stated beside the union — a `$ref` on the same field, or an earlier `allOf` member — is still reported (`/cfg is missing required property 'b'`) when a stand-in satisfies one of the union's alternatives. A `default:` inside a union alternative is never applied when the union is decided: a resource whose alternatives each default a discriminator is created, and an alternative requiring a member it merely defaults is not satisfied. `uniqueItems`, `const` and `enum` at a value that contains expressions are judged on the written parts: two different expressions in a `uniqueItems` list are no longer compared with each other; the same deterministic expression written twice is still refused, naming the pair (`must NOT have duplicate items (items ## 0 and 1 are identical)`), as are two equal literals beside expressions; an object with an expression member is held to an `enum` / `const` only by its written members. The values are judged again once they exist: a call's arguments at dispatch (`ERR_INPUT_INVALID`), and a resource's own field after its expressions are evaluated at creation, where equal computed items in a `uniqueItems` list, or an object matching no `enum` value, are refused with `ERR_RESOURCE_SCHEMA_VALIDATION_FAILED` naming the field.
+
+- Updated dependencies [e620eef]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [789a410]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [789a410]
+- Updated dependencies [e620eef]
+- Updated dependencies [5b7e56e]
+  - @telorun/analyzer@0.107.0
+  - @telorun/templating@0.107.0
+
 ## 0.106.0
 
 ### Minor Changes
@@ -3064,8 +3126,8 @@ structures` from inside the error handler, burying what actually went wrong. It
 
   Failures are coded and name the contract: `ERR_REF_REQUIRED` for an unset slot,
   `ERR_REF_UNRESOLVED` for one that is set but does not resolve — e.g.
-  `` Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
-resource satisfying `std/cache#Store`  ``.
+  ``Cache.Entry "page": 'store' reference 'Redis.store' did not resolve to a
+resource satisfying `std/cache#Store` ``.
 
   Phase 5 injection normally replaces the slot with the live instance (local and
   cross-module refs alike), so the common path is the guard short-circuit. A raw

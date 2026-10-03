@@ -1,5 +1,30 @@
 # @telorun/studio
 
+## 0.23.0
+
+### Minor Changes
+
+- ced88ae: The web build's `?open=` parameter also takes a pinned published ref, `oci://<host>/<repo>@<version>#sha256-<pin>` (with `#` encoded as `%23`). Studio reads the manifest through the hub's manifest cache, verifies it against the pin, and copies it alone into `/workspace/apps/<slug>/telo.yaml`; the confirmation lists the payload layers its `layers:` index declares that are not copied. A ref with no version or pin, a pin that arrived as the page fragment, a version the cache does not hold and a pin mismatch are each refused with an actionable message. `https://` links behave as before.
+
+### Patch Changes
+
+- 15c4d46: Opening a workspace no longer crashes the editor with "Maximum update depth exceeded" (React error #185). The workspace bridge the editor registers with the authoring agent was rebuilt on every render, and each registration re-rendered the editor in turn; it is now rebuilt only when the workspace root changes.
+- Updated dependencies [e620eef]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [c5528e2]
+- Updated dependencies [789a410]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [ced88ae]
+- Updated dependencies [789a410]
+- Updated dependencies [e620eef]
+- Updated dependencies [5b7e56e]
+  - @telorun/analyzer@0.107.0
+  - @telorun/templating@0.107.0
+  - @telorun/ide-support@0.107.0
+  - @telorun/sdk@0.107.0
+
 ## 0.22.6
 
 ### Patch Changes
