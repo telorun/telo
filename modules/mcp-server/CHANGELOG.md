@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.1 - 2026-10-04
+### Fixed
+* The documented plain form of a timestamp in a rendered result matches what is written: RFC 3339 in UTC with the fraction absent when the instant is whole and carrying no trailing zero otherwise.
+
 ## 0.17.0 - 2026-09-28
 ### Added
 * Mcp.HttpEndpoint dispatches each tool call on the context of the HTTP request that carried it, so the call nests under the request's span and a client disconnect cancels it. Breaking: mounted without a request scope it refuses every request with ERR_MCP_REQUEST_SCOPE_MISSING rather than rooting a separate trace.

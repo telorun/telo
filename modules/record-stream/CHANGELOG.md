@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.1 - 2026-10-04
+### Fixed
+* A CEL duration and uint are read through the value domain's own predicates (isCelDuration, isCelUint) rather than by class, so a value built by any copy of the engine is recognised: identity is a string type key under Symbol.for("telo.cel.value"), not a constructor.
+* A duration-valued field is read again: a duration is identified by a type key and carries no methods, so these controllers read one through durationNanos and build one with celDurationFromNanos instead of naming a class the CEL value domain no longer has — which failed at resource creation with 'isCelDuration is not defined', a missing 'Duration' export, or 'value.getMilliseconds is not a function'.
+
 ## 0.19.0 - 2026-09-29
 ### Added
 * RecordStream.JournalClaim reports `error`: the recorded error of the failed key it took over or returned as its own writer's sink ended it, at the version it acted on (ERR_JOURNAL_WRITER_LOST for an open key whose writer went stale, failed first), and null when it created the key or found it open or finished. The output gains a required field.

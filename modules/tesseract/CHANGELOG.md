@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-10-04
+### Fixed
+* A duration-valued field is read again: a duration is identified by a type key and carries no methods, so these controllers read one through durationNanos and build one with celDurationFromNanos instead of naming a class the CEL value domain no longer has — which failed at resource creation with 'isCelDuration is not defined', a missing 'Duration' export, or 'value.getMilliseconds is not a function'.
+
 ## 0.2.1 - 2026-09-28
 ### Fixed
 * A recognition that runs past `maxRecognitionTime` now always fails with `ERR_OCR_LIMIT_EXCEEDED`. Before, a result that reached the recognizer before the late limit timer fired was returned as a success, which happened on macOS.

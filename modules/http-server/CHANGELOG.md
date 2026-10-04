@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.2 - 2026-10-04
+### Fixed
+* A handler's CEL now reads request.query and request.params: the router hands each of the transport's bags over as a map in the CEL value domain, where Fastify builds them with a prototype of its own and every expression reading one failed, answering HTTP 500.
+
 ## 0.34.1 - 2026-10-03
 ### Fixed
 * `request.body` is untyped in a route's `inputs:` and in `notFoundHandler.inputs` until the route's `request.schema.body` declares it. It was declared an object, which a request never guaranteed — a posted JSON array is accepted — so `telo check` refused `!cel "request.body"` wired into an argument of any other type. `request.query`, `request.headers` and `request.params` stay maps.
