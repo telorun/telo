@@ -75,7 +75,7 @@ steps:
     inputs:
       actual: !cel "steps.read.result.body"
       expected:
-        at: "2026-01-15T07:30:00.000Z"
+        at: "2026-01-15T07:30:00Z"
         took: "5400s"
         raw: "AQL_"
     invoke:
@@ -89,7 +89,7 @@ steps:
   - name: assertDecoded
     inputs:
       actual: !cel "steps.send.result.body"
-      expected: { later: "2026-01-15T08:30:00.000Z" }
+      expected: { later: "2026-01-15T08:30:00Z" }
     invoke:
       kind: Assert.Equals
   - name: sendOutOfRange

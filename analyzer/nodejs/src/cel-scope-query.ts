@@ -13,7 +13,7 @@ import type { LibraryDeclarations } from "./library-declarations.js";
  * one that answers, here and in the pass. What this module adds is the way in.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import { buildCelEnvironment } from "./cel-environment.js";
 import { moduleCallNamesByModule } from "./module-call-names.js";
@@ -106,7 +106,7 @@ export class CelScopeQuery {
   constructor(
     private readonly manifests: ResourceManifest[],
     ctx: CelScopeQueryContext,
-    celEnv?: Environment,
+    celEnv?: CelEnvironment,
   ) {
     const { defs, aliases, aliasesByModule, libraries } = ctx;
     const rootModules = new Set<string>();

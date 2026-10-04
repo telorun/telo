@@ -31,4 +31,17 @@ export interface ResolvedCall {
   readonly deterministic?: boolean;
   readonly hostBacked?: boolean;
   readonly throws?: readonly string[];
+  /**
+   * Each argument's own type, for a NAMESPACED call only.
+   *
+   * The host judges such a call against its own, richer signature grammar — a JSON Schema
+   * per parameter, an optional trailing parameter — so it needs what was actually passed.
+   * It cannot re-derive it: checking an argument's subtree on its own loses whatever the
+   * expression bound around it, so an argument inside a comprehension (`xs.map(i,
+   * Billing.total(i))`) would type as `dyn` and the host's argument check would silently
+   * stop asking. Here the types come from the same pass that typed the call.
+   *
+   * Absent for a call the registry resolved: its parameter types are the signature's.
+   */
+  readonly argumentTypes?: readonly string[];
 }

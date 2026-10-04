@@ -36,7 +36,7 @@ describe("CEL fix stamping", () => {
 
   it("stamps a tagged scalar's fix verbatim — the scalar IS the expression", () => {
     expect(fixFor(makeTaggedSentinel("cel", "startsWith(a.b, 'x')"))?.replacement).toBe(
-      "a.b.startsWith('x')",
+      'a.b.startsWith("x")',
     );
   });
 
@@ -45,7 +45,7 @@ describe("CEL fix stamping", () => {
     // and the minimal-edit one (splice `replacement` at `range`) duplicates
     // text, because the two measure different strings.
     expect(fixFor(makeTaggedSentinel("cel", "startsWith(a.b, 'x')"))).toEqual({
-      replacement: "a.b.startsWith('x')",
+      replacement: 'a.b.startsWith("x")',
     });
   });
 
@@ -53,6 +53,6 @@ describe("CEL fix stamping", () => {
     expect(
       fixFor(makeTaggedSentinel("interpolate", "prefix ${{ startsWith(a.b, 'x') }} suffix"))
         ?.replacement,
-    ).toBe("prefix ${{ a.b.startsWith('x') }} suffix");
+    ).toBe('prefix ${{ a.b.startsWith("x") }} suffix');
   });
 });

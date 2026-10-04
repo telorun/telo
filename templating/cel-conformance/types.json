@@ -1082,6 +1082,1159 @@
           "$cel": "optional"
         }
       }
+    },
+    {
+      "id": "types/string/presence_select",
+      "source": "'abc'.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/string/presence_index",
+      "source": "'abc'[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/string/presence_has",
+      "source": "has('abc'.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/int/presence_select",
+      "source": "1.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "int holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/int/presence_index",
+      "source": "1[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "int holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/int/presence_has",
+      "source": "has(1.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "int holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/uint/presence_select",
+      "source": "1u.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "uint holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/uint/presence_index",
+      "source": "1u[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "uint holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/uint/presence_has",
+      "source": "has(1u.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "uint holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/double/presence_select",
+      "source": "1.5.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "double holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/double/presence_index",
+      "source": "1.5[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "double holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 12
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/double/presence_has",
+      "source": "has(1.5.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "double holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/bool/presence_select",
+      "source": "true.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bool holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/bool/presence_index",
+      "source": "true[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bool holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/bool/presence_has",
+      "source": "has(true.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bool holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/bytes/presence_select",
+      "source": "b'bc'.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bytes holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/bytes/presence_index",
+      "source": "b'bc'[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bytes holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/bytes/presence_has",
+      "source": "has(b'bc'.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "bytes holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 15
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/timestamp/presence_select",
+      "source": "timestamp('2026-03-01T00:00:00Z').?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Timestamp holds no members"
+            }
+          ],
+          "calls": [
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 33,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 39
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/timestamp/presence_index",
+      "source": "timestamp('2026-03-01T00:00:00Z')[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Timestamp holds no elements"
+            }
+          ],
+          "calls": [
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 33,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 42
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/timestamp/presence_has",
+      "source": "has(timestamp('2026-03-01T00:00:00Z').nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Timestamp holds no members"
+            }
+          ],
+          "calls": [
+            {
+              "name": "timestamp",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 37,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 43
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/duration/presence_select",
+      "source": "duration('5400s').?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Duration holds no members"
+            }
+          ],
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/duration/presence_index",
+      "source": "duration('5400s')[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Duration holds no elements"
+            }
+          ],
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 0,
+              "end": 17,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 26
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/duration/presence_has",
+      "source": "has(duration('5400s').nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "google.protobuf.Duration holds no members"
+            }
+          ],
+          "calls": [
+            {
+              "name": "duration",
+              "form": "global",
+              "arity": 1,
+              "start": 4,
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
+            }
+          ],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 27
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/null/presence_select",
+      "source": "null.?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "null holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/null/presence_index",
+      "source": "null[?'nope']",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "null holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 13
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/null/presence_has",
+      "source": "has(null.nope)",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "null holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 14
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/TcpPort/presence_select",
+      "source": "p.?nope",
+      "tag": "cel",
+      "declarations": {
+        "p": "Telo.TcpPort"
+      },
+      "bindings": {
+        "p": {
+          "$telo": "int",
+          "value": "8080"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Telo.TcpPort holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "Telo.TcpPort"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/TcpPort/presence_index",
+      "source": "p[?'nope']",
+      "tag": "cel",
+      "declarations": {
+        "p": "Telo.TcpPort"
+      },
+      "bindings": {
+        "p": {
+          "$telo": "int",
+          "value": "8080"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Telo.TcpPort holds no elements"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "Telo.TcpPort"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/TcpPort/presence_has",
+      "source": "has(p.nope)",
+      "tag": "cel",
+      "declarations": {
+        "p": "Telo.TcpPort"
+      },
+      "bindings": {
+        "p": {
+          "$telo": "int",
+          "value": "8080"
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "Telo.TcpPort holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [
+            "p"
+          ],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/dyn/presence_select",
+      "source": "v.?nope",
+      "tag": "cel",
+      "declarations": {
+        "v": "dyn"
+      },
+      "bindings": {
+        "v": "abc"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<dyn>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 7
+            }
+          ],
+          "refs": [
+            "v"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/dyn/presence_index",
+      "source": "v[?'nope']",
+      "tag": "cel",
+      "declarations": {
+        "v": "dyn"
+      },
+      "bindings": {
+        "v": "abc"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<dyn>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "v"
+          ],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/dyn/presence_has",
+      "source": "has(v.nope)",
+      "tag": "cel",
+      "declarations": {
+        "v": "dyn"
+      },
+      "bindings": {
+        "v": "abc"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "bool",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "refs": [
+            "v"
+          ],
+          "volatile": false
+        },
+        "value": false
+      }
+    },
+    {
+      "id": "types/dyn/ordinary_read",
+      "source": "v.nope",
+      "tag": "cel",
+      "declarations": {
+        "v": "dyn"
+      },
+      "bindings": {
+        "v": "abc"
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 6
+            }
+          ],
+          "refs": [
+            "v"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "this value holds no members"
+        }
+      }
+    },
+    {
+      "id": "types/list/presence_unusable_key",
+      "source": "[1].?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "list<int> holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 9
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "\"nope\" cannot name an entry of this value"
+        }
+      }
+    },
+    {
+      "id": "types/optional/presence_over_absent",
+      "source": "optional.none().?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [],
+          "type": "optional<dyn>",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 21
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/optional/presence_over_scalar",
+      "source": "optional.of('abc').?nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 24
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "value": {
+          "$cel": "optional"
+        }
+      }
+    },
+    {
+      "id": "types/optional/ordinary_read_over_scalar",
+      "source": "optional.of('abc').nope",
+      "tag": "cel",
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "string holds no members"
+            }
+          ],
+          "calls": [],
+          "readTypes": [
+            "dyn"
+          ],
+          "regions": [
+            {
+              "start": 0,
+              "end": 23
+            }
+          ],
+          "refs": [],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "this value holds no members"
+        }
+      }
     }
   ]
 }

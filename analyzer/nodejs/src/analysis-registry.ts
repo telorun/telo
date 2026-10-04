@@ -18,7 +18,7 @@ import { projectionModules, resolveContract, resolveNamedShape } from "./invocat
 import type { NamedContractShape } from "./validate-value-schema-location.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { refSlotOfEntry, type ReachSite } from "./reference-reach.js";
+import { refSlotOfEntry, type ReachPosition, type ReachSite } from "./reference-reach.js";
 import { resolveSchemaTypeRefs as resolveSchemaTypeRefsIn } from "./resolve-schema-type-refs.js";
 import type { AnalysisContext } from "./types.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
@@ -214,6 +214,17 @@ export class AnalysisRegistry {
    */
   referenceSitesOf(resource: ResourceManifest, data: unknown = resource): ReachSite[] {
     return this.defs.referenceSites(resource, this.aliases, this.aliasesByModule, data);
+  }
+
+  /**
+   * Every concrete position of a resource at or ABOVE one of its reference
+   * slots — the slot itself and each container on the way to it. What a value
+   * written above a slot is asked about, since an expression there leaves no
+   * concrete site below it yet holds the slot's value; the kernel reads it to
+   * refuse one before it evaluates (`ERR_REF_SLOT_COMPUTED`).
+   */
+  referencePositionsOf(resource: ResourceManifest, data: unknown = resource): ReachPosition[] {
+    return this.defs.referencePositions(resource, this.aliases, this.aliasesByModule, data);
   }
 
   /**

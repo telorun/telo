@@ -1,6 +1,6 @@
 # Function RESOURCES declaring what a function instance cannot: a signature no
 # call could be bound against, a determinism claim, which belongs to the kind
-# supplying the code, and a name CEL expands as a macro. Each is refused by this library's `telo check` and,
+# supplying the code. Each is refused by this library's `telo check` and,
 # through the same rules, by the kernel when it creates the resource.
 kind: Telo.Library
 metadata:
@@ -44,10 +44,16 @@ returns:
   schema: { type: string }
 body: !cel "'x'"
 ---
+# Named after a CEL macro, and LEGAL — kept here as evidence. It was refused
+# (`FUNCTION_NAME_RESERVED`) while the engine expanded `<Module>.filter(…)` as its own
+# macro before a module call could resolve. Namespace resolution now outranks macro
+# expansion, so a call whose receiver is one of the module's names is a qualified call
+# whatever the function is called, and a call on a value is still the macro. This doc
+# reports nothing, which is the point.
 kind: Telo.Function
 metadata:
   name: filter
-  description: Takes the name of a CEL macro.
+  description: Named after a CEL macro, which is an ordinary function name.
 returns:
   schema: { type: string }
 body: !cel "'x'"

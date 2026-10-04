@@ -68,7 +68,7 @@ lists.
 - **Forwarding is today's rule**: a bare `!cel "item.<path>"` forwards the value
   untouched, references included, exactly as `self.<path>` does; any other
   expression yields data, and a computed value at a reference slot is
-  `TEMPLATE_REF_COMPUTED`. The blueprint's schema still marks every reference
+  `REF_SLOT_COMPUTED`. The blueprint's schema still marks every reference
   slot under the element with `x-telo-ref`.
 - **The source is literal.** `in:` must be a bare `self.<path>` or
   `item.<path>` (`TEMPLATE_REPEAT_SOURCE_INVALID`, reported at the

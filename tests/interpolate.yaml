@@ -49,7 +49,7 @@ steps:
     inputs:
       actual: !cel "steps.render.result"
       expected:
-        instant: at 2026-01-02T03:04:05.000Z
+        instant: at 2026-01-02T03:04:05Z
         duration: every 5400s
         bytes: said hi
         scalars: 7/2.5/3/true

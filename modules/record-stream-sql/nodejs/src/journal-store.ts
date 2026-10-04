@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   type CancellationToken,
-  Duration,
+  celDurationFromNanos,
+  durationNanos,
+  isCelDuration,
   InvokeError,
   type ResourceContext,
   type ResourceInstance,
@@ -13,6 +15,10 @@ import type {
   JournalStore,
   JournalStoreEntry,
 } from "@telorun/record-stream";
+
+/** A duration is nanosecond-precise and carries no methods — it is identified by a type
+ *  key, not by a class — so one is built back from its total nanoseconds. */
+const NANOS_PER_MILLISECOND = 1_000_000n;
 
 /** The longest delay a Node timer honours; a longer one fires at once. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
@@ -433,7 +439,7 @@ class SqlJournalStore implements JournalStore, ResourceInstance {
   }
 
   snapshot(): Record<string, unknown> {
-    return { pollInterval: Duration.fromMilliseconds(this.pollIntervalMs) };
+    return { pollInterval: celDurationFromNanos(BigInt(this.pollIntervalMs) * NANOS_PER_MILLISECOND) };
   }
 }
 
@@ -444,10 +450,10 @@ export async function create(resource: StoreResource, ctx: ResourceContext): Pro
   const table = validateTableName(resource.table ?? "record_stream_journal", describe);
   let pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
   if (resource.pollInterval !== undefined) {
-    if (!(resource.pollInterval instanceof Duration)) {
+    if (!isCelDuration(resource.pollInterval)) {
       throw new InvokeError("ERR_INVALID_VALUE", `${describe}: 'pollInterval' must be a duration.`);
     }
-    pollIntervalMs = Number(resource.pollInterval.getMilliseconds());
+    pollIntervalMs = Number(durationNanos(resource.pollInterval) / NANOS_PER_MILLISECOND);
   }
   if (pollIntervalMs <= 0) {
     throw new InvokeError(

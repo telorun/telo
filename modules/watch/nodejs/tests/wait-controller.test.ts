@@ -1,6 +1,6 @@
 import {
-  Duration,
   ERR_INVOKE_CANCELLED,
+  celDurationFromNanos,
   createCancellationSource,
   type OpenZoneAttributes,
   type ResourceContext,
@@ -8,6 +8,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create as createStore } from "../src/memory-store-controller.js";
 import { create as createWait } from "../src/wait-controller.js";
+
+const THIRTY_SECONDS = celDurationFromNanos(30_000_000_000n);
 
 function context(zones: OpenZoneAttributes[] = []): ResourceContext {
   return {
@@ -28,13 +30,13 @@ describe("Watch.Wait", () => {
   it("releases its waiter and rethrows the cancellation when its call is cancelled", async () => {
     const store = await createStore({ metadata: { name: "store" } });
     const wait = await createWait(
-      { metadata: { name: "wait" }, store, maxTimeout: Duration.fromMilliseconds(30_000) },
+      { metadata: { name: "wait" }, store, maxTimeout: THIRTY_SECONDS },
       context(),
     );
     const source = createCancellationSource();
 
     const waiting = wait.invoke(
-      { topic: "plan", after: 0, timeout: Duration.fromMilliseconds(30_000) },
+      { topic: "plan", after: 0, timeout: THIRTY_SECONDS },
       source.context,
     );
     await vi.advanceTimersByTimeAsync(0);
@@ -48,7 +50,7 @@ describe("Watch.Wait", () => {
   it("refuses to wait inside a replayed zone", async () => {
     const store = await createStore({ metadata: { name: "store" } });
     const wait = await createWait(
-      { metadata: { name: "wait" }, store, maxTimeout: Duration.fromMilliseconds(30_000) },
+      { metadata: { name: "wait" }, store, maxTimeout: THIRTY_SECONDS },
       context([
         {
           kind: "DurableLocal.Workflow",
@@ -58,7 +60,7 @@ describe("Watch.Wait", () => {
     );
 
     await expect(
-      wait.invoke({ topic: "plan", after: 0, timeout: Duration.fromMilliseconds(30_000) }),
+      wait.invoke({ topic: "plan", after: 0, timeout: THIRTY_SECONDS }),
     ).rejects.toMatchObject({ code: "ERR_WATCH_REPLAY_FORBIDDEN" });
     expect(vi.getTimerCount()).toBe(0);
   });

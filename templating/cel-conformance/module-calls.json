@@ -300,7 +300,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `total`. Every method taking 2 arguments: all, exists, exists_one, filter, indexOf, lastIndexOf, map, split, substring. Full list: `telo cel functions`."
+              "message": "no function named \"total\" is registered — the closest written on a value with 2 arguments: split, indexOf, substring, lastIndexOf"
             }
           ],
           "calls": [
@@ -329,7 +329,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.total(int, int)'\n\n>    1 | Other.total(2, 3)\n         ^"
+          "message": "no such variable: Other"
         }
       }
     },
@@ -342,7 +342,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `total`. Every method taking 2 arguments: all, exists, exists_one, filter, indexOf, lastIndexOf, map, split, substring. Full list: `telo cel functions`."
+              "message": "no function named \"total\" is registered — the closest written on a value with 2 arguments: split, indexOf, substring, lastIndexOf"
             }
           ],
           "calls": [
@@ -370,7 +370,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.total(int, int)'\n\n>    1 | Billing.total(2, 3)\n         ^"
+          "message": "no such variable: Billing"
         }
       }
     },
@@ -498,7 +498,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `total`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"total\" is registered — the closest written on a value with 1 argument: at, join, or, contains, getDate"
             }
           ],
           "calls": [
@@ -527,7 +527,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.total(int)'\n\n>    1 | a.Billing.total(1)\n         ^"
+          "message": "no overload of \"total\" takes (string, int)"
         }
       }
     },
@@ -560,13 +560,6 @@
           "type": "int",
           "calls": [
             {
-              "name": "size",
-              "form": "receiver",
-              "arity": 0,
-              "start": 0,
-              "end": 21
-            },
-            {
               "name": "Billing.tags",
               "form": "receiver",
               "moduleCall": true,
@@ -574,6 +567,15 @@
               "arguments": [],
               "start": 0,
               "end": 14,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "size",
+              "form": "receiver",
+              "arity": 0,
+              "start": 0,
+              "end": 21,
               "deterministic": true,
               "hostBacked": false
             }
@@ -755,13 +757,11 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "x"
                   ]
                 },
                 {
-                  "type": "dyn",
                   "chain": [
                     "x"
                   ]
@@ -1077,10 +1077,13 @@
               "arity": 2,
               "arguments": [
                 {
-                  "type": "dyn"
+                  "chain": [
+                    "order",
+                    "lines",
+                    "[*]"
+                  ]
                 },
                 {
-                  "type": "dyn",
                   "chain": [
                     "order"
                   ]
@@ -1217,7 +1220,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [
@@ -1248,7 +1251,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "no such overload: int + string\n\n>    1 | Billing.total(1 + 'a')\n                       ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -1292,7 +1295,6 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "price",
                     "amount"
@@ -1387,7 +1389,9 @@
               "form": "global",
               "arity": 1,
               "start": 14,
-              "end": 22
+              "end": 22,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -1470,7 +1474,9 @@
               "form": "global",
               "arity": 1,
               "start": 14,
-              "end": 23
+              "end": 23,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -1537,16 +1543,14 @@
                   ]
                 },
                 {
-                  "type": "optional<T>"
+                  "type": "optional<dyn>"
                 },
                 {
-                  "type": "dyn",
                   "chain": [
                     "t"
                   ]
                 },
                 {
-                  "type": "dyn",
                   "chain": [
                     "o"
                   ]
@@ -1556,13 +1560,6 @@
               "end": 44,
               "deterministic": true,
               "hostBacked": false
-            },
-            {
-              "name": "none",
-              "form": "receiver",
-              "arity": 0,
-              "start": 22,
-              "end": 37
             }
           ],
           "regions": [
@@ -1574,7 +1571,6 @@
           "refs": [
             "int",
             "o",
-            "optional",
             "t"
           ],
           "volatile": false
@@ -1709,7 +1705,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [
@@ -1759,7 +1755,7 @@
         ],
         "error": {
           "code": null,
-          "message": "no such overload: dyn<int> + string\n\n>    1 | Billing.total(1, 2) + 'x'\n         ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -1856,13 +1852,6 @@
           "type": "list<string>",
           "calls": [
             {
-              "name": "map",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 31
-            },
-            {
               "name": "Billing.tags",
               "form": "receiver",
               "moduleCall": true,
@@ -1936,13 +1925,6 @@
           "type": "int",
           "calls": [
             {
-              "name": "orValue",
-              "form": "receiver",
-              "arity": 1,
-              "start": 0,
-              "end": 26
-            },
-            {
               "name": "Billing.find",
               "form": "receiver",
               "moduleCall": true,
@@ -1954,6 +1936,15 @@
               ],
               "start": 0,
               "end": 15,
+              "deterministic": true,
+              "hostBacked": false
+            },
+            {
+              "name": "orValue",
+              "form": "receiver",
+              "arity": 1,
+              "start": 0,
+              "end": 26,
               "deterministic": true,
               "hostBacked": false
             }
@@ -2174,7 +2165,7 @@
         ],
         "error": {
           "code": null,
-          "message": "No such key: amont\n\n>    1 | Billing.invoice(1).amont\n                            ^"
+          "message": "no such key: \"amont\""
         }
       }
     },
@@ -2275,7 +2266,7 @@
         ],
         "error": {
           "code": null,
-          "message": "No such key: qy\n\n>    1 | Billing.invoice(1).lines[0].qy\n                                     ^"
+          "message": "no such key: \"qy\""
         }
       }
     },
@@ -2344,7 +2335,7 @@
         ],
         "error": {
           "code": null,
-          "message": "No such key: amont\n\n>    1 | Billing.receipt(1).amont\n                            ^"
+          "message": "no such key: \"amont\""
         }
       }
     },
@@ -2457,7 +2448,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "unbound function 'Billing.missing' — nothing is bound under that name in this scope. 'Billing' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'missing' and exports it."
+          "message": "unbound function 'Billing.missing' — nothing is bound under that name here"
         }
       }
     },
@@ -2489,13 +2480,6 @@
           "diagnostics": [],
           "type": "list<int>",
           "calls": [
-            {
-              "name": "map",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 42
-            },
             {
               "name": "Billing.total",
               "form": "receiver",
@@ -2613,21 +2597,12 @@
           "type": "bool",
           "calls": [
             {
-              "name": "all",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 24
-            },
-            {
               "name": "Billing.ok",
               "form": "receiver",
               "moduleCall": true,
               "arity": 1,
               "arguments": [
-                {
-                  "type": "dyn"
-                }
+                {}
               ],
               "start": 10,
               "end": 23,
@@ -3319,7 +3294,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "unbound function 'Billing.missing' — nothing is bound under that name in this scope. 'Billing' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'missing' and exports it."
+          "message": "unbound function 'Billing.missing' — nothing is bound under that name here"
         }
       }
     },
@@ -3366,7 +3341,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "unbound function 'Self.double' — nothing is bound under that name in this scope. 'Self' must be an imports: alias (or Self, or this module's own name) whose module declares a callable named 'double' and exports it."
+          "message": "unbound function 'Self.double' — nothing is bound under that name here"
         }
       }
     },
@@ -3383,7 +3358,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"bar\" is registered — the closest written on a value with 1 argument: at, or, join, split, getDate"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
@@ -3415,7 +3390,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1)\n         ^"
+          "message": "no such variable: Foo"
         }
       }
     },
@@ -3432,7 +3407,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `query`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"query\" is registered — the closest written on a value with 1 argument: or, at, join, split, indexOf"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
@@ -3464,7 +3439,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.query(int)'\n\n>    1 | dbb.query(1)\n         ^"
+          "message": "no such variable: dbb"
         }
       }
     },
@@ -3478,7 +3453,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"bar\" is registered — the closest written on a value with 1 argument: at, or, join, split, getDate"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
@@ -3510,7 +3485,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1)\n         ^"
+          "message": "no such variable: Foo"
         }
       }
     },
@@ -3545,7 +3520,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: Foo\n\n>    1 | Foo + 1\n         ^"
+          "message": "no such variable: Foo"
         }
       }
     },
@@ -3581,7 +3556,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"bar\" is registered — the closest written on a value with 1 argument: at, or, join, split, getDate"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
@@ -3626,10 +3601,20 @@
           ],
           "volatile": false
         },
-        "dispatched": [],
+        "dispatched": [
+          {
+            "name": "Billing.total",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "1"
+              }
+            ]
+          }
+        ],
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Billing.total(1) + Foo.bar(2)\n                            ^"
+          "message": "no such variable: Foo"
         }
       }
     },
@@ -3939,7 +3924,6 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "id"
                   ]
@@ -3957,7 +3941,6 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "id"
                   ]

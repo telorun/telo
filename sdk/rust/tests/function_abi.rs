@@ -102,8 +102,8 @@ fn drives_every_function_slot_over_typed_frames() {
             r#"{{"a":{{"$telo":"google.protobuf.Timestamp","value":"{a}"}},"b":{{"$telo":"google.protobuf.Timestamp","value":"{b}"}}}}"#
         )
     };
-    assert_eq!(call(is_before, handle, &instants("2026-01-15T07:30:00.000Z", "2026-01-15T08:00:00.000Z")), (TELO_OK, "true".into()));
-    assert_eq!(call(is_before, handle, &instants("2026-01-15T08:00:00.000Z", "2026-01-15T07:30:00.000Z")), (TELO_OK, "false".into()));
+    assert_eq!(call(is_before, handle, &instants("2026-01-15T07:30:00Z", "2026-01-15T08:00:00Z")), (TELO_OK, "true".into()));
+    assert_eq!(call(is_before, handle, &instants("2026-01-15T08:00:00Z", "2026-01-15T07:30:00Z")), (TELO_OK, "false".into()));
     destroy(is_before, handle);
 
     let echo = loaded.vtable("echo_bytes");

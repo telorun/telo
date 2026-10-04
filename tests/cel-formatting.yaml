@@ -139,11 +139,11 @@ steps:
         dateUtc: "2026-03-01"
         isoZoned: "2026-02-28T19:30:00.000-05:00"
         isoUtc: "2026-03-01T00:30:00.000Z"
-        monthUtc: "2026-03-01T00:00:00.000Z"
-        monthZoned: "2026-03-01T05:00:00.000Z"
-        clamped: "2026-02-28T00:00:00.000Z"
-        backwards: "2026-01-15T00:00:00.000Z"
-        acrossYear: "2027-02-28T00:00:00.000Z"
+        monthUtc: "2026-03-01T00:00:00Z"
+        monthZoned: "2026-03-01T05:00:00Z"
+        clamped: "2026-02-28T00:00:00Z"
+        backwards: "2026-01-15T00:00:00Z"
+        acrossYear: "2027-02-28T00:00:00Z"
     invoke:
       kind: Assert.Equals
 ---

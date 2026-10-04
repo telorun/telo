@@ -112,6 +112,21 @@ supplies it — the rule does not run on that resource, and the skip is reported
 (`RESOURCE_RULE_SKIPPED`) rather than evaluated over a partial set. A
 `!module-path` in a resolved declaration compares as the path its author wrote.
 
+**A pointer that resolves to nothing contributes nothing.** An optional field a
+resource leaves out stays *absent* in what the rule reads — never a key that
+exists and holds nothing — so `self.?relationships.orValue([])` on a store
+declaring no relationships yields the empty list the author guarded for. That is
+the line `in:` and a referrer rule's `peers:` already draw ("an absent collection
+is an empty one"), and all three subject views agree on it.
+
+**A rule is not evaluated over a declaration the slot refuses.** When a reference
+names a resource of a kind its slot does not accept, the resource is already
+refused at that very slot (`REFERENCE_KIND_MISMATCH`) and the condition would
+read fields off a shape it was never shown — so the rule does not run and
+**nothing is reported about it**, not even a skip. Coverage did not vary
+invisibly here: a second diagnostic about the rule's internals would blame the
+kind's author for the manifest author's mistake.
+
 It is opt-in so that no existing rule changes what it reads.
 
 ### Polarity
@@ -154,7 +169,8 @@ a rule compares perfectly well.
 
 An unguarded missing key **throws** rather than yielding false, and a throwing
 rule is reported as a defect in the rule — never as a violation of the manifest
-it ran against. Two spellings work:
+it ran against, and **once per rule for the whole analysis** (see *Where a
+failure lands*). Two spellings work:
 
 ```yaml
 condition: !cel "!('renamedFrom' in this) || !(this.renamedFrom in self.columns)"
@@ -185,7 +201,7 @@ reported:
 | Code | Severity | Means |
 | --- | --- | --- |
 | `RESOURCE_RULE_VIOLATED` | the rule's `severity` | a resource broke the rule; `data.rule` names it, `data.path` anchors it |
-| `RESOURCE_RULE_INVALID` | error | the rule itself is malformed, throws, or exceeded its budget |
+| `RESOURCE_RULE_INVALID` | error for a malformed declaration, and for an evaluation failure in a rule this workspace declares; warning for an evaluation failure in a dependency's | the rule itself is malformed, throws, or exceeded its budget |
 | `RESOURCE_RULE_SKIPPED` | information | the rule could not run here |
 | `RESOURCE_RULE_UNEXERCISED` | information | the rule never ran anywhere |
 
@@ -194,6 +210,27 @@ Every violation reports under the one `RESOURCE_RULE_VIOLATED` code, with your
 them, so a module contributing arbitrary ones could shadow machinery that never
 expected a third party there. `data.rule` keeps a violation nameable and
 greppable without entering that space.
+
+## Where a failure lands
+
+A rule that **throws** or **exhausts its budget** is a defect in the rule, found
+while checking someone else's data. It is reported **once per rule per analysis**
+— not once per resource the rule met — anchored where the reader can act on it,
+and its severity follows from whether that reader can fix it:
+
+- a **warning** at the `imports:` entry that brought the declaring kind in, when
+  that kind belongs to a dependency: the consumer cannot change the rule, so an
+  error would block `telo check` on a line they do not own;
+- an **error** at the rule's own declaration
+  (`schema.x-telo-resource-rules[<n>]`), when the kind is one of this
+  workspace's own modules: here the reader *is* the author, and a declared rule
+  that cannot run is checking nothing.
+
+The message names the first resource the failure was seen at, as the example. Per
+site, one upstream defect produced 107 diagnostics across 99 lines, every one
+pointing at a line the reader does not own and cannot fix: a count that grows
+with the consumer's manifest size for a single defect somewhere else is noise,
+not an actionable error.
 
 ## Budget
 

@@ -21,6 +21,7 @@ import {
   type EmittedModuleStore,
 } from "../src/index.js";
 import { environmentListing } from "../src/environment-digest.js";
+import { CALL_SITE_DIRECT_ARITY } from "../src/runtime-library.js";
 import { sha256OfText } from "../src/sha256.js";
 
 const SOURCES = [
@@ -95,7 +96,17 @@ describe("an emitted module's text", () => {
     // fields; a CEL field name — `y`, `maybe`, `content-type`, `__proto__`, `constructor` —
     // can therefore never be among them, however it was computed. A key from a request
     // (`x[q]`) is the form a word list could never have protected.
-    const structural = new Set(["activation", "namespaceFunction", "present", "held", "push", "call"]);
+    // The call entry points are generated from the arity bound rather than listed, so a
+    // wider bound cannot quietly let a new name through this gate.
+    const structural = new Set([
+      "activation",
+      "namespaceFunction",
+      "present",
+      "held",
+      "push",
+      "call",
+      ...Array.from({ length: CALL_SITE_DIRECT_ARITY + 1 }, (unused, at) => `call${at}`),
+    ]);
     // The factory's body, with every string literal emptied: a comment and an expression's
     // own text are prose, and the question is what the CODE reads.
     const code = text.slice(text.indexOf("export default")).replace(/"(?:[^"\\]|\\.)*"/g, '""');

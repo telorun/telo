@@ -1,32 +1,22 @@
-import { Duration, Stream, UnsignedInt } from "@telorun/sdk";
+import { isCelTimestamp, Stream } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
-import { assertCelValueIdentity } from "../src/cel/value-identity.js";
 
-describe("CEL value identity", () => {
-  it("accepts a Duration and an UnsignedInt constructed through @telorun/sdk", () => {
-    const env = buildCelEnvironment();
-    const context = { d: new Duration(90), u: new UnsignedInt(5) };
-    expect(String(env.evaluate("d + duration('30s')", context))).toBe("120s");
-    expect(env.evaluate("u + 1u", context)).toEqual(new UnsignedInt(6));
-    expect(env.evaluate("type(d) == google.protobuf.Duration && type(u) == uint", context)).toBe(true);
-  });
-
-  it("refuses an engine whose values are not the SDK's classes", () => {
-    class Foreign {}
-    expect(() => assertCelValueIdentity({ Duration: Foreign, UnsignedInt: Foreign })).toThrow(
-      /two copies of @marcbachmann\/cel-js/i,
-    );
-  });
-});
-
+/**
+ * The realm guard that stood here is **gone**, and its premise with it: it asserted that
+ * the engine's `Duration` / `UnsignedInt` classes were the ones `@telorun/sdk` exports,
+ * because that engine typed and dispatched by constructor and a second installed copy made
+ * every value a controller built foreign. The value domain is now `@telorun/cel`'s, where a
+ * value says what it is under `Symbol.for("telo.cel.value")` — one symbol in every copy — so
+ * there is nothing left for this package to assert about it.
+ */
 describe("buildCelEnvironment", () => {
   it("registers Telo's stdlib of CEL functions", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("join(['a', 'b', 'c'], '-')")({})).toBe("a-b-c");
-    expect(env.parse("keys({'x': 1, 'y': 2})")({})).toEqual(["x", "y"]);
-    // cel-js parses integer literals as BigInts; assert that shape.
-    expect(env.parse("values({'x': 1, 'y': 2})")({})).toEqual([1n, 2n]);
+    expect(env.evaluate("join(['a', 'b', 'c'], '-')")).toBe("a-b-c");
+    expect(env.evaluate("keys({'x': 1, 'y': 2})")).toEqual(["x", "y"]);
+    // A CEL int is int64, so an integer literal is a bigint; assert that shape.
+    expect(env.evaluate("values({'x': 1, 'y': 2})")).toEqual([1n, 2n]);
   });
 
   it("type-checks heterogeneous aggregate literals (cel-go default, unify to dyn)", () => {
@@ -35,129 +25,113 @@ describe("buildCelEnvironment", () => {
     expect(env.check("[1, 'two']")).toMatchObject({ valid: true });
     expect(env.check("{'a': 1, 'b': true}")).toMatchObject({ valid: true });
     // The manifest-world case: map value type inferred as dyn absorbs a bool.
-    expect(
-      env.check("items.map(r, {'id': r.id, 'done': r.done == 1})", { items: [] }),
-    ).toMatchObject({ valid: true });
+    expect(env.check("items.map(r, {'id': r.id, 'done': r.done == 1})")).toMatchObject({
+      valid: true,
+    });
   });
 
   it("calls user-supplied handlers for sha256", () => {
     const env = buildCelEnvironment({ sha256: (s) => `H(${s})` });
-    expect(env.parse("sha256('hello')")({})).toBe("H(hello)");
+    expect(env.evaluate("sha256('hello')")).toBe("H(hello)");
   });
 
-  it("registers Stream as a CEL object type so producers can pass async iterables through", () => {
-    const env = buildCelEnvironment();
+  it("registers Stream as a live handle: carried through, with no member to read", () => {
+    const env = buildCelEnvironment().registerVariable("input", "Stream");
     const stream = new Stream(
       (async function* () {
         yield "a";
       })(),
     );
-    // Pass through the value — type-checker accepts the registered constructor.
-    expect(env.parse("input")({ input: stream })).toBe(stream);
-  });
-
-  it("accepts a Stream produced by a 'foreign' sdk copy via the globalThis singleton", () => {
-    // Simulates the kernel + npm-loaded-controller realm split: a controller
-    // imports its own @telorun/sdk copy, that copy's stream.ts also calls
-    // `globalThis[Symbol.for("@telorun/sdk:Stream")] ??= ctor`, so the
-    // controller ends up using the *kernel's* Stream class. Two sdk copies =>
-    // one constructor identity, and cel-js's type-by-constructor check
-    // therefore matches the registered Stream regardless of which copy
-    // produced the value.
-    const ForeignStream = (globalThis as Record<symbol, unknown>)[
-      Symbol.for("@telorun/sdk:Stream")
-    ] as typeof Stream;
-    expect(ForeignStream).toBe(Stream);
-
-    const env = buildCelEnvironment();
-    const stream = new ForeignStream(
-      (async function* () {
-        yield "b";
-      })(),
-    );
-    expect(env.parse("input")({ input: stream })).toBe(stream);
+    // A producer's handle reaches a consumer untouched, whichever sdk copy built
+    // it — identity is no longer a class, so there is nothing to deduplicate.
+    expect(env.evaluate("input", { input: stream })).toBe(stream);
+    // `dyn` underneath with no conversion and no member, so reading anything off
+    // one is refused where the author can see it.
+    expect(env.check("input.text").diagnostics).toEqual([
+      { code: "CEL_TYPE_ERROR", message: "Stream holds no members", range: [6, 10] },
+    ]);
   });
 
   it("default sha256 stub throws a helpful error", () => {
     const env = buildCelEnvironment();
-    expect(() => env.parse("sha256('x')")({})).toThrow(/sha256/);
+    expect(() => env.evaluate("sha256('x')")).toThrow(/sha256/);
   });
 
   it("provides current-time functions, UTC by default and zone-aware on demand", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("now()")({})).toBeInstanceOf(Date);
-    expect(env.parse("nowIso()")({})).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*Z$/);
-    expect(env.parse("today()")({})).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(typeof env.parse("nowMillis()")({})).toBe("bigint");
-    expect(typeof env.parse("nowSeconds()")({})).toBe("bigint");
+    expect(isCelTimestamp(env.evaluate("now()"))).toBe(true);
+    expect(env.evaluate("nowIso()")).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.*Z$/);
+    expect(env.evaluate("today()")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(typeof env.evaluate("nowMillis()")).toBe("bigint");
+    expect(typeof env.evaluate("nowSeconds()")).toBe("bigint");
     // Zone-aware overload: ISO with a numeric offset, not `Z`.
-    expect(env.parse("nowIso('America/New_York')")({})).toMatch(
+    expect(env.evaluate("nowIso('America/New_York')")).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/,
     );
-    expect(env.parse("today('Asia/Tokyo')")({})).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(env.evaluate("today('Asia/Tokyo')")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("provides UUID generators for every version", () => {
     const env = buildCelEnvironment();
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     for (const expr of ["uuidv1()", "uuidv4()", "uuidv6()", "uuidv7()"]) {
-      expect(env.parse(expr)({})).toMatch(uuidRe);
+      expect(env.evaluate(expr)).toMatch(uuidRe);
     }
     // v3/v5 hash a name under a namespace UUID — deterministic for fixed inputs.
-    const ns = env.parse("uuidv4()")({}) as string;
-    const a = env.parse("uuidv5('alice', ns)")({ ns });
-    const b = env.parse("uuidv5('alice', ns)")({ ns });
+    const ns = env.evaluate("uuidv4()") as string;
+    const a = env.evaluate("uuidv5('alice', ns)", { ns });
+    const b = env.evaluate("uuidv5('alice', ns)", { ns });
     expect(a).toMatch(uuidRe);
     expect(a).toBe(b);
   });
 
   it("validates and reads the version of a UUID", () => {
     const env = buildCelEnvironment();
-    const v4 = env.parse("uuidv4()")({}) as string;
-    expect(env.parse("uuidValidate(u)")({ u: v4 })).toBe(true);
-    expect(env.parse("uuidValidate('nope')")({})).toBe(false);
-    expect(env.parse("uuidVersion(u)")({ u: v4 })).toBe(4n);
+    const v4 = env.evaluate("uuidv4()") as string;
+    expect(env.evaluate("uuidValidate(u)", { u: v4 })).toBe(true);
+    expect(env.evaluate("uuidValidate('nope')")).toBe(false);
+    expect(env.evaluate("uuidVersion(u)", { u: v4 })).toBe(4n);
   });
 
   it("provides string functions", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("lower('AbC')")({})).toBe("abc");
-    expect(env.parse("upper('AbC')")({})).toBe("ABC");
-    expect(env.parse("trim('  x  ')")({})).toBe("x");
-    expect(env.parse("replace('a.b.c', '.', '-')")({})).toBe("a-b-c");
-    expect(env.parse("split('a,b,c', ',')")({})).toEqual(["a", "b", "c"]);
+    expect(env.evaluate("lower('AbC')")).toBe("abc");
+    expect(env.evaluate("upper('AbC')")).toBe("ABC");
+    expect(env.evaluate("trim('  x  ')")).toBe("x");
+    expect(env.evaluate("replace('a.b.c', '.', '-')")).toBe("a-b-c");
+    expect(env.evaluate("split('a,b,c', ',')")).toEqual(["a", "b", "c"]);
   });
 
   it("provides math functions", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("abs(-3.5)")({})).toBe(3.5);
-    expect(env.parse("floor(2.9)")({})).toBe(2);
-    expect(env.parse("ceil(2.1)")({})).toBe(3);
-    expect(env.parse("round(2.5)")({})).toBe(3);
-    expect(env.parse("min([3.0, 1.0, 2.0])")({})).toBe(1);
-    expect(env.parse("max([3.0, 1.0, 2.0])")({})).toBe(3);
+    expect(env.evaluate("abs(-3.5)")).toBe(3.5);
+    expect(env.evaluate("floor(2.9)")).toBe(2);
+    expect(env.evaluate("ceil(2.1)")).toBe(3);
+    expect(env.evaluate("round(2.5)")).toBe(3);
+    expect(env.evaluate("min([3.0, 1.0, 2.0])")).toBe(1);
+    expect(env.evaluate("max([3.0, 1.0, 2.0])")).toBe(3);
   });
 
   it("provides collection functions without mutating the input", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("distinct([1, 1, 2, 3, 3])")({})).toEqual([1n, 2n, 3n]);
-    expect(env.parse("reverse([1, 2, 3])")({})).toEqual([3n, 2n, 1n]);
-    expect(env.parse("flatten([[1, 2], [3]])")({})).toEqual([1n, 2n, 3n]);
-    expect(env.parse("sort([3.0, 1.0, 2.0])")({})).toEqual([1, 2, 3]);
+    expect(env.evaluate("distinct([1, 1, 2, 3, 3])")).toEqual([1n, 2n, 3n]);
+    expect(env.evaluate("reverse([1, 2, 3])")).toEqual([3n, 2n, 1n]);
+    expect(env.evaluate("flatten([[1, 2], [3]])")).toEqual([1n, 2n, 3n]);
+    expect(env.evaluate("sort([3.0, 1.0, 2.0])")).toEqual([1, 2, 3]);
   });
 
   it("provides JSON parse and URL encoding", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("parseJson('{\"a\": 1}').a")({})).toBe(1);
-    expect(env.parse("urlEncode('a b&c')")({})).toBe("a%20b%26c");
-    expect(env.parse("urlDecode('a%20b%26c')")({})).toBe("a b&c");
+    expect(env.evaluate("parseJson('{\"a\": 1}').a")).toBe(1);
+    expect(env.evaluate("urlEncode('a b&c')")).toBe("a%20b%26c");
+    expect(env.evaluate("urlDecode('a%20b%26c')")).toBe("a b&c");
   });
 
   it("provides null-handling helpers (CEL has no ??)", () => {
     const env = buildCelEnvironment();
-    expect(env.parse("default(x, 'fallback')")({ x: null })).toBe("fallback");
-    expect(env.parse("default(x, 'fallback')")({ x: "value" })).toBe("value");
-    expect(env.parse("coalesce(items)")({ items: [null, null, "last"] })).toBe("last");
+    expect(env.evaluate("default(x, 'fallback')", { x: null })).toBe("fallback");
+    expect(env.evaluate("default(x, 'fallback')", { x: "value" })).toBe("value");
+    expect(env.evaluate("coalesce(items)", { items: [null, null, "last"] })).toBe("last");
   });
 
   it("routes hashing and base64 through host handlers", () => {
@@ -166,8 +140,8 @@ describe("buildCelEnvironment", () => {
       hmac: (algo, key, msg) => `${algo}:${key}:${msg}`,
       base64Encode: (s) => `b64(${s})`,
     });
-    expect(env.parse("md5('x')")({})).toBe("md5(x)");
-    expect(env.parse("hmac('sha256', 'k', 'm')")({})).toBe("sha256:k:m");
-    expect(env.parse("base64Encode('hi')")({})).toBe("b64(hi)");
+    expect(env.evaluate("md5('x')")).toBe("md5(x)");
+    expect(env.evaluate("hmac('sha256', 'k', 'm')")).toBe("sha256:k:m");
+    expect(env.evaluate("base64Encode('hi')")).toBe("b64(hi)");
   });
 });

@@ -1,9 +1,7 @@
-import {
-  buildCelEnvironment,
-  celBuiltinFunctions,
-  celFunctionCatalog,
-  type CelFunctionInfo,
-} from "@telorun/templating";
+import { buildCelEnvironment, celBuiltinFunctions, celFunctionCatalog } from "@telorun/templating";
+
+/** One entry of the dialect's listing, as `celFunctionCatalog()` answers it. */
+type CelFunctionInfo = ReturnType<typeof celFunctionCatalog>[number];
 import {
   AnalysisRegistry,
   collectModuleDocuments,
@@ -251,7 +249,7 @@ function evalExpression(expr: string, contextJson: string | undefined, asJson: b
   const env = buildCelEnvironment(nodeCelHandlers);
   let result: unknown;
   try {
-    result = env.parse(expr)(context);
+    result = env.evaluate(expr, context as never);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Prose on stderr plus a non-zero exit — never an envelope on stdout.

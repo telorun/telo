@@ -25,10 +25,12 @@ metadata:
 source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
+    # The message names the CAUSE and the form that is declared; the repair itself is
+    # the diagnostic's `fix:`, asserted in `testWrongCallFormOffersFix` below.
     - code: CEL_WRONG_CALL_FORM
-      message: "inputs.key.startsWith('uploads/')"
+      message: '"startsWith" is called on a value'
     - code: CEL_UNKNOWN_FUNCTION
-      message: "there is no function `no`"
+      message: 'no function named "no" is registered'
 ---
 # The repair itself, asserted end to end: the classifier builds it from the
 # registry entry and the AST offsets, the analyzer re-anchors it to the whole
@@ -46,7 +48,11 @@ source: ./__fixtures__/cel-call-diagnostics/wrong-call-form.yaml
 expect:
   errors:
     - code: CEL_WRONG_CALL_FORM
-      fix: "inputs.key.startsWith('uploads/') && no() > 5"
+      # The repair is a whole-source replacement the engine builds by rewriting the
+      # tree and writing it BACK OUT, so its string literals carry the serializer's
+      # quoting rather than the author's: a repair always parses, and the source's own
+      # spelling is not structure.
+      fix: 'inputs.key.startsWith("uploads/") && no() > 5'
 ---
 # The candidate LISTING, for the case where no repair is offered: `uuid` has
 # several candidates (`uuidv4`, `uuidv7`, …) and picking one would be a guess,
@@ -61,7 +67,7 @@ source: ./__fixtures__/cel-call-diagnostics/ambiguous-candidates.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FUNCTION
-      message: "there is no function `uuid`"
+      message: 'no function named "uuid" is registered'
 ---
 # `no` is registered under no call form, so the reading is "no such name" —
 # not "wrong arguments". Candidates come from the registry filtered by call
@@ -75,7 +81,7 @@ expect:
     - code: CEL_UNKNOWN_FUNCTION
       message: "nowIso"
     - code: CEL_UNKNOWN_FUNCTION
-      message: "nowSeconds"
+      message: "today"
 ---
 # An instant must be able to LEAVE an expression: without `string(timestamp)`
 # and `int(timestamp)` an expiry could be computed and not stored, which is

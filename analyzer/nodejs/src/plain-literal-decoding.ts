@@ -1,5 +1,5 @@
 import { isTaggedSentinel } from "@telorun/templating";
-import { decodePlainText, isCompiledValue } from "@telorun/sdk";
+import { decodePlainText, isCelRecord, isCompiledValue } from "@telorun/sdk";
 import {
   collectProperties,
   type ExternalSchemaResolver,
@@ -80,8 +80,11 @@ export function mapTextLeaves(
       for (let i = 0; i < node.length; i++) node[i] = walk(node[i], item.schema, item.root, `${pointer}/${i}`);
       return node;
     }
-    const proto = Object.getPrototypeOf(node);
-    if (proto !== Object.prototype && proto !== null) return node;
+    // A branded CEL value — a duration, a uint, a timestamp — is a PLAIN
+    // object, so the prototype cannot tell it from a container: it is already
+    // the decoded value and descending into its fields would decode its parts
+    // against the slot's own schema.
+    if (!isCelRecord(node)) return node;
     const properties = collectProperties(here);
     const additional =
       here.additionalProperties && typeof here.additionalProperties === "object"
@@ -129,8 +132,10 @@ function copyPlainContainers(value: unknown): unknown {
   if (!value || typeof value !== "object" || isCompiledValue(value) || isTaggedSentinel(value)) {
     return value;
   }
-  const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) return value;
+  // Asked of the value DOMAIN, never of the prototype: a branded CEL value is
+  // a plain object, and rebuilding one from its entries drops the symbol its
+  // brand lives under — silently turning a duration into a pair of numbers.
+  if (!isCelRecord(value)) return value;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, item]) => [
       key,

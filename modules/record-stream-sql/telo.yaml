@@ -11,6 +11,15 @@ metadata:
     write is a single guarded statement or transaction, so the database settles races
     between processes, and ages are measured on the database clock. Works on any SQL
     backend.
+requires:
+  # 0.108.0: the journal controller reads and builds durations through the value
+  # domain (`isCelDuration`, `durationNanos`, `celDurationFromNanos`) rather than
+  # a host class. `@telorun/sdk` is external and collapsed to the runtime's own
+  # copy, so on a runtime whose SDK does not export those names they are
+  # undefined and the resource dies at creation with a TypeError naming this
+  # module. Verified by execution: the published 0.107.0 tarball exports none of
+  # them.
+  telo: ">=0.108.0"
 imports:
   RecordStream: ../record-stream
   Sql: ../sql

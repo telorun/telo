@@ -79,9 +79,12 @@ pub mod base64url {
     }
 }
 
-/// `rfc3339` — a timestamp as RFC 3339 text, written in UTC with milliseconds.
+/// `rfc3339` — a timestamp as RFC 3339 text, written in UTC with its fraction
+/// trimmed to the nanosecond it holds.
 pub mod rfc3339 {
     use super::Timestamp;
+
+    const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
     fn digits(text: &[u8], at: usize, count: usize) -> Option<i64> {
         let slice = text.get(at..at + count)?;
@@ -100,7 +103,9 @@ pub mod rfc3339 {
     }
 
     /// The timestamp `text` encodes, or `None`. Any offset is read; a fraction
-    /// is read to the millisecond, the precision a timestamp holds.
+    /// is read to the nanosecond, the precision a timestamp holds, and a tenth
+    /// fractional digit names a precision no timestamp carries, so it is refused
+    /// rather than rounded away.
     pub fn decode(text: &str) -> Option<Timestamp> {
         let t = text.as_bytes();
         let year = digits(t, 0, 4)?;
@@ -117,18 +122,18 @@ pub mod rfc3339 {
         expect(t, 16, b':')?;
         let second = digits(t, 17, 2)?;
         let mut at = 19;
-        let mut millis = 0i64;
+        let mut nanos = 0i128;
         if t.get(at) == Some(&b'.') {
             let start = at + 1;
             let mut end = start;
             while t.get(end).is_some_and(u8::is_ascii_digit) {
                 end += 1;
             }
-            if end == start {
+            if end == start || end - start > 9 {
                 return None;
             }
-            for i in 0..3 {
-                millis = millis * 10 + t.get(start + i).filter(|_| start + i < end).map_or(0, |c| (c - b'0') as i64);
+            for i in 0..9 {
+                nanos = nanos * 10 + t.get(start + i).filter(|_| start + i < end).map_or(0, |c| (c - b'0') as i128);
             }
             at = end;
         }
@@ -155,25 +160,30 @@ pub mod rfc3339 {
         {
             return None;
         }
-        let fields = days_from_civil(year, month, day) * 86_400_000
-            + hour * 3_600_000
-            + minute * 60_000
-            + second * 1000;
-        Timestamp::from_unix_millis(fields + millis - zone_minutes * 60_000)
+        let seconds = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second
+            - zone_minutes * 60;
+        Timestamp::from_unix_nanos(seconds as i128 * NANOS_PER_SECOND + nanos)
     }
 
-    /// The canonical text: `YYYY-MM-DDTHH:MM:SS.mmmZ`.
+    /// The canonical text: `YYYY-MM-DDTHH:MM:SSZ` in UTC, with the fraction
+    /// absent when the instant is a whole second and otherwise one to nine
+    /// digits with no trailing zero — the rule a duration's text follows.
     pub fn encode(timestamp: &Timestamp) -> String {
-        let millis = timestamp.unix_millis();
-        let days = millis.div_euclid(86_400_000);
-        let of_day = millis.rem_euclid(86_400_000);
+        let seconds = timestamp.seconds();
+        let days = seconds.div_euclid(86_400);
+        let of_day = seconds.rem_euclid(86_400);
         let (year, month, day) = civil_from_days(days);
+        let nanos = timestamp.subsec_nanos();
+        let fraction = if nanos == 0 {
+            String::new()
+        } else {
+            format!(".{}", format!("{nanos:09}").trim_end_matches('0'))
+        };
         format!(
-            "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
-            of_day / 3_600_000,
-            of_day / 60_000 % 60,
-            of_day / 1000 % 60,
-            of_day % 1000
+            "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}{fraction}Z",
+            of_day / 3_600,
+            of_day / 60 % 60,
+            of_day % 60
         )
     }
 
@@ -309,7 +319,20 @@ mod tests {
         let later = rfc3339::decode("2026-01-15T07:30:00.001Z").unwrap();
         assert_eq!(east, utc);
         assert!(east < later);
-        assert_eq!(rfc3339::encode(&east), "2026-01-15T07:30:00.000Z");
+        assert_eq!(rfc3339::encode(&east), "2026-01-15T07:30:00Z");
+    }
+
+    #[test]
+    fn reads_a_fraction_to_the_nanosecond_and_refuses_a_tenth_digit() {
+        let read = |text: &str| rfc3339::decode(text).map(|t| rfc3339::encode(&t));
+        assert_eq!(read("2026-01-15T07:30:00.000000001Z").as_deref(), Some("2026-01-15T07:30:00.000000001Z"));
+        assert_eq!(read("2026-01-15T07:30:00.5Z").as_deref(), Some("2026-01-15T07:30:00.5Z"));
+        assert_eq!(read("2026-01-15T07:30:00.000Z").as_deref(), Some("2026-01-15T07:30:00Z"));
+        assert_eq!(read("2026-01-15T07:30:00.0000000001Z"), None);
+        assert_eq!(read("2026-01-15T07:30:00.Z"), None);
+        assert_eq!(read("9999-12-31T23:59:59.999999999Z").as_deref(), Some("9999-12-31T23:59:59.999999999Z"));
+        assert_eq!(read("0001-01-01T00:00:00Z").as_deref(), Some("0001-01-01T00:00:00Z"));
+        assert_eq!(read("0000-12-31T23:59:59Z"), None);
     }
 
     #[test]

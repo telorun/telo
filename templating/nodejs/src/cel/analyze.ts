@@ -1,4 +1,9 @@
-import type { ASTNode } from "@marcbachmann/cel-js";
+import {
+  childNodes,
+  namespaceMacroBinding,
+  receiverMacroBinding,
+  type CelNode,
+} from "@telorun/cel";
 import { isLiveSlot } from "@telorun/sdk";
 import { moduleCallOf } from "./module-call.js";
 
@@ -15,7 +20,7 @@ import { moduleCallOf } from "./module-call.js";
  * tree, before this walk — an unresolved tree still reports the receiver, which
  * is the right answer for a caller that supplied no module names.
  */
-export function extractAccessChains(node: ASTNode): string[][] {
+export function extractAccessChains(node: CelNode): string[][] {
   const chains: string[][] = [];
   visitNode(node, chains, new Set());
   return chains;
@@ -27,8 +32,8 @@ export function extractAccessChains(node: ASTNode): string[][] {
  * name the expression itself binds (`xs.map(item, Billing.total(item))`), which
  * no context schema describes.
  */
-export function moduleCallArgumentChains(node: ASTNode): Map<ASTNode, Array<string[] | null>> {
-  const out = new Map<ASTNode, Array<string[] | null>>();
+export function moduleCallArgumentChains(node: CelNode): Map<CelNode, Array<string[] | null>> {
+  const out = new Map<CelNode, Array<string[] | null>>();
   visitNode(node, [], new Set(), (call, callNode, boundVars) => {
     out.set(
       callNode,
@@ -40,33 +45,58 @@ export function moduleCallArgumentChains(node: ASTNode): Map<ASTNode, Array<stri
 
 type ModuleCallVisitor = (
   call: NonNullable<ReturnType<typeof moduleCallOf>>,
-  node: ASTNode,
+  node: CelNode,
   boundVars: ReadonlySet<string>,
 ) => void;
 
-const COMPREHENSION_METHODS = new Set(["filter", "map", "exists", "all", "exists_one"]);
-
-/** `cel.bind(name, init, body)` — CEL's only binding form, and the one the
- *  parser expands rather than dispatching, so it appears as a receiver call on a
- *  bare `cel` identifier that is in no scope and never will be. Both walks below
- *  need the same three facts out of it, so the shape is read once here.
+/**
+ * `cel.bind(name, init, body)`.
  *
- *  The receiver is deliberately not returned: it contributes no chain, and
- *  descending into it is what produced a `CEL_UNKNOWN_FIELD` for `cel` itself. */
-function bindCall(node: ASTNode): { name: string; init: ASTNode; body: ASTNode } | null {
-  if (node.op !== "rcall" || !Array.isArray(node.args)) return null;
-  const [method, receiver, callArgs] = node.args as [unknown, unknown, unknown];
-  if (method !== "bind") return null;
-  if (!isASTNode(receiver) || receiver.op !== "id" || receiver.args !== "cel") return null;
-  if (!Array.isArray(callArgs) || callArgs.length !== 3) return null;
-  const [nameNode, init, body] = callArgs as [unknown, unknown, unknown];
-  if (!isASTNode(nameNode) || nameNode.op !== "id") return null;
-  if (!isASTNode(init) || !isASTNode(body)) return null;
-  return { name: nameNode.args as string, init, body };
+ * `cel` is a RESERVED namespace — one a host can never claim, because the standard macros
+ * are written on it — so this is **not** a qualified call: it reads as a receiver call on
+ * the ident `cel`, which is in no scope and never will be. The engine's own binding table
+ * says which argument is the name and which are scoped.
+ *
+ * The receiver is deliberately not returned: it contributes no chain, and descending into it
+ * is what produced a `CEL_UNKNOWN_FIELD` for `cel` itself.
+ */
+function bindCall(node: CelNode): { name: string; init: CelNode; body: CelNode } | null {
+  if (node.kind !== "receiverCall") return null;
+  if (node.receiver.kind !== "ident" || node.receiver.name !== "cel") return null;
+  const binding = namespaceMacroBinding("cel", node.name, node.args.length);
+  if (!binding) return null;
+  const nameNode = node.args[binding.variableArgument];
+  if (nameNode?.kind !== "ident") return null;
+  const scoped = binding.scopedArguments;
+  // `cel.bind(name, init, body)`: the body is scoped, everything else before it is not.
+  const body = node.args[scoped[scoped.length - 1]!];
+  const init = node.args.find(
+    (unused, at) => at !== binding.variableArgument && !scoped.includes(at),
+  );
+  if (!init || !body) return null;
+  return { name: nameNode.name, init, body };
+}
+
+/** A comprehension macro's iteration variable and the arguments it scopes, from the
+ *  engine's own binding table rather than a list of method names kept in step with it. */
+function comprehension(
+  node: CelNode,
+): { receiver: CelNode; bound: string; scoped: readonly CelNode[] } | null {
+  if (node.kind !== "receiverCall") return null;
+  if (node.receiver.kind === "ident" && node.receiver.name === "cel") return null;
+  const binding = receiverMacroBinding(node.name, node.args.length);
+  if (!binding) return null;
+  const nameNode = node.args[binding.variableArgument];
+  if (nameNode?.kind !== "ident") return null;
+  return {
+    receiver: node.receiver,
+    bound: nameNode.name,
+    scoped: binding.scopedArguments.flatMap((at) => (node.args[at] ? [node.args[at]!] : [])),
+  };
 }
 
 function visitNode(
-  node: ASTNode,
+  node: CelNode,
   chains: string[][],
   boundVars: Set<string>,
   onModuleCall?: ModuleCallVisitor,
@@ -93,51 +123,16 @@ function visitNode(
     return;
   }
 
-  if (
-    node.op === "rcall" &&
-    Array.isArray(node.args) &&
-    typeof node.args[0] === "string" &&
-    COMPREHENSION_METHODS.has(node.args[0])
-  ) {
-    const receiver = node.args[1];
-    const comprehensionArgs = node.args[2];
-    if (isASTNode(receiver)) visitNode(receiver, chains, boundVars, onModuleCall);
-    if (
-      Array.isArray(comprehensionArgs) &&
-      comprehensionArgs.length >= 2 &&
-      isASTNode(comprehensionArgs[0]) &&
-      (comprehensionArgs[0] as ASTNode).op === "id"
-    ) {
-      const newBoundVars = new Set(boundVars);
-      newBoundVars.add((comprehensionArgs[0] as ASTNode).args as string);
-      for (let i = 1; i < comprehensionArgs.length; i++) {
-        const arg = comprehensionArgs[i];
-        if (isASTNode(arg)) visitNode(arg as ASTNode, chains, newBoundVars, onModuleCall);
-      }
-    }
+  const macro = comprehension(node);
+  if (macro) {
+    // The receiver is evaluated outside the binding; only the scoped arguments see it.
+    visitNode(macro.receiver, chains, boundVars, onModuleCall);
+    const inner = new Set(boundVars).add(macro.bound);
+    for (const arg of macro.scoped) visitNode(arg, chains, inner, onModuleCall);
     return;
   }
 
-  const args = node.args;
-  if (Array.isArray(args)) {
-    for (const arg of args) {
-      if (isASTNode(arg)) {
-        visitNode(arg, chains, boundVars, onModuleCall);
-      } else if (Array.isArray(arg)) {
-        for (const item of arg) {
-          if (isASTNode(item)) visitNode(item, chains, boundVars, onModuleCall);
-        }
-      }
-    }
-  } else if (isASTNode(args)) {
-    // Unary operators (`!_`, `-_`) carry their operand as a single node
-    // rather than a one-element array, so descend into it directly.
-    visitNode(args, chains, boundVars, onModuleCall);
-  }
-}
-
-function isASTNode(v: unknown): v is ASTNode {
-  return v !== null && typeof v === "object" && "op" in (v as object);
+  for (const child of childNodes(node)) visitNode(child, chains, boundVars, onModuleCall);
 }
 
 /** Sentinel chain segment emitted for index access (`obj[expr]`) — a dynamic
@@ -145,20 +140,28 @@ function isASTNode(v: unknown): v is ASTNode {
  *  chains to declared names treat this as "unknown member". */
 export const INDEX_SEGMENT = "[*]";
 
-function extractChain(node: ASTNode, boundVars: ReadonlySet<string>): string[] | null {
-  if (node.op === "id") {
-    const name = node.args as string;
-    if (boundVars.has(name)) return null;
-    return [name];
+function extractChain(node: CelNode, boundVars: ReadonlySet<string>): string[] | null {
+  if (node.kind === "ident") {
+    // An ABSOLUTE name (`.y`) resolves against the environment's declarations and never
+    // against a name the expression bound, so a binding of the same spelling cannot hide it.
+    if (!node.absolute && boundVars.has(node.name)) return null;
+    return [node.name];
   }
-  if (node.op === ".") {
-    const [obj, field] = node.args as [ASTNode, string];
-    const parent = extractChain(obj, boundVars);
-    if (parent !== null) return [...parent, field];
+  // **An OPTIONAL read ends the chain.** `a.?b` and `a[?0]` answer an `optional<T>`, so what
+  // follows is a method on that optional (`.orValue('')`) rather than a member of the
+  // context — and the author has said outright that the member may be absent, which is not a
+  // claim a context schema has to declare. The engine makes both a real `select`/`index`
+  // with `optional: true`, where the replaced engine had no node this walk could chain, so
+  // continuing would both invent a read and hand `validateChainAgainstSchema` a path past
+  // the point the expression stopped asserting anything.
+  if (node.kind === "select") {
+    if (node.optional) return null;
+    const parent = extractChain(node.operand, boundVars);
+    if (parent !== null) return [...parent, node.field];
   }
-  if (node.op === "[]") {
-    const [obj] = node.args as [ASTNode, ASTNode];
-    const parent = extractChain(obj, boundVars);
+  if (node.kind === "index") {
+    if (node.optional) return null;
+    const parent = extractChain(node.operand, boundVars);
     if (parent !== null) return [...parent, INDEX_SEGMENT];
   }
   return null;
@@ -176,21 +179,25 @@ export interface CallResultAccess {
  * {@link extractAccessChains} deliberately skips, since their root is a value
  * no context schema describes. The caller supplies the call's result schema.
  */
-export function extractCallResultAccesses(node: ASTNode): CallResultAccess[] {
+export function extractCallResultAccesses(node: CelNode): CallResultAccess[] {
   const out: CallResultAccess[] = [];
   visitAccess(node, out);
   return out;
 }
 
-function visitAccess(node: ASTNode, out: CallResultAccess[]): void {
-  if (node.op === "." || node.op === "[]") {
+function visitAccess(node: CelNode, out: CallResultAccess[]): void {
+  if (node.kind === "select" || node.kind === "index") {
     const members: string[] = [];
-    let base: ASTNode = node;
-    while (base.op === "." || base.op === "[]") {
-      const [obj, field] = base.args as [ASTNode, unknown];
-      members.unshift(base.op === "." ? String(field) : INDEX_SEGMENT);
-      if (base.op === "[]" && isASTNode(field)) visitAccess(field, out);
-      base = obj;
+    let base: CelNode = node;
+    while (base.kind === "select" || base.kind === "index") {
+      if (base.kind === "select") {
+        members.unshift(base.field);
+      } else {
+        members.unshift(INDEX_SEGMENT);
+        // The index is its own expression and may itself read off a call's result.
+        visitAccess(base.index, out);
+      }
+      base = base.operand;
     }
     const call = moduleCallOf(base);
     if (call) {
@@ -201,20 +208,7 @@ function visitAccess(node: ASTNode, out: CallResultAccess[]): void {
     visitAccess(base, out);
     return;
   }
-  const moduleCall = moduleCallOf(node);
-  if (moduleCall) {
-    for (const arg of moduleCall.args) visitAccess(arg, out);
-    return;
-  }
-  const args = node.args;
-  if (Array.isArray(args)) {
-    for (const arg of args) {
-      if (isASTNode(arg)) visitAccess(arg, out);
-      else if (Array.isArray(arg)) for (const item of arg) if (isASTNode(item)) visitAccess(item, out);
-    }
-  } else if (isASTNode(args)) {
-    visitAccess(args, out);
-  }
+  for (const child of childNodes(node)) visitAccess(child, out);
 }
 
 interface NullableIssue {
@@ -252,7 +246,7 @@ function schemaAtChain(
  *  admits null — a value that may itself be null, rather than one dereferenced
  *  through a null. */
 export function nullableValueChain(
-  node: ASTNode,
+  node: CelNode,
   contextSchema: Record<string, any>,
 ): string | null {
   const chain = dottedChain(node, new Set());
@@ -260,13 +254,13 @@ export function nullableValueChain(
   return schemaIsNullable(schemaAtChain(chain.split("."), contextSchema)) ? chain : null;
 }
 
-function isNullLiteral(node: ASTNode): boolean {
-  return node.op === "value" && (node.args as unknown) === null;
+function isNullLiteral(node: CelNode): boolean {
+  return node.kind === "literal" && node.literal.type === "null";
 }
 
 /** Dotted form of a static member chain rooted at a free identifier, or null
  *  when the node isn't such a chain (call result, bound var, index, …). */
-function dottedChain(node: ASTNode, boundVars: Set<string>): string | null {
+function dottedChain(node: CelNode, boundVars: Set<string>): string | null {
   const chain = extractChain(node, boundVars);
   if (chain === null || chain.includes(INDEX_SEGMENT)) return null;
   return chain.join(".");
@@ -281,35 +275,33 @@ const EMPTY_NARROWING: Narrowing = { whenTrue: new Set(), whenFalse: new Set() }
 
 /** Derive which chains a boolean condition proves non-null in its true / false
  *  branches. Handles `x == null` / `x != null`, negation, and `&&` / `||`. */
-function deriveNarrowing(node: ASTNode, boundVars: Set<string>): Narrowing {
-  if (node.op === "==" || node.op === "!=") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    const chain = isNullLiteral(r)
-      ? dottedChain(l, boundVars)
-      : isNullLiteral(l)
-        ? dottedChain(r, boundVars)
+function deriveNarrowing(node: CelNode, boundVars: Set<string>): Narrowing {
+  if (node.kind === "unary" && node.operator === "!") {
+    const inner = deriveNarrowing(node.operand, boundVars);
+    return { whenTrue: inner.whenFalse, whenFalse: inner.whenTrue };
+  }
+  if (node.kind !== "binary") return EMPTY_NARROWING;
+  if (node.operator === "==" || node.operator === "!=") {
+    const chain = isNullLiteral(node.right)
+      ? dottedChain(node.left, boundVars)
+      : isNullLiteral(node.left)
+        ? dottedChain(node.right, boundVars)
         : null;
     if (chain === null) return EMPTY_NARROWING;
     const proven = new Set([chain]);
-    return node.op === "!="
+    return node.operator === "!="
       ? { whenTrue: proven, whenFalse: new Set() }
       : { whenTrue: new Set(), whenFalse: proven };
   }
-  if (node.op === "!_") {
-    const inner = deriveNarrowing(node.args as ASTNode, boundVars);
-    return { whenTrue: inner.whenFalse, whenFalse: inner.whenTrue };
+  if (node.operator === "&&") {
+    const left = deriveNarrowing(node.left, boundVars);
+    const right = deriveNarrowing(node.right, boundVars);
+    return { whenTrue: union(left.whenTrue, right.whenTrue), whenFalse: new Set() };
   }
-  if (node.op === "&&") {
-    const [a, b] = node.args as [ASTNode, ASTNode];
-    const na = deriveNarrowing(a, boundVars);
-    const nb = deriveNarrowing(b, boundVars);
-    return { whenTrue: union(na.whenTrue, nb.whenTrue), whenFalse: new Set() };
-  }
-  if (node.op === "||") {
-    const [a, b] = node.args as [ASTNode, ASTNode];
-    const na = deriveNarrowing(a, boundVars);
-    const nb = deriveNarrowing(b, boundVars);
-    return { whenTrue: new Set(), whenFalse: union(na.whenFalse, nb.whenFalse) };
+  if (node.operator === "||") {
+    const left = deriveNarrowing(node.left, boundVars);
+    const right = deriveNarrowing(node.right, boundVars);
+    return { whenTrue: new Set(), whenFalse: union(left.whenFalse, right.whenFalse) };
   }
   return EMPTY_NARROWING;
 }
@@ -327,7 +319,7 @@ function union(a: Set<string>, b: Set<string>): Set<string> {
  * Returns one issue per unguarded dereference.
  */
 export function findNullableAccessIssues(
-  node: ASTNode,
+  node: CelNode,
   contextSchema: Record<string, any>,
 ): NullableIssue[] {
   const issues: NullableIssue[] = [];
@@ -336,62 +328,56 @@ export function findNullableAccessIssues(
 }
 
 function walkNullable(
-  node: ASTNode,
+  node: CelNode,
   nonNull: Set<string>,
   boundVars: Set<string>,
   issues: NullableIssue[],
   schema: Record<string, any>,
 ): void {
   // Dereference of an object/array member — check the receiver's nullability.
-  if (node.op === "." || node.op === "[]") {
-    const [obj, field] = node.args as [ASTNode, unknown];
-    const objChain = dottedChain(obj, boundVars);
+  if (node.kind === "select" || node.kind === "index") {
+    const objChain = dottedChain(node.operand, boundVars);
     if (objChain !== null && !nonNull.has(objChain)) {
-      const objSchema = schemaAtChain(objChain.split("."), schema);
-      if (schemaIsNullable(objSchema)) {
+      if (schemaIsNullable(schemaAtChain(objChain.split("."), schema))) {
         issues.push({
           path: objChain,
-          member: node.op === "." ? String(field) : "[index]",
+          member: node.kind === "select" ? node.field : "[index]",
         });
       }
     }
-    walkNullable(obj, nonNull, boundVars, issues, schema);
-    // The index expression (`obj[expr]`) is itself evaluated — descend so a
-    // nullable deref used as an index (e.g. `items[error.code]`) is caught.
-    if (node.op === "[]" && isASTNode(field)) {
-      walkNullable(field as ASTNode, nonNull, boundVars, issues, schema);
-    }
+    walkNullable(node.operand, nonNull, boundVars, issues, schema);
+    // The index expression (`obj[expr]`) is itself evaluated — descend so a nullable
+    // deref used as an index (`items[error.code]`) is caught.
+    if (node.kind === "index") walkNullable(node.index, nonNull, boundVars, issues, schema);
     return;
   }
 
-  if (node.op === "?:") {
-    const [cond, thenB, elseB] = node.args as [ASTNode, ASTNode, ASTNode];
-    walkNullable(cond, nonNull, boundVars, issues, schema);
-    const n = deriveNarrowing(cond, boundVars);
-    walkNullable(thenB, union(nonNull, n.whenTrue), boundVars, issues, schema);
-    walkNullable(elseB, union(nonNull, n.whenFalse), boundVars, issues, schema);
+  if (node.kind === "conditional") {
+    walkNullable(node.condition, nonNull, boundVars, issues, schema);
+    const narrowed = deriveNarrowing(node.condition, boundVars);
+    walkNullable(node.whenTrue, union(nonNull, narrowed.whenTrue), boundVars, issues, schema);
+    walkNullable(node.whenFalse, union(nonNull, narrowed.whenFalse), boundVars, issues, schema);
     return;
   }
 
-  if (node.op === "&&" || node.op === "||") {
-    const [a, b] = node.args as [ASTNode, ASTNode];
-    walkNullable(a, nonNull, boundVars, issues, schema);
-    const n = deriveNarrowing(a, boundVars);
-    const carried = node.op === "&&" ? n.whenTrue : n.whenFalse;
-    walkNullable(b, union(nonNull, carried), boundVars, issues, schema);
+  if (node.kind === "binary" && (node.operator === "&&" || node.operator === "||")) {
+    walkNullable(node.left, nonNull, boundVars, issues, schema);
+    const narrowed = deriveNarrowing(node.left, boundVars);
+    const carried = node.operator === "&&" ? narrowed.whenTrue : narrowed.whenFalse;
+    walkNullable(node.right, union(nonNull, carried), boundVars, issues, schema);
     return;
   }
 
-  // A module call's receiver is a module name, not a value; mirror
-  // extractAccessChains so it is never read as a nullable context field.
+  // A module call's receiver is a module name, not a value; mirror extractAccessChains so
+  // it is never read as a nullable context field.
   const moduleCall = moduleCallOf(node);
   if (moduleCall) {
     for (const arg of moduleCall.args) walkNullable(arg, nonNull, boundVars, issues, schema);
     return;
   }
 
-  // `cel.bind` binds a name for its body; mirror extractAccessChains so a bound
-  // name is never read as a nullable context field.
+  // `cel.bind` binds a name for its body; mirror extractAccessChains so a bound name is
+  // never read as a nullable context field.
   const bind = bindCall(node);
   if (bind) {
     walkNullable(bind.init, nonNull, boundVars, issues, schema);
@@ -399,45 +385,18 @@ function walkNullable(
     return;
   }
 
-  // Comprehension macros bind a loop variable; mirror extractAccessChains so a
-  // bound var is never mistaken for a nullable context field.
-  if (
-    node.op === "rcall" &&
-    Array.isArray(node.args) &&
-    typeof node.args[0] === "string" &&
-    COMPREHENSION_METHODS.has(node.args[0])
-  ) {
-    const receiver = node.args[1];
-    const comprehensionArgs = node.args[2];
-    if (isASTNode(receiver)) walkNullable(receiver, nonNull, boundVars, issues, schema);
-    if (
-      Array.isArray(comprehensionArgs) &&
-      comprehensionArgs.length >= 2 &&
-      isASTNode(comprehensionArgs[0]) &&
-      (comprehensionArgs[0] as ASTNode).op === "id"
-    ) {
-      const inner = new Set(boundVars);
-      inner.add((comprehensionArgs[0] as ASTNode).args as string);
-      for (let i = 1; i < comprehensionArgs.length; i++) {
-        const arg = comprehensionArgs[i];
-        if (isASTNode(arg)) walkNullable(arg as ASTNode, nonNull, inner, issues, schema);
-      }
-    }
+  // A comprehension binds a loop variable; mirror extractAccessChains so a bound var is
+  // never mistaken for a nullable context field.
+  const macro = comprehension(node);
+  if (macro) {
+    walkNullable(macro.receiver, nonNull, boundVars, issues, schema);
+    const inner = new Set(boundVars).add(macro.bound);
+    for (const arg of macro.scoped) walkNullable(arg, nonNull, inner, issues, schema);
     return;
   }
 
-  const args = node.args;
-  if (Array.isArray(args)) {
-    for (const arg of args) {
-      if (isASTNode(arg)) walkNullable(arg, nonNull, boundVars, issues, schema);
-      else if (Array.isArray(arg)) {
-        for (const item of arg) {
-          if (isASTNode(item)) walkNullable(item, nonNull, boundVars, issues, schema);
-        }
-      }
-    }
-  } else if (isASTNode(args)) {
-    walkNullable(args, nonNull, boundVars, issues, schema);
+  for (const child of childNodes(node)) {
+    walkNullable(child, nonNull, boundVars, issues, schema);
   }
 }
 

@@ -67,12 +67,14 @@ export interface CelCheckDiagnostic {
  * refusal to compile a tree the front end already reported a syntax diagnostic for,
  * which is a question the caller should have asked before compiling, and
  * `emitted_module_rejected` is the refusal to run a loaded module whose integrity header
- * is not the one the emission asked for.
+ * is not the one the emission asked for, and `signature_too_wide` is a registration
+ * declaring more values than an implementation receives.
  */
 export type CelEngineErrorCode =
   | "namespaces_mismatch"
   | "unreadable_expression"
-  | "emitted_module_rejected";
+  | "emitted_module_rejected"
+  | "signature_too_wide";
 
 export class CelEngineError extends Error {
   readonly code: CelEngineErrorCode;

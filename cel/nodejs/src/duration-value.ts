@@ -23,7 +23,7 @@
  * own spelling, and the one plain encoding a duration has wherever it is written down.
  */
 
-import { celError, CEL_VALUE_TYPE, type CelDuration, type CelError } from "./cel-value.js";
+import { celError, CEL_VALUE_TYPE, isCelError, type CelDuration, type CelError } from "./cel-value.js";
 import type { SourceRange } from "./syntax-tree.js";
 
 /** The widest and narrowest total a duration holds, in nanoseconds: int64. */
@@ -78,6 +78,21 @@ const PART = /([0-9]*)(?:\.([0-9]*))?(ns|us|µs|μs|ms|s|m|h)/g;
  * `ns`, `us`, `ms`, `s`, `m` and `h` (`1h30m`, `1.5s`, `-10m`).
  */
 export function parseDuration(text: string, range?: SourceRange): CelDuration | CelError {
+  const total = durationNanosFromText(text, range);
+  return isCelError(total) ? total : celDurationFromNanos(total, range);
+}
+
+/**
+ * The same text as a TOTAL OF NANOSECONDS, with no range applied.
+ *
+ * The grammar and the range are separate questions, and a consumer outside CEL has the same
+ * grammar with a different range: protobuf's `google.protobuf.Duration` reaches ±10,000
+ * years, which **cannot be held in an int64 of nanoseconds at all**, so a reader that must
+ * carry one (a journal entry, a value off a transport) cannot go through `parseDuration` and
+ * would otherwise restate this grammar. It answers an unbounded `bigint`; applying a range
+ * is the caller's, and `celDurationFromNanos` is what applies CEL's.
+ */
+export function durationNanosFromText(text: string, range?: SourceRange): bigint | CelError {
   const refuse = () =>
     celError("invalid_conversion", `${JSON.stringify(text)} is not a duration`, range);
   let body = text;
@@ -86,7 +101,7 @@ export function parseDuration(text: string, range?: SourceRange): CelDuration | 
     negative = body.startsWith("-");
     body = body.slice(1);
   }
-  if (body === "0") return celDurationFromNanos(0n, range);
+  if (body === "0") return 0n;
   if (body === "") return refuse();
   PART.lastIndex = 0;
   let total = 0n;
@@ -104,7 +119,7 @@ export function parseDuration(text: string, range?: SourceRange): CelDuration | 
     at += whole.length;
   }
   if (at !== body.length) return refuse();
-  return celDurationFromNanos(negative ? -total : total, range);
+  return negative ? -total : total;
 }
 
 /** Seconds with an `s` suffix, the fraction trimmed to what it carries. */

@@ -25,7 +25,13 @@
  * may import `@telorun/sdk` and nothing else.
  */
 
-import { Duration, UnsignedInt } from "./cel-value-identity.js";
+import {
+  celDurationFromNanos,
+  celTimestampFromMillis,
+  isCelDuration,
+  isCelTimestamp,
+  isCelUint,
+} from "./cel-value-identity.js";
 import { PLAIN_ENCODINGS, type PlainEncoding } from "./plain-encoding.js";
 import { Stream } from "./stream.js";
 import { VALUE_TYPE_ENTRY_FILES } from "./value-types/entries/index.js";
@@ -83,18 +89,27 @@ export interface ValueTypeEntry {
 }
 
 /** What one runtime can say about an `instance` representation. Node's identity
- *  is a constructor (`instanceof` is the assertion) plus the CEL type an
- *  expression at such a slot carries. */
+ *  is a PREDICATE plus the CEL type an expression at such a slot carries.
+ *
+ *  It was a constructor, and `instanceof` was the assertion. A CEL value says
+ *  what it is under a string type key rather than by its class — two copies of
+ *  the engine would otherwise disagree about a duration — so a brand has no
+ *  constructor to test and the predicate is the only shape that covers both
+ *  kinds of identity. A host class still answers with `instanceof`. */
 export interface ValueTypeBinding {
-  /** The constructor an assertion tests against. `Buffer` extends `Uint8Array`,
+  /** Whether a value IS of this representation. `Buffer` extends `Uint8Array`,
    *  so a Node buffer satisfies `bytes` without a second rule. */
-  readonly constructor: Function;
+  readonly holds: (value: unknown) => boolean;
   /** The CEL type a value of this representation carries. */
   readonly celType: string;
   /** A stand-in the analyzer substitutes for a CEL leaf at such a slot, so the
    *  static check and the runtime assertion agree BY CONSTRUCTION rather than by
-   *  two rules kept in step. Absent for a `live` type, whose value is never
-   *  validated and so needs nothing to satisfy. */
+   *  two rules kept in step. A `live` type declares one too: its value is never
+   *  validated, but static analysis still asserts it like any instance type, so
+   *  the leaf's stand-in has to satisfy `holds`. Building it belongs HERE
+   *  because the binding is the only place that knows what the value is — the
+   *  analyzer previously reached through the constructor's prototype, which a
+   *  brand does not have. */
   readonly placeholder?: () => unknown;
 }
 
@@ -106,17 +121,27 @@ export interface ValueTypeBinding {
  * not touch any table.
  */
 export const VALUE_TYPE_BINDINGS: Readonly<Record<string, ValueTypeBinding>> = {
-  bytes: { constructor: Uint8Array, celType: "bytes", placeholder: () => new Uint8Array() },
-  duration: {
-    constructor: Duration,
-    celType: "google.protobuf.Duration",
-    placeholder: () => new Duration(0),
+  bytes: {
+    holds: (value) => value instanceof Uint8Array,
+    celType: "bytes",
+    placeholder: () => new Uint8Array(),
   },
-  stream: { constructor: Stream, celType: "Stream" },
+  duration: {
+    holds: isCelDuration,
+    celType: "google.protobuf.Duration",
+    placeholder: () => celDurationFromNanos(0n),
+  },
+  stream: {
+    holds: (value) => value instanceof Stream,
+    celType: "Stream",
+    // Never constructed for real: a live value is never validated, and this only
+    // has to satisfy `holds` where the analyzer stands in for a CEL leaf.
+    placeholder: () => Object.create(Stream.prototype) as unknown,
+  },
   timestamp: {
-    constructor: Date,
+    holds: isCelTimestamp,
     celType: "google.protobuf.Timestamp",
-    placeholder: () => new Date(0),
+    placeholder: () => celTimestampFromMillis(0),
   },
 };
 
@@ -205,7 +230,7 @@ export function markExactRendering(container: object, key: string | number): voi
  */
 function isUint64(value: unknown, container?: unknown, key?: string | number): boolean {
   const exact =
-    value instanceof UnsignedInt ? value.value : typeof value === "bigint" ? value : undefined;
+    isCelUint(value) ? value.value : typeof value === "bigint" ? value : undefined;
   if (exact !== undefined) return exact >= 0n && exact <= MAX_UINT64;
   if (typeof value !== "number" || value < 0) return false;
   if (Number.isSafeInteger(value)) return true;

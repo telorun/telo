@@ -22,6 +22,7 @@ Thumbs.db
 .cache
 .env.local
 /.env
+.playwright-mcp
 
 # AI Agents
 .codex
@@ -108,3 +109,4 @@ rust/*.dylib
 # relative to the process working directory — the repo root, when it is run the
 # way its own description says to run it.
 reports/
+.census/

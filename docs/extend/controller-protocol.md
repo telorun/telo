@@ -127,13 +127,15 @@ blocks its reader on dispatch. If you are writing a carrier rather than a
 controller, this is the rule to get right first; nothing in a manifest will tell
 you that you got it wrong.
 
-## Generations, and `abi=telo-4`
+## Generations, and `abi=telo-5`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `4` is the first one this specification
-defines, and it is the generation in which the C ABI carries the protocol's
-messages.
+the ABI crate's layout. Generation `5` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. (`4` was
+withdrawn before any carrier spoke it: its value encoding named the typed frame's
+millisecond timestamp payload, which is now RFC 3339 with a trimmed nanosecond
+fraction.)
 
-**Do not write `abi=telo-4` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-5` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

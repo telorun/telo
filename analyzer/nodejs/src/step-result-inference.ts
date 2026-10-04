@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
 
 /**
@@ -45,7 +45,7 @@ const inferredByContext = new WeakMap<object, Map<string, StepsCelSchema | null>
  */
 export function inferredStepsCelSchema(
   stepsSchema: Record<string, any>,
-  env: Environment,
+  env: CelEnvironment,
   scopeSignature: string,
 ): StepsCelSchema | undefined {
   let bySignature = inferredByContext.get(stepsSchema);
@@ -72,8 +72,8 @@ export function inferredStepsCelSchema(
       // An expression the probe cannot type (a module call, a name only the full
       // scope binds) keeps its result `dyn`; the full check of that expression
       // reports whatever is wrong with it.
-      const checked = probe.check(source) as { valid: boolean; type?: string };
-      if (checked.valid && checked.type && RECORDED_TYPES.has(checked.type)) type = checked.type;
+      const checked = probe.check(source);
+      if (checked.valid && RECORDED_TYPES.has(checked.typeName)) type = checked.typeName;
     }
     schema[name] = { result: type };
   }
@@ -81,16 +81,16 @@ export function inferredStepsCelSchema(
   return schema;
 }
 
-const STEPS_TYPE = "TeloSteps";
-
 /**
- * Register `steps` as a closed type carrying each step's result type, keeping
+ * Register `steps` as a closed record carrying each step's result type, keeping
  * the map reads a manifest writes over it: `'<step>' in steps` asks whether a
- * step ran (a branch that may not have), and a typed object answers it only
- * through a declared `in` overload.
+ * step ran (a branch that may not have), which the standard library's
+ * `K in map<K, V>` answers for a record, since a record is a map with named
+ * keys. No named type and no operator of its own — the shape IS the
+ * declaration.
  */
-export function registerTypedSteps(env: Environment, schema: StepsCelSchema): void {
-  env.registerType(STEPS_TYPE, { schema } as any);
-  env.registerVariable("steps", STEPS_TYPE);
-  env.registerOperator(`string in ${STEPS_TYPE}`, (key: string, steps: object) => key in steps);
+export function registerTypedSteps(env: CelEnvironment, schema: StepsCelSchema): void {
+  const fields: Record<string, { fields: Record<string, string> }> = {};
+  for (const [name, step] of Object.entries(schema)) fields[name] = { fields: step };
+  env.registerVariable("steps", { fields });
 }

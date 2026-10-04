@@ -15,5 +15,7 @@ metadata:
 source: ./__fixtures__/import-value-flow/rejects-resources-input.yaml
 expect:
   errors:
-    - code: CEL_TYPE_ERROR
-      message: "No such key: Foo"
+    # The engine decides the verdict where the cause is known: a name the import does
+    # not declare is an unknown FIELD of `resources`, not a type error about a key.
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.Foo' is not defined (available: Data)"

@@ -9,7 +9,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+              "message": "the expression ends before it is complete"
             }
           ],
           "calls": [],
@@ -22,7 +22,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+          "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
     },
@@ -35,7 +35,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "Unterminated string\n\n>    1 | 'abc\n         ^"
+              "message": "unterminated string"
             }
           ],
           "calls": [],
@@ -48,7 +48,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unterminated string\n\n>    1 | 'abc\n         ^"
+          "message": "\"'abc\" could not be read: unterminated string"
         }
       }
     },
@@ -61,7 +61,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+              "message": "the hole opened at offset 14 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
             }
           ],
           "calls": [],
@@ -69,7 +69,7 @@
         },
         "error": {
           "code": null,
-          "message": "!interpolate: the hole opened at offset 14 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+          "message": "!interpolate: the hole opened at offset 14 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
     },
@@ -82,7 +82,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+              "message": "the hole opened at offset 31 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
             }
           ],
           "calls": [],
@@ -90,7 +90,7 @@
         },
         "error": {
           "code": null,
-          "message": "!sql: the hole opened at offset 31 never closes — a hole ends at the first '}}' outside a string literal and outside any braces it opened"
+          "message": "!sql: the hole opened at offset 31 never closes \u2014 a hole ends at the first '}}' outside a string literal and outside any braces it opened"
         }
       }
     },
@@ -103,7 +103,7 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+              "message": "the expression ends before it is complete"
             }
           ],
           "calls": [],
@@ -116,7 +116,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+          "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
     },
@@ -129,11 +129,11 @@
           "diagnostics": [
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+              "message": "the expression ends before it is complete"
             },
             {
               "code": "CEL_SYNTAX_ERROR",
-              "message": "Unexpected token: RPAREN\n\n>    1 | )\n         ^"
+              "message": "\")\" cannot stand here"
             }
           ],
           "calls": [],
@@ -150,7 +150,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unexpected token: EOF\n\n>    1 | 1 +\n            ^"
+          "message": "\"1 +\" could not be read: the expression ends before it is complete"
         }
       }
     },
@@ -163,7 +163,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -179,7 +179,7 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: int + string\n\n>    1 | 1 + 'a'\n         ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -192,7 +192,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'lower(int)'"
+              "message": "no overload of \"lower\" takes lower(int): lower(string): string"
             }
           ],
           "calls": [
@@ -201,9 +201,7 @@
               "form": "global",
               "arity": 1,
               "start": 0,
-              "end": 8,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 8
             }
           ],
           "readTypes": [],
@@ -218,7 +216,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'lower(int)'\n\n>    1 | lower(1)\n         ^"
+          "message": "no overload of \"lower\" takes (int)"
         }
       }
     },
@@ -231,7 +229,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'lower(string, string)' Registered: lower(string): string."
+              "message": "no overload of \"lower\" takes lower(string, string): lower(string): string"
             }
           ],
           "calls": [
@@ -240,9 +238,7 @@
               "form": "global",
               "arity": 2,
               "start": 0,
-              "end": 15,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 15
             }
           ],
           "readTypes": [],
@@ -257,7 +253,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'lower(string, string)'\n\n>    1 | lower('a', 'b')\n         ^"
+          "message": "no overload of \"lower\" takes (string, string)"
         }
       }
     },
@@ -279,7 +275,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: dyn in int (`dyn` is a value with no static type here — declare `outputType:` on the resource producing it, or convert at the call site.)"
+              "message": "no \"in\" is declared over dyn, int"
             }
           ],
           "calls": [],
@@ -299,7 +295,7 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: dyn in int\n\n>    1 | x in 1\n         ^"
+          "message": "no overload of \"in\" takes (int, int)"
         }
       }
     },
@@ -317,8 +313,11 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'dyn.now()' Registered: now(): google.protobuf.Timestamp. (`dyn` is a value with no static type here — declare `outputType:` on the resource producing it, or convert at the call site.)"
+              "code": "CEL_WRONG_CALL_FORM",
+              "message": "\"now\" is called without a receiver: now(): google.protobuf.Timestamp",
+              "fix": {
+                "replacement": "now(x)"
+              }
             }
           ],
           "calls": [
@@ -327,9 +326,7 @@
               "form": "receiver",
               "arity": 0,
               "start": 0,
-              "end": 7,
-              "deterministic": false,
-              "hostBacked": false
+              "end": 7
             }
           ],
           "readTypes": [
@@ -348,7 +345,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.now()'\n\n>    1 | x.now()\n         ^"
+          "message": "no overload of \"now\" takes (int)"
         }
       }
     },
@@ -372,7 +369,11 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: Telo.TcpPort + string"
+              "message": "no \"+\" is declared over Telo.TcpPort, string"
+            },
+            {
+              "code": "CEL_TYPE_ERROR",
+              "message": "no \"+\" is declared over dyn, Telo.HostPath"
             }
           ],
           "calls": [],
@@ -394,7 +395,7 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: dyn<int> + string\n\n>    1 | port + '/tcp' + dir\n         ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -425,7 +426,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -447,20 +448,20 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: dyn<int> + dyn<string>\n\n>    1 | a + b + xs[0]\n         ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
     {
       "id": "verdicts/CEL_TYPE_ERROR/highlight_second_line",
       "tag": "cel",
-      "source": "'😀' ==\n  1 + 'a'",
+      "source": "'\ud83d\ude00' ==\n  1 + 'a'",
       "expect": {
         "check": {
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -476,20 +477,20 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: int + string\n\n>    2 |   1 + 'a'\n           ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
     {
       "id": "verdicts/CEL_TYPE_ERROR/highlight_utf16_column",
       "tag": "cel",
-      "source": "['😀😀', 1 + 'a']",
+      "source": "['\ud83d\ude00\ud83d\ude00', 1 + 'a']",
       "expect": {
         "check": {
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -505,7 +506,7 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: int + string\n\n>    1 | ['😀😀', 1 + 'a']\n                  ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -532,8 +533,8 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_TYPE_ERROR",
-              "message": "No such key: prt"
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"prt\" is not declared here (declared: port)"
             }
           ],
           "calls": [],
@@ -551,7 +552,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+          "message": "no such key: \"prt\""
         }
       }
     },
@@ -583,7 +584,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "Unknown type: NoSuchType"
+              "message": "Billing.untyped is declared over the type \"NoSuchType\", and no type is registered under that name"
             }
           ],
           "calls": [
@@ -640,7 +641,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'fff' — nothing by that name is in scope here."
+              "message": "unknown identifier 'fff' \u2014 nothing by that name is in scope here."
             }
           ],
           "type": "dyn",
@@ -658,7 +659,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: fff\n\n>    1 | fff\n         ^"
+          "message": "no such variable: fff"
         }
       }
     },
@@ -684,7 +685,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: fff\n\n>    1 | fff\n         ^"
+          "message": "no such variable: fff"
         }
       }
     },
@@ -707,7 +708,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
             }
           ],
           "type": "int",
@@ -726,7 +727,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: missing\n\n>    1 | known + missing\n                 ^"
+          "message": "no such variable: missing"
         }
       }
     },
@@ -740,11 +741,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'other' — nothing by that name is in scope here."
+              "message": "unknown identifier 'other' \u2014 nothing by that name is in scope here."
             }
           ],
           "type": "dyn",
@@ -763,7 +764,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: missing\n\n>    1 | missing.a + missing.b + other\n         ^"
+          "message": "no such variable: missing.a"
         }
       }
     },
@@ -776,15 +777,7 @@
         "check": {
           "diagnostics": [],
           "type": "bool",
-          "calls": [
-            {
-              "name": "all",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 17
-            }
-          ],
+          "calls": [],
           "regions": [
             {
               "start": 0,
@@ -810,19 +803,19 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `bar`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"bar\" is registered \u2014 the closest written on a value with 1 argument: at, or, join, split, getDate"
             },
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `query`. Every method taking 1 argument: at, contains, endsWith, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, indexOf, join, joinPath, lastIndexOf, matches, of, or, orValue, split, startsWith, substring. Full list: `telo cel functions`."
+              "message": "no function named \"query\" is registered \u2014 the closest written on a value with 1 argument: or, at, join, split, indexOf"
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'Foo' — nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names — an 'imports:' alias, 'Self', or the module's own metadata.name."
+              "message": "unknown identifier 'Foo' \u2014 nothing by that name is in scope here. To call a function another module declares, 'Foo' must be one of this module's names \u2014 an 'imports:' alias, 'Self', or the module's own metadata.name."
             },
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'dbb' — nothing by that name is in scope here."
+              "message": "unknown identifier 'dbb' \u2014 nothing by that name is in scope here."
             }
           ],
           "calls": [
@@ -858,7 +851,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'dyn.bar(int)'\n\n>    1 | Foo.bar(1) + dbb.query(Foo.baz)\n         ^"
+          "message": "no such variable: Foo"
         }
       }
     },
@@ -891,7 +884,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_IDENTIFIER",
-              "message": "unknown identifier 'missing' — nothing by that name is in scope here."
+              "message": "unknown identifier 'missing' \u2014 nothing by that name is in scope here."
             }
           ],
           "type": "int",
@@ -903,7 +896,6 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "missing"
                   ]
@@ -929,7 +921,7 @@
         "dispatched": [],
         "error": {
           "code": null,
-          "message": "Unknown variable: missing\n\n>    1 | Billing.total(missing)\n                       ^"
+          "message": "no such variable: missing"
         }
       }
     },
@@ -1058,7 +1050,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: nme\n\n>    1 | request.query.nme\n                       ^"
+          "message": "no such key: \"nme\""
         }
       }
     },
@@ -1187,7 +1179,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: reqest\n\n>    1 | reqest.query\n         ^"
+          "message": "no such variable: reqest.query"
         }
       }
     },
@@ -1316,7 +1308,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: amont\n\n>    1 | request.items[0].amont\n                          ^"
+          "message": "no such key: \"amont\""
         }
       }
     },
@@ -1445,7 +1437,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: lbel\n\n>    1 | request.tags['a'].lbel\n                           ^"
+          "message": "no such key: \"lbel\""
         }
       }
     },
@@ -1569,7 +1561,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: accept\n\n>    1 | request.headers.accept\n                         ^"
+          "message": "no such key: \"accept\""
         }
       }
     },
@@ -1615,7 +1607,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: nme\n\n>    1 | request.query.nme\n                       ^"
+          "message": "no such key: \"nme\""
         }
       }
     },
@@ -1706,7 +1698,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'body' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "message": "'body' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
             }
           ],
           "type": "dyn",
@@ -1724,7 +1716,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: body\n\n>    1 | body.text\n         ^"
+          "message": "no such variable: body.text"
         }
       }
     },
@@ -1861,7 +1853,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'feed' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
+              "message": "'feed' yields a stream \u2014 pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)"
             }
           ],
           "type": "dyn",
@@ -1879,7 +1871,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: feed\n\n>    1 | feed.text\n         ^"
+          "message": "no such variable: feed.text"
         }
       }
     },
@@ -2029,7 +2021,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: x\n\n>    1 | port.x\n              ^"
+          "message": "this value holds no members"
         }
       }
     },
@@ -2179,7 +2171,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: first\n\n>    1 | name.first\n              ^"
+          "message": "this value holds no members"
         }
       }
     },
@@ -2486,7 +2478,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: b\n\n>    1 | closed.b\n                ^"
+          "message": "no such key: \"b\""
         }
       }
     },
@@ -2541,7 +2533,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: zzz\n\n>    1 | labels['other'].zzz\n                         ^"
+          "message": "no such key: \"zzz\""
         }
       }
     },
@@ -2691,7 +2683,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: b\n\n>    1 | pair[0].b\n                 ^"
+          "message": "no such key: \"b\""
         }
       }
     },
@@ -2755,7 +2747,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: zzz\n\n>    1 | tuple[0].zzz\n                  ^"
+          "message": "no such key: \"zzz\""
         }
       }
     },
@@ -2910,7 +2902,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: zzz\n\n>    1 | rows[0].zzz\n                 ^"
+          "message": "no such key: \"zzz\""
         }
       }
     },
@@ -3061,7 +3053,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: zzz\n\n>    1 | either.zzz == linked.zzz\n                ^"
+          "message": "no such key: \"zzz\""
         }
       }
     },
@@ -3194,7 +3186,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: nme\n\n>    1 | request.query.nme + request.qery.name\n                       ^"
+          "message": "no such key: \"nme\""
         }
       }
     },
@@ -3235,7 +3227,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'variables.prt' is not defined (available: port)"
+              "message": "\"prt\" is not declared here (declared: port)"
             }
           ],
           "calls": [],
@@ -3253,7 +3245,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+          "message": "no such key: \"prt\""
         }
       }
     },
@@ -3307,6 +3299,10 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"prt\" is not declared here (declared: port)"
+            },
+            {
+              "code": "CEL_UNKNOWN_FIELD",
               "message": "'variables.prt' is not defined (available: port)"
             }
           ],
@@ -3325,7 +3321,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+          "message": "no such key: \"prt\""
         }
       }
     },
@@ -3372,7 +3368,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: prt\n\n>    1 | variables.prt + 1\n                   ^"
+          "message": "no such key: \"prt\""
         }
       }
     },
@@ -3413,7 +3409,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -3435,7 +3431,7 @@
         },
         "error": {
           "code": null,
-          "message": "Unknown variable: other\n\n>    1 | other.x + variables.port + 'a'\n         ^"
+          "message": "no such variable: other.x"
         }
       }
     },
@@ -3475,8 +3471,12 @@
         "check": {
           "diagnostics": [
             {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "\"prt\" is not declared here (declared: port)"
+            },
+            {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `lowr`. Every function taking 1 argument: abs, avg, base64Decode, base64Encode, bool, bytes, bytesFromBase64, bytesToBase64, ceil, coalesce, compact, dateIn, distinct, double, duration, dyn, enumerate, flatten, floor, has, int, isoIn, json, keys, lower, max, md5, min, nowIso, parseJson, range, reverse, round, sha1, sha256, sha512, size, sort, startOfMonth, string, sum, timestamp, today, trim, type, uint, upper, urlDecode, urlEncode, uuidValidate, uuidVersion, values. Full list: `telo cel functions`."
+              "message": "no function named \"lowr\" is registered \u2014 the closest taking 1 argument: lower, floor, bool, sort, abs"
             }
           ],
           "calls": [
@@ -3502,7 +3502,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'lowr(dyn)'\n\n>    1 | lowr(variables.prt)\n         ^"
+          "message": "no such key: \"prt\""
         }
       }
     },
@@ -3560,11 +3560,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'Billing.invoice(…).lines.[*].qy' is not defined (available: qty)"
+              "message": "'Billing.invoice(\u2026).lines.[*].qy' is not defined (available: qty)"
             },
             {
               "code": "CEL_UNKNOWN_FIELD",
-              "message": "'Billing.invoice(…).amont' is not defined (available: amount, lines)"
+              "message": "'Billing.invoice(\u2026).amont' is not defined (available: amount, lines)"
             }
           ],
           "type": "dyn",
@@ -3622,7 +3622,7 @@
         ],
         "error": {
           "code": null,
-          "message": "No such key: qy\n\n>    1 | Billing.invoice(1).lines[0].qy + Billing.invoice(2).amont\n                                     ^"
+          "message": "no such key: \"qy\""
         }
       }
     },
@@ -3635,10 +3635,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
-              "fix": {
-                "replacement": "upper('a')"
-              }
+              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
             }
           ],
           "calls": [
@@ -3662,7 +3659,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | uppe('a')\n         ^"
+          "message": "no overload of \"uppe\" takes (string)"
         }
       }
     },
@@ -3675,7 +3672,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `no`. Closest taking 0 arguments: `now`, `nowIso`, `nowMillis`, `nowSeconds`. Full list: `telo cel functions`."
+              "message": "no function named \"no\" is registered \u2014 the closest taking no arguments: now, nowIso, today, uuidv1, uuidv4"
             }
           ],
           "calls": [
@@ -3699,7 +3696,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'no()'\n\n>    1 | no()\n         ^"
+          "message": "no overload of \"no\" takes ()"
         }
       }
     },
@@ -3712,7 +3709,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `frobnicate`. Every function taking 0 arguments: now, nowIso, nowMillis, nowSeconds, today, uuidv1, uuidv4, uuidv6, uuidv7. Full list: `telo cel functions`."
+              "message": "no function named \"frobnicate\" is registered \u2014 the closest taking no arguments: nowMillis, today, now, nowIso, nowSeconds"
             }
           ],
           "calls": [
@@ -3736,7 +3733,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'frobnicate()'\n\n>    1 | frobnicate()\n         ^"
+          "message": "no overload of \"frobnicate\" takes ()"
         }
       }
     },
@@ -3749,10 +3746,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `endsWit`. Closest taking 1 argument: `endsWith`. Full list: `telo cel functions`.",
-              "fix": {
-                "replacement": "'endsWit'.endsWith('t')"
-              }
+              "message": "no function named \"endsWit\" is registered \u2014 the closest written on a value with 1 argument: endsWith, indexOf, split, at, join"
             }
           ],
           "calls": [
@@ -3776,7 +3770,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.endsWit(string)'\n\n>    1 | 'endsWit'.endsWit('t')\n         ^"
+          "message": "no overload of \"endsWit\" takes (string, string)"
         }
       }
     },
@@ -3789,7 +3783,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no method `frobnicate`. Every method taking 0 arguments: base64, getDate, getDayOfMonth, getDayOfWeek, getDayOfYear, getFullYear, getHours, getMilliseconds, getMinutes, getMonth, getSeconds, hasValue, hex, join, json, lowerAscii, none, size, string, trim, upperAscii, value. Full list: `telo cel functions`."
+              "message": "no function named \"frobnicate\" is registered \u2014 the closest written on a value with no arguments: getDate, getMinutes, join, json, size"
             }
           ],
           "calls": [
@@ -3813,7 +3807,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.frobnicate()'\n\n>    1 | 'a'.frobnicate()\n         ^"
+          "message": "no overload of \"frobnicate\" takes (string)"
         }
       }
     },
@@ -3826,17 +3820,11 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
-              "fix": {
-                "replacement": "upper('a') + lowe('b')"
-              }
+              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
             },
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `lowe`. Closest taking 1 argument: `lower`. Full list: `telo cel functions`.",
-              "fix": {
-                "replacement": "uppe('a') + lower('b')"
-              }
+              "message": "no function named \"lowe\" is registered \u2014 the closest taking 1 argument: lower, bool, floor, size, sort"
             }
           ],
           "calls": [
@@ -3867,7 +3855,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | uppe('a') + lowe('b')\n         ^"
+          "message": "no overload of \"uppe\" takes (string)"
         }
       }
     },
@@ -3896,10 +3884,7 @@
           "diagnostics": [
             {
               "code": "CEL_UNKNOWN_FUNCTION",
-              "message": "there is no function `uppe`. Closest taking 1 argument: `upper`. Full list: `telo cel functions`.",
-              "fix": {
-                "replacement": "Billing.format(2) + upper('a')"
-              }
+              "message": "no function named \"uppe\" is registered \u2014 the closest taking 1 argument: upper, type, size, uint, abs"
             }
           ],
           "calls": [
@@ -3936,10 +3921,20 @@
           "refs": [],
           "volatile": false
         },
-        "dispatched": [],
+        "dispatched": [
+          {
+            "name": "Billing.format",
+            "arguments": [
+              {
+                "$telo": "int",
+                "value": "2"
+              }
+            ]
+          }
+        ],
         "error": {
           "code": null,
-          "message": "found no matching overload for 'uppe(string)'\n\n>    1 | Billing.format(2) + uppe('a')\n                             ^"
+          "message": "no overload of \"uppe\" takes (string)"
         }
       }
     },
@@ -3952,9 +3947,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('A')\n  not:    'A'.lower()\nRegistered: lower(string): string.",
+              "message": "\"lower\" is called without a receiver: lower(string): string",
               "fix": {
-                "replacement": "lower('A')"
+                "replacement": "lower(\"A\")"
               }
             }
           ],
@@ -3964,9 +3959,7 @@
               "form": "receiver",
               "arity": 0,
               "start": 0,
-              "end": 11,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 11
             }
           ],
           "readTypes": [],
@@ -3981,7 +3974,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 'A'.lower()\n         ^"
+          "message": "no overload of \"lower\" takes (string)"
         }
       }
     },
@@ -3994,9 +3987,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`replace` is a global function, not a method — pass the value to it:\n  write:  replace('a-b', '-', '+')\n  not:    'a-b'.replace('-', '+')\nRegistered: replace(string, string, string): string.",
+              "message": "\"replace\" is called without a receiver: replace(string, string, string): string",
               "fix": {
-                "replacement": "replace('a-b', '-', '+')"
+                "replacement": "replace(\"a-b\", \"-\", \"+\")"
               }
             }
           ],
@@ -4006,9 +3999,7 @@
               "form": "receiver",
               "arity": 2,
               "start": 0,
-              "end": 23,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 23
             }
           ],
           "readTypes": [],
@@ -4023,7 +4014,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.replace(string, string)'\n\n>    1 | 'a-b'.replace('-', '+')\n         ^"
+          "message": "no overload of \"replace\" takes (string, string, string)"
         }
       }
     },
@@ -4039,9 +4030,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  key.startsWith('x')\n  not:    startsWith(key, 'x')\nRegistered: string.startsWith(string): bool.",
+              "message": "\"startsWith\" is called on a value: string.startsWith(string): bool",
               "fix": {
-                "replacement": "key.startsWith('x')"
+                "replacement": "key.startsWith(\"x\")"
               }
             }
           ],
@@ -4070,7 +4061,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'startsWith(dyn, string)'\n\n>    1 | startsWith(key, 'x')\n         ^"
+          "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
     },
@@ -4087,9 +4078,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  (a + b).startsWith('x')\n  not:    startsWith(a + b, 'x')\nRegistered: string.startsWith(string): bool.",
+              "message": "\"startsWith\" is called on a value: string.startsWith(string): bool",
               "fix": {
-                "replacement": "(a + b).startsWith('x')"
+                "replacement": "(a + b).startsWith(\"x\")"
               }
             }
           ],
@@ -4119,7 +4110,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'startsWith(dyn, string)'\n\n>    1 | startsWith(a + b, 'x')\n         ^"
+          "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
     },
@@ -4132,9 +4123,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`startsWith` is a method, not a global function — call it on the value:\n  write:  ('abc').startsWith('a')\n  not:    startsWith('abc', 'a')\nRegistered: string.startsWith(string): bool.",
+              "message": "\"startsWith\" is called on a value: string.startsWith(string): bool",
               "fix": {
-                "replacement": "('abc').startsWith('a')"
+                "replacement": "\"abc\".startsWith(\"a\")"
               }
             }
           ],
@@ -4159,7 +4150,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'startsWith(string, string)'\n\n>    1 | startsWith('abc', 'a')\n         ^"
+          "message": "no overload of \"startsWith\" takes (string, string)"
         }
       }
     },
@@ -4172,9 +4163,9 @@
           "diagnostics": [
             {
               "code": "CEL_WRONG_CALL_FORM",
-              "message": "`lower` is a global function, not a method — pass the value to it:\n  write:  lower('a')\n  not:    'a'.lower()\nRegistered: lower(string): string.",
+              "message": "\"lower\" is called without a receiver: lower(string): string",
               "fix": {
-                "replacement": "1 + size(lower('a'))"
+                "replacement": "1 + size(lower(\"a\"))"
               }
             }
           ],
@@ -4184,16 +4175,16 @@
               "form": "global",
               "arity": 1,
               "start": 4,
-              "end": 21
+              "end": 21,
+              "deterministic": true,
+              "hostBacked": false
             },
             {
               "name": "lower",
               "form": "receiver",
               "arity": 0,
               "start": 9,
-              "end": 20,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 20
             }
           ],
           "readTypes": [],
@@ -4208,7 +4199,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'string.lower()'\n\n>    1 | 1 + size('a'.lower())\n                  ^"
+          "message": "no overload of \"lower\" takes (string)"
         }
       }
     },
@@ -4308,7 +4299,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "dyn",
@@ -4423,7 +4414,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'codes' may be null — guard it (e.g. 'codes != null && …' or 'codes == null ? … : codes[index]') before accessing '[index]'"
+              "message": "'codes' may be null \u2014 guard it (e.g. 'codes != null && \u2026' or 'codes == null ? \u2026 : codes[index]') before accessing '[index]'"
             }
           ],
           "type": "dyn",
@@ -4575,7 +4566,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'gone' may be null — guard it (e.g. 'gone != null && …' or 'gone == null ? … : gone.x') before accessing '.x'"
+              "message": "'gone' may be null \u2014 guard it (e.g. 'gone != null && \u2026' or 'gone == null ? \u2026 : gone.x') before accessing '.x'"
             }
           ],
           "type": "dyn",
@@ -4593,7 +4584,7 @@
         },
         "error": {
           "code": null,
-          "message": "No such key: x\n\n>    1 | gone.x\n              ^"
+          "message": "this value holds no members"
         }
       }
     },
@@ -4735,14 +4726,18 @@
               "form": "receiver",
               "arity": 0,
               "start": 0,
-              "end": 12
+              "end": 12,
+              "deterministic": true,
+              "hostBacked": false
             },
             {
               "name": "size",
               "form": "global",
               "arity": 1,
               "start": 15,
-              "end": 26
+              "end": 26,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6145,7 +6140,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "bool",
@@ -6260,7 +6255,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "bool",
@@ -6375,7 +6370,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "dyn",
@@ -6490,7 +6485,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "bool",
@@ -6606,7 +6601,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "bool",
@@ -6740,7 +6735,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "dyn",
@@ -6750,7 +6745,9 @@
               "form": "global",
               "arity": 1,
               "start": 14,
-              "end": 30
+              "end": 30,
+              "deterministic": true,
+              "hostBacked": false
             }
           ],
           "regions": [
@@ -6760,6 +6757,7 @@
             }
           ],
           "refs": [
+            "error",
             "request"
           ],
           "volatile": false
@@ -6881,19 +6879,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "bool",
-          "calls": [
-            {
-              "name": "all",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 40
-            }
-          ],
+          "calls": [],
           "regions": [
             {
               "start": 0,
@@ -7024,7 +7014,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "type": "int",
@@ -7036,7 +7026,6 @@
               "arity": 1,
               "arguments": [
                 {
-                  "type": "dyn",
                   "chain": [
                     "error",
                     "code"
@@ -7310,11 +7299,11 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'note' may be null, and a null has no text — guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
+              "message": "'note' may be null, and a null has no text \u2014 guard it in the hole (e.g. '${{ note != null ? note : \"\" }}')."
             },
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'codes' may be null, and a null has no text — guard it in the hole (e.g. '${{ codes != null ? codes : \"\" }}')."
+              "message": "'codes' may be null, and a null has no text \u2014 guard it in the hole (e.g. '${{ codes != null ? codes : \"\" }}')."
             }
           ],
           "calls": [],
@@ -7545,7 +7534,7 @@
           "diagnostics": [
             {
               "code": "CEL_NULLABLE_ACCESS",
-              "message": "'error' may be null — guard it (e.g. 'error != null && …' or 'error == null ? … : error.code') before accessing '.code'"
+              "message": "'error' may be null \u2014 guard it (e.g. 'error != null && \u2026' or 'error == null ? \u2026 : error.code') before accessing '.code'"
             }
           ],
           "calls": [],
@@ -7575,7 +7564,6 @@
               "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format(1.5, '.2q')`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "format",
@@ -7587,6 +7575,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -7614,7 +7603,6 @@
               "message": "round: decimal places must be an integer 0-10, got -1 (in `round(1.5, -1)`)"
             }
           ],
-          "type": "double",
           "calls": [
             {
               "name": "round",
@@ -7626,6 +7614,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -7649,12 +7638,8 @@
         "check": {
           "diagnostics": [
             {
-              "code": "CEL_INVALID_ARGUMENT",
-              "message": "format: unknown format type 'q' (one of efgrs%pbodxXcn) (in `format('x', '.2q')`)"
-            },
-            {
               "code": "CEL_TYPE_ERROR",
-              "message": "found no matching overload for 'format(string, string)'"
+              "message": "no overload of \"format\" takes format(string, string): format(double, string): string, format(int, string): string"
             }
           ],
           "calls": [
@@ -7663,9 +7648,7 @@
               "form": "global",
               "arity": 2,
               "start": 0,
-              "end": 18,
-              "deterministic": true,
-              "hostBacked": false
+              "end": 18
             }
           ],
           "readTypes": [],
@@ -7680,7 +7663,7 @@
         },
         "error": {
           "code": null,
-          "message": "found no matching overload for 'format(string, string)'\n\n>    1 | format('x', '.2q')\n         ^"
+          "message": "no overload of \"format\" takes (string, string)"
         }
       }
     },
@@ -7700,7 +7683,6 @@
               "message": "fixed: decimal places must be an integer 0-10, got 12 (in `fixed(2.0, 12)`)"
             }
           ],
-          "type": "string",
           "calls": [
             {
               "name": "fixed",
@@ -7721,6 +7703,7 @@
               "hostBacked": false
             }
           ],
+          "readTypes": [],
           "regions": [
             {
               "start": 0,
@@ -7792,19 +7775,11 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Billing' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Billing.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Billing' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Billing.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "list<int>",
-          "calls": [
-            {
-              "name": "map",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 29
-            }
-          ],
+          "calls": [],
           "regions": [
             {
               "start": 0,
@@ -7840,7 +7815,7 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Self' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Self.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Self' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Self.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "int",
@@ -7878,37 +7853,15 @@
           "diagnostics": [
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Shop' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Shop.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Shop' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Shop.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
             },
             {
               "code": "BINDING_NAME_RESERVED",
-              "message": "'Telo' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Telo.f(…)' resolves to that module and this binding could never be read. Rename the bound variable."
+              "message": "'Telo' names a module here (an imports: alias, Self, or this module's own name), so a call written 'Telo.f(\u2026)' resolves to that module and this binding could never be read. Rename the bound variable."
             }
           ],
           "type": "bool",
-          "calls": [
-            {
-              "name": "exists",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 26
-            },
-            {
-              "name": "all",
-              "form": "receiver",
-              "arity": 2,
-              "start": 30,
-              "end": 53
-            },
-            {
-              "name": "all",
-              "form": "receiver",
-              "arity": 2,
-              "start": 57,
-              "end": 80
-            }
-          ],
+          "calls": [],
           "regions": [
             {
               "start": 0,
@@ -7930,15 +7883,7 @@
         "check": {
           "diagnostics": [],
           "type": "list<int>",
-          "calls": [
-            {
-              "name": "map",
-              "form": "receiver",
-              "arity": 2,
-              "start": 0,
-              "end": 29
-            }
-          ],
+          "calls": [],
           "regions": [
             {
               "start": 0,
@@ -8049,7 +7994,7 @@
           "diagnostics": [
             {
               "code": "CEL_TYPE_ERROR",
-              "message": "no such overload: int + string"
+              "message": "no \"+\" is declared over int, string"
             }
           ],
           "calls": [],
@@ -8064,7 +8009,7 @@
         },
         "error": {
           "code": null,
-          "message": "no such overload: int + string\n\n>    1 | [1 + 'a']\n          ^"
+          "message": "no overload of \"+\" takes (int, string)"
         }
       }
     },
@@ -8203,7 +8148,7 @@
     {
       "id": "verdicts/ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE/source_written_as_json",
       "tag": "interpolate",
-      "source": "é\t\u001f /😀${{ x }}\b\f\r",
+      "source": "\u00e9\t\u001f\u007f\u2028/\ud83d\ude00${{ x }}\b\f\r",
       "bindings": {
         "x": null
       },
@@ -8224,7 +8169,7 @@
         },
         "error": {
           "code": "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
-          "message": "the hole '${{ x }}' at offset 8 of !interpolate \"é\\t\\u001f /😀${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
+          "message": "the hole '${{ x }}' at offset 8 of !interpolate \"\u00e9\\t\\u001f\u007f\u2028/\ud83d\ude00${{ x }}\\b\\f\\r\" evaluated to null, which CEL's string() cannot convert to text. Declare outputType on the resource producing it so the check sees its type, or guard it inside the hole."
         }
       }
     },

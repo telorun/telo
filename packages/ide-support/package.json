@@ -9,7 +9,7 @@
     "diagnostics",
     "yaml"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -44,6 +44,7 @@
   },
   "dependencies": {
     "@telorun/analyzer": "workspace:*",
+    "@telorun/cel": "workspace:*",
     "@telorun/templating": "workspace:*",
     "yaml": "^2.8.3"
   },

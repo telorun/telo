@@ -78,19 +78,42 @@ export interface CelCallContext {
   readonly range?: SourceRange;
 }
 
-export type CelImplementation = (args: readonly CelValue[], ctx: CelCallContext) => CelValue;
+/**
+ * What an implementation IS: its call context, then its arguments **positionally**.
+ *
+ * The dispatch key fixes each overload's arity, so there is never a count to carry and
+ * never an array to build — a call's cost is the call. `CALL_SITE_DIRECT_ARITY` is the
+ * bound, and it is the widest arity any registration declares; a trailing argument an
+ * overload does not take is `undefined`, which no CEL value ever is, so an absent one is
+ * unambiguous. In a port the same contract is a context plus a slice.
+ */
+export type CelImplementation = (
+  ctx: CelCallContext,
+  a?: CelValue,
+  b?: CelValue,
+  c?: CelValue,
+  d?: CelValue,
+) => CelValue;
+
+/** The widest arity a registration declares, and so the number of direct parameters. */
+export const CALL_SITE_DIRECT_ARITY = 4;
 
 // --- reading arguments the dispatcher has already typed ---------------------
 
-const text = (value: CelValue): string => value as string;
-const integer = (value: CelValue): bigint => value as bigint;
-const unsigned = (value: CelValue): bigint => (value as { value: bigint }).value;
-const double = (value: CelValue): number => value as number;
-const bytes = (value: CelValue): Uint8Array => value as Uint8Array;
-const list = (value: CelValue): readonly CelValue[] => value as readonly CelValue[];
-const instant = (value: CelValue): CelTimestamp => value as CelTimestamp;
-const span = (value: CelValue): CelDuration => value as CelDuration;
-const optional = (value: CelValue): CelOptional => value as CelOptional;
+// Each takes `CelValue | undefined` because a parameter list is as wide as the widest
+// overload; the dispatcher has already resolved on this argument's type, so the cast is
+// what reading it means.
+const text = (value: CelValue | undefined): string => value as string;
+const integer = (value: CelValue | undefined): bigint => value as bigint;
+const unsigned = (value: CelValue | undefined): bigint => (value as { value: bigint }).value;
+const double = (value: CelValue | undefined): number => value as number;
+const bytes = (value: CelValue | undefined): Uint8Array => value as Uint8Array;
+const list = (value: CelValue | undefined): readonly CelValue[] => value as readonly CelValue[];
+const instant = (value: CelValue | undefined): CelTimestamp => value as CelTimestamp;
+const span = (value: CelValue | undefined): CelDuration => value as CelDuration;
+const optional = (value: CelValue | undefined): CelOptional => value as CelOptional;
+/** The argument itself, where what is read of it is that the dispatcher resolved on it. */
+const value = (held: CelValue | undefined): CelValue => held as CelValue;
 
 /** The code points of text — CEL counts and indexes a string by character. */
 const characters = (value: string): string[] => [...value];
@@ -250,122 +273,123 @@ function splitText(value: string, separator: string, limit?: bigint): CelValue {
 // --- the table -------------------------------------------------------------
 
 function timestampGetter(field: TimestampField): CelImplementation {
-  return (args, ctx) =>
-    timestampField(instant(args[0]!), field, args.length > 1 ? text(args[1]!) : undefined, ctx.range);
+  // One implementation under both arities: the zone is absent where the call omits it, and
+  // no CEL value is `undefined`, so the absence is the argument's own answer.
+  return (ctx, a, b) => timestampField(instant(a), field, b === undefined ? undefined : text(b), ctx.range);
 }
 
 function durationGetter(field: DurationField): CelImplementation {
-  return (args) => durationField(span(args[0]!), field);
+  return (ctx, a) => durationField(span(a), field);
 }
 
 const IMPLEMENTATIONS = new Map<string, CelImplementation>([
   // conversions
-  ["bool(bool)", (args) => args[0]!],
+  ["bool(bool)", (ctx, a) => value(a)],
   [
     "bool(string)",
-    (args, ctx) => {
-      const held = BOOL_WORDS[text(args[0]!)];
-      return held === undefined ? conversionError("bool()", JSON.stringify(args[0]), ctx.range) : held;
+    (ctx, a) => {
+      const held = BOOL_WORDS[text(a)];
+      return held === undefined ? conversionError("bool()", JSON.stringify(a), ctx.range) : held;
     },
   ],
-  ["bytes(bytes)", (args) => args[0]!],
-  ["bytes(string)", (args) => textToBytes(text(args[0]!))],
-  ["double(double)", (args) => args[0]!],
-  ["double(int)", (args) => Number(integer(args[0]!))],
-  ["double(uint)", (args) => Number(unsigned(args[0]!))],
-  ["double(string)", (args, ctx) => doubleFromText(text(args[0]!), ctx.range)],
-  ["duration(string)", (args, ctx) => parseDuration(text(args[0]!), ctx.range)],
-  ["duration(google.protobuf.Duration)", (args) => args[0]!],
-  ["dyn(A)", (args) => args[0]!],
-  ["int(int)", (args) => args[0]!],
-  ["int(uint)", (args, ctx) => intResult(unsigned(args[0]!), ctx.range)],
-  ["int(double)", (args, ctx) => intFromDouble(double(args[0]!), ctx.range)],
+  ["bytes(bytes)", (ctx, a) => value(a)],
+  ["bytes(string)", (ctx, a) => textToBytes(text(a))],
+  ["double(double)", (ctx, a) => value(a)],
+  ["double(int)", (ctx, a) => Number(integer(a))],
+  ["double(uint)", (ctx, a) => Number(unsigned(a))],
+  ["double(string)", (ctx, a) => doubleFromText(text(a), ctx.range)],
+  ["duration(string)", (ctx, a) => parseDuration(text(a), ctx.range)],
+  ["duration(google.protobuf.Duration)", (ctx, a) => value(a)],
+  ["dyn(A)", (ctx, a) => value(a)],
+  ["int(int)", (ctx, a) => value(a)],
+  ["int(uint)", (ctx, a) => intResult(unsigned(a), ctx.range)],
+  ["int(double)", (ctx, a) => intFromDouble(double(a), ctx.range)],
   [
     "int(string)",
-    (args, ctx) => {
-      const written = text(args[0]!);
+    (ctx, a) => {
+      const written = text(a);
       if (!DECIMAL_INT.test(written)) return conversionError("int()", JSON.stringify(written), ctx.range);
       return intResult(BigInt(written), ctx.range);
     },
   ],
-  ["int(google.protobuf.Timestamp)", (args) => instant(args[0]!).seconds],
+  ["int(google.protobuf.Timestamp)", (ctx, a) => instant(a).seconds],
   // A duration's whole seconds, truncated toward zero — no row pins it, cel-spec does.
-  ["int(google.protobuf.Duration)", (args) => durationField(span(args[0]!), "getSeconds")],
-  ["matches(string, string)", (args, ctx) => celMatches(text(args[0]!), text(args[1]!), ctx.range)],
-  ["size(string)", (args) => BigInt(characters(text(args[0]!)).length)],
-  ["size(bytes)", (args) => BigInt(bytes(args[0]!).length)],
-  ["size(list<A>)", (args) => BigInt(list(args[0]!).length)],
-  ["size(map<K, V>)", (args) => BigInt(sizeOfMap(args[0]!))],
-  ["string(string)", (args) => args[0]!],
-  ["string(bool)", (args) => String(args[0]!)],
-  ["string(int)", (args) => String(integer(args[0]!))],
-  ["string(uint)", (args) => String(unsigned(args[0]!))],
-  ["string(double)", (args) => doubleText(double(args[0]!))],
-  ["string(bytes)", (args, ctx) => bytesToText(bytes(args[0]!), ctx.range)],
-  ["string(google.protobuf.Timestamp)", (args) => formatTimestamp(instant(args[0]!))],
-  ["string(google.protobuf.Duration)", (args) => formatDuration(span(args[0]!))],
-  ["timestamp(string)", (args, ctx) => parseTimestamp(text(args[0]!), ctx.range)],
-  ["timestamp(int)", (args, ctx) => celTimestamp(integer(args[0]!), 0, ctx.range)],
-  ["timestamp(google.protobuf.Timestamp)", (args) => args[0]!],
-  ["uint(uint)", (args) => args[0]!],
-  ["uint(int)", (args, ctx) => uintResult(integer(args[0]!), ctx.range)],
-  ["uint(double)", (args, ctx) => uintFromDouble(double(args[0]!), ctx.range)],
+  ["int(google.protobuf.Duration)", (ctx, a) => durationField(span(a), "getSeconds")],
+  ["matches(string, string)", (ctx, a, b) => celMatches(text(a), text(b), ctx.range)],
+  ["size(string)", (ctx, a) => BigInt(characters(text(a)).length)],
+  ["size(bytes)", (ctx, a) => BigInt(bytes(a).length)],
+  ["size(list<A>)", (ctx, a) => BigInt(list(a).length)],
+  ["size(map<K, V>)", (ctx, a) => BigInt(sizeOfMap(a))],
+  ["string(string)", (ctx, a) => value(a)],
+  ["string(bool)", (ctx, a) => String(a)],
+  ["string(int)", (ctx, a) => String(integer(a))],
+  ["string(uint)", (ctx, a) => String(unsigned(a))],
+  ["string(double)", (ctx, a) => doubleText(double(a))],
+  ["string(bytes)", (ctx, a) => bytesToText(bytes(a), ctx.range)],
+  ["string(google.protobuf.Timestamp)", (ctx, a) => formatTimestamp(instant(a))],
+  ["string(google.protobuf.Duration)", (ctx, a) => formatDuration(span(a))],
+  ["timestamp(string)", (ctx, a) => parseTimestamp(text(a), ctx.range)],
+  ["timestamp(int)", (ctx, a) => celTimestamp(integer(a), 0, ctx.range)],
+  ["timestamp(google.protobuf.Timestamp)", (ctx, a) => value(a)],
+  ["uint(uint)", (ctx, a) => value(a)],
+  ["uint(int)", (ctx, a) => uintResult(integer(a), ctx.range)],
+  ["uint(double)", (ctx, a) => uintFromDouble(double(a), ctx.range)],
   [
     "uint(string)",
-    (args, ctx) => {
-      const written = text(args[0]!);
+    (ctx, a) => {
+      const written = text(a);
       if (!DECIMAL_UINT.test(written)) return conversionError("uint()", JSON.stringify(written), ctx.range);
       return uintResult(BigInt(written), ctx.range);
     },
   ],
 
   // string members
-  ["string.size()", (args) => BigInt(characters(text(args[0]!)).length)],
-  ["bytes.size()", (args) => BigInt(bytes(args[0]!).length)],
-  ["list<A>.size()", (args) => BigInt(list(args[0]!).length)],
-  ["map<K, V>.size()", (args) => BigInt(sizeOfMap(args[0]!))],
-  ["string.startsWith(string)", (args) => text(args[0]!).startsWith(text(args[1]!))],
-  ["string.endsWith(string)", (args) => text(args[0]!).endsWith(text(args[1]!))],
-  ["string.contains(string)", (args) => text(args[0]!).includes(text(args[1]!))],
-  ["string.matches(string)", (args, ctx) => celMatches(text(args[0]!), text(args[1]!), ctx.range)],
+  ["string.size()", (ctx, a) => BigInt(characters(text(a)).length)],
+  ["bytes.size()", (ctx, a) => BigInt(bytes(a).length)],
+  ["list<A>.size()", (ctx, a) => BigInt(list(a).length)],
+  ["map<K, V>.size()", (ctx, a) => BigInt(sizeOfMap(a))],
+  ["string.startsWith(string)", (ctx, a, b) => text(a).startsWith(text(b))],
+  ["string.endsWith(string)", (ctx, a, b) => text(a).endsWith(text(b))],
+  ["string.contains(string)", (ctx, a, b) => text(a).includes(text(b))],
+  ["string.matches(string)", (ctx, a, b) => celMatches(text(a), text(b), ctx.range)],
   // Named for ASCII and not limited to it — see the declaration's own `spec: false` reason.
-  ["string.lowerAscii()", (args) => text(args[0]!).toLowerCase()],
-  ["string.upperAscii()", (args) => text(args[0]!).toUpperCase()],
-  ["string.trim()", (args) => text(args[0]!).trim()],
-  ["string.indexOf(string)", (args) => BigInt(text(args[0]!).indexOf(text(args[1]!)))],
+  ["string.lowerAscii()", (ctx, a) => text(a).toLowerCase()],
+  ["string.upperAscii()", (ctx, a) => text(a).toUpperCase()],
+  ["string.trim()", (ctx, a) => text(a).trim()],
+  ["string.indexOf(string)", (ctx, a, b) => BigInt(text(a).indexOf(text(b)))],
   [
     "string.indexOf(string, int)",
-    (args, ctx) => {
-      const from = boundedIndex(integer(args[2]!), text(args[0]!).length, ctx.range);
-      return typeof from === "number" ? BigInt(text(args[0]!).indexOf(text(args[1]!), from)) : from;
+    (ctx, a, b, c) => {
+      const from = boundedIndex(integer(c), text(a).length, ctx.range);
+      return typeof from === "number" ? BigInt(text(a).indexOf(text(b), from)) : from;
     },
   ],
-  ["string.lastIndexOf(string)", (args) => BigInt(text(args[0]!).lastIndexOf(text(args[1]!)))],
+  ["string.lastIndexOf(string)", (ctx, a, b) => BigInt(text(a).lastIndexOf(text(b)))],
   [
     "string.lastIndexOf(string, int)",
-    (args, ctx) => {
-      const from = boundedIndex(integer(args[2]!), text(args[0]!).length, ctx.range);
-      return typeof from === "number" ? BigInt(text(args[0]!).lastIndexOf(text(args[1]!), from)) : from;
+    (ctx, a, b, c) => {
+      const from = boundedIndex(integer(c), text(a).length, ctx.range);
+      return typeof from === "number" ? BigInt(text(a).lastIndexOf(text(b), from)) : from;
     },
   ],
-  ["string.substring(int)", (args, ctx) => substring(text(args[0]!), integer(args[1]!), undefined, ctx.range)],
+  ["string.substring(int)", (ctx, a, b) => substring(text(a), integer(b), undefined, ctx.range)],
   [
     "string.substring(int, int)",
-    (args, ctx) => substring(text(args[0]!), integer(args[1]!), integer(args[2]!), ctx.range),
+    (ctx, a, b, c) => substring(text(a), integer(b), integer(c), ctx.range),
   ],
-  ["string.split(string)", (args) => splitText(text(args[0]!), text(args[1]!))],
-  ["string.split(string, int)", (args) => splitText(text(args[0]!), text(args[1]!), integer(args[2]!))],
-  ["list<string>.join()", (args) => list(args[0]!).join("")],
-  ["list<string>.join(string)", (args) => list(args[0]!).join(text(args[1]!))],
+  ["string.split(string)", (ctx, a, b) => splitText(text(a), text(b))],
+  ["string.split(string, int)", (ctx, a, b, c) => splitText(text(a), text(b), integer(c))],
+  ["list<string>.join()", (ctx, a) => list(a).join("")],
+  ["list<string>.join(string)", (ctx, a, b) => list(a).join(text(b))],
 
   // bytes members, each a compatibility member rather than CEL's
-  ["bytes.string()", (args, ctx) => bytesToText(bytes(args[0]!), ctx.range)],
-  ["bytes.hex()", (args) => hexText(bytes(args[0]!))],
-  ["bytes.base64()", (args) => base64Text(bytes(args[0]!))],
+  ["bytes.string()", (ctx, a) => bytesToText(bytes(a), ctx.range)],
+  ["bytes.hex()", (ctx, a) => hexText(bytes(a))],
+  ["bytes.base64()", (ctx, a) => base64Text(bytes(a))],
   [
     "bytes.json()",
-    (args, ctx) => {
-      const decoded = bytesToText(bytes(args[0]!), ctx.range);
+    (ctx, a) => {
+      const decoded = bytesToText(bytes(a), ctx.range);
       if (typeof decoded !== "string") return decoded;
       try {
         return jsonAsCelValue(JSON.parse(decoded));
@@ -376,9 +400,9 @@ const IMPLEMENTATIONS = new Map<string, CelImplementation>([
   ],
   [
     "bytes.at(int)",
-    (args, ctx) => {
-      const held = bytes(args[0]!);
-      const at = integer(args[1]!);
+    (ctx, a, b) => {
+      const held = bytes(a);
+      const at = integer(b);
       if (at < 0n || at >= BigInt(held.length)) {
         return celError("index_out_of_range", `index out of range: ${at}`, ctx.range);
       }
@@ -387,99 +411,99 @@ const IMPLEMENTATIONS = new Map<string, CelImplementation>([
   ],
 
   // arithmetic
-  ["!(bool)", (args) => !(args[0] as boolean)],
-  ["-(int)", (args, ctx) => intResult(-integer(args[0]!), ctx.range)],
-  ["-(double)", (args) => -double(args[0]!)],
-  ["+(int, int)", (args, ctx) => intResult(integer(args[0]!) + integer(args[1]!), ctx.range)],
-  ["+(uint, uint)", (args, ctx) => uintResult(unsigned(args[0]!) + unsigned(args[1]!), ctx.range)],
-  ["+(double, double)", (args) => double(args[0]!) + double(args[1]!)],
-  ["+(string, string)", (args) => text(args[0]!) + text(args[1]!)],
+  ["!(bool)", (ctx, a) => !(a as boolean)],
+  ["-(int)", (ctx, a) => intResult(-integer(a), ctx.range)],
+  ["-(double)", (ctx, a) => -double(a)],
+  ["+(int, int)", (ctx, a, b) => intResult(integer(a) + integer(b), ctx.range)],
+  ["+(uint, uint)", (ctx, a, b) => uintResult(unsigned(a) + unsigned(b), ctx.range)],
+  ["+(double, double)", (ctx, a, b) => double(a) + double(b)],
+  ["+(string, string)", (ctx, a, b) => text(a) + text(b)],
   [
     "+(bytes, bytes)",
-    (args) => {
-      const left = bytes(args[0]!);
-      const right = bytes(args[1]!);
+    (ctx, a, b) => {
+      const left = bytes(a);
+      const right = bytes(b);
       const out = new Uint8Array(left.length + right.length);
       out.set(left);
       out.set(right, left.length);
       return out;
     },
   ],
-  ["+(list<A>, list<A>)", (args) => [...list(args[0]!), ...list(args[1]!)]],
+  ["+(list<A>, list<A>)", (ctx, a, b) => [...list(a), ...list(b)]],
   [
     "+(google.protobuf.Timestamp, google.protobuf.Duration)",
-    (args, ctx) =>
-      durationOutOfRange(span(args[1]!), ctx.range) ??
-      celTimestamp(0n, timestampNanos(instant(args[0]!)) + durationNanos(span(args[1]!)), ctx.range),
+    (ctx, a, b) =>
+      durationOutOfRange(span(b), ctx.range) ??
+      celTimestamp(0n, timestampNanos(instant(a)) + durationNanos(span(b)), ctx.range),
   ],
   [
     "+(google.protobuf.Duration, google.protobuf.Timestamp)",
-    (args, ctx) =>
-      durationOutOfRange(span(args[0]!), ctx.range) ??
-      celTimestamp(0n, durationNanos(span(args[0]!)) + timestampNanos(instant(args[1]!)), ctx.range),
+    (ctx, a, b) =>
+      durationOutOfRange(span(a), ctx.range) ??
+      celTimestamp(0n, durationNanos(span(a)) + timestampNanos(instant(b)), ctx.range),
   ],
   [
     "+(google.protobuf.Duration, google.protobuf.Duration)",
-    (args, ctx) => celDurationFromNanos(durationNanos(span(args[0]!)) + durationNanos(span(args[1]!)), ctx.range),
+    (ctx, a, b) => celDurationFromNanos(durationNanos(span(a)) + durationNanos(span(b)), ctx.range),
   ],
-  ["-(int, int)", (args, ctx) => intResult(integer(args[0]!) - integer(args[1]!), ctx.range)],
-  ["-(uint, uint)", (args, ctx) => uintResult(unsigned(args[0]!) - unsigned(args[1]!), ctx.range)],
-  ["-(double, double)", (args) => double(args[0]!) - double(args[1]!)],
+  ["-(int, int)", (ctx, a, b) => intResult(integer(a) - integer(b), ctx.range)],
+  ["-(uint, uint)", (ctx, a, b) => uintResult(unsigned(a) - unsigned(b), ctx.range)],
+  ["-(double, double)", (ctx, a, b) => double(a) - double(b)],
   [
     "-(google.protobuf.Timestamp, google.protobuf.Timestamp)",
-    (args, ctx) =>
-      celDurationFromNanos(timestampNanos(instant(args[0]!)) - timestampNanos(instant(args[1]!)), ctx.range),
+    (ctx, a, b) =>
+      celDurationFromNanos(timestampNanos(instant(a)) - timestampNanos(instant(b)), ctx.range),
   ],
   [
     "-(google.protobuf.Timestamp, google.protobuf.Duration)",
-    (args, ctx) =>
-      durationOutOfRange(span(args[1]!), ctx.range) ??
-      celTimestamp(0n, timestampNanos(instant(args[0]!)) - durationNanos(span(args[1]!)), ctx.range),
+    (ctx, a, b) =>
+      durationOutOfRange(span(b), ctx.range) ??
+      celTimestamp(0n, timestampNanos(instant(a)) - durationNanos(span(b)), ctx.range),
   ],
   [
     "-(google.protobuf.Duration, google.protobuf.Duration)",
-    (args, ctx) => celDurationFromNanos(durationNanos(span(args[0]!)) - durationNanos(span(args[1]!)), ctx.range),
+    (ctx, a, b) => celDurationFromNanos(durationNanos(span(a)) - durationNanos(span(b)), ctx.range),
   ],
-  ["*(int, int)", (args, ctx) => intResult(integer(args[0]!) * integer(args[1]!), ctx.range)],
-  ["*(uint, uint)", (args, ctx) => uintResult(unsigned(args[0]!) * unsigned(args[1]!), ctx.range)],
-  ["*(double, double)", (args) => double(args[0]!) * double(args[1]!)],
-  ["/(int, int)", (args, ctx) => intDivide(integer(args[0]!), integer(args[1]!), ctx.range)],
-  ["/(uint, uint)", (args, ctx) => uintDivide(unsigned(args[0]!), unsigned(args[1]!), ctx.range)],
+  ["*(int, int)", (ctx, a, b) => intResult(integer(a) * integer(b), ctx.range)],
+  ["*(uint, uint)", (ctx, a, b) => uintResult(unsigned(a) * unsigned(b), ctx.range)],
+  ["*(double, double)", (ctx, a, b) => double(a) * double(b)],
+  ["/(int, int)", (ctx, a, b) => intDivide(integer(a), integer(b), ctx.range)],
+  ["/(uint, uint)", (ctx, a, b) => uintDivide(unsigned(a), unsigned(b), ctx.range)],
   // A double divided by zero is an infinity, as IEEE 754 says; only the integers refuse.
-  ["/(double, double)", (args) => double(args[0]!) / double(args[1]!)],
-  ["%(int, int)", (args, ctx) => intModulo(integer(args[0]!), integer(args[1]!), ctx.range)],
-  ["%(uint, uint)", (args, ctx) => uintModulo(unsigned(args[0]!), unsigned(args[1]!), ctx.range)],
+  ["/(double, double)", (ctx, a, b) => double(a) / double(b)],
+  ["%(int, int)", (ctx, a, b) => intModulo(integer(a), integer(b), ctx.range)],
+  ["%(uint, uint)", (ctx, a, b) => uintModulo(unsigned(a), unsigned(b), ctx.range)],
   [
     "in(A, list<A>)",
-    (args) => {
+    (ctx, a, b) => {
       // Membership reads every element, so an element that must be awaited is a door too, and
       // the refusal is TERMINAL as it is in a comprehension: answering `true` off the one
       // element that is readable decides the question against a list this engine cannot read.
-      for (const held of list(args[1]!)) {
+      for (const held of list(b)) {
         const refused = asyncValueRefused(held);
         if (refused) return refused;
-        if (celEqual(held, args[0]!)) return true;
+        if (celEqual(held, value(a))) return true;
       }
       return false;
     },
   ],
-  ["in(K, map<K, V>)", (args) => typeof celLookup(args[1]!, args[0]!) !== "symbol"],
+  ["in(K, map<K, V>)", (ctx, a, b) => typeof celLookup(value(b), value(a)) !== "symbol"],
 
   // the optional library
-  ["optional<A>.hasValue()", (args) => optional(args[0]!).present],
+  ["optional<A>.hasValue()", (ctx, a) => optional(a).present],
   [
     "optional<A>.value()",
-    (args, ctx) => {
-      const held = optional(args[0]!);
+    (ctx, a) => {
+      const held = optional(a);
       return held.present
         ? (held.held as CelValue)
         : celError("optional_value_missing", "the optional holds no value", ctx.range);
     },
   ],
-  ["optional<A>.or(optional<A>)", (args) => (optional(args[0]!).present ? args[0]! : args[1]!)],
+  ["optional<A>.or(optional<A>)", (ctx, a, b) => (optional(a).present ? value(a) : value(b))],
   [
     "optional<A>.orValue(A)",
-    (args) => (optional(args[0]!).present ? (optional(args[0]!).held as CelValue) : args[1]!),
+    (ctx, a, b) => (optional(a).present ? (optional(a).held as CelValue) : value(b)),
   ],
 
   // timestamp and duration fields
@@ -509,7 +533,7 @@ const IMPLEMENTATIONS = new Map<string, CelImplementation>([
   ["google.protobuf.Duration.getMilliseconds()", durationGetter("getMilliseconds")],
 ]);
 
-function sizeOfMap(value: CelValue): number {
+function sizeOfMap(value: CelValue | undefined): number {
   if (isCelMap(value)) return (value as CelMap).entries.size;
   if (isCelRecord(value)) return Object.keys(value).length;
   return 0;
@@ -522,25 +546,25 @@ function sizeOfMap(value: CelValue): number {
  * would then have no implementation.
  */
 const BY_NAME = new Map<string, CelImplementation>([
-  ["==", (args) => celEqual(args[0]!, args[1]!)],
-  ["!=", (args) => !celEqual(args[0]!, args[1]!)],
+  ["==", (ctx, a, b) => celEqual(value(a), value(b))],
+  ["!=", (ctx, a, b) => !celEqual(value(a), value(b))],
   ["<", ordering((compared) => compared < 0)],
   ["<=", ordering((compared) => compared <= 0)],
   [">", ordering((compared) => compared > 0)],
   [">=", ordering((compared) => compared >= 0)],
-  ["type", (args, ctx) => celTypeValueOf(args[0]!, ctx.range)],
+  ["type", (ctx, a) => celTypeValueOf(value(a), ctx.range)],
 ]);
 
 function ordering(holds: (compared: number) => boolean): CelImplementation {
-  return (args, ctx) => {
-    const compared = celCompare(args[0]!, args[1]!);
+  return (ctx, a, b) => {
+    const compared = celCompare(value(a), value(b));
     // Values that do not order at all — unrelated types, or a NaN. NaN orders with
     // nothing, including itself, so every comparison against it is false.
     if (compared === undefined) {
-      if (isNotANumber(args[0]!) || isNotANumber(args[1]!)) return false;
+      if (isNotANumber(a) || isNotANumber(b)) return false;
       return celError(
         "no_matching_overload",
-        `${celTypeNameOf(args[0]!) ?? "this value"} and ${celTypeNameOf(args[1]!) ?? "this value"} do not order`,
+        `${celTypeNameOf(a) ?? "this value"} and ${celTypeNameOf(b) ?? "this value"} do not order`,
         ctx.range,
       );
     }
@@ -548,7 +572,7 @@ function ordering(holds: (compared: number) => boolean): CelImplementation {
   };
 }
 
-function isNotANumber(value: CelValue): boolean {
+function isNotANumber(value: CelValue | undefined): boolean {
   return typeof value === "number" && Number.isNaN(value);
 }
 
@@ -590,8 +614,8 @@ export function standardConstantValues(optionalTypes: boolean): ReadonlyMap<stri
  * `optional.ofNonZeroValue(v)`: present unless the value is its type's zero — which is
  * what makes it different from `optional.of`, and what three of the vectors' rows read.
  */
-export function optionalOfNonZero(value: CelValue): CelOptional {
-  return isZeroValue(value) ? celNone() : celSome(value);
+export function optionalOfNonZero(held: CelValue): CelOptional {
+  return isZeroValue(held) ? celNone() : celSome(held);
 }
 
 /**
@@ -601,7 +625,7 @@ export function optionalOfNonZero(value: CelValue): CelOptional {
  * engine that picked the epoch as a timestamp's zero would make
  * `optional.ofNonZeroValue(timestamp(0))` absent, which no row and no rule asks for.
  */
-function isZeroValue(value: CelValue): boolean {
+function isZeroValue(value: CelValue | undefined): boolean {
   if (value === null || value === false || value === "") return true;
   if (typeof value === "bigint") return value === 0n;
   if (typeof value === "number") return value === 0;

@@ -14,7 +14,7 @@
  * `typeof`.
  */
 
-import { UnsignedInt } from "./cel-value-identity.js";
+import { isCelUint } from "./cel-value-identity.js";
 
 const INSTALLED_KEY = Symbol.for("@telorun/sdk:bigint-json:installed");
 
@@ -77,7 +77,7 @@ export function bigIntAt(holder: unknown, key: string): bigint | undefined {
 export function integerInput(value: unknown): number | undefined {
   if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
   const integral =
-    typeof value === "bigint" ? value : value instanceof UnsignedInt ? value.value : undefined;
+    typeof value === "bigint" ? value : isCelUint(value) ? value.value : undefined;
   if (integral === undefined) return undefined;
   const asNumber = Number(integral);
   return Number.isSafeInteger(asNumber) ? asNumber : undefined;

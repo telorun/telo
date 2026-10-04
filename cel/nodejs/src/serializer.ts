@@ -128,19 +128,35 @@ function writeDouble(value: number): string {
   return `${sign}${/[.e]/.test(text) ? text : `${text}.0`}`;
 }
 
+/**
+ * A string literal, always in double quotes.
+ *
+ * **One spelling, chosen rather than remembered.** The tree records a string's VALUE and not
+ * the quote the author typed — the source's own formatting is not structure, which is the
+ * same rule that makes the serializer drop redundant parentheses — so a round trip
+ * normalizes `'x'` to `"x"`. Both are CEL and the parser reads either.
+ *
+ * The cost lands on a quick fix, which is written by rewriting the tree and serializing it
+ * back **into a YAML scalar**: a double-quoted CEL literal inside a double-quoted scalar has
+ * to be escaped, so a repair reads `!cel "a.startsWith(\"x\")"` where the author wrote
+ * `'x'`. Choosing the quote here cannot fix that — a single-quoted YAML scalar wants the
+ * opposite choice, and this engine does not know which scalar the text will land in. Picking
+ * the YAML quoting that needs no escaping is the EDITOR's, which has both halves in hand.
+ */
 function writeString(value: string): string {
-  let text = '"';
+  const quote = '"';
+  let text = quote;
   for (const unit of value) {
     const code = unit.codePointAt(0)!;
     if (unit === "\\") text += "\\\\";
-    else if (unit === '"') text += '\\"';
+    else if (unit === quote) text += `\\${quote}`;
     else if (unit === "\n") text += "\\n";
     else if (unit === "\r") text += "\\r";
     else if (unit === "\t") text += "\\t";
     else if (code < 0x20 || code === 0x7f) text += `\\x${code.toString(16).padStart(2, "0")}`;
     else text += unit;
   }
-  return `${text}"`;
+  return `${text}${quote}`;
 }
 
 function writeBytes(value: Uint8Array): string {

@@ -1,0 +1,14 @@
+---
+"@telorun/analyzer": minor
+"@telorun/kernel": minor
+---
+
+**An expression is never evaluated at or above a reference slot** — one rule, one static code, one runtime code, one shared reader for the position set.
+
+`TEMPLATE_REF_COMPUTED` is renamed **`REF_SLOT_COMPUTED`** and begins firing at a second position it never covered: an expression at or above a reference slot of a RESOURCE, in a field the kind evaluates at creation. A `Telo.Provider`'s whole root is implicitly compile-eval and providers in the standard library declare reference slots (`OpenAI.EmbeddingModel.request`, `OpenAI.ImageModel.request`), so a `!cel` written above one was accepted by every static check — a legal eval site, no concrete reference site left beneath it — and the kernel then expanded it at `create()` and left data at a `use: call` slot. The template-body message keeps its wording and its "forward it verbatim with a bare `self.<path>`" repair; the resource-level one drops that half, a resource having no enclosing instance to forward from.
+
+The runtime half is **`ERR_REF_SLOT_COMPUTED`**, raised at both expansion sites the kernel owns — a template body's `self`-expansion and the compile-eval expansion every resource's `create()` performs — **before** evaluating, and from the same reader the static verdict uses, so the refused positions are the reported positions by construction. It names the resource (and, for a template child, the owning template instance and the entry), the expression's path as written, the reference-slot pattern it holds, and the repair. Phase-5 injection still leaves a non-reference value at a reference site untouched and `ctx.resolveRef` still refuses one at dereference as `ERR_REF_UNRESOLVED`; that backstop is unchanged, and being lazy and conditional is why it could not be the refusal.
+
+**There was no kernel half before this.** The run failed — when it failed at all — on the CEL dependency's own internal refusal of a live instance inside a map literal, text that named nothing an author could act on and that Telo did not own. The agreement suite pinned that text, so swapping the CEL engine turned both of its runtime rows green with the defect still in place; pinning a dependency's internal error as a Telo refusal is what let the regression hide.
+
+Keyed on **provenance, never on shape**: a reference slot legitimately holds a `{kind, name}` reference, a live instance, an inline declaration, a value-branch scalar and — at a type slot — raw JSON Schema, all of which still create and run unchanged. The one exemption is a bare `self.<path>`, which a template body navigates rather than evaluates. Where `validate-references` would add a second, shapeless verdict about the same line (`must have string 'kind' and 'name' fields`), it now reads the same set and stays quiet — a slot the kind never evaluates still reports there.

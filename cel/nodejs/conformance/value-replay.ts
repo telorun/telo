@@ -378,9 +378,9 @@ export const VALUE_CORRECTION_GROUPS = [
     rows: ["conversions/string/bytes_invalid"],
   },
   {
-    cause: "reading a member of a value that holds none is an error, through an optional as well",
+    cause: "the ORDINARY step of a chain that entered optional land is still an ordinary read",
     authority:
-      "an optional changes what an ABSENT value does, not what a value that holds no members does: `{true: dyn(0)}[?true].absent` reads a member of `0`, which `deviation.celSpec.error` records as an error. The recording answers absent, which would hide a mistake behind the optional",
+      "a presence-shaped read — `.?`, `[?]`, `has()` — answers absence over a value that holds no members, which is the optional library's own semantics; what an optional does NOT change is the ordinary read written after it. Both rows read a plain `.invalid` / `.absent` off a present optional whose held value is a `null` and a `0`, and `deviation.celSpec.error` records each as an error — cel-go qualifies such a step with its presence flag unset, so the receiver holding no members is the mistake it would be outside the optional. The recording answers absent, which would hide that mistake behind the `.?` two steps earlier. Its sibling reading is `optional_chaining_5`, where the ordinary step misses a KEY of a map and cel-spec answers absent",
     rows: [
       "optionals/optionals/map_null_entry_no_such_key",
       "optionals/optionals/map_present_key_invalid_field",

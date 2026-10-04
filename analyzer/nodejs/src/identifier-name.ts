@@ -7,21 +7,23 @@
  * **The rules exist because Telo has no lexer.** A name is a YAML scalar, so
  * nothing rejects its shape where it is declared, and every consequence
  * surfaces later at a CEL site that references it — or not at all. Probed
- * against the engine the runtime actually uses (`@marcbachmann/cel-js`):
+ * against the engine the runtime actually uses (`@telorun/cel`):
  *
  *     resources.my-server.url  →  EVALUATES, as `resources.my - server.url`
- *     resources.in             →  ParseError: Expected IDENTIFIER, got IN
- *     resources.2fa            →  ParseError
- *     resources.for            →  parses fine
+ *     resources.2fa            →  a syntax diagnostic
+ *     resources.in             →  reads fine; a reserved word IS a member name
+ *     resources.for            →  reads fine, for the same reason
  *
  * The first line is the one that decides the design. When a bare name is in
  * scope — which `x-telo-bindings-from` deliberately makes possible — a
  * hyphenated resource name yields a wrong number with no diagnostic anywhere.
  * That is a swallowed error in the reference grammar, not a style preference.
- * The last line is why the reserved set here is the whole keyword list rather
- * than the subset today's parser happens to reject in field position: which
- * keywords tokenize there is a property of a dependency, and a name that
- * breaks on a parser upgrade was never safe.
+ * The last two lines are why the reserved set here is the whole keyword list
+ * rather than the words a member read happens to refuse: CEL reads a reserved
+ * word as a member name and refuses it only where an IDENTIFIER is read, so
+ * the member position says nothing about whether a name is safe — and
+ * `x-telo-bindings-from` puts every one of these names in identifier position.
+ * The list mirrors the engine's own `RESERVED_WORDS`, all 21 of cel-spec's.
  *
  * **Three tiers, because they fail in three different ways.**
  *

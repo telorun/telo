@@ -1,0 +1,64 @@
+# A `Telo.Provider`'s whole root is implicitly compile-eval, so an expression at
+# or above one of its reference slots is written in a LEGAL eval site: no CEL
+# rule complained, and the kernel then expanded it at `create()` and left data
+# at a `use: call` slot. This library's own `telo check` reports
+# `REF_SLOT_COMPUTED`; the kernel refuses the same expansion at boot.
+kind: Telo.Library
+metadata:
+  name: RefSlotComputedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose provider resource computes a route list holding
+    handler references, which cannot carry a reference through CEL.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Telo.Definition
+metadata:
+  name: Bus
+  description: >-
+    Holds a handler and a route list, each naming what it dispatches. A
+    provider, so every field is evaluated once when the resource is created.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [handler, routes]
+  properties:
+    handler:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+    routes:
+      type: array
+      items:
+        type: object
+        required: [handler]
+        properties:
+          handler:
+            x-telo-ref: { kind: Telo.Invocable, use: call }
+resources:
+  - kind: Run.Value
+    metadata: { name: reading }
+    value: !cel "1"
+provide: !ref reading
+---
+# The defect is `routes`: the expression sits ABOVE `routes[].handler`, so it
+# leaves no value at the slot at all — the position nothing reported. `handler`
+# beside it is written the one way that works.
+kind: Self.Bus
+metadata:
+  name: bus
+handler: !ref target
+routes: !cel "[{'handler': 'target'}]"
+---
+kind: Run.Value
+metadata:
+  name: target
+value: 1
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

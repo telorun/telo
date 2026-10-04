@@ -165,15 +165,17 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
       if (entry.live && !options.assertLive) return;
       const binding = VALUE_TYPE_BINDINGS[entry.binding!];
       if (!binding) return;
-      // The constructor reaches generated code through AJV's value scope, which
-      // is what keeps this general: `Uint8Array` happens to be a global, but a
-      // binding may name a class that is not, and inlining a bare identifier
-      // would compile to a reference that does not resolve.
-      const ctor = cxt.gen.scopeValue("obj", {
-        ref: binding.constructor,
-        code: codegen`require("@telorun/sdk").VALUE_TYPE_BINDINGS[${entry.binding!}].constructor`,
+      // The binding's own assertion reaches generated code through AJV's value
+      // scope, which is what keeps this general: it is a PREDICATE rather than a
+      // constructor, so a representation identified by a string type key under
+      // `Symbol.for("telo.cel.value")` is asserted by the same path as a host
+      // class, and inlining a bare identifier would compile to a reference that
+      // does not resolve.
+      const holds = cxt.gen.scopeValue("func", {
+        ref: binding.holds,
+        code: codegen`require("@telorun/sdk").VALUE_TYPE_BINDINGS[${entry.binding!}].holds`,
       });
-      cxt.pass(codegen`${cxt.data} instanceof ${ctor}`);
+      cxt.pass(codegen`${holds}(${cxt.data})`);
     },
     error: {
       message: (cxt: any) => {

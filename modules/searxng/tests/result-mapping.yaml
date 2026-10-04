@@ -87,14 +87,14 @@ steps:
          'more': has(steps.search.result.nextCursor)}
       expected:
         results:
-          - { title: Naive, url: "https://a.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05.000Z" }
-          - { title: Micro, url: "https://b.example/", snippet: micro, publishedAt: "2026-01-02T03:04:05.123Z" }
-          - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05.000Z" }
-          - { title: Zulu, url: "https://d.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05.000Z" }
+          - { title: Naive, url: "https://a.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05Z" }
+          - { title: Micro, url: "https://b.example/", snippet: micro, publishedAt: "2026-01-02T03:04:05.123456Z" }
+          - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05Z" }
+          - { title: Zulu, url: "https://d.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05Z" }
           - { title: Absent, url: "https://e.example/", snippet: "" }
           - { title: Prose, url: "https://f.example/", snippet: prose }
           - { title: "", url: "https://g.example/", snippet: "" }
-          - { title: Day, url: "https://h.example/", snippet: day, publishedAt: "2026-01-02T00:00:00.000Z" }
+          - { title: Day, url: "https://h.example/", snippet: day, publishedAt: "2026-01-02T00:00:00Z" }
           - { title: Impossible, url: "https://i.example/", snippet: impossible }
           - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
           - { title: Space, url: "https://example.com/a b", snippet: space }

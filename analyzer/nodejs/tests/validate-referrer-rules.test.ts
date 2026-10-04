@@ -225,7 +225,7 @@ describe("referrer rules — reporting", () => {
     expect(report.path).toBe("schema.x-telo-referrer-rules[0]");
   });
 
-  it("downgrades a dependency's broken rule to a warning, anchored where the path exists", () => {
+  it("reports a dependency's broken rule as one warning for the caller to re-anchor", () => {
     const offending = server({ port: 8080 });
     const [report] = reportReferrerRules(
       reference(),
@@ -241,17 +241,22 @@ describe("referrer rules — reporting", () => {
       false,
     );
     expect(report.severity).toBe("warning");
-    // The manifest and the path have to move together: `mounts[1].mount` is a
-    // path in the REFERRER, and naming it on any other manifest anchors the
-    // diagnostic at a node that does not exist there.
-    expect(report.manifest).toBe(offending);
-    expect(report.path).toBe("mounts[1].mount");
+    // The rule's own declaration, never the referrer's slot: a failure is ONE
+    // diagnostic per (declaring kind, rule code), and the caller moves it to the
+    // `imports:` entry that brought this dependency's kind in. Reported per
+    // referrer, one upstream defect cost 107 diagnostics across 99 lines.
+    expect(report.evaluationFailure).toBe(true);
+    expect(report.manifest.kind).toBe("Telo.Definition");
+    expect(report.path).toBe("schema.x-telo-referrer-rules[0]");
+    // The referrer it was first seen at is still named, as the example.
+    expect(report.message).toContain("Http.Server/server at 'mounts[1].mount'");
+    expect(report.message).toContain("Reported once for this rule");
   });
 
-  it("falls back to the referenced resource with no path when there is no referrer", () => {
+  it("falls back to the referenced resource with no path when no definition is in hand", () => {
     const [report] = reportReferrerRules(
       reference(),
-      definition(REFERENCE_SCHEMA),
+      undefined,
       [{ kind: "failed", rule: readReferrerRules(REFERENCE_SCHEMA)[0], reason: "will not parse" }],
       false,
     );

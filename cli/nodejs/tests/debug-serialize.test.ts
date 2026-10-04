@@ -1,4 +1,4 @@
-import { Duration, UnsignedInt } from "@telorun/sdk";
+import { celDurationFromNanos, celMapFromEntries, celUint } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { serializeEvent } from "../src/debug-serialize.js";
 
@@ -35,10 +35,10 @@ describe("toWire CEL values", () => {
     expect(
       wireOf({
         at: new Date("2026-01-15T07:30:00Z"),
-        took: new Duration(5400n, 0),
-        count: new UnsignedInt(7n),
+        took: celDurationFromNanos(5400n * 1_000_000_000n),
+        count: celUint(7n),
         ratio: Number.NaN,
-        byInt: new Map([[1n, "one"]]),
+        byInt: celMapFromEntries([1n, "one"]),
       }),
     ).toEqual({
       at: "2026-01-15T07:30:00.000Z",
@@ -49,21 +49,23 @@ describe("toWire CEL values", () => {
     });
   });
 
-  it("writes a map whose keys share a text, or are not CEL map keys, as its pairs", () => {
+  it("writes a map whose keys share a text as its pairs", () => {
+    // An int and a string are two keys in CEL and one object key, so the pairs are the
+    // only writing that keeps both — and observing a run must never fail it.
+    //
+    // The guard's other arm, a key that is no CEL map key at all, is unreachable through
+    // the value domain: a map is built with an int, uint, bool or string key, so a double
+    // key cannot be inside one. It stays in the serializer as a defence, since this writer
+    // is handed whatever the debug wire carries and may not throw about it.
     expect(
       wireOf({
-        colliding: new Map<unknown, string>([
-          [1n, "a"],
-          ["1", "b"],
-        ]),
-        numberKeyed: new Map([[1.5, "x"]]),
+        colliding: celMapFromEntries([1n, "a", "1", "b"]),
       }),
     ).toEqual({
       colliding: [
         [1, "a"],
         ["1", "b"],
       ],
-      numberKeyed: [[1.5, "x"]],
     });
   });
 });

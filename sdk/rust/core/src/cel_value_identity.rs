@@ -28,37 +28,46 @@ pub(crate) const BYTES_TOKEN: &str = "$telo::bytes";
 pub(crate) const UINT_TOKEN: &str = "$telo::uint";
 
 /// A CEL `google.protobuf.Timestamp`: an instant between 0001-01-01T00:00:00Z
-/// and 9999-12-31T23:59:59.999Z, held to the millisecond — the precision every
-/// Telo runtime holds one at, so a value never changes on a round trip.
+/// and 9999-12-31T23:59:59.999999999Z, held to the nanosecond — the precision
+/// every Telo runtime holds one at, so a value never changes on a round trip.
 /// Ordered and compared as an instant, whatever offset it was written with.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Timestamp {
-    unix_millis: i64,
+    unix_nanos: i128,
 }
 
 impl Timestamp {
-    pub const MIN_UNIX_MILLIS: i64 = -62_135_596_800_000;
-    pub const MAX_UNIX_MILLIS: i64 = 253_402_300_799_999;
+    pub const MIN_UNIX_NANOS: i128 = -62_135_596_800_000_000_000;
+    pub const MAX_UNIX_NANOS: i128 = 253_402_300_799_999_999_999;
 
-    /// The instant `unix_millis` after the epoch, or `None` outside CEL's range.
-    pub fn from_unix_millis(unix_millis: i64) -> Option<Self> {
-        (Self::MIN_UNIX_MILLIS..=Self::MAX_UNIX_MILLIS)
-            .contains(&unix_millis)
-            .then_some(Self { unix_millis })
+    /// The instant `nanos` past `seconds` after the epoch, or `None` when
+    /// `nanos` is a whole second or more, or the instant is outside CEL's range.
+    pub fn new(seconds: i64, nanos: u32) -> Option<Self> {
+        if nanos >= 1_000_000_000 {
+            return None;
+        }
+        Self::from_unix_nanos(seconds as i128 * 1_000_000_000 + nanos as i128)
     }
 
-    pub fn unix_millis(&self) -> i64 {
-        self.unix_millis
+    /// The instant `unix_nanos` after the epoch, or `None` outside CEL's range.
+    pub fn from_unix_nanos(unix_nanos: i128) -> Option<Self> {
+        (Self::MIN_UNIX_NANOS..=Self::MAX_UNIX_NANOS)
+            .contains(&unix_nanos)
+            .then_some(Self { unix_nanos })
+    }
+
+    pub fn unix_nanos(&self) -> i128 {
+        self.unix_nanos
     }
 
     /// Whole seconds since the epoch, rounded toward negative infinity.
     pub fn seconds(&self) -> i64 {
-        self.unix_millis.div_euclid(1000)
+        self.unix_nanos.div_euclid(1_000_000_000) as i64
     }
 
     /// The nanoseconds past [`Timestamp::seconds`], always non-negative.
     pub fn subsec_nanos(&self) -> u32 {
-        (self.unix_millis.rem_euclid(1000) * 1_000_000) as u32
+        self.unix_nanos.rem_euclid(1_000_000_000) as u32
     }
 
     /// The timestamp RFC 3339 `text` names, at any offset.
@@ -303,7 +312,7 @@ mod tests {
         let plain = serde_json::to_string(&args).unwrap();
         assert_eq!(
             plain,
-            r#"{"at":"2026-01-15T07:30:00.000Z","took":"5400s","raw":"AQL_","count":18446744073709551615}"#
+            r#"{"at":"2026-01-15T07:30:00Z","took":"5400s","raw":"AQL_","count":18446744073709551615}"#
         );
         assert_eq!(serde_json::from_str::<Args>(&plain).unwrap(), args);
 

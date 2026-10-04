@@ -2,17 +2,14 @@ export {
   buildCelEnvironment,
   buildCelLanguageEnvironment,
   celBuiltinFunctions,
-  deriveSignatures,
+  celFunctionCatalog,
   type CelHandlers,
 } from "./cel/environment.js";
-export {
-  celFunctionCatalog,
-  CEL_FUNCTIONS,
-  type CelFunctionInfo,
-  type CelFunctionDoc,
-  type CelFunctionCategory,
-} from "./cel/catalog.js";
-export { compileExpression } from "./cel/compile.js";
+// `namespaceDispatchOf` is the ONE adapter a host's dispatch table crosses to
+// become the engine's namespace seam — exported because the analyzer evaluates
+// rule conditions and function bodies through the same table, and a second
+// adapter is what let it convert arguments differently from the kernel.
+export { compileExpression, namespaceDispatchOf } from "./cel/compile.js";
 export { registerValueBrands } from "./cel/value-brands.js";
 export {
   interpolationShape,
@@ -31,7 +28,6 @@ export {
 export {
   auditCalls,
   explainUnresolved,
-  functionIndex,
   type CallAudit,
   type ModuleCallFlags,
 } from "./cel/diagnose.js";
@@ -41,9 +37,10 @@ export {
 // `ModuleCallTypeResolver` is here because `AnalyzeEnv` names it: an exported
 // interface whose field type cannot be named is not usable from outside.
 export {
+  celNamespaceNames,
   MODULE_CALL_DISPATCH_KEY,
+  moduleCallNames,
   moduleCallOf,
-  resolveModuleCalls,
   type ModuleCallDispatch,
   type ModuleCallTypeResolver,
 } from "./cel/module-call.js";

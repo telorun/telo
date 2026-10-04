@@ -18,6 +18,8 @@
  * stashed only for that purpose, and the two payloads can never collide.
  */
 
+import { isCelRecord } from "./cel-value-identity.js";
+
 /** The CEL segment observed state is published under: `resources.<name>.status`. */
 export const OBSERVED_STATE_KEY = "status";
 
@@ -30,9 +32,10 @@ export const OBSERVED_STATE_KEY = "status";
  * catch, because the shape never changes, only the contents.
  *
  * Plain objects and arrays are rebuilt; everything else — class instances (a
- * `Stream`, a connection pool), functions, primitives — is passed through by
- * reference, because those are not copyable in any meaningful sense and CEL
- * cannot read into them anyway. Cycles resolve to the copy already made.
+ * `Stream`, a connection pool), branded CEL values, functions, primitives — is
+ * passed through by reference, because those are not copyable in any meaningful
+ * sense and CEL cannot read into them anyway. Cycles resolve to the copy already
+ * made.
  */
 export function detachSnapshotValue(value: unknown, seen = new Map<object, unknown>()): unknown {
   if (value === null || typeof value !== "object") return value;
@@ -46,9 +49,13 @@ export function detachSnapshotValue(value: unknown, seen = new Map<object, unkno
     return copy;
   }
   // Only plain objects: a class instance's identity and behaviour are the point
-  // of returning it, and rebuilding one as a bare object would break it.
-  const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) return value;
+  // of returning it, and rebuilding one as a bare object would break it. Asked of
+  // the value DOMAIN rather than of the prototype, because a branded CEL value (an
+  // instant, a duration, a uint) IS a plain object: rebuilding one drops the symbol
+  // its brand lives under, so the reading CEL is handed holds a `map` where the
+  // controller reported an instant, and the slot's own value-type assertion refuses
+  // the very value the expression produced.
+  if (!isCelRecord(value)) return value;
 
   const copy: Record<string, unknown> = {};
   seen.set(value, copy);

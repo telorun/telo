@@ -15,7 +15,14 @@ requires:
   # (X_TELO_TYPE_UNKNOWN); 0.92.0 is the first release that reads this file,
   # verified by running each release's `telo check`. It also covers the
   # effect-chain floor (0.82.0) the controllers need.
-  telo: ">=0.92.0"
+  #
+  # 0.108.0: the wait controller reads a duration through the value domain
+  # (`isCelDuration`, `durationNanos`) rather than a host class. `@telorun/sdk`
+  # is external and collapsed to the runtime's own copy, so on a runtime whose
+  # SDK does not export those names they are undefined and the resource dies at
+  # creation with a TypeError naming this module. Verified by execution: the
+  # published 0.107.0 tarball exports neither name.
+  telo: ">=0.108.0"
 exports:
   kinds:
     - Wait

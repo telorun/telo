@@ -5,7 +5,7 @@ import {
   readValueTypeSlot,
   VALUE_TYPES,
 } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import {
   CEL_ENGINE,
   celExpressionsOf,
@@ -14,7 +14,6 @@ import {
   isTaggedSentinel,
   makeTaggedSentinel,
   plainChainOf,
-  resolveModuleCalls,
 } from "@telorun/templating";
 import type { DiagnosticData, DiagnosticFix } from "./types.js";
 import {
@@ -29,6 +28,7 @@ import {
   buildImportInputCelEnvironment,
   buildTypedCelEnvironment,
   isKindDocument,
+  parseCelSource,
   valueBrandHint,
   type CelHandlers,
 } from "./cel-environment.js";
@@ -129,6 +129,7 @@ import {
   type ReferrerRuleIssue,
 } from "./validate-referrer-rules.js";
 import { analyzerPeerBinder, analyzerPeersTarget, navigatePath } from "./peer-binding.js";
+import { RuleFailureLedger } from "./rule-condition.js";
 import {
   describeProjectionFailure,
   isReportedAtConsumer,
@@ -196,6 +197,7 @@ import {
   NO_CEL_EVAL_SITES,
   type CelEvalSites,
 } from "./eval-paths.js";
+import { computedRefSlots, refSlotComputedReason } from "./ref-slot-computed.js";
 import {
   BINDINGS_ANNOTATION,
   bindingContextProperties,
@@ -617,21 +619,14 @@ function pathCrossesNestedResource(root: unknown, path: string): boolean {
 }
 
 /** Member-access chains in a CEL expression, or none when it doesn't parse.
- *  Best-effort: a syntax error is reported by the engine pass, not here. */
-function celAccessChains(
-  env: Environment,
-  expr: string,
-  moduleNames?: ReadonlySet<string>,
-): string[][] {
-  try {
-    const ast = env.parse(expr).ast;
-    // Resolve first: a module call's receiver names a module, so reading it as
-    // a chain root would invent a read of a resource nothing references.
-    resolveModuleCalls(ast, moduleNames);
-    return extractAccessChains(ast);
-  } catch {
-    return [];
-  }
+ *  Best-effort: a syntax error is reported by the engine pass, not here.
+ *
+ *  Read under `moduleNames`: a module call's receiver names a module, so
+ *  reading it as a chain root would invent a read of a resource nothing
+ *  references. */
+function celAccessChains(expr: string, moduleNames?: ReadonlySet<string>): string[][] {
+  const parsed = parseCelSource(expr, moduleNames);
+  return parsed ? extractAccessChains(parsed.root) : [];
 }
 
 /** How the zone walks resolve a kind read off a node of a given module. */
@@ -865,7 +860,7 @@ function suppressUnreadableModuleDiagnostics(
 }
 
 export class StaticAnalyzer {
-  private readonly celEnv: Environment;
+  private readonly celEnv: CelEnvironment;
 
   constructor(options: StaticAnalyzerOptions = {}) {
     this.celEnv = buildCelEnvironment(options.celHandlers);
@@ -1146,6 +1141,61 @@ export class StaticAnalyzer {
         rule: report.rule,
       },
     });
+    // An evaluation-time rule failure is ONE diagnostic per (declaring kind,
+    // rule code) per analysis, anchored where the reader can act on it — the
+    // `imports:` entry that brought the kind in, or the rule's own declaration
+    // for a kind of the entry's own modules. Per site it produced one diagnostic
+    // per resource the rule met, every one pointing at a line the reader does
+    // not own and cannot fix.
+    const ruleFailureLedger = new RuleFailureLedger();
+    /** The `imports:` entry that brought a module in, as a diagnostic anchor.
+     *  Built once over the `Telo.Import` docs the loader produced; an import
+     *  declared by the entry's OWN module wins, since that is the line the
+     *  reader can change. */
+    const importAnchors = new Map<string, { filePath?: string; path: string }>();
+    for (const m of manifests) {
+      if (m.kind !== "Telo.Import") continue;
+      const alias = m.metadata?.name as string | undefined;
+      const target = (m.metadata as { resolvedModuleName?: string } | undefined)
+        ?.resolvedModuleName;
+      if (!alias || !target) continue;
+      const owner = (m.metadata as { module?: string } | undefined)?.module;
+      const ours = !owner || rootModules.has(owner);
+      // ONLY an entry-owned import anchors. A dependency's `imports:` entry is a
+      // line the reader neither owns nor can change, and it is not where the
+      // defect is either — so with no entry-owned import naming the module the
+      // diagnostic stays on the rule's own declaration, which at least names the
+      // kind at fault.
+      if (!ours) continue;
+      importAnchors.set(target, {
+        filePath: (m.metadata as { source?: string } | undefined)?.source,
+        path: `imports.${alias}`,
+      });
+    }
+    /**
+     * One evaluation-time rule failure, re-anchored at the `imports:` entry that
+     * brought the declaring kind in. For a kind of the entry's own modules — or
+     * one no import names — the rule's own declaration is already the right
+     * line, so `fallback` (the family's own adapter) carries it unchanged.
+     */
+    const ruleFailureDiagnostic = (
+      report: ResourceRuleDiagnostic | ReferrerRuleDiagnostic,
+      declaringModule: string | undefined,
+      fallback: AnalysisDiagnostic,
+    ): AnalysisDiagnostic => {
+      const anchor =
+        declaringModule && !rootModules.has(declaringModule)
+          ? importAnchors.get(declaringModule)
+          : undefined;
+      if (!anchor) return fallback;
+      return {
+        severity: SEVERITY[report.severity],
+        code: report.code,
+        source: SOURCE,
+        message: report.message,
+        data: { filePath: anchor.filePath, path: anchor.path, rule: report.rule },
+      };
+    };
     const projectionIssues: SchemaProjectionIssue[] = [];
     const resourceRuleIssues: ResourceRuleIssue[] = [];
     const referrerRuleIssues: ReferrerRuleIssue[] = [];
@@ -1791,7 +1841,18 @@ export class StaticAnalyzer {
     // each referrer's resolved collection, which is what keeps a rule over an
     // n-entry collection from re-resolving that collection once per entry.
     const referrerRuleContext: ReferrerRuleContext = {
-      peerBinder: analyzerPeerBinder(defs, aliases, allManifests as ResourceManifest[]),
+      peerBinder: analyzerPeerBinder(
+        defs,
+        aliases,
+        allManifests as ResourceManifest[],
+        // The same acceptance rule the reference check applies at the slot, so a
+        // rule is never evaluated over a declaration that slot refuses — the
+        // resource is already reported there (`REFERENCE_KIND_MISMATCH`), and a
+        // second diagnostic about the rule's internals would blame the kind's
+        // author for the manifest author's mistake.
+        (slotKinds, declarationKind) =>
+          slotKinds.some((target) => kindSatisfies(declarationKind, target, defs)),
+      ),
     };
 
     // `x-telo-sensitive` and `x-telo-span-attribute` are read by ONE consumer —
@@ -2500,6 +2561,14 @@ export class StaticAnalyzer {
         ),
         !ruleDeclarer || rootModules.has(ruleDeclarer),
       )) {
+        if (report.evaluationFailure) {
+          const declaringKind = `resource\u0000${ruleDeclarer ?? ""}.${definition.metadata?.name ?? ""}`;
+          if (!ruleFailureLedger.first(declaringKind, report.rule)) continue;
+          diagnostics.push(
+            ruleFailureDiagnostic(report, ruleDeclarer, resourceRuleDiagnostic(report)),
+          );
+          continue;
+        }
         diagnostics.push(resourceRuleDiagnostic(report));
       }
       for (const rule of readResourceRules(schema)) {
@@ -2547,6 +2616,14 @@ export class StaticAnalyzer {
           // violation takes, one hop further out.
           const owner = (report.manifest.metadata as { module?: string } | undefined)?.module;
           if (report.code === "REFERRER_RULE_VIOLATED" && owner && !rootModules.has(owner)) {
+            continue;
+          }
+          if (report.evaluationFailure) {
+            const declaringKind = `referrer\u0000${ruleDeclarer ?? ""}.${definition.metadata?.name ?? ""}`;
+            if (!ruleFailureLedger.first(declaringKind, report.rule)) continue;
+            diagnostics.push(
+              ruleFailureDiagnostic(report, ruleDeclarer, referrerRuleDiagnostic(report)),
+            );
             continue;
           }
           diagnostics.push(referrerRuleDiagnostic(report));
@@ -3020,6 +3097,40 @@ export class StaticAnalyzer {
           } else {
             celSites = NO_CEL_EVAL_SITES;
           }
+
+          // AN EXPRESSION IS NEVER EVALUATED AT OR ABOVE A REFERENCE SLOT.
+          //
+          // The second position of one rule: a template body's entry is the
+          // other (`validate-template-body.ts`). A field the kind evaluates at
+          // CREATION is a legal eval site, so nothing else reported an
+          // expression written there — a `Telo.Provider`'s whole root is
+          // implicitly compile-eval and providers in the standard library
+          // declare reference slots, so a `!cel` above one passed every static
+          // check and the kernel then left data at a `use: call` slot, failing
+          // lazily (or never) at `ctx.resolveRef`. The kernel's own expansion
+          // refuses it now (`ERR_REF_SLOT_COMPUTED`), from this same reader.
+          //
+          // Entry-module-scoped: a dependency's declaration is not the
+          // consumer's to fix.
+          const computedOwnModule = (m.metadata as { module?: string } | undefined)?.module;
+          if (celRuleApplies && (!computedOwnModule || rootModules.has(computedOwnModule))) {
+            for (const slot of computedRefSlots(
+              defs.referencePositions(m, aliases, aliasesByModule),
+              (path) => celEvalModeAt(celSites, path) === "compile",
+            )) {
+              diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                code: "REF_SLOT_COMPUTED",
+                source: SOURCE,
+                message: `${m.kind}/${m.metadata?.name as string}: ${refSlotComputedReason(slot)}`,
+                data: {
+                  resource: { kind: m.kind, name: m.metadata?.name as string },
+                  filePath: (m.metadata as { source?: string } | undefined)?.source,
+                  path: slot.path,
+                },
+              });
+            }
+          }
         },
         onCel: (e) => {
           const m = e.source;
@@ -3062,7 +3173,7 @@ export class StaticAnalyzer {
           const readsObservedState = expressions.filter((x) => x.includes(OBSERVED_STATE_KEY));
           if (reportsObservedState && readsObservedState.length > 0) {
             for (const chain of readsObservedState.flatMap((x) =>
-              celAccessChains(this.celEnv, x, moduleCallNamesOf(moduleCallNames, m)),
+              celAccessChains(x, moduleCallNamesOf(moduleCallNames, m)),
             )) {
               const read = observedStateRead(chain);
               if (!read) continue;
@@ -3623,7 +3734,7 @@ export class StaticAnalyzer {
     );
 
     // Warn about declared variables / secrets / ports that no CEL references.
-    diagnostics.push(...validateUnusedDeclarations(allManifests, this.celEnv));
+    diagnostics.push(...validateUnusedDeclarations(allManifests));
 
     // A template body's reference surface — its entry names, its dispatch slots
     // and the ref slots inside each entry — which no reference pass reaches,
@@ -3682,7 +3793,7 @@ export class StaticAnalyzer {
         aliasesByModule,
         rootModules,
         (expr, declaringManifest) =>
-          celAccessChains(this.celEnv, expr, moduleCallNamesOf(moduleCallNames, declaringManifest)),
+          celAccessChains(expr, moduleCallNamesOf(moduleCallNames, declaringManifest)),
       ),
     );
 

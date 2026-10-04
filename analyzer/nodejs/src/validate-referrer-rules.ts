@@ -31,7 +31,13 @@ import {
   readReferrerRules,
   type ReferrerRule,
 } from "./referrer-rule.js";
-import { bindingFailureReason, type PeerBinder, type PeerBindingFailure, type PeersTarget } from "./peer-binding.js";
+import {
+  bindingFailureReason,
+  isSilentBindingFailure,
+  type PeerBinder,
+  type PeerBindingFailure,
+  type PeersTarget,
+} from "./peer-binding.js";
 import {
   celSourceOf,
   findDynamicLeaf,
@@ -321,11 +327,7 @@ export function evaluateReferrerRules(
 
   for (const rule of rules) {
     const perEntry = rule.peers !== undefined;
-    const compiled = compileRuleCondition(
-      rule.condition,
-      perEntry ? ["self", "referrer", "entry", "peers"] : ["self", "referrer"],
-      context.moduleNames,
-    );
+    const compiled = compileRuleCondition(rule.condition, context.moduleNames);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, reason: compiled.reason });
       continue;
@@ -446,9 +448,13 @@ export interface ReferrerRuleDiagnostic {
   manifest: ResourceManifest;
   path?: string;
   rule: string;
+  /** An evaluation-time failure of the rule itself — see the resource-rule twin
+   *  (`ResourceRuleDiagnostic.evaluationFailure`): one per `(declaring kind,
+   *  rule code)` per analysis, anchored by the caller. */
+  evaluationFailure?: true;
 }
 
-const nameOf = (manifest: ResourceManifest): string =>
+const nameOf =(manifest: ResourceManifest): string =>
   (manifest.metadata?.name as string | undefined) ?? "<unnamed>";
 
 /**
@@ -501,6 +507,9 @@ export function reportReferrerRules(
       continue;
     }
     if (finding.kind === "unbound") {
+      // See `reportResourceRules`: a reference the slot refuses is already
+      // reported at that slot, and the rule never saw its subject.
+      if (isSilentBindingFailure(finding.failure)) continue;
       out.push({
         code: "REFERRER_RULE_SKIPPED",
         severity: "information",
@@ -523,27 +532,32 @@ export function reportReferrerRules(
           "coverage from here on is incomplete. Simplify the condition.";
     out.push({
       code: "REFERRER_RULE_INVALID",
+      // Once for the whole analysis, not per referrer. An ERROR when this
+      // workspace declares the rule — the author can fix it — and a warning for
+      // a dependency's, where an error would block `telo check` on a line the
+      // consumer cannot change.
       severity: declarationIsOurs ? "error" : "warning",
       message:
         `Referrer rule '${finding.rule.code}' on kind '${declaringKind}' ${because} ` +
-        `This is a defect in the rule, not in ${nameOf(manifest)}` +
-        (declarationIsOurs ? "." : " — it is declared by a module this workspace does not own."),
-      // The two halves of the anchor move together or they name a node that
-      // does not exist: the rule's own declaration site is a path in the
-      // DEFINITION, while a referrer's slot path is a path in the REFERRER. A
-      // dependency's broken rule therefore lands on the referrer it was checking
-      // — a manifest the reader owns and where the path resolves — and on the
-      // referenced resource only when there is no referrer to name (a condition
-      // that failed to compile at all).
-      ...(declarationIsOurs && definition
+        "This is a defect in the rule, not in the manifest it ran against" +
+        (finding.referrer
+          ? ` (first seen at ${finding.referrer.kind}/${nameOf(finding.referrer.manifest)} at ` +
+            `'${finding.referrer.path}')`
+          : "") +
+        (declarationIsOurs ? "." : " — it is declared by a module this workspace does not own.") +
+        " Reported once for this rule, however many referrers it fails on.",
+      // The rule's own declaration site is a path in the DEFINITION; with no
+      // definition in hand the referenced resource is the only node to name.
+      // Where the declaring kind is a dependency's the caller re-anchors this at
+      // the `imports:` entry that brought it in.
+      ...(definition
         ? {
             manifest: definition,
             path: `schema.${REFERRER_RULES_ANNOTATION}[${finding.rule.index}]`,
           }
-        : finding.referrer
-          ? { manifest: finding.referrer.manifest, path: finding.referrer.path }
-          : { manifest }),
+        : { manifest }),
       rule: finding.rule.code,
+      evaluationFailure: true,
     });
   }
 

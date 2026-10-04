@@ -1,4 +1,4 @@
-import { isCompiledValue } from "@telorun/sdk";
+import { isCelRecord, isCompiledValue } from "@telorun/sdk";
 import {
   celPlaceholderForSchema,
   type ExternalSchemaResolver,
@@ -163,9 +163,12 @@ export function stripCompiledValues(
     }
     if (value !== null && typeof value === "object") {
       // A class instance (a client, a pool, a stream) carries no CompiledValues
-      // and is not described by the schema — copying it is pure risk.
-      const proto = Object.getPrototypeOf(value);
-      if (proto !== Object.prototype && proto !== null) return value;
+      // and is not described by the schema — copying it is pure risk. Asked of the
+      // value DOMAIN, never of the prototype: a branded CEL value (a decoded
+      // timestamp, a duration, a uint) is a PLAIN object, and rebuilding one from
+      // its entries drops the symbol its brand lives under, so the stripped copy
+      // AJV validates would fail the very value type the slot declares.
+      if (!isCelRecord(value)) return value;
 
       const props = collectSchemaProperties(resolved);
       return walkGuarded(value, () => {

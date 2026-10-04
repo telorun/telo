@@ -1,6 +1,7 @@
 import * as path from "path";
 import type { Logger } from "@telorun/sdk";
 import * as sdk from "@telorun/sdk";
+import * as cel from "@telorun/cel";
 import { TELO_AJV_FORMATS } from "@telorun/analyzer";
 import ajvEqual from "ajv/dist/runtime/equal.js";
 import ajvParseJson from "ajv/dist/runtime/parseJson.js";
@@ -22,10 +23,19 @@ import {
  * instance** rather than to a second copy, and the mechanism that makes them.
  *
  * Two kinds of consumer import them. A controller bundle imports `@telorun/sdk`
- * for the value domain whose identity is load-bearing (`Stream`, `InvokeError`,
- * `Duration`): a second copy makes every `instanceof` across the boundary false.
- * A compiled validator, read back off disk, imports ajv's runtime helpers, which
- * must be the ajv this kernel validates with.
+ * for the values whose identity is load-bearing by CLASS (`Stream`,
+ * `InvokeError`): a second copy makes every `instanceof` across the boundary
+ * false. A compiled validator, read back off disk, imports ajv's runtime
+ * helpers, which must be the ajv this kernel validates with.
+ *
+ * **`@telorun/cel` is collapsed for its STATE, not for its identity.** A CEL
+ * value says what it is under `Symbol.for("telo.cel.value")`, so two copies of
+ * the engine already agree about a duration or a uint and no `instanceof`
+ * crosses the boundary — the guard that used to refuse a bundle for inlining the
+ * engine was about exactly that and is gone with it. What a second copy still
+ * duplicates is everything the engine HOLDS: its registry, its environments and
+ * their compiled-expression caches, the emitted-module store's keys. One copy
+ * per process is what keeps a replaced library replaced.
  *
  * **The resolution is a generated package, not a symlink.** A symlink needs the
  * kernel's copy to exist as a directory on disk, which is exactly what a
@@ -48,7 +58,7 @@ import {
  *  registry copy, which is two SDK instances in one process. The install root
  *  only exists where a package manager does, so it keeps the `file:` dep and
  *  nothing is unified away. */
-export const REALM_COLLAPSE_NAMES: ReadonlyArray<string> = ["@telorun/sdk"];
+export const REALM_COLLAPSE_NAMES: ReadonlyArray<string> = ["@telorun/sdk", "@telorun/cel"];
 
 /** Where the registry hangs. `Symbol.for` rather than a module-level export: a
  *  shim is a separate file loaded by the runtime's own resolution, so the
@@ -93,6 +103,7 @@ function asModuleExports(imported: unknown): Record<string, unknown> {
  */
 const ENTRIES: ReadonlyArray<RealmEntry> = [
   { specifier: "@telorun/sdk", format: "esm", module: sdk as unknown as Record<string, unknown> },
+  { specifier: "@telorun/cel", format: "esm", module: cel as unknown as Record<string, unknown> },
   ...([
     ["ajv/dist/runtime/equal.js", ajvEqual],
     ["ajv/dist/runtime/parseJson.js", ajvParseJson],

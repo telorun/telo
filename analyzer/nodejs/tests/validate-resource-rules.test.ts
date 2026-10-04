@@ -167,7 +167,7 @@ describe("resource rules — evaluation", () => {
       ],
     });
     expect(findings[0]).toMatchObject({ kind: "failed" });
-    expect((findings[0] as { reason: string }).reason).toMatch(/No such key/);
+    expect((findings[0] as { reason: string }).reason).toMatch(/no such key/);
   });
 
   it("evaluates the whole-resource form when `in:` is omitted", () => {

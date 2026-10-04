@@ -3,6 +3,7 @@ import { parseExpression } from "../src/cel-expression.js";
 import { CEL_CHECK_CODES, CelEngineError } from "../src/check-diagnostic.js";
 import type { CelCheckCode } from "../src/check-diagnostic.js";
 import { CelEnvironment } from "../src/environment.js";
+import { UNKNOWN_FUNCTION_CANDIDATES } from "../src/function-registry.js";
 
 /** An environment that declares everything legal at its site, as a strict host does. */
 function strict(): CelEnvironment {
@@ -120,6 +121,78 @@ describe("fixes", () => {
   });
 });
 
+/**
+ * What a call on a name nothing registers is OFFERED: the registered names that accept its
+ * form and arity, nearest first, bounded and ordered by a declared rule.
+ *
+ * The fixture is built to DISCRIMINATE, which is the only thing that makes it a gate: eight
+ * names pass the form-and-arity filter, so a listing of all of them is a broken bound; the
+ * nearest five in name order are a different sequence from the nearest five, so an
+ * implementation that forgot the distance passes nothing here; and the three nearest are
+ * registered in an order that is not their name order, so a tie broken by registration order
+ * is a different sequence too. Each of those three is asserted as a control below.
+ *
+ * **Blind spot:** this is a gate over one call's TEXT. It cannot reach a name whose distance
+ * rule differs by host language — every name here is ASCII, so nothing it says binds a port's
+ * reading of a non-ASCII name — and it says nothing about a macro (`has`, `map`), which is no
+ * registration and so is never a candidate however near it is spelled.
+ */
+describe("a call on a name nothing registers", () => {
+  /** Eight one-argument names, the three nearest registered out of name order. */
+  function spellings(): CelEnvironment {
+    const environment = new CelEnvironment({ standardLibrary: false });
+    for (const name of ["mite", "kites", "kit", "zeta", "beta", "alpha", "delta", "gamma"]) {
+      environment.registerFunction(`${name}(int): int`);
+    }
+    // Nearer than every one of those, and reachable by neither form nor arity of `kite(1)`.
+    return environment.registerFunction("kitten(int, int): int").registerFunction("int.kiter(int): int");
+  }
+
+  it("names the five nearest of its own form and arity, and no command to run", () => {
+    const [diagnostic] = spellings().check("kite(1)").diagnostics;
+    expect(diagnostic?.code).toBe("CEL_UNKNOWN_FUNCTION");
+    expect(diagnostic?.message).toBe(
+      'no function named "kite" is registered — the closest taking 1 argument: kit, kites, mite, beta, zeta',
+    );
+    // A pointer at a listing command is host vocabulary, and unimplementable in a host
+    // that has no command line at all.
+    expect(diagnostic?.message).not.toMatch(/telo|command|`/);
+  });
+
+  it("answers the same environment with the same text twice", () => {
+    const environment = spellings();
+    expect(environment.check("kite(1)").diagnostics).toEqual(environment.check("kite(1)").diagnostics);
+  });
+
+  it("is a bound and an order the fixture can see broken", () => {
+    const environment = spellings();
+    const offered = environment
+      .check("kite(1)")
+      .diagnostics[0]!.message.split(": ")
+      .at(-1)!
+      .split(", ");
+    expect(offered).toHaveLength(UNKNOWN_FUNCTION_CANDIDATES);
+
+    // The bound is real: eight names pass the filter, so an unbounded list would differ.
+    const eligible = environment
+      .definitions()
+      .functions.filter((held) => held.parameters.length === 1 && held.receiverType === null)
+      .map((held) => held.name);
+    expect(eligible).toHaveLength(8);
+
+    // The order is distance-then-name: name order alone, and the nearest three in
+    // registration order, are both other sequences.
+    expect(offered).not.toEqual([...eligible].sort().slice(0, UNKNOWN_FUNCTION_CANDIDATES));
+    expect(offered.slice(0, 3)).not.toEqual(["mite", "kites", "kit"]);
+  });
+
+  it("names nothing where no registration accepts the call's form and arity", () => {
+    expect(new CelEnvironment({ standardLibrary: false }).check("kite(1)").diagnostics[0]?.message).toBe(
+      'no function named "kite" is registered',
+    );
+  });
+});
+
 describe("the per-call resolved-signature listing", () => {
   it("names the signature each call resolved to, with the metadata the host declared", () => {
     const environment = new CelEnvironment()
@@ -170,6 +243,10 @@ describe("the per-call resolved-signature listing", () => {
         namespace: "Billing",
         arity: 1,
         range: [37, 53],
+        // Each argument's own type, which only a NAMESPACED call carries: the host judges
+        // such a call against its own signature grammar, and checking an argument's subtree
+        // on its own would lose whatever the expression bound around it.
+        argumentTypes: ["int"],
         signature: "total(int): int",
         returns: "int",
         deterministic: false,
@@ -238,5 +315,58 @@ describe("optional types", () => {
     const off = new CelEnvironment({ unlistedVariablesAreDyn: true });
     expect(off.check("optional.of(1)").diagnostics[0]?.code).toBe("CEL_UNKNOWN_FUNCTION");
     expect(off.check("optional.of(1).hasValue()").diagnostics[0]?.code).toBe("CEL_UNKNOWN_FUNCTION");
+  });
+});
+
+describe("a presence-shaped read — `.?`, `[?]`, `has()`", () => {
+  /**
+   * A field declared as two shapes: a storage-class string, or a reference carrying a
+   * name. Declared both directly and through a `$ref`, because a consumer's schema says
+   * it either way and the answer must not depend on which.
+   */
+  function twoShapes(): CelEnvironment {
+    const column = {
+      anyOf: [{ type: "string" }, { type: "object", properties: { name: { type: "string" } } }],
+    };
+    return new CelEnvironment({ enableOptionalTypes: true })
+      .registerVariable("direct", { schema: { type: "object", properties: { type: column } } })
+      .registerVariable("referenced", {
+        schema: {
+          type: "object",
+          properties: { type: { $ref: "#/$defs/Column" } },
+          $defs: { Column: column },
+        },
+      });
+  }
+
+  it("discriminates a two-shape field, while the ordinary read of it stays refused", () => {
+    for (const root of ["direct", "referenced"]) {
+      const check = (source: string) => twoShapes().check(source);
+      expect(check(`${root}.type.?name`).diagnostics, root).toEqual([]);
+      expect(check(`${root}.type.?name`).typeName, root).toBe("optional<string>");
+      expect(check(`${root}.type[?'name']`).typeName, root).toBe("optional<string>");
+      expect(check(`has(${root}.type.name)`).diagnostics, root).toEqual([]);
+      expect(check(`${root}.type.name`).diagnostics[0]?.code, root).toBe("CEL_TYPE_ERROR");
+    }
+  });
+
+  it("refuses an operand whose declared type holds no members, in every form alike", () => {
+    // The runtime answers absence for all five, so this is where a `.?` over a known
+    // scalar is still a mistake: the loosening is reached only through a `dyn`.
+    const environment = () =>
+      new CelEnvironment({ enableOptionalTypes: true }).registerVariable("text", "string");
+    for (const source of ["text.b", "text.?b", "has(text.b)", "text['b']", "text[?'b']"]) {
+      const [first] = environment().check(source).diagnostics;
+      expect(first?.code, source).toBe("CEL_TYPE_ERROR");
+      expect(first?.message, source).toMatch(/^string holds no (members|elements)$/);
+    }
+    // And a union NO branch of which holds the member is refused in the presence form too.
+    const neither = new CelEnvironment({ enableOptionalTypes: true }).registerVariable("either", {
+      schema: { anyOf: [{ type: "string" }, { type: "integer" }] },
+    });
+    expect(neither.check("either.?b").diagnostics.map((held) => held.code)).toEqual([
+      "CEL_TYPE_ERROR",
+      "CEL_TYPE_ERROR",
+    ]);
   });
 });

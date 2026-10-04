@@ -143,7 +143,7 @@ export type {
   VariableDefinition,
 } from "./environment.js";
 
-export { FunctionRegistry } from "./function-registry.js";
+export { FunctionRegistry, UNKNOWN_FUNCTION_CANDIDATES } from "./function-registry.js";
 export type { RegisteredFunction, Resolution, ResolutionFailure } from "./function-registry.js";
 
 export {
@@ -225,7 +225,11 @@ export {
 } from "./zoned-calendar.js";
 export type { CivilTime } from "./zoned-calendar.js";
 
-export { CelTypeExpressionError, parseTypeExpression } from "./type-expression.js";
+export {
+  CelTypeExpressionError,
+  CelUnknownTypeNameError,
+  parseTypeExpression,
+} from "./type-expression.js";
 export type { NominalResolver } from "./type-expression.js";
 
 // --- the value domain, the semantics and the closure backend ----------------
@@ -234,7 +238,10 @@ export type { CelActivation } from "./activation.js";
 
 export { BoundedCache } from "./bounded-cache.js";
 
-export { celMapFromEntries, celMapKeys, mapKeyIdentity } from "./cel-map-value.js";
+// `mapKeyIdentity` is deliberately NOT exported: what identifies an entry is the entries
+// map's own business, and publishing the rule is what let a consumer grow a second copy of
+// it. A host reads a map through the member-read seam and walks `entries` for the pairs.
+export { celMapFromEntries, celMapKeys } from "./cel-map-value.js";
 
 export { CelEvaluationError, programOfStep } from "./cel-program.js";
 export type { CelProgram, EvaluateOptions } from "./cel-program.js";
@@ -295,6 +302,7 @@ export type {
   CelEvaluationCode,
   CelHostValue,
   CelMap,
+  CelMapKey,
   CelMapValueEntry,
   CelOptional,
   CelRecord,
@@ -314,6 +322,7 @@ export type {
   CompileTarget,
   EvaluationFrame,
   NamespaceDispatch,
+  NamespaceImplementation,
 } from "./backend-runtime.js";
 
 export {
@@ -329,6 +338,7 @@ export {
   celDurationFromNanos,
   durationField,
   durationNanos,
+  durationNanosFromText,
   durationOutOfRange,
   formatDuration,
   MAX_DURATION_NANOS,
@@ -341,6 +351,7 @@ export {
   celIterable,
   celLookup,
   celRead,
+  lookupAbsence,
   lookupError,
   MISSING,
   OUT_OF_RANGE,
@@ -369,9 +380,12 @@ export {
   typeValueName,
 } from "./runtime-library.js";
 export type { CelCallContext, CelImplementation } from "./runtime-library.js";
+// The bound a host writing an implementation is held to, and what the refusal names.
+export { CALL_SITE_DIRECT_ARITY } from "./runtime-library.js";
 
 export {
   celTimestamp,
+  celTimestampFromMillis,
   formatTimestamp,
   MAX_TIMESTAMP_SECONDS,
   MIN_TIMESTAMP_SECONDS,
@@ -384,3 +398,10 @@ export {
 export { celCompare, celEqual } from "./value-equality.js";
 
 export { bytesToText, doubleText, textToBytes } from "./value-text.js";
+
+export {
+  BINDING_FORMS,
+  namespaceMacroBinding,
+  receiverMacroBinding,
+  type ComprehensionBinding,
+} from "./comprehension-bindings.js";

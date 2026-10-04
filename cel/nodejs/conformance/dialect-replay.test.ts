@@ -12,14 +12,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { NominalTypeDefinition } from "../src/index.js";
-import { CATALOG_CORRECTIONS, CATALOG_EXCLUSIONS, CATALOG_FILE } from "./catalog-replay.js";
+import { CATALOG_CORRECTIONS, CATALOG_EXCLUSIONS, CATALOG_FILE, CATALOG_ROWS } from "./catalog-replay.js";
 import {
   replayDialectRows,
   unknownDeclaredTypes,
   type DialectReplayReport,
   type DialectRow,
 } from "./dialect-replay.js";
-import { TYPES_CORRECTIONS, TYPES_EXCLUSIONS, TYPES_FILE } from "./types-replay.js";
+import { TYPES_CORRECTIONS, TYPES_EXCLUSIONS, TYPES_FILE, TYPES_ROWS } from "./types-replay.js";
 
 const directory = process.env.CEL_CONFORMANCE_DIR;
 if (!directory) {
@@ -44,8 +44,8 @@ function rowsOf(file: string): readonly DialectRow[] {
 }
 
 const files = [
-  { file: CATALOG_FILE, corrections: CATALOG_CORRECTIONS, exclusions: CATALOG_EXCLUSIONS },
-  { file: TYPES_FILE, corrections: TYPES_CORRECTIONS, exclusions: TYPES_EXCLUSIONS },
+  { file: CATALOG_FILE, rows: CATALOG_ROWS, corrections: CATALOG_CORRECTIONS, exclusions: CATALOG_EXCLUSIONS },
+  { file: TYPES_FILE, rows: TYPES_ROWS, corrections: TYPES_CORRECTIONS, exclusions: TYPES_EXCLUSIONS },
 ];
 
 for (const held of files) {
@@ -73,8 +73,11 @@ for (const held of files) {
       expect(unknownDeclaredTypes(rows, hostTypes)).toEqual([]);
     });
 
-    it("drives every row of the file", () => {
+    it("drives every row of the file, and the file holds the rows it is pinned to", () => {
       expect(report.driven).toBe(rows.length);
+      // **A removed row is what a per-row driver cannot see**: every other number in the
+      // report stays true, so the count is pinned and a row added or deleted fails here.
+      expect(rows.length).toBe(held.rows);
     });
 
     it("answers every row it drives", () => {

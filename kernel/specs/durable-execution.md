@@ -285,7 +285,7 @@ is that these fields exist and mean this.
 path: steps/createAccount
 kind: step
 target: { kind: Sql.Transaction, name: accountTx }   # §5.3
-v: 1
+v: 2
 result: { id: 41 }
 ```
 
@@ -295,7 +295,7 @@ result: { id: 41 }
 path: steps/checkStock/if
 kind: decision
 decision: predicate
-v: 1
+v: 2
 value: true
 ```
 
@@ -304,13 +304,19 @@ a boundary whose reader turns the value back into a live value inside a Telo
 runtime, and it is the boundary where getting that wrong is least visible: plain
 JSON replays a timestamp as text, an `int` as a `double` and `bytes` as an object
 keyed by index, so an expression that worked on the first pass computes something
-else on resume with nothing reported. `v` is `1`, and it is bumped only for a
+else on resume with nothing reported. `v` is `2`, and it is bumped only for a
 change an older reader would MISREAD.
 
 - An entry carrying **no `v`** is read with whatever codec its store used before
   this rule existed. Legacy entries are read rather than refused: refusing one
   would strand every run parked before the change, which is the opposite of what
   a journal is for.
+- An entry carrying a **`v` of an earlier codec the reader still knows** is read
+  under THAT codec's grammar, not refused for not being the current form: the
+  frame's canonical-only rule (§6.2) is about two writers disagreeing, and a
+  version says which writer it was. Version `1` wrote a timestamp payload of
+  exactly three fractional digits; version `2` writes §6.3's trimmed nanosecond
+  form. Every other tag's payload is unchanged between them.
 - An entry carrying a **`v` the reader does not know** MUST be refused, never
   read for the fields it recognizes — the same rule §5.3 states for a step
   target's encoding, applied to the record. A later codec may mean something else
@@ -561,9 +567,10 @@ refused before anything else, at the empty pointer; a repeated member name is
 refused before any value is read, at the first repeat in text order. A key in a
 pointer is written with each unpaired surrogate replaced by U+FFFD.
 Payloads are read only in their canonical form because a lenient reader silently
-changes what another writer meant: a timestamp carrying nanoseconds would be read
-at millisecond precision, and a duration written `1.500s` would read back equal
-to one written `1.5s` while its frame differs.
+changes what another writer meant: a timestamp written `…00.000Z` would read back
+equal to one written `…00Z` while its frame differs, as would a duration written
+`1.500s` against `1.5s`, and a fraction past nine digits carries a precision no
+reader may round away.
 
 ### 6.3 Tag vocabulary
 
@@ -576,15 +583,16 @@ reader refuses a tag it does not know rather than reading the object as a map.
 | `uint` | `uint` | Decimal text of a uint64: `0`, or digits with no leading zero |
 | `double` | `double` | One of `NaN`, `Infinity`, `-Infinity`, `-0` |
 | `bytes` | `bytes` | Base64url (RFC 4648 §5) without padding, unused trailing bits zero |
-| `google.protobuf.Timestamp` | `google.protobuf.Timestamp` | `YYYY-MM-DDTHH:MM:SS.sssZ`: UTC, exactly three fractional digits |
+| `google.protobuf.Timestamp` | `google.protobuf.Timestamp` | RFC 3339 in UTC with a `Z` suffix: `YYYY-MM-DDTHH:MM:SS`, and, when the instant is not whole, `.` and one to nine digits with no trailing zero (`2026-01-15T07:30:00Z`, `2026-01-15T07:30:00.5Z`, `2026-01-15T07:30:00.000000001Z`) |
 | `google.protobuf.Duration` | `google.protobuf.Duration` | Seconds with an `s` suffix: an optional `-`, whole seconds with no leading zero, and, when not whole, `.` and up to nine digits with no trailing zero (`5400s`, `-1.5s`, `0.000000001s`) |
 | `map` | `map` | A list of `[key, value]` pairs, each a frame |
 
-**A timestamp's precision is one millisecond**, the finest instant every Telo
-runtime holds (Node's timestamp is the host `Date`). A runtime whose own timestamp
-type is finer MUST hold only whole milliseconds in a value that reaches a frame,
-and its writer MUST refuse one that is not rather than round it. A duration keeps
-nanoseconds.
+**A timestamp and a duration are both nanosecond, and both trim.** The fraction is
+absent when the value is whole and carries no trailing zero otherwise, so one
+instant has exactly one text: `2026-01-15T07:30:00Z`, never `…00.000Z`. An instant
+is seconds plus nanoseconds in `0001-01-01T00:00:00Z … 9999-12-31T23:59:59.999999999Z`
+— a range no host date type holds, which is why it is a value of the domain's own
+rather than a host object a runtime happens to carry.
 
 ### 6.4 Plain encoding
 
@@ -595,7 +603,7 @@ the slot's declared schema, and `$telo` never appears.
 
 | CEL type | Written | Read |
 | --- | --- | --- |
-| `google.protobuf.Timestamp` | RFC 3339 in UTC, as the payload in §6.3 | RFC 3339 with any offset |
+| `google.protobuf.Timestamp` | RFC 3339 in UTC, as the payload in §6.3 | RFC 3339 with any offset and one to nine fractional digits; a tenth is refused, never rounded |
 | `google.protobuf.Duration` | Seconds, as the payload in §6.3 | Any CEL duration string (`1h30m`) |
 | `bytes` | Base64url without padding | The same form |
 | `int`, `uint` | Its exact decimal digits, as a JSON number | A JSON number |
@@ -667,10 +675,11 @@ Values a runtime writes and reads:
 | uint max | `{"uint":"18446744073709551615"}` | `{"$telo":"uint","value":"18446744073709551615"}` |
 | bytes empty | `{"bytes":[]}` | `{"$telo":"bytes","value":""}` |
 | bytes url-safe alphabet | `{"bytes":[251,255,0]}` | `{"$telo":"bytes","value":"-_8A"}` |
-| timestamp epoch | `{"timestamp":{"seconds":"0","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"1970-01-01T00:00:00.000Z"}` |
-| timestamp before epoch | `{"timestamp":{"seconds":"-1","nanos":500000000}}` | `{"$telo":"google.protobuf.Timestamp","value":"1969-12-31T23:59:59.500Z"}` |
-| timestamp min | `{"timestamp":{"seconds":"-62135596800","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"0001-01-01T00:00:00.000Z"}` |
-| timestamp max | `{"timestamp":{"seconds":"253402300799","nanos":999000000}}` | `{"$telo":"google.protobuf.Timestamp","value":"9999-12-31T23:59:59.999Z"}` |
+| timestamp epoch | `{"timestamp":{"seconds":"0","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"1970-01-01T00:00:00Z"}` |
+| timestamp before epoch | `{"timestamp":{"seconds":"-1","nanos":500000000}}` | `{"$telo":"google.protobuf.Timestamp","value":"1969-12-31T23:59:59.5Z"}` |
+| timestamp to the nanosecond | `{"timestamp":{"seconds":"1768462200","nanos":1}}` | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00.000000001Z"}` |
+| timestamp min | `{"timestamp":{"seconds":"-62135596800","nanos":0}}` | `{"$telo":"google.protobuf.Timestamp","value":"0001-01-01T00:00:00Z"}` |
+| timestamp max | `{"timestamp":{"seconds":"253402300799","nanos":999999999}}` | `{"$telo":"google.protobuf.Timestamp","value":"9999-12-31T23:59:59.999999999Z"}` |
 | duration zero | `{"duration":{"seconds":"0","nanos":0}}` | `{"$telo":"google.protobuf.Duration","value":"0s"}` |
 | duration whole seconds | `{"duration":{"seconds":"5400","nanos":0}}` | `{"$telo":"google.protobuf.Duration","value":"5400s"}` |
 | duration negative fraction | `{"duration":{"seconds":"-1","nanos":-500000000}}` | `{"$telo":"google.protobuf.Duration","value":"-1.5s"}` |
@@ -685,7 +694,7 @@ Values a runtime writes and reads:
 | map with the tag key | `{"map":[[{"string":"a"},{"int":"1"}],[{"string":"$telo"},{"string":"x"}]]}` | `{"$telo":"map","value":[["$telo","x"],["a",{"$telo":"int","value":"1"}]]}` |
 | map int keys | `{"map":[[{"int":"10"},{"string":"ten"}],[{"int":"2"},{"string":"two"}],[{"int":"-1"},{"string":"minus one"}]]}` | `{"$telo":"map","value":[[{"$telo":"int","value":"-1"},"minus one"],[{"$telo":"int","value":"10"},"ten"],[{"$telo":"int","value":"2"},"two"]]}` |
 | map mixed key types | `{"map":[[{"uint":"3"},{"string":"y"}],[{"int":"2"},{"string":"x"}],[{"bool":true},{"null":null}],[{"string":"a"},{"double":1.5}]]}` | `{"$telo":"map","value":[["a",1.5],[true,null],[{"$telo":"int","value":"2"},"x"],[{"$telo":"uint","value":"3"},"y"]]}` |
-| nested | `{"map":[[{"string":"meta"},{"map":[[{"string":"$telo"},{"string":"not a tag"}]]}],[{"string":"events"},{"list":[{"map":[[{"string":"size"},{"int":"3"}],[{"string":"at"},{"timestamp":{"seconds":"1768469400","nanos":250000000}}]]}]}]]}` | `{"events":[{"at":{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.250Z"},"size":{"$telo":"int","value":"3"}}],"meta":{"$telo":"map","value":[["$telo","not a tag"]]}}` |
+| nested | `{"map":[[{"string":"meta"},{"map":[[{"string":"$telo"},{"string":"not a tag"}]]}],[{"string":"events"},{"list":[{"map":[[{"string":"size"},{"int":"3"}],[{"string":"at"},{"timestamp":{"seconds":"1768469400","nanos":250000000}}]]}]}]]}` | `{"events":[{"at":{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.25Z"},"size":{"$telo":"int","value":"3"}}],"meta":{"$telo":"map","value":[["$telo","not a tag"]]}}` |
 
 Frames a runtime refuses to read:
 
@@ -706,10 +715,10 @@ Frames a runtime refuses to read:
 | bytes padded | `{"$telo":"bytes","value":"-_8A="}` | `"/value"` |
 | bytes standard alphabet | `{"$telo":"bytes","value":"+/8A"}` | `"/value"` |
 | bytes nonzero trailing bits | `{"$telo":"bytes","value":"AB"}` | `"/value"` |
-| timestamp with offset | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00.000+02:00"}` | `"/value"` |
-| timestamp without milliseconds | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00Z"}` | `"/value"` |
-| timestamp with nanoseconds | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00.000000001Z"}` | `"/value"` |
-| timestamp year zero | `{"$telo":"google.protobuf.Timestamp","value":"0000-12-31T23:59:59.000Z"}` | `"/value"` |
+| timestamp with offset | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T09:30:00+02:00"}` | `"/value"` |
+| timestamp trailing zero | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00.000Z"}` | `"/value"` |
+| timestamp beyond the nanosecond | `{"$telo":"google.protobuf.Timestamp","value":"2026-01-15T07:30:00.0000000001Z"}` | `"/value"` |
+| timestamp year zero | `{"$telo":"google.protobuf.Timestamp","value":"0000-12-31T23:59:59Z"}` | `"/value"` |
 | duration units | `{"$telo":"google.protobuf.Duration","value":"1h30m"}` | `"/value"` |
 | duration trailing zero | `{"$telo":"google.protobuf.Duration","value":"1.500s"}` | `"/value"` |
 | duration out of range | `{"$telo":"google.protobuf.Duration","value":"315576000001s"}` | `"/value"` |

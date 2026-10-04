@@ -400,7 +400,11 @@ of them. A router or server entry sees `error` plus `request.path` / `method` /
 
 A resource rule reads what its reference slots NAME only when it opts in with
 `resolve: [/<slot>]`: inside the condition each listed slot is the declaration
-it references, one level deep.
+it references, one level deep. A pointer naming a field the resource left out
+contributes nothing — the field stays ABSENT, so `self.?xs.orValue([])` is the
+empty list and not a non-collection. A slot whose reference names a kind it does
+not accept is already refused there (`REFERENCE_KIND_MISMATCH`), and the rule is
+not evaluated at all.
 
 An abstract's `throws:` is part of its contract and a CEILING: a
 `Telo.Abstract` may declare `throws: { codes: … }` (a literal list, never
@@ -691,10 +695,20 @@ Guard optional fields — an unguarded missing key THROWS, and `has()` does not
 work under an iterated key. Write `'renamedFrom' in this` or
 `this.?renamedFrom.orValue('')`.
 
+`.?` and `[?]` ask whether a member is *there*, and answer nothing when the
+value cannot hold one — so a field with two shapes is discriminated with an
+optional read rather than a type test; a field whose shape IS declared is
+refused at check, so this is never a licence to write `.?` over a known scalar.
+
 Rules may not call host-backed functions (`sha256`, `hmac`, `base64Encode`, …
 — the kernel injects those at boot, so the analyzer has only throwing stubs)
 or non-deterministic ones (`nowIso`, `uuidv4`). Violations report as
-`RESOURCE_RULE_VIOLATED` with your `code` in `data.rule`.
+`RESOURCE_RULE_VIOLATED` with your `code` in `data.rule`. A rule that THROWS or
+overruns its 50 ms budget is a defect in the rule, reported once for the whole
+analysis — a warning at the `imports:` entry that brought the kind in, since a
+consumer cannot change a dependency's rule, and an ERROR at the rule's own
+declaration for a kind of this workspace, where the reader is the author. So one
+such diagnostic means one broken rule, however many resources it met.
 
 A rule moves a failure earlier; keep the controller's own guard, because a
 library caller reaching the module directly never passed through `telo check`.
@@ -931,8 +945,13 @@ One annotation says what the value at a slot is, beyond what JSON Schema's
     wiring a UDP port into a TCP slot is a static error.
   - `Telo.Timestamp` / `Telo.Duration` — CEL's own timestamp and duration, held
     as the value in CEL (`at + duration('1h')`, `now() - at > ttl`). Written as
-    text: RFC 3339 for a timestamp (any offset read, UTC written), a CEL
-    duration string for a duration (`1h30m` read, `5400s` written).
+    text: RFC 3339 for a timestamp (any offset and one to nine fractional
+    digits read; UTC `Z` written, with the fraction absent when the instant is
+    whole and otherwise carrying no trailing zero — `2026-01-15T07:30:00Z`,
+    `…:00.25Z`, `…:00.000000001Z`), a CEL duration string for a duration
+    (`1h30m` read, `5400s` written). Both are nanosecond-precise: a timestamp
+    is seconds plus nanos, never a host date type, so an `expected:` literal in
+    a test is written in exactly that trimmed form.
   - `Telo.Uint64` — an unsigned 64-bit integer (CEL `uint`), declared over
     `type: integer`.
   - `Telo.HostPath` — an absolute path on the machine running the app (a
@@ -960,8 +979,9 @@ Three rules follow, all yours to obey when authoring:
     `anyOf: [string, bytes]`, a string is always the TEXT branch — use the
     form the kind offers (`Fs.FileWrite` takes `content` plus
     `encoding: base64`).
-  - An HTTP JSON body writes these as their text (RFC 3339 `Z`, `"5400s"`,
-    base64url) with no response schema needed; a request body field declared
+  - An HTTP JSON body writes these as their text (RFC 3339 `Z` with the
+    fraction trimmed, `"5400s"`, base64url) with no response schema needed; a
+    request body field declared
     `x-telo-type: Telo.Timestamp` arrives in CEL as a timestamp.
   - A union with a byte branch uses `anyOf`, NEVER `oneOf`. Tooling that does
     not know the keyword reads that branch as matching anything, so under
@@ -1595,8 +1615,12 @@ Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
   whole value holding several (`routes: !cel "self.routes"`, each route's
   `handler` a reference the instance declared). Never build such a value with
   CEL (`self.items.map(i, {'handler': i.handler})`): CEL values are data, so
-  the reference is lost (`TEMPLATE_REF_COMPUTED`). Declare the field on your
-  kind already shaped as the entry expects, and forward it whole.
+  the reference is lost (`REF_SLOT_COMPUTED`, and `ERR_REF_SLOT_COMPUTED` at
+  boot). Declare the field on your kind already shaped as the entry expects,
+  and forward it whole. The same rule holds OUTSIDE a body: an expression at or
+  above a reference slot of a resource whose kind evaluates its fields at
+  creation — a `Telo.Provider`, whose whole root is evaluated once — is refused
+  too. Write such a slot as `!ref`.
 
   A FORWARDED VALUE IS CHECKED AS THE ENTRY'S OWN FIELD: what a user of your
   kind writes there is validated against the entry kind's schema, reference
@@ -2045,8 +2069,9 @@ the `imports` map.
   `!interpolate`: literal text with `${{ ... }}` holes, each hole a CEL
   expression, always producing a string
   (`!interpolate "http://localhost:${{ ports.http }}"`). Each hole converts
-  exactly as CEL's `string()` does — a timestamp as RFC 3339, a duration as
-  `5400s`, bytes as UTF-8; a list or map hole is `INTERPOLATION_HOLE_NOT_CONVERTIBLE`,
+  exactly as CEL's `string()` does — a timestamp as RFC 3339 in UTC with the
+  fraction trimmed (`2026-01-15T07:30:00Z`), a duration as `5400s`, bytes as
+  UTF-8; a list or map hole is `INTERPOLATION_HOLE_NOT_CONVERTIBLE`,
   so convert it inside the hole. A hole that may be null must be guarded
   (`${{ x != null ? x : "" }}`), and a hole reading a step result from a
   resource with no `outputType` should get one declared, or a null at runtime

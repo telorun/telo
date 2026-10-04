@@ -34,6 +34,7 @@ import type { LiteralArgumentCheck } from "./signature.js";
 import type {
   CelEvaluationCode,
   CelMap,
+  CelMapKey,
   CelMapValueEntry,
   CelRecord,
   CelTimestamp,
@@ -104,10 +105,10 @@ class CatalogRefusal extends Error {
 }
 
 /** The one place a refusal becomes a value. Anything else thrown is a defect here. */
-function refusing(run: (args: readonly CelValue[], ctx: CelCallContext) => CelValue): CelImplementation {
-  return (args, ctx) => {
+function refusing(run: CelImplementation): CelImplementation {
+  return (ctx, a, b, c, d) => {
     try {
-      return run(args, ctx);
+      return run(ctx, a, b, c, d);
     } catch (cause) {
       if (cause instanceof CatalogRefusal) return celError(cause.code, cause.message, ctx.range);
       throw cause;
@@ -117,7 +118,7 @@ function refusing(run: (args: readonly CelValue[], ctx: CelCallContext) => CelVa
 
 /** An implementation that needs nothing of the host. */
 const own =
-  (run: (args: readonly CelValue[], ctx: CelCallContext) => CelValue): CatalogImplementation =>
+  (run: CelImplementation): CatalogImplementation =>
   () =>
     refusing(run);
 
@@ -129,14 +130,12 @@ const own =
 const hosted =
   <K extends keyof CelCatalogHandlers>(
     name: K,
-    build: (
-      handler: CelCatalogHandlers[K],
-    ) => (args: readonly CelValue[], ctx: CelCallContext) => CelValue,
+    build: (handler: CelCatalogHandlers[K]) => CelImplementation,
   ): CatalogImplementation =>
   (handlers) => {
     const handler = handlers[name];
     if (handler === undefined) {
-      return (_args, ctx) =>
+      return (ctx) =>
         celError(
           "unbound_function",
           `${name}() is supplied by the host, and this environment was given no implementation for it`,
@@ -148,8 +147,10 @@ const hosted =
 
 // --- reading arguments ------------------------------------------------------
 
-const text = (value: CelValue): string => value as string;
-const bytes = (value: CelValue): Uint8Array => value as Uint8Array;
+// `CelValue | undefined` because a parameter list is as wide as the widest overload; the
+// dispatcher has already resolved on this argument's type.
+const text = (value: CelValue | undefined): string => value as string;
+const bytes = (value: CelValue | undefined): Uint8Array => value as Uint8Array;
 
 /**
  * A list argument. Every list-taking entry reads one through here, because a `dyn` slot can
@@ -157,13 +158,13 @@ const bytes = (value: CelValue): Uint8Array => value as Uint8Array;
  * with its host language's own `TypeError` for the rest, and neither is an answer about the
  * argument. Named in the catalog's voice instead, as an instant and a map already are.
  */
-function list(what: string, value: CelValue): readonly CelValue[] {
+function list(what: string, value: CelValue | undefined): readonly CelValue[] {
   if (Array.isArray(value)) return value;
   throw new CatalogRefusal(`${what}: expected a list, got ${celTypeNameOf(value) ?? "no CEL value"}`);
 }
 
 /** A value as a number, the way every arithmetic and formatting entry reads one. */
-function numberOf(value: CelValue): number {
+function numberOf(value: CelValue | undefined): number {
   if (typeof value === "number") return value;
   if (typeof value === "bigint") return Number(value);
   if (isCelUint(value)) return Number(value.value);
@@ -180,7 +181,7 @@ function numberOf(value: CelValue): number {
  * engine being replaced wrote a map as `[object Object]`, which is a value no author
  * ever wrote and which prints into a document.
  */
-function textOf(what: string, value: CelValue): string {
+function textOf(what: string, value: CelValue | undefined): string {
   if (typeof value === "string") return value;
   if (typeof value === "bigint") return String(value);
   if (isCelUint(value)) return String(value.value);
@@ -202,7 +203,7 @@ function textOf(what: string, value: CelValue): string {
 }
 
 /** An instant argument. A `dyn` slot can carry anything, so it is named, never coerced. */
-function instantArg(what: string, value: CelValue): CelTimestamp {
+function instantArg(what: string, value: CelValue | undefined): CelTimestamp {
   if (isCelTimestamp(value)) return value;
   throw new CatalogRefusal(`${what}: expected a timestamp`);
 }
@@ -222,7 +223,7 @@ function instantOfMillis(what: string, millis: number): CelValue {
 }
 
 /** A map's entries, whichever container holds them. A list is named rather than joined. */
-function mapEntries(what: string, value: CelValue): readonly (readonly [CelValue, CelValue])[] {
+function mapEntries(what: string, value: CelValue | undefined): readonly (readonly [CelValue, CelValue])[] {
   if (isCelMap(value)) return [...value.entries.values()].map((entry) => [entry.key, entry.value] as const);
   if (Array.isArray(value)) {
     throw new CatalogRefusal(`${what}: expected a map, got a list — use '+' to join lists`);
@@ -234,9 +235,9 @@ function mapEntries(what: string, value: CelValue): readonly (readonly [CelValue
 }
 
 /** A map of the same container the entries came out of, so what comes back is what went in. */
-function mapOfEntries(like: CelValue, pairs: readonly (readonly [CelValue, CelValue])[]): CelValue {
+function mapOfEntries(like: CelValue | undefined, pairs: readonly (readonly [CelValue, CelValue])[]): CelValue {
   if (isCelMap(like)) {
-    const entries = new Map<string, CelMapValueEntry>();
+    const entries = new Map<CelMapKey, CelMapValueEntry>();
     for (const [key, value] of pairs) {
       const identity = mapKeyIdentity(key);
       if (identity === undefined) continue;
@@ -279,7 +280,7 @@ const MAX_EXACT_INT = 9007199254740991n;
  * converted here — and past 2^53 a double stops representing every integer, so emitting a
  * number that is not the one the author computed is refused rather than printed.
  */
-function formattable(what: string, value: CelValue): number {
+function formattable(what: string, value: CelValue | undefined): number {
   if (typeof value === "bigint" || isCelUint(value)) {
     const whole = typeof value === "bigint" ? value : value.value;
     if (whole > MAX_EXACT_INT || whole < -MAX_EXACT_INT) {
@@ -318,7 +319,7 @@ const FORMAT_TYPES = new Set([..."efgrs%pbodxXcn"]);
  */
 const MAX_DECIMALS = 10;
 
-function digitCount(what: string, digits: CelValue): number {
+function digitCount(what: string, digits: CelValue | undefined): number {
   const count = numberOf(digits);
   if (!Number.isInteger(count) || count < 0 || count > MAX_DECIMALS) {
     throw new CatalogRefusal(
@@ -336,7 +337,7 @@ function digitCount(what: string, digits: CelValue): number {
 const FORMATTER_CACHE_CAPACITY = 256;
 const formatters = new BoundedCache<string, (value: number) => string>(FORMATTER_CACHE_CAPACITY);
 
-function formatter(what: string, specifier: CelValue): (value: number) => string {
+function formatter(what: string, specifier: CelValue | undefined): (value: number) => string {
   const written = textOf(what, specifier);
   const held = formatters.get(written);
   if (held) return held;
@@ -361,7 +362,7 @@ function formatter(what: string, specifier: CelValue): (value: number) => string
 }
 
 /** Render a minute count against a declared day length — a policy, never an assumption. */
-function durationText(minutes: CelValue, minutesPerDay: CelValue): string {
+function durationText(minutes: CelValue | undefined, minutesPerDay: CelValue | undefined): string {
   const perDay = Math.round(formattable("formatDuration", minutesPerDay));
   if (!Number.isFinite(perDay) || perDay <= 0) {
     throw new CatalogRefusal(`formatDuration: minutesPerDay must be a positive number, got ${perDay}`);
@@ -415,7 +416,7 @@ function re2Flags(what: string, flags: CelValue | undefined): number {
  * author. A parse failure outside that closed vocabulary is a defect here, raised as one
  * with the library's message rather than printed as though it were a kind.
  */
-function pattern(what: string, source: CelValue, flags: CelValue | undefined): RE2JS {
+function pattern(what: string, source: CelValue | undefined, flags: CelValue | undefined): RE2JS {
   const bits = re2Flags(what, flags);
   const written = textOf(what, source);
   return patternOrRefusal(what, written, bits);
@@ -552,8 +553,8 @@ function distinct(values: readonly CelValue[]): CelValue[] {
 }
 
 /** Drop entries whose value is null or the empty string. Nothing else. */
-function compacted(value: CelValue): CelValue {
-  const keep = (held: CelValue): boolean => held !== null && held !== "";
+function compacted(value: CelValue | undefined): CelValue {
+  const keep = (held: CelValue | undefined): boolean => held !== null && held !== "";
   if (Array.isArray(value)) return value.filter(keep);
   return mapOfEntries(
     value,
@@ -565,23 +566,23 @@ function compacted(value: CelValue): CelValue {
 
 const IMPLEMENTATIONS = new Map<string, CatalogImplementation>([
   // collections
-  ["join(list<dyn>, string)", own((args) => list("join", args[0]!).map((held) => textOf("join", held)).join(text(args[1]!)))],
-  ["keys(map<dyn, dyn>)", own((args) => mapEntries("keys", args[0]!).map(([key]) => key))],
-  ["values(map<dyn, dyn>)", own((args) => mapEntries("values", args[0]!).map(([, value]) => value))],
-  ["distinct(list<dyn>)", own((args) => distinct(list("distinct", args[0]!)))],
-  ["reverse(list<dyn>)", own((args) => [...list("reverse", args[0]!)].reverse())],
-  ["flatten(list<dyn>)", own((args) => (list("flatten", args[0]!) as CelValue[]).flat())],
-  ["sort(list<dyn>)", own((args) => sorted("sort", list("sort", args[0]!)))],
+  ["join(list<dyn>, string)", own((ctx, a, b) => list("join", a).map((held) => textOf("join", held)).join(text(b)))],
+  ["keys(map<dyn, dyn>)", own((ctx, a) => mapEntries("keys", a).map(([key]) => key))],
+  ["values(map<dyn, dyn>)", own((ctx, a) => mapEntries("values", a).map(([, value]) => value))],
+  ["distinct(list<dyn>)", own((ctx, a) => distinct(list("distinct", a)))],
+  ["reverse(list<dyn>)", own((ctx, a) => [...list("reverse", a)].reverse())],
+  ["flatten(list<dyn>)", own((ctx, a) => (list("flatten", a) as CelValue[]).flat())],
+  ["sort(list<dyn>)", own((ctx, a) => sorted("sort", list("sort", a)))],
   [
     "range(int)",
-    own((args) =>
-      Array.from({ length: Math.max(0, Math.trunc(numberOf(args[0]!))) }, (_unused, at) => BigInt(at)),
+    own((ctx, a) =>
+      Array.from({ length: Math.max(0, Math.trunc(numberOf(a))) }, (_unused, at) => BigInt(at)),
     ),
   ],
   [
     "enumerate(list<dyn>)",
-    own((args) =>
-      list("enumerate", args[0]!).map((value, at) => {
+    own((ctx, a) =>
+      list("enumerate", a).map((value, at) => {
         const entry = Object.create(null) as Record<string, CelValue>;
         entry.index = BigInt(at);
         entry.value = value;
@@ -589,117 +590,117 @@ const IMPLEMENTATIONS = new Map<string, CatalogImplementation>([
       }),
     ),
   ],
-  ["compact(list<dyn>)", own((args) => compacted(args[0]!))],
-  ["compact(map<dyn, dyn>)", own((args) => compacted(args[0]!))],
+  ["compact(list<dyn>)", own((ctx, a) => compacted(a))],
+  ["compact(map<dyn, dyn>)", own((ctx, a) => compacted(a))],
   [
     "merge(map<dyn, dyn>, map<dyn, dyn>)",
-    own((args) =>
-      mapOfEntries(args[0]!, [...mapEntries("merge", args[0]!), ...mapEntries("merge", args[1]!)]),
+    own((ctx, a, b) =>
+      mapOfEntries(a, [...mapEntries("merge", a), ...mapEntries("merge", b)]),
     ),
   ],
   // One body over the three: the overloads exist so that a statically wrong receiver is a
   // type error, and at runtime a `dyn` receiver reaches whichever of them resolved first, so
   // the VALUE decides what is sliced.
-  ["slice(bytes, int, int)", own(sliced)],
-  ["slice(string, int, int)", own(sliced)],
-  ["slice(list<dyn>, int, int)", own(sliced)],
+  ["slice(bytes, int, int)", own((ctx, a, b, c) => sliced(a, b, c))],
+  ["slice(string, int, int)", own((ctx, a, b, c) => sliced(a, b, c))],
+  ["slice(list<dyn>, int, int)", own((ctx, a, b, c) => sliced(a, b, c))],
 
   // strings
-  ["lower(string)", own((args) => text(args[0]!).toLowerCase())],
-  ["upper(string)", own((args) => text(args[0]!).toUpperCase())],
-  ["trim(string)", own((args) => text(args[0]!).trim())],
-  ["replace(string, string, string)", own((args) => text(args[0]!).split(text(args[1]!)).join(text(args[2]!)))],
-  ["split(string, string)", own((args) => text(args[0]!).split(text(args[1]!)))],
+  ["lower(string)", own((ctx, a) => text(a).toLowerCase())],
+  ["upper(string)", own((ctx, a) => text(a).toUpperCase())],
+  ["trim(string)", own((ctx, a) => text(a).trim())],
+  ["replace(string, string, string)", own((ctx, a, b, c) => text(a).split(text(b)).join(text(c)))],
+  ["split(string, string)", own((ctx, a, b) => text(a).split(text(b)))],
   [
     "trimPrefix(string, string)",
-    own((args) => {
-      const prefix = text(args[1]!);
-      return text(args[0]!).startsWith(prefix) ? text(args[0]!).slice(prefix.length) : args[0]!;
+    own((ctx, a, b) => {
+      const prefix = text(b);
+      return text(a).startsWith(prefix) ? text(a).slice(prefix.length) : text(a);
     }),
   ],
   [
     "trimSuffix(string, string)",
-    own((args) => {
-      const suffix = text(args[1]!);
-      const value = text(args[0]!);
+    own((ctx, a, b) => {
+      const suffix = text(b);
+      const value = text(a);
       return suffix !== "" && value.endsWith(suffix) ? value.slice(0, value.length - suffix.length) : value;
     }),
   ],
   [
     "regexReplace(string, string, string)",
-    own((args) => pattern("regexReplace", args[1]!, undefined).matcher(text(args[0]!)).replaceAll(text(args[2]!))),
+    own((ctx, a, b, c) => pattern("regexReplace", b, undefined).matcher(text(a)).replaceAll(text(c))),
   ],
   [
     "regexReplace(string, string, string, string)",
-    own((args) => pattern("regexReplace", args[1]!, args[3]!).matcher(text(args[0]!)).replaceAll(text(args[2]!))),
+    own((ctx, a, b, c, d) => pattern("regexReplace", b, d).matcher(text(a)).replaceAll(text(c))),
   ],
-  ["regexExtract(string, string)", own((args) => firstMatch("regexExtract", args, undefined))],
-  ["regexExtract(string, string, string)", own((args) => firstMatch("regexExtract", args, args[2]!))],
-  ["regexExtractAll(string, string)", own((args) => everyMatch("regexExtractAll", args, undefined))],
-  ["regexExtractAll(string, string, string)", own((args) => everyMatch("regexExtractAll", args, args[2]!))],
-  ["regexGroups(string, string)", own((args) => matchGroups("regexGroups", args, undefined))],
-  ["regexGroups(string, string, string)", own((args) => matchGroups("regexGroups", args, args[2]!))],
+  ["regexExtract(string, string)", own((ctx, a, b) => firstMatch("regexExtract", a, b, undefined))],
+  ["regexExtract(string, string, string)", own((ctx, a, b, c) => firstMatch("regexExtract", a, b, c))],
+  ["regexExtractAll(string, string)", own((ctx, a, b) => everyMatch("regexExtractAll", a, b, undefined))],
+  ["regexExtractAll(string, string, string)", own((ctx, a, b, c) => everyMatch("regexExtractAll", a, b, c))],
+  ["regexGroups(string, string)", own((ctx, a, b) => matchGroups("regexGroups", a, b, undefined))],
+  ["regexGroups(string, string, string)", own((ctx, a, b, c) => matchGroups("regexGroups", a, b, c))],
 
   // math
-  ["abs(dyn)", own((args) => Math.abs(numberOf(args[0]!)))],
-  ["floor(dyn)", own((args) => Math.floor(numberOf(args[0]!)))],
-  ["ceil(dyn)", own((args) => Math.ceil(numberOf(args[0]!)))],
+  ["abs(dyn)", own((ctx, a) => Math.abs(numberOf(a)))],
+  ["floor(dyn)", own((ctx, a) => Math.floor(numberOf(a)))],
+  ["ceil(dyn)", own((ctx, a) => Math.ceil(numberOf(a)))],
   // Both arities go through `formattable`, so the 2^53 refusal does not depend on which
   // one the author wrote: guarding only the two-argument form left `round(x)` silently
   // answering with a neighbouring integer, reachable by writing one fewer argument.
-  ["round(double)", own((args) => Math.round(formattable("round", args[0]!)))],
-  ["round(int)", own((args) => Math.round(formattable("round", args[0]!)))],
-  ["round(double, int)", own((args) => roundedTo(args))],
-  ["round(int, int)", own((args) => roundedTo(args))],
-  ["min(list<dyn>)", own((args) => smallest(list("min", args[0]!), true))],
-  ["max(list<dyn>)", own((args) => smallest(list("max", args[0]!), false))],
+  ["round(double)", own((ctx, a) => Math.round(formattable("round", a)))],
+  ["round(int)", own((ctx, a) => Math.round(formattable("round", a)))],
+  ["round(double, int)", own((ctx, a, b) => roundedTo(a, b))],
+  ["round(int, int)", own((ctx, a, b) => roundedTo(a, b))],
+  ["min(list<dyn>)", own((ctx, a) => smallest(list("min", a), true))],
+  ["max(list<dyn>)", own((ctx, a) => smallest(list("max", a), false))],
   [
     "sum(list<dyn>)",
-    own((args) => list("sum", args[0]!).reduce((total: number, held) => total + numberOf(held), 0)),
+    own((ctx, a) => list("sum", a).reduce((total: number, held) => total + numberOf(held), 0)),
   ],
   [
     "avg(list<dyn>)",
-    own((args) => {
-      const values = list("avg", args[0]!);
+    own((ctx, a) => {
+      const values = list("avg", a);
       if (values.length === 0) return null;
       return values.reduce((total: number, held) => total + numberOf(held), 0) / values.length;
     }),
   ],
 
   // JSON
-  ["json(dyn)", hosted("json", (handler) => (args) => handler(args[0]!))],
-  ["parseJson(string)", own((args) => parseJsonText(text(args[0]!)))],
+  ["json(dyn)", hosted("json", (handler) => (ctx, a) => handler(a as CelValue))],
+  ["parseJson(string)", own((ctx, a) => parseJsonText(text(a)))],
 
   // paths
   [
     "string.joinPath(string)",
-    hosted("joinPath", (handler) => (args) => handler(text(args[0]!), text(args[1]!))),
+    hosted("joinPath", (handler) => (ctx, a, b) => handler(text(a), text(b))),
   ],
 
   // encoding
-  ["base64Encode(string)", hosted("base64Encode", (handler) => (args) => handler(text(args[0]!)))],
-  ["base64Decode(string)", hosted("base64Decode", (handler) => (args) => handler(text(args[0]!)))],
-  ["bytesFromBase64(string)", own((args) => bytesFromBase64(text(args[0]!)))],
-  ["bytesToBase64(bytes)", own((args) => base64Text(bytes(args[0]!)))],
-  ["urlEncode(string)", own((args) => encodeURIComponent(text(args[0]!)))],
-  ["urlDecode(string)", own((args) => decodeURIComponent(text(args[0]!)))],
+  ["base64Encode(string)", hosted("base64Encode", (handler) => (ctx, a) => handler(text(a)))],
+  ["base64Decode(string)", hosted("base64Decode", (handler) => (ctx, a) => handler(text(a)))],
+  ["bytesFromBase64(string)", own((ctx, a) => bytesFromBase64(text(a)))],
+  ["bytesToBase64(bytes)", own((ctx, a) => base64Text(bytes(a)))],
+  ["urlEncode(string)", own((ctx, a) => encodeURIComponent(text(a)))],
+  ["urlDecode(string)", own((ctx, a) => decodeURIComponent(text(a)))],
 
   // hashing
-  ["sha256(string)", hosted("sha256", (handler) => (args) => handler(text(args[0]!)))],
-  ["md5(string)", hosted("md5", (handler) => (args) => handler(text(args[0]!)))],
-  ["sha1(string)", hosted("sha1", (handler) => (args) => handler(text(args[0]!)))],
-  ["sha512(string)", hosted("sha512", (handler) => (args) => handler(text(args[0]!)))],
+  ["sha256(string)", hosted("sha256", (handler) => (ctx, a) => handler(text(a)))],
+  ["md5(string)", hosted("md5", (handler) => (ctx, a) => handler(text(a)))],
+  ["sha1(string)", hosted("sha1", (handler) => (ctx, a) => handler(text(a)))],
+  ["sha512(string)", hosted("sha512", (handler) => (ctx, a) => handler(text(a)))],
   [
     "hmac(string, string, string)",
-    hosted("hmac", (handler) => (args) => handler(text(args[0]!), text(args[1]!), text(args[2]!))),
+    hosted("hmac", (handler) => (ctx, a, b, c) => handler(text(a), text(b), text(c))),
   ],
 
   // null handling
-  ["default(dyn, dyn)", own((args) => (args[0] === null ? args[1]! : args[0]!))],
+  ["default(dyn, dyn)", own((ctx, a, b) => (a === null ? (b as CelValue) : (a as CelValue)))],
   [
     "coalesce(list<dyn>)",
-    own((args) => {
-      const found = list("coalesce", args[0]!).find((held) => held !== null);
+    own((ctx, a) => {
+      const found = list("coalesce", a).find((held) => held !== null);
       return found === undefined ? null : found;
     }),
   ],
@@ -707,37 +708,37 @@ const IMPLEMENTATIONS = new Map<string, CatalogImplementation>([
   // time
   ["now()", own(() => instantOfMillis("now", Date.now()))],
   ["nowIso()", own(() => isoTextIn(Date.now(), "UTC"))],
-  ["nowIso(string)", own((args) => isoTextIn(Date.now(), zoneArg("nowIso", args[0]!)))],
+  ["nowIso(string)", own((ctx, a) => isoTextIn(Date.now(), zoneArg("nowIso", a)))],
   ["today()", own(() => dateTextIn(Date.now(), "UTC"))],
-  ["today(string)", own((args) => dateTextIn(Date.now(), zoneArg("today", args[0]!)))],
+  ["today(string)", own((ctx, a) => dateTextIn(Date.now(), zoneArg("today", a)))],
   ["nowMillis()", own(() => BigInt(Date.now()))],
   ["nowSeconds()", own(() => BigInt(Math.floor(Date.now() / 1000)))],
-  ["dateIn(google.protobuf.Timestamp)", own((args) => dateIn(args, undefined))],
-  ["dateIn(google.protobuf.Timestamp, string)", own((args) => dateIn(args, args[1]!))],
-  ["isoIn(google.protobuf.Timestamp)", own((args) => isoIn(args, undefined))],
-  ["isoIn(google.protobuf.Timestamp, string)", own((args) => isoIn(args, args[1]!))],
-  ["startOfMonth(google.protobuf.Timestamp)", own((args) => startOfMonth(args, undefined))],
-  ["startOfMonth(google.protobuf.Timestamp, string)", own((args) => startOfMonth(args, args[1]!))],
-  ["addMonths(google.protobuf.Timestamp, int)", own((args) => addMonths(args, undefined))],
-  ["addMonths(google.protobuf.Timestamp, int, string)", own((args) => addMonths(args, args[2]!))],
+  ["dateIn(google.protobuf.Timestamp)", own((ctx, a) => dateIn(a, undefined))],
+  ["dateIn(google.protobuf.Timestamp, string)", own((ctx, a, b) => dateIn(a, b))],
+  ["isoIn(google.protobuf.Timestamp)", own((ctx, a) => isoIn(a, undefined))],
+  ["isoIn(google.protobuf.Timestamp, string)", own((ctx, a, b) => isoIn(a, b))],
+  ["startOfMonth(google.protobuf.Timestamp)", own((ctx, a) => startOfMonth(a, undefined))],
+  ["startOfMonth(google.protobuf.Timestamp, string)", own((ctx, a, b) => startOfMonth(a, b))],
+  ["addMonths(google.protobuf.Timestamp, int)", own((ctx, a, b) => addMonths(a, b, undefined))],
+  ["addMonths(google.protobuf.Timestamp, int, string)", own((ctx, a, b, c) => addMonths(a, b, c))],
 
   // formatting
-  ["format(double, string)", own((args) => formatter("format", args[1]!)(formattable("format", args[0]!)))],
-  ["format(int, string)", own((args) => formatter("format", args[1]!)(formattable("format", args[0]!)))],
-  ["fixed(double, int)", own((args) => fixedText(args))],
-  ["fixed(int, int)", own((args) => fixedText(args))],
-  ["formatDuration(double, int)", own((args) => durationText(args[0]!, args[1]!))],
-  ["formatDuration(int, int)", own((args) => durationText(args[0]!, args[1]!))],
+  ["format(double, string)", own((ctx, a, b) => formatter("format", b)(formattable("format", a)))],
+  ["format(int, string)", own((ctx, a, b) => formatter("format", b)(formattable("format", a)))],
+  ["fixed(double, int)", own((ctx, a, b) => fixedText(a, b))],
+  ["fixed(int, int)", own((ctx, a, b) => fixedText(a, b))],
+  ["formatDuration(double, int)", own((ctx, a, b) => durationText(a, b))],
+  ["formatDuration(int, int)", own((ctx, a, b) => durationText(a, b))],
 
   // uuid
   ["uuidv1()", own(() => v1())],
   ["uuidv4()", own(() => v4())],
   ["uuidv6()", own(() => v6())],
   ["uuidv7()", own(() => v7())],
-  ["uuidv3(string, string)", own((args) => v3(text(args[0]!), text(args[1]!)))],
-  ["uuidv5(string, string)", own((args) => v5(text(args[0]!), text(args[1]!)))],
-  ["uuidValidate(string)", own((args) => uuidValidate(text(args[0]!)))],
-  ["uuidVersion(string)", own((args) => BigInt(uuidVersion(text(args[0]!))))],
+  ["uuidv3(string, string)", own((ctx, a, b) => v3(text(a), text(b)))],
+  ["uuidv5(string, string)", own((ctx, a, b) => v5(text(a), text(b)))],
+  ["uuidValidate(string)", own((ctx, a) => uuidValidate(text(a)))],
+  ["uuidVersion(string)", own((ctx, a) => BigInt(uuidVersion(text(a))))],
 ]);
 
 /**
@@ -745,10 +746,9 @@ const IMPLEMENTATIONS = new Map<string, CatalogImplementation>([
  * which neither `String.slice` nor `TypedArray.subarray` accepts. `subarray` rather than
  * `slice` for bytes: a view costs no copy, and every consumer treats the result as read-only.
  */
-function sliced(args: readonly CelValue[]): CelValue {
-  const from = Number(args[1] as bigint);
-  const to = Number(args[2] as bigint);
-  const value = args[0]!;
+function sliced(value: CelValue | undefined, start: CelValue | undefined, end: CelValue | undefined): CelValue {
+  const from = Number(start as bigint);
+  const to = Number(end as bigint);
   if (typeof value === "string") return value.slice(from, to);
   if (isCelBytes(value)) return value.subarray(from, to);
   if (Array.isArray(value)) return value.slice(from, to);
@@ -757,53 +757,53 @@ function sliced(args: readonly CelValue[]): CelValue {
   );
 }
 
-function roundedTo(args: readonly CelValue[]): number {
-  return Number(formattable("round", args[0]!).toFixed(digitCount("round", args[1]!)));
+function roundedTo(value: CelValue | undefined, digits: CelValue | undefined): number {
+  return Number(formattable("round", value).toFixed(digitCount("round", digits)));
 }
 
-function fixedText(args: readonly CelValue[]): string {
-  return formatter("fixed", `.${digitCount("fixed", args[1]!)}f`)(formattable("fixed", args[0]!));
+function fixedText(value: CelValue | undefined, digits: CelValue | undefined): string {
+  return formatter("fixed", `.${digitCount("fixed", digits)}f`)(formattable("fixed", value));
 }
 
-function firstMatch(what: string, args: readonly CelValue[], flags: CelValue | undefined): string {
-  const matcher = pattern(what, args[1]!, flags).matcher(text(args[0]!));
+function firstMatch(what: string, subject: CelValue | undefined, source: CelValue | undefined, flags: CelValue | undefined): string {
+  const matcher = pattern(what, source, flags).matcher(text(subject));
   return matcher.find() ? (matcher.group() ?? "") : "";
 }
 
-function everyMatch(what: string, args: readonly CelValue[], flags: CelValue | undefined): string[] {
-  const matcher = pattern(what, args[1]!, flags).matcher(text(args[0]!));
+function everyMatch(what: string, subject: CelValue | undefined, source: CelValue | undefined, flags: CelValue | undefined): string[] {
+  const matcher = pattern(what, source, flags).matcher(text(subject));
   const out: string[] = [];
   while (matcher.find()) out.push(matcher.group() ?? "");
   return out;
 }
 
-function matchGroups(what: string, args: readonly CelValue[], flags: CelValue | undefined): string[] {
-  const matcher = pattern(what, args[1]!, flags).matcher(text(args[0]!));
+function matchGroups(what: string, subject: CelValue | undefined, source: CelValue | undefined, flags: CelValue | undefined): string[] {
+  const matcher = pattern(what, source, flags).matcher(text(subject));
   if (!matcher.find()) return [];
   return Array.from({ length: matcher.groupCount() }, (_unused, at) => matcher.group(at + 1) ?? "");
 }
 
-function dateIn(args: readonly CelValue[], zone: CelValue | undefined): string {
-  return dateTextIn(millisOf(instantArg("dateIn", args[0]!)), zoneArg("dateIn", zone));
+function dateIn(instant: CelValue | undefined, zone: CelValue | undefined): string {
+  return dateTextIn(millisOf(instantArg("dateIn", instant)), zoneArg("dateIn", zone));
 }
 
-function isoIn(args: readonly CelValue[], zone: CelValue | undefined): string {
-  return isoTextIn(millisOf(instantArg("isoIn", args[0]!)), zoneArg("isoIn", zone));
+function isoIn(instant: CelValue | undefined, zone: CelValue | undefined): string {
+  return isoTextIn(millisOf(instantArg("isoIn", instant)), zoneArg("isoIn", zone));
 }
 
-function startOfMonth(args: readonly CelValue[], zone: CelValue | undefined): CelValue {
+function startOfMonth(instant: CelValue | undefined, zone: CelValue | undefined): CelValue {
   const named = zoneArg("startOfMonth", zone);
-  const fields = civilTimeIn(millisOf(instantArg("startOfMonth", args[0]!)), named);
+  const fields = civilTimeIn(millisOf(instantArg("startOfMonth", instant)), named);
   return instantOfMillis(
     "startOfMonth",
     instantOfCivilTime({ ...fields, day: 1, hour: 0, minute: 0, second: 0 }, named),
   );
 }
 
-function addMonths(args: readonly CelValue[], zone: CelValue | undefined): CelValue {
+function addMonths(instant: CelValue | undefined, months: CelValue | undefined, zone: CelValue | undefined): CelValue {
   const named = zoneArg("addMonths", zone);
-  const fields = civilTimeIn(millisOf(instantArg("addMonths", args[0]!)), named);
-  const shifted = fields.year * 12 + (fields.month - 1) + Number(args[1] as bigint);
+  const fields = civilTimeIn(millisOf(instantArg("addMonths", instant)), named);
+  const shifted = fields.year * 12 + (fields.month - 1) + Number(months as bigint);
   // `%` takes the dividend's sign in JS, so a negative total would yield month 0.
   const year = Math.floor(shifted / 12);
   const month = (((shifted % 12) + 12) % 12) + 1;

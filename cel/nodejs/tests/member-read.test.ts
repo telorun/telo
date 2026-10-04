@@ -53,6 +53,49 @@ describe("the member-read seam", () => {
     expect(failure("dyn([1, 2]).length")).toBe("unsupported_key_type");
   });
 
+  it("reads a host's plain object and refuses a host object carrying a prototype of its own", () => {
+    // What a host hands a map over as, and the boundary of it. A plain object (or a
+    // prototype-free one) is a map; an object whose prototype is its OWN is not, however
+    // data-like it looks — the seam resolves a key against a value's own entries and never
+    // performs a host property read, so it cannot tell a bag from an instance with methods.
+    //
+    // This is the shape the failure came in: a transport's query bag, built as
+    // `new Empty()` over `Object.create(null)`, read as holding no members at all — so
+    // every handler reading the query string answered 500. A host hands such a bag over as
+    // a plain object instead; the engine does not widen to meet it, because a reading that
+    // accepted any data-like object would make a class instance's `length` and `call`
+    // reachable from a computed key.
+    const Empty = function (this: Record<string, unknown>) {} as unknown as new () => Record<
+      string,
+      unknown
+    >;
+    Empty.prototype = Object.create(null) as object;
+    const bag = new Empty();
+    bag.page = "2";
+
+    expect(evaluate("q.page", { q: { page: "2" } })).toBe("2");
+    expect(evaluate("q.page", { q: Object.assign(Object.create(null), { page: "2" }) })).toBe("2");
+    expect(failure("q.page", { q: bag })).toBe("unsupported_container");
+    expect(failure("'page' in q", { q: bag })).toBe("no_matching_overload");
+    expect(evaluate("has(q.page)", { q: bag })).toBe(false);
+  });
+
+  it("answers absence for a presence-shaped read over a value that holds no members", () => {
+    // The optional library's own semantics, which this engine takes from cel-go whole:
+    // `.?`, `[?]` and `has()` ask whether a member is THERE, and a value that cannot hold
+    // one has none to find.
+    expect(evaluate("dyn('abc').?length.hasValue()")).toBe(false);
+    expect(evaluate("dyn(1)[?'toString'].hasValue()")).toBe(false);
+    expect(evaluate("has(dyn('abc').length)")).toBe(false);
+    // The two readings it is asymmetric with, on purpose: the ORDINARY read of the same
+    // member is the mistake it is outside an optional — including the ordinary step of a
+    // chain that entered optional land, which is cel-spec's `map_present_key_invalid_field`
+    // — and an unusable KEY is a mistake in the read itself, in every form.
+    expect(failure("dyn('abc').length")).toBe("unsupported_container");
+    expect(failure("{true: dyn(0)}[?true].absent")).toBe("unsupported_container");
+    expect(failure("dyn([1, 2]).?length")).toBe("unsupported_key_type");
+  });
+
   it("bounds-checks an index into a list", () => {
     expect(evaluate("[1, 2, 3][2]")).toBe(3n);
     expect(failure("[1, 2, 3][3]")).toBe("index_out_of_range");

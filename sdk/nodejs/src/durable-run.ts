@@ -498,7 +498,7 @@ function findLiveValue(value: unknown, seen: Set<object>): string | undefined {
   for (const entry of VALUE_TYPES.values()) {
     if (!entry.live || !entry.binding) continue;
     const binding = VALUE_TYPE_BINDINGS[entry.binding];
-    if (binding && value instanceof binding.constructor) return entry.name;
+    if (binding?.holds(value)) return entry.name;
   }
 
   if (Array.isArray(value)) {

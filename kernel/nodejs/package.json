@@ -8,7 +8,7 @@
     "execution",
     "manifest"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -69,9 +69,9 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@marcbachmann/cel-js": "7.6.1",
     "@sinclair/typebox": "^0.34.48",
     "@telorun/analyzer": "workspace:*",
+    "@telorun/cel": "workspace:*",
     "@telorun/glob": "workspace:*",
     "@telorun/templating": "workspace:*",
     "ajv": "^8.17.1",

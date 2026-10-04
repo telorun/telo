@@ -69,7 +69,16 @@ export function quoteStyleOf(source: string): QuoteStyle {
  *
  *  With a `tag` the repair is a tagged scalar written over an untagged one, so
  *  the original's quote style says nothing about it: `!ref` stays plain where
- *  it can, and `!cel` is always double-quoted, the form the formatter writes. */
+ *  it can, and `!cel` takes **whichever quote needs no escaping**.
+ *
+ *  That last rule is not cosmetic. A CEL string literal is serialized in double
+ *  quotes — the tree records a string's value, not the quote the author typed —
+ *  so a double-quoted scalar would carry `\"` through every repair that mentions
+ *  a string: `!cel "a.startsWith(\"x\")"`. Valid, and worse to read than what it
+ *  replaced. A single-quoted YAML scalar escapes only `'`, which CEL's own text
+ *  no longer contains, so the repair reads as the author would have typed it.
+ *  Double quotes stay the default — the form the formatter writes — and are used
+ *  wherever the CEL text makes them escape-free. */
 export function renderFixReplacement(
   originalSource: string,
   replacement: string,
@@ -79,21 +88,35 @@ export function renderFixReplacement(
   if (tag === "ref" || tag === "module-path") {
     return `!${tag} ${isPlainSafe(replacement) ? replacement : doubleQuoted(replacement)}`;
   }
-  if (tag === "cel") return `!cel ${doubleQuoted(replacement)}`;
+  if (tag === "cel") return `!cel ${escapeFreeQuoted(replacement)}`;
   const style = quoteStyleOf(originalSource);
 
   if (style === "single") {
-    // A single-quoted YAML scalar escapes only the quote, by doubling it. CEL
-    // string literals use single quotes constantly, so this is the common case
-    // for an expression written in a single-quoted scalar.
+    // A single-quoted YAML scalar escapes only the quote, by doubling it.
     return `'${replacement.replaceAll("'", "''")}'`;
   }
-  if (style === "double" || !isPlainSafe(replacement)) return doubleQuoted(replacement);
+  // A quoted original keeps a quoted scalar, but not necessarily ITS quote: the one that
+  // needs no escaping is the one a reader would have typed. A CEL string literal is
+  // serialized in double quotes, so a repair over a double-quoted scalar would otherwise
+  // carry `\"` through every expression that mentions a string.
+  if (style === "double" || !isPlainSafe(replacement)) return escapeFreeQuoted(replacement);
   return replacement;
 }
 
 function doubleQuoted(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+/**
+ * The quoted scalar that carries `value` with no escape at all, preferring double quotes.
+ *
+ * A single-quoted YAML scalar escapes only `'`; a double-quoted one escapes `"` and `\`. So
+ * text holding a `"` and no `'` is written single-quoted, and everything else double-quoted —
+ * which is the default, and the only choice when the text holds both.
+ */
+function escapeFreeQuoted(value: string): string {
+  const needsEscapeWhenDoubled = value.includes('"') || value.includes("\\");
+  return needsEscapeWhenDoubled && !value.includes("'") ? `'${value}'` : doubleQuoted(value);
 }
 
 /** A splice over a source file: replace `[start, end)` with `newText`. An empty

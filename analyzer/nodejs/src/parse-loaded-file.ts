@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -18,7 +18,7 @@ export interface ParseOptions {
    *  on the manifests — same flag `LoadOptions.compile` carries today. */
   compile?: boolean;
   /** CEL environment for precompile. Defaults to `buildCelEnvironment()`. */
-  celEnv?: Environment;
+  celEnv?: CelEnvironment;
   /** When true, the migration phase runs over the parsed documents — legacy
    *  spellings rewritten to the current ones before anything else reads the
    *  tree. Off by default so a round-trip consumer (the editor) keeps the
@@ -163,7 +163,7 @@ export function parseLoadedFile(
     if (manifest) expandManifestFragments(manifest);
   }
 
-  let env: Environment | undefined;
+  let env: CelEnvironment | undefined;
   if (options?.compile) {
     // Resolution needs the declaring module's names, and they are read from the
     // documents as they stand here — after migration and fragment expansion,

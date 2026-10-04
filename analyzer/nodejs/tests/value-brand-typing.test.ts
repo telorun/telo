@@ -69,9 +69,9 @@ describe("ports namespace typing", () => {
 
   it("types ports.<name> by the entry's protocol brand", () => {
     const env = buildTypedCelEnvironment(buildCelEnvironment(), appWithPorts());
-    expect(env.check("ports.http").type).toBe("Telo.TcpPort");
-    expect(env.check("ports.dns").type).toBe("Telo.UdpPort");
-    expect(env.check("ports.legacy").type).toBe("Telo.TcpPort");
+    expect(env.check("ports.http").typeName).toBe("Telo.TcpPort");
+    expect(env.check("ports.dns").typeName).toBe("Telo.UdpPort");
+    expect(env.check("ports.legacy").typeName).toBe("Telo.TcpPort");
   });
 
   it("flags an unknown port name", () => {
@@ -81,8 +81,8 @@ describe("ports namespace typing", () => {
 
   it("renders a branded port as text, as the integer it is at runtime", () => {
     const env = buildTypedCelEnvironment(buildCelEnvironment(), appWithPorts());
-    expect(env.check("string(ports.http)").type).toBe("string");
-    expect(env.check("string(ports.dns)").type).toBe("string");
+    expect(env.check("string(ports.http)").typeName).toBe("string");
+    expect(env.check("string(ports.dns)").typeName).toBe("string");
   });
 });
 

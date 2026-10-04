@@ -1,4 +1,4 @@
-import { plainMapKey, plainScalar, UnsignedInt } from "@telorun/sdk";
+import { isCelMap, isCelUint, plainMapKey, plainScalar } from "@telorun/sdk";
 import type { LruBlobStore } from "./blob-store.js";
 
 /**
@@ -71,16 +71,21 @@ function toWire(value: unknown, store: LruBlobStore | undefined, seen: WeakSet<o
       return value.map((v) => toWire(v, store, seen));
     }
 
-    if (value instanceof Map) {
+    // A CEL map holds its entries by each key's typed value, so the pairs come from the
+    // value domain rather than from a host `Map`: read as an ordinary object a `CelMap`
+    // put `{entries: {}}` on the wire for every map a watch session showed.
+    if (isCelMap(value)) {
+      const pairs = [...value.entries.values()].map((entry) => [entry.key, entry.value]);
       // Observing a run must never fail it: a map whose keys cannot all be
       // written as distinct object keys is written as its [key, value] pairs.
-      const texts = [...value.keys()].map((k) => (isPlainMapKey(k) ? plainMapKey(k) : undefined));
+      const texts = pairs.map(([k]) => (isPlainMapKey(k) ? plainMapKey(k) : undefined));
       if (texts.some((text) => text === undefined) || new Set(texts).size !== texts.length) {
-        return [...value].map(([k, v]) => [toWire(k, store, seen), toWire(v, store, seen)]);
+        return pairs.map(([k, v]) => [toWire(k, store, seen), toWire(v, store, seen)]);
       }
       const out: Record<string, unknown> = {};
-      let index = 0;
-      for (const v of value.values()) out[texts[index++]!] = toWire(v, store, seen);
+      pairs.forEach(([, v], index) => {
+        out[texts[index]!] = toWire(v, store, seen);
+      });
       return out;
     }
 
@@ -118,7 +123,7 @@ function isPlainMapKey(key: unknown): boolean {
     typeof key === "string" ||
     typeof key === "bigint" ||
     typeof key === "boolean" ||
-    key instanceof UnsignedInt
+    isCelUint(key)
   );
 }
 

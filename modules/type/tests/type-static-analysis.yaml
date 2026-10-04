@@ -48,12 +48,15 @@ metadata:
 source: ./__fixtures__/bad-cel-overload.yaml
 expect:
   errors:
-    - code: CEL_TYPE_ERROR
-      message: "no matching overload for 'dyn.slice(int)'"
+    # The engine decides each verdict where the cause is KNOWN: `x.slice(1)` names a
+    # function no receiver form declares, which is the call written in the other form
+    # rather than an argument of the wrong type.
+    - code: CEL_WRONG_CALL_FORM
+      message: '"slice" is called without a receiver'
     # The listing is derived from the registry, so the real signatures appear in
     # it without anyone writing them down — the regression this guards is the
     # listing going empty or unfiltered.
-    - code: CEL_TYPE_ERROR
+    - code: CEL_WRONG_CALL_FORM
       message: "slice(bytes, int, int): dyn"
 ---
 # Field access on a type's INHERITED (`extends`) property — the analyzer must

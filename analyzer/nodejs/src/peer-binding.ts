@@ -45,6 +45,19 @@
  * Both halves classify through `dynamicNode`, so a `!ref` is a reference here
  * and a reference there rather than an expression to one of them.
  *
+ * **A slot that REFUSES the kind it names binds nothing, and is reported by
+ * nothing.** Where a reference resolves to a declaration the slot does not
+ * accept, the manifest is already refused at that very slot
+ * (`REFERENCE_KIND_MISMATCH`) and a rule reading through it would compare a shape
+ * it was never shown — a language slot holding an orientation model, whose
+ * declaration carries no `code`. Unlike every other failure here, coverage did
+ * not vary invisibly: the resource is refused, so a second diagnostic about the
+ * rule's internals would blame the kind's author for the manifest author's
+ * mistake. Hence `kind-refused` plus {@link isSilentBindingFailure}, and hence
+ * the acceptance rule arriving from the host — the subtype index and the
+ * leniency that makes an undecidable kind acceptable both live there, and a
+ * second implementation would eventually refuse what the reference check allows.
+ *
  * **One unresolvable peer fails the whole binding**, rather than binding what
  * resolved and dropping the rest. A peer rule's condition is characteristically
  * an existential or a universal over the set (`peers.exists(…)`,
@@ -123,8 +136,20 @@ export interface PeerBindingFailure {
    *   its paths hold references is not known.
    * - `kind-only` — a reference names a library's `resources:` input, known by its
    *   kind alone until the importer supplies it, so it has no fields to compare.
+   * - `kind-refused` — the slot holding the reference does not accept the kind
+   *   the declaration is. The resource is already refused at that very slot
+   *   (`REFERENCE_KIND_MISMATCH`), so the rule's subject is a shape it was never
+   *   shown, and reporting anything about the rule would blame the kind's author
+   *   for the manifest author's mistake. Reported by NOTHING — see
+   *   {@link isSilentBindingFailure}.
    */
-  readonly reason: "unresolved" | "no-collection" | "dynamic" | "unknown-shape" | "kind-only";
+  readonly reason:
+    | "unresolved"
+    | "no-collection"
+    | "dynamic"
+    | "unknown-shape"
+    | "kind-only"
+    | "kind-refused";
   /** Where, in the referrer, for the diagnostic. */
   readonly at: string;
   /** For `dynamic`: the noun phrase naming what sits there, quoted verbatim by
@@ -152,6 +177,15 @@ export interface ReferenceValue {
  *  manifest set and the alias scope. */
 export type DeclarationLookup = (ref: ReferenceValue) => ResourceManifest | undefined;
 
+/** One concrete reference site of a referrer: the pattern that declares it, and
+ *  the kinds that pattern accepts. */
+export interface RefSite {
+  /** The declared pattern (`tables[]`, `mounts[].mount`). */
+  readonly shape: string;
+  /** Every kind the slot accepts, unioned. Empty when the slot names none. */
+  readonly kinds: readonly string[];
+}
+
 /** What the binder needs from its host. Both halves are the caller's because
  *  only it holds the definition registry and the manifest set. */
 export interface PeerBinderEnv {
@@ -165,7 +199,30 @@ export interface PeerBinderEnv {
   /** The concrete reference sites of one manifest of that kind (`tables[2]`,
    *  `mounts[1].mount`), each with the pattern declaring it — the authority on
    *  which values ARE references. `undefined` when the kind is not resolvable. */
-  readonly refSitesOf: (manifest: ResourceManifest, kind: string) => ReadonlyMap<string, string> | undefined;
+  readonly refSitesOf: (manifest: ResourceManifest, kind: string) => ReadonlyMap<string, RefSite> | undefined;
+  /**
+   * Whether a declaration of `declarationKind` satisfies a slot constrained to
+   * `slotKinds` — the Liskov question `REFERENCE_KIND_MISMATCH` answers at that
+   * site, asked of the host because only it holds the subtype index.
+   *
+   * A rule reading through a slot that REFUSES what it names is a rule shown a
+   * subject it was never written for, so the binding fails silently rather than
+   * handing the condition a shape with none of the fields it reads. Omitted by a
+   * host that cannot decide it, which binds exactly as before.
+   */
+  readonly slotAccepts?: (
+    slotKinds: readonly string[],
+    declarationKind: string,
+  ) => boolean;
+}
+
+/** True for a binding failure that must be reported by NOTHING: the manifest is
+ *  already refused at the very slot the rule would read, so a second diagnostic
+ *  about the rule's internals would blame the kind's author for the manifest
+ *  author's mistake. Every other reason is coverage that varied invisibly, which
+ *  is reported. */
+export function isSilentBindingFailure(failure: PeerBindingFailure): boolean {
+  return failure.reason === "kind-refused";
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -285,38 +342,30 @@ type EntryResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly failure: PeerBindingFailure };
 
+/** How one entry's references are read: which concrete paths are reference
+ *  sites, what a reference names, and which slots refuse what they name. */
+interface EntryResolver {
+  readonly siteAt: (path: string) => RefSite | undefined;
+  readonly lookup: DeclarationLookup;
+  readonly refuses: (site: RefSite, declaration: ResourceManifest) => boolean;
+}
+
 /** One entry with the references INSIDE it resolved — the declaration itself for
- *  a bare `!ref`, or the entry with each reference site one level in replaced.
- *  `isSite` says which concrete paths are reference sites. */
-function resolveEntry(
-  value: unknown,
-  at: string,
-  isSite: (path: string) => boolean,
-  lookup: DeclarationLookup,
-): EntryResult {
-  if (isSite(at)) {
+ *  a bare `!ref`, or the entry with each reference site one level in replaced. */
+function resolveEntry(value: unknown, at: string, resolver: EntryResolver): EntryResult {
+  const own = resolver.siteAt(at);
+  if (own) {
     const reference = referenceValueOf(value);
     // An inline declaration (`{kind, …config}` with no name) is not a reference;
     // it binds as written, exactly as any other non-reference entry does.
-    if (reference) {
-      const declaration = lookup(reference);
-      if (!declaration) return { ok: false, failure: { reason: "unresolved", at } };
-      if (isInjectedDeclaration(declaration)) return { ok: false, failure: { reason: "kind-only", at } };
-      const dynamic = dynamicInDeclaration(declaration);
-      if (dynamic) {
-        return {
-          ok: false,
-          failure: { reason: "dynamic", at: `${at} → ${dynamic.path}`, what: dynamic.what },
-        };
-      }
-      return { ok: true, value: declaration };
-    }
+    if (reference) return resolveReference(reference, own, at, resolver);
   }
   if (!isObject(value)) return { ok: true, value };
 
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (!isSite(`${at}.${key}`)) {
+    const site = resolver.siteAt(`${at}.${key}`);
+    if (!site) {
       // The author's OWN entry data beside the reference (`prefix` next to
       // `mount`) — small, and read directly by a rule, so it is scanned whole.
       const dynamic = findDynamicLeaf(child, `${at}.${key}`);
@@ -331,21 +380,37 @@ function resolveEntry(
       out[key] = child;
       continue;
     }
-    const declaration = lookup(reference);
-    if (!declaration) return { ok: false, failure: { reason: "unresolved", at: `${at}.${key}` } };
-    if (isInjectedDeclaration(declaration)) {
-      return { ok: false, failure: { reason: "kind-only", at: `${at}.${key}` } };
-    }
-    const dynamic = dynamicInDeclaration(declaration);
-    if (dynamic) {
-      return {
-        ok: false,
-        failure: { reason: "dynamic", at: `${at}.${key} → ${dynamic.path}`, what: dynamic.what },
-      };
-    }
-    out[key] = declaration;
+    const resolved = resolveReference(reference, site, `${at}.${key}`, resolver);
+    if (!resolved.ok) return resolved;
+    out[key] = resolved.value;
   }
   return { ok: true, value: out };
+}
+
+/** One reference resolved to the declaration it names. */
+function resolveReference(
+  reference: ReferenceValue,
+  site: RefSite,
+  at: string,
+  resolver: EntryResolver,
+): EntryResult {
+  const declaration = resolver.lookup(reference);
+  if (!declaration) return { ok: false, failure: { reason: "unresolved", at } };
+  if (isInjectedDeclaration(declaration)) return { ok: false, failure: { reason: "kind-only", at } };
+  // The slot refuses the kind this names, so the manifest is already refused
+  // HERE. The rule would read fields off a shape it was never shown, and
+  // whatever it then did is not a fact about the rule.
+  if (resolver.refuses(site, declaration)) {
+    return { ok: false, failure: { reason: "kind-refused", at } };
+  }
+  const dynamic = dynamicInDeclaration(declaration);
+  if (dynamic) {
+    return {
+      ok: false,
+      failure: { reason: "dynamic", at: `${at} → ${dynamic.path}`, what: dynamic.what },
+    };
+  }
+  return { ok: true, value: declaration };
 }
 
 type ResolvedCollection =
@@ -371,6 +436,21 @@ export class PeerBinder {
   constructor(private readonly env: PeerBinderEnv) {}
 
   private readonly collections = new WeakMap<ResourceManifest, Map<string, ResolvedCollection>>();
+
+  /** How an entry's references are read, over one manifest's sites. */
+  private resolver(siteAt: (path: string) => RefSite | undefined): EntryResolver {
+    const accepts = this.env.slotAccepts;
+    return {
+      siteAt,
+      lookup: this.env.declarationOf,
+      refuses: (site, declaration) => {
+        if (!accepts || site.kinds.length === 0) return false;
+        const kind = declaration.kind;
+        if (typeof kind !== "string" || kind.length === 0) return false;
+        return !accepts(site.kinds, kind);
+      },
+    };
+  }
 
   /**
    * @param slotPath concrete path of the edge that reached the referenced
@@ -403,20 +483,19 @@ export class PeerBinder {
     // The edge runs through a DIFFERENT collection than the one `peers:` names
     // (a rule over a schema's `enums:` while my own entry sits in `tables:`), so
     // the entry is found through the pattern declaring the site this slot path is.
-    const shape = sites.get(slotPath);
-    if (!shape) {
+    const site = sites.get(slotPath);
+    if (!site) {
       // Nothing written at the slot is an absent entry, not an unknown one.
       if (navigatePath(referrer, slotPath) === undefined) {
         return { ok: true, binding: { peers, entry: undefined } };
       }
       return { ok: false, failure: { reason: "unknown-shape", at: slotPath } };
     }
-    const boundary = entryBoundary(slotPath, shape);
+    const boundary = entryBoundary(slotPath, site.shape);
     const entry = resolveEntry(
       navigatePath(referrer, boundary),
       boundary,
-      (path) => sites.has(path),
-      this.env.declarationOf,
+      this.resolver((path) => sites.get(path)),
     );
     if (!entry.ok) return entry;
     return { ok: true, binding: { peers, entry: entry.value } };
@@ -439,8 +518,9 @@ export class PeerBinder {
     if (!shapes || !sites) return { ok: false, failure: { reason: "unknown-shape", at: path } };
     const raw = resolvePointer(manifest, pointer);
     if (raw === undefined || raw === null) return { ok: true, value: raw };
-    if (sites.has(path)) {
-      return resolveEntry(raw, path, (at) => at === path, this.env.declarationOf);
+    const own = sites.get(path);
+    if (own) {
+      return resolveEntry(raw, path, this.resolver((at) => (at === path ? own : undefined)));
     }
     const resolved = this.collection(manifest, pointer, path, shapes, sites);
     if (!resolved.ok) return resolved;
@@ -465,7 +545,7 @@ export class PeerBinder {
     pointer: string,
     collectionPath: string,
     shapes: readonly string[],
-    sites: ReadonlyMap<string, string>,
+    sites: ReadonlyMap<string, RefSite>,
   ): ResolvedCollection {
     let byPointer = this.collections.get(referrer);
     if (!byPointer) {
@@ -485,7 +565,7 @@ export class PeerBinder {
     pointer: string,
     collectionPath: string,
     shapes: readonly string[],
-    sites: ReadonlyMap<string, string>,
+    sites: ReadonlyMap<string, RefSite>,
   ): ResolvedCollection {
     const raw = resolvePointer(referrer, pointer);
     // An ABSENT collection is an EMPTY one, not an unbindable one — the line
@@ -505,9 +585,10 @@ export class PeerBinder {
     const items = Array.isArray(raw) ? raw : Object.values(raw);
 
     const values: unknown[] = [];
+    const resolver = this.resolver((path) => sites.get(path));
     for (let i = 0; i < items.length; i++) {
       const at = Array.isArray(raw) ? `${collectionPath}[${keys[i]}]` : `${collectionPath}.${keys[i]}`;
-      const resolved = resolveEntry(items[i], at, (path) => sites.has(path), this.env.declarationOf);
+      const resolved = resolveEntry(items[i], at, resolver);
       if (!resolved.ok) return resolved;
       values.push(resolved.value);
     }
@@ -559,6 +640,14 @@ export function bindingFailureReason(failure: PeerBindingFailure): string {
         `which paths under '${failure.at}' hold references is not known here, so nothing ` +
         "could be resolved into a declaration."
       );
+    case "kind-refused":
+      // Never rendered: the reason is reported by nothing (`isSilentBindingFailure`).
+      // Worded anyway, because a reason with no sentence is one a later caller
+      // prints as `undefined`.
+      return (
+        `the reference at '${failure.at}' names a declaration of a kind that slot does not ` +
+        "accept, which is already reported there."
+      );
   }
 }
 
@@ -591,6 +680,10 @@ export function analyzerPeerBinder(
   registry: PeerBinderRegistry,
   aliases: PeerAliasScope,
   manifests: readonly ResourceManifest[],
+  /** The Liskov acceptance rule at a kind constraint — `kindSatisfies` over the
+   *  concrete registry, supplied by the caller because the subtype index and the
+   *  leniency rule live there. Omitted, a slot refuses nothing. */
+  slotAccepts?: (slotKinds: readonly string[], declarationKind: string) => boolean,
 ): PeerBinder {
   const byName = new Map<string, ResourceManifest>();
   const byModuleAndName = new Map<string, ResourceManifest>();
@@ -625,17 +718,31 @@ export function analyzerPeerBinder(
    */
   const refSlotsOf = (kind: string): string[] | undefined =>
     registry.declaredReachOf({ kind }, aliases)?.references.map((reference) => reference.path);
-  const refSitesOf = (manifest: ResourceManifest, kind: string): Map<string, string> | undefined => {
+  const refSitesOf = (manifest: ResourceManifest, kind: string): Map<string, RefSite> | undefined => {
     const view = manifest.kind === kind ? manifest : ({ ...manifest, kind } as ResourceManifest);
     if (!registry.declaredReachOf(view, aliases)) return undefined;
-    const sites = new Map<string, string>();
+    const sites = new Map<string, RefSite>();
     for (const site of registry.referenceSites(view, aliases)) {
-      if (site.refs.length > 0) sites.set(site.path, site.refs[0]!.fieldPath);
+      if (site.refs.length === 0) continue;
+      // Every kind the site accepts, across its slots: a value satisfying any
+      // one of them is accepted there, exactly as the reference check reads it.
+      const kinds: string[] = [];
+      for (const ref of site.refs) {
+        for (const accepted of ref.slot.kinds) {
+          if (!kinds.includes(accepted)) kinds.push(accepted);
+        }
+      }
+      sites.set(site.path, { shape: site.refs[0]!.fieldPath, kinds });
     }
     return sites;
   };
 
-  return new PeerBinder({ declarationOf, refSlotsOf, refSitesOf });
+  return new PeerBinder({
+    declarationOf,
+    refSlotsOf,
+    refSitesOf,
+    ...(slotAccepts ? { slotAccepts } : {}),
+  });
 }
 
 /**

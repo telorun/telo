@@ -1,6 +1,10 @@
 export * from "./bigint-json.js";
 export * from "./cancellation.js";
+export * from "./cel-host-value.js";
 export * from "./cel-value-identity.js";
+// Deprecated compatibility shims for the two classes the value domain replaced. They exist
+// for controller artifacts already published against them, which no floor can reach.
+export { Duration, UnsignedInt } from "./legacy-value-classes.js";
 export * from "./compiled-value.js";
 export * from "./capabilities/invokable.js";
 export * from "./ref.js";

@@ -3,9 +3,8 @@
  * module calls dispatch through when `telo check` runs the rule.
  *
  * A rule is evaluated by the analyzer, where no kernel binds anything, so it
- * dispatches through the same late-bound mechanism the kernel feeds
- * (`MODULE_CALL_DISPATCH_KEY`), from a table of BODY evaluators instead of
- * instances. A function written in CEL is evaluated whatever its determinism —
+ * dispatches through the engine's own per-evaluation namespace seam, from a
+ * table of BODY evaluators instead of instances. A function written in CEL is evaluated whatever its determinism —
  * as the catalog's `now()` is — while one reaching a host-backed leaf fails when
  * called, as the catalog's host-backed stubs do. Both are refused where the
  * condition is written (`conditionCallRefusals`); the table only decides what
@@ -18,18 +17,21 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
-import {
-  buildCelEnvironment,
-  MODULE_CALL_DISPATCH_KEY,
-  resolveModuleCalls,
-  type ModuleCallDispatch,
-} from "@telorun/templating";
+import { buildCelEnvironment, type ModuleCallDispatch } from "@telorun/templating";
 import { callArgumentBinding, type ShapeResolver } from "./callable-binding.js";
+import { moduleNamesEnvironment, namespaceDispatchOf } from "./cel-environment.js";
 import { renderChain, type CallableFlagsIndex } from "./callable-flags.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import type { ModuleFunctionIndex } from "./module-function-index.js";
 
-type Evaluate = (activation: Record<string, unknown>) => unknown;
+/** A body, evaluated against its parameters and the table its own module's
+ *  calls dispatch through. The table is an ARGUMENT rather than an activation
+ *  entry: a namespaced call is dispatched through the engine's own per-
+ *  evaluation seam, which no name in the activation can reach. */
+type Evaluate = (
+  activation: Record<string, unknown>,
+  dispatch: ModuleCallDispatch,
+) => unknown;
 type ModuleFunction = (args: readonly unknown[]) => unknown;
 
 let evaluationEnv: ReturnType<typeof buildCelEnvironment> | undefined;
@@ -99,9 +101,7 @@ export class FunctionBodyEvaluators {
     return (args) => {
       const refused = binding.arityRefusal(args.length);
       if (refused) throw new Error(refused.message);
-      return binding.result(
-        evaluate({ ...binding.bind(args), [MODULE_CALL_DISPATCH_KEY]: this.dispatchFor(target) }),
-      );
+      return binding.result(evaluate(binding.bind(args), this.dispatchFor(target)));
     };
   }
 
@@ -113,15 +113,22 @@ export class FunctionBodyEvaluators {
       const literal = body.value;
       evaluate = () => literal;
     } else if (body?.source !== undefined) {
-      try {
-        evaluationEnv ??= buildCelEnvironment();
-        const parsed = evaluationEnv.parse(body.source);
-        resolveModuleCalls(parsed.ast, moduleCallNamesOf(this.moduleCallNames, target));
-        evaluate = parsed as unknown as Evaluate;
-      } catch {
+      evaluationEnv ??= buildCelEnvironment();
+      const env = moduleNamesEnvironment(
+        evaluationEnv,
+        moduleCallNamesOf(this.moduleCallNames, target),
+      );
+      const parsed = env.parse(body.source);
+      if (parsed.diagnostics.length > 0) {
         // A body that does not parse is `CEL_SYNTAX_ERROR`'s to report where it
         // is written; a rule calling it fails as a call to nothing runnable.
         evaluate = null;
+      } else {
+        const program = env.compile(parsed);
+        evaluate = (activation, dispatch) =>
+          program.evaluate(activation as never, {
+            namespaceFunction: namespaceDispatchOf(dispatch),
+          });
       }
     }
     this.bodies.set(target, evaluate);

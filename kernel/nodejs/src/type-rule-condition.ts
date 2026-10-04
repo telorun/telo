@@ -11,9 +11,8 @@
  * Parsed once per rule object: a shape is checked on every dispatch that names
  * it.
  */
-import { parse } from "@marcbachmann/cel-js";
 import type { TypeRule } from "@telorun/sdk";
-import { resolveModuleCalls } from "@telorun/templating";
+import { buildCelEnvironment, celNamespaceNames } from "@telorun/templating";
 
 export type RuleCondition = (data: unknown) => unknown;
 
@@ -37,9 +36,14 @@ export function ruleCondition(rule: TypeRule): RuleCondition {
         `module that declared it`,
     );
   }
-  const parsed = parse(rule.condition);
-  resolveModuleCalls(parsed.ast, names);
-  const condition: RuleCondition = (data) => parsed({ this: data });
+  // The declaring module's names become namespaces on a clone, so a call through one is a
+  // qualified call as the expression is READ — the engine resolves it, nothing rewrites a
+  // tree afterwards. No dispatch table is bound here, so such a call fails as the unbound
+  // call it is, naming the function.
+  const site = buildCelEnvironment();
+  for (const name of celNamespaceNames(names)) site.registerNamespace(name);
+  const program = site.compile(rule.condition);
+  const condition: RuleCondition = (data) => program.evaluate({ this: data });
   conditions.set(rule, condition);
   return condition;
 }

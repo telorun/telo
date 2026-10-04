@@ -7,7 +7,16 @@
  * and the ones no row reaches.
  */
 import { describe, expect, it } from "vitest";
-import { CEL_VALUE_TYPE, CelEnvironment, CelEvaluationError, celUint, type CelValue } from "../src/index.js";
+import {
+  CEL_VALUE_TYPE,
+  CelEnvironment,
+  CelEvaluationError,
+  celTimestamp,
+  celTimestampFromMillis,
+  celUint,
+  isCelError,
+  type CelValue,
+} from "../src/index.js";
 import { BINDING_FORMS } from "../src/comprehension-bindings.js";
 
 const environment = new CelEnvironment({ unlistedVariablesAreDyn: true, enableOptionalTypes: true });
@@ -84,6 +93,17 @@ describe("evaluation", () => {
     expect(failure("timestamp('2009-02-13T23:31:30Z') + span", wide)).toBe("invalid_conversion");
     expect(failure("span + timestamp('2009-02-13T23:31:30Z')", wide)).toBe("invalid_conversion");
     expect(failure("timestamp('2009-02-13T23:31:30Z') - span", wide)).toBe("invalid_conversion");
+  });
+
+  it("reads a host's millisecond clock as an instant, and holds it to the range", () => {
+    // The one other shape a host actually holds — `Date.now()`, an epoch-millis column —
+    // so nothing has to reach for a host date type to say "now". A fractional reading
+    // keeps its sub-millisecond part.
+    expect(celTimestampFromMillis(1768462200000)).toEqual(celTimestamp(1768462200n, 0));
+    expect(celTimestampFromMillis(-1500)).toEqual(celTimestamp(-2n, 500_000_000));
+    expect(celTimestampFromMillis(0.000001)).toEqual(celTimestamp(0n, 1));
+    expect(isCelError(celTimestampFromMillis(253402300800000))).toBe(true);
+    expect(isCelError(celTimestampFromMillis(Number.NaN))).toBe(true);
   });
 
   it("admits the widest duration there is, and nothing one nanosecond past it", () => {

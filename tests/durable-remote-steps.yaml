@@ -77,7 +77,7 @@ steps:
         echoed: "hello, ada"
         via: child-kernel
         shipped: ["steps/hello"]
-        at: "2026-01-15T09:30:00.250Z"
+        at: "2026-01-15T09:30:00.25Z"
         key: true
     invoke: { kind: Assert.Equals }
 

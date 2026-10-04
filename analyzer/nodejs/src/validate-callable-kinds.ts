@@ -64,7 +64,6 @@ export interface CallableKindIssue {
     | "X_TELO_REF_CALLABLE_UNTYPED"
     | "FUNCTION_OPTIONAL_NOT_TRAILING"
     | "FUNCTION_TYPE_NAME_FORM"
-    | "FUNCTION_NAME_RESERVED"
     | "CONTRACT_TYPE_NOT_FOUND";
   /** Dotted path of the offending node within the document. */
   readonly path: string;
@@ -85,17 +84,6 @@ const ZONE_ANNOTATIONS = [
   "x-telo-requires-zone",
   "x-telo-violates-zone",
 ] as const;
-
-/** Method names CEL expands as macros on any receiver before a module call can
- *  resolve: `<Module>.map(1, 2)` is refused as a malformed `map` macro. */
-const CEL_MACRO_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "all",
-  "exists",
-  "exists_one",
-  "map",
-  "filter",
-  "bind",
-]);
 
 /** The template-body keys that make a kind a template. */
 const TEMPLATE_BODY_KEYS = ["resources", "invoke", "run", "targets", "provide", "mount"] as const;
@@ -174,10 +162,15 @@ export function callableInstanceIssues(
   resolve: DefResolver,
 ): CallableKindIssue[] {
   const doc = manifest as unknown as Record<string, unknown>;
-  const name = manifest.metadata?.name;
-  const macroName = typeof name === "string" && CEL_MACRO_METHOD_NAMES.has(name);
+  // A function named after a CEL macro — `map`, `filter`, `all` — used to be refused here
+  // (`FUNCTION_NAME_RESERVED`), because the engine this runtime replaced expanded
+  // `<Module>.map(…)` as its own macro before a module call could resolve, so most calls to
+  // such a function did not parse. **Namespace resolution now outranks macro expansion**: a
+  // call whose receiver is one of the declaring module's names is a `qcall` whatever the
+  // function is called, and a call on a VALUE is still the macro. Verified by execution over
+  // every macro name, and `Alias.filter(21)` is judged like any other module call — so the
+  // name is ordinary and the refusal is gone.
   if (
-    !macroName &&
     doc.params === undefined &&
     doc.returns === undefined &&
     doc.deterministic === undefined
@@ -187,16 +180,6 @@ export function callableInstanceIssues(
   const definition = resolve(manifest.kind, manifest as unknown as ResourceDefinition);
   if (!isCallableKind(definition, resolve)) return [];
   const issues: CallableKindIssue[] = [];
-  if (macroName) {
-    issues.push({
-      code: "FUNCTION_NAME_RESERVED",
-      path: "metadata.name",
-      message:
-        `${label(manifest)}: a function cannot be named '${name}'. CEL expands a call ` +
-        `'<Module>.${name}(…)' as its own '${name}' macro before a module call resolves, so most ` +
-        `calls to it do not parse. Rename the function.`,
-    });
-  }
   // A determinism claim is the implementer's, made once on the kind: an instance
   // is one configuration of that code and cannot make it more or less pure. A
   // kind whose closed schema already rejects the key reports it as a schema

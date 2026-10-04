@@ -12,6 +12,14 @@ metadata:
     durable replay journal so a reader that disconnects, or outlives a restart, resumes
     from where it left off and tails live, or reads its state in one snapshot, with
     removal, retention, writer liveness and continuing a failed or abandoned recording.
+requires:
+  # 0.108.0: the controllers read and build durations through the value domain
+  # (`isCelDuration`, `durationNanos`, `celDurationFromNanos`) rather than a host
+  # class. `@telorun/sdk` is external and collapsed to the runtime's own copy, so
+  # on a runtime whose SDK does not export those names they are undefined and the
+  # resource dies at creation with a TypeError naming this module. Verified by
+  # execution: the published 0.107.0 tarball exports none of them.
+  telo: ">=0.108.0"
 exports:
   kinds:
     - ExtractText

@@ -1,4 +1,4 @@
-import { Environment, EvaluationError, type ASTNode } from "@marcbachmann/cel-js";
+import { CelEnvironment, CelEvaluationError, isCelMap, isCelRecord, type CelNode } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
 import { nullableValueChain } from "../cel/analyze.js";
 import { literalFragments, type InterpolationHole } from "../cel/interpolation-holes.js";
@@ -71,7 +71,7 @@ export const interpolateEngine: TemplatingEngine = {
 function holeVerdict(
   hole: InterpolationHole,
   result: CelAnalyzeResult,
-  ast: ASTNode | undefined,
+  ast: CelNode | undefined,
   env: AnalyzeEnv,
 ): readonly CelDiagnostic[] {
   if (ast && env.contextSchema) {
@@ -98,17 +98,17 @@ function holeVerdict(
   ];
 }
 
-const CONVERTIBLE = new WeakMap<Environment, ReadonlySet<string>>();
+const CONVERTIBLE = new WeakMap<CelEnvironment, ReadonlySet<string>>();
 
 /** The types a `string()` overload of `env` accepts, `dyn` among them — read
  *  off the registered overloads, so the check is the one evaluation applies. */
-function convertibleTypes(env: Environment): ReadonlySet<string> {
+function convertibleTypes(env: CelEnvironment): ReadonlySet<string> {
   const cached = CONVERTIBLE.get(env);
   if (cached) return cached;
   const types = new Set<string>(["dyn"]);
-  for (const fn of env.getDefinitions().functions) {
-    if (fn.name === "string" && fn.receiverType === null && fn.params?.length === 1) {
-      types.add(fn.params[0]!.type);
+  for (const fn of env.definitions().functions) {
+    if (fn.name === "string" && fn.receiverType === null && fn.parameters.length === 1) {
+      types.add(fn.parameters[0]!);
     }
   }
   CONVERTIBLE.set(env, types);
@@ -117,19 +117,19 @@ function convertibleTypes(env: Environment): ReadonlySet<string> {
 
 type Conversion = (value: unknown, hole: InterpolationHole, source: string) => string;
 
-const CONVERSIONS = new WeakMap<Environment, Conversion>();
+const CONVERSIONS = new WeakMap<CelEnvironment, Conversion>();
 
 /** CEL's `string(v)` in `env`, with every overload the environment registers. */
-function stringConversion(env: Environment): Conversion {
+function stringConversion(env: CelEnvironment): Conversion {
   const cached = CONVERSIONS.get(env);
   if (cached) return cached;
-  const program = env.parse("string(value)") as (ctx: { value: unknown }) => unknown;
+  const program = env.compile("string(value)");
   const conversion: Conversion = (value, hole, source) => {
     if (typeof value === "string") return value;
     try {
-      return program({ value }) as string;
+      return program.evaluate({ value }) as string;
     } catch (error) {
-      if (!(error instanceof EvaluationError)) throw error;
+      if (!(error instanceof CelEvaluationError)) throw error;
       throw celVerdictError(
         "ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE",
         `the hole '\${{ ${hole.expr} }}' at offset ${hole.start} of !interpolate ${JSON.stringify(source)} ` +
@@ -145,6 +145,9 @@ function stringConversion(env: Environment): Conversion {
 function runtimeTypeOf(value: unknown): string {
   if (value === null || value === undefined) return "null";
   if (Array.isArray(value)) return "a list";
-  if (value instanceof Map || Object.getPrototypeOf(value) === Object.prototype) return "a map";
+  // Both of the value domain's map representations, asked of the domain rather than of the
+  // prototype: a branded value is a plain object, so a prototype test named an optional, a
+  // type and every host named type "a map".
+  if (isCelMap(value) || isCelRecord(value)) return "a map";
   return `a value of type ${(value as object).constructor?.name ?? typeof value}`;
 }

@@ -27,6 +27,7 @@ import {
 } from "@telorun/sdk";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { requestBag } from "./request-binding.js";
 import { requestValidationEnvelope, type RequestLocation } from "./request-validation-envelope.js";
 
 const HttpApiRouteManifest = Type.Object({
@@ -199,8 +200,11 @@ export class HttpServerApi implements ResourceInstance {
           request: {
             method: request.method,
             path: request.url,
-            params: received.params || {},
-            query: received.query || {},
+            // The transport's own bags, as maps in the CEL value domain — see
+            // `requestBag`. Fastify builds them with a prototype of its own, which
+            // the member-read seam reads as a value holding no members.
+            params: requestBag(received.params),
+            query: requestBag(received.query),
             headers: normalizeHeaders(received.headers as FastifyRequest["headers"]),
             body: streamBody ? toByteStream(request) : received.body,
             // Canonical client address — honours X-Forwarded-For per the

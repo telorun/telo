@@ -1,386 +1,131 @@
-import type { ASTNode, Environment } from "@marcbachmann/cel-js";
-import { CEL_FUNCTIONS, type CelFunctionDoc } from "./catalog.js";
-import { moduleCallOf } from "./module-call.js";
-import type { CallSite, DiagnosticFix, EngineDiagnostic } from "../engine.js";
-import type { CelCallAudit, CelDiagnostic } from "./verdict-codes.js";
-
-/** Classifies every function call in a CEL expression against the environment's
- *  own function registry.
+/**
+ * Every function call in a CEL expression, reported for the caller that judges it.
  *
- *  This exists because cel-js reports one sentence for three unrelated mistakes
- *  — a name that does not exist, a name called in the wrong form, and a genuine
- *  type mismatch all surface as `found no matching overload for 'f(...)'`. Two
- *  of those readings actively mislead: the message names argument types, so the
- *  repair for `startsWith(key, 'x')` looks like a cast, when the real fix is
- *  `key.startsWith('x')` and no cast helps.
+ * **The classifier is gone, and so is its reason for existing.** This file used to decide
+ * `CEL_UNKNOWN_FUNCTION`, `CEL_WRONG_CALL_FORM` and `CEL_INVALID_ARGUMENT` itself, by
+ * looking every call up in the environment's registry — because the engine it drove reported
+ * one sentence for three unrelated mistakes (`found no matching overload for 'f(...)'`), two
+ * of whose readings actively misled: the message named argument types, so the repair for
+ * `startsWith(key, 'x')` looked like a cast when the fix was `key.startsWith('x')`.
  *
- *  Nothing here reads cel-js's message text. `Environment.getDefinitions()`
- *  reports every registered signature — cel-js builtins and Telo's catalog
- *  alike — with its call form and parameters, and the AST distinguishes `f(x)`
- *  from `x.f()` structurally. Name existence, call form and arity are therefore
- *  decidable by lookup, which is what keeps a cel-js version bump from silently
- *  degrading this back into the passthrough it replaced. */
+ * `@telorun/cel` decides each of them where the cause is known, with a range and a whole-
+ * source fix — an unknown name, a name called in the other form, a type no overload takes,
+ * and a refusal over a literal argument (`checkLiteralArguments`, which runs the very code
+ * the evaluation runs). So nothing here classifies, and nothing reads a message.
+ *
+ * What is left is Telo's half: the call LIST, which the analyzer needs to judge whether a
+ * module call reaches a function at all (`FUNCTION_UNRESOLVED` / `_NOT_EXPORTED` /
+ * `_NOT_CALLABLE` / `_ARITY_MISMATCH` / `_ARGUMENT_MISMATCH`) — a verdict that is manifest
+ * context and never this engine's.
+ */
+import type { CelEnvironment, CelNode, CheckResult } from "@telorun/cel";
+import { moduleCallArgumentChains } from "./analyze.js";
+import type { CallSite, EngineDiagnostic } from "../engine.js";
+import type { CelCallAudit } from "./verdict-codes.js";
 
-/** One registered signature, reduced to what classification needs. */
-interface FnEntry {
-  readonly signature: string;
-  readonly form: "global" | "receiver";
-  /** Parameter count, excluding the receiver for a receiver form. */
-  readonly arity: number;
+/**
+ * What one audit establishes. The diagnostic lists stay on the shape because the ANALYZER
+ * reads them: they are now always empty from here — the engine's checker decides every
+ * verdict about a call — and a caller that merged two lists keeps doing so unchanged.
+ */
+export interface CallAudit {
+  readonly diagnostics: readonly EngineDiagnostic[];
+  /** Every function call in the source, in source order. */
+  readonly calls: readonly CallSite[];
+  /** Names a type-check failure mentions that resolved to nothing. */
+  readonly unresolved: readonly string[];
+  /** Refusals over a literal argument. The engine decides these at check now. */
+  readonly argumentIssues: readonly EngineDiagnostic[];
 }
 
-export interface FunctionIndex {
-  readonly byName: ReadonlyMap<string, readonly FnEntry[]>;
-}
-
-/** Determinism is Telo catalog metadata; cel-js builtins carry none. Absent
- *  means "no signal", never "deterministic" — consumers of
- *  `CallSite.deterministic` must not read undefined as a guarantee. */
-const DETERMINISM: ReadonlyMap<string, boolean> = new Map(
-  CEL_FUNCTIONS.map((f) => [f.name, f.deterministic]),
-);
-const HOST_BACKED: ReadonlyMap<string, boolean> = new Map(
-  CEL_FUNCTIONS.map((f) => [f.name, f.hostBacked === true]),
-);
-
-/** The flags a module function carries, as the host that resolves it derives
- *  them — or undefined where the name reaches no function. */
+/**
+ * The flags a module function carries, as the host that resolves it derives them — or
+ * undefined where the name reaches no function. Absent means "no signal", never
+ * "deterministic".
+ */
 export type ModuleCallFlags = (
   qualified: string,
 ) => { readonly deterministic: boolean; readonly hostBacked: boolean } | undefined;
 
-const INDEX_CACHE = new WeakMap<Environment, FunctionIndex>();
-
-/** Registry view of an environment, memoized: environments are rebuilt per
- *  analysis path, but each is immutable once built. */
-export function functionIndex(env: Environment): FunctionIndex {
-  const cached = INDEX_CACHE.get(env);
-  if (cached) return cached;
-
-  const byName = new Map<string, FnEntry[]>();
-
-  for (const fn of env.getDefinitions().functions) {
-    const form = fn.receiverType === null ? "global" : "receiver";
-    const entry: FnEntry = { signature: fn.signature, form, arity: fn.params?.length ?? 0 };
-    const entries = byName.get(fn.name);
-    if (entries) entries.push(entry);
-    else byName.set(fn.name, [entry]);
-  }
-
-  const index: FunctionIndex = { byName };
-  INDEX_CACHE.set(env, index);
-  return index;
-}
-
-/** A call plus the nodes needed to rewrite it. Internal — `CallSite` is the
- *  shape that crosses the engine seam. */
-interface RawCall extends CallSite {
-  readonly receiver?: ASTNode;
-  readonly args: readonly ASTNode[];
-}
-
-/** Macros the parser expands rather than dispatching through the registry, so
- *  they never appear in `getDefinitions()` and would otherwise classify as
- *  unknown names.
+/**
+ * Every call the expression makes, with what the checker resolved about it.
  *
- *  Deliberately short: most macros ARE registered, and the caller only reports
- *  this audit when the type-checker already rejected the expression, so a macro
- *  missing from here degrades to "no extra explanation" rather than to a false
- *  error on valid CEL. That is what keeps a cel-js upgrade from turning a new
- *  macro into a manifest this analyzer refuses. */
-const MACROS = new Set(["optMap", "optFlatMap", "bind"]);
-
-function isNode(v: unknown): v is ASTNode {
-  return typeof v === "object" && v !== null && "op" in (v as Record<string, unknown>);
-}
-
-/** Every non-macro call in the expression, in source order. */
-function collectCalls(
-  root: ASTNode,
-  index: FunctionIndex,
-  moduleCallFlags: ModuleCallFlags | undefined,
-): RawCall[] {
-  const out: RawCall[] = [];
-  visit(root);
-  return out.sort((a, b) => a.start - b.start);
-
-  function visit(node: ASTNode): void {
-    const args = node.args as unknown;
-    // A RESOLVED module call is reported under its QUALIFIED name and is never
-    // looked up in the catalog: the two namespaces are disjoint by construction
-    // (a bare name is always the catalog), so classifying it here would report
-    // `there is no function 'format'` for a call that names a module's own, and
-    // attaching the catalog's determinism to it would be a flag about a
-    // different function entirely. What a module call's flags are is the
-    // resolving host's answer, carried when it gives one.
-    const moduleCall = moduleCallOf(node);
-    if (moduleCall) {
-      const flags = moduleCallFlags?.(moduleCall.qualified);
-      out.push({
-        name: moduleCall.qualified,
-        form: "receiver",
-        moduleCall: true,
-        arity: moduleCall.args.length,
-        start: node.start,
-        end: node.end,
-        ...(flags ? { deterministic: flags.deterministic, hostBacked: flags.hostBacked } : {}),
-        args: moduleCall.args,
-      });
-      for (const arg of moduleCall.args) visit(arg);
-      return;
-    }
-    if (node.op === "call" || node.op === "rcall") {
-      const tuple = args as unknown[];
-      const name = tuple[0];
-      if (typeof name === "string" && !MACROS.has(name)) {
-        const receiver = node.op === "rcall" ? tuple[1] : undefined;
-        const rawArgs = node.op === "rcall" ? tuple[2] : tuple[1];
-        const callArgs = (Array.isArray(rawArgs) ? rawArgs : []).filter(isNode);
-        out.push({
-          name,
-          form: node.op === "rcall" ? "receiver" : "global",
-          arity: callArgs.length,
-          start: node.start,
-          end: node.end,
-          ...(index.byName.has(name)
-            ? { deterministic: DETERMINISM.get(name), hostBacked: HOST_BACKED.get(name) }
-            : {}),
-          ...(isNode(receiver) ? { receiver } : {}),
-          args: callArgs,
-        });
-      }
-    }
-    for (const arg of Array.isArray(args) ? args : [args]) {
-      if (isNode(arg)) visit(arg);
-      else if (Array.isArray(arg)) for (const item of arg) if (isNode(item)) visit(item);
-    }
-  }
-}
-
-/** Node shapes that can carry a `.` on their right without reparsing
- *  differently. Everything else — an operator expression, a literal that would
- *  sit against the dot — is parenthesized when moved into receiver position. */
-const SELF_DELIMITING = new Set<string>(["id", ".", ".?", "call", "rcall", "[]", "[?]"]);
-
-/** Source text of a node. When it is about to become a receiver it may need
- *  parentheses: an identifier, member chain, index or call is self-delimiting,
- *  but an operator expression or a bare literal against a `.` is not. */
-function nodeText(source: string, node: ASTNode, asReceiver = false): string {
-  const text = source.slice(node.start, node.end);
-  if (!asReceiver) return text;
-  return SELF_DELIMITING.has(node.op) ? text : `(${text})`;
-}
-
-/** The same call written in the other form, or undefined when the shape does
- *  not allow it (a global call with no arguments has no receiver to move). */
-function transpose(source: string, call: RawCall): string | undefined {
-  if (call.form === "global") {
-    const [first, ...rest] = call.args;
-    if (!first) return undefined;
-    const argText = rest.map((a) => nodeText(source, a));
-    return `${nodeText(source, first, true)}.${call.name}(${argText.join(", ")})`;
-  }
-  if (!call.receiver) return undefined;
-  const argText = [nodeText(source, call.receiver), ...call.args.map((a) => nodeText(source, a))];
-  return `${call.name}(${argText.join(", ")})`;
-}
-
-/** Splice a rewritten call back into the full source. The fix always carries
- *  the whole corrected source, so a consumer applies it by replacing the
- *  scalar. */
-function spliceFix(source: string, call: RawCall, rewritten: string): DiagnosticFix {
-  return { replacement: source.slice(0, call.start) + rewritten + source.slice(call.end) };
-}
-
-/** Replace only the called name, leaving arguments untouched. The offset is
- *  derived rather than searched: a receiver whose own text contains the name
- *  (`slice.slice(1)`) would defeat a first-occurrence replace. */
-function renameFix(source: string, call: RawCall, to: string): DiagnosticFix | undefined {
-  const searchFrom = call.receiver ? call.receiver.end : call.start;
-  const at = source.indexOf(call.name, searchFrom);
-  if (at === -1 || at >= call.end) return undefined;
-  return { replacement: source.slice(0, at) + to + source.slice(at + call.name.length) };
-}
-
-/** Arity the call would need in the other form: moving a receiver in adds an
- *  argument, moving it out removes one. */
-function transposedArity(call: RawCall): number {
-  return call.form === "global" ? call.arity - 1 : call.arity + 1;
-}
-
-function accepts(entries: readonly FnEntry[], form: CallSite["form"], arity: number): boolean {
-  return entries.some((e) => e.form === form && e.arity === arity);
-}
-
-const listOf = (names: readonly string[]): string => [...new Set(names)].sort().join(", ");
-
-/** Names registered in exactly the form and arity the author wrote — the only
- *  ones that could replace this call with no further edits. Ranked by shared
- *  prefix, which is what reaches `nowIso` from `no`; edit distance never
- *  would (4 characters against a 2-character name). Returns [] when nothing
- *  shares a prefix, so the caller lists what is legal here instead of
- *  guessing. */
-function candidates(call: RawCall, index: FunctionIndex): string[] {
-  const written = call.name.toLowerCase();
-  return callableHere(call, index)
-    .filter((name) => {
-      const lower = name.toLowerCase();
-      return lower.startsWith(written) || written.startsWith(lower);
-    })
-    .sort((a, b) => a.length - b.length || a.localeCompare(b));
-}
-
-/** Every name callable in exactly the position written — same form, same
- *  argument count. Arity is what makes the list usable: a receiver's type is
- *  `dyn` at analysis time so every method is nominally reachable, and printing
- *  all forty says nothing. */
-function callableHere(call: RawCall, index: FunctionIndex): string[] {
-  const names: string[] = [];
-  for (const [name, entries] of index.byName) {
-    if (name !== call.name && accepts(entries, call.form, call.arity)) names.push(name);
-  }
-  return names;
-}
-
-function signaturesOf(name: string, index: FunctionIndex): string[] {
-  return (index.byName.get(name) ?? []).map((e) => e.signature);
-}
-
-/** Spread-friendly optional `fix`, so an undecidable rewrite simply omits the
- *  field rather than carrying `undefined` into the diagnostic. */
-const withFix = (fix: DiagnosticFix | undefined): { fix?: DiagnosticFix } => (fix ? { fix } : {});
-
-/** The literal value of an argument, or `undefined` when it is an expression
- *  whose value is not statically known. A negated numeric literal is one node
- *  out (`-1` parses as unary minus over a value), and reading it is what lets a
- *  bound like "0–10" catch the below-range case as well as the above. */
-function literalOf(node: ASTNode): unknown {
-  if (node.op === "value") return node.args;
-  if (node.op === "-_") {
-    const inner = node.args;
-    if (isNode(inner) && inner.op === "value") {
-      const v = inner.args as unknown;
-      if (typeof v === "number") return -v;
-      if (typeof v === "bigint") return -v;
-    }
-  }
-  return undefined;
-}
-
-const ARG_CHECKS: ReadonlyMap<string, NonNullable<CelFunctionDoc["checkArgs"]>> = new Map(
-  CEL_FUNCTIONS.flatMap((f) => (f.checkArgs ? [[f.name, f.checkArgs] as const] : [])),
-);
-
-export interface CallAudit {
-  readonly diagnostics: readonly EngineDiagnostic[];
-  readonly calls: readonly CallSite[];
-  /** Refusals decided from arguments written as literals. Reported whatever the
-   *  type-checker said, unlike {@link CallAudit.diagnostics}: a call whose types
-   *  are all correct and whose specifier is `.2q` type-checks perfectly, and is
-   *  exactly the defect this catches. */
-  readonly argumentIssues: readonly EngineDiagnostic[];
-  /** Names that resolve, but that no registered signature accepts as written.
-   *  The caller appends their signatures to a type-check failure it could not
-   *  otherwise explain. */
-  readonly unresolved: readonly string[];
-}
-
-/** Classify every call in `ast`. Runs unconditionally rather than only after a
- *  failed type-check, because a type-check reports its first error and stops:
- *  an expression with two bad calls would otherwise fix one, re-run, and
- *  discover the next. */
+ * A module call carries no catalog flag: what a module function's determinism and
+ * host-backedness are follows from the callable it resolves to, so they are carried only as
+ * the host's `moduleCallFlags` reports them, and stay absent where it gives nothing.
+ */
 export function auditCalls(
   source: string,
-  ast: ASTNode,
-  env: Environment,
-  /** The flags of the module functions the expression calls, from whoever
-   *  resolves them. */
+  root: CelNode,
+  environment: CelEnvironment,
   moduleCallFlags?: ModuleCallFlags,
+  checked?: CheckResult,
 ): CelCallAudit {
-  const index = functionIndex(env);
-  const diagnostics: CelDiagnostic[] = [];
-  const unresolved: string[] = [];
-  const calls = collectCalls(ast, index, moduleCallFlags);
+  const result = checked ?? environment.check({ source, root, namespaces: environment.namespaces(), diagnostics: [] });
+  const argumentChains = moduleCallArgumentChains(root);
+  const byNode = new Map(
+    [...argumentChains].map(([node, chains]) => [`${node.range[0]}:${node.range[1]}`, chains]),
+  );
 
-  for (const call of calls) {
-    // Resolution already decided what a module call names. The catalog has
-    // nothing to say about it, and saying it anyway would be a refusal of valid
-    // CEL.
-    if (call.moduleCall) continue;
-    const entries = index.byName.get(call.name);
-    const noun = call.form === "receiver" ? "method" : "function";
-
-    if (!entries) {
-      const near = candidates(call, index);
-      const hint =
-        near.length > 0
-          ? `Closest taking ${call.arity} argument${call.arity === 1 ? "" : "s"}: ${near
-              .slice(0, 5)
-              .map((n) => `\`${n}\``)
-              .join(", ")}.`
-          : `Every ${noun} taking ${call.arity} argument${call.arity === 1 ? "" : "s"}: ${listOf(callableHere(call, index))}.`;
-      diagnostics.push({
-        code: "CEL_UNKNOWN_FUNCTION",
-        message: `there is no ${noun} \`${call.name}\`. ${hint} Full list: \`telo cel functions\`.`,
-        // A single candidate is an unambiguous rename; several are a menu, and
-        // applying an arbitrary one would be a guess wearing a fix's clothes.
-        ...(near.length === 1 ? withFix(renameFix(source, call, near[0]!)) : {}),
-      });
-      continue;
-    }
-
-    if (accepts(entries, call.form, call.arity)) continue;
-
-    const otherForm = call.form === "global" ? "receiver" : "global";
-    if (accepts(entries, otherForm, transposedArity(call))) {
-      const rewritten = transpose(source, call);
-      const written = source.slice(call.start, call.end);
-      diagnostics.push({
-        code: "CEL_WRONG_CALL_FORM",
-        message:
-          `\`${call.name}\` is ${
-            call.form === "global"
-              ? "a method, not a global function — call it on the value"
-              : "a global function, not a method — pass the value to it"
-          }:` +
-          (rewritten ? `\n  write:  ${rewritten}\n  not:    ${written}` : "") +
-          `\nRegistered: ${listOf(signaturesOf(call.name, index))}.`,
-        ...withFix(rewritten ? spliceFix(source, call, rewritten) : undefined),
-      });
-      continue;
-    }
-
-    unresolved.push(call.name);
+  // **One entry per call.** The checker already lists a qualified call — with `namespace`
+  // set and `form: "receiver"`, which is how it was written — so appending a second entry
+  // per `qualifiedCalls` showed every module call twice, with two contradictory forms, to
+  // every consumer that iterates this list.
+  const calls: CallSite[] = [];
+  for (const call of result.calls) {
+    const qualified = call.namespace !== undefined;
+    const flags = qualified ? moduleCallFlags?.(call.name) : undefined;
+    const chains = qualified ? byNode.get(`${call.range[0]}:${call.range[1]}`) : undefined;
+    calls.push({
+      name: call.name,
+      form: call.form,
+      arity: call.arity,
+      start: call.range[0],
+      end: call.range[1],
+      ...(qualified ? { moduleCall: true as const } : {}),
+      // A module call's arguments as the analysis saw them: the type the checker gives each
+      // one, and the chain where the argument IS one — so a caller holding the callee's
+      // signature can compare a declared shape rather than a CEL type alone.
+      ...(qualified && call.argumentTypes
+        ? {
+            arguments: call.argumentTypes.map((type, at) => {
+              const chain = chains?.[at] ?? null;
+              return {
+                ...(type === "dyn" ? {} : { type }),
+                ...(chain ? { chain } : {}),
+              };
+            }),
+          }
+        : {}),
+      // A module call carries no catalog flag: its determinism and host-backedness follow
+      // from the callable the name resolves to, which only the host that resolves it knows.
+      ...(qualified
+        ? flags
+          ? { deterministic: flags.deterministic, hostBacked: flags.hostBacked }
+          : {}
+        : {
+            ...(call.deterministic === undefined ? {} : { deterministic: call.deterministic }),
+            ...(call.hostBacked === undefined ? {} : { hostBacked: call.hostBacked }),
+          }),
+    });
   }
 
-  const argumentIssues: CelDiagnostic[] = [];
-  for (const call of calls) {
-    const check = ARG_CHECKS.get(call.name);
-    if (!check) continue;
-    const message = check(call.args.map(literalOf));
-    // No span on an EngineDiagnostic, so the written call goes in the message —
-    // an expression with two calls to the same function is otherwise ambiguous.
-    if (message) {
-      argumentIssues.push({
-        code: "CEL_INVALID_ARGUMENT",
-        message: `${message} (in \`${source.slice(call.start, call.end)}\`)`,
-      });
-    }
-  }
-
-  return {
-    diagnostics,
-    calls: calls.map(({ receiver: _receiver, args: _args, ...site }) => site),
-    unresolved,
-    argumentIssues,
-  };
+  calls.sort((left, right) => left.start - right.start || left.end - right.end);
+  return { diagnostics: [], calls, unresolved: [], argumentIssues: [] };
 }
 
-/** Registered signatures for names a type-check failure mentions, so the
- *  residual says what the function actually accepts rather than only echoing
- *  what the author wrote. */
-export function explainUnresolved(names: readonly string[], env: Environment): string {
-  const index = functionIndex(env);
-  const signatures = [...new Set(names)].flatMap((n) => signaturesOf(n, index));
-  return signatures.length > 0 ? ` Registered: ${listOf(signatures)}.` : "";
+/**
+ * Registered signatures for names a type-check failure mentions, so a residual message says
+ * what the function actually accepts rather than only echoing what the author wrote.
+ */
+export function explainUnresolved(names: readonly string[], environment: CelEnvironment): string {
+  const wanted = new Set(names);
+  const signatures = environment
+    .definitions()
+    .functions.filter((entry) => wanted.has(entry.name))
+    .map((entry) => entry.signature);
+  if (signatures.length === 0) return "";
+  const listed = [...new Set(signatures)].map((signature) => `\`${signature}\``);
+  const last = listed.pop()!;
+  return ` Registered: ${listed.length > 0 ? `${listed.join(", ")} and ${last}` : last}.`;
 }

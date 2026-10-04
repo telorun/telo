@@ -1,4 +1,4 @@
-import { UnsignedInt, type CancellationToken } from "@telorun/sdk";
+import { isCelUint, type CancellationToken } from "@telorun/sdk";
 
 /** What a wait ends with: whether the topic moved past the cursor, and the
  *  version the store knows for it at that moment. */
@@ -38,10 +38,10 @@ export function isWatchStore(value: unknown): value is WatchStore {
 }
 
 /** A version read from a call's inputs: a YAML literal arrives as a number, a
- *  CEL value as a BigInt (or an `UnsignedInt`). */
+ *  CEL value as a BigInt (or a `uint`). */
 export function versionInput(value: unknown, describe: () => string): bigint {
   if (typeof value === "bigint") return value;
   if (typeof value === "number" && Number.isInteger(value)) return BigInt(value);
-  if (value instanceof UnsignedInt) return value.value;
+  if (isCelUint(value)) return value.value;
   throw new Error(`${describe()} must be an integer, got ${JSON.stringify(String(value))}`);
 }

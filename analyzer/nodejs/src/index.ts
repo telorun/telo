@@ -238,7 +238,13 @@ export type {
 } from "./module-graph.js";
 export { satisfiesValueBranch } from "./reference-field-map.js";
 export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
-export { reachSites } from "./reference-reach.js";
+export { reachPositions, reachSites, type ReachPosition } from "./reference-reach.js";
+export {
+  computedRefSlots,
+  evaluatedCelSource,
+  refSlotComputedReason,
+  type ComputedRefSlot,
+} from "./ref-slot-computed.js";
 export type {
   DeclaredReach,
   DeclaredReference,
@@ -393,9 +399,11 @@ export {
   analyzerPeerBinder,
   analyzerPeersTarget,
   entryBoundary,
+  isSilentBindingFailure,
   navigatePath,
   referenceValueOf,
   type DeclarationLookup,
+  type RefSite,
   type PeerAliasScope,
   type PeerBinderEnv,
   type PeerBinderRegistry,
@@ -404,7 +412,7 @@ export {
   type PeerBindingResult,
   type PeersTarget,
 } from "./peer-binding.js";
-export { RULE_BUDGET_MS, UNTAGGED_CONDITION } from "./rule-condition.js";
+export { RULE_BUDGET_MS, RuleFailureLedger, UNTAGGED_CONDITION } from "./rule-condition.js";
 export {
   readSchemaProjection,
   type ProjectionReference,

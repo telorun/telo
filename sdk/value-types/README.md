@@ -85,11 +85,12 @@ error.
 | encoding       | written as                          | read                              |
 | -------------- | ----------------------------------- | --------------------------------- |
 | `base64url`    | base64url without padding           | the same form                     |
-| `rfc3339`      | RFC 3339 in UTC with a trailing `Z` | RFC 3339 with any offset          |
+| `rfc3339`      | RFC 3339 in UTC with a trailing `Z`, fraction trimmed | RFC 3339 with any offset and one to nine fractional digits |
 | `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`) within ±315576000000s |
 
 CEL's `string(duration)` — and so a duration in an `!interpolate` hole — renders
-through `cel-duration`, so a duration reads the same interpolated as serialized.
+through `cel-duration`, and `string(timestamp)` through `rfc3339`, so each reads the
+same interpolated as serialized.
 
 `cel-duration` is not the grammar of the string duration fields many kinds still
 declare, which a controller reads with the SDK's `parseDurationMs`: that one reads

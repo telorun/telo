@@ -27,6 +27,7 @@ import { formatAjvErrors, validateResourceDefinition } from "../../manifest-sche
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
+import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
 import {
   forgetRegisteredDefinition,
@@ -257,7 +258,10 @@ class ResourceDefinition implements ResourceInstance {
       // aliases / `!ref`s resolve against the defining library's imports — and
       // against the IMPORT that instance came through, not whichever import
       // registered the kind.
-      const controllerInstance = createTemplateController(this.resource as any);
+      const controllerInstance = createTemplateController(
+        this.resource as any,
+        ctx as unknown as RefPositionHost,
+      );
       ctx.registerDefinition(this.resource);
       await ctx.registerController(
         this.resource.metadata.module,

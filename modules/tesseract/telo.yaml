@@ -15,7 +15,14 @@ requires:
   # 0.100.0: `Ocr.Recognizer`'s `throws:` ceiling, and `!module-path` naming a
   # `sources:`-staged model counting as present, which 0.99.0's `telo check`
   # reports as MODULE_PATH_NOT_FOUND in a checkout that has not staged it.
-  telo: ">=0.100.0"
+  #
+  # 0.108.0: the recognizer reads its recognition time through the value domain
+  # (`isCelDuration`, `durationNanos`) rather than a host class. `@telorun/sdk`
+  # is external and collapsed to the runtime's own copy, so on a runtime whose
+  # SDK does not export those names they are undefined and the resource dies at
+  # creation with a TypeError naming this module. Verified by execution: the
+  # published 0.107.0 tarball exports neither name.
+  telo: ">=0.108.0"
 imports:
   Ocr: ../ocr
   TesseractModel: ../tesseract-model

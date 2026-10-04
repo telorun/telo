@@ -91,10 +91,10 @@ steps:
         - !cel "steps.noList.result"
       expected:
         - results:
-            - { title: Zulu, url: "https://a.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05.000Z" }
-            - { title: Naive, url: "https://b.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05.000Z" }
-            - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05.000Z" }
-            - { title: Day, url: "https://d.example/", snippet: day, publishedAt: "2026-01-02T00:00:00.000Z" }
+            - { title: Zulu, url: "https://a.example/", snippet: zulu, publishedAt: "2026-01-02T03:04:05Z" }
+            - { title: Naive, url: "https://b.example/", snippet: naive, publishedAt: "2026-01-02T03:04:05Z" }
+            - { title: Offset, url: "https://c.example/", snippet: offset, publishedAt: "2026-01-02T03:04:05Z" }
+            - { title: Day, url: "https://d.example/", snippet: day, publishedAt: "2026-01-02T00:00:00Z" }
             - { title: Absent, url: "https://e.example/", snippet: "" }
             - { title: Prose, url: "https://f.example/", snippet: prose }
             - { title: "", url: "https://g.example/", snippet: "" }

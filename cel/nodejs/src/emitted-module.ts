@@ -94,7 +94,7 @@ import type { CelNode } from "./syntax-tree.js";
  * code the emitter writes for a corpus drawn from the package's own total enumerations, beside
  * this number, so a change to that text fails naming the bump it owes.
  */
-export const EMITTER_FORMAT_GENERATION = 1;
+export const EMITTER_FORMAT_GENERATION = 2;
 
 /** The prefix of the one line a stored module's header is read from. */
 const HEADER_PREFIX = "//@telo.cel ";

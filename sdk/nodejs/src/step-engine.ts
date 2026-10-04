@@ -110,7 +110,8 @@ export const PLAIN_ERROR_CODE = "INTERNAL_ERROR";
 export interface SequenceError {
   message: string;
   code: string;
-  data?: unknown;
+  /** Null when the failure carries none — never `undefined`, which is no CEL value. */
+  data: unknown;
   step: string;
 }
 
@@ -630,10 +631,16 @@ export function toSequenceError(err: unknown, stepName: string): SequenceError {
     // to PLAIN_ERROR_CODE; message then falls back to the resolved code. Keeps
     // both fields non-empty (see PLAIN_ERROR_CODE).
     const code = err.code || PLAIN_ERROR_CODE;
-    return { message: err.message || code, code, data: err.data, step: stepName };
+    // `data` is NULL when the failure carries none, never `undefined`: `undefined` is not a
+    // value in the CEL domain, so an entry holding one is dropped from a map built in an
+    // expression — `{'data': error.data}` arrived without the key and failed a contract that
+    // requires it present and allows null. The replaced engine tolerated `undefined` by
+    // rendering it as null, so this restores the shape every `catch:` branch was written
+    // against, and `error.data == null` stays the way to ask whether there is any.
+    return { message: err.message || code, code, data: err.data ?? null, step: stepName };
   }
   const message = (err instanceof Error ? err.message : String(err)) || "Unknown error";
-  return { message, code: PLAIN_ERROR_CODE, data: undefined, step: stepName };
+  return { message, code: PLAIN_ERROR_CODE, data: null, step: stepName };
 }
 
 /**

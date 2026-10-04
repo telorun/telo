@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CelEnvironment } from "../src/environment.js";
 import { environmentDigest } from "../src/environment-digest.js";
+import { CelTypeExpressionError } from "../src/type-expression.js";
 
 /**
  * What this engine judges about a namespaced call is **exactly what the host declared**, and
@@ -139,5 +140,71 @@ describe("a declaration that withholds its parameter list", () => {
     ]);
     expect(held.check("Alias.rows()").typeName).toBe("list<string>");
     expect(held.check("Alias.rows()[0]").typeName).toBe("string");
+  });
+});
+
+/**
+ * A type name the host's own registry does not carry: the declaration is ACCEPTED and every
+ * call to it carries a ranged verdict, which is the same rule an unjudged schema node follows
+ * — the host disagreeing with itself is reported beside the structural reading, by the
+ * consumer that knows where the declaration was written.
+ *
+ * **Blind spot:** these cases can show the verdict is ranged at the call and that registering
+ * does not throw. They cannot show a host anchors it at the manifest line that caused it —
+ * that is the host's own suite — and they say nothing about a type registered AFTER the
+ * declaration naming it, which stays unregistered for that declaration by design.
+ */
+describe("a declaration naming a type nothing is registered under", () => {
+  const unregistered = () =>
+    new CelEnvironment({ unlistedVariablesAreDyn: true }).registerNamespace("Alias", [
+      { name: "untyped", returns: "NoSuchType" },
+    ]);
+
+  it("is accepted, and the call carries a ranged CEL_TYPE_ERROR naming the type", () => {
+    const result = unregistered().check("Alias.untyped(1)");
+    expect(result.diagnostics).toEqual([
+      {
+        code: "CEL_TYPE_ERROR",
+        message:
+          'Alias.untyped is declared over the type "NoSuchType", and no type is registered under that name',
+        range: [0, 16],
+      },
+    ]);
+    // Listed and read as `dyn`: the structural reading of the call still stands.
+    expect(result.calls).toMatchObject([{ name: "Alias.untyped", arity: 1, returns: "dyn" }]);
+    expect(result.typeName).toBe("dyn");
+  });
+
+  it("reports nothing where the same name IS registered", () => {
+    const registered = new CelEnvironment({ unlistedVariablesAreDyn: true })
+      .registerType({ name: "NoSuchType", base: "int" })
+      .registerNamespace("Alias", [{ name: "untyped", returns: "NoSuchType" }]);
+    const result = registered.check("Alias.untyped(1)");
+    expect(result.diagnostics).toEqual([]);
+    expect(result.typeName).toBe("NoSuchType");
+  });
+
+  it("reads the same in the full-signature form, in a parameter as in the result", () => {
+    const held = new CelEnvironment({ unlistedVariablesAreDyn: true }).registerNamespace("Alias", [
+      "total(Cents): Receipt",
+    ]);
+    expect(held.check("Alias.total(1)").diagnostics).toEqual([
+      {
+        code: "CEL_TYPE_ERROR",
+        message:
+          'Alias.total is declared over the types "Cents", "Receipt", and no type is registered under those names',
+        range: [0, 14],
+      },
+    ]);
+  });
+
+  it("leaves a type EXPRESSION that does not parse a throw, which is what that error is about", () => {
+    const environment = new CelEnvironment({ unlistedVariablesAreDyn: true });
+    expect(() => environment.registerNamespace("Alias", [{ name: "broken", returns: "list<int" }])).toThrow(
+      CelTypeExpressionError,
+    );
+    expect(() => environment.registerNamespace("Alias", [{ name: "nameless", returns: "<int>" }])).toThrow(
+      CelTypeExpressionError,
+    );
   });
 });

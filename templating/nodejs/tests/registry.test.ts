@@ -10,7 +10,7 @@ import { TemplatingEngineRegistry } from "../src/registry.js";
 const noopEngine: TemplatingEngine = {
   name: "noop",
   compile: (s) => s,
-  analyze: () => [],
+  analyze: () => ({ diagnostics: [], calls: [] }),
 };
 
 describe("TemplatingEngineRegistry", () => {
@@ -35,8 +35,8 @@ describe("TemplatingEngineRegistry", () => {
 
   it("list() returns engines in registration order", () => {
     const r = new TemplatingEngineRegistry();
-    const a: TemplatingEngine = { name: "a", compile: (s) => s, analyze: () => [] };
-    const b: TemplatingEngine = { name: "b", compile: (s) => s, analyze: () => [] };
+    const a: TemplatingEngine = { name: "a", compile: (s) => s, analyze: () => ({ diagnostics: [], calls: [] }) };
+    const b: TemplatingEngine = { name: "b", compile: (s) => s, analyze: () => ({ diagnostics: [], calls: [] }) };
     r.register(a);
     r.register(b);
     expect(r.list().map((e) => e.name)).toEqual(["a", "b"]);

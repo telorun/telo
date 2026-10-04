@@ -15,7 +15,17 @@
  * means a writer that disagrees with this one, or a reader that would silently
  * round it.
  */
-import { Duration, UnsignedInt } from "./cel-value-identity.js";
+import {
+  celMapFromEntries,
+  celUint,
+  isCelDuration,
+  isCelMap,
+  isCelTimestamp,
+  isCelUint,
+  type CelDuration,
+  type CelTimestamp,
+  type CelValue,
+} from "./cel-value-identity.js";
 import { InvokeError } from "./invoke-error.js";
 import {
   MAX_DURATION_SECONDS,
@@ -47,6 +57,50 @@ const bytesEncoding = requirePlainEncoding("base64url", "The typed frame");
 const timestampEncoding = requirePlainEncoding("rfc3339", "The typed frame");
 const durationEncoding = requirePlainEncoding("cel-duration", "The typed frame");
 
+const MILLIS_RFC3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The timestamp payload **generation 1** wrote: UTC with exactly three fractional
+ * digits, the finest instant that generation's writer could hold.
+ *
+ * Read, never written. A value already recorded under generation 1 is read with the
+ * grammar of the writer that made it, rather than refused for not being the form this
+ * runtime writes — the frame's canonical-only rule is about two writers disagreeing,
+ * and a generation says which writer it was.
+ */
+const generationOneTimestamp: PlainEncoding = {
+  form: "RFC 3339 text with exactly three fractional digits (2026-01-15T09:30:00.000Z)",
+  schema: { type: "string", format: "date-time" },
+  decode(text) {
+    return MILLIS_RFC3339.test(text) ? timestampEncoding.decode(text) : undefined;
+  },
+  encode(value) {
+    if (!isCelTimestamp(value)) throw new TypeError("a generation 1 timestamp payload encodes a timestamp");
+    const whole = timestampEncoding.encode({ ...value, nanos: 0 });
+    return `${whole.slice(0, -1)}.${String(Math.floor(value.nanos / 1_000_000)).padStart(3, "0")}Z`;
+  },
+};
+
+/** The generation this runtime WRITES, and the one a reader assumes when none is named. */
+export const TYPED_FRAME_GENERATION = 2;
+
+/** Every generation this runtime reads. A generation differs only in a tagged scalar's
+ *  payload text, so it is one table rather than a second reader. */
+const GENERATION_PAYLOADS: Readonly<Record<number, PlainEncoding>> = {
+  1: generationOneTimestamp,
+  2: timestampEncoding,
+};
+
+/** True when this runtime can read a frame written by `generation`. */
+export function readsTypedFrameGeneration(generation: number): boolean {
+  return generation in GENERATION_PAYLOADS;
+}
+
+/** The generations this runtime reads, ascending — what a refusal names. */
+export function typedFrameGenerations(): number[] {
+  return Object.keys(GENERATION_PAYLOADS).map(Number);
+}
+
 const INT64_MIN = -(2n ** 63n);
 const INT64_MAX = 2n ** 63n - 1n;
 const UINT64_MAX = 2n ** 64n - 1n;
@@ -77,12 +131,17 @@ export function encodeTypedFrame(value: unknown): string {
 
 /**
  * The value a frame encodes. Accepts any JSON syntax for the frame's structure
- * (whitespace, key order); a tagged payload must be in its canonical form.
+ * (whitespace, key order); a tagged payload must be in its canonical form — for the
+ * `generation` that wrote it, which defaults to the one this runtime writes.
  *
  * Throws `ERR_TYPED_FRAME_UNDECODABLE`, with `data.path` the JSON Pointer of the
  * offending node inside the frame.
  */
-export function decodeTypedFrame(text: string): unknown {
+export function decodeTypedFrame(text: string, generation: number = TYPED_FRAME_GENERATION): unknown {
+  const timestamps = GENERATION_PAYLOADS[generation];
+  if (!timestamps) {
+    throw new Error(`A typed frame of generation ${generation} is not one this runtime reads.`);
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -98,7 +157,7 @@ export function decodeTypedFrame(text: string): unknown {
   if (repeated) {
     throw undecodable(repeated, "repeats a member name of its object, which no writer produces");
   }
-  return readValue(parsed, []);
+  return readValue(parsed, [], timestamps);
 }
 
 /** A key as a path segment: an unpaired surrogate becomes U+FFFD, so a pointer is
@@ -245,15 +304,43 @@ function writeInt(value: bigint, path: readonly string[]): string {
 }
 
 function writeObject(value: object, path: string[], open: Set<object>): string {
-  if (value instanceof UnsignedInt) return tagged("uint", `"${value.valueOf()}"`);
+  if (isCelUint(value)) return tagged("uint", `"${value.value}"`);
   if (value instanceof Uint8Array) return tagged("bytes", `"${bytesEncoding.encode(value)}"`);
-  if (value instanceof Date) return writeTimestamp(value, path);
-  if (value instanceof Duration) return writeDuration(value, path);
+  if (isCelTimestamp(value)) return writeTimestamp(value, path);
+  if (isCelDuration(value)) return writeDuration(value, path);
+  // A `Date` is a FOREIGN HOST OBJECT, never a Telo value: an instant is seconds plus
+  // nanoseconds, which no host date type holds. Named here rather than left to the
+  // prototype refusal below, because the author needs the factory, not the diagnosis.
+  if (value instanceof Date) {
+    throw unencodable(
+      path,
+      "is a Date, a host object outside the CEL value domain — build an instant with " +
+        "celTimestamp(seconds, nanos) or celTimestampFromMillis(ms)",
+    );
+  }
+
+  // A map is the value domain's own container, which carries the type key `map` and holds
+  // its entries by each key's typed value — so it is read here, ABOVE the symbol refusal
+  // that its own key would otherwise trip. A host `Map` is not one and falls through to
+  // the prototype refusal below, by name: under the engine this replaced a `Map` with
+  // `bigint` keys WAS a CEL map with int keys, so a controller still building one has to
+  // be told rather than have its value silently flattened to text keys.
+  if (isCelMap(value)) {
+    if (open.has(value)) throw unencodable(path, "refers back to a value containing it");
+    open.add(value);
+    try {
+      const entries = [...value.entries.values()].map(
+        (entry) => [entry.key, entry.value] as [unknown, unknown],
+      );
+      return writeMapEntries(entries, path, open);
+    } finally {
+      open.delete(value);
+    }
+  }
 
   const isArray = Array.isArray(value);
-  const isMap = value instanceof Map;
   const prototype = Object.getPrototypeOf(value);
-  if (!isArray && !isMap && prototype !== Object.prototype && prototype !== null) {
+  if (!isArray && prototype !== Object.prototype && prototype !== null) {
     throw unencodable(path, `is ${describe(value)}, which is not a CEL value`);
   }
   if (Object.getOwnPropertySymbols(value).length > 0) {
@@ -263,15 +350,16 @@ function writeObject(value: object, path: string[], open: Set<object>): string {
   open.add(value);
   try {
     if (isArray) return writeList(value as unknown[], path, open);
-    if (isMap) return writeMapEntries([...(value as Map<unknown, unknown>)], path, open);
     return writeMapEntries(Object.entries(value), path, open);
   } finally {
     open.delete(value);
   }
 }
 
-function writeTimestamp(value: Date, path: readonly string[]): string {
-  if (Number.isNaN(value.getTime())) throw unencodable(path, "is an invalid Date");
+function writeTimestamp(value: CelTimestamp, path: readonly string[]): string {
+  if (!Number.isInteger(value.nanos) || value.nanos < 0 || value.nanos >= 1_000_000_000) {
+    throw unencodable(path, `is an instant whose nanos (${value.nanos}) is not in [0, 1000000000)`);
+  }
   const text = timestampEncoding.encode(value);
   if (timestampEncoding.decode(text) === undefined) {
     throw unencodable(path, `is the instant ${text}, outside CEL's timestamp range`);
@@ -279,14 +367,14 @@ function writeTimestamp(value: Date, path: readonly string[]): string {
   return tagged("google.protobuf.Timestamp", `"${text}"`);
 }
 
-function writeDuration(value: Duration, path: readonly string[]): string {
+function writeDuration(value: CelDuration, path: readonly string[]): string {
   if (!Number.isSafeInteger(value.nanos)) {
-    throw unencodable(path, `is a Duration whose nanos (${value.nanos}) is not an integer`);
+    throw unencodable(path, `is a duration whose nanos (${value.nanos}) is not an integer`);
   }
   const total = value.seconds * NANOS_PER_SECOND + BigInt(value.nanos);
   const magnitude = total < 0n ? -total : total;
   if (magnitude / NANOS_PER_SECOND > MAX_DURATION_SECONDS) {
-    throw unencodable(path, `is a Duration outside CEL's range of ±${MAX_DURATION_SECONDS}s`);
+    throw unencodable(path, `is a duration outside protobuf's range of ±${MAX_DURATION_SECONDS}s`);
   }
   return tagged("google.protobuf.Duration", `"${durationEncoding.encode(value)}"`);
 }
@@ -314,7 +402,7 @@ function writeList(items: unknown[], path: string[], open: Set<object>): string 
  *  any other map is a tagged list of pairs ordered by key text. */
 function writeMapEntries(entries: [unknown, unknown][], path: string[], open: Set<object>): string {
   const pairs: { order: string; key: string; value: string }[] = [];
-  const seen = new Set<string>();
+  const seen = new Set<string | bigint | boolean>();
   let plain = true;
   for (const [key, entryValue] of entries) {
     const keyText = writeMapKey(key, path);
@@ -342,7 +430,7 @@ function writeMapKey(key: unknown, path: readonly string[]): string {
   if (typeof key === "string") return writeString(key, path);
   if (typeof key === "boolean") return key ? "true" : "false";
   if (typeof key === "bigint") return writeInt(key, path);
-  if (key instanceof UnsignedInt) return tagged("uint", `"${key.valueOf()}"`);
+  if (isCelUint(key)) return tagged("uint", `"${key.value}"`);
   const shown = typeof key === "number" ? `the number ${key}` : describe(key);
   throw unencodable(path, `is a map with a key that is ${shown}; a CEL map key is an int, uint, bool or string`);
 }
@@ -355,7 +443,7 @@ function compareCodeUnits(a: string, b: string): number {
 // ---------------------------------------------------------------------------
 // Reading
 
-function readValue(node: unknown, path: string[]): unknown {
+function readValue(node: unknown, path: string[], timestamps: PlainEncoding): unknown {
   if (typeof node === "number" && !Number.isFinite(node)) {
     throw undecodable(path, "is a number beyond the range of a double; a non-finite double is tagged 'double'");
   }
@@ -364,17 +452,17 @@ function readValue(node: unknown, path: string[]): unknown {
   if (Array.isArray(node)) {
     return node.map((item, index) => {
       path.push(String(index));
-      const value = readValue(item, path);
+      const value = readValue(item, path, timestamps);
       path.pop();
       return value;
     });
   }
   const record = node as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(record, TYPED_FRAME_TAG)) return readTagged(record, path);
+  if (Object.prototype.hasOwnProperty.call(record, TYPED_FRAME_TAG)) return readTagged(record, path, timestamps);
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(record)) {
     path.push(keySegment(key));
-    defineEntry(out, readString(key, path), readValue(record[key], path));
+    defineEntry(out, readString(key, path), readValue(record[key], path, timestamps));
     path.pop();
   }
   return out;
@@ -390,7 +478,7 @@ function readString(text: string, path: readonly string[]): string {
   return text;
 }
 
-function readTagged(record: Record<string, unknown>, path: string[]): unknown {
+function readTagged(record: Record<string, unknown>, path: string[], timestamps: PlainEncoding): unknown {
   const keys = Object.keys(record);
   const tag = record[TYPED_FRAME_TAG];
   if (keys.length !== 2 || !keys.includes("value") || typeof tag !== "string") {
@@ -406,17 +494,22 @@ function readTagged(record: Record<string, unknown>, path: string[]): unknown {
   path.push("value");
   let value: unknown;
   if (tag === "map") {
-    value = readMap(payload, path);
+    value = readMap(payload, path, timestamps);
   } else if (typeof payload !== "string") {
     throw undecodable(path, `is not a string, and a '${tag}' payload is text`);
   } else {
-    value = readScalar(tag as Exclude<TypedFrameTag, "map">, payload, path);
+    value = readScalar(tag as Exclude<TypedFrameTag, "map">, payload, path, timestamps);
   }
   path.pop();
   return value;
 }
 
-function readScalar(tag: Exclude<TypedFrameTag, "map">, text: string, path: readonly string[]): unknown {
+function readScalar(
+  tag: Exclude<TypedFrameTag, "map">,
+  text: string,
+  path: readonly string[],
+  timestamps: PlainEncoding,
+): unknown {
   switch (tag) {
     case "int": {
       const value = INT_TEXT.test(text) ? BigInt(text) : undefined;
@@ -430,7 +523,7 @@ function readScalar(tag: Exclude<TypedFrameTag, "map">, text: string, path: read
       if (value === undefined || value > UINT64_MAX) {
         throw undecodable(path, `is '${text}', not a canonical uint64 decimal`);
       }
-      return new UnsignedInt(value);
+      return celUint(value);
     }
     case "double": {
       const value = TAGGED_DOUBLES.get(text);
@@ -442,7 +535,7 @@ function readScalar(tag: Exclude<TypedFrameTag, "map">, text: string, path: read
     case "bytes":
       return readCanonical(bytesEncoding, text, path);
     case "google.protobuf.Timestamp":
-      return readCanonical(timestampEncoding, text, path);
+      return readCanonical(timestamps, text, path);
     case "google.protobuf.Duration":
       return readCanonical(durationEncoding, text, path);
   }
@@ -458,39 +551,62 @@ function readCanonical(encoding: PlainEncoding, text: string, path: readonly str
   return value;
 }
 
-function readMap(payload: unknown, path: string[]): Map<unknown, unknown> {
+/**
+ * A tagged map read back as the value domain's own container. The refusals below are the
+ * FRAME's wire contract — each naming the path it was found at — so they are decided here
+ * and the engine's builder only ever sees entries that have already passed them; a refusal
+ * it could still raise is this reader disagreeing with itself.
+ */
+function readMap(payload: unknown, path: string[], timestamps: PlainEncoding): unknown {
   if (!Array.isArray(payload)) throw undecodable(path, "is not a list of key/value pairs");
-  const out = new Map<unknown, unknown>();
-  const seen = new Set<string>();
+  const flat: CelValue[] = [];
+  const seen = new Set<string | bigint | boolean>();
   let plain = true;
   payload.forEach((pair, index) => {
     path.push(String(index));
     if (!Array.isArray(pair) || pair.length !== 2) throw undecodable(path, "is not a [key, value] pair");
     path.push("0");
-    const key = readValue(pair[0], path);
+    const key = readValue(pair[0], path, timestamps);
     const identity = mapKeyIdentity(key);
     if (identity === undefined) throw undecodable(path, "is not an int, uint, bool or string map key");
     if (seen.has(identity)) throw undecodable(path, "repeats a key already in the map");
     seen.add(identity);
     if (typeof key !== "string" || key === TYPED_FRAME_TAG) plain = false;
     path[path.length - 1] = "1";
-    out.set(key, readValue(pair[1], path));
+    flat.push(key as CelValue, readValue(pair[1], path, timestamps) as CelValue);
     path.pop();
     path.pop();
   });
   if (plain) {
     throw undecodable(path, `is a map whose keys are all strings other than '${TYPED_FRAME_TAG}', which is written untagged`);
   }
-  return out;
+  const map = celMapFromEntries(flat);
+  if (!isCelMap(map)) {
+    throw undecodable(path, "is a map the value domain refuses, which this reader should have refused first");
+  }
+  return map;
 }
 
-/** What makes two keys ONE key. An `int` and a `uint` of the same number compare
- *  equal in CEL, so a map carrying both is not a map — it is refused at both
- *  ends rather than written as two entries a reader would have to reconcile. */
-function mapKeyIdentity(key: unknown): string | undefined {
-  if (typeof key === "string") return `s${key}`;
-  if (typeof key === "boolean") return `b${key}`;
-  if (typeof key === "bigint") return `n${key}`;
-  if (key instanceof UnsignedInt) return `n${key.valueOf()}`;
-  return undefined;
+/**
+ * What makes two keys ONE key. An `int` and a `uint` of the same number compare
+ * equal in CEL, so a map carrying both is not a map — it is refused at both ends
+ * rather than written as two entries a reader would have to reconcile.
+ *
+ * **This is the same rule the engine keys a `CelMap`'s entries by, stated a
+ * second time, and that is deliberate.** The engine does not export it: what
+ * identifies an entry is its entries map's own business, and publishing it is how
+ * this copy came to exist in the first place. What the frame needs is not the
+ * engine's map but a dedup key for a Set, under refusals that are the FRAME's
+ * wire contract — each naming the path it was found at and the key it repeats —
+ * which the engine's `duplicate_map_key` would replace with its own wording.
+ *
+ * So the duplication is kept and made checkable instead of silent:
+ * `tests/typed-frame-map-key.test.ts` holds the two to one answer over a key set
+ * built to attack the question (`"1"` against `1`, `"true"` against `true`, a
+ * uint against an int, a double that is whole and one that is not).
+ */
+function mapKeyIdentity(key: unknown): string | bigint | boolean | undefined {
+  const held = typeof key;
+  if (held === "string" || held === "boolean" || held === "bigint") return key as string | boolean | bigint;
+  return isCelUint(key) ? key.value : undefined;
 }
