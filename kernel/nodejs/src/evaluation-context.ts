@@ -1,10 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { celHostScopeValue } from "./cel-host-scope-value.js";
 import { formatSpanCounter } from "./logging/span-id.js";
 import { parseTraceParent } from "./logging/trace-parent.js";
 import {
   deriveContext,
   getRefIdentity,
   InvokeError,
+  isCelRecord,
   isCompiledValue,
   type CompiledValue,
   isInvokeError,
@@ -503,13 +505,15 @@ function compileWalker(value: unknown): Walker {
     };
   }
   // Only PLAIN objects are rebuilt. Anything else — a `Uint8Array` embedded by
-  // `!include-bytes`, a class instance — is opaque and passes through by
-  // reference, the same rule `precompileDoc` follows. Rebuilding from
+  // `!include-bytes`, a branded CEL value, a class instance — is opaque and passes
+  // through by reference, the same rule `precompileDoc` follows. Rebuilding from
   // `Object.entries` would turn a byte buffer into `{"0":137,…}` silently, with
   // no error anywhere: the bytes would simply arrive at the controller as the
-  // wrong shape.
-  const proto = value !== null && typeof value === "object" ? Object.getPrototypeOf(value) : false;
-  if (proto === Object.prototype || proto === null) {
+  // wrong shape. The question is asked of the value DOMAIN rather than of the
+  // prototype, because a branded value (a decoded instant, a duration, a uint) is
+  // a plain object and a rebuild drops the symbol its brand lives under — CEL then
+  // reads a decoded instant as a `map` and no overload takes it.
+  if (isCelRecord(value)) {
     const entries = Object.entries(value as Record<string, unknown>).map(
       ([k, v]) => [k, compileWalker(v)] as const,
     );
@@ -2631,7 +2635,11 @@ export class EvaluationContext implements IEvaluationContext {
       const k = keys[i]!;
       hadKey[i] = k in ctx;
       if (hadKey[i]) savedValues[i] = ctx[k];
-      ctx[k] = extraContext[k];
+      // The one point a host's own value enters an activation, so the one point it is
+      // brought into the value domain — a framework's bag is prototype-free data the
+      // member-read seam cannot read. Identity where nothing moved: see
+      // `cel-host-scope-value.ts` for why only that one shape converts.
+      ctx[k] = celHostScopeValue(extraContext[k]);
     }
     try {
       return this.expand(value);

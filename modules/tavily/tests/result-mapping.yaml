@@ -77,9 +77,9 @@ steps:
          'more': has(steps.dates.result.nextCursor)}
       expected:
         results:
-          - { title: Dated, url: "https://a.example/", snippet: dated, publishedAt: "2025-03-11T17:00:00.000Z" }
+          - { title: Dated, url: "https://a.example/", snippet: dated, publishedAt: "2025-03-11T17:00:00Z" }
           - { title: Absent, url: "https://b.example/", snippet: "" }
-          - { title: Iso, url: "https://c.example/", snippet: iso, publishedAt: "2025-03-11T17:00:00.000Z" }
+          - { title: Iso, url: "https://c.example/", snippet: iso, publishedAt: "2025-03-11T17:00:00Z" }
           - { title: Impossible, url: "https://d.example/", snippet: impossible }
           - { title: "", url: "https://e.example/", snippet: untitled }
           - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }

@@ -1,8 +1,10 @@
 import {
+  isCelMap,
   isLogValuer,
   plainMapKey,
   plainScalar,
   type AnyValue,
+  type CelMap,
   type LogAttributes,
   type LogAttributesInput,
 } from "@telorun/sdk";
@@ -197,8 +199,12 @@ export function normalizeAttributes(
       continue;
     }
 
-    const record =
-      value instanceof Map ? plainMapEntries(value) : (value as Record<string, unknown>);
+    // A CEL map holds its entries by each key's typed value, so it is read through the
+    // value domain: a prototype-shaped reading saw a `CelMap`'s own `entries` field and
+    // logged `{entries: {}}` for every map an attribute carried.
+    const record = isCelMap(value)
+      ? plainMapEntries(value)
+      : (value as Record<string, unknown>);
     const entryKeys = Object.keys(record);
     const keepKeys =
       entryKeys.length > limits.collectionElements ? limits.collectionElements : entryKeys.length;
@@ -225,9 +231,9 @@ export function normalizeAttributes(
 /** A map's entries keyed by each key's plain text. A key that is not a CEL map
  *  key, or two keys sharing one text, render as a diagnostic entry rather than
  *  throwing: a logging call never throws (§8.4). */
-function plainMapEntries(map: Map<unknown, unknown>): Record<string, unknown> {
+function plainMapEntries(map: CelMap): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [key, entry] of map) {
+  for (const { key, value: entry } of map.entries.values()) {
     let text: string;
     try {
       text = plainMapKey(key);

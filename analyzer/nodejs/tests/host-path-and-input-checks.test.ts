@@ -134,7 +134,7 @@ describe("an undeclared read at a host-path field", () => {
     expect(analyze({ db: PATH_VARIABLE }, { root: cel("variables.dbb") })).toEqual([
       {
         code: "CEL_UNKNOWN_FIELD",
-        message: expect.stringContaining("'variables.dbb' is not defined (available: db)"),
+        message: expect.stringContaining('"dbb" is not declared here (declared: db)'),
       },
     ]);
   });

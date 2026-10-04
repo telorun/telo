@@ -85,7 +85,7 @@ function environments(): Record<string, CelEnvironment> {
     // registration with no implementation at all is `unbound_function`.
     hosted: base
       .clone()
-      .registerFunction("spend(int): int", { implementation: (args) => (args[0] as bigint) * 2n })
+      .registerFunction("spend(int): int", { implementation: (ctx, a) => (a as bigint) * 2n })
       .registerFunction("awaited(int): int", { implementation: () => Promise.resolve(1n) as never })
       .registerFunction("nothing(int): int"),
     // A standard signature REPLACED, which is the capability the package exists for: both
@@ -93,8 +93,33 @@ function environments(): Record<string, CelEnvironment> {
     overridden: base
       .clone()
       .registerFunction("size(string): int", { implementation: () => 99n }),
+    // A host's own named type, whose values carry a key of their own: the registered-type
+    // case of the member-less values below, which is a value no literal can write.
+    branded: base.clone().registerType({ name: "Handle", base: "dyn" }).registerVariable("handle", "Handle"),
   };
 }
+
+/**
+ * Every value the domain holds that holds **no members at all**, as an expression that
+ * builds one. A presence-shaped read over each answers absence and an ordinary one is an
+ * error, so the two backends have three forms each to disagree about.
+ *
+ * It is not `CEL_VALUE_KEYS`: that set names the keys a value may carry, and `type`,
+ * `optional`, `map` and `error` are not member-less receivers. These are the scalars, the
+ * two instant types, `null` and a host's own named value.
+ */
+const MEMBER_LESS: readonly string[] = [
+  "'abc'",
+  "dyn(1)",
+  "1u",
+  "dyn(1.5)",
+  "true",
+  "b'ab'",
+  "timestamp('2024-01-01T00:00:00Z')",
+  "duration('1s')",
+  "null",
+  "handle",
+];
 
 interface Case {
   readonly source: string;
@@ -118,6 +143,9 @@ const ACTIVATION: Record<string, unknown> = {
   port: 8080n,
   dashed: { "content-type": "text/plain" },
   typed: celUint(3n),
+  // A value of a host's own named type: a key outside the engine's own set, so the seam
+  // finds no member on it however the read is written.
+  handle: { [CEL_VALUE_TYPE]: "Handle" },
 };
 
 /**
@@ -178,6 +206,26 @@ const CASES: readonly Case[] = [
   { source: "has(x.y)" },
   { source: "has(x.nope)" },
   { source: "has(x.?y.z)" },
+
+  // a presence-shaped read over each member-less value, in all three forms — absence; the
+  // ordinary read of the same member, and an unusable key in the presence form — an error
+  ...MEMBER_LESS.flatMap((value): readonly Case[] => [
+    { source: `${value}.?nope`, on: "branded" },
+    { source: `${value}[?'nope']`, on: "branded" },
+    { source: `has(${value}.nope)`, on: "branded" },
+    { source: `${value}.nope`, on: "branded" },
+  ]),
+  { source: "xs.?nope" },
+  { source: "optional.none().?nope" },
+  { source: "optional.of('abc').?nope" },
+  { source: "optional.of('abc').nope" },
+  { source: "has(optional.of('abc').nope)" },
+  // the two places a backend has historically answered differently: an aggregate's `?`
+  // entry, and a comprehension body
+  { source: "[?'abc'.?nope, 1]" },
+  { source: "{?'k': 'abc'.?nope, 'j': 2}" },
+  { source: "['abc', {'nope': 1}].map(e, has(e.nope))" },
+  { source: "['abc', {'nope': 1}].filter(e, e.?nope.hasValue())" },
 
   // aggregates
   { source: "[]" },

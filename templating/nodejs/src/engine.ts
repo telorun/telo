@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
 import type { ModuleCallFlags } from "./cel/diagnose.js";
 import type { ModuleCallTypeResolver } from "./cel/module-call.js";
@@ -7,7 +7,7 @@ import type { ModuleCallTypeResolver } from "./cel/module-call.js";
  *  parse against a CEL environment (the `cel` engine) read it from `celEnv`;
  *  engines that resolve fully at compile time (`literal`) ignore it. */
 export interface CompileEnv {
-  readonly celEnv: Environment;
+  readonly celEnv: CelEnvironment;
   /**
    * The names a call's receiver may be for the call to resolve as a MODULE
    * call — the declaring module's `imports:` keys, `Self`, its `metadata.name`
@@ -33,7 +33,7 @@ export interface CompileEnv {
  *  expression again against a different environment. One expression, one
  *  verdict. */
 export interface AnalyzeEnv {
-  readonly celEnv: Environment;
+  readonly celEnv: CelEnvironment;
   readonly contextSchema: Record<string, unknown> | null;
   /**
    * The caller vouches that `celEnv` declares EVERY name legal at this site, so
@@ -298,5 +298,5 @@ export interface TemplatingEngine {
    *  they are equal without evaluating either. Absent on an engine that gives no
    *  such verdict, which reads as "not repeatable". A source the engine cannot
    *  read is not repeatable; `analyze` is what reports why. */
-  repeatable?(source: string, celEnv: Environment): boolean;
+  repeatable?(source: string, celEnv: CelEnvironment): boolean;
 }

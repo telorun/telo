@@ -32,7 +32,12 @@ import {
   conditionRefusals,
   untaggedConditionFix,
 } from "./rule-condition.js";
-import { bindingFailureReason, type PeerBinder, type PeerBindingFailure } from "./peer-binding.js";
+import {
+  bindingFailureReason,
+  isSilentBindingFailure,
+  type PeerBinder,
+  type PeerBindingFailure,
+} from "./peer-binding.js";
 import type { DiagnosticFix } from "./types.js";
 import {
   RESOURCE_RULES_ANNOTATION,
@@ -322,7 +327,7 @@ export function evaluateResourceRules(
     // against the consumer instead.
     if (subjects === undefined) continue;
 
-    const compiled = compileRuleCondition(rule.condition, ["self", "this"], moduleNames);
+    const compiled = compileRuleCondition(rule.condition, moduleNames);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, path: "", reason: compiled.reason });
       continue;
@@ -374,8 +379,20 @@ export function evaluateResourceRules(
   return findings;
 }
 
-/** `self` as a rule reads it: the manifest, with each `resolve:` slot replaced by
- *  the declarations it references. A copy along the replaced paths only. */
+/**
+ * `self` as a rule reads it: the manifest, with each `resolve:` slot replaced by
+ * the declarations it references. A copy along the replaced paths only.
+ *
+ * **A pointer that resolves to nothing contributes nothing.** The field stays
+ * ABSENT in the rewritten subject rather than appearing as a key holding
+ * nothing, which is the line the `in:` subject walk and the peers binder already
+ * draw ("an absent collection is an empty one"). Writing the key regardless made
+ * `self.?relationships` on a store declaring none answer PRESENT, so
+ * `.orValue([])` yielded nothing and every comprehension over it got a
+ * non-collection range — a rule correctly guarding an optional collection
+ * reported as defective. After this all three subject views agree: absent means
+ * absent, never a present key holding nothing.
+ */
 function resolvedView(
   manifest: ResourceManifest,
   rule: ResourceRule,
@@ -387,6 +404,7 @@ function resolvedView(
     if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
     const resolved = binder.resolveReferences(manifest, kind, pointer);
     if (!resolved.ok) return resolved;
+    if (resolved.value === undefined) continue;
     self = replaceAt(self, pointerSegments(pointer)!, resolved.value) as Record<string, unknown>;
   }
   return { ok: true, self };
@@ -428,6 +446,18 @@ export interface ResourceRuleDiagnostic {
   manifest: ResourceManifest;
   path?: string;
   rule: string;
+  /**
+   * An EVALUATION-TIME failure of the rule itself — it threw, or it ran out of
+   * budget. Reported ONCE per `(declaring kind, rule code)` per analysis
+   * (`RuleFailureLedger`) and anchored where the reader can act: the `imports:`
+   * entry that brought the kind in, or this rule's own declaration when the kind
+   * is one of the entry's own modules.
+   *
+   * The flag is here rather than the anchoring itself because only the caller
+   * holds the import graph, and only it can tell whether a second resource of
+   * the same kind has already failed the same rule.
+   */
+  evaluationFailure?: true;
 }
 
 /**
@@ -468,6 +498,12 @@ export function reportResourceRules(
       continue;
     }
     if (finding.kind === "unbound") {
+      // A reference the slot REFUSES is already reported at that slot
+      // (`REFERENCE_KIND_MISMATCH`), and the rule never saw its subject at all —
+      // coverage did not vary invisibly, so there is nothing to report. A second
+      // diagnostic about the rule's internals would blame the kind's author for
+      // the manifest author's mistake.
+      if (isSilentBindingFailure(finding.failure)) continue;
       out.push({
         code: "RESOURCE_RULE_SKIPPED",
         severity: "information",
@@ -504,17 +540,23 @@ export function reportResourceRules(
           "coverage from here on is incomplete. Simplify the condition.";
     out.push({
       code: "RESOURCE_RULE_INVALID",
+      // Once for the whole analysis, not per site: see `evaluationFailure`. An
+      // ERROR when this workspace declares the rule — the author can fix it —
+      // and a warning for a dependency's, where an error would block
+      // `telo check` on a line the consumer cannot change.
       severity: declarationIsOurs ? "error" : "warning",
       message:
         `Rule '${finding.rule.code}' on kind '${manifest.kind}' ${because} ` +
-        `This is a defect in the rule, not in ${name}` +
-        (declarationIsOurs ? "." : " — it is declared by a module this workspace does not own."),
-      manifest: declarationIsOurs && definition ? definition : manifest,
-      path:
-        declarationIsOurs && definition
-          ? `schema.${RESOURCE_RULES_ANNOTATION}[${finding.rule.index}]`
-          : at,
+        `This is a defect in the rule, not in the manifest it ran against (first seen at ` +
+        `${manifest.kind}/${name}${at ? ` at '${at}'` : ""})` +
+        (declarationIsOurs ? "." : " — it is declared by a module this workspace does not own.") +
+        " Reported once for this rule, however many resources it fails on.",
+      manifest: definition ?? manifest,
+      path: definition
+        ? `schema.${RESOURCE_RULES_ANNOTATION}[${finding.rule.index}]`
+        : at,
       rule: finding.rule.code,
+      evaluationFailure: true,
     });
   }
 

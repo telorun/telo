@@ -31,13 +31,13 @@ metadata:
     OpenAI key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 imports:
-  Ai: ../../../modules/ai
-  OpenAI: ../../../modules/openai
+  Ai: oci://ghcr.io/telorun/ai@0.25.0#sha256-LVYogCt93WpPguMBAawlaq8BrEcXBdvx9te-RUyETGI
+  OpenAI: oci://ghcr.io/telorun/openai@0.10.0#sha256-MJ7COFB83eaoXxxcwQht73QVL8OOCg7aVTwlG6cQKqQ
   HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  AiMcp: ../../../modules/ai-mcp
-  Mcp: ../../../modules/mcp-client
-  Fs: ../../../modules/fs
-  TextDiff: ../../../modules/text-diff
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.20.0#sha256-bZwjcsGQSOQ2sHyovQ-4KI6k3400hhZNr2ta9YE9DMQ
+  Mcp: oci://ghcr.io/telorun/mcp-client@0.15.2#sha256-wicFctlATYrfVNE-E0yzAEVdUhj7rHb_omPubvzyLbU
+  Fs: oci://ghcr.io/telorun/fs@0.12.0#sha256-MnX8KxTIHlJUtyXZgxOxhgJPogC5Fu0pOmm4zw2wj_o
+  TextDiff: oci://ghcr.io/telorun/text-diff@0.2.0#sha256-5KranXgONBjnPShvnSSQtD6b5hpu3GCSIZdjs7r9VQU
   Shell: oci://ghcr.io/telorun/shell@0.11.4#sha256-modXQfwktXBMR5nkigZU4nqYCm8KJgUjFfzJjr-Cc4g
   Sql: oci://ghcr.io/telorun/sql@0.25.0#sha256-x8UXPZbNmoCuldq7EAcotw6KfwZr9baCKrRX_8TKaYc
   SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs

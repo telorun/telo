@@ -77,8 +77,8 @@ steps:
          'more': has(steps.dates.result.nextCursor)}
       expected:
         results:
-          - { title: Zulu, url: "https://a.example/", snippet: "first part [...] second part", publishedAt: "2025-03-11T17:00:00.000Z" }
-          - { title: Day, url: "https://b.example/", snippet: one, publishedAt: "2025-03-11T00:00:00.000Z" }
+          - { title: Zulu, url: "https://a.example/", snippet: "first part [...] second part", publishedAt: "2025-03-11T17:00:00Z" }
+          - { title: Day, url: "https://b.example/", snippet: one, publishedAt: "2025-03-11T00:00:00Z" }
           - { title: Absent, url: "https://c.example/", snippet: "" }
           - { title: Prose, url: "https://d.example/", snippet: "" }
           - { title: "", url: "https://e.example/", snippet: "" }

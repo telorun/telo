@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import { celEngine } from "./engines/cel.js";
 import { includeBytesEngine, includeTextEngine } from "./engines/include.js";
 import { interpolateEngine } from "./engines/interpolate.js";
@@ -67,7 +67,7 @@ export function celExpressionsOf(engineName: string, source: string): string[] {
  * The single reader of `TemplatingEngine.repeatable`, so a consumer comparing
  * two tagged scalars never recognises a tag by name.
  */
-export function repeatableSource(engineName: string, source: string, celEnv: Environment): boolean {
+export function repeatableSource(engineName: string, source: string, celEnv: CelEnvironment): boolean {
   return defaultRegistry().get(engineName)?.repeatable?.(source, celEnv) ?? false;
 }
 

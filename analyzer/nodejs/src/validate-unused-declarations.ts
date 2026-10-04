@@ -1,12 +1,11 @@
-import type { Environment } from "@marcbachmann/cel-js";
 import type { ResourceManifest } from "@telorun/sdk";
 import {
   celExpressionsOf,
   extractAccessChains,
   INDEX_SEGMENT,
-  resolveModuleCalls,
   walkCelExpressions,
 } from "@telorun/templating";
+import { parseCelSource } from "./cel-environment.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
 
@@ -37,10 +36,7 @@ const NAMESPACES = ["variables", "secrets", "ports"] as const;
  * public input contract consumed by its controllers — invisible to CEL
  * analysis — so they are deliberately not flagged.
  */
-export function validateUnusedDeclarations(
-  manifests: ResourceManifest[],
-  celEnv: Environment,
-): AnalysisDiagnostic[] {
+export function validateUnusedDeclarations(manifests: ResourceManifest[]): AnalysisDiagnostic[] {
   const moduleManifest = manifests.find((m) => m.kind === "Telo.Application") as
     | Record<string, any>
     | undefined;
@@ -64,16 +60,13 @@ export function validateUnusedDeclarations(
     const moduleNames = moduleCallNamesOf(moduleCallNames, m);
     walkCelExpressions(m, "", (source, _path, engineName) => {
       for (const expr of celExpressionsOf(engineName, source)) {
-        let ast: Parameters<typeof extractAccessChains>[0];
-        try {
-          ast = celEnv.parse(expr).ast;
-        } catch {
-          continue; // syntax errors are reported by the CEL engine pass
-        }
-        // The resolved tree, like every other chain walk: a module call's
-        // receiver is a module name, not a namespace root.
-        resolveModuleCalls(ast, moduleNames);
-        for (const chain of extractAccessChains(ast)) {
+        // Read under the module's own names, like every other chain walk: a
+        // module call's receiver is a module name, not a namespace root. A
+        // source that does not read whole contributes nothing — its syntax
+        // error is the CEL engine pass's to report.
+        const parsed = parseCelSource(expr, moduleNames);
+        if (!parsed) continue;
+        for (const chain of extractAccessChains(parsed.root)) {
           const ns = chain[0];
           if (!used.has(ns)) continue;
           const member = chain[1];

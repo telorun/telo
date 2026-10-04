@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
+import { reportResourceRules } from "../src/validate-resource-rules.js";
 import { PeerBinder, type ReferenceValue } from "../src/peer-binding.js";
 import { declaredReach, reachSites } from "../src/reference-reach.js";
 import {
@@ -32,17 +33,26 @@ const language = (name: string, code: string, extra: Record<string, unknown> = {
 
 const ref = (name: string) => ({ kind: "std.Language", name });
 
-function binderOver(declarations: ResourceManifest[]): PeerBinder {
+function binderOver(
+  declarations: ResourceManifest[],
+  over: Record<string, any> = schema,
+): PeerBinder {
   const byName = new Map(declarations.map((d) => [d.metadata!.name as string, d]));
   return new PeerBinder({
     declarationOf: (r: ReferenceValue) => byName.get(r.name),
-    refSlotsOf: () => declaredReach(schema).references.map((r) => r.path),
+    refSlotsOf: () => declaredReach(over).references.map((r) => r.path),
     refSitesOf: (manifest) =>
       new Map(
-        reachSites(schema, manifest)
+        reachSites(over, manifest)
           .filter((site) => site.refs.length > 0)
-          .map((site) => [site.path, site.refs[0]!.fieldPath]),
+          .map((site) => [
+            site.path,
+            { shape: site.refs[0]!.fieldPath, kinds: site.refs.flatMap((r) => r.slot.kinds) },
+          ]),
       ),
+    // The analyzer's rule is Liskov over the registry; here identity is enough —
+    // every declaration in these fixtures is of a leaf kind.
+    slotAccepts: (kinds, kind) => kinds.includes(kind),
   });
 }
 
@@ -83,6 +93,99 @@ describe("resource rules — resolve", () => {
   it("reports rather than reading references as declarations when there is no binder", () => {
     const findings = evaluateResourceRules(recognizer("eng"), schema);
     expect(findings.map((f) => f.kind)).toEqual(["unbound"]);
+  });
+
+  /**
+   * `resolve:` used to write every named pointer into the rewritten subject,
+   * resolved or not — so an OMITTED optional collection became a key that exists
+   * and holds nothing. `self.?relationships` then answered present, `.orValue([])`
+   * yielded nothing, and a comprehension over it got a non-collection range: the
+   * rule read as defective on exactly the manifests whose guard was right.
+   */
+  describe("an absent pointer stays absent", () => {
+    const optionalSchema = {
+      type: "object",
+      properties: {
+        languages: {
+          type: "array",
+          items: { "x-telo-ref": { kind: "std.Language", use: "dependency" } },
+        },
+        extras: {
+          type: "array",
+          items: { "x-telo-ref": { kind: "std.Language", use: "dependency" } },
+        },
+      },
+      "x-telo-resource-rules": [
+        {
+          resolve: ["/languages", "/extras"],
+          condition: cel(
+            "self.languages.all(l, l.code != '') && self.?extras.orValue([]).all(e, e.code != '')",
+          ),
+          code: "EVERY_MODEL_CODED",
+          message: "lists a model with no code",
+        },
+      ],
+    };
+
+    const recognizerWith = (extras?: string[]) =>
+      ({
+        kind: "std.Recognizer",
+        metadata: { name: "recognizer" },
+        languages: [ref("eng")],
+        ...(extras ? { extras: extras.map(ref) } : {}),
+      }) as unknown as ResourceManifest;
+
+    it("evaluates, and answers as an explicitly empty collection does", () => {
+      const binder = binderOver([language("eng", "eng")], optionalSchema);
+      expect(
+        evaluateResourceRules(recognizerWith(), optionalSchema, undefined, undefined, binder),
+      ).toEqual([]);
+      expect(
+        evaluateResourceRules(recognizerWith([]), optionalSchema, undefined, undefined, binder),
+      ).toEqual([]);
+    });
+
+    it("still reads the entries an omitting resource DOES declare", () => {
+      const binder = binderOver([language("eng", "")], optionalSchema);
+      expect(
+        evaluateResourceRules(recognizerWith(), optionalSchema, undefined, undefined, binder).map(
+          (f) => f.kind,
+        ),
+      ).toEqual(["violation"]);
+    });
+  });
+
+  /**
+   * The slot itself already reports `REFERENCE_KIND_MISMATCH` here, so the rule
+   * would read fields off a shape it was never shown. It is not evaluated, and —
+   * unlike every other way a binding fails — nothing is reported: coverage did
+   * not vary invisibly, and a second diagnostic would blame the kind's author for
+   * the manifest author's mistake.
+   */
+  it("is not evaluated over a declaration the slot refuses, and reports nothing", () => {
+    const orientation = {
+      kind: "std.OrientationModel",
+      metadata: { name: "osd" },
+    } as unknown as ResourceManifest;
+    const binder = binderOver([orientation]);
+    const findings = evaluateResourceRules(
+      recognizer("osd"),
+      schema,
+      undefined,
+      undefined,
+      binder,
+    );
+    expect(findings).toEqual([
+      expect.objectContaining({ kind: "unbound", failure: { reason: "kind-refused", at: "languages[0]" } }),
+    ]);
+    expect(
+      reportResourceRules(
+        recognizer("osd"),
+        { kind: "Telo.Definition", metadata: { name: "Recognizer" } } as unknown as ResourceManifest,
+        findings,
+        false,
+      ),
+    ).toEqual([]);
   });
 
   it("refuses a resolve pointer the kind does not declare", () => {

@@ -39,6 +39,7 @@ import {
 import type { CelError, CelOptional, CelValue } from "./cel-value.js";
 import {
   asyncValueRefused,
+  CEL_VALUE_TYPE,
   celError,
   celNone,
   celSome,
@@ -47,7 +48,7 @@ import {
   isCelOptional,
 } from "./cel-value.js";
 import type { FunctionRegistry, Resolution, ResolutionFailure } from "./function-registry.js";
-import { celHas, celLookup, celRead, lookupError, MISSING, OUT_OF_RANGE } from "./member-read.js";
+import { celHas, celLookup, celRead, lookupAbsence, lookupError } from "./member-read.js";
 import type { CelCallContext, CelImplementation } from "./runtime-library.js";
 import { implementationOf } from "./runtime-library.js";
 import type { CallForm } from "./signature.js";
@@ -65,7 +66,19 @@ export class CelCompileError extends Error {
 export const CALL_SITE_CACHE_CAPACITY = 16;
 
 /** What a namespaced call is dispatched through, when something bound it. */
-export type NamespaceDispatch = (namespace: string, name: string) => CelImplementation | undefined;
+/**
+ * A function bound under a namespace. Its arguments arrive as **one array**, where a
+ * registered overload's arrive positionally: a namespace declaration may withhold its
+ * parameter list entirely, so the count is the host's and not the dispatch key's. That is
+ * the whole rule — positional where the key fixes the arity, one array where the author
+ * decides it.
+ */
+export type NamespaceImplementation = (args: readonly CelValue[], ctx: CelCallContext) => CelValue;
+
+export type NamespaceDispatch = (
+  namespace: string,
+  name: string,
+) => NamespaceImplementation | undefined;
 
 export interface EvaluationFrame {
   readonly activation: CelActivation;
@@ -211,9 +224,13 @@ export function plainMemberChain(
 /**
  * A member read in every form. Reading **through an optional** answers an optional
  * whichever form the read is written in, which is what lets a chain over a value that
- * may be absent stay one expression: an absent one propagates as absent, a key the held
- * value does not have is absent too, and a held value that holds no members at all is
- * still the mistake it would be outside an optional.
+ * may be absent stay one expression: an absent one propagates as absent, and a key the
+ * held value does not have is absent too.
+ *
+ * Which refusals are absence and which are a mistake is `lookupAbsence`'s, and it turns
+ * on the FORM the read is written in rather than on what the operand turned out to be: a
+ * presence-shaped read over a value that holds no members is absent, while the ordinary
+ * read of a member of such a value is the mistake it is outside an optional too.
  */
 export function readThrough(
   container: CelValue,
@@ -221,31 +238,61 @@ export function readThrough(
   optionalForm: boolean,
   range: SourceRange,
 ): CelValue {
+  // The shape nearly every read has — a record's own string-keyed entry — decided by asking
+  // what the container is ONCE. The general path below is three total steps, so it reads the
+  // type key twice and the prototype again; this asks each question once and falls through
+  // to the one seam for every other container, every other key and every refusal.
+  if (!optionalForm && typeof key === "string" && typeof container === "object" && container !== null) {
+    if ((container as { [CEL_VALUE_TYPE]?: unknown })[CEL_VALUE_TYPE] === undefined) {
+      const prototype = Object.getPrototypeOf(container) as object | null;
+      if (
+        (prototype === Object.prototype || prototype === null) &&
+        Object.prototype.hasOwnProperty.call(container, key)
+      ) {
+        const held = (container as Record<string, CelValue>)[key] as CelValue;
+        // The thenable door, inline: `readHostValue` is this test and nothing else.
+        if (typeof held !== "object" || held === null || typeof (held as { then?: unknown }).then !== "function") {
+          return held;
+        }
+      }
+    }
+  }
   if (isCelOptional(container)) {
     if (!container.present) return celNone();
-    return optionalRead(container.held as CelValue, key, range);
+    return optionalRead(container.held as CelValue, key, optionalForm, range);
   }
-  if (optionalForm) return optionalRead(container, key, range);
+  if (optionalForm) return optionalRead(container, key, true, range);
   // **A member read is a door a host value comes through**, and the value it answers is
   // whatever the host put inside its own object: `readHostValue` is what refuses a thenable
   // there, rather than the aggregate, the operator or the exit that happens to see it next.
   return readHostValue(celRead(container, key, range), range);
 }
 
-function optionalRead(container: CelValue, key: CelValue, range: SourceRange): CelValue {
+/**
+ * A read that answers an optional. `presence` is whether the read was WRITTEN in a
+ * presence-shaped form (`.?`, `[?]`), which is what decides whether a value holding no
+ * members is absence or a mistake.
+ */
+function optionalRead(
+  container: CelValue,
+  key: CelValue,
+  presence: boolean,
+  range: SourceRange,
+): CelValue {
   const found = celLookup(container, key);
   if (typeof found !== "symbol") {
     const held = readHostValue(found, range);
     // A value that must be awaited is refused rather than carried as a present optional.
     return isCelError(held) ? held : celSome(held);
   }
-  if (found === MISSING || found === OUT_OF_RANGE) return celNone();
+  if (lookupAbsence(found, presence)) return celNone();
   return lookupError(found, key, range);
 }
 
 /**
- * `has(a.b)` — presence, which a missing key answers `false` for rather than erroring.
- * An absent optional has no members, and a present one is asked about what it holds.
+ * `has(a.b)` — presence, which a missing key and a value that holds no members both
+ * answer `false` for rather than erroring. An absent optional has no members, and a
+ * present one is asked about what it holds.
  */
 export function hasMember(container: CelValue, field: CelValue, range: SourceRange): CelValue {
   if (isCelOptional(container)) {
@@ -318,7 +365,12 @@ function equalityFallback(name: string): CelImplementation | null {
 export class CallSite {
   private readonly resolved = new BoundedCache<string, Dispatch | null>(CALL_SITE_CACHE_CAPACITY);
   private readonly context: CelCallContext;
-  private lastNames: readonly string[] | undefined;
+  /** The arity the last resolution was made under; `-1` until there is one. */
+  private count = -1;
+  private t0: string | undefined;
+  private t1: string | undefined;
+  private t2: string | undefined;
+  private t3: string | undefined;
   private lastDispatch: Dispatch | null = null;
 
   constructor(
@@ -331,22 +383,111 @@ export class CallSite {
     this.context = { range };
   }
 
-  call(values: readonly CelValue[]): CelValue {
-    const count = values.length;
-    const last = this.lastNames;
-    if (last !== undefined && last.length === count) {
-      let same = true;
-      for (let at = 0; at < count; at += 1) {
-        if (celTypeNameOf(values[at]!) !== last[at]) {
-          same = false;
-          break;
-        }
-      }
-      if (same) return this.answer(this.lastDispatch, values, last);
+  call0(): CelValue {
+    if (this.count === 0) return this.answer(this.lastDispatch);
+    return this.resolve(0, undefined, undefined, undefined, undefined);
+  }
+
+  call1(a: CelValue): CelValue {
+    if (this.count === 1 && celTypeNameOf(a) === this.t0) return this.answer(this.lastDispatch, a);
+    return this.resolve(1, a, undefined, undefined, undefined);
+  }
+
+  call2(a: CelValue, b: CelValue): CelValue {
+    if (this.count === 2 && celTypeNameOf(a) === this.t0 && celTypeNameOf(b) === this.t1) {
+      return this.answer(this.lastDispatch, a, b);
     }
+    return this.resolve(2, a, b, undefined, undefined);
+  }
+
+  call3(a: CelValue, b: CelValue, c: CelValue): CelValue {
+    if (
+      this.count === 3 &&
+      celTypeNameOf(a) === this.t0 &&
+      celTypeNameOf(b) === this.t1 &&
+      celTypeNameOf(c) === this.t2
+    ) {
+      return this.answer(this.lastDispatch, a, b, c);
+    }
+    return this.resolve(3, a, b, c, undefined);
+  }
+
+  call4(a: CelValue, b: CelValue, c: CelValue, d: CelValue): CelValue {
+    if (
+      this.count === 4 &&
+      celTypeNameOf(a) === this.t0 &&
+      celTypeNameOf(b) === this.t1 &&
+      celTypeNameOf(c) === this.t2 &&
+      celTypeNameOf(d) === this.t3
+    ) {
+      return this.answer(this.lastDispatch, a, b, c, d);
+    }
+    return this.resolve(4, a, b, c, d);
+  }
+
+  /**
+   * The array form, for a caller that holds its arguments as one — a call written WIDER than
+   * any overload can be (`'42'.replace('2', '1', 1, false)` is five values, which is a row),
+   * the conformance and identity gates, and a host comparing a site cold against warm. It
+   * routes to the same entry points, so there is one dispatch path and not two.
+   */
+  call(values: readonly CelValue[]): CelValue {
+    switch (values.length) {
+      case 0:
+        return this.call0();
+      case 1:
+        return this.call1(values[0]!);
+      case 2:
+        return this.call2(values[0]!, values[1]!);
+      case 3:
+        return this.call3(values[0]!, values[1]!, values[2]!);
+      case 4:
+        return this.call4(values[0]!, values[1]!, values[2]!, values[3]!);
+      default:
+        return this.wide(values);
+    }
+  }
+
+  /**
+   * A call written with more values than the widest signature may declare. **The arity is
+   * the SOURCE's, not the dispatch key's** — anyone may write a call of any width — so this
+   * is reachable and answers the ordinary refusal, naming the types it was handed. Nothing
+   * resolves here, because a signature that wide is refused where it is registered; the
+   * resolution still runs, so one place decides what a call that resolves to nothing says.
+   */
+  private wide(values: readonly CelValue[]): CelValue {
+    const names: string[] = new Array<string>(values.length);
+    for (let at = 0; at < values.length; at += 1) {
+      const held = celTypeNameOf(values[at]);
+      if (held === undefined) {
+        const named = readHostValue(values[at], this.range);
+        if (isCelError(named)) return named;
+        return celError(
+          "no_matching_overload",
+          `${this.name} was handed a value of no CEL type`,
+          this.range,
+        );
+      }
+      names[at] = held;
+    }
+    return celError(
+      "no_matching_overload",
+      `no overload of ${JSON.stringify(this.name)} takes (${names.join(", ")})`,
+      this.range,
+    );
+  }
+
+  private resolve(
+    count: number,
+    a: CelValue | undefined,
+    b: CelValue | undefined,
+    c: CelValue | undefined,
+    d: CelValue | undefined,
+  ): CelValue {
     const names: string[] = new Array<string>(count);
     for (let at = 0; at < count; at += 1) {
-      const held = celTypeNameOf(values[at]!);
+      const value = at === 0 ? a : at === 1 ? b : at === 2 ? c : d;
+      const held = celTypeNameOf(value);
       if (held === undefined) {
         // A value of no CEL type. A **thenable** is one, and a thenable NESTED inside a host
         // value arrives here rather than through the activation read, because a member read
@@ -354,7 +495,7 @@ export class CallSite {
         // shape, so this is the door a host actually uses. `readHostValue` names it for what
         // it is; anything else is the overload failure it was going to be. The cost is on the
         // slow path only: dispatch was about to fail either way.
-        const named = readHostValue(values[at], this.range);
+        const named = readHostValue(value, this.range);
         if (isCelError(named)) return named;
         return celError(
           "no_matching_overload",
@@ -367,7 +508,9 @@ export class CallSite {
     const key = names.join(",");
     let dispatch = this.resolved.get(key);
     if (dispatch === undefined) {
-      const types = values.map((value) => runtimeType(value, this.nominalArity));
+      const types = names.map((unused, at) =>
+        runtimeType((at === 0 ? a : at === 1 ? b : at === 2 ? c : d) as CelValue, this.nominalArity),
+      );
       const resolution = this.registry.resolve(
         this.name,
         this.form,
@@ -377,24 +520,31 @@ export class CallSite {
       dispatch = dispatchOf(this.name, resolution);
       this.resolved.set(key, dispatch);
     }
-    this.lastNames = names;
+    this.count = count;
+    this.t0 = names[0];
+    this.t1 = names[1];
+    this.t2 = names[2];
+    this.t3 = names[3];
     this.lastDispatch = dispatch;
-    return this.answer(dispatch, values, names);
+    return this.answer(dispatch, a, b, c, d);
   }
 
   private answer(
     dispatch: Dispatch | null,
-    values: readonly CelValue[],
-    names: readonly string[],
+    a?: CelValue,
+    b?: CelValue,
+    c?: CelValue,
+    d?: CelValue,
   ): CelValue {
     if (!dispatch) {
+      const names = [this.t0, this.t1, this.t2, this.t3].slice(0, Math.max(this.count, 0));
       return celError(
         "no_matching_overload",
         `no overload of ${JSON.stringify(this.name)} takes (${names.join(", ")})`,
         this.range,
       );
     }
-    const value = dispatch.implementation(values, this.context);
+    const value = dispatch.implementation(this.context, a, b, c, d);
     return dispatch.foreign ? readHostValue(value, this.range) : value;
   }
 }

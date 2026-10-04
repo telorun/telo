@@ -1,130 +1,71 @@
 /**
- * **A call whose receiver is one of the declaring module's names.**
+ * Module calls: what a resolved one says, where the dispatch table hangs, and the two walks
+ * the analyzer asks of an expression's own names.
  *
- * `Billing.format(x)`, `Self.y(1)`, `<ModuleName>.y(1)` — CEL's own
- * qualified-function rule, the one `cel.bind` and cel-go's `math.greatest`
- * already follow. Resolution happens on the PARSED TREE, right after
- * `env.parse` and before any check: the author's text, spans and the expression
- * a trace shows stay exactly as written, which rewriting the source would move.
+ * **The rewrite is gone.** `Alias.fn(x)` and `obj.method(x)` are the same syntax and only a
+ * set of names distinguishes them, so this package used to rewrite the parsed tree itself,
+ * through internals the previous engine did not expose: a `setMeta('macro', …)` redirect
+ * that made a qualified call check and evaluate as something else, with a comprehension
+ * macro's `alternate` winning over `macro` unless cleared, and an rcall's asyncness derived
+ * from state the replaced checker filled in. Three facts about a dependency's internals,
+ * each pinned by a test, and the reason it was pinned to an exact version.
  *
- * A module's names are known from its own file before any import resolves — its
- * `imports:` keys, `Self`, its `metadata.name` and `Telo` — so the set is an
- * INPUT here rather than something this module derives. A call on a bare
- * identifier outside the set stays an ordinary method call, which is what keeps
- * the catalog's `format` and `Billing.format` from ever colliding, with one
- * catalog environment compiling both.
+ * `@telorun/cel` has **`qcall` as a node of its own**, produced by a total tree-to-tree pass
+ * over the name set — never by the parser, because the set is the host's — and a
+ * `CelExpression` records the set it was resolved under, so an environment refuses a tree
+ * resolved for a different site instead of answering a different question about it. So
+ * reading a module call is reading a node kind, and there is nothing to rewrite and nothing
+ * to pin.
  *
- * Two engine internals carry it, neither exposed by cel-js's typings — hence
- * the exact version pin and `tests/module-call.test.ts`, which fails the moment
- * an upgrade moves either:
- *
- *  - `ASTNode.setMeta('macro', …)` redirects a node's check and evaluation. A
- *    comprehension macro (`map`, `filter`, …) sets `alternate` instead, and
- *    `alternate` WINS over `macro`, so a call the parser expanded as a macro
- *    needs it cleared or the rewrite is silently ignored. The parser expands
- *    those names BEFORE this rewrite and refuses any call whose arguments do not
- *    fit the macro, so no function may take a macro's name
- *    (`FUNCTION_NAME_RESERVED`); clearing keeps a call that did parse reported
- *    as the module call it names.
- *  - `async` must be set explicitly: cel-js derives it for an `rcall` from
- *    `receiverWithArgs`, which only the rcall's own checker fills in — and ours
- *    replaces it.
- *
- * The dispatch table is read from the activation under a key no CEL source can
- * spell, so nothing an author can write reaches the mechanism past the export
- * gate or the dependency edge. Binding the table is the kernel's, per scope;
- * until something binds one, evaluating a module call throws naming the
- * function.
+ * What is left here is Telo's half: the activation key the kernel binds a scope's table
+ * under, the unbound message, and the two questions the analyzer asks about a module's own
+ * names colliding with the expression's.
  */
-import type { ASTNode } from "@marcbachmann/cel-js";
+import {
+  childNodes,
+  isIdentifierSpelling,
+  isReservedWord,
+  namespaceMacroBinding,
+  qualifiedCalls,
+  receiverMacroBinding,
+  RESERVED_NAMESPACES,
+  type CelNode,
+} from "@telorun/cel";
 
 /**
- * Activation key the per-scope dispatch table is read from.
+ * Where a scope's dispatch table hangs on the activation.
  *
- * `@` and `:` are outside CEL's identifier grammar and there is no other way to
- * reach the activation, so no expression can name this — a spellable dispatcher
- * would let an author call past the export gate and past the dependency edge
- * that orders the callee before its caller.
+ * `@` and `:` are outside CEL's identifier grammar and the activation is reachable no other
+ * way, so no author can call past the export gate or the dependency edge. Binding the table
+ * is the kernel's, per owning scope; with none, evaluating a module call is refused.
  */
 export const MODULE_CALL_DISPATCH_KEY = "@telo:module-functions";
 
-/** Per-scope binding table: qualified name → the callable's `call`. */
+/** A scope's module functions, keyed by qualified name. */
 export type ModuleCallDispatch = ReadonlyMap<string, (args: readonly unknown[]) => unknown>;
 
 /**
- * The CEL type a qualified call yields, as a type name (`"string"`,
- * `"list<int>"`), or undefined for "not known here".
- *
- * A hook rather than a table because the answer belongs to the analysis, not to
- * the expression: a signature is declared on a resource in the module the call
- * resolves through. With no resolver — every compile, and every analysis until
- * signatures are typed — a module call is `dyn`, which types its arguments and
- * claims nothing about its result.
+ * What the host says a module call's RESULT is, as a CEL type expression. The engine types
+ * the call node from it, so an operator over the call checks; absent, the call is `dyn`.
  */
 export type ModuleCallTypeResolver = (qualified: string) => string | undefined;
 
-/** cel-js internals this module drives. Structural, because the package's
- *  typings expose neither `meta` nor `setMeta`. */
-interface MetaNode {
-  readonly meta?: Record<string, unknown>;
-  setMeta(key: string, value: unknown): MetaNode;
-}
-
-/** cel-js's `ASTNode` is a union over its operators, so it has no statically
- *  known members to extend — the internals are read through this cast, in one
- *  place. */
-const metaOf = (node: ASTNode): MetaNode => node as unknown as MetaNode;
-
-/** The macro record a resolved node carries. `teloModuleCall` is the brand every
- *  reader tests — cel-js puts its own macros under the same key. */
-interface ModuleCallMacro {
-  readonly teloModuleCall: true;
-  readonly qualified: string;
-  readonly args: readonly ASTNode[];
-  /** Each argument's checked type name, recorded by the last type check. */
-  argumentTypes?: readonly string[];
-  typeCheck(chk: TypeCheckerLike, macro: ModuleCallMacro, ctx: unknown): unknown;
-  evaluate(ev: EvaluatorLike, macro: ModuleCallMacro, ctx: ActivationLike): unknown;
-}
-
-interface TypeCheckerLike {
-  readonly dynType: unknown;
-  check(node: ASTNode, ctx: unknown): unknown;
-  getType(name: string): unknown;
-}
-
-interface EvaluatorLike {
-  eval(node: ASTNode, ctx: unknown): unknown;
-}
-
-interface ActivationLike {
-  getValue(key: string): unknown;
-}
-
-/** What a resolved module call says about itself: the qualified name as
- *  written, the argument nodes, and — once the tree has been type-checked — the
- *  type the checker gave each argument. The single reader — no other surface
- *  pattern-matches the macro's shape. */
+/** What a resolved module call says about itself. */
 export interface ModuleCall {
   readonly qualified: string;
-  readonly args: readonly ASTNode[];
-  readonly argumentTypes?: readonly string[];
+  readonly args: readonly CelNode[];
 }
 
-export function moduleCallOf(node: ASTNode): ModuleCall | undefined {
-  const macro = metaOf(node).meta?.macro as ModuleCallMacro | undefined;
-  return macro?.teloModuleCall === true
-    ? {
-        qualified: macro.qualified,
-        args: macro.args,
-        ...(macro.argumentTypes ? { argumentTypes: macro.argumentTypes } : {}),
-      }
-    : undefined;
+/** The module call this node IS, or nothing. One node kind, no pattern-matching. */
+export function moduleCallOf(node: CelNode): ModuleCall | undefined {
+  if (node.kind !== "qcall") return undefined;
+  return { qualified: `${node.namespace}.${node.name}`, args: node.args };
 }
 
-/** Message for a call nothing has bound. Not a fallback value: a call that
- *  cannot reach its function has no result, and inventing one would make a
- *  missing export read as a null. */
+/**
+ * Message for a call nothing has bound. Not a fallback value: a call that cannot reach its
+ * function has no result, and inventing one would make a missing export read as a null.
+ */
 export function unboundModuleCallMessage(qualified: string): string {
   const dot = qualified.indexOf(".");
   const receiver = qualified.slice(0, dot);
@@ -136,234 +77,130 @@ export function unboundModuleCallMessage(qualified: string): string {
   );
 }
 
+/**
+ * Which of a module's own names CEL can read as a namespace.
+ *
+ * **A module name and an import alias are YAML scalars nothing lexes where they are
+ * written** — `my-module`, `test-run` and `cel` all reach a name set, and the naming
+ * diagnostics (`INVALID_NAME`, `INVALID_TYPE_NAME`) are what report them. The engine refuses
+ * such a name at registration and refuses the SET WHOLE, so handing one over unfiltered
+ * turns a reportable name into a crash that loses every other diagnostic in the file. A name
+ * CEL cannot read as a namespace resolves no call, which is exactly what the naming
+ * diagnostic says is wrong with it.
+ *
+ * It is here rather than in a consumer because the module-name set is this package's concept
+ * — `CompileEnv.moduleNames` — and three callers need the same answer: compiling an
+ * expression, the analyzer's typed site environments, and the kernel's type-rule conditions.
+ */
+export function celNamespaceNames(moduleNames: Iterable<string>): ReadonlySet<string> {
+  const usable = new Set<string>();
+  for (const name of moduleNames) {
+    if (!isIdentifierSpelling(name) || isReservedWord(name)) continue;
+    if (RESERVED_NAMESPACES.includes(name)) continue;
+    usable.add(name);
+  }
+  return usable;
+}
+
 const NO_NAMES: ReadonlySet<string> = new Set();
 
-/**
- * Rewrite every module call in `ast` in place and report them in source order.
- *
- * Returns the qualified names as written (`["Billing.format", "Self.y"]`), which
- * is what a compiled value carries so no consumer has to re-parse to learn what
- * an expression calls. Idempotent: a node already resolved is rewritten once and
- * reported again, so two passes over one tree agree about what it calls.
- */
-export function resolveModuleCalls(
-  ast: ASTNode | undefined,
-  moduleNames: ReadonlySet<string> = NO_NAMES,
-  typeOf?: ModuleCallTypeResolver,
-): string[] {
-  const calls: string[] = [];
-  if (ast && moduleNames.size > 0) visit(ast, moduleNames, typeOf, calls);
-  return calls;
-}
-
-function visit(
-  node: ASTNode,
-  moduleNames: ReadonlySet<string>,
-  typeOf: ModuleCallTypeResolver | undefined,
-  calls: string[],
-): void {
-  // Already resolved: rewritten once, reported every time, so the return value
-  // is what the TREE calls rather than what this pass happened to change.
-  const resolved = moduleCallOf(node);
-  if (resolved) {
-    calls.push(resolved.qualified);
-    for (const arg of resolved.args) visit(arg, moduleNames, typeOf, calls);
-    return;
-  }
-
-  const receiver = moduleCallReceiver(node, moduleNames);
-  if (receiver) {
-    const [method, , args] = node.args as [string, ASTNode, ASTNode[]];
-    const qualified = `${receiver}.${method}`;
-    calls.push(qualified);
-    rewrite(node, qualified, args, typeOf);
-    // The receiver names a MODULE, not a value, so it is not descended into:
-    // that is what keeps it out of every access chain, out of `refs`, and out
-    // of the undeclared-root check.
-    for (const arg of args) visit(arg, moduleNames, typeOf, calls);
-    return;
-  }
-  descend(node, (child) => visit(child, moduleNames, typeOf, calls));
-}
-
-/** The module name a node's receiver is, or undefined when the node is not a
- *  module call. `a.b.c(x)` is not one — its receiver is a member access, not a
- *  bare identifier. */
-function moduleCallReceiver(
-  node: ASTNode,
-  moduleNames: ReadonlySet<string>,
-): string | undefined {
-  if (node.op !== "rcall" || !Array.isArray(node.args)) return undefined;
-  const [method, receiver, args] = node.args as [unknown, unknown, unknown];
-  if (typeof method !== "string" || !Array.isArray(args)) return undefined;
-  if (!isNode(receiver) || receiver.op !== "id") return undefined;
-  const name = receiver.args as string;
-  return moduleNames.has(name) ? name : undefined;
-}
-
-function rewrite(
-  node: ASTNode,
-  qualified: string,
-  args: readonly ASTNode[],
-  typeOf: ModuleCallTypeResolver | undefined,
-): void {
-  const macro: ModuleCallMacro = {
-    teloModuleCall: true,
-    qualified,
-    args,
-    typeCheck(chk, m, ctx) {
-      // The arguments are checked in the CURRENT context, so a mistake inside
-      // one is reported where it is written — and each argument's type is kept,
-      // so whoever knows the callee's signature can compare against it.
-      m.argumentTypes = m.args.map((arg) => typeNameOf(chk.check(arg, ctx)));
-      // cel-js derives an rcall's asyncness from `receiverWithArgs`, which only
-      // the rcall checker this macro replaces fills in — so it is stated: the
-      // dispatch is synchronous, so the node is async exactly when one of its
-      // arguments is. Asked only now, once each argument is checked: an
-      // argument's answer is cached on first reading, and read before its own
-      // check it is the conservative `true` for every operator and call.
-      metaOf(node).setMeta(
-        "async",
-        m.args.some((arg) => (arg as { maybeAsync?: boolean }).maybeAsync === true),
-      );
-      const declared = typeOf?.(m.qualified);
-      return declared === undefined ? chk.dynType : chk.getType(declared);
-    },
-    evaluate(ev, m, ctx) {
-      const table = ctx.getValue(MODULE_CALL_DISPATCH_KEY) as ModuleCallDispatch | undefined;
-      const fn = table?.get(m.qualified);
-      if (!fn) throw new Error(unboundModuleCallMessage(m.qualified));
-      const values = m.args.map((arg) => ev.eval(arg, ctx));
-      // A callable's `call` is synchronous; an ARGUMENT need not be, and every
-      // other dispatch in cel-js settles its operands first. Handing a pending
-      // Promise to the function instead would pass it a value of the wrong type
-      // with nothing reported.
-      return values.some((value) => value instanceof Promise)
-        ? Promise.all(values).then((settled) => fn(settled))
-        : fn(values);
-    },
-  };
-  metaOf(node)
-    // A comprehension macro expands into an `alternate`, which cel-js consults
-    // BEFORE `macro`. Left in place, `Billing.map(i, i)` would evaluate as a
-    // comprehension over an identifier rather than as the module call it names.
-    .setMeta("alternate", undefined)
-    .setMeta("macro", macro);
-}
-
-/** Every resolved module call in `ast` with its node, outermost first. */
-export function moduleCallNodes(ast: ASTNode | undefined): Array<{ node: ASTNode; call: ModuleCall }> {
-  const out: Array<{ node: ASTNode; call: ModuleCall }> = [];
-  if (ast) walk(ast);
+/** Every resolved module call in the tree with its node, outermost first. */
+export function moduleCallNodes(
+  root: CelNode | undefined,
+): Array<{ node: CelNode; call: ModuleCall }> {
+  const out: Array<{ node: CelNode; call: ModuleCall }> = [];
+  if (root) walk(root);
   return out;
 
-  function walk(node: ASTNode): void {
+  function walk(node: CelNode): void {
     const call = moduleCallOf(node);
-    if (call) {
-      out.push({ node, call });
-      for (const arg of call.args) walk(arg);
-      return;
-    }
-    descend(node, walk);
+    if (call) out.push({ node, call });
+    for (const child of childNodes(node)) walk(child);
   }
 }
 
-/** The name of a checker type object (`int`, `list<string>`), or `dyn` for one
- *  that carries none. */
-function typeNameOf(type: unknown): string {
-  const name = (type as { name?: unknown } | null | undefined)?.name;
-  return typeof name === "string" ? name : "dyn";
+/** Every qualified call's name, as written. */
+export function moduleCallNames(root: CelNode | undefined): readonly string[] {
+  return root ? qualifiedCalls(root).map((call) => call.qualifiedName) : [];
 }
 
 /**
- * Bare identifiers used as a call receiver that resolved to NO module name.
+ * Bare identifiers that are the RECEIVER of an unresolved call (`dbb.query(1)`), so the
+ * caller reporting the root can ask whether such a name could denote a module at all rather
+ * than telling an author to add an `imports:` alias for a typo.
  *
- * `Foo.bar()` with no `Foo` import is an unknown identifier like any other, but
- * the repair is not the usual one — it needs an `imports:` alias, not a
- * different spelling — so the caller that reports the root says so.
+ * A call the name set resolved is a `qcall` and is not here — it names a module, so reading
+ * its receiver as a root would invent a dependency the expression never states.
  */
 export function unresolvedCallReceivers(
-  ast: ASTNode | undefined,
+  root: CelNode | undefined,
   moduleNames: ReadonlySet<string> = NO_NAMES,
 ): Set<string> {
   const out = new Set<string>();
-  if (ast) walk(ast);
+  if (root) walk(root);
   return out;
 
-  function walk(node: ASTNode): void {
-    if (moduleCallOf(node)) {
-      for (const arg of (node.args as [string, ASTNode, ASTNode[]])[2]) walk(arg);
-      return;
+  function walk(node: CelNode): void {
+    if (
+      node.kind === "receiverCall" &&
+      node.receiver.kind === "ident" &&
+      !moduleNames.has(node.receiver.name)
+    ) {
+      out.add(node.receiver.name);
     }
-    if (node.op === "rcall" && Array.isArray(node.args)) {
-      const receiver = (node.args as [unknown, unknown, unknown])[1];
-      if (isNode(receiver) && receiver.op === "id" && !moduleNames.has(receiver.args as string)) {
-        out.add(receiver.args as string);
-      }
-    }
-    descend(node, walk);
+    for (const child of childNodes(node)) walk(child);
   }
 }
 
 /**
- * Names bound INSIDE the expression — a comprehension variable, a `cel.bind`
- * name — that collide with one of the module's names.
+ * Names bound INSIDE the expression — a comprehension variable, a `cel.bind` name — that
+ * collide with one of the module's names.
  *
- * Such a binding is unreachable through a call: `Billing.f(x)` inside it
- * resolves to the module, never to the bound value. Reported as a reserved name
- * rather than silently shadowed, which is the rule every other name in CEL
- * scope already follows.
+ * Such a binding is unreachable through a call: `Billing.f(x)` inside it resolves to the
+ * module, never to the bound value. Reported as a reserved name rather than silently
+ * shadowed, which is the rule every other name in CEL scope already follows.
+ *
+ * The binding forms come from the engine's own enumeration (`BINDING_FORMS`) rather than a
+ * list kept in step with it here — the previous spelling carried a hand-written set of
+ * comprehension method names, mirrored in a second file.
  */
 export function moduleNameBindings(
-  ast: ASTNode | undefined,
+  root: CelNode | undefined,
   moduleNames: ReadonlySet<string> = NO_NAMES,
 ): string[] {
   const out: string[] = [];
-  if (ast && moduleNames.size > 0) walk(ast);
+  if (root && moduleNames.size > 0) walk(root);
   return [...new Set(out)];
 
-  function walk(node: ASTNode): void {
+  function walk(node: CelNode): void {
     const bound = boundNameOf(node);
     if (bound !== undefined && moduleNames.has(bound)) out.push(bound);
-    descend(node, walk);
+    for (const child of childNodes(node)) walk(child);
   }
 }
 
-/** The name a binding form introduces: `cel.bind(<name>, …)`'s first argument,
- *  or a comprehension macro's iteration variable. */
-function boundNameOf(node: ASTNode): string | undefined {
-  if (node.op !== "rcall" || !Array.isArray(node.args)) return undefined;
-  if (moduleCallOf(node)) return undefined;
-  const [method, receiver, args] = node.args as [unknown, unknown, unknown];
-  if (!Array.isArray(args) || args.length === 0) return undefined;
-  const first = args[0];
-  if (!isNode(first) || first.op !== "id") return undefined;
-  if (method === "bind") {
-    return isNode(receiver) && receiver.op === "id" && receiver.args === "cel"
-      ? (first.args as string)
-      : undefined;
-  }
-  return COMPREHENSION_METHODS.has(method as string) ? (first.args as string) : undefined;
-}
-
-/** cel-js's comprehension macros, which bind their first argument as the
- *  iteration variable. Mirrors the set `analyze.ts` walks with. */
-const COMPREHENSION_METHODS = new Set(["filter", "map", "exists", "all", "exists_one"]);
-
-/** Generic descent over a node's operands — an array, a single node, or an
- *  array of arrays (a map literal's entries). */
-function descend(node: ASTNode, fn: (child: ASTNode) => void): void {
-  const args = node.args as unknown;
-  if (Array.isArray(args)) {
-    for (const arg of args) {
-      if (isNode(arg)) fn(arg);
-      else if (Array.isArray(arg)) for (const item of arg) if (isNode(item)) fn(item);
-    }
-    return;
-  }
-  if (isNode(args)) fn(args);
-}
-
-function isNode(v: unknown): v is ASTNode {
-  return v !== null && typeof v === "object" && "op" in (v as Record<string, unknown>);
+/**
+ * The name a binding form introduces: a comprehension macro's iteration variable, or
+ * `cel.bind(<name>, …)`'s first argument.
+ *
+ * **The binding is asked of the engine by NAME AND ARITY.** `BINDING_FORMS` is a list of
+ * `"map/2"`, `"map/3"`, `"cel.bind/3"` — a bare `"map"` matches none of them, so a set over
+ * the list and a `.has(node.name)` test silently never fires.
+ *
+ * **And `cel` is a RESERVED namespace** (`cel`, `optional`), which a host can never claim —
+ * so `cel.bind(c, …)` is not a qualified call at all: it reads as a receiver call on the
+ * ident `cel`, which is in no scope and never will be. Reading it as a `qcall` matches
+ * nothing, and the cost is not just a missed binding: the bound name and the bare `cel` then
+ * leak out as member-access chains, so a comprehension variable is reported as an undeclared
+ * field and `cel` itself as an unknown identifier.
+ */
+function boundNameOf(node: CelNode): string | undefined {
+  if (node.kind !== "receiverCall") return undefined;
+  const binding =
+    node.receiver.kind === "ident" && node.receiver.name === "cel"
+      ? namespaceMacroBinding("cel", node.name, node.args.length)
+      : receiverMacroBinding(node.name, node.args.length);
+  if (!binding) return undefined;
+  const held = node.args[binding.variableArgument];
+  return held?.kind === "ident" ? held.name : undefined;
 }

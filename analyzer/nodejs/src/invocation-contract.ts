@@ -7,7 +7,7 @@ import {
   type ResourceManifest,
   scalarFormOfJsonType,
   type ScalarForm,
-  UnsignedInt,
+  celUint,
   valueTypeOf,
 } from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
@@ -701,7 +701,7 @@ export function sensitivePaths(
 /** The scalar form a declared node's value takes at runtime. `int64`, `uint64`
  *  and `double` are the JSON scalars whose runtime representation is NOT decided
  *  by the value that arrives: a CEL integer is a BigInt, a CEL uint an
- *  `UnsignedInt` and a CEL double a JS number, and each is `typeof "number" |
+ *  a branded `uint` and a CEL double a JS number, and each is `typeof "number" |
  *  "bigint"` away from what a declaration says it is. Everything else — string,
  *  boolean, object, array, and every `instance` value type — is already its own
  *  representation, so it is not listed and never rewritten. */
@@ -876,7 +876,7 @@ function asForm(value: unknown, form: DeclaredScalarForm): unknown {
           ? BigInt(value)
           : undefined;
     return integral !== undefined && CEL_SCALAR_FORMS.uint!.range!.accepts(integral)
-      ? new UnsignedInt(integral)
+      ? celUint(integral)
       : value;
   }
   if (typeof value !== "bigint") return value;

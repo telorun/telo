@@ -644,9 +644,12 @@ schema:
   # schema that lists me. `referrer: Self.Schema` is the abstract, and every real
   # referrer is a backend's `Schema` that extends it.
   #
-  # The optional select is what discriminates the two shapes `type:` now holds
-  # with no type test: on a storage-class string it yields nothing and the column
-  # short-circuits; on a reference it yields the name and the column is checked.
+  # The optional select discriminates the two shapes `type:` holds with no type
+  # test, and the rule it rests on is the optional library's own: a presence-shaped
+  # read asks whether a member is THERE, so it answers absence over a value that
+  # holds no members. A storage-class string therefore yields nothing and the
+  # column short-circuits; a reference yields the name and the column is checked.
+  # A type test would have to be rewritten the day `type:` admits a third shape.
   x-telo-referrer-rules:
     - referrer: Self.Schema
       peers: /enums

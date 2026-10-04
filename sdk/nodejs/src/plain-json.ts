@@ -17,12 +17,15 @@
  * - a map whose keys are not strings is an object keyed by each key's text
  *   (`1`, `true`), the protobuf JSON rule for map keys. Two keys with one text
  *   cannot both be written and are refused rather than one silently dropped.
+ *   **A map is a `CelMap`** — the value domain's own container, keyed by each
+ *   key's typed value; a host `Map` is not one and is left to the serializer,
+ *   which is what the typed frame refuses by name.
  *
  * Anything outside the CEL value domain is left for the serializer, so a host
  * object keeps its own `toJSON` — this writer adds forms, it does not narrow what
  * a boundary accepts.
  */
-import { Duration, UnsignedInt } from "./cel-value-identity.js";
+import { isCelDuration, isCelMap, isCelRecord, isCelTimestamp, isCelUint } from "./cel-value-identity.js";
 import { InvokeError } from "./invoke-error.js";
 import { requirePlainEncoding } from "./plain-encoding.js";
 import { plainEncodingOf } from "./value-type.js";
@@ -45,10 +48,10 @@ export function plainScalar(value: unknown): string | number | bigint | undefine
     return Object.is(value, -0) ? 0 : undefined;
   }
   if (typeof value !== "object" || value === null) return undefined;
-  if (value instanceof UnsignedInt) return value.valueOf() as bigint;
-  if (value instanceof Duration) return durationEncoding.encode(value);
+  if (isCelUint(value)) return value.value;
+  if (isCelDuration(value)) return durationEncoding.encode(value);
+  if (isCelTimestamp(value)) return timestampEncoding.encode(value);
   if (value instanceof Uint8Array) return bytesEncoding.encode(value);
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return timestampEncoding.encode(value);
   return undefined;
 }
 
@@ -57,7 +60,7 @@ export function plainScalar(value: unknown): string | number | bigint | undefine
 export function plainMapKey(key: unknown): string {
   if (typeof key === "string") return key;
   if (typeof key === "bigint" || typeof key === "boolean") return String(key);
-  if (key instanceof UnsignedInt) return String(key.valueOf());
+  if (isCelUint(key)) return String(key.value);
   throw new InvokeError(
     "ERR_PLAIN_JSON_UNWRITABLE",
     `Cannot write a map key that is ${typeof key === "number" ? `the number ${key}` : typeof key} as plain JSON; a CEL map key is an int, uint, bool or string.`,
@@ -91,9 +94,9 @@ function walk(value: unknown, ancestors: object[]): unknown {
       });
       return copy ?? value;
     }
-    if (value instanceof Map) {
+    if (isCelMap(value)) {
       const out: Record<string, unknown> = {};
-      for (const [key, item] of value) {
+      for (const { key, value: item } of value.entries.values()) {
         const text = plainMapKey(key);
         if (Object.prototype.hasOwnProperty.call(out, text)) {
           throw new InvokeError(
@@ -110,8 +113,10 @@ function walk(value: unknown, ancestors: object[]): unknown {
       }
       return out;
     }
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return value;
+    // The value domain decides, not the prototype: a branded value (an optional, a type, a
+    // host's own named type) is a PLAIN object, so a prototype test would rebuild it
+    // without its brand — the one regression a string type key can cause, and a silent one.
+    if (!isCelRecord(value)) return value;
     let copy: Record<string, unknown> | undefined;
     for (const [key, item] of Object.entries(value)) {
       const written = walk(item, ancestors);

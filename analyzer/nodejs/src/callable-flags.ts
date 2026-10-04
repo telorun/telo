@@ -19,7 +19,8 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceManifest } from "@telorun/sdk";
-import { auditCalls, buildCelEnvironment, resolveModuleCalls } from "@telorun/templating";
+import { auditCalls, buildCelEnvironment } from "@telorun/templating";
+import { moduleNamesEnvironment } from "./cel-environment.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import type { ModuleFunctionIndex } from "./module-function-index.js";
 
@@ -144,17 +145,18 @@ export class CallableFlagsIndex {
       return { deterministic, hostBacked, nondeterministicTail, hostBackedTail };
     }
 
-    let ast;
-    try {
-      parseEnv ??= buildCelEnvironment();
-      ast = parseEnv.parse(source).ast;
-    } catch {
+    parseEnv ??= buildCelEnvironment();
+    // Read against the declaring module's own names: a call whose receiver is
+    // one of them reaches another module's function, whose flags are derived
+    // below rather than read off the catalog.
+    const env = moduleNamesEnvironment(parseEnv, moduleCallNamesOf(this.moduleCallNames, manifest));
+    const parsed = env.parse(source);
+    if (parsed.diagnostics.length > 0) {
       // A body that does not parse is `CEL_SYNTAX_ERROR`'s to report, and calls
       // nothing anything could evaluate.
       return { deterministic, hostBacked, nondeterministicTail, hostBackedTail };
     }
-    resolveModuleCalls(ast, moduleCallNamesOf(this.moduleCallNames, manifest));
-    const calls = auditCalls(source, ast, parseEnv, (qualified) =>
+    const calls = auditCalls(source, parsed.root, env, (qualified) =>
       this.ofCall(manifest, qualified),
     ).calls;
     for (const call of calls) {

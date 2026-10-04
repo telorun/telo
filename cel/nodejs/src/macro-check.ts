@@ -25,6 +25,12 @@ export interface MacroHost {
   typeOf(node: CelNode): CelType;
   /** The type of a subexpression with extra names in scope. */
   typeOfBinding(node: CelNode, bindings: ReadonlyMap<string, CelType>): CelType;
+  /**
+   * The type of a select read as a question about PRESENCE — `has()`'s argument. It is
+   * the same reading `.?b` gets, which is what keeps the two forms of one question from
+   * answering differently about a union whose branches do not all hold the member.
+   */
+  typeOfPresence(node: Extract<CelNode, { kind: "select" }>): CelType;
   report(code: CelCheckCode, message: string, range: SourceRange): void;
 }
 
@@ -99,7 +105,7 @@ function checkOptionalBinding(node: Extract<CelNode, { kind: "receiverCall" }>, 
 /** `has(a.b)` — a question about presence. Its shape is already validated. */
 function checkHas(node: Extract<CelNode, { kind: "call" }>, host: MacroHost): CelType {
   const argument = node.args[0]!;
-  if (argument.kind === "select") host.typeOf(argument);
+  if (argument.kind === "select") host.typeOfPresence(argument);
   return BOOL;
 }
 

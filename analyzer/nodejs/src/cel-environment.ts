@@ -1,6 +1,11 @@
-import { Environment } from "@marcbachmann/cel-js";
+import {
+  CelEnvironment,
+  parseExpression,
+  type CelExpression,
+  type CelValue,
+} from "@telorun/cel";
 import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
-import { registerValueBrands } from "@telorun/templating";
+import { celNamespaceNames, registerValueBrands } from "@telorun/templating";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
@@ -18,6 +23,111 @@ const PORT_PROTOCOL_BRAND: Record<string, string> = {
 export { buildCelEnvironment } from "@telorun/templating";
 export type { CelHandlers } from "@telorun/templating";
 
+/**
+ * The resolved tree of one expression, or undefined when its source does not
+ * read whole — a syntax error is the CEL engine pass's to report, never a
+ * chain walk's.
+ *
+ * **Reading needs no environment.** The tree is a function of the text and of
+ * the names that denote MODULES at the site: `Billing.total(x)` is a qualified
+ * call where `Billing` is one of them and a method on a value where it is not,
+ * and the engine resolves that as the expression is read (`namespaces`). So a
+ * caller that only walks a tree parses here instead of cloning an environment
+ * per site, and a caller that also type-checks hands its own typed environment
+ * the tree it already has.
+ */
+export function parseCelSource(
+  source: string,
+  moduleNames?: ReadonlySet<string>,
+): CelExpression | undefined {
+  const namespaces = moduleNames ? celNamespaceNames(moduleNames) : undefined;
+  const parsed = parseExpression(source, namespaces ? { namespaces } : undefined);
+  return parsed.diagnostics.length > 0 ? undefined : parsed;
+}
+
+// The module-name filter and the dispatch adapter are templating's, which owns
+// the name set (`CompileEnv.moduleNames`) and the one host seam a module
+// function's arguments cross. A copy here answered the filter identically and
+// the adapter DIFFERENTLY — it called the bound function with raw values, so a
+// map literal at a call site was a `CelMap` at `telo check` and a plain object
+// at run.
+export { celNamespaceNames, namespaceDispatchOf } from "@telorun/templating";
+
+/**
+ * Declare the declaring module's own names as CEL namespaces, so that
+ * `Billing.total(x)` read against this environment is a qualified call rather
+ * than a method on a value, and its RESULT carries the callee's declared type.
+ *
+ * **Open, and the parameter list is withheld, both deliberately.** Whether a
+ * call reaches a function at all is the analyzer's verdict — the export gate,
+ * the dependency edge, the capability, the re-export chain are vocabulary the
+ * engine does not hold — so a name the module declares nothing for types `dyn`
+ * and is reported by `FUNCTION_UNRESOLVED` / `_NOT_EXPORTED` / `_NOT_CALLABLE`
+ * here. Arity and arguments are withheld for the same reason and a stronger
+ * one: a callable's signature carries a JSON Schema per parameter and an
+ * optional trailing parameter, which is strictly more than CEL assignability
+ * can judge, and `FUNCTION_ARITY_MISMATCH` / `_ARGUMENT_MISMATCH` are the
+ * analyzer's own.
+ */
+export function registerModuleNamespaces(
+  env: CelEnvironment,
+  moduleNames: ReadonlySet<string>,
+  callablesThrough: (receiver: string) => readonly { name: string; celType: string }[],
+): void {
+  for (const receiver of celNamespaceNames(moduleNames)) {
+    env.registerNamespace(
+      receiver,
+      callablesThrough(receiver).map(({ name, celType }) => ({ name, returns: celType })),
+      { open: true },
+    );
+  }
+}
+
+
+/** How many name-set environments one base environment keeps. Keyed on a
+ *  module's own names, so the live set is bounded by the workspace — but a
+ *  long-lived host (an editor, a watch session) sees new ones as files are
+ *  edited, and an unbounded map keyed on an author's input is a leak. */
+const MODULE_NAMES_ENV_CAPACITY = 64;
+
+const moduleNamesEnvByBase = new WeakMap<CelEnvironment, Map<string, CelEnvironment>>();
+
+/**
+ * `base` with `moduleNames` declared as open namespaces and nothing else — for
+ * a pass that reads an expression's CALLS without typing its site.
+ *
+ * Such a pass declares no function: it asks which calls the expression makes,
+ * not what one answers, so every name a namespace reaches types `dyn` and is
+ * listed. A pass that also types the site builds its own environment and
+ * declares the callables on it ({@link registerModuleNamespaces}).
+ *
+ * Least-recently-used and bounded; a base environment holding no namespaces is
+ * itself the answer for an empty set.
+ */
+export function moduleNamesEnvironment(
+  base: CelEnvironment,
+  moduleNames: ReadonlySet<string>,
+): CelEnvironment {
+  const names = celNamespaceNames(moduleNames);
+  if (names.size === 0) return base;
+  let byNames = moduleNamesEnvByBase.get(base);
+  if (!byNames) moduleNamesEnvByBase.set(base, (byNames = new Map()));
+  const key = [...names].sort().join(",");
+  const cached = byNames.get(key);
+  if (cached) {
+    byNames.delete(key);
+    byNames.set(key, cached);
+    return cached;
+  }
+  const env = base.clone();
+  for (const name of names) env.registerNamespace(name, [], { open: true });
+  if (byNames.size >= MODULE_NAMES_ENV_CAPACITY) {
+    byNames.delete(byNames.keys().next().value!);
+  }
+  byNames.set(key, env);
+  return env;
+}
+
 /** Clone `baseEnv` and register typed variable declarations so that
  *  `env.check(expr)` can infer return types for expressions referencing known variables.
  *
@@ -29,22 +139,23 @@ export type { CelHandlers } from "@telorun/templating";
  *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
  *  in kernel-globals.ts, which is used for chain-access validation. */
 export function buildTypedCelEnvironment(
-  baseEnv: Environment,
+  baseEnv: CelEnvironment,
   manifest: ResourceManifest,
   extraContextSchema?: Record<string, any> | null,
   // The `ports` namespace is Application-only and lives on the module doc, not
   // on the resource being analyzed. When validating a resource, the caller
   // passes the module manifest here so `!cel "ports.X"` types cross-doc.
   rootModuleManifest?: ResourceManifest,
-): Environment {
+): CelEnvironment {
   try {
     const env = baseEnv.clone();
 
     // Register nominal value brands (TcpPort/UdpPort/…) on the *clone* so the
     // type-checker can distinguish structurally-identical values. The base env
     // (shared with the kernel runtime) is untouched — a branded value flows as
-    // a plain integer at runtime, so only static checking needs these. cel-js
-    // auto-generates a field-less wrapper class; no runtime constructor needed.
+    // a plain integer at runtime, so only static checking needs these. A
+    // nominal type is declared, never implemented: the engine takes the
+    // conversions and members as signatures, so no runtime constructor exists.
     registerValueBrands(env);
 
     // `variables` / `secrets`: the DECLARING module's blocks, which is the
@@ -89,7 +200,7 @@ export function buildTypedCelEnvironment(
         for (const [k, v] of portEntries) {
           schema[k] = PORT_PROTOCOL_BRAND[(v as { protocol?: string }).protocol ?? "tcp"] ?? "int";
         }
-        (env as any).registerVariable({ name: "ports", schema });
+        env.registerVariable("ports", { fields: schema });
       } else {
         env.registerVariable("ports", "map");
       }
@@ -125,7 +236,7 @@ export function buildTypedCelEnvironment(
       for (const [key, property] of Object.entries(moduleSchema.properties as Record<string, any>)) {
         schema[key] = jsonSchemaToCelType(property);
       }
-      (env as any).registerVariable({ name: "module", schema });
+      env.registerVariable("module", { fields: schema });
     } else {
       env.registerVariable("module", "map");
     }
@@ -140,8 +251,8 @@ export function buildTypedCelEnvironment(
         bound.push(`${name}:${celType}`);
       }
       // Last, so a pure step's expression is typed against every other name.
-      // Inference probes clones of `env`, and cel-js freezes an environment once
-      // it is cloned, so the typed `steps` goes onto a clone of its own.
+      // Inference probes clones of `env`, so the typed `steps` goes onto a
+      // clone of its own and the probes stay typed without it.
       const steps = properties.steps as Record<string, any> | undefined;
       if (steps && !env.hasVariable("steps")) {
         const inferred = inferredStepsCelSchema(steps, env, bound.sort().join(","));
@@ -166,9 +277,9 @@ export function buildTypedCelEnvironment(
  *  read of state the expression's arguments do not carry. Module calls stay
  *  reachable: they resolve on the parsed tree, not through a variable. */
 export function buildParameterCelEnvironment(
-  baseEnv: Environment,
+  baseEnv: CelEnvironment,
   contextSchema: Record<string, any> | null,
-): Environment {
+): CelEnvironment {
   const env = baseEnv.clone();
   registerValueBrands(env);
   for (const [name, propSchema] of Object.entries(
@@ -215,7 +326,7 @@ export function valueBrandHint(readTypes: readonly string[] | undefined): string
 /** Register a `variables`/`secrets` namespace typed from a module doc's schema map
  *  (`{ name: <schema>, … }`), falling back to dyn `map` when absent or untyped. */
 function registerConfigNamespace(
-  env: Environment,
+  env: CelEnvironment,
   block: unknown,
   name: "variables" | "secrets",
 ): void {
@@ -226,7 +337,7 @@ function registerConfigNamespace(
     if (entries.length > 0) {
       const schema: Record<string, string> = {};
       for (const [k, v] of entries) schema[k] = jsonSchemaToCelType(v as Record<string, any>);
-      (env as any).registerVariable({ name, schema });
+      env.registerVariable(name, { fields: schema });
       return;
     }
   }
@@ -241,9 +352,9 @@ function registerConfigNamespace(
  *  are registered as empty typed objects, so referencing them is a "No such key"
  *  error that steers authors to a typed `variables` entry. */
 export function buildImportInputCelEnvironment(
-  baseEnv: Environment,
+  baseEnv: CelEnvironment,
   moduleManifest: ResourceManifest | undefined,
-): Environment {
+): CelEnvironment {
   const env = baseEnv.clone();
   registerValueBrands(env);
   const mod = moduleManifest as Record<string, unknown> | undefined;
@@ -262,7 +373,7 @@ export function buildImportInputCelEnvironment(
   // so any access (`resources.X`, `ports.X`) is a "No such key" error — these
   // surfaces are not part of the config-only import contract.
   for (const name of ["resources", "ports"]) {
-    (env as any).registerVariable({ name, schema: {} });
+    env.registerVariable(name, { fields: {} });
   }
   // `module` IS part of it: the importer's own identity is config, and passing
   // its version down to a child is the case the binding exists for.
@@ -270,7 +381,7 @@ export function buildImportInputCelEnvironment(
   if (Object.keys(metadata).length > 0) {
     const schema: Record<string, string> = {};
     for (const key of Object.keys(metadata)) schema[key] = "dyn";
-    (env as any).registerVariable({ name: "module", schema });
+    env.registerVariable("module", { fields: schema });
   } else {
     env.registerVariable("module", "map");
   }

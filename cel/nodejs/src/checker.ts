@@ -80,6 +80,15 @@ export interface NamespaceFunction {
   readonly parameters?: readonly CelType[];
   /** How the declaration is written, for a listing; absent with the parameters. */
   readonly signature?: string;
+  /**
+   * Types the declaration named that nothing is registered under, in the order written.
+   *
+   * The declaration is accepted and reads `dyn` where one stands: a host's declaration is
+   * data out of someone's manifest, so a name its own registry does not carry is the host
+   * disagreeing with itself — reported at the call, where there is a range, rather than
+   * thrown at registration, where there is none. Same rule as an unjudged schema node.
+   */
+  readonly unregisteredTypes?: readonly string[];
   readonly deterministic?: boolean;
   readonly hostBacked?: boolean;
   readonly throws?: readonly string[];
@@ -171,6 +180,10 @@ class Checker implements MacroHost {
     }
   }
 
+  typeOfPresence(node: Extract<CelNode, { kind: "select" }>): CelType {
+    return this.selectType(node, true);
+  }
+
   // --- the walk -----------------------------------------------------------
 
   typeOf(node: CelNode): CelType {
@@ -186,7 +199,7 @@ class Checker implements MacroHost {
       case "map":
         return this.mapType(node);
       case "select":
-        return this.selectType(node);
+        return this.selectType(node, node.optional);
       case "index":
         return this.indexType(node);
       case "unary":
@@ -318,13 +331,19 @@ class Checker implements MacroHost {
     return reduced;
   }
 
-  private selectType(node: Extract<CelNode, { kind: "select" }>): CelType {
+  /**
+   * `presence` is whether the read asks whether the member is THERE — written `.?b`, or
+   * standing as the argument of `has()`. It decides nothing about a type that is known to
+   * hold no members, which both forms refuse; it decides what a UNION's member-less
+   * branches are, which is the absence case a presence-shaped read answers for.
+   */
+  private selectType(node: Extract<CelNode, { kind: "select" }>, presence: boolean): CelType {
     const qualified = this.qualifiedVariableType(node);
     if (qualified) return qualified;
     const operand = this.typeOf(node.operand);
     if (node.field === "") return DYN;
     const guarded = this.checkNullable(node.operand, operand, `.${node.field}`, node.fieldRange);
-    const held = this.memberType(guarded, node.field, node.fieldRange);
+    const held = this.memberType(guarded, node.field, node.fieldRange, presence);
     // Reading through an optional answers an optional, whichever form the read is
     // written in: that is what makes a chain of reads over a value that may be absent
     // stay one expression instead of needing a guard at every step.
@@ -367,11 +386,22 @@ class Checker implements MacroHost {
   }
 
   /** The type of a named member, reported against whatever the operand turned out to be. */
-  private memberType(operand: CelType, field: string, range: SourceRange): CelType {
+  private memberType(
+    operand: CelType,
+    field: string,
+    range: SourceRange,
+    presence = false,
+  ): CelType {
     if (isDyn(operand) || operand.kind === "parameter") return DYN;
-    if (operand.kind === "optional") return this.memberType(operand.value, field, range);
+    if (operand.kind === "optional") {
+      return this.memberType(operand.value, field, range, presence);
+    }
     if (operand.kind === "union") {
-      return unionOf(operand.members.map((member) => this.memberType(member, field, range)));
+      return unionOf(
+        presenceBranches(operand, holdsMembers, presence).map((member) =>
+          this.memberType(member, field, range, presence),
+        ),
+      );
     }
     if (operand.kind === "record") return this.recordMemberType(operand, field, range);
     if (operand.kind === "map") {
@@ -406,7 +436,7 @@ class Checker implements MacroHost {
     const operand = this.typeOf(node.operand);
     const index = this.typeOf(node.index);
     const guarded = this.checkNullable(node.operand, operand, "[…]", node.range);
-    const held = this.elementType(guarded, index, node);
+    const held = this.elementType(guarded, index, node, node.optional);
     return node.optional || guarded.kind === "optional" ? optionalOf(unwrapOptional(held)) : held;
   }
 
@@ -414,11 +444,18 @@ class Checker implements MacroHost {
     operand: CelType,
     index: CelType,
     node: Extract<CelNode, { kind: "index" }>,
+    presence = false,
   ): CelType {
     if (isDyn(operand) || operand.kind === "parameter") return DYN;
-    if (operand.kind === "optional") return this.elementType(operand.value, index, node);
+    if (operand.kind === "optional") {
+      return this.elementType(operand.value, index, node, presence);
+    }
     if (operand.kind === "union") {
-      return unionOf(operand.members.map((member) => this.elementType(member, index, node)));
+      return unionOf(
+        presenceBranches(operand, holdsElements, presence).map((member) =>
+          this.elementType(member, index, node, presence),
+        ),
+      );
     }
     if (operand.kind === "list") {
       if (!assignable(index, INT) && !isDyn(index)) {
@@ -659,7 +696,7 @@ class Checker implements MacroHost {
     if (failure.reason === "unknown") {
       this.report(
         "CEL_UNKNOWN_FUNCTION",
-        `no function named ${JSON.stringify(node.name)} is registered`,
+        `no function named ${JSON.stringify(node.name)} is registered${this.closestNames(node.name, form, args.length)}`,
         node.range,
         this.renameFix(node),
       );
@@ -688,6 +725,28 @@ class Checker implements MacroHost {
         }${written}: ${describeCandidates(failure.candidates)}`,
       node.range,
     );
+  }
+
+  /**
+   * What a call on an unregistered name is offered instead: the registered names that
+   * accept its form and arity, nearest first, as a clause to hang off the refusal.
+   *
+   * **The alternatives belong in the MESSAGE, and the fix stays singular.** A reader of
+   * `no('x')` is one name away from the five functions that would have worked, and the
+   * engine this one replaces said so; losing it is a real loss of help. A list of five
+   * repairs, though, is not a repair — an editor applying one would be guessing which
+   * function the author meant — so the single rename fix is still offered only where
+   * exactly one name is a case-insensitive match.
+   *
+   * It names no command and no tool: which listing a host offers is the host's, and an
+   * engine embedded in one with no CLI would be pointing at nothing.
+   */
+  private closestNames(name: string, form: CallForm, arity: number): string {
+    const candidates = this.context.registry.candidateNames(name, form, arity);
+    if (candidates.length === 0) return "";
+    const written = arity === 0 ? "no arguments" : arity === 1 ? "1 argument" : `${arity} arguments`;
+    const shape = form === "receiver" ? `written on a value with ${written}` : `taking ${written}`;
+    return ` — the closest ${shape}: ${candidates.join(", ")}`;
   }
 
   /** The one registered name this call might have meant, as a whole-source repair. */
@@ -757,6 +816,7 @@ class Checker implements MacroHost {
         namespace: node.namespace,
         arity: args.length,
         range: node.range,
+        argumentTypes: args.map((type) => formatType(withoutParameters(type))),
       });
       // An OPEN namespace declares only part of what it reaches, so a name it does not
       // carry is not this engine's to refuse — it is listed and left to the host.
@@ -775,12 +835,27 @@ class Checker implements MacroHost {
       namespace: node.namespace,
       arity: args.length,
       range: node.range,
+      argumentTypes: args.map((type) => formatType(withoutParameters(type))),
       ...(declared.signature === undefined ? {} : { signature: declared.signature }),
       returns: formatType(withoutParameters(declared.returns)),
       deterministic: declared.deterministic ?? true,
       hostBacked: declared.hostBacked ?? false,
       ...(declared.throws ? { throws: declared.throws } : {}),
     });
+    // A type the host named and its own registry does not carry: the declaration stands,
+    // reads `dyn` where that type stood, and the disagreement is a verdict HERE — this is
+    // the only place the name has a range.
+    const unregistered = declared.unregisteredTypes ?? [];
+    if (unregistered.length > 0) {
+      const names = unregistered.map((name) => JSON.stringify(name)).join(", ");
+      this.report(
+        "CEL_TYPE_ERROR",
+        unregistered.length === 1
+          ? `${qualified} is declared over the type ${names}, and no type is registered under that name`
+          : `${qualified} is declared over the types ${names}, and no type is registered under those names`,
+        node.range,
+      );
+    }
     // Parameters withheld: the host judges arity and arguments against its own, richer
     // signature grammar, and this engine types the result and says nothing else.
     if (parameters === undefined) return declared.returns;
@@ -813,6 +888,44 @@ function isNullTest(args: readonly CelType[]): boolean {
   const [left, right] = args as [CelType, CelType];
   const isNull = (type: CelType) => type.kind === "primitive" && type.name === "null";
   return (isNull(left) && admitsNull(right)) || (isNull(right) && admitsNull(left));
+}
+
+/**
+ * Which branches of a union a read is judged against.
+ *
+ * A **presence-shaped** read — `a.?b`, `a[?k]`, `has(a.b)` — asks whether the member is
+ * THERE, so a branch that can hold no member at all is the absence case it answers
+ * `optional.none()` / `false` for at runtime, not a mistake in the expression: that is how
+ * a two-shape field is discriminated without a type test. Where **no** branch can hold one
+ * the read is judged against them all, so an operand that is known to hold no members is
+ * still refused in the presence form exactly as in the plain one.
+ */
+function presenceBranches(
+  union: Extract<CelType, { kind: "union" }>,
+  holds: (type: CelType) => boolean,
+  presence: boolean,
+): readonly CelType[] {
+  if (!presence) return union.members;
+  const holding = union.members.filter(holds);
+  return holding.length > 0 ? holding : union.members;
+}
+
+/** Whether a type can hold a named member at all — what `memberType` reads one of. */
+function holdsMembers(type: CelType): boolean {
+  if (isDyn(type) || type.kind === "parameter") return true;
+  if (type.kind === "record" || type.kind === "map") return true;
+  if (type.kind === "optional") return holdsMembers(type.value);
+  if (type.kind === "union") return type.members.some(holdsMembers);
+  return false;
+}
+
+/** Whether a type can hold an element at all — what `elementType` reads one of. */
+function holdsElements(type: CelType): boolean {
+  if (isDyn(type) || type.kind === "parameter") return true;
+  if (type.kind === "record" || type.kind === "map" || type.kind === "list") return true;
+  if (type.kind === "optional") return holdsElements(type.value);
+  if (type.kind === "union") return type.members.some(holdsElements);
+  return false;
 }
 
 /** An optional of an optional is one optional; a chain of reads does not nest them. */

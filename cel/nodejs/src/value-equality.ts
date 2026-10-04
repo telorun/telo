@@ -30,7 +30,7 @@
 
 import { durationNanos } from "./duration-value.js";
 import { mapKeyIdentity } from "./cel-map-value.js";
-import type { CelValue } from "./cel-value.js";
+import type { CelMapKey, CelValue } from "./cel-value.js";
 import {
   celTypeNameOf,
   isCelBytes,
@@ -171,12 +171,12 @@ function equalLists(left: readonly CelValue[], right: readonly CelValue[]): bool
 }
 
 /** Every key of a map, as the pairs equality walks. */
-function mapPairs(value: CelValue): Map<string, CelValue> | undefined {
+function mapPairs(value: CelValue): Map<CelMapKey, CelValue> | undefined {
   if (isCelMap(value)) {
     return new Map([...value.entries].map(([identity, entry]) => [identity, entry.value]));
   }
   if (isCelRecord(value)) {
-    const pairs = new Map<string, CelValue>();
+    const pairs = new Map<CelMapKey, CelValue>();
     for (const key of Object.keys(value)) pairs.set(mapKeyIdentity(key)!, value[key] as CelValue);
     return pairs;
   }

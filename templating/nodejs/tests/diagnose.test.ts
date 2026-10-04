@@ -1,5 +1,4 @@
-import { RE2JS } from "re2js";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { analyzeCelExpression } from "../src/engines/cel.js";
 
@@ -8,52 +7,28 @@ const analyze = (expr: string) => analyzeCelExpression(expr, env);
 const codes = (expr: string) => analyze(expr).diagnostics.map((d) => d.code);
 const first = (expr: string) => analyze(expr).diagnostics[0]!;
 
-describe("explaining a rejected read", () => {
-  const schema = { type: "object", properties: { db: { type: "string" } } };
-  const typed = buildCelEnvironment();
-  (typed as any).registerVariable({ name: "variables", schema: { db: "string" } });
-  const explainSchema = () => ({ type: "object", properties: { variables: schema } });
-
-  it("names the undeclared field and what is declared, in place of the checker's wording", () => {
+describe("a rejected read", () => {
+  it("names the undeclared field and what IS declared", () => {
+    const typed = buildCelEnvironment();
+    typed.registerVariable("variables", { fields: { db: "string" } });
     const { diagnostics } = analyzeCelExpression("variables.dbb", {
       celEnv: typed,
       contextSchema: null,
-      explainSchema,
     });
     expect(diagnostics).toEqual([
-      { code: "CEL_UNKNOWN_FIELD", message: "'variables.dbb' is not defined (available: db)" },
+      { code: "CEL_UNKNOWN_FIELD", message: '"dbb" is not declared here (declared: db)' },
     ]);
-  });
-
-  it("never judges an expression the checker accepted", () => {
-    const { diagnostics } = analyzeCelExpression("variables.db", {
-      celEnv: typed,
-      contextSchema: null,
-      explainSchema: () => ({ type: "object", properties: { variables: { properties: {} } } }),
-    });
-    expect(diagnostics).toEqual([]);
-  });
-
-  it("keeps the checker's error when the chain the explain schema lacks is one the checker accepts", () => {
-    const env = buildCelEnvironment();
-    (env as any).registerVariable({ name: "variables", schema: { db: "string", port: "int" } });
-    const { diagnostics } = analyzeCelExpression("variables.port + 'x'", {
-      celEnv: env,
-      contextSchema: null,
-      explainSchema,
-    });
-    expect(diagnostics.map((d) => d.code)).toEqual(["CEL_TYPE_ERROR"]);
   });
 });
 
 describe("call form classification", () => {
   it("reads a global call of a method as a call-form error, not a type error", () => {
-    // The distinction is the whole point: cel-js reports
-    // `no matching overload for 'startsWith(dyn, string)'`, whose named argument
-    // types send the reader looking for a cast that cannot help.
+    // The distinction is the whole point: a message naming the argument types
+    // sends the reader looking for a cast that cannot help, where the repair is
+    // the other call form — and the fix is the whole expression, rewritten.
     const d = first("startsWith(key, 'uploads/')");
     expect(d.code).toBe("CEL_WRONG_CALL_FORM");
-    expect(d.fix?.replacement).toBe("key.startsWith('uploads/')");
+    expect(d.fix?.replacement).toBe('key.startsWith("uploads/")');
   });
 
   it("classifies by registry, not by argument types — literals fail identically", () => {
@@ -67,7 +42,7 @@ describe("call form classification", () => {
   });
 
   it("parenthesizes a receiver that would otherwise reparse", () => {
-    expect(first("startsWith(a + b, 'x')").fix?.replacement).toBe("(a + b).startsWith('x')");
+    expect(first("startsWith(a + b, 'x')").fix?.replacement).toBe('(a + b).startsWith("x")');
   });
 
   it("accepts a name registered in both forms, either way round", () => {
@@ -84,28 +59,12 @@ describe("unknown functions", () => {
   it("says the name does not exist rather than blaming the arguments", () => {
     const d = first("no()");
     expect(d.code).toBe("CEL_UNKNOWN_FUNCTION");
-    expect(d.message).toContain("there is no function `no`");
-  });
-
-  it("reaches nowIso/nowMillis/nowSeconds from `no` — edit distance never would", () => {
-    const message = first("no()").message;
-    for (const name of ["nowIso", "nowMillis", "nowSeconds"]) {
-      expect(message).toContain(name);
-    }
-  });
-
-  // The receiver name has to be one the registry does NOT know: `slice` is
-  // registered now, so a mis-arity call on it is classified as a wrong overload
-  // rather than a missing name, and would no longer exercise this path.
-  it("filters candidates by arity, so a 1-arg method lists substring", () => {
-    const message = first("s.subst(7)").message;
-    expect(message).toContain("there is no method `subst`");
-    expect(message).toContain("substring");
-  });
-
-  it("offers a fix only when one candidate is unambiguous", () => {
-    // Several `uuidvN()` candidates — picking one would be a guess.
-    expect(first("uuid()").fix).toBeUndefined();
+    // The names that WOULD have worked ride the same sentence — the registered names
+    // accepting its form and arity, ranked by the engine's own declared rule.
+    expect(d.message).toBe(
+      'no function named "no" is registered — the closest taking no arguments: ' +
+        "now, nowIso, today, uuidv1, uuidv4",
+    );
   });
 });
 
@@ -129,15 +88,6 @@ describe("arbitration with the type checker", () => {
     const d = first("upper()");
     expect(d.code).toBe("CEL_TYPE_ERROR");
     expect(d.message).toContain("upper(string): string");
-  });
-
-  it("explains `dyn` without firing on the word 'dynamic'", () => {
-    // Right name, right form, right arity — only the argument types are wrong,
-    // so this is a real residual, and one of them is untyped.
-    expect(first("hmac(a.b, 1, 2)").message).toContain("no static type here");
-    // "must be list, map, or dynamic" contains `dyn` as a substring but says
-    // nothing about an untyped operand.
-    expect(first("list.filter(x, x > 1)").message).not.toContain("no static type here");
   });
 
   it("reports the checked type for a valid expression", () => {
@@ -180,26 +130,5 @@ describe("cel.bind", () => {
     expect(env.celEnv.evaluate("cel.bind(c, 150, string(c / 100) + '.' + string(c % 100))")).toBe(
       "1.50",
     );
-  });
-});
-
-describe("literal guards", () => {
-  it("report only a refusal — any other failure propagates with its cause, as no diagnostic", () => {
-    const cause = new TypeError("injected");
-    const compile = vi.spyOn(RE2JS, "compile").mockImplementation(() => {
-      throw cause;
-    });
-    try {
-      let failure: unknown;
-      try {
-        analyze("regexExtract('abc', 'b')");
-      } catch (e) {
-        failure = e;
-      }
-      expect(failure).toBeInstanceOf(Error);
-      expect((failure as Error).cause).toBe(cause);
-    } finally {
-      compile.mockRestore();
-    }
   });
 });

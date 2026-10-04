@@ -1,11 +1,27 @@
-import { Environment } from "@marcbachmann/cel-js";
-import { Stream } from "@telorun/sdk";
-import { CEL_FUNCTIONS, type CelHandlers } from "./catalog.js";
-import { assertCelValueIdentity, SDK_CEL_VALUE_CLASSES } from "./value-identity.js";
+/**
+ * The two environments, now built on `@telorun/cel`.
+ *
+ * **The dialect is no longer declared here.** Telo's 67 functions and their 86 signatures
+ * ship inside the engine as data plus implementations, registered through the very
+ * `registerFunction` a host uses, so this package no longer carries a catalog table of its
+ * own: `registerFunctionCatalog` is what the dialect IS, and `functionCatalog()` is the one
+ * listing surface `telo cel functions` reads. What is left here is the pair of environments
+ * and the host handlers — the only part that was ever this package's.
+ *
+ * A second engine reproduces the two separately, so they stay named separately:
+ * `buildCelLanguageEnvironment()` is CEL under Telo's options and nothing else, and
+ * `buildCelEnvironment(handlers?)` is the dialect built on it.
+ */
+import {
+  CelEnvironment,
+  functionCatalog,
+  registerFunctionCatalog,
+  type CelCatalogHandlers,
+} from "@telorun/cel";
 
-export type { CelHandlers } from "./catalog.js";
-
-assertCelValueIdentity(SDK_CEL_VALUE_CLASSES);
+/** The nine functions the host answers for. The engine's own seam, re-exported so a
+ *  consumer naming it does not have to name the engine. */
+export type CelHandlers = CelCatalogHandlers;
 
 const stub = (name: string) => () => {
   throw new Error(
@@ -14,6 +30,14 @@ const stub = (name: string) => () => {
   );
 };
 
+/**
+ * What a host-backed function does where the host supplied nothing.
+ *
+ * The engine's own answer for a missing handler is the `unbound_function` error VALUE,
+ * naming the function — which is what an analyzer wants, since it never evaluates. These
+ * throw instead, keeping the message this package has always produced for a caller that
+ * built an analyzer-only environment and then evaluated through it.
+ */
 const STUB_HANDLERS: CelHandlers = {
   sha256: stub("sha256"),
   md5: stub("md5"),
@@ -26,94 +50,47 @@ const STUB_HANDLERS: CelHandlers = {
   joinPath: stub("joinPath"),
 };
 
-/** Build a CEL `Environment` with Telo's stdlib. Every function comes from the
- *  single-source catalog (`CEL_FUNCTIONS`), so registration and the documented
- *  surface (`telo cel functions`) can never drift. Always registers the same
- *  signatures (so `env.check()` succeeds for type-inference); the host-injected
- *  handlers govern what `hostBacked` functions do at runtime. Analyzer-only
- *  callers can omit handlers (the stubs throw if such a function is evaluated);
- *  runtime callers (kernel) supply real ones.
- *
- *  Also registers the `Stream` object type, backed by the `Stream` class from
- *  `@telorun/sdk`. CEL's type-checker rejects values whose constructor isn't
- *  Object/Map/Array/Set/registered; producers that need to expose an
- *  `AsyncIterable` through a stream-typed property must wrap the iterable in
- *  `new Stream(...)` so its constructor is the registered class. The type has
- *  no fields, so terminal access (passing the value through CEL) succeeds but
- *  member access raises a CEL error at runtime — matching the analyzer's
- *  static check on `x-telo-stream`-marked properties. */
-/** Expand a documented signature that may contain `type?`-marked optional
- *  parameters into one cel-js registration signature per arity. For example,
- *  `"nowIso(string?): string"` produces `["nowIso(): string",
- *  "nowIso(string): string"]`. Required parameters must precede optional ones.
- *  Returns `[signature]` unchanged when no `?` is present or the signature
- *  cannot be parsed. */
-export function deriveSignatures(signature: string): string[] {
-  const m = signature.match(/^(\w+)\((.*?)\):\s*(.+)$/);
-  if (!m) return [signature];
-  const name = m[1]!;
-  const paramsStr = m[2]!.trim();
-  const returnType = m[3]!.trim();
-  if (!paramsStr.includes("?")) return [signature];
-
-  const params = paramsStr.split(",").map((p) => p.trim());
-  const required: string[] = [];
-  const optional: string[] = [];
-  for (const p of params) {
-    if (p.endsWith("?")) {
-      optional.push(p.slice(0, -1));
-    } else {
-      if (optional.length > 0) return [signature];
-      required.push(p);
-    }
-  }
-  if (optional.length === 0) return [signature];
-
-  return Array.from({ length: optional.length + 1 }, (_, i) => {
-    const allParams = [...required, ...optional.slice(0, i)];
-    return `${name}(${allParams.join(", ")}): ${returnType}`;
-  });
-}
-
-/** cel-go defaults HomogeneousAggregateLiterals OFF: heterogeneous list/map
- *  literals unify to `dyn` rather than erroring. cel-js flips that default to
- *  strict; we align with cel-go so manifests (dyn-heavy: request, rows, …)
- *  don't hit false positives the runtime evaluates fine. */
+/**
+ * cel-go defaults HomogeneousAggregateLiterals OFF: heterogeneous list/map literals unify
+ * to `dyn` rather than erroring, which is what a manifest needs (`request`, rows, …).
+ * `unlistedVariablesAreDyn` is on because a host types only part of what a site may read,
+ * and optional types are on because the manifest surface uses them.
+ */
 const ENVIRONMENT_OPTIONS = {
   unlistedVariablesAreDyn: true,
   enableOptionalTypes: true,
   homogeneousAggregateLiterals: false,
 } as const;
 
-/** The environment before any Telo function is registered — i.e. exactly
- *  cel-js's own built-ins. Documentation needs to tell the two apart, and
- *  subtracting by signature TEXT does not work: cel-js normalizes a declared
- *  `list` to `list<dyn>`, so the catalog's documented spelling and the
- *  registered one differ for a third of the entries. Asking for the base set
- *  directly needs no matching at all. */
-export function celBuiltinFunctions(): ReturnType<Environment["getDefinitions"]>["functions"] {
-  return buildCelLanguageEnvironment().getDefinitions().functions;
+/**
+ * The bare CEL language under Telo's options: the standard library and nothing else — no
+ * catalog, no `Stream`. The dialect is built on it, and the language conformance vectors
+ * run against it.
+ */
+export function buildCelLanguageEnvironment(): CelEnvironment {
+  return new CelEnvironment(ENVIRONMENT_OPTIONS);
 }
 
-/** The bare CEL language under Telo's options: cel-js's built-ins and nothing
- *  else — no catalog, no `Stream`. The dialect is built on it, and the
- *  language conformance vectors (`templating/cel-conformance/`) run against it. */
-export function buildCelLanguageEnvironment(): Environment {
-  return new Environment(ENVIRONMENT_OPTIONS);
+/**
+ * Every function the LANGUAGE declares, for documentation that must tell the language and
+ * the dialect apart. Subtracting by signature text does not work — a declared `list` is
+ * normalized — so the base set is asked for directly.
+ */
+export function celBuiltinFunctions(): ReturnType<CelEnvironment["definitions"]>["functions"] {
+  return buildCelLanguageEnvironment().definitions().functions;
 }
 
-export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): Environment {
-  const h: CelHandlers = { ...STUB_HANDLERS, ...handlers };
-  let env = buildCelLanguageEnvironment();
-  for (const fn of CEL_FUNCTIONS) {
-    const impl = fn.build(h);
-    // `register` lists one cel-js signature per arity (overloaded functions).
-    // When absent, `deriveSignatures` expands `type?` optional-param notation
-    // into one registration per arity — so `nowIso(string?): string` registers
-    // both `nowIso(): string` and `nowIso(string): string` automatically.
-    for (const sig of fn.register ?? deriveSignatures(fn.signature)) {
-      env = env.registerFunction(sig, impl);
-    }
-  }
-  return env.registerType("Stream", Stream as unknown as new (...args: unknown[]) => unknown);
+/** Telo's dialect: the language, the function catalog, and the live `Stream` type. */
+export function buildCelEnvironment(handlers: Partial<CelHandlers> = {}): CelEnvironment {
+  const environment = buildCelLanguageEnvironment();
+  registerFunctionCatalog(environment, { handlers: { ...STUB_HANDLERS, ...handlers } });
+  // A live handle: `dyn` underneath with no conversion and no member, so reading anything
+  // off one is refused at check. It needs no constructor — identity by class is what the
+  // engine replaced, and at runtime a stream is whatever the producer handed over.
+  return environment.registerType({ name: "Stream", base: "dyn" });
+}
+
+/** The dialect's functions as the one listing surface answers them. */
+export function celFunctionCatalog(): ReturnType<typeof functionCatalog> {
+  return functionCatalog();
 }

@@ -1,6 +1,18 @@
-import { Duration, InvokeError, type KindRef, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
+import {
+  celDurationFromNanos,
+  durationNanos,
+  isCelDuration,
+  InvokeError,
+  type KindRef,
+  type ResourceContext,
+  type ResourceInstance,
+} from "@telorun/sdk";
 import { Journal, type JournalSettings } from "./journal.js";
 import { type JournalStore, isJournalStore } from "./journal-store-contract.js";
+
+/** A duration is nanosecond-precise and carries no methods — it is identified by a type
+ *  key, not by a class — so milliseconds are read off its total and built back from one. */
+const NANOS_PER_MILLISECOND = 1_000_000n;
 
 /** The writer timeout a journal applies when `writerTimeout:` is omitted. */
 const DEFAULT_WRITER_TIMEOUT_MS = 30_000;
@@ -14,10 +26,10 @@ interface JournalResource {
 }
 
 function milliseconds(value: unknown, field: string, label: string): number {
-  if (!(value instanceof Duration)) {
+  if (!isCelDuration(value)) {
     throw new InvokeError("ERR_INVALID_VALUE", `${label}: '${field}' must be a duration.`);
   }
-  return Number(value.getMilliseconds());
+  return Number(durationNanos(value) / NANOS_PER_MILLISECOND);
 }
 
 /** A retention field in milliseconds; undefined when omitted. */
@@ -60,9 +72,9 @@ class JournalProvider extends Journal implements ResourceInstance {
   snapshot(): Record<string, unknown> {
     const { retentionMs, markerRetentionMs, writerTimeoutMs } = this.settings;
     return {
-      ...(retentionMs === undefined ? {} : { retention: Duration.fromMilliseconds(retentionMs) }),
-      markerRetention: Duration.fromMilliseconds(markerRetentionMs),
-      writerTimeout: Duration.fromMilliseconds(writerTimeoutMs),
+      ...(retentionMs === undefined ? {} : { retention: celDurationFromNanos(BigInt(retentionMs) * NANOS_PER_MILLISECOND) }),
+      markerRetention: celDurationFromNanos(BigInt(markerRetentionMs) * NANOS_PER_MILLISECOND),
+      writerTimeout: celDurationFromNanos(BigInt(writerTimeoutMs) * NANOS_PER_MILLISECOND),
     };
   }
 }

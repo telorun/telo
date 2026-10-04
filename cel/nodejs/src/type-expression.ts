@@ -9,8 +9,10 @@
  *
  * A bare capital letter is a type **parameter**, which is how a signature says "the
  * same type here and there". A name the host registered as a nominal type resolves
- * to it; any other name is refused rather than guessed, because a misspelled type in
- * a signature would otherwise register a function nothing can call.
+ * to it; any other name is refused rather than guessed — as a
+ * {@link CelUnknownTypeNameError}, which a caller holding the name's source may turn
+ * into a verdict — because a misspelled type in a signature would otherwise register a
+ * function nothing can call.
  */
 
 import type { CelType, PrimitiveName } from "./cel-type.js";
@@ -37,6 +39,26 @@ export class CelTypeExpressionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CelTypeExpressionError";
+  }
+}
+
+/**
+ * A well-formed type expression naming a type nothing is registered under.
+ *
+ * It is **not** a `CelTypeExpressionError`, and the split is the whole point: that error
+ * is about text this grammar cannot read, while this one is about a name the HOST and its
+ * own registry disagree about. A caller that holds where the name was written can turn it
+ * into a ranged verdict instead of a crash — which is what a namespace declaration built
+ * out of a host's data does — and a caller that cannot still lets it fly.
+ */
+export class CelUnknownTypeNameError extends Error {
+  /** The name nothing is registered under. */
+  readonly typeName: string;
+
+  constructor(typeName: string) {
+    super(`no type is registered under the name ${JSON.stringify(typeName)}`);
+    this.name = "CelUnknownTypeNameError";
+    this.typeName = typeName;
   }
 }
 
@@ -150,7 +172,7 @@ class TypeReader {
     if (PARAMETER.test(name)) return this.noArguments(name, args, parameterOf(name));
     const nominal = this.resolveNominal?.(name, args);
     if (nominal) return nominal;
-    throw new CelTypeExpressionError(`no type is registered under the name ${JSON.stringify(name)}`);
+    throw new CelUnknownTypeNameError(name);
   }
 
   private noArguments(name: string, args: readonly CelType[], type: CelType): CelType {

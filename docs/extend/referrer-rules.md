@@ -134,6 +134,15 @@ would silently never see a declaration. It also requires `referrer:`: without a
 kind there is nothing to check the pointer against. Both are
 `REFERRER_RULE_INVALID` at the kind that wrote the rule.
 
+### A refused reference binds nothing, and reports nothing
+
+Where an entry's reference names a resource of a kind its slot does not accept,
+the referrer is already refused at that very slot (`REFERENCE_KIND_MISMATCH`) and
+the condition would compare a shape it was never shown. The rule does not run and
+**nothing about it is reported** — not even a skip, because coverage did not vary
+invisibly: a second diagnostic would blame the kind's author for the manifest
+author's mistake.
+
 The check is Liskov in both directions. The filter is usually an abstract (one
 rule serving every backend) while the collection is declared by the backends that
 implement it, so a pointer resolving on any candidate resolves the rule.
@@ -180,7 +189,8 @@ nothing.
 Identical to resource rules, and for the same reasons: `condition` is TRUE when
 the rule **holds**; a `hostBacked` or non-deterministic function is refused at
 the kind; a rule that throws is a defect in the rule, not in the manifest it ran
-against; and each rule gets 50 ms per resource. See
+against, reported once per rule for the whole analysis; and each rule gets 50 ms
+per resource. See
 [Resource rules](./resource-rules.md#restrictions).
 
 Guard optional fields — `has(referrer.openapi)`, `referrer.?tls.orValue(false)` —
@@ -218,7 +228,7 @@ completion or hover — so the strict half reports it while the rule keeps worki
 | Code | Severity | Means |
 | --- | --- | --- |
 | `REFERRER_RULE_VIOLATED` | the rule's `severity` | a referrer broke the rule; reported on the **referrer**, `data.path` anchors the slot |
-| `REFERRER_RULE_INVALID` | error | the rule itself is malformed, names an unresolvable `referrer:`, throws, or exceeded its budget |
+| `REFERRER_RULE_INVALID` | error for a malformed declaration, and for an evaluation failure in a rule this workspace declares; warning for an evaluation failure in a dependency's | the rule itself is malformed, names an unresolvable `referrer:`, throws, or exceeded its budget |
 | `REFERRER_RULE_SKIPPED` | information | the rule could not run for this referrer |
 | `REFERRER_RULE_UNEXERCISED` | information | the rule never ran anywhere |
 
@@ -231,10 +241,18 @@ the author remembering to write it into their prose.
 
 A **violation** is a fact about the referrer's data, so it is reported only when
 that manifest belongs to the workspace being checked — a dependency's manifest is
-not yours to fix. A **defect in the rule** is anchored on the declaring
-definition, and downgraded to a warning when that definition belongs to a
-published dependency, since an error there would block `telo check` on a line you
-cannot change.
+not yours to fix.
+
+An **evaluation-time defect in the rule** — it threw, or it exhausted its budget
+— is reported **once per rule per analysis**, anchored where the reader can act
+on it, with its severity following from whether that reader can fix it: a
+**warning** at the `imports:` entry that brought the declaring kind in for a
+dependency's kind, and an **error** at the rule's own declaration
+(`schema.x-telo-referrer-rules[<n>]`) for one of this workspace's own modules,
+where the reader is the author and a rule that cannot run is checking nothing.
+The message names the first referrer it was seen at, as the example. Per
+referrer, one upstream defect produced 107 diagnostics across 99 lines, every one
+pointing at a line the reader does not own and cannot fix.
 
 ## Keep the runtime guard
 

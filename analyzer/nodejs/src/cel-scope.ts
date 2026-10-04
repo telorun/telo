@@ -20,7 +20,7 @@
  * what moved is the answer both halves need first.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import {
   bindingContextProperties,
@@ -32,6 +32,7 @@ import {
   buildImportInputCelEnvironment,
   buildParameterCelEnvironment,
   buildTypedCelEnvironment,
+  registerModuleNamespaces,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { celEvalModeAt, type CelEvalSites, kindCelEvalSites } from "./eval-paths.js";
@@ -422,7 +423,7 @@ export function withBindingNames(
  */
 export interface CelScope {
   /** The environment typed for this expression's path. */
-  env: Environment;
+  env: CelEnvironment;
   /** The resolved `x-telo-context` schema merged with the kernel globals, or
    *  null when no context applied (the environment alone types the site). */
   contextSchema: Record<string, any> | null;
@@ -458,7 +459,7 @@ export interface CelScope {
  *  contributes, gathered once per analysis. */
 export interface CelScopeInputs {
   /** The base (untyped) CEL environment. */
-  celEnv: Environment;
+  celEnv: CelEnvironment;
   defs: DefinitionRegistry;
   aliases: AliasResolver;
   scopes: ModuleScopes;
@@ -504,7 +505,7 @@ export interface CelSiteRef {
 const NO_MODULE_CALL_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 
 export class CelScopeResolver {
-  private readonly typedEnvByManifest = new Map<ResourceManifest, Environment>();
+  private readonly typedEnvByManifest = new Map<ResourceManifest, CelEnvironment>();
 
   /** Per-resource state, replaced at each `enterResource`. */
   private stepContext: Record<string, any> | undefined;
@@ -658,8 +659,15 @@ export class CelScopeResolver {
       moduleManifest,
     } = this.inputs;
 
+    const functions = this.inputs.moduleFunctions;
+    const resolved = (qualified: string) => {
+      const resolution = functions?.resolve(m, qualified);
+      return resolution?.status === "resolved" ? resolution : undefined;
+    };
+    const moduleNames = moduleCallNamesOf(this.inputs.moduleCallNames ?? NO_MODULE_CALL_NAMES, m);
+
     const cached = contextSchema === null ? this.typedEnvByManifest.get(m) : undefined;
-    let env: Environment;
+    let env: CelEnvironment;
     if (cached) {
       env = cached;
     } else if (parameterScope) {
@@ -680,17 +688,23 @@ export class CelScopeResolver {
     } else {
       env = buildTypedCelEnvironment(celEnv, m, contextSchema ?? undefined, moduleManifest);
     }
-    if (contextSchema === null && !cached) this.typedEnvByManifest.set(m, env);
+    if (!cached) {
+      // The module's own names are NAMESPACES on the environment the site is
+      // read against, which is what turns `Billing.total(x)` into a qualified
+      // call as it is READ — the engine resolves it there, never afterwards.
+      registerModuleNamespaces(env, moduleNames, (receiver) =>
+        (functions?.callablesThrough(m, receiver) ?? []).map((entry) => ({
+          name: entry.name,
+          celType: entry.function.celType,
+        })),
+      );
+      if (contextSchema === null) this.typedEnvByManifest.set(m, env);
+    }
 
-    const functions = this.inputs.moduleFunctions;
-    const resolved = (qualified: string) => {
-      const resolution = functions?.resolve(m, qualified);
-      return resolution?.status === "resolved" ? resolution : undefined;
-    };
     return {
       env,
       contextSchema,
-      moduleNames: moduleCallNamesOf(this.inputs.moduleCallNames ?? NO_MODULE_CALL_NAMES, m),
+      moduleNames,
       moduleCallType: (qualified) => resolved(qualified)?.celType,
       moduleCallResult: (qualified) => resolved(qualified)?.returns,
       moduleCallFlags: (qualified) => this.inputs.callableFlags?.ofCall(m, qualified),

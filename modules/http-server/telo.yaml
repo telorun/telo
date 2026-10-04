@@ -33,7 +33,14 @@ requires:
   # `openSpan`'s W3C carrier, which an older kernel ignores and so roots every
   # trace, and the controllers import `errorTypeOf` from the runtime's SDK, which
   # 0.103.2 does not export (its load fails; verified by execution).
-  telo: ">=0.104.0"
+  #
+  # 0.108.0: the request binding copies a framework's own bag into a plain
+  # object, asking the value domain with `isCelRecord`. `@telorun/sdk` is
+  # external and collapsed to the runtime's own copy, so on a runtime whose SDK
+  # does not export that name it is undefined and a route dies at creation with
+  # a TypeError naming this module. Verified by execution: the published 0.107.0
+  # tarball exports no such name.
+  telo: ">=0.108.0"
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
   # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the

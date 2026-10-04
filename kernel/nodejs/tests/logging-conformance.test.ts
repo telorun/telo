@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import {
-  Duration,
-  UnsignedInt,
+  celDurationFromNanos,
+  celMapFromEntries,
+  celUint,
   formatUnixNano,
   parseLevelName,
   pinoLevelForSeverity,
@@ -457,9 +458,10 @@ describe("vector 18 — encoding golden files", () => {
   it("writes a CEL timestamp, duration, uint and int-keyed map attribute in plain form", () => {
     const { attributes } = normalizeAttributes({
       at: new Date("2026-01-15T07:30:00Z"),
-      took: new Duration(5400n, 0),
-      count: new UnsignedInt(7n),
-      byInt: new Map([[1n, "one"]]),
+      took: celDurationFromNanos(5400n * 1_000_000_000n),
+      count: celUint(7n),
+      // The value domain's own map container — a host `Map` is not a CEL map.
+      byInt: celMapFromEntries([1n, "one"]),
     } as never);
     expect(encodeJson(baseRecord({ attributes }))).toContain(
       '"attributes":{"at":"2026-01-15T07:30:00.000Z","byInt":{"1":"one"},"count":7,"took":"5400s"}',

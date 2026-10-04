@@ -36,6 +36,7 @@ import Fastify, {
   type FastifyServerOptions,
 } from "fastify";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
+import { requestBag } from "./request-binding.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import {
@@ -677,8 +678,9 @@ class HttpServer implements ResourceInstance {
           request: {
             method: request.method,
             path: request.url,
-            params: request.params || {},
-            query: request.query || {},
+            // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
+            params: requestBag(request.params),
+            query: requestBag(request.query),
             headers: normalizedHeaders,
             body: request.body,
           },
@@ -767,7 +769,7 @@ class HttpServer implements ResourceInstance {
       const requestContext = {
         request: {
           headers: normalizeHeaders(request.headers),
-          query: request.query ?? {},
+          query: requestBag(request.query),
           path: request.url,
           method: request.method,
           ip: request.ip,

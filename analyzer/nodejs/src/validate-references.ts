@@ -1,6 +1,9 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
+import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths.js";
+import { computedRefSlots } from "./ref-slot-computed.js";
+import type { DefResolver } from "./extends-resolution.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import {
   isInlineResource,
@@ -410,6 +413,24 @@ export function validateReferences(
     }
     return callableSlots;
   };
+  /** The positions `REF_SLOT_COMPUTED` claims for a resource — an expression at
+   *  or above a reference slot in a field the kind evaluates at creation — read
+   *  from the one reader that owns the rule, so this pass cannot report a
+   *  second, shapeless verdict about the same line. Memoized per resource: the
+   *  walk below visits every site of it. */
+  let computedRefSlotPaths: ReadonlySet<string> = new Set();
+  const readComputedRefSlots = (r: ResourceManifest, definition?: ResourceDefinition): void => {
+    const resolveDef: DefResolver = (k) =>
+      registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
+    const sites = definition ? kindCelEvalSites(definition, resolveDef) : NO_CEL_EVAL_SITES;
+    computedRefSlotPaths = new Set(
+      computedRefSlots(
+        registry.referencePositions(r, aliases, aliasesByModule),
+        (path) => celEvalModeAt(sites, path) === "compile",
+      ).map((slot) => slot.path),
+    );
+  };
+
   /** The nominal verdict at a slot, overruled where a function stands in for a
    *  callable abstract by structure — and explained by it where it does not. */
   const kindVerdict = (
@@ -432,6 +453,7 @@ export function validateReferences(
     localResources,
     registry,
     {
+      onResourceEnter: (e) => readComputedRefSlots(e.source as ResourceManifest, e.definition),
       onRef: (e) => {
         const r = e.source;
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
@@ -538,6 +560,15 @@ export function validateReferences(
         ) {
           return;
         }
+
+        // An EXPRESSION at the slot has its own verdict, from the one reader
+        // that owns the rule (`REF_SLOT_COMPUTED`): it says why a reference
+        // cannot come out of CEL and what to write instead, where "must have
+        // string 'kind' and 'name' fields" describes the value's shape and
+        // leaves an author with nothing to do. Only the positions that verdict
+        // claims are skipped, so an expression at a slot the kind never
+        // evaluates still lands here.
+        if (computedRefSlotPaths.has(concretePath)) return;
 
         // 1. Structural check
         if (typeof refVal.kind !== "string" || typeof refVal.name !== "string") {

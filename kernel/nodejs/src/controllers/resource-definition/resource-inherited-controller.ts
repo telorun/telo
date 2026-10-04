@@ -5,7 +5,7 @@ import type {
   ResourceDefinition,
   ResourceInstance,
 } from "@telorun/sdk";
-import { isCompiledValue } from "@telorun/sdk";
+import { isCelRecord, isCompiledValue } from "@telorun/sdk";
 import { effectiveAuthorSchema, reachSites, SELF_PATH, type DefResolver } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { declaringContextOf } from "./declaring-context.js";
@@ -80,7 +80,10 @@ function expandMappingNode(
     return ctx.expandWith(value, scope);
   }
   if (Array.isArray(value)) return value.map((v) => expandMappingNode(v, scope, ctx));
-  if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
+  // Asked of the value DOMAIN, never of the prototype: a branded CEL value (an
+  // instant, a duration, a uint) is a plain object, and rebuilding one from its
+  // entries drops the symbol its brand lives under.
+  if (value !== null && typeof value === "object" && isCelRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       out[k] = expandMappingNode(v, scope, ctx);

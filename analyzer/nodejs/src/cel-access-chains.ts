@@ -7,46 +7,30 @@
  * edge, and the kernel needs it to know who becomes invalid when a resource is
  * rebuilt — so the extraction is here rather than in either of them.
  *
- * The expensive half is the CEL environment used to parse, which is built once
- * per process and evaluates nothing.
+ * The expensive half is reading the expression, which evaluates nothing and
+ * needs no environment — a tree is a function of the text and of the names
+ * that denote modules at the site.
  */
-import { ParseError } from "@marcbachmann/cel-js";
 import {
   celExpressionsOf,
   extractAccessChains,
   isTaggedSentinel,
-  resolveModuleCalls,
+  moduleCallNames as qualifiedCallNames,
   walkCelExpressions,
 } from "@telorun/templating";
 import type { ResourceManifest } from "@telorun/sdk";
-import { buildCelEnvironment } from "./cel-environment.js";
-
-let parseEnv: ReturnType<typeof buildCelEnvironment> | undefined;
-
-/** The parsed tree of `source`, or undefined when it does not parse — a syntax
- *  error is the engine pass's to report, not this one's. Only the parser's own
- *  refusal is read that way; anything else is a defect and propagates. */
-function parsedAst(source: string) {
-  parseEnv ??= buildCelEnvironment();
-  try {
-    return parseEnv.parse(source).ast;
-  } catch (error) {
-    if (error instanceof ParseError) return undefined;
-    throw error;
-  }
-}
+import { parseCelSource } from "./cel-environment.js";
 
 /** Access chains an expression reads, or none when it does not parse.
  *
  *  `moduleNames` are the declaring module's CEL call names: a call whose
- *  receiver is one of them names a MODULE, so it contributes no chain. A caller
- *  that omits them reads such a receiver as a root, which is the honest answer
- *  when nothing has said which names are modules. */
+ *  receiver is one of them names a MODULE, so it is resolved as the expression
+ *  is read and contributes no chain. A caller that omits them reads such a
+ *  receiver as a root, which is the honest answer when nothing has said which
+ *  names are modules. */
 export function accessChains(source: string, moduleNames?: ReadonlySet<string>): string[][] {
-  const ast = parsedAst(source);
-  if (!ast) return [];
-  resolveModuleCalls(ast, moduleNames);
-  return extractAccessChains(ast);
+  const parsed = parseCelSource(source, moduleNames);
+  return parsed ? extractAccessChains(parsed.root) : [];
 }
 
 /** The qualified module calls an expression makes, or none when it does not
@@ -61,8 +45,8 @@ export function moduleCallsInSource(source: string, moduleNames: ReadonlySet<str
     }
   }
   if (!spellsOne) return [];
-  const ast = parsedAst(source);
-  return ast ? resolveModuleCalls(ast, moduleNames) : [];
+  const parsed = parseCelSource(source, moduleNames);
+  return parsed ? [...qualifiedCallNames(parsed.root)] : [];
 }
 
 /** One qualified module call and the path of the value that makes it. */

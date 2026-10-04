@@ -10,24 +10,24 @@ const env = buildCelEnvironment();
 
 describe("extractAccessChains", () => {
   it("returns a single chain for a dotted member access", () => {
-    const ast = env.parse("request.query.name").ast;
+    const ast = env.parse("request.query.name").root;
     expect(extractAccessChains(ast)).toEqual([["request", "query", "name"]]);
   });
 
   it("treats bracket index access as a sentinel `[*]` segment", () => {
-    const ast = env.parse("items[0].value").ast;
+    const ast = env.parse("items[0].value").root;
     expect(extractAccessChains(ast)).toEqual([["items", "[*]", "value"]]);
   });
 
   it("returns multiple chains when several roots are referenced", () => {
-    const ast = env.parse("variables.a + secrets.b").ast;
+    const ast = env.parse("variables.a + secrets.b").root;
     const chains = extractAccessChains(ast);
     expect(chains).toContainEqual(["variables", "a"]);
     expect(chains).toContainEqual(["secrets", "b"]);
   });
 
   it("ignores variables bound by comprehension macros", () => {
-    const ast = env.parse("items.filter(x, x.valid)").ast;
+    const ast = env.parse("items.filter(x, x.valid)").root;
     const chains = extractAccessChains(ast);
     // `items` should be captured; `x.valid` is bound to the macro and skipped.
     expect(chains).toContainEqual(["items"]);
@@ -35,17 +35,16 @@ describe("extractAccessChains", () => {
   });
 
   it("descends through unary operators (`!`, `-`)", () => {
-    // cel-js represents unary ops with a single ASTNode in `args`, not a
-    // one-element array — the walker has to handle both shapes or chains
-    // hidden under `!(...)` slip past static analysis.
-    const negated = env.parse("!steps.parseManifest.result").ast;
+    // A unary node holds its single `operand` — the walker has to descend
+    // through it or chains hidden under `!(...)` slip past static analysis.
+    const negated = env.parse("!steps.parseManifest.result").root;
     expect(extractAccessChains(negated)).toEqual([["steps", "parseManifest", "result"]]);
-    const negative = env.parse("-counter.value").ast;
+    const negative = env.parse("-counter.value").root;
     expect(extractAccessChains(negative)).toEqual([["counter", "value"]]);
   });
 
   it("recovers chains from inside optional access (`.?`, `[?]`)", () => {
-    const ast = env.parse("steps.x.result.docs[?0].?kind.orValue('')").ast;
+    const ast = env.parse("steps.x.result.docs[?0].?kind.orValue('')").root;
     const chains = extractAccessChains(ast);
     expect(chains).toContainEqual(["steps", "x", "result", "docs"]);
   });
@@ -137,7 +136,7 @@ describe("findNullableAccessIssues", () => {
       },
     },
   };
-  const issues = (expr: string) => findNullableAccessIssues(env.parse(expr).ast, schema);
+  const issues = (expr: string) => findNullableAccessIssues(env.parse(expr).root, schema);
 
   it("flags an unguarded member access on a nullable value", () => {
     expect(issues("error.code")).toEqual([{ path: "error", member: "code" }]);
@@ -181,7 +180,7 @@ describe("findNullableAccessIssues", () => {
 
 describe("cel.bind", () => {
   it("scopes the bound name to the body and leaves init in the enclosing scope", () => {
-    const ast = env.parse("cel.bind(c, request.q, string(c) + item.x)").ast;
+    const ast = env.parse("cel.bind(c, request.q, string(c) + item.x)").root;
     const chains = extractAccessChains(ast);
     expect(chains).toContainEqual(["request", "q"]);
     expect(chains).toContainEqual(["item", "x"]);
@@ -189,23 +188,23 @@ describe("cel.bind", () => {
   });
 
   it("does not emit a chain for the `cel` pseudo-receiver", () => {
-    const ast = env.parse("cel.bind(c, 150, string(c))").ast;
+    const ast = env.parse("cel.bind(c, 150, string(c))").root;
     expect(extractAccessChains(ast)).not.toContainEqual(["cel"]);
   });
 
   it("still reports a name used in init, which the binding does not cover", () => {
-    const ast = env.parse("cel.bind(c, c, string(c))").ast;
+    const ast = env.parse("cel.bind(c, c, string(c))").root;
     expect(extractAccessChains(ast)).toEqual([["c"]]);
   });
 
   it("resolves both names when binds are nested", () => {
-    const ast = env.parse("cel.bind(a, variables.x, cel.bind(b, a + 1, string(a) + string(b)))").ast;
+    const ast = env.parse("cel.bind(a, variables.x, cel.bind(b, a + 1, string(a) + string(b)))").root;
     const chains = extractAccessChains(ast);
     expect(chains).toEqual([["variables", "x"]]);
   });
 
   it("does not treat a bound name as a nullable context field", () => {
-    const ast = env.parse("cel.bind(e, 1, error.code)").ast;
+    const ast = env.parse("cel.bind(e, 1, error.code)").root;
     const schema = {
       type: "object",
       properties: { error: { type: ["object", "null"], properties: { code: { type: "string" } } } },
@@ -214,7 +213,7 @@ describe("cel.bind", () => {
   });
 
   it("carries a null guard from init into the body", () => {
-    const ast = env.parse("error == null ? '' : cel.bind(c, 1, error.code)").ast;
+    const ast = env.parse("error == null ? '' : cel.bind(c, 1, error.code)").root;
     const schema = {
       type: "object",
       properties: { error: { type: ["object", "null"], properties: { code: { type: "string" } } } },

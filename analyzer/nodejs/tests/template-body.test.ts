@@ -253,7 +253,7 @@ describe("template body: reference slots inside entries", () => {
         ],
       }),
     );
-    const computed = codes(diags, "TEMPLATE_REF_COMPUTED");
+    const computed = codes(diags, "REF_SLOT_COMPUTED");
     expect(computed.map((d) => d.data?.path)).toEqual([
       "resources[0].connection",
       "resources[1].routes",
@@ -292,7 +292,7 @@ describe("template body: reference slots inside entries", () => {
         ],
       }),
     );
-    expect(codes(diags, "TEMPLATE_REF_COMPUTED").map((d) => d.data?.path)).toEqual([
+    expect(codes(diags, "REF_SLOT_COMPUTED").map((d) => d.data?.path)).toEqual([
       "resources[0].children[0].children[0]",
     ]);
   });
@@ -327,7 +327,7 @@ describe("template body: reference slots inside entries", () => {
         ],
       }),
     );
-    expect(codes(diags, "TEMPLATE_REF_COMPUTED")).toEqual([]);
+    expect(codes(diags, "REF_SLOT_COMPUTED")).toEqual([]);
   });
 
   it("leaves a published dependency's body alone", () => {

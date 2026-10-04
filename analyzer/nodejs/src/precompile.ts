@@ -1,5 +1,5 @@
-import type { Environment } from "@marcbachmann/cel-js";
-import { isCompiledValue, RuntimeError } from "@telorun/sdk";
+import type { CelEnvironment } from "@telorun/cel";
+import { isCelRecord, isCompiledValue, RuntimeError } from "@telorun/sdk";
 import {
   defaultRegistry,
   interpolationShape,
@@ -20,7 +20,7 @@ import { untaggedInterpolationMessage } from "./untagged-interpolation.js";
  */
 export function precompileDoc(
   doc: unknown,
-  env: Environment,
+  env: CelEnvironment,
   moduleNames?: ReadonlySet<string>,
   path = "",
 ): unknown {
@@ -75,9 +75,12 @@ export function precompileDoc(
   if (Array.isArray(doc)) {
     return doc.map((item, i) => precompileDoc(item, env, moduleNames, `${path}[${i}]`));
   }
-  // Only recurse into plain objects. Class instances (ResourceInstance, ScopeHandle, etc.)
-  // are returned as-is — their prototype methods must not be lost by object reconstruction.
-  if (doc !== null && typeof doc === "object" && Object.getPrototypeOf(doc) === Object.prototype) {
+  // Only recurse into containers. A class instance (ResourceInstance, ScopeHandle)
+  // is returned as-is — its prototype methods must not be lost by object
+  // reconstruction — and so is a branded CEL value, which is a PLAIN object:
+  // rebuilding one from its entries drops the symbol its brand lives under, so
+  // the question is asked of the value domain rather than of the prototype.
+  if (isCelRecord(doc)) {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(doc as Record<string, unknown>)) {
       result[k] = precompileDoc(v, env, moduleNames, path ? `${path}.${k}` : k);

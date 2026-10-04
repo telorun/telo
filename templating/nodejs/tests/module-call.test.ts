@@ -1,17 +1,26 @@
+import { celMapFromEntries } from "@telorun/cel";
 import { describe, expect, it } from "vitest";
 import { buildCelEnvironment } from "../src/cel/environment.js";
 import { extractAccessChains } from "../src/cel/analyze.js";
-import { compileExpression } from "../src/cel/compile.js";
+import { compileExpression, namespaceDispatchOf } from "../src/cel/compile.js";
 import { auditCalls } from "../src/cel/diagnose.js";
-import {
-  moduleCallOf,
-  resolveModuleCalls,
-  MODULE_CALL_DISPATCH_KEY,
-} from "../src/cel/module-call.js";
+import { moduleCallNames, MODULE_CALL_DISPATCH_KEY } from "../src/cel/module-call.js";
 import { analyzeCelExpression } from "../src/engines/cel.js";
 
 const celEnv = buildCelEnvironment();
 const NAMES = new Set(["Billing", "Self", "Checkout", "Telo"]);
+
+/**
+ * A site's environment: the declaring module's own names registered as namespaces, which is
+ * what turns `Billing.format(x)` into a qualified call as the expression is READ. The
+ * namespaces are open because whether such a call reaches a function is the host's verdict,
+ * never this engine's — which is the split every reader below is written against.
+ */
+function siteEnv() {
+  const env = celEnv.clone();
+  for (const name of NAMES) env.registerNamespace(name, [], { open: true });
+  return env;
+}
 
 describe("resolution on the parsed tree", () => {
   it("carries every qualified call and nothing a bare name reaches", () => {
@@ -24,29 +33,25 @@ describe("resolution on the parsed tree", () => {
 
   it("leaves the author's text and spans untouched", () => {
     const source = "'x' + Billing.format(price)";
+    const env = siteEnv();
     const compiled = compileExpression(source, celEnv, NAMES);
     expect(compiled.source).toBe(source);
-    const call = auditCalls(source, celEnv.parse(source).ast, celEnv).calls[0];
     const resolved = analyzeCelExpression(source, {
-      celEnv,
+      celEnv: env,
       contextSchema: null,
       moduleNames: NAMES,
     }).calls.find((c) => c.moduleCall);
     expect(source.slice(resolved!.start, resolved!.end)).toBe("Billing.format(price)");
-    // The unresolved reading of the same text spans the same range — resolution
-    // changes what the node MEANS, never where it is.
-    expect([call!.start, call!.end]).toEqual([resolved!.start, resolved!.end]);
   });
 
   it("is a call on a bare name only — a field access receiver is an ordinary method call", () => {
-    const ast = celEnv.parse("a.Billing.format(x)").ast;
-    expect(resolveModuleCalls(ast, NAMES)).toEqual([]);
+    expect(moduleCallNames(siteEnv().parse("a.Billing.format(x)").root)).toEqual([]);
   });
 
   it("carries an argument's member chain, but not one rooted at a name the expression binds", () => {
     const source = "request.lines.map(item, Billing.total(item.net, request.rate))";
     const call = analyzeCelExpression(source, {
-      celEnv,
+      celEnv: siteEnv(),
       contextSchema: null,
       moduleNames: NAMES,
     }).calls.find((c) => c.moduleCall);
@@ -56,9 +61,8 @@ describe("resolution on the parsed tree", () => {
   it("keeps the receiver out of the access chains and the root references", () => {
     const compiled = compileExpression("Billing.format(price.amount)", celEnv, NAMES);
     expect(compiled.refs).toEqual(["price"]);
-    const ast = celEnv.parse("Billing.format(price.amount)").ast;
-    resolveModuleCalls(ast, NAMES);
-    expect(extractAccessChains(ast)).toEqual([["price", "amount"]]);
+    const root = siteEnv().parse("Billing.format(price.amount)").root;
+    expect(extractAccessChains(root)).toEqual([["price", "amount"]]);
   });
 });
 
@@ -77,7 +81,33 @@ describe("dispatch", () => {
     expect(compiled.call({ [MODULE_CALL_DISPATCH_KEY]: table })).toBe("#1!2");
     // The key is outside CEL's identifier grammar, so no expression can read
     // the table — the dispatcher is unreachable from source.
-    expect(() => celEnv.parse(`${MODULE_CALL_DISPATCH_KEY}`)).toThrow();
+    expect(celEnv.parse(MODULE_CALL_DISPATCH_KEY).diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("hands a module function its arguments in the form a HOST holds them", () => {
+    // A `Telo.Callable`'s parameters are AJV-checked against its declared `params`, and a
+    // controller's own `call` reads them as data — neither reads the value domain's map
+    // container, so a map literal written at a call site arrived as `{"entries":{}}` and
+    // was refused for a property its author had written.
+    const compiled = compileExpression(
+      "Self.seal({'query': 'q', 'page': 1}, [{'a': 2}])",
+      celEnv,
+      NAMES,
+    );
+    let seen: readonly unknown[] | undefined;
+    const table = new Map<string, (args: readonly unknown[]) => unknown>([
+      [
+        "Self.seal",
+        (args) => {
+          seen = args;
+          return "ok";
+        },
+      ],
+    ]);
+    expect(compiled.call({ [MODULE_CALL_DISPATCH_KEY]: table })).toBe("ok");
+    expect(seen).toEqual([{ query: "q", page: 1n }, [{ a: 2n }]]);
+    // The plain form, not the carrier: `Object.keys` of the container answered `entries`.
+    expect(Object.keys(seen?.[0] as object)).toEqual(["query", "page"]);
   });
 
   it("reaches the table through a comprehension and a cel.bind overlay", () => {
@@ -98,9 +128,8 @@ describe("dispatch", () => {
 describe("what the catalog says about a module call", () => {
   it("does not classify one against the catalog, and attaches no catalog flag", () => {
     const source = "Billing.format(1) + Checkout.now()";
-    const ast = celEnv.parse(source).ast;
-    resolveModuleCalls(ast, NAMES);
-    const audit = auditCalls(source, ast, celEnv);
+    const env = siteEnv();
+    const audit = auditCalls(source, env.parse(source).root, env);
     expect(audit.diagnostics).toEqual([]);
     expect(audit.calls.map((c) => [c.name, c.moduleCall, c.deterministic])).toEqual([
       ["Billing.format", true, undefined],
@@ -112,7 +141,7 @@ describe("what the catalog says about a module call", () => {
 describe("names a module call takes over", () => {
   const analyze = (expr: string, moduleNames = NAMES) =>
     analyzeCelExpression(expr, {
-      celEnv,
+      celEnv: siteEnv(),
       contextSchema: null,
       rootsDeclared: false,
       moduleNames,
@@ -150,54 +179,42 @@ describe("names a module call takes over", () => {
   it("withholds that advice from a receiver that could not name a module", () => {
     expect(unknownIdentifier("dbb.query(1)", typeLevel)?.message).not.toContain("imports:");
   });
-});
 
-/**
- * The cel-js internals resolution rests on. None is in the package's typings,
- * so an upgrade can move any of them without a type error anywhere — these
- * assertions are what turns that into a failing test.
- */
-describe("cel-js internals guard", () => {
-  it("redirects check and evaluation through setMeta('macro')", () => {
-    const parsed = celEnv.parse("Billing.format(x)");
-    resolveModuleCalls(parsed.ast, NAMES);
-    const call = moduleCallOf(parsed.ast);
-    expect(call?.qualified).toBe("Billing.format");
-    // `check()` on the REWRITTEN tree — `celEnv.check(source)` re-parses and
-    // would type a tree with no rewrite in it.
-    expect(parsed.check()).toEqual({ valid: true, type: "dyn" });
+  /**
+   * The ADAPTER itself, not one caller's use of it. Every host that binds a
+   * dispatch table reaches the engine through this one function — the kernel
+   * while evaluating, and the analyzer while evaluating a rule condition or a
+   * pure function body at `telo check`. A second adapter answered the filter
+   * identically and the conversion differently, so a map literal at a call site
+   * was the value domain's container at check and a plain object at run: a
+   * divergence by construction, in the direction nothing reports.
+   */
+  it("hands a module function plain host values, whichever host bound the table", () => {
+    // Asked of the adapter directly — the shape the analyzer reaches it in,
+    // evaluating a rule condition or a pure function body at `telo check`.
+    const direct: unknown[] = [];
+    const dispatch = namespaceDispatchOf(
+      new Map([["Billing.total", (args: readonly unknown[]) => (direct.push(...args), 1n)]]),
+    );
+    dispatch?.("Billing", "total")?.([celMapFromEntries(["a", 1n])] as never);
+
+    // And through a compiled value — the shape the kernel reaches it in.
+    const compiled: unknown[] = [];
+    compileExpression("Billing.total({'a': 1})", celEnv, NAMES).call?.({
+      [MODULE_CALL_DISPATCH_KEY]: new Map([
+        ["Billing.total", (args: readonly unknown[]) => (compiled.push(...args), 1n)],
+      ]),
+    });
+
+    // Both arrivals are the plain object, never the value domain's container.
+    for (const seen of [direct, compiled]) {
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toEqual({ a: 1n });
+      expect(Object.getPrototypeOf(seen[0])).toBe(Object.prototype);
+    }
   });
 
-  it("types a module call from the resolver hook, and its arguments in place", () => {
-    const parsed = celEnv.parse("Billing.format(1) + 'x'");
-    resolveModuleCalls(parsed.ast, NAMES, () => "string");
-    expect(parsed.check()).toEqual({ valid: true, type: "string" });
-  });
-
-  it("is synchronous once checked when every argument is", () => {
-    const typed = buildCelEnvironment().registerVariable("n", "int");
-    const parsed = typed.parse("Billing.format(n + 1)");
-    resolveModuleCalls(parsed.ast, NAMES);
-    expect(parsed.check().valid).toBe(true);
-    expect(parsed.ast.maybeAsync).toBe(false);
-  });
-
-  it("checks arguments in the current context", () => {
-    const typed = buildCelEnvironment().registerVariable("n", "string");
-    const parsed = typed.parse("Billing.format(n + 1)");
-    resolveModuleCalls(parsed.ast, NAMES);
-    expect(parsed.check().valid).toBe(false);
-  });
-
-  it("resolves a call the parser expanded as a comprehension macro as the module call it names", () => {
-    // `map` expands into an `alternate`, which cel-js consults before `macro`. A
-    // call whose arguments do not fit the macro never parses at all, which is why
-    // no function may take a macro's name.
-    const parsed = celEnv.parse("Billing.map(i, i)");
-    expect(resolveModuleCalls(parsed.ast, NAMES)).toEqual(["Billing.map"]);
-    const table = new Map<string, (args: readonly unknown[]) => unknown>([
-      ["Billing.map", (args) => args.length],
-    ]);
-    expect(parsed({ i: 1n, [MODULE_CALL_DISPATCH_KEY]: table })).toBe(2);
+  it("binds nothing when no table was bound, so the call is refused before its arguments run", () => {
+    expect(namespaceDispatchOf(undefined)).toBeUndefined();
   });
 });

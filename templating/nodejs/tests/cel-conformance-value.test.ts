@@ -1,27 +1,42 @@
-import { Optional } from "@marcbachmann/cel-js";
-import { Duration, UnsignedInt } from "@telorun/sdk";
+import {
+  celDurationFromNanos,
+  celNone,
+  celSome,
+  celTimestamp,
+  celTypeValue,
+  celUint,
+  celMapFromEntries,
+} from "@telorun/cel";
 import { describe, expect, it } from "vitest";
-import { buildCelLanguageEnvironment } from "../src/cel/environment.js";
-import { conformanceValueCodec, unpairedSurrogateAt } from "./cel-conformance-value.js";
+import {
+  conformanceValueCodec,
+  unpairedSurrogateAt,
+  type ConformanceValue,
+} from "./cel-conformance-value.js";
 
-const env = buildCelLanguageEnvironment();
-const codec = conformanceValueCodec(env);
-const type = (name: string) => env.evaluate(name);
+const codec = conformanceValueCodec();
 
-describe("conformance value", () => {
-  it.each([
+const written: [string, unknown, ConformanceValue][] = [
     ["int64 beyond 2^53", -(2n ** 63n), { $telo: "int", value: "-9223372036854775808" }],
-    ["uint", new UnsignedInt(2n ** 64n - 1n), { $telo: "uint", value: "18446744073709551615" }],
+    ["uint", celUint(2n ** 64n - 1n), { $telo: "uint", value: "18446744073709551615" }],
     ["NaN", Number.NaN, { $telo: "double", value: "NaN" }],
     ["Infinity", Number.POSITIVE_INFINITY, { $telo: "double", value: "Infinity" }],
     ["-Infinity", Number.NEGATIVE_INFINITY, { $telo: "double", value: "-Infinity" }],
     ["-0", -0, { $telo: "double", value: "-0" }],
     ["bytes", new Uint8Array([0, 255]), { $telo: "bytes", value: "AP8" }],
-    ["timestamp", new Date("2009-02-13T23:31:30Z"), { $telo: "google.protobuf.Timestamp", value: "2009-02-13T23:31:30.000Z" }],
-    ["duration", new Duration(90n, 5), { $telo: "google.protobuf.Duration", value: "90.000000005s" }],
+    [
+      "timestamp",
+      celTimestamp(1234567890n),
+      { $telo: "google.protobuf.Timestamp", value: "2009-02-13T23:31:30Z" },
+    ],
+    [
+      "duration",
+      celDurationFromNanos(90_000_000_005n),
+      { $telo: "google.protobuf.Duration", value: "90.000000005s" },
+    ],
     [
       "map with non-string keys",
-      new Map<unknown, unknown>([[2n, "b"], [true, "t"], [new UnsignedInt(1n), "a"]]),
+      celMapFromEntries([2n, "b", true, "t", celUint(1n), "a"]),
       {
         $telo: "map",
         value: [
@@ -31,17 +46,35 @@ describe("conformance value", () => {
         ],
       },
     ],
-    ["map holding the $cel key", { $cel: "type", value: "int" }, { $telo: "map", value: [["$cel", "type"], ["value", "int"]] }],
+    [
+      "map holding the $cel key",
+      { $cel: "type", value: "int" },
+      { $telo: "map", value: [["$cel", "type"], ["value", "int"]] },
+    ],
     [
       "nested type and optional forms",
-      { b: Optional.of([type("int"), Optional.none()]), a: Optional.of(Optional.of(type("google.protobuf.Duration"))) },
+      {
+        b: celSome([celTypeValue("int"), celNone()]),
+        a: celSome(celSome(celTypeValue("google.protobuf.Duration"))),
+      },
       {
         a: { $cel: "optional", value: { $cel: "optional", value: { $cel: "type", value: "google.protobuf.Duration" } } },
         b: { $cel: "optional", value: [{ $cel: "type", value: "int" }, { $cel: "optional" }] },
       },
     ],
-    ["the null type", type("null_type"), { $cel: "type", value: "null" }],
-  ])("writes and reads back %s", (name, value, encoded) => {
+  ["the null type", celTypeValue("null_type"), { $cel: "type", value: "null" }],
+  // The frame carries nanoseconds, so an instant finer than a millisecond is
+  // written rather than refused — it used to be, because the encoding went
+  // through a host date.
+  [
+    "an instant finer than a millisecond",
+    celTimestamp(0n, 1),
+    { $telo: "google.protobuf.Timestamp", value: "1970-01-01T00:00:00.000000001Z" },
+  ],
+];
+
+describe("conformance value", () => {
+  it.each(written)("writes and reads back %s", (name, value, encoded) => {
     expect(codec.encode(value)).toStrictEqual(encoded);
     expect(codec.encode(codec.decode(encoded))).toStrictEqual(encoded);
   });
@@ -55,7 +88,6 @@ describe("conformance value", () => {
   });
 
   it.each([
-    ["a type the environment does not name", { $cel: "type", value: "Nope" }],
     ["a tagged map whose keys are plain", { $telo: "map", value: [["a", 1]] }],
     ["a plain map out of key order", { b: 1, a: 2 }],
   ])("refuses to read %s", (name, node) => {
@@ -73,6 +105,6 @@ describe("a conformance file holding an unpaired surrogate", () => {
   });
 
   it("is not found where every surrogate is paired", () => {
-    expect(unpairedSurrogateAt(JSON.parse('{"rows":[{"source":"\\ud83d\\ude00 \ud83d\ude00"}]}'))).toBeUndefined();
+    expect(unpairedSurrogateAt(JSON.parse('{"rows":[{"source":"\\ud83d\\ude00 😀"}]}'))).toBeUndefined();
   });
 });

@@ -15,7 +15,7 @@
  * precision in the VIEW, which can only affect a bound check at the extremes.
  */
 
-import { markExactRendering, UnsignedInt } from "@telorun/sdk";
+import { isCelRecord, isCelUint, markExactRendering } from "@telorun/sdk";
 import type { DataValidationCxt } from "ajv/dist/types/index.js";
 
 /** The validation context of a view: where its root sits, so a root the view
@@ -58,7 +58,7 @@ function render(value: unknown, container: object, key: string | number): unknow
   // A CEL uint is an integer to JSON Schema — what a `Telo.Uint64` output
   // normalizes to must still pass `type: integer` at the next slot.
   const exact =
-    typeof value === "bigint" ? value : value instanceof UnsignedInt ? value.value : undefined;
+    typeof value === "bigint" ? value : isCelUint(value) ? value.value : undefined;
   if (exact !== undefined) {
     const rendered = Number(exact);
     if (!Number.isSafeInteger(rendered)) markExactRendering(container, key);
@@ -75,7 +75,10 @@ function render(value: unknown, container: object, key: string | number): unknow
     return changed ? items : value;
   }
   if (!value || typeof value !== "object") return value;
-  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  // A CEL value is opaque here, not a container: it is a PLAIN object carrying a type
+  // key, so testing the prototype alone would descend into a duration or a uint and rebuild
+  // it without its brand — which `instanceof` used to prevent by accident.
+  if (!isCelRecord(value)) return value;
   let changed = false;
   const out: Record<string, unknown> = {};
   for (const [entryKey, item] of Object.entries(value as Record<string, unknown>)) {

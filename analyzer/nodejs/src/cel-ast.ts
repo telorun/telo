@@ -1,12 +1,12 @@
-import { ParseError, parse, type ASTNode as CelJsNode } from "@marcbachmann/cel-js";
+import { parseExpression, type CelNode as EngineNode } from "@telorun/cel";
 import { defaultRegistry, readInterpolationHoles } from "@telorun/templating";
 import { scalarRawOffsets } from "./scalar-offsets.js";
 
 /** A CEL body that does not parse — an author's expression, mid-typing or
  *  malformed. Owned here so a consumer can be lenient about author syntax
  *  (navigation, completion) without also swallowing a defect in the wrapper
- *  below, and so the third-party parser's error type stays internal, exactly as
- *  its AST type does. */
+ *  below, and so the engine's own diagnostic stays internal, exactly as its
+ *  tree type does. */
 export class CelParseError extends Error {
   constructor(
     readonly source: string,
@@ -17,22 +17,21 @@ export class CelParseError extends Error {
   }
 }
 
-/** Parse a CEL body, translating the parser's own failure into `CelParseError`.
- *  Anything else (a bug in `wrapCelAst`) propagates untouched. */
-function parseCel(source: string): CelJsNode {
-  try {
-    return parse(source).ast;
-  } catch (error) {
-    if (error instanceof ParseError) throw new CelParseError(source, error);
-    throw error;
-  }
+/** Parse a CEL body, turning the engine's syntax diagnostic into
+ *  `CelParseError`. Reading never throws, so the diagnostic is what says the
+ *  tree is incomplete; anything thrown here is a defect and propagates. */
+function parseCel(source: string): EngineNode {
+  const parsed = parseExpression(source);
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic) throw new CelParseError(source, new Error(diagnostic.message));
+  return parsed.root;
 }
 
-/** Read-only CEL expression tree owned by the analyzer. The third-party
- *  `@marcbachmann/cel-js` `ASTNode` stays an internal detail — `wrapCelAst`
- *  translates it into this union so no external AST type leaks through the
- *  public surface (full symmetry with the YAML `AstNode` decision). Every
- *  `range` is `[start, end]` in DOCUMENT offsets. */
+/** Read-only CEL expression tree owned by the analyzer. The engine's own
+ *  `CelNode` stays an internal detail — `wrapCelAst` translates it into this
+ *  union so no external tree type leaks through the public surface (full
+ *  symmetry with the YAML `AstNode` decision). Every `range` is
+ *  `[start, end]` in DOCUMENT offsets. */
 export type CelNode =
   | { kind: "literal"; range: [number, number]; value: unknown }
   | { kind: "ident"; range: [number, number]; name: string }
@@ -93,117 +92,114 @@ export interface CelSegment {
   ast(): CelNode;
 }
 
-const BINARY_OPS = new Set([
-  "!=",
-  "==",
-  "in",
-  "+",
-  "-",
-  "*",
-  "/",
-  "%",
-  "<",
-  "<=",
-  ">",
-  ">=",
-  "||",
-  "&&",
-]);
-
 /** Where an offset into a CEL body lands in the document: the body's start
  *  added to it, or a mapping through the scalar's own escapes. */
 export type CelOffsetMap = number | ((offset: number) => number);
 
-/** Maps a `@marcbachmann/cel-js` node into the analyzer `CelNode`, translating
- *  each node's segment-relative `start`/`end` to absolute document offsets
- *  through `segmentStart`. */
-export function wrapCelAst(node: CelJsNode, segmentStart: CelOffsetMap): CelNode {
-  const range = abs(node, segmentStart);
-  const op = node.op;
-  const args = node.args as unknown;
+/** Maps an engine `CelNode` into the analyzer `CelNode`, translating each
+ *  node's segment-relative range to absolute document offsets through
+ *  `segmentStart`. */
+export function wrapCelAst(node: EngineNode, segmentStart: CelOffsetMap): CelNode {
+  const range = abs(node.range, segmentStart);
+  const wrap = (child: EngineNode) => wrapCelAst(child, segmentStart);
 
-  if (op === "value") return { kind: "literal", range, value: args };
-  if (op === "id") return { kind: "ident", range, name: String(args) };
-  if (op === "." || op === ".?") {
-    const [target, property] = args as [CelJsNode, string];
-    return {
-      kind: "member",
-      range,
-      target: wrapCelAst(target, segmentStart),
-      property,
-      propertyRange: [range[1] - property.length, range[1]],
-      optional: op === ".?",
-    };
+  switch (node.kind) {
+    case "literal":
+      // A `null` literal carries no value of its own; it is spelled as the
+      // value it denotes so a consumer reading `value` sees what was written.
+      return {
+        kind: "literal",
+        range,
+        value: node.literal.type === "null" ? null : node.literal.value,
+      };
+    case "ident":
+      return { kind: "ident", range, name: node.name };
+    case "select":
+      // `fieldRange` is the engine's own span for the member name, so a rename
+      // edits the right text through `.?field` and a backtick-quoted name
+      // alike — both of which a length subtracted from the node's end missed.
+      return {
+        kind: "member",
+        range,
+        target: wrap(node.operand),
+        property: node.field,
+        propertyRange: abs(node.fieldRange, segmentStart),
+        optional: node.optional,
+      };
+    case "index":
+      return {
+        kind: "index",
+        range,
+        target: wrap(node.operand),
+        index: wrap(node.index),
+        optional: node.optional,
+      };
+    case "call":
+      return { kind: "call", range, name: node.name, args: node.args.map(wrap) };
+    case "receiverCall":
+      return {
+        kind: "methodCall",
+        range,
+        name: node.name,
+        receiver: wrap(node.receiver),
+        args: node.args.map(wrap),
+      };
+    case "qcall":
+      // A call on a name that denotes a MODULE. The segments a scalar yields
+      // are read with no namespace set, so one reaches here only if a caller
+      // wraps a tree resolved elsewhere; it reads as the method call its
+      // source text is.
+      return {
+        kind: "methodCall",
+        range,
+        name: node.name,
+        receiver: {
+          kind: "ident",
+          range: abs(node.namespaceRange, segmentStart),
+          name: node.namespace,
+        },
+        args: node.args.map(wrap),
+      };
+    case "list":
+      return { kind: "list", range, items: node.elements.map((element) => wrap(element.value)) };
+    case "map":
+      return {
+        kind: "map",
+        range,
+        entries: node.entries.map((entry) => ({ key: wrap(entry.key), value: wrap(entry.value) })),
+      };
+    case "conditional":
+      return {
+        kind: "ternary",
+        range,
+        cond: wrap(node.condition),
+        then: wrap(node.whenTrue),
+        else: wrap(node.whenFalse),
+      };
+    case "unary":
+      return { kind: "unary", range, op: node.operator, operand: wrap(node.operand) };
+    case "binary":
+      return {
+        kind: "binary",
+        range,
+        op: node.operator,
+        left: wrap(node.left),
+        right: wrap(node.right),
+      };
+    case "unparsed":
+      // The hole error recovery leaves where no expression could be read.
+      // Surfaced as a literal so consumers can still hit-test the range rather
+      // than crash on an unmapped node.
+      return { kind: "literal", range, value: undefined };
   }
-  if (op === "[]" || op === "[?]") {
-    const [target, index] = args as [CelJsNode, CelJsNode];
-    return {
-      kind: "index",
-      range,
-      target: wrapCelAst(target, segmentStart),
-      index: wrapCelAst(index, segmentStart),
-      optional: op === "[?]",
-    };
-  }
-  if (op === "call") {
-    const [name, callArgs] = args as [string, CelJsNode[]];
-    return { kind: "call", range, name, args: callArgs.map((a) => wrapCelAst(a, segmentStart)) };
-  }
-  if (op === "rcall") {
-    const [name, receiver, callArgs] = args as [string, CelJsNode, CelJsNode[]];
-    return {
-      kind: "methodCall",
-      range,
-      name,
-      receiver: wrapCelAst(receiver, segmentStart),
-      args: callArgs.map((a) => wrapCelAst(a, segmentStart)),
-    };
-  }
-  if (op === "list") {
-    return { kind: "list", range, items: (args as CelJsNode[]).map((a) => wrapCelAst(a, segmentStart)) };
-  }
-  if (op === "map") {
-    return {
-      kind: "map",
-      range,
-      entries: (args as [CelJsNode, CelJsNode][]).map(([k, v]) => ({
-        key: wrapCelAst(k, segmentStart),
-        value: wrapCelAst(v, segmentStart),
-      })),
-    };
-  }
-  if (op === "?:") {
-    const [cond, then, els] = args as [CelJsNode, CelJsNode, CelJsNode];
-    return {
-      kind: "ternary",
-      range,
-      cond: wrapCelAst(cond, segmentStart),
-      then: wrapCelAst(then, segmentStart),
-      else: wrapCelAst(els, segmentStart),
-    };
-  }
-  if (op === "!_" || op === "-_") {
-    return { kind: "unary", range, op, operand: wrapCelAst(args as CelJsNode, segmentStart) };
-  }
-  if (BINARY_OPS.has(op)) {
-    const [left, right] = args as [CelJsNode, CelJsNode];
-    return {
-      kind: "binary",
-      range,
-      op,
-      left: wrapCelAst(left, segmentStart),
-      right: wrapCelAst(right, segmentStart),
-    };
-  }
-  // Unknown operator — surface it as a literal so consumers can still hit-test
-  // the range rather than crash on an unmapped node.
-  return { kind: "literal", range, value: undefined };
 }
 
-function abs(node: CelJsNode, segmentStart: CelOffsetMap): [number, number] {
-  const r = node.range ?? { start: node.start, end: node.end };
+function abs(
+  nodeRange: readonly [number, number],
+  segmentStart: CelOffsetMap,
+): [number, number] {
   const at = typeof segmentStart === "number" ? (o: number) => o + segmentStart : segmentStart;
-  return [at(r.start), at(r.end)];
+  return [at(nodeRange[0]), at(nodeRange[1])];
 }
 
 /** Parse `source` and wrap it, tolerating a trailing partial member/index

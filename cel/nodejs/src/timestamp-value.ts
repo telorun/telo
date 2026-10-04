@@ -47,6 +47,22 @@ export function celTimestamp(
   return { [CEL_VALUE_TYPE]: "google.protobuf.Timestamp", seconds: whole, nanos: Number(rest) };
 }
 
+/**
+ * An instant from epoch MILLISECONDS — the mirror of `celDurationFromNanos` for a host
+ * clock reading (`Date.now()`, a driver's epoch-millis column), or the range error.
+ *
+ * It exists so that a host never has to reach for its own date type to say "now": the
+ * instance type is seconds plus nanos, and a millisecond reading is the one other shape
+ * a host actually holds. A fractional reading keeps its sub-millisecond part.
+ */
+export function celTimestampFromMillis(millis: number, range?: SourceRange): CelTimestamp | CelError {
+  if (!Number.isFinite(millis)) {
+    return celError("invalid_conversion", "timestamp out of range", range);
+  }
+  const whole = Math.floor(millis / 1000);
+  return celTimestamp(BigInt(whole), Math.round((millis - whole * 1000) * 1_000_000), range);
+}
+
 /** The instant's nanoseconds since the epoch — what arithmetic and ordering compare. */
 export function timestampNanos(value: CelTimestamp): bigint {
   return value.seconds * NANOS_PER_SECOND + BigInt(value.nanos);

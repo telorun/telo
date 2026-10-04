@@ -36,7 +36,7 @@ source: ./__fixtures__/guard-request-headers.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "int == string"
+      message: 'no "==" is declared over int, string'
 ---
 kind: Assert.Manifest
 metadata: { name: testUncoveredThrow }

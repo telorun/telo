@@ -17,6 +17,7 @@ it("compares teloInlines with the workspace packages a metafile holds", () => {
         "../editor-protocol/src/index.ts",
         "../ide-support/src/index.ts",
         "../../analyzer/nodejs/src/index.ts",
+        "../../cel/nodejs/src/index.ts",
         "../../sdk/nodejs/src/index.ts",
         "../../templating/nodejs/src/index.ts",
         "../../node_modules/.pnpm/yaml@2.8.3/node_modules/yaml/dist/index.js",

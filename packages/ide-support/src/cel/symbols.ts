@@ -1,3 +1,4 @@
+import { formatType } from "@telorun/cel";
 /**
  * **What a name means inside a CEL expression.**
  *
@@ -85,10 +86,11 @@ function contextProperties(scope: CelScope): Record<string, any> {
  */
 export function celRootSymbols(scope: CelScope): CelSymbol[] {
   const out = new Map<string, CelSymbol>();
-  for (const variable of scope.env.getDefinitions().variables) {
+  for (const variable of scope.env.definitions().variables) {
     out.set(variable.name, {
       name: variable.name,
-      type: variable.type,
+      // The listing carries the type's own spelling; a `CelType` is the engine's object.
+      type: formatType(variable.type),
       description: variable.description ?? undefined,
     });
   }
@@ -170,7 +172,7 @@ export function celSymbolAt(scope: CelScope, parts: string[]): CelSymbol | undef
  */
 export function celFunctions(scope: CelScope): CelFunctionSymbol[] {
   const byKey = new Map<string, CelFunctionSymbol>();
-  for (const fn of scope.env.getDefinitions().functions) {
+  for (const fn of scope.env.definitions().functions) {
     const key = `${fn.receiverType ?? ""}.${fn.name}`;
     const existing = byKey.get(key);
     if (existing) {

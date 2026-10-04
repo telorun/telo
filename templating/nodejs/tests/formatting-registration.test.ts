@@ -24,9 +24,9 @@ describe("formatting registration", () => {
   });
 
   it("types a calendar shift as a timestamp, so it composes with timestamp arithmetic", () => {
-    expect(env.check("startOfMonth(timestamp(0))").type).toBe("google.protobuf.Timestamp");
-    expect(env.check("addMonths(timestamp(0), 1)").type).toBe("google.protobuf.Timestamp");
-    expect(env.check("string(startOfMonth(timestamp(0)))").type).toBe("string");
+    expect(env.check("startOfMonth(timestamp(0))").typeName).toBe("google.protobuf.Timestamp");
+    expect(env.check("addMonths(timestamp(0), 1)").typeName).toBe("google.protobuf.Timestamp");
+    expect(env.check("string(startOfMonth(timestamp(0)))").typeName).toBe("string");
   });
 
   it("registers both arities of round", () => {

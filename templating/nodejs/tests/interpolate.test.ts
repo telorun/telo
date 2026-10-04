@@ -59,12 +59,12 @@ describe("interpolate engine", () => {
     expect(
       run("${{ n }} at ${{ t }} after ${{ d }}: ${{ b }} ${{ ok }}", {
         n: 42n,
-        t: new Date("2026-01-02T03:04:05Z"),
+        t: celEnv.evaluate("timestamp('2026-01-02T03:04:05Z')"),
         d: celEnv.evaluate("duration('90m')"),
         b: new TextEncoder().encode("hi"),
         ok: true,
       }),
-    ).toBe("42 at 2026-01-02T03:04:05.000Z after 5400s: hi true");
+    ).toBe("42 at 2026-01-02T03:04:05Z after 5400s: hi true");
   });
 
   it("refuses a hole that is null at runtime, naming it", () => {

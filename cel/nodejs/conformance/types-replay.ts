@@ -5,11 +5,27 @@
  * The driver is `dialect-replay.ts`, and the type definitions themselves are its parameter
  * — no host type name is written in this package. What is written here is only the
  * positions this file needs.
+ *
+ * **The `presence_*` rows are this engine's own answer, authored rather than recorded.**
+ * They pin what a presence-shaped read — `.?`, `[?]`, `has()` — answers over every value
+ * that holds no members: absence at evaluation, and a `CEL_TYPE_ERROR` at check wherever
+ * the operand's type is KNOWN to hold none, the `dyn` rows being the one place the
+ * question reaches the runtime. The authority is the optional library's, which this engine
+ * takes from cel-go whole: cel-go's attribute qualification answers "not found" for a
+ * receiver that is neither a mapper, a lister nor an indexer **whenever the read is a
+ * presence test**, and erroring instead is an explicitly named opt-in
+ * (`EnableErrorOnBadPresenceTest`) that Telo does not carry. The rows beside them record
+ * the two readings that are NOT loosened: the ordinary read of such a member
+ * (`types/dyn/ordinary_read`, `types/optional/ordinary_read_over_scalar`) and an unusable
+ * key in the presence form (`types/list/presence_unusable_key`).
  */
 
 import type { DialectCorrectionGroup, DialectExclusionGroup } from "./dialect-replay.js";
 
 export const TYPES_FILE = "types.json";
+
+/** How many rows the file holds, pinned as `CATALOG_ROWS` is and for the same reason. */
+export const TYPES_ROWS = 64;
 
 export const TYPES_CORRECTIONS: readonly DialectCorrectionGroup[] = [
   {

@@ -185,10 +185,9 @@ export function decodeConformanceValue(node: ConformanceValue): CelValue {
   if (Array.isArray(node)) return node.map((held) => decodeConformanceValue(held));
   if (Object.prototype.hasOwnProperty.call(node, CEL_TAG)) return decodeCel(node);
   if (Object.prototype.hasOwnProperty.call(node, FRAME_TAG)) return decodeFrame(node);
-  const pairs = Object.keys(node).map(
-    (key) => [key, decodeConformanceValue(node[key]!)] as [CelValue, CelValue],
-  );
-  return expectValue(celMapFromEntries(pairs));
+  const flat: CelValue[] = [];
+  for (const key of Object.keys(node)) flat.push(key, decodeConformanceValue(node[key]!));
+  return expectValue(celMapFromEntries(flat));
 }
 
 function decodeCel(node: { [key: string]: ConformanceValue }): CelValue {
@@ -207,13 +206,14 @@ function decodeFrame(node: { [key: string]: ConformanceValue }): CelValue {
   const payload = node.value;
   if (tag === "map") {
     if (!Array.isArray(payload)) throw new ConformanceValueError("a tagged map carries its pairs");
-    const pairs = payload.map((pair) => {
+    const flat: CelValue[] = [];
+    for (const pair of payload) {
       if (!Array.isArray(pair) || pair.length !== 2) {
         throw new ConformanceValueError("a tagged map's entry is a [key, value] pair");
       }
-      return [decodeConformanceValue(pair[0]!), decodeConformanceValue(pair[1]!)] as [CelValue, CelValue];
-    });
-    return expectValue(celMapFromEntries(pairs));
+      flat.push(decodeConformanceValue(pair[0]!), decodeConformanceValue(pair[1]!));
+    }
+    return expectValue(celMapFromEntries(flat));
   }
   if (typeof payload !== "string") {
     throw new ConformanceValueError(`the tag ${JSON.stringify(tag)} carries its payload as text`);

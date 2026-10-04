@@ -70,22 +70,27 @@
     {
       "name": "timestamp epoch",
       "value": { "timestamp": { "seconds": "0", "nanos": 0 } },
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"1970-01-01T00:00:00.000Z\"}"
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"1970-01-01T00:00:00Z\"}"
     },
     {
       "name": "timestamp before epoch",
       "value": { "timestamp": { "seconds": "-1", "nanos": 500000000 } },
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"1969-12-31T23:59:59.500Z\"}"
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"1969-12-31T23:59:59.5Z\"}"
+    },
+    {
+      "name": "timestamp to the nanosecond",
+      "value": { "timestamp": { "seconds": "1768462200", "nanos": 1 } },
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T07:30:00.000000001Z\"}"
     },
     {
       "name": "timestamp min",
       "value": { "timestamp": { "seconds": "-62135596800", "nanos": 0 } },
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"0001-01-01T00:00:00.000Z\"}"
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"0001-01-01T00:00:00Z\"}"
     },
     {
       "name": "timestamp max",
-      "value": { "timestamp": { "seconds": "253402300799", "nanos": 999000000 } },
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"9999-12-31T23:59:59.999Z\"}"
+      "value": { "timestamp": { "seconds": "253402300799", "nanos": 999999999 } },
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"9999-12-31T23:59:59.999999999Z\"}"
     },
     {
       "name": "duration zero",
@@ -191,7 +196,7 @@
           ]
         ]
       },
-      "frame": "{\"events\":[{\"at\":{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T09:30:00.250Z\"},\"size\":{\"$telo\":\"int\",\"value\":\"3\"}}],\"meta\":{\"$telo\":\"map\",\"value\":[[\"$telo\",\"not a tag\"]]}}"
+      "frame": "{\"events\":[{\"at\":{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T09:30:00.25Z\"},\"size\":{\"$telo\":\"int\",\"value\":\"3\"}}],\"meta\":{\"$telo\":\"map\",\"value\":[[\"$telo\",\"not a tag\"]]}}"
     }
   ],
   "undecodable": [
@@ -212,22 +217,22 @@
     { "name": "bytes nonzero trailing bits", "frame": "{\"$telo\":\"bytes\",\"value\":\"AB\"}", "path": "/value" },
     {
       "name": "timestamp with offset",
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T09:30:00.000+02:00\"}",
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T09:30:00+02:00\"}",
       "path": "/value"
     },
     {
-      "name": "timestamp without milliseconds",
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T07:30:00Z\"}",
+      "name": "timestamp trailing zero",
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T07:30:00.000Z\"}",
       "path": "/value"
     },
     {
-      "name": "timestamp with nanoseconds",
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T07:30:00.000000001Z\"}",
+      "name": "timestamp beyond the nanosecond",
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"2026-01-15T07:30:00.0000000001Z\"}",
       "path": "/value"
     },
     {
       "name": "timestamp year zero",
-      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"0000-12-31T23:59:59.000Z\"}",
+      "frame": "{\"$telo\":\"google.protobuf.Timestamp\",\"value\":\"0000-12-31T23:59:59Z\"}",
       "path": "/value"
     },
     { "name": "duration units", "frame": "{\"$telo\":\"google.protobuf.Duration\",\"value\":\"1h30m\"}", "path": "/value" },

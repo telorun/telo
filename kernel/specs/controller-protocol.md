@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-4`
+### 0.3 Generation `telo-5`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,15 +84,20 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generation `4` is the first generation this specification defines.** It is
-  the generation in which the C ABI carries this protocol's messages rather than
-  a contract of its own, and it is the value in
-  `sdk/controller-protocol/generation.json`.
-- **No artifact may declare `abi=telo-4` until the ABI carrier lands.** A
+- **Generation `4` is withdrawn, and nothing ever spoke it.** It was the first
+  generation this specification defined, and its value encoding named the typed
+  frame's millisecond timestamp payload. No carrier implemented it and no
+  artifact could declare it, so it is superseded rather than kept readable.
+- **Generation `5` is the generation this specification defines.** It is the
+  generation in which the C ABI carries this protocol's messages rather than a
+  contract of its own; its value encoding is `durable-execution.md` §6's typed
+  frame, whose timestamp payload is RFC 3339 with a trimmed nanosecond fraction.
+  It is the value in `sdk/controller-protocol/generation.json`.
+- **No artifact may declare `abi=telo-5` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `4` does not retire `3`.
+  controller candidates valid: specifying `5` does not retire `3`.
 
 ### 0.4 Related specifications
 

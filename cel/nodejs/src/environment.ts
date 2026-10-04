@@ -37,7 +37,7 @@ import { environmentDigest } from "./environment-digest.js";
 import type { CelValue } from "./cel-value.js";
 import { CEL_VALUE_KEYS } from "./cel-value.js";
 import type { CelType } from "./cel-type.js";
-import { formatType } from "./cel-type.js";
+import { DYN, formatType } from "./cel-type.js";
 import { CelEngineError } from "./check-diagnostic.js";
 import type { CheckResult, NamespaceFunction } from "./checker.js";
 import { checkExpression } from "./checker.js";
@@ -182,6 +182,14 @@ export interface SchemaRegistrationReport {
  * by construction rather than by a flag: a declaration that carried parameters and asked for
  * them to be ignored would hold a list nothing reads, which no reader can tell from a list
  * that is simply wrong.
+ *
+ * **A type name this environment registers nothing under is accepted and reads `dyn`**, and
+ * every call to such a function carries a ranged `CEL_TYPE_ERROR` naming it. A declaration
+ * is a host's own data — a module function's declared result out of a manifest — so a typo
+ * in one is the host disagreeing with its own registry, which is reported where there is a
+ * range rather than thrown where there is none. A type registered AFTER a declaration naming
+ * it does not change that declaration: a declaration resolves its types once, when it is
+ * made.
  */
 export type NamespaceFunctionDeclaration = (
   | { readonly signature: string; readonly name?: never; readonly returns?: never }
@@ -443,8 +451,21 @@ export class CelEnvironment {
         ...(entry.hostBacked === undefined ? {} : { hostBacked: entry.hostBacked }),
         ...(entry.throws === undefined ? {} : { throws: entry.throws }),
       };
+      // A name this environment registers no type under is RECORDED and read as `dyn`,
+      // never thrown: a namespace declaration is a host's own data — a module function's
+      // declared result out of a manifest — so a typo there would otherwise be a crash
+      // with no line, and the consumer that knows where it was written is the one that
+      // can anchor the diagnostic. The checker reports it at each call.
+      const unregistered: string[] = [];
+      const resolver: NominalResolver = (named, args) => {
+        const resolved = this.nominalResolver(named, args);
+        if (resolved) return resolved;
+        if (!unregistered.includes(named)) unregistered.push(named);
+        return DYN;
+      };
+      const recorded = () => (unregistered.length > 0 ? { unregisteredTypes: [...unregistered] } : {});
       if (entry.signature !== undefined) {
-        const signature = parseSignature(entry.signature, this.nominalResolver);
+        const signature = parseSignature(entry.signature, resolver);
         if (signature.form !== "global") {
           throw new CelTypeRegistrationError(
             `a namespaced function is declared without a receiver: ${JSON.stringify(entry.signature)}`,
@@ -455,6 +476,7 @@ export class CelEnvironment {
           returns: signature.returns,
           parameters: signature.parameters,
           signature: formatSignature(signature),
+          ...recorded(),
           ...flags,
         });
         continue;
@@ -462,9 +484,8 @@ export class CelEnvironment {
       declared.set(entry.name, {
         name: entry.name,
         returns:
-          typeof entry.returns === "string"
-            ? parseTypeExpression(entry.returns, this.nominalResolver)
-            : entry.returns,
+          typeof entry.returns === "string" ? parseTypeExpression(entry.returns, resolver) : entry.returns,
+        ...recorded(),
         ...flags,
       });
     }

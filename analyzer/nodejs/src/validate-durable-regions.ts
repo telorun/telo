@@ -19,14 +19,9 @@
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue, VALUE_TYPES } from "@telorun/sdk";
-import {
-  auditCalls,
-  buildCelEnvironment,
-  isTaggedSentinel,
-  resolveModuleCalls,
-  celExpressionsOf,
-} from "@telorun/templating";
+import { auditCalls, buildCelEnvironment, isTaggedSentinel, celExpressionsOf } from "@telorun/templating";
 import type { CallGraph, CallGraphNode, StepGraphNode } from "./call-graph.js";
+import { moduleNamesEnvironment } from "./cel-environment.js";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
@@ -59,23 +54,21 @@ function impureCalls(
   moduleNames: ReadonlySet<string>,
   moduleCallFlags: (qualified: string) => CallableFlags | undefined,
 ): string[] {
-  let ast;
-  try {
-    ast = CEL_ENV.parse(source).ast;
-  } catch {
+  // Read against the module's own names, so a call written `Billing.now(x)`
+  // resolves to a module rather than inheriting the catalog `now()`'s flag.
+  // What a module function's determinism IS is derived from the callable it
+  // resolves to, and named by the chain to the leaf that decided it.
+  const env = moduleNamesEnvironment(CEL_ENV, moduleNames);
+  const parsed = env.parse(source);
+  if (parsed.diagnostics.length > 0) {
     // Unparseable CEL is `CEL_SYNTAX_ERROR`'s to report, and it will be, from
     // the pass that owns the expression. Reporting nothing here is right:
     // guessing at the calls in text that does not parse is exactly the
     // text-matching this replaced.
     return [];
   }
-  // Resolution first: a module call carries no catalog flag, so a call written
-  // `Billing.now(x)` must not inherit the catalog `now()`'s. What a module
-  // function's determinism IS is derived from the callable it resolves to, and
-  // named by the chain to the leaf that decided it.
-  resolveModuleCalls(ast, moduleNames);
   const labels: string[] = [];
-  for (const call of auditCalls(source, ast, CEL_ENV, moduleCallFlags).calls) {
+  for (const call of auditCalls(source, parsed.root, env, moduleCallFlags).calls) {
     if (call.deterministic !== false) continue;
     const label = call.moduleCall
       ? renderChain(moduleCallFlags(call.name)?.nondeterministicVia ?? [call.name])

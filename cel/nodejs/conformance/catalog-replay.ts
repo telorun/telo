@@ -20,6 +20,14 @@ import type { DialectCorrectionGroup, DialectExclusionGroup } from "./dialect-re
 
 export const CATALOG_FILE = "catalog.json";
 
+/**
+ * How many rows the file holds, **pinned**: a row that is added or removed fails the gate
+ * naming the count, exactly as an exclusion group's own count does at the language level.
+ * Without it a row could be deleted and every other number in the report would stay true —
+ * a removed row is the one change a per-row driver cannot see.
+ */
+export const CATALOG_ROWS = 178;
+
 export const CATALOG_CORRECTIONS: readonly DialectCorrectionGroup[] = [
   {
     cause: "string(timestamp) writes RFC 3339 with no fractional part for a whole second",

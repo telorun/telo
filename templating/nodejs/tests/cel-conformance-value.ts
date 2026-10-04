@@ -1,9 +1,35 @@
 /**
  * The conformance value (`templating/cel-conformance/README.md`): the typed frame
  * held as a JSON value, plus the `$cel` forms for a type and an optional.
+ *
+ * **The typed frame is still the writer**, which is the format's own rule — a row pins
+ * exactly what a host is handed, in the encoding every Telo boundary uses. What the engine
+ * swap changed is one representation: the CEL value domain's instant is a branded value
+ * carrying seconds and nanos, while the typed frame writes one from a `Date`. The encoding
+ * carries milliseconds and nothing finer, so the two are bridged here — an instant finer
+ * than a millisecond is refused rather than rounded, which is what the frame's own range
+ * refusals already do.
  */
-import { Optional, type Environment } from "@marcbachmann/cel-js";
-import { decodeTypedFrame, encodeTypedFrame, TYPED_FRAME_TAG, UnsignedInt } from "@telorun/sdk";
+import {
+  celMapFromEntries,
+  celNone,
+  celSome,
+  celTimestamp,
+  celTypeValue,
+  formatTimestamp,
+  isCelDuration,
+  isCelError,
+  isCelMap,
+  isCelOptional,
+  isCelRecord,
+  isCelTimestamp,
+  isCelTypeValue,
+  isCelUint,
+  timestampNanos,
+  type CelMapKey,
+  type CelValue,
+} from "@telorun/cel";
+import { decodeTypedFrame, encodeTypedFrame, TYPED_FRAME_TAG } from "@telorun/sdk";
 
 export type ConformanceValue =
   | null
@@ -21,6 +47,7 @@ export interface ConformanceValueCodec {
 }
 
 const CEL_TAG = "$cel";
+const NANOS_PER_MILLISECOND = 1_000_000;
 
 const UNPAIRED_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 
@@ -47,45 +74,51 @@ function unreadable(path: readonly string[], detail: string): Error {
   return new Error(`Cannot read a conformance value: '/${path.join("/")}' ${detail}.`);
 }
 
-/** Every type value `env` names, by the name cel-js prints: a type decodes to the
- *  instance the language itself hands out, since cel-js compares types by identity. */
-function namedTypes(env: Environment, typeClass: Function): Map<string, object> {
-  const types = new Map<string, object>();
-  const collect = (value: unknown) => {
-    if (value instanceof typeClass) types.set((value as { name: string }).name, value as object);
-    else if (value instanceof Map) value.forEach(collect);
-    else if (value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype) {
-      Object.values(value).forEach(collect);
-    }
-  };
-  for (const variable of env.getDefinitions().variables) collect(env.evaluate(variable.name));
-  return types;
+/** How a type value is spelled in the vectors, which is not how the engine names it. */
+const recordedTypeName = (name: string) => (name === "null_type" ? "null" : name);
+const engineTypeName = (recorded: string) => (recorded === "null" ? "null_type" : recorded);
+
+/**
+ * What the typed frame is handed is the CEL value itself.
+ *
+ * This used to convert on the way in — an instant to a `Date`, a map to a host `Map` — because
+ * the frame took those. It takes the value domain now and REFUSES both by name (a `Date` is
+ * "a host object outside the CEL value domain"; a host `Map` with `bigint` keys was a CEL map
+ * under the engine that was replaced, so a producer still building one is told rather than
+ * having its keys flattened to text). It also carries nanoseconds, so the millisecond-precision
+ * guard this function used to apply refused instants the frame can now write.
+ *
+ * Kept as a named step rather than inlined: a row hands a value to the frame, and that is the
+ * one place to say what crosses.
+ */
+function forFrame(value: unknown): unknown {
+  return value;
+}
+
+/** A value as the typed frame writes it — the text a handler row pins. */
+export function typedFrameText(value: unknown): string {
+  return encodeTypedFrame(forFrame(value));
 }
 
 function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function isPlainObject(value: object): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
+/** What makes two keys ONE key, as CEL equality does: an int and a uint of the same
+ *  number are one. The engine keys its own entries this way and deliberately exports no
+ *  rule for it, so a reader derives its own — which is what a port does too. */
 function mapKeyIdentity(key: unknown): string | undefined {
   if (typeof key === "string") return `s${key}`;
   if (typeof key === "boolean") return `b${key}`;
   if (typeof key === "bigint") return `n${key}`;
-  if (key instanceof UnsignedInt) return `n${key.valueOf()}`;
+  if (isCelUint(key)) return `n${key.value}`;
   return undefined;
 }
 
-export function conformanceValueCodec(env: Environment): ConformanceValueCodec {
-  const typeClass = (env.evaluate("int") as object).constructor;
-  const types = namedTypes(env, typeClass);
-
+export function conformanceValueCodec(): ConformanceValueCodec {
   const scalar = (value: unknown, path: string[]): ConformanceValue => {
     try {
-      return JSON.parse(encodeTypedFrame(value)) as ConformanceValue;
+      return JSON.parse(typedFrameText(value)) as ConformanceValue;
     } catch (err) {
       throw refuse(path, `is refused by the typed frame (${(err as Error).message})`);
     }
@@ -93,25 +126,21 @@ export function conformanceValueCodec(env: Environment): ConformanceValueCodec {
 
   const write = (value: unknown, path: string[]): ConformanceValue => {
     if (value === undefined) throw refuse(path, "is undefined, which is not a CEL value");
-    if (value === null || typeof value !== "object" || value instanceof UnsignedInt || value instanceof Uint8Array) {
-      return scalar(value, path);
-    }
-    if (value instanceof typeClass) {
-      const name = (value as { name: string }).name;
-      if (types.get(name) !== value) throw refuse(path, `is the type '${name}', which the environment does not name`);
-      return { [CEL_TAG]: "type", value: name };
-    }
-    if (value instanceof Optional) {
-      if (!value.hasValue()) return { [CEL_TAG]: "optional" };
-      return { [CEL_TAG]: "optional", value: write(value.value(), [...path, "value"]) };
+    if (isCelTypeValue(value)) return { [CEL_TAG]: "type", value: recordedTypeName(value.name) };
+    if (isCelOptional(value)) {
+      if (!value.present) return { [CEL_TAG]: "optional" };
+      return { [CEL_TAG]: "optional", value: write(value.held, [...path, "value"]) };
     }
     if (Array.isArray(value)) {
       if (Object.keys(value).length !== value.length) throw refuse(path, "is a sparse or decorated array");
       return value.map((item, index) => write(item, [...path, String(index)]));
     }
-    if (value instanceof Map || isPlainObject(value)) {
-      return writeMap(value instanceof Map ? [...value] : Object.entries(value), path);
+    if (isCelMap(value)) {
+      return writeMap([...value.entries.values()].map((entry) => [entry.key, entry.value]), path);
     }
+    if (value instanceof Map) return writeMap([...value], path);
+    if (isCelError(value)) throw refuse(path, `is the CEL error '${value.message}', which is not a value`);
+    if (isCelRecord(value)) return writeMap(Object.entries(value), path);
     return scalar(value, path);
   };
 
@@ -156,43 +185,51 @@ export function conformanceValueCodec(env: Environment): ConformanceValueCodec {
     return out;
   };
 
+  /** The frame's own reading, with the one representation the CEL domain spells its own
+   *  way read back into it. */
   const readScalar = (node: ConformanceValue, path: string[]): unknown => {
+    let value: unknown;
     try {
-      return decodeTypedFrame(JSON.stringify(node));
+      value = decodeTypedFrame(JSON.stringify(node));
     } catch (err) {
       throw unreadable(path, `is refused by the typed frame (${(err as Error).message})`);
     }
+    if (!(value instanceof Date)) return value;
+    const millis = BigInt(value.getTime());
+    const built = celTimestamp(millis / 1000n, Number(((millis % 1000n) + 1000n) % 1000n) * NANOS_PER_MILLISECOND);
+    if (isCelError(built)) throw unreadable(path, `is an instant the CEL domain refuses (${built.message})`);
+    return built;
   };
 
   const readCel = (node: { [key: string]: ConformanceValue }, path: string[]): unknown => {
     const keys = Object.keys(node).sort();
     const form = node[CEL_TAG];
     if (form === "type" && keys.join() === "$cel,value" && typeof node.value === "string") {
-      const type = types.get(node.value);
-      if (!type) throw unreadable(path, `names the type '${node.value}', which the environment does not name`);
-      return type;
+      return celTypeValue(engineTypeName(node.value));
     }
-    if (form === "optional" && keys.join() === "$cel") return Optional.none();
+    if (form === "optional" && keys.join() === "$cel") return celNone();
     if (form === "optional" && keys.join() === "$cel,value") {
-      return Optional.of(read(node.value!, [...path, "value"]));
+      return celSome(read(node.value!, [...path, "value"]) as CelValue);
     }
     throw unreadable(path, `is not a '${CEL_TAG}' type or optional form`);
   };
 
-  const readMap = (node: { [key: string]: ConformanceValue }, path: string[]): Map<unknown, unknown> => {
+  const readMap = (node: { [key: string]: ConformanceValue }, path: string[]): unknown => {
     const pairs = node.value;
     if (Object.keys(node).length !== 2 || !Array.isArray(pairs)) {
       throw unreadable(path, "is a tagged map, which carries exactly a list of pairs as its 'value'");
     }
-    const out = new Map<unknown, unknown>();
+    const flat: CelValue[] = [];
     pairs.forEach((pair, index) => {
       const at = [...path, "value", String(index)];
       if (!Array.isArray(pair) || pair.length !== 2) throw unreadable(at, "is not a [key, value] pair");
       const key = readScalar(pair[0]!, [...at, "0"]);
       if (mapKeyIdentity(key) === undefined) throw unreadable(at, "holds a key that is not an int, uint, bool or string");
-      out.set(key, read(pair[1]!, [...at, "1"]));
+      flat.push(key as CelMapKey as CelValue, read(pair[1]!, [...at, "1"]) as CelValue);
     });
-    return out;
+    const built = celMapFromEntries(flat);
+    if (isCelError(built)) throw unreadable(path, `is a map the CEL domain refuses (${built.message})`);
+    return built;
   };
 
   return {

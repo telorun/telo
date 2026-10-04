@@ -1,4 +1,4 @@
-import type { ASTNode, Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment, CelNode } from "@telorun/cel";
 import { CEL_ENGINE, celExpressionsOf, isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
@@ -163,58 +163,55 @@ function resolveHandlerRef(sibling: unknown): { kind: string; name?: string } | 
  *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
 function extractCoveredCodes(
   whenExpr: unknown,
-  env: Environment,
+  env: CelEnvironment,
 ): { proven: boolean; codes: Set<string> } {
   // The `when:` value is a `!cel` TaggedSentinel carrying the raw CEL source.
   const source =
     isTaggedSentinel(whenExpr) && whenExpr.engine === CEL_ENGINE ? whenExpr.source : undefined;
   if (!source) return { proven: false, codes: new Set() };
-  let ast: ASTNode;
-  try {
-    ast = env.parse(source.trim()).ast;
-  } catch {
-    return { proven: false, codes: new Set() };
-  }
+  const parsed = env.parse(source.trim());
+  if (parsed.diagnostics.length > 0) return { proven: false, codes: new Set() };
   const codes = new Set<string>();
-  const proven = extractFromNode(ast, codes);
+  const proven = extractFromNode(parsed.root, codes);
   return { proven, codes };
 }
 
-function extractFromNode(node: ASTNode, codes: Set<string>): boolean {
-  if (node.op === "||") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    return extractFromNode(l, codes) && extractFromNode(r, codes);
+function extractFromNode(node: CelNode, codes: Set<string>): boolean {
+  if (node.kind !== "binary") return false;
+  if (node.operator === "||") {
+    return extractFromNode(node.left, codes) && extractFromNode(node.right, codes);
   }
-  if (node.op === "==") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    const lit = readErrorCodeEq(l, r) ?? readErrorCodeEq(r, l);
+  if (node.operator === "==") {
+    const lit = readErrorCodeEq(node.left, node.right) ?? readErrorCodeEq(node.right, node.left);
     if (lit === null) return false;
     codes.add(lit);
     return true;
   }
-  if (node.op === "in") {
-    const [l, r] = node.args as [ASTNode, ASTNode];
-    if (!isErrorCodeRef(l) || r.op !== "list") return false;
-    for (const item of r.args as ASTNode[]) {
-      if (item.op !== "value" || typeof item.args !== "string") return false;
-      codes.add(item.args);
+  if (node.operator === "in") {
+    if (!isErrorCodeRef(node.left) || node.right.kind !== "list") return false;
+    for (const element of node.right.elements) {
+      const text = stringLiteral(element.value);
+      if (text === null) return false;
+      codes.add(text);
     }
     return true;
   }
   return false;
 }
 
-function readErrorCodeEq(ref: ASTNode, lit: ASTNode): string | null {
-  if (!isErrorCodeRef(ref)) return null;
-  if (lit.op !== "value" || typeof lit.args !== "string") return null;
-  return lit.args;
+/** The text of a string literal, or null for anything else. */
+function stringLiteral(node: CelNode): string | null {
+  if (node.kind !== "literal" || node.literal.type !== "string") return null;
+  return node.literal.value;
 }
 
-function isErrorCodeRef(node: ASTNode): boolean {
-  if (node.op !== ".") return false;
-  const [obj, field] = node.args as [ASTNode, string];
-  if (field !== "code") return false;
-  return obj.op === "id" && obj.args === "error";
+function readErrorCodeEq(ref: CelNode, lit: CelNode): string | null {
+  return isErrorCodeRef(ref) ? stringLiteral(lit) : null;
+}
+
+function isErrorCodeRef(node: CelNode): boolean {
+  if (node.kind !== "select" || node.field !== "code") return false;
+  return node.operand.kind === "ident" && node.operand.name === "error";
 }
 
 /** Rule 7: within an outcome list, a no-`when:` entry must be the last entry. */
@@ -244,7 +241,7 @@ function checkCatchAllPlacement(
 
 /** Read one list's {@link ProvenCoverage} — the codes its coverage-proving
  *  `when:` clauses name, and whether it ends in a catch-all. */
-function provenCoverage(entries: OutcomeEntry[], env: Environment): ProvenCoverage {
+function provenCoverage(entries: OutcomeEntry[], env: CelEnvironment): ProvenCoverage {
   const codes = new Set<string>();
   let hasCatchAll = false;
   for (const e of entries) {
@@ -270,7 +267,7 @@ function checkUndeclaredCodes(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
-  env: Environment,
+  env: CelEnvironment,
   denominator: string,
   routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
@@ -364,7 +361,7 @@ function checkTypedErrorData(
   resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
-  env: Environment,
+  env: CelEnvironment,
   routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
@@ -472,16 +469,12 @@ function checkCelChainAgainstDataSchema(
   dataSchema: Record<string, any>,
   resource: { kind: string; name: string },
   filePath: string | undefined,
-  env: Environment,
+  env: CelEnvironment,
   routing: { kind: string; name: string } = resource,
 ): AnalysisDiagnostic[] {
-  let ast: ASTNode;
-  try {
-    ast = env.parse(entry.expr).ast;
-  } catch {
-    return [];
-  }
-  const chains = extractAccessChains(ast);
+  const parsed = env.parse(entry.expr);
+  if (parsed.diagnostics.length > 0) return [];
+  const chains = extractAccessChains(parsed.root);
   const diagnostics: AnalysisDiagnostic[] = [];
   for (const chain of chains) {
     // Only interested in chains that start with error.data.*
@@ -627,7 +620,7 @@ export function validateThrowsCoverage(
   manifests: ResourceManifest[],
   defs: DefinitionRegistry,
   aliases: AliasResolver,
-  env: Environment,
+  env: CelEnvironment,
   aliasesByModule: Map<string, AliasResolver> = new Map(),
   rootModules: Set<string> = new Set(),
   /** Each imported library's full document set, so the walk can follow an

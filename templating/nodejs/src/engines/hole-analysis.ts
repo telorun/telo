@@ -1,4 +1,4 @@
-import type { ASTNode, Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment, CelNode } from "@telorun/cel";
 import type { CompiledValue } from "@telorun/sdk";
 import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import {
@@ -50,7 +50,7 @@ export function analyzeHoles(
   perHole?: (
     hole: InterpolationHole,
     result: CelAnalyzeResult,
-    ast: ASTNode | undefined,
+    ast: CelNode | undefined,
   ) => readonly CelDiagnostic[],
 ): CelAnalyzeResult {
   const reading = readInterpolationHoles(source);
@@ -81,7 +81,7 @@ export function holeRegions(source: string): readonly ExpressionRegion[] {
 
 /** Whether every hole of a hole-bearing scalar is repeatable; the literal text
  *  between them always is. */
-export function holesRepeatable(source: string, celEnv: Environment): boolean {
+export function holesRepeatable(source: string, celEnv: CelEnvironment): boolean {
   const reading = readInterpolationHoles(source);
   return reading.ok && reading.holes.every((h) => repeatableExpression(h.expr, celEnv));
 }

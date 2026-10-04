@@ -1,0 +1,11 @@
+# Consumes the library next door. Its analysis is entry-scoped and the defective
+# resource is library-internal, so nothing is reported here by design — the
+# kernel's own expansion is what must refuse it at boot.
+kind: Telo.Application
+metadata:
+  name: RefSlotComputedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

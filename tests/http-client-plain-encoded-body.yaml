@@ -57,7 +57,7 @@ steps:
     inputs:
       actual: !cel "steps.sent.result.body"
       expected:
-        at: "2026-01-15T07:30:00.000Z"
+        at: "2026-01-15T07:30:00Z"
         took: "5400s"
     invoke:
       kind: Assert.Equals

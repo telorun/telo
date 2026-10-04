@@ -1,4 +1,4 @@
-import type { Environment } from "@marcbachmann/cel-js";
+import type { CelEnvironment } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import { buildCelEnvironment } from "./cel-environment.js";
 import type {
@@ -184,7 +184,7 @@ export class Loader {
 
   protected sources: ManifestSource[];
   private parseCache: YamlParseCache | undefined;
-  private readonly celEnv: Environment;
+  private readonly celEnv: CelEnvironment;
   private readonly migrations?: readonly MigrationEntry[];
 
   /** Sources are resolved in order — the first whose `supports(url)` matches

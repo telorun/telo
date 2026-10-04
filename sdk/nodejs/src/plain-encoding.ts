@@ -14,8 +14,16 @@
  * reached identically by `telo check` and at creation.
  */
 
-import { EvaluationError, Environment } from "@marcbachmann/cel-js";
-import { Duration } from "./cel-value-identity.js";
+import { CEL_VALUE_TYPE, isCelError } from "@telorun/cel";
+import { withLegacyDurationMethods } from "./legacy-value-classes.js";
+import {
+  durationNanosFromText,
+  formatTimestamp,
+  isCelDuration,
+  isCelTimestamp,
+  parseTimestamp,
+  type CelDuration,
+} from "./cel-value-identity.js";
 
 export interface PlainEncoding {
   /** How the text is written, for a message pointing an author at the form. */
@@ -53,90 +61,69 @@ const base64url: PlainEncoding = {
   },
 };
 
+/** The grammar this encoding reads: a four-digit year, `T` between date and time, a
+ *  fraction of one to nine digits, and `Z` or an `±hh:mm` offset within ±23:59. A
+ *  tenth fractional digit is a precision this domain does not hold, so it is REFUSED
+ *  rather than rounded — the one reading of such text that cannot silently change what
+ *  a writer meant. */
 const RFC3339 =
-  /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?([Zz]|[+-]\d{2}:\d{2})$/;
-
-/** CEL's timestamp range: 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999Z. */
-const MIN_INSTANT = -62135596800000;
-const MAX_INSTANT = 253402300799999;
+  /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:[Zz]|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
 const rfc3339: PlainEncoding = {
   form: "RFC 3339 text (2026-01-15T09:30:00Z)",
   schema: { type: "string", format: "date-time" },
   decode(text) {
-    const match = RFC3339.exec(text);
-    if (!match) return undefined;
-    const [, year, month, day, hour, minute, second, fraction, offset] = match;
-    // `Date` rolls an out-of-range field over (Feb 30 is March 2), so the fields
-    // are checked against themselves before the offset is applied. Set through
-    // `setUTCFullYear`, since `Date.UTC` reads a year below 100 as 19xx.
-    const fields = new Date(0);
-    fields.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
-    fields.setUTCHours(Number(hour), Number(minute), Number(second), 0);
-    if (
-      fields.getUTCFullYear() !== Number(year) ||
-      fields.getUTCMonth() !== Number(month) - 1 ||
-      fields.getUTCDate() !== Number(day) ||
-      fields.getUTCHours() !== Number(hour) ||
-      fields.getUTCMinutes() !== Number(minute) ||
-      fields.getUTCSeconds() !== Number(second)
-    ) {
-      return undefined;
-    }
-    const millis = fraction ? Number(fraction.slice(0, 3).padEnd(3, "0")) : 0;
-    const zone = offset!.toUpperCase() === "Z" ? 0 : offsetMinutes(offset!);
-    if (zone === undefined) return undefined;
-    const instant = fields.getTime() + millis - zone * 60_000;
-    if (instant < MIN_INSTANT || instant > MAX_INSTANT) return undefined;
-    return new Date(instant);
+    // The grammar is this encoding's — no space separator, no tenth digit — and the
+    // calendar, the offset and the range are the engine's `parseTimestamp`, so there
+    // is exactly one reading of an instant's text in the runtime.
+    if (!RFC3339.test(text)) return undefined;
+    const value = parseTimestamp(text);
+    return isCelError(value) ? undefined : value;
   },
   encode(value) {
-    if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-      throw new TypeError("rfc3339 encodes a valid Date");
-    }
-    return value.toISOString();
+    if (!isCelTimestamp(value)) throw new TypeError("rfc3339 encodes a timestamp");
+    // RFC 3339 in UTC with a trimmed fraction, which is CEL's own `string(timestamp)`
+    // — the engine is the authority for the text, so a frame payload, a transport body
+    // and a `!interpolate` hole all write one instant the same way.
+    return formatTimestamp(value);
   },
 };
 
-/** An `±hh:mm` offset in minutes, or undefined when hours exceed 23 or minutes 59. */
-function offsetMinutes(offset: string): number | undefined {
-  const hours = Number(offset.slice(1, 3));
-  const minutes = Number(offset.slice(4, 6));
-  if (hours > 23 || minutes > 59) return undefined;
-  return (offset[0] === "-" ? -1 : 1) * (hours * 60 + minutes);
-}
-
-/** CEL's own `duration()` conversion, compiled once, so every duration string CEL
- *  reads is read here — and nothing else is. */
-let durationProgram: ((context: { text: string }) => unknown) | undefined;
-
 export const NANOS_PER_SECOND = 1_000_000_000n;
 
-/** protobuf Duration's range, which CEL adopts, in whole seconds either side of zero. */
+/** protobuf Duration's range, in whole seconds either side of zero. **CEL's own duration is
+ *  a SUBRANGE of it** — a single int64 of nanoseconds — so the engine's reading is the
+ *  binding bound and this one is the outer one the typed frame carries. */
 export const MAX_DURATION_SECONDS = 315_576_000_000n;
 
 const celDuration: PlainEncoding = {
   form: `a CEL duration string within ±${MAX_DURATION_SECONDS}s (1h30m, 250ms, 5400s)`,
   schema: { type: "string" },
   decode(text) {
-    durationProgram ??= new Environment()
-      .registerVariable("text", "string")
-      .parse("duration(text)") as (context: { text: string }) => unknown;
-    let value: unknown;
-    try {
-      value = durationProgram({ text });
-    } catch (error) {
-      if (error instanceof EvaluationError) return undefined;
-      throw error;
-    }
-    const seconds = (value as Duration).seconds;
-    return (seconds < 0n ? -seconds : seconds) > MAX_DURATION_SECONDS ? undefined : value;
+    // **CEL's grammar, protobuf's range.** The two are separate questions and this encoding
+    // answers the wider one: a journal entry, a transport's payload and a controller's value
+    // all reach protobuf's ±10,000 years, which cannot be held in an int64 of nanoseconds at
+    // all — so the engine's `parseDuration`, which applies CEL's range, cannot read one.
+    // `durationNanosFromText` is the grammar without a range, so there is one reading of the
+    // text and the bound is applied here. A value past CEL's own range is refused where it
+    // enters the engine, not here.
+    const total = durationNanosFromText(text);
+    if (isCelError(total)) return undefined;
+    const seconds = total / NANOS_PER_SECOND;
+    if ((seconds < 0n ? -seconds : seconds) > MAX_DURATION_SECONDS) return undefined;
+    // The legacy `getMilliseconds()` rides along, non-enumerably: a controller published
+    // against the replaced `Duration` class reads a slot's decoded value through it, and
+    // the artifact cannot be edited. See `legacy-value-classes.ts`.
+    return withLegacyDurationMethods({
+      [CEL_VALUE_TYPE]: "google.protobuf.Duration",
+      seconds,
+      nanos: Number(total % NANOS_PER_SECOND),
+    } as CelDuration);
   },
   encode(value) {
-    if (!(value instanceof Duration)) throw new TypeError("cel-duration encodes a Duration");
-    // Seconds with a trimmed fraction — the protobuf JSON form. Computed from the
-    // parts rather than the class's own rendering, which misplaces the sign of a
-    // negative duration with a fractional part.
+    if (!isCelDuration(value)) throw new TypeError("cel-duration encodes a duration");
+    // Seconds with a trimmed fraction — the protobuf JSON form, which this package owns and
+    // computes from the parts rather than asking the engine to render it.
     const total = value.seconds * NANOS_PER_SECOND + BigInt(value.nanos);
     const sign = total < 0n ? "-" : "";
     const magnitude = total < 0n ? -total : total;

@@ -29,9 +29,9 @@ expect:
     - code: REFERRER_RULE_VIOLATED
       message: "does not list in 'enums:'"
 ---
-# The optional select is what discriminates the two shapes `type:` now holds with
-# no type test: a storage class yields no name and short-circuits, so a schema
-# declaring no enums at all stays clean.
+# A storage class is a string, and a presence-shaped read answers absence over a
+# value that holds no members — the optional library's own semantics — so the
+# column short-circuits and a schema declaring no enums at all stays clean.
 kind: Assert.Manifest
 metadata:
   name: testStorageClassOnly

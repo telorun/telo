@@ -36,6 +36,7 @@ import {
 import { namespaceMacroBinding, receiverMacroBinding } from "./comprehension-bindings.js";
 import { splitDeclaredChain } from "./declared-chain.js";
 import { isMacroCall } from "./macro-check.js";
+import { CALL_SITE_DIRECT_ARITY } from "./runtime-library.js";
 import type { CelLiteral, CelNode, CelSelectNode, SourceRange } from "./syntax-tree.js";
 
 /**
@@ -347,8 +348,8 @@ export class ModuleEmitter {
       const kept = entry.optional ? fn.next() : undefined;
       const written = kept
         ? `(${kept} = optionalEntry(${value}, ${at}), isCelError(${kept}) ? ${kept} : ` +
-          `(${kept}.present && ${out}.push([${key}, ${kept}.held]), ${body}))`
-        : `(${out}.push([${key}, ${value}]), ${body})`;
+          `(${kept}.present && ${out}.push(${key}, ${kept}.held), ${body}))`
+        : `(${out}.push(${key}, ${value}), ${body})`;
       body =
         `(${key} = ${entry.key}, isCelError(${key}) ? ${key} : ` +
         `(${value} = ${entry.value}, isCelError(${value}) ? ${value} : ${written}))`;
@@ -427,8 +428,9 @@ export class ModuleEmitter {
 
   /**
    * One dispatch: evaluate the arguments, carry the first error out, then hand the values to
-   * the site. The site is hoisted, so it is built once per loaded module and holds the
-   * overloads it resolved — exactly as a compiled closure's does.
+   * the site **positionally**. The site is hoisted, so it is built once per loaded module and
+   * holds the overloads it resolved — exactly as a compiled closure's does. The arity is the
+   * dispatch key's, so the entry point is chosen here and no argument array is built.
    */
   private call(
     name: string,
@@ -440,7 +442,13 @@ export class ModuleEmitter {
     const site = this.hoist(
       `callSite(${textSource(name)}, ${textSource(form)}, ${this.range(range)})`,
     );
-    return this.carrying(args, fn, (values) => `${site}.call([${values.join(", ")}])`);
+    // A call written wider than the bound takes the array form — the arity is the SOURCE's,
+    // so a width no signature can declare is still something an author may write.
+    return this.carrying(args, fn, (values) =>
+      values.length <= CALL_SITE_DIRECT_ARITY
+        ? `${site}.call${values.length}(${values.join(", ")})`
+        : `${site}.call([${values.join(", ")}])`,
+    );
   }
 
   private qualifiedCall(

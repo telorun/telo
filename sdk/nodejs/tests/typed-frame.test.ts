@@ -5,7 +5,19 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { Duration, UnsignedInt } from "../src/cel-value-identity.js";
+import {
+  celMapFromEntries,
+  celTimestamp,
+  celUint,
+  isCelMap,
+  isCelDuration,
+  isCelTimestamp,
+  isCelUint,
+  timestampNanos,
+  type CelDuration,
+  type CelTimestamp,
+} from "../src/cel-value-identity.js";
+import { CEL_VALUE_TYPE } from "@telorun/cel";
 import { isInvokeError } from "../src/invoke-error.js";
 import { decodeTypedFrame, encodeTypedFrame } from "../src/typed-frame.js";
 
@@ -61,37 +73,69 @@ function build(notation: Notation): unknown {
     case "int":
       return BigInt(body);
     case "uint":
-      return new UnsignedInt(BigInt(body));
+      return celUint(BigInt(body));
     case "bytes":
       return new Uint8Array(body);
     case "timestamp":
-      return new Date(Number(BigInt(body.seconds) * 1000n) + body.nanos / 1_000_000);
+      return instant(BigInt(body.seconds), body.nanos);
     case "duration":
-      return new Duration(BigInt(body.seconds), body.nanos);
+      return duration(BigInt(body.seconds), body.nanos);
     case "list":
       return body.map(build);
     case "map": {
       const entries = (body as [Notation, Notation][]).map(
         ([key, value]): [unknown, unknown] => [build(key), build(value)],
       );
+      // A map whose keys are all strings is a plain object — how a host hands one over
+      // and what the frame writes untagged; any other key type is the value domain's own
+      // container, built through the engine rather than as a host `Map`, which is not a
+      // CEL value at all.
       return entries.every(([key]) => typeof key === "string")
         ? Object.fromEntries(entries)
-        : new Map(entries);
+        : celMapFromEntries(entries.flat() as never);
     }
   }
   throw new Error(`Unknown value notation '${type}'`);
 }
 
-function totalNanos(value: Duration): bigint {
+/**
+ * An instant from its parts, built as the BRANDED VALUE directly, for the same reason
+ * a duration is: the vectors reach the edges of the domain's own range, and a value
+ * beyond it has to be constructible for the frame's range guard to be reachable at all.
+ */
+function instant(seconds: bigint, nanos: number): CelTimestamp {
+  return { [CEL_VALUE_TYPE]: "google.protobuf.Timestamp", seconds, nanos } as CelTimestamp;
+}
+
+function totalNanos(value: CelDuration): bigint {
   return value.seconds * 1_000_000_000n + BigInt(value.nanos);
 }
 
+/**
+ * A duration from its parts, built as the BRANDED VALUE directly rather than
+ * through the engine's constructor.
+ *
+ * The two ranges are not the same and that is the point of the frame: it carries
+ * protobuf's `google.protobuf.Duration` (±315,576,000,000s, ±10,000 years) so
+ * that a duration arriving from a transport, a journal or a controller is always
+ * representable, while CEL's own duration is a SUBRANGE — one int64 of
+ * nanoseconds, ~±292 years — and its one constructor refuses anything wider. So
+ * building these through the engine would make every vector above CEL's bound
+ * unconstructible and the frame's own range guard unreachable, which is a dead
+ * guard with a passing test.
+ */
+function duration(seconds: bigint, nanos: number): CelDuration {
+  return { [CEL_VALUE_TYPE]: "google.protobuf.Duration", seconds, nanos } as CelDuration;
+}
+
 function entriesOf(value: object): [unknown, unknown][] {
-  return value instanceof Map ? [...value] : Object.entries(value);
+  return isCelMap(value)
+    ? [...value.entries.values()].map((entry) => [entry.key, entry.value])
+    : Object.entries(value);
 }
 
 /** CEL value equality with the CEL type included, written without the codec:
- *  a string-keyed `Map` and a plain object are one map, an int and a double are
+ *  a string-keyed `CelMap` and a plain object are one map, an int and a double are
  *  not one number, and NaN and negative zero are compared by identity. */
 function sameValue(a: unknown, b: unknown): boolean {
   if (typeof a === "number" || typeof b === "number") return Object.is(a, b);
@@ -100,21 +144,18 @@ function sameValue(a: unknown, b: unknown): boolean {
     a instanceof type && b instanceof type ? [a as T, b as T] : undefined;
   const isOne = (type: abstract new (...args: any[]) => unknown) => a instanceof type || b instanceof type;
 
-  if (isOne(UnsignedInt)) {
-    const pair = both(UnsignedInt);
-    return !!pair && pair[0].valueOf() === pair[1].valueOf();
+  if (isCelUint(a) || isCelUint(b)) {
+    return isCelUint(a) && isCelUint(b) && a.value === b.value;
   }
   if (isOne(Uint8Array)) {
     const pair = both(Uint8Array);
     return !!pair && pair[0].length === pair[1].length && pair[0].every((byte, i) => byte === pair[1][i]);
   }
-  if (isOne(Date)) {
-    const pair = both(Date);
-    return !!pair && pair[0].getTime() === pair[1].getTime();
+  if (isCelTimestamp(a) || isCelTimestamp(b)) {
+    return isCelTimestamp(a) && isCelTimestamp(b) && timestampNanos(a) === timestampNanos(b);
   }
-  if (isOne(Duration)) {
-    const pair = both(Duration);
-    return !!pair && totalNanos(pair[0]) === totalNanos(pair[1]);
+  if (isCelDuration(a) || isCelDuration(b)) {
+    return isCelDuration(a) && isCelDuration(b) && totalNanos(a) === totalNanos(b);
   }
   if (Array.isArray(a) || Array.isArray(b)) {
     return (
@@ -212,8 +253,8 @@ describe("typed frame over generated values", () => {
     String.fromCodePoint(0x1f600),
     String.fromCharCode(0xff5a),
   ];
-  const MIN_INSTANT = -62135596800000;
-  const MAX_INSTANT = 253402300799999;
+  const MIN_SECONDS = -62135596800;
+  const MAX_SECONDS_INSTANT = 253402300799;
   const MAX_SECONDS = 315576000000;
 
   /** A value and a second host representation of the same value, built with a
@@ -234,7 +275,7 @@ describe("typed frame over generated values", () => {
       }
       case 3: {
         const value = pick(UINTS);
-        return [new UnsignedInt(value), new UnsignedInt(value)];
+        return [celUint(value), celUint(value)];
       }
       case 4: {
         const value = pick(STRINGS);
@@ -245,15 +286,20 @@ describe("typed frame over generated values", () => {
         return [new Uint8Array(bytes), Buffer.from(bytes)];
       }
       case 6: {
-        const instant = random() < 0.3 ? pick([MIN_INSTANT, MAX_INSTANT, 0, -1]) : MIN_INSTANT + Math.floor(random() * (MAX_INSTANT - MIN_INSTANT));
-        return [new Date(instant), new Date(instant)];
+        const seconds =
+          random() < 0.3
+            ? pick([MIN_SECONDS, MAX_SECONDS_INSTANT, 0, -1])
+            : MIN_SECONDS + Math.floor(random() * (MAX_SECONDS_INSTANT - MIN_SECONDS));
+        const nanos = pick([0, 1, 250_000_000, 999_999_999, below(1_000_000_000)]);
+        return [instant(BigInt(seconds), nanos), instant(BigInt(seconds), nanos)];
       }
       case 7: {
         const sign = random() < 0.5 ? -1 : 1;
         const seconds = BigInt(sign * below(random() < 0.2 ? MAX_SECONDS + 1 : 100_000));
         const nanos = sign * pick([0, 1, 500_000_000, 999_999_999, below(1_000_000_000)]);
-        const reshaped = nanos < 0 ? new Duration(seconds - 1n, nanos + 1_000_000_000) : new Duration(seconds, nanos);
-        return [new Duration(seconds, nanos), reshaped];
+        const reshaped =
+          nanos < 0 ? duration(seconds - 1n, nanos + 1_000_000_000) : duration(seconds, nanos);
+        return [duration(seconds, nanos), reshaped];
       }
       case 8:
       case 9: {
@@ -265,7 +311,14 @@ describe("typed frame over generated values", () => {
         const pairs = keys.map((key) => [key, generate(depth - 1)] as const);
         const value = Object.fromEntries(pairs.map(([key, [v]]) => [key, v]));
         const reshapedEntries = shuffle(pairs.map(([key, [, r]]) => [key, r] as [string, unknown]));
-        return [value, random() < 0.5 ? new Map(reshapedEntries) : Object.fromEntries(reshapedEntries)];
+        // A string-keyed map has BOTH host forms, and one frame: the plain object a host
+        // hands over and the value domain's own container.
+        return [
+          value,
+          random() < 0.5
+            ? celMapFromEntries(reshapedEntries.flat() as never)
+            : Object.fromEntries(reshapedEntries),
+        ];
       }
       default: {
         const candidates: unknown[] = [...STRINGS, true, false, 0n, 1n, -1n, 2n, 10n];
@@ -280,12 +333,14 @@ describe("typed frame over generated values", () => {
             byIdentity.set(identity, () => key);
           } else {
             const n = BigInt(choice - candidates.length);
-            byIdentity.set(`number:${n}`, () => new UnsignedInt(n));
+            byIdentity.set(`number:${n}`, () => celUint(n));
           }
         }
         const pairs = [...byIdentity.values()].map((key) => [key, generate(depth - 1)] as const);
-        const value = new Map(pairs.map(([key, [v]]) => [key(), v]));
-        const reshaped = new Map(shuffle(pairs.map(([key, [, r]]) => [key(), r] as [unknown, unknown])));
+        const value = celMapFromEntries(pairs.flatMap(([key, [v]]) => [key(), v]) as never);
+        const reshaped = celMapFromEntries(
+          shuffle(pairs.map(([key, [, r]]) => [key(), r] as [unknown, unknown])).flat() as never,
+        );
         return [value, reshaped];
       }
     }
@@ -327,14 +382,15 @@ describe("typed frame refusals", () => {
     ["a hole in a sparse list", sparse, "/1"],
     ["a Map with a double key", { m: new Map([[1.5, "x"]]) }, "/m"],
     ["a Map with an object key", new Map([[{}, "x"]]), ""],
-    ["a Map with two equal uint keys", new Map([[new UnsignedInt(1n), "a"], [new UnsignedInt(1n), "b"]]), ""],
-    ["a Map with an int and a uint key of one number", new Map<unknown, string>([[2n, "a"], [new UnsignedInt(2n), "b"]]), ""],
+    ["a Map with two equal uint keys", new Map([[celUint(1n), "a"], [celUint(1n), "b"]]), ""],
+    ["a Map with an int and a uint key of one number", new Map<unknown, string>([[2n, "a"], [celUint(2n), "b"]]), ""],
     ["a symbol-keyed property", { [Symbol("k")]: 1 }, ""],
     ["a property beside a list's items", { items: Object.assign([1n], { tag: "x" }) }, "/items/tag"],
     ["an int beyond int64", { n: 2n ** 63n }, "/n"],
-    ["an instant beyond year 9999", [new Date(253402300800000)], "/0"],
-    ["an invalid Date", new Date(Number.NaN), ""],
-    ["a duration beyond CEL's range", { d: new Duration(315576000001n) }, "/d"],
+    ["an instant beyond year 9999", [instant(253402300800n, 0)], "/0"],
+    ["an instant whose nanos is not a nanosecond", { at: instant(0n, 1_000_000_000) }, "/at"],
+    ["a Date, which is a host object and no CEL value", { at: new Date(0) }, "/at"],
+    ["a duration beyond the frame's range", { d: duration(315576000001n, 0) }, "/d"],
     ["an unpaired surrogate", { "a/b~c": "\uD800" }, "/a~1b~0c"],
     ["a cycle", cyclic, "/self"],
     ["a typed array other than bytes", new Int8Array(1), ""],

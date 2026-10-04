@@ -210,7 +210,7 @@ describe("LocalRunHandle — replaying an interrupted run", () => {
 
     await expect(LocalRunHandle.open("run-future", journal)).rejects.toMatchObject({
       code: "ERR_DURABLE_ENTRY_UNDECODABLE",
-      data: { version: 99, reads: 1 },
+      data: { version: 99, reads: [1, 2] },
     });
   });
 
@@ -240,7 +240,7 @@ describe("LocalRunHandle — replaying an interrupted run", () => {
     expect(() => recordedRunInputs(future)).toThrow(
       expect.objectContaining({
         code: "ERR_DURABLE_ENTRY_UNDECODABLE",
-        data: expect.objectContaining({ path: "inputs", version: 99, reads: 1 }),
+        data: expect.objectContaining({ path: "inputs", version: 99, reads: [1, 2] }),
       }),
     );
   });

@@ -3,21 +3,50 @@
  * dialect environment with the nominal brands, the row's declarations and its
  * JSON Schema inputs; then `compile` and evaluate without them, a row's module
  * functions bound as the dispatch table.
+ *
+ * **A module name is now a NAMESPACE on the environment**, declared with whatever the row
+ * says the host knows about each qualified function and left **open**, because whether such
+ * a call reaches a function at all is the analyzer's verdict and never this engine's. That
+ * is the same split the removed `moduleCallType` hook expressed; the engine reads it off its
+ * own declarations instead of asking a callback per call.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { Environment } from "@marcbachmann/cel-js";
-import { encodeTypedFrame, RuntimeError, Stream } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
+import {
+  catalogImplementation,
+  catalogLiteralCheck,
+  functionCatalog,
+  parseSignature,
+  signatureKey,
+  type CelCatalogHandlers,
+  type CelEnvironment,
+} from "@telorun/cel";
 import { builtinEngines } from "../src/builtins.js";
-import { CEL_FUNCTIONS, type CelHandlers } from "../src/cel/catalog.js";
-import { buildCelLanguageEnvironment, deriveSignatures } from "../src/cel/environment.js";
+import { buildCelLanguageEnvironment, type CelHandlers } from "../src/cel/environment.js";
 import { MODULE_CALL_DISPATCH_KEY, type ModuleCallDispatch } from "../src/cel/module-call.js";
 import { registerValueBrands } from "../src/cel/value-brands.js";
 import type { AnalyzeEnv, TemplatingEngine } from "../src/engine.js";
-import { conformanceError, type ConformanceError, type ConformanceFunction } from "./cel-conformance-language.js";
-import type { ConformanceValue, ConformanceValueCodec } from "./cel-conformance-value.js";
+import { typedFrameText, type ConformanceValue, type ConformanceValueCodec } from "./cel-conformance-value.js";
 
-/** A cel-js type string, or a record whose fields are declarations in turn. */
+/** A CEL type expression, or a record whose fields are declarations in turn. */
 export type Declaration = string | { fields: Record<string, Declaration> };
+
+export interface ConformanceError {
+  code: string | null;
+  message: string;
+}
+
+export type ConformanceFunction =
+  | { signature: string; result: ConformanceValue }
+  | { signature: string; error: string };
+
+const TELO_CODE = /^ERR_[A-Z0-9_]+$/;
+
+export function conformanceError(err: unknown): ConformanceError {
+  if (!(err instanceof Error)) throw new Error(`Evaluation threw a non-Error value: ${String(err)}`);
+  const code = (err as { code?: unknown }).code;
+  return { code: typeof code === "string" && TELO_CODE.test(code) ? code : null, message: err.message };
+}
 
 /** A module function as the host answers for it, and what it does when dispatched. */
 export interface ModuleFunction {
@@ -99,7 +128,7 @@ const handlerRefusals = new AsyncLocalStorage<string[]>();
 
 function frameArgs(name: string, args: unknown[]): string {
   try {
-    return `${name}(${args.map((arg) => encodeTypedFrame(arg)).join(", ")})`;
+    return `${name}(${args.map((arg) => typedFrameText(arg)).join(", ")})`;
   } catch (err) {
     if ((err as { code?: unknown }).code === "ERR_TYPED_FRAME_UNENCODABLE") {
       handlerRefusals
@@ -125,31 +154,43 @@ export const CONFORMANCE_HANDLERS: CelHandlers = {
   joinPath: (...args) => frameArgs("joinPath", args),
 };
 
-/** Every overload the catalog registers, by its cel-js registration signature. */
+/** Every overload the catalog registers, by the signature it registers under. */
 export function catalogOverloads(): { name: string; signature: string }[] {
-  return CEL_FUNCTIONS.flatMap((fn) =>
-    (fn.register ?? deriveSignatures(fn.signature)).map((signature) => ({ name: fn.name, signature })),
+  return functionCatalog().flatMap((fn) =>
+    fn.signatures.map((signature) => ({ name: fn.name, signature })),
   );
 }
 
-/** The dialect environment registered overload by overload, each reporting its
- *  own dispatch — how a runner learns which overload a row reached. The runner
- *  holds it to `buildCelEnvironment`'s definitions, so it cannot drift. */
+/**
+ * The dialect environment registered overload by overload, each reporting its own
+ * dispatch — how a runner learns which overload a row reached. It reproduces what
+ * `registerFunctionCatalog` does, through the same public registration surface, and the
+ * runner holds its listing to `buildCelEnvironment`'s so the two cannot drift.
+ */
 export function dispatchTracingEnvironment(
-  handlers: CelHandlers,
+  handlers: CelCatalogHandlers,
   dispatched: (signature: string) => void,
-): Environment {
-  let env = buildCelLanguageEnvironment();
-  for (const fn of CEL_FUNCTIONS) {
-    const impl = fn.build(handlers);
-    for (const signature of fn.register ?? deriveSignatures(fn.signature)) {
-      env = env.registerFunction(signature, (...args: unknown[]) => {
-        dispatched(signature);
-        return impl(...args);
+): CelEnvironment {
+  const env = buildCelLanguageEnvironment();
+  for (const fn of functionCatalog()) {
+    const check = fn.checksLiteralArguments ? catalogLiteralCheck(fn.name) : undefined;
+    for (const signature of fn.signatures) {
+      const implementation = catalogImplementation(signatureKey(parseSignature(signature)), handlers);
+      if (implementation === undefined) throw new Error(`nothing implements ${signature}`);
+      env.registerFunction(signature, {
+        implementation: (ctx, a, b, c, d) => {
+          dispatched(signature);
+          return implementation(ctx, a, b, c, d);
+        },
+        deterministic: fn.deterministic,
+        hostBacked: fn.hostBacked,
+        description: fn.summary,
+        origin: "function-catalog",
+        ...(check === undefined ? {} : { checkArguments: check }),
       });
     }
   }
-  return env.registerType("Stream", Stream as unknown as new (...args: unknown[]) => unknown);
+  return env.registerType({ name: "Stream", base: "dyn" });
 }
 
 function engineOf(tag: string): TemplatingEngine {
@@ -158,37 +199,51 @@ function engineOf(tag: string): TemplatingEngine {
   return engine;
 }
 
-function objectSchemaOf(fields: Record<string, Declaration>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(fields).map(([name, type]) => [name, typeof type === "string" ? type : objectSchemaOf(type.fields)]),
-  );
-}
-
-function withFunctions(env: Environment, row: DialectRow, codec: ConformanceValueCodec): Environment {
+function withFunctions(env: CelEnvironment, row: DialectRow, codec: ConformanceValueCodec): CelEnvironment {
   const cloned = env.clone();
   for (const fn of row.functions ?? []) {
-    cloned.registerFunction(fn.signature, () => {
-      if ("error" in fn) throw new Error(fn.error);
-      return codec.decode(fn.result);
+    cloned.registerFunction(fn.signature, {
+      implementation: () => {
+        if ("error" in fn) throw new Error(fn.error);
+        return codec.decode(fn.result) as never;
+      },
     });
   }
   return cloned;
 }
 
-function staticEnvironment(env: Environment, row: DialectRow, codec: ConformanceValueCodec): Environment {
+/**
+ * A row's module names as namespaces: open, because the host judges resolution, and
+ * carrying the result type of every qualified function the row says the host knows — which
+ * is what types the call node, so an operator over it checks.
+ */
+function withModuleNames(env: CelEnvironment, modules: DialectModules | undefined): CelEnvironment {
+  if (!modules) return env;
+  for (const name of modules.names) {
+    const declared = Object.entries(modules.functions ?? {})
+      .filter(([qualified]) => qualified.startsWith(`${name}.`))
+      .map(([qualified, fn]) => ({
+        name: qualified.slice(name.length + 1),
+        returns: fn.returns,
+        deterministic: fn.deterministic,
+        hostBacked: fn.hostBacked,
+      }));
+    env.registerNamespace(name, declared, { open: true });
+  }
+  return env;
+}
+
+function staticEnvironment(env: CelEnvironment, row: DialectRow, codec: ConformanceValueCodec): CelEnvironment {
   const cloned = env.clone();
   registerValueBrands(cloned);
-  for (const [name, type] of Object.entries(row.declarations ?? {})) {
-    if (typeof type === "string") cloned.registerVariable(name, type);
-    else (cloned as any).registerVariable({ name, schema: objectSchemaOf(type.fields) });
-  }
-  return withFunctions(cloned, row, codec);
+  for (const [name, type] of Object.entries(row.declarations ?? {})) cloned.registerVariable(name, type);
+  return withModuleNames(withFunctions(cloned, row, codec), row.modules);
 }
 
 const moduleFunctionOf = (modules: DialectModules, qualified: string): ModuleFunction | undefined =>
   modules.functions && Object.hasOwn(modules.functions, qualified) ? modules.functions[qualified] : undefined;
 
-function analyzeEnvOf(celEnv: Environment, row: DialectRow): AnalyzeEnv {
+function analyzeEnvOf(celEnv: CelEnvironment, row: DialectRow): AnalyzeEnv {
   const explain = row.explain;
   const couldNameModule = row.couldNameModule;
   const modules = row.modules;
@@ -201,7 +256,6 @@ function analyzeEnvOf(celEnv: Environment, row: DialectRow): AnalyzeEnv {
     ...(modules
       ? {
           moduleNames: new Set(modules.names),
-          moduleCallType: (qualified: string) => moduleFunctionOf(modules, qualified)?.returns,
           moduleCallResult: (qualified: string) => moduleFunctionOf(modules, qualified)?.resultSchema,
           moduleCallFlags: (qualified: string) => {
             const fn = moduleFunctionOf(modules, qualified);
@@ -215,7 +269,7 @@ function analyzeEnvOf(celEnv: Environment, row: DialectRow): AnalyzeEnv {
 /** The static half: what the tag engine's `analyze` answers, plus the regions it
  *  reports. */
 export function analyzeDialectRow(
-  env: Environment,
+  env: CelEnvironment,
   codec: ConformanceValueCodec,
   row: DialectRow,
 ): DialectCheck {
@@ -278,7 +332,7 @@ function dispatchTableOf(
  *  with the bindings as the activation and the row's module functions bound as
  *  the dispatch table. */
 export async function evaluateDialectRow(
-  env: Environment,
+  env: CelEnvironment,
   codec: ConformanceValueCodec,
   row: DialectRow,
 ): Promise<
@@ -324,7 +378,7 @@ export async function evaluateDialectRow(
 }
 
 export async function runDialectRow(
-  env: Environment,
+  env: CelEnvironment,
   codec: ConformanceValueCodec,
   row: DialectRow,
 ): Promise<DialectExpect> {

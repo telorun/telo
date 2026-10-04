@@ -1,4 +1,4 @@
-import type { ASTNode } from "@marcbachmann/cel-js";
+import { formatType, qualifiedCalls, type CelNode } from "@telorun/cel";
 import {
   extractAccessChains,
   extractCallResultAccesses,
@@ -9,13 +9,7 @@ import {
 } from "../cel/analyze.js";
 import { compileExpression, repeatableExpression } from "../cel/compile.js";
 import { auditCalls, explainUnresolved } from "../cel/diagnose.js";
-import {
-  moduleCallNodes,
-  moduleNameBindings,
-  resolveModuleCalls,
-  unresolvedCallReceivers,
-  type ModuleCall,
-} from "../cel/module-call.js";
+import { moduleNameBindings, unresolvedCallReceivers } from "../cel/module-call.js";
 import type { CelAnalyzeResult, CelDiagnostic } from "../cel/verdict-codes.js";
 import type { AnalyzeEnv, CallSite, TemplatingEngine } from "../engine.js";
 
@@ -39,33 +33,34 @@ export function analyzeCelExpression(source: string, env: AnalyzeEnv): CelAnalyz
 export function analyzeCelWithTree(
   source: string,
   env: AnalyzeEnv,
-): { result: CelAnalyzeResult; ast?: ASTNode } {
+): { result: CelAnalyzeResult; ast?: CelNode } {
   const out: CelDiagnostic[] = [];
 
-  let parsed: ReturnType<typeof env.celEnv.parse>;
-  try {
-    parsed = env.celEnv.parse(source);
-  } catch (e) {
+  // **Reading never throws and never discards what it read**: the first unreadable thing is
+  // one ranged diagnostic and the tree keeps the longest prefix, so a scalar an author is
+  // mid-way through typing still reports its chains and its calls.
+  const parsed = env.celEnv.parse(source);
+  if (parsed.diagnostics.length > 0) {
+    const first = parsed.diagnostics[0]!;
     return {
       result: {
-        diagnostics: [{ code: "CEL_SYNTAX_ERROR", message: e instanceof Error ? e.message : String(e) }],
+        diagnostics: [{ code: "CEL_SYNTAX_ERROR", message: first.message }],
         calls: [],
       },
     };
   }
-  const ast: ASTNode = parsed.ast;
+  const ast: CelNode = parsed.root;
 
-  // Resolution, before anything reads the tree — the audit, the type check and
-  // every chain walk below all see the resolved shape, so none of them has to
-  // know a module name from a variable.
-  // The walks that read resolved calls below are skipped when there are none.
-  const resolvedCalls = resolveModuleCalls(parsed.ast, env.moduleNames, env.moduleCallType).length > 0;
+  // Resolution happened as the expression was READ, over the environment's own namespaces —
+  // `qcall` is a node of its own rather than a rewrite — so every walk below already sees
+  // the resolved shape and none of them has to know a module name from a variable.
+  const resolvedCalls = qualifiedCalls(ast).length > 0;
 
   // A name bound inside the expression can never be read once a module owns it:
   // `Billing.f(x)` under a comprehension variable named `Billing` resolves to
   // the module. Reported rather than silently shadowed, the rule every other
   // name in CEL scope follows.
-  for (const name of moduleNameBindings(parsed.ast, env.moduleNames)) {
+  for (const name of moduleNameBindings(ast, env.moduleNames)) {
     out.push({
       code: "BINDING_NAME_RESERVED",
       message:
@@ -75,7 +70,8 @@ export function analyzeCelWithTree(
     });
   }
 
-  const audit = auditCalls(source, parsed.ast, env.celEnv, env.moduleCallFlags);
+  const checked = env.celEnv.check(parsed);
+  const audit = auditCalls(source, ast, env.celEnv, env.moduleCallFlags, checked);
 
   // Reported whatever the type-checker concludes. A literal argument a guard
   // will refuse is a defect the manifest states outright, and leaving it to the
@@ -86,15 +82,24 @@ export function analyzeCelWithTree(
   let type: string | undefined;
   let checkError: string | undefined;
   try {
-    // `parsed.check()`, never `celEnv.check(source)`: the latter RE-PARSES, so
-    // it would type a tree in which no module call was ever resolved — every
-    // one of them reported as a missing method on an unknown receiver.
-    const result = parsed.check();
-    if (result.valid) type = result.type;
-    else if (result.error) {
-      checkError = String((result.error as { message?: string }).message ?? result.error)
-        .split("\n")[0]!
-        .trim();
+    // The TREE is checked, never the source again: `check(source)` would re-read it, and a
+    // tree resolved under another site's names is refused rather than answered about.
+    if (checked.valid) type = checked.typeName;
+    else {
+      // **Every verdict is the engine's, coded and ranged.** This used to be one opaque
+      // sentence — `found no matching overload for 'f(...)'` for three unrelated mistakes —
+      // which is why a classifier sat beside it rewriting the message. The engine decides an
+      // unknown name, a name called in the other form, an unknown field, a type no overload
+      // takes and a refusal over a literal argument each where its cause is known, so they
+      // come through as they are.
+      for (const diagnostic of checked.diagnostics) {
+        out.push({
+          code: diagnostic.code,
+          message: diagnostic.message,
+          ...(diagnostic.fix ? { fix: diagnostic.fix } : {}),
+        });
+      }
+      checkError = checked.diagnostics[0]?.message;
     }
   } catch (e) {
     // The checker is now the ONLY type verdict for every CEL expression, so a
@@ -125,22 +130,9 @@ export function analyzeCelWithTree(
   // this analyzer refuses and the kernel would run fine.
   // What explaining a rejection already reported, so the context's own chain
   // check below does not report it twice.
-  const explained = new Set<string>();
-  if (checkError !== undefined) {
-    // `check()` stops at its first problem; the audit enumerates every bad call,
-    // which is the whole reason it exists as more than a message rewriter.
-    out.push(...audit.diagnostics);
-    const unknownFields =
-      audit.diagnostics.length === 0 ? explainUnknownFields(parsed.ast, env) : [];
-    out.push(...unknownFields);
-    for (const d of unknownFields) explained.add(d.message);
-    if (audit.diagnostics.length === 0 && unknownFields.length === 0) {
-      out.push({
-        code: "CEL_TYPE_ERROR",
-        message: checkError + explainUnresolved(audit.unresolved, env.celEnv) + DYN_HINT(checkError),
-      });
-    }
-  }
+  // What the engine already said, so the host's own schema reading below does not say it
+  // twice in different words.
+  const explained = new Set(out.map((diagnostic) => diagnostic.message));
 
   // An undeclared ROOT identifier. cel-js types an unknown name as `dyn` and
   // accepts it, so `!cel "fff"` type-checked, reached the runtime and resolved
@@ -159,11 +151,11 @@ export function analyzeCelWithTree(
     // Walked only once a root is unknown, which a correct expression never has.
     let callReceivers: Set<string> | undefined;
     const reported = new Set<string>();
-    for (const chain of extractAccessChains(parsed.ast)) {
+    for (const chain of extractAccessChains(ast)) {
       const root = chain[0];
       if (!root || reported.has(root) || env.celEnv.hasVariable(root)) continue;
       reported.add(root);
-      callReceivers ??= unresolvedCallReceivers(parsed.ast, env.moduleNames);
+      callReceivers ??= unresolvedCallReceivers(ast, env.moduleNames);
       out.push({
         code: "CEL_UNKNOWN_IDENTIFIER",
         message:
@@ -179,7 +171,7 @@ export function analyzeCelWithTree(
   // caller resolves: member access on it is checked exactly as a read off the
   // context would be, under the call as written.
   if (resolvedCalls && env.moduleCallResult) {
-    for (const access of extractCallResultAccesses(parsed.ast)) {
+    for (const access of extractCallResultAccesses(ast)) {
       const schema = env.moduleCallResult(access.qualified);
       if (!schema) continue;
       const label = `${access.qualified}(…)`;
@@ -193,12 +185,12 @@ export function analyzeCelWithTree(
 
   if (env.contextSchema) {
     const contextSchema = env.contextSchema as Record<string, any>;
-    for (const chain of extractAccessChains(parsed.ast)) {
+    for (const chain of extractAccessChains(ast)) {
       const err = validateChainAgainstSchema(chain, contextSchema);
       if (err && !explained.has(err)) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
     }
 
-    for (const issue of findNullableAccessIssues(parsed.ast, contextSchema)) {
+    for (const issue of findNullableAccessIssues(ast, contextSchema)) {
       // Index access (member "[index]") attaches without a dot; a named field
       // attaches with one — so the suggested CEL stays valid either way.
       const access = issue.member === "[index]" ? issue.member : `.${issue.member}`;
@@ -212,10 +204,12 @@ export function analyzeCelWithTree(
   return {
     result: {
       diagnostics: out,
-      calls: resolvedCalls ? withCallArguments(audit.calls, parsed.ast) : audit.calls,
+      calls: audit.calls,
       ...(type === undefined ? {} : { type }),
-      ...(ast.op === "value" && typeof ast.args === "string" ? { stringLiteral: ast.args } : {}),
-      ...(checkError === undefined ? {} : { readTypes: chainTypes(parsed.ast, env) }),
+      ...(ast.kind === "literal" && ast.literal.type === "string"
+        ? { stringLiteral: ast.literal.value }
+        : {}),
+      ...(checkError === undefined ? {} : { readTypes: chainTypes(ast, env) }),
     },
     ast,
   };
@@ -226,7 +220,7 @@ export function analyzeCelWithTree(
  *  reported in its own words. The explain schema is not the checker's
  *  environment, so a chain is reported only when the checker rejects it too;
  *  otherwise the rejection was about something else and keeps its own words. */
-function explainUnknownFields(ast: ASTNode, env: AnalyzeEnv): CelDiagnostic[] {
+function explainUnknownFields(ast: CelNode, env: AnalyzeEnv): CelDiagnostic[] {
   const schema = env.explainSchema?.();
   if (!schema) return [];
   const out: CelDiagnostic[] = [];
@@ -242,12 +236,12 @@ function explainUnknownFields(ast: ASTNode, env: AnalyzeEnv): CelDiagnostic[] {
 }
 
 /** The checked type of each distinct plain chain the expression reads. */
-function chainTypes(ast: ASTNode, env: AnalyzeEnv): string[] {
+function chainTypes(ast: CelNode, env: AnalyzeEnv): string[] {
   const types = new Set<string>();
   for (const chain of extractAccessChains(ast)) {
     if (chain.includes(INDEX_SEGMENT)) continue;
     const result = env.celEnv.check(chain.join("."));
-    if (result.valid && result.type !== undefined) types.add(result.type);
+    if (result.valid) types.add(result.typeName);
   }
   return [...types];
 }
@@ -257,32 +251,6 @@ function checkerRejects(chain: readonly string[], env: AnalyzeEnv): boolean {
   const end = chain.indexOf(INDEX_SEGMENT);
   const named = end === -1 ? chain : chain.slice(0, end);
   return !env.celEnv.check(named.join(".")).valid;
-}
-
-/** The audited call sites, each module call carrying its arguments as the type
- *  check saw them. Matched by position, which is what identifies one call among
- *  several of the same name. */
-function withCallArguments(calls: readonly CallSite[], ast: ASTNode): CallSite[] {
-  const byStart = new Map<number, ModuleCall>();
-  for (const { node, call } of moduleCallNodes(ast)) byStart.set(node.start, call);
-  const chainsByStart = new Map<number, Array<string[] | null>>();
-  for (const [node, chains] of moduleCallArgumentChains(ast)) chainsByStart.set(node.start, chains);
-  return calls.map((site) => {
-    const call = site.moduleCall ? byStart.get(site.start) : undefined;
-    if (!call) return site;
-    const chains = chainsByStart.get(site.start);
-    return {
-      ...site,
-      arguments: call.args.map((arg, index) => {
-        const type = call.argumentTypes?.[index];
-        const chain = chains?.[index] ?? null;
-        return {
-          ...(type !== undefined ? { type } : {}),
-          ...(chain && !chain.includes(INDEX_SEGMENT) ? { chain } : {}),
-        };
-      }),
-    };
-  });
 }
 
 /** `dyn` in a checker message means an operand whose type is unknown here —

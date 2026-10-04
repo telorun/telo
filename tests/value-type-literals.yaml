@@ -35,7 +35,7 @@ targets:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.bootStamp.result"
-      expected: "2026-01-15T09:30:00.000Z"
+      expected: "2026-01-15T09:30:00Z"
   - !ref verifyLiterals
 ---
 # Renders whatever instant it is handed. `string(timestamp)` has no string
@@ -196,7 +196,7 @@ steps:
     inputs:
       actual: !cel "steps.readWindow.result"
       expected:
-        closes: "2026-01-15T09:00:00.000Z"
+        closes: "2026-01-15T09:00:00Z"
         lastsSeconds: 5400
         keyLength: 3
   # A CEL expression at the same slots: it is never decoded, and the value it
@@ -212,7 +212,7 @@ steps:
     inputs:
       actual: !cel "steps.readComputedWindow.result"
       expected:
-        closes: "2026-01-15T09:00:00.000Z"
+        closes: "2026-01-15T09:00:00Z"
         lastsSeconds: 5400
         keyLength: 3
   # An embedded file is never decoded either: the slot receives the file's own
@@ -229,7 +229,7 @@ steps:
     inputs:
       actual: !cel "steps.readEmbeddedWindow.result"
       expected:
-        closes: "2026-01-15T09:00:00.000Z"
+        closes: "2026-01-15T09:00:00Z"
         lastsSeconds: 5400
         keyLength: 4
   # A step's `inputs:`, against the target's declared inputType.
@@ -241,7 +241,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.fromStep.result"
-      expected: "2026-01-15T09:30:00.000Z"
+      expected: "2026-01-15T09:30:00Z"
   # An `x-telo-schema-from` slot.
   - name: fromSchemaFrom
     invoke:
@@ -252,7 +252,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.fromSchemaFrom.result"
-      expected: "2026-01-15T09:30:00.000Z"
+      expected: "2026-01-15T09:30:00Z"
   # An `x-telo-value-schema-from` row, including the uint a JSON Schema cannot
   # state: `+ 1u` has no overload for an int or for text.
   - name: fromValueRow
@@ -276,7 +276,7 @@ steps:
         opens: !cel "string(steps.fromValueRow.result.opens)"
         quotaPlusOne: !cel "steps.fromValueRow.result.quota + 1u == 8u"
       expected:
-        opens: "2026-01-15T09:30:00.000Z"
+        opens: "2026-01-15T09:30:00Z"
         quotaPlusOne: true
   # The largest uint, written the one way it stays exact — as a CEL uint — passes
   # the same declared output and arrives as itself.
@@ -325,8 +325,8 @@ steps:
               stamped: !cel "steps.stamped.result"
               opens: !cel "string(steps.row.result.opens)"
             expected:
-              stamped: "2026-01-15T09:30:00.000Z"
-              opens: "2026-01-15T09:30:00.000Z"
+              stamped: "2026-01-15T09:30:00Z"
+              opens: "2026-01-15T09:30:00Z"
   # A template definition's top-level `inputs:`, dispatched to the entry its own
   # body names.
   - name: fromTemplate
@@ -336,7 +336,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.fromTemplate.result"
-      expected: "2026-01-15T09:30:00.000Z"
+      expected: "2026-01-15T09:30:00Z"
   # A route's `inputs:`, decoded when the API is created rather than per request.
   - name: fetch
     inputs: {}
@@ -348,7 +348,7 @@ steps:
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.fetch.result.body.at"
-      expected: "2026-01-15T09:30:00.000Z"
+      expected: "2026-01-15T09:30:00Z"
   # The refusal, at the library that writes the text...
   - name: refusedByCheck
     invoke:

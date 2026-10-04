@@ -286,11 +286,14 @@ export async function create(resource: RecognizerResource, ctx: ResourceContext)
     }
     return value;
   };
+  // A duration is identified by a type key and carries no methods, so it is ASKED for with
+  // `isCelDuration` and read through `durationNanos` — `instanceof sdk.Duration` was a
+  // reference to a class the value domain no longer has, which threw at creation.
   const maxRecognitionMs =
     resource.maxRecognitionTime === undefined
       ? 120_000
-      : resource.maxRecognitionTime instanceof sdk.Duration
-        ? Number(resource.maxRecognitionTime.getMilliseconds())
+      : sdk.isCelDuration(resource.maxRecognitionTime)
+        ? Number(sdk.durationNanos(resource.maxRecognitionTime) / 1_000_000n)
         : Number.NaN;
   if (!(maxRecognitionMs > 0)) {
     throw new sdk.RuntimeError("ERR_INVALID_VALUE", `${label}: maxRecognitionTime must be a positive duration.`);

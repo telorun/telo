@@ -1,6 +1,7 @@
 import {
-  Duration,
+  durationNanos,
   ERR_INVOKE_CANCELLED,
+  isCelDuration,
   InvokeError,
   NEVER_CANCELLED,
   type InvokeContext,
@@ -27,9 +28,14 @@ interface WaitInputs {
   timeout: unknown;
 }
 
+const NANOS_PER_MILLISECOND = 1_000_000n;
+
+/** A duration as whole milliseconds. A duration is nanosecond-precise and carries no
+ *  methods — it is identified by a type key, not by a class — so the total comes from
+ *  `durationNanos` and is truncated toward zero, which a timer takes. */
 function milliseconds(value: unknown, describe: () => string): number {
-  if (!(value instanceof Duration)) throw new Error(`${describe()} must be a duration`);
-  return Math.max(0, Number(value.getMilliseconds()));
+  if (!isCelDuration(value)) throw new Error(`${describe()} must be a duration`);
+  return Math.max(0, Number(durationNanos(value) / NANOS_PER_MILLISECOND));
 }
 
 /**

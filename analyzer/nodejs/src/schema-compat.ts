@@ -5,6 +5,7 @@ import {
   celBaseOfValueType,
   celTypeOfValueType,
   hostAnchorOf,
+  isCelRecord,
   readValueTypeSlot,
   VALUE_TYPE_BINDINGS,
   valueBrandBases,
@@ -702,14 +703,12 @@ function enterStandInNode(
 
 /** The stand-in for a CEL leaf at a `live` slot. Static analysis asserts a live
  *  type like any instance type (a literal can never be one), so the leaf's
- *  stand-in has to BE one. A live binding declares no factory, and building an
- *  instance would mean knowing its constructor's signature; an object on the
- *  constructor's prototype satisfies `instanceof` and is never used as one. */
+ *  stand-in has to satisfy the binding's own assertion — which the BINDING
+ *  builds, being the only place that knows what the value is. */
 function liveValuePlaceholder(schema: Record<string, any>): unknown | undefined {
   const entry = readValueTypeSlot(schema)?.entry;
   if (!entry?.live || entry.representation !== "instance") return undefined;
-  const binding = VALUE_TYPE_BINDINGS[entry.binding!];
-  return binding ? Object.create(binding.constructor.prototype) : undefined;
+  return VALUE_TYPE_BINDINGS[entry.binding!]?.placeholder?.();
 }
 
 /**
@@ -1271,9 +1270,12 @@ export function substituteCelFields(
     );
   }
   if (data !== null && typeof data === "object") {
-    // An instance — a decoded timestamp, bytes — is a value, not a container.
-    const proto = Object.getPrototypeOf(data);
-    if (proto !== Object.prototype && proto !== null) return data;
+    // An instance — a decoded timestamp, a duration, bytes — is a value, not a
+    // container. Asked of the value DOMAIN, never of the prototype: a branded CEL
+    // value is a PLAIN object, so rebuilding it from its entries drops the symbol
+    // its brand lives under and the slot's own assertion then refuses the value
+    // this walk produced.
+    if (!isCelRecord(data)) return data;
     const props = collectProperties(resolved);
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {

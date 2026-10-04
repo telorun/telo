@@ -10,15 +10,27 @@
  * rules. Where a backend keeps the version beside the value is its own; a journal
  * keeps the two together and looks inside neither.
  */
+import { isCelRecord } from "./cel-value-identity.js";
 import { assertJournalable } from "./durable-run.js";
 import { InvokeError } from "./invoke-error.js";
-import { decodeTypedFrame } from "./typed-frame.js";
+import {
+  decodeTypedFrame,
+  readsTypedFrameGeneration,
+  typedFrameGenerations,
+  TYPED_FRAME_GENERATION,
+} from "./typed-frame.js";
 
 /**
- * The codec every recorded value is written under. Bumped only for a change an
+ * The codec every recorded value is written under — the frame's own generation, since
+ * the version names the frame's format and nothing else. Bumped only for a change an
  * older reader would MISREAD; a new optional field it can ignore is not one.
+ *
+ * Version 2 is the nanosecond timestamp payload with a trimmed fraction. Version 1 is
+ * still READ, under its own grammar (exactly three fractional digits): an entry a
+ * journal already holds was written by a known writer, and refusing it would strand
+ * every run parked before the change.
  */
-export const RECORDED_VALUE_CODEC_VERSION = 1;
+export const RECORDED_VALUE_CODEC_VERSION = TYPED_FRAME_GENERATION;
 
 /**
  * Write a value down for the record — the one path every record site takes, so
@@ -59,12 +71,17 @@ function withoutAbsent(value: unknown, ancestors: Set<object>): unknown {
   const isArray = Array.isArray(value);
   const proto = Object.getPrototypeOf(value);
   // Anything but a plain list or a plain object — including a list carrying a
-  // property beside its items — is left for the frame to judge, untouched.
+  // property beside its items — is left for the frame to judge, untouched. A
+  // branded CEL value (an instant, a duration, a uint) is asked of the value
+  // DOMAIN rather than of the prototype: it is a plain object, and rebuilding one
+  // from its entries drops the symbol its brand lives under, so the frame would
+  // record a recorded instant as an ordinary map and a replay would hand the run
+  // a value of no CEL type.
   if (isArray) {
     if (proto !== Array.prototype || Object.keys(value).length !== (value as unknown[]).length) {
       return value;
     }
-  } else if (proto !== Object.prototype && proto !== null) {
+  } else if (!isCelRecord(value)) {
     return value;
   }
   ancestors.add(value);
@@ -93,8 +110,10 @@ function withoutAbsent(value: unknown, ancestors: Set<object>): unknown {
  *   read it then (plain JSON, plus the `{"$bigint": …}` tag the SQL journals
  *   wrote). Read, never refused: refusing one would strand every run parked
  *   before the codec, which is the opposite of what a journal is for.
- * - **This version** — the frame, decoded. A frame that does not decode is
- *   `ERR_DURABLE_JOURNAL_CORRUPT`, naming the run and the path.
+ * - **A version this runtime reads** — the frame, decoded under that version's own
+ *   grammar, so an entry written by an earlier codec reads as its writer meant it.
+ *   A frame that does not decode is `ERR_DURABLE_JOURNAL_CORRUPT`, naming the run
+ *   and the path.
  * - **Any other version** — REFUSED with `ERR_DURABLE_ENTRY_UNDECODABLE`, never
  *   read for the parts that look familiar: a later codec may mean something else
  *   by the same bytes.
@@ -108,15 +127,15 @@ export function readRecordedValue(
   if (version === undefined) {
     return written === undefined ? {} : { value: written };
   }
-  if (version !== RECORDED_VALUE_CODEC_VERSION) {
+  if (!readsTypedFrameGeneration(version)) {
     throw new InvokeError(
       "ERR_DURABLE_ENTRY_UNDECODABLE",
       `Run '${run}': the value recorded at '${path}' was written by codec version ${version}, and ` +
-        `this runtime reads version ${RECORDED_VALUE_CODEC_VERSION}. It is refused rather than read ` +
+        `this runtime reads version ${typedFrameGenerations().join(", ")}. It is refused rather than read ` +
         `for the parts that look familiar: a later codec may mean something else by the same bytes, ` +
         `and replaying against a misread value is the corruption durability exists to prevent. ` +
         `Continue this run on a runtime new enough to read its journal.`,
-      { run, path, version, reads: RECORDED_VALUE_CODEC_VERSION },
+      { run, path, version, reads: typedFrameGenerations() },
     );
   }
   if (written === undefined) return {};
@@ -130,7 +149,7 @@ export function readRecordedValue(
     );
   if (typeof written !== "string") throw corrupt("it is not the frame text that codec writes");
   try {
-    return { value: decodeTypedFrame(written) };
+    return { value: decodeTypedFrame(written, version) };
   } catch (error) {
     throw corrupt(`its frame does not decode (${error instanceof Error ? error.message : String(error)})`, error);
   }

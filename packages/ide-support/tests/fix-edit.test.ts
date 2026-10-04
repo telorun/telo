@@ -23,9 +23,14 @@ describe("renderFixReplacement", () => {
     );
   });
 
-  it("escapes a double quote and a backslash inside a double-quoted scalar", () => {
-    expect(renderFixReplacement(`"x"`, `a.startsWith("x\\y")`)).toBe(
-      `"a.startsWith(\\"x\\\\y\\")"`,
+  it("takes the quote that needs no escaping, and escapes where neither does", () => {
+    // `"` with no `'`: a single-quoted scalar carries it as written. This is every repair
+    // that mentions a string, since a CEL string literal is serialized in double quotes.
+    expect(renderFixReplacement(`"x"`, `a.startsWith("x")`)).toBe(`'a.startsWith("x")'`);
+    // Both quote kinds: neither scalar is escape-free, so the default is double quotes and
+    // the `"` and the `\\` are escaped.
+    expect(renderFixReplacement(`"x"`, `a.startsWith("x\\y") && b == 'z'`)).toBe(
+      `"a.startsWith(\\"x\\\\y\\") && b == 'z'"`,
     );
   });
 
@@ -53,7 +58,9 @@ describe("renderFixReplacement", () => {
   it("writes a tagged repair behind its tag, whatever the original's quoting", () => {
     expect(renderFixReplacement("Money", "Money", "ref")).toBe("!ref Money");
     // `!cel` is always double-quoted, the form the formatter writes.
-    expect(renderFixReplacement(`'self.a'`, `self.a == "x"`, "cel")).toBe(`!cel "self.a == \\"x\\""`);
+    // Behind its tag, and in the quote that needs no escape: the text holds `"`, so the
+    // scalar is single-quoted rather than carrying `\"` twice.
+    expect(renderFixReplacement(`'self.a'`, `self.a == "x"`, "cel")).toBe(`!cel 'self.a == "x"'`);
   });
 });
 

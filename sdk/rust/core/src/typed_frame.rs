@@ -611,8 +611,7 @@ mod tests {
             "bytes" => CelValue::Bytes(body.as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect()),
             "timestamp" => {
                 let seconds: i64 = decimal(&body["seconds"]).parse().unwrap();
-                let nanos = body["nanos"].as_i64().unwrap();
-                CelValue::Timestamp(Timestamp::from_unix_millis(seconds * 1000 + nanos / 1_000_000).unwrap())
+                CelValue::Timestamp(Timestamp::new(seconds, body["nanos"].as_u64().unwrap() as u32).unwrap())
             }
             "duration" => {
                 let seconds: i64 = decimal(&body["seconds"]).parse().unwrap();
@@ -711,9 +710,12 @@ mod tests {
             5 => CelValue::Uint(random.next()),
             6 => CelValue::Bytes((0..random.below(5)).map(|_| random.next() as u8).collect()),
             7 => CelValue::Timestamp(
-                Timestamp::from_unix_millis(
-                    Timestamp::MIN_UNIX_MILLIS
-                        + (random.next() % (Timestamp::MAX_UNIX_MILLIS - Timestamp::MIN_UNIX_MILLIS) as u64) as i64,
+                Timestamp::from_unix_nanos(
+                    // Two draws, because the nanosecond range is wider than a u64.
+                    Timestamp::MIN_UNIX_NANOS
+                        + (((random.next() as u128) << 64 | random.next() as u128)
+                            % (Timestamp::MAX_UNIX_NANOS - Timestamp::MIN_UNIX_NANOS) as u128)
+                            as i128,
                 )
                 .unwrap(),
             ),

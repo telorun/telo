@@ -24,7 +24,7 @@ expect:
     - code: CEL_UNKNOWN_FIELD
       message: "'result.totl' is not defined (available: greeting, total, subtotalRan)"
     - code: CEL_TYPE_ERROR
-      message: "no such overload: double + int"
+      message: 'no "+" is declared over double, int'
 ---
 # A template body entry whose `inputType` names a shape — the module's own or an
 # imported library's — types `inputs` exactly as an inline contract does.

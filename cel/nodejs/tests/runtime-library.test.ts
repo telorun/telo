@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  CALL_SITE_DIRECT_ARITY,
   CelEnvironment,
   FunctionRegistry,
   implementationOf,
@@ -49,8 +50,37 @@ describe("the runtime library", () => {
     );
     expect(() => environment.evaluate("hostOnly('x')")).toThrow(/unbound|no overload/);
     environment.registerFunction("hostOnly(string): string", {
-      implementation: (args) => `${args[0] as string}!`,
+      implementation: (ctx, a) => `${a as string}!`,
     });
     expect(environment.evaluate("hostOnly('x')")).toBe("x!");
+  });
+
+  it("refuses a signature wider than an implementation receives, where it is registered", () => {
+    // An implementation takes its arguments positionally, so a signature past the bound could
+    // only be called with its tail dropped. Refusing it at REGISTRATION is what keeps that
+    // from being a silently wrong answer: the bound is declared, so it is also enforced.
+    const environment = new CelEnvironment({ unlistedVariablesAreDyn: true });
+    const widest = Array.from({ length: CALL_SITE_DIRECT_ARITY }, () => "int").join(", ");
+    const wider = Array.from({ length: CALL_SITE_DIRECT_ARITY + 1 }, () => "int").join(", ");
+    expect(() => environment.registerFunction(`widest(${widest}): int`)).not.toThrow();
+    expect(() => environment.registerFunction(`wider(${wider}): int`)).toThrow(
+      /takes 5 values and an implementation receives at most 4/,
+    );
+    // The receiver counts toward the arity, because dispatch resolves on it.
+    expect(() => environment.registerFunction(`int.widest(${widest}): int`)).toThrow(
+      /takes 5 values/,
+    );
+    // And a call written wider than any signature may be is still an ordinary refusal,
+    // naming the types it was handed, rather than a crash in the backend that wrote it.
+    const refused = (source: string) => {
+      try {
+        environment.evaluate(source);
+        return "no refusal";
+      } catch (cause) {
+        return (cause as { code?: string }).code ?? (cause as Error).name;
+      }
+    };
+    expect(refused("'42'.replace('2', '1', 1, false)")).toBe("no_matching_overload");
+    expect(refused("size(1, 2, 3, 4, 5)")).toBe("no_matching_overload");
   });
 });

@@ -12,14 +12,17 @@
  * Browser-safe: no Node built-ins.
  */
 import {
-  CEL_FUNCTIONS,
+  celFunctionCatalog,
   buildCelEnvironment,
   celEngine,
   extractAccessChains,
   interpolationShape,
-  resolveModuleCalls,
+  MODULE_CALL_DISPATCH_KEY,
+  moduleCallNames,
 } from "@telorun/templating";
+import type { ModuleCallDispatch } from "@telorun/templating";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
+import { moduleNamesEnvironment, namespaceDispatchOf } from "./cel-environment.js";
 import type { DiagnosticFix } from "./types.js";
 
 /**
@@ -35,6 +38,33 @@ import type { DiagnosticFix } from "./types.js";
  * as defective rather than truncating coverage silently.
  */
 export const RULE_BUDGET_MS = 50;
+
+/**
+ * Collapses an EVALUATION-TIME rule failure — a condition that threw on a
+ * subject the static check could not foresee, or one that exhausted its budget —
+ * to one diagnostic per `(declaring kind, rule code)` per analysis.
+ *
+ * It used to report per SITE. One upstream defect produced 107 diagnostics
+ * across 99 lines, every one pointing at a line the reader does not own and
+ * cannot fix: a count that grows with the consumer's manifest size for a single
+ * defect in someone else's kind is not an actionable error, it is noise whose
+ * cost is superlinear in the thing being checked.
+ *
+ * Shared by both rule families, like everything else here, because the two would
+ * otherwise come to disagree about what one defect costs.
+ */
+export class RuleFailureLedger {
+  private readonly seen = new Set<string>();
+
+  /** True the FIRST time this rule of this kind fails, false after. The caller
+   *  drops everything but the first. */
+  first(declaringKind: string, rule: string): boolean {
+    const key = `${declaringKind}\u0000${rule}`;
+    if (this.seen.has(key)) return false;
+    this.seen.add(key);
+    return true;
+  }
+}
 
 /**
  * The one message for an untagged `condition:`, shared by every rule family so
@@ -57,9 +87,16 @@ export function untaggedConditionFix(condition: string): DiagnosticFix | undefin
   return interpolationShape(condition) === "none" ? { replacement: condition, tag: "cel" } : undefined;
 }
 
-const HOST_BACKED = new Set(CEL_FUNCTIONS.filter((f) => f.hostBacked).map((f) => f.name));
+// Read off the catalog's one listing surface, which carries both flags per function.
+const HOST_BACKED = new Set(
+  celFunctionCatalog()
+    .filter((f) => f.hostBacked)
+    .map((f) => f.name),
+);
 const NON_DETERMINISTIC = new Set(
-  CEL_FUNCTIONS.filter((f) => !f.deterministic).map((f) => f.name),
+  celFunctionCatalog()
+    .filter((f) => !f.deterministic)
+    .map((f) => f.name),
 );
 
 let sharedEnv: ReturnType<typeof buildCelEnvironment> | undefined;
@@ -94,11 +131,10 @@ export type CompiledRule =
 const RULE_CACHE_LIMIT = 512;
 const compiledRules = new Map<string, CompiledRule>();
 
+const EMPTY_NAMES: ReadonlySet<string> = new Set();
+
 export function compileRuleCondition(
   condition: string,
-  /** Chain roots to assume when the parse yields no AST — "unknown", not
-   *  "reads nothing", so the caller checks the whole of every binding. */
-  fallbackRoots: readonly string[],
   /** The DECLARING kind's module names. A condition is written by the kind's
    *  author, so a call it makes resolves in that module's scope — not in the
    *  scope of whichever manifest the rule is run against. */
@@ -108,16 +144,33 @@ export function compileRuleCondition(
   const cached = compiledRules.get(key);
   if (cached) return cached;
   let result: CompiledRule;
-  try {
-    const parsed = ruleEnv().parse(condition) as (ctx: Record<string, unknown>) => unknown;
-    const ast = (parsed as unknown as { ast?: unknown }).ast;
-    if (ast) resolveModuleCalls(ast as never, moduleNames);
+  // Read against the declaring kind's own names, so a call it writes resolves
+  // in that module's scope rather than in whichever manifest the rule runs
+  // against.
+  const env = moduleNamesEnvironment(ruleEnv(), moduleNames ?? EMPTY_NAMES);
+  const parsed = env.parse(condition);
+  const diagnostic = parsed.diagnostics[0];
+  if (diagnostic) {
+    // The text the condition's own CEL pass reports; "unknown", not "reads
+    // nothing", so the caller checks the whole of every binding.
+    result = { reason: diagnostic.message };
+  } else {
+    const program = env.compile(parsed);
     result = {
-      parsed,
-      chains: ast ? extractAccessChains(ast as never) : fallbackRoots.map((root) => [root]),
+      // The caller hands the module's dispatch table in the activation, under
+      // a key outside CEL's identifier grammar, so no author can reach past
+      // the export gate. The engine takes it as the per-evaluation namespace
+      // seam instead — nothing in an activation can name a function — so it is
+      // lifted out here rather than left as a binding the expression could
+      // never read.
+      parsed: (ctx) => {
+        const { [MODULE_CALL_DISPATCH_KEY]: table, ...activation } = ctx;
+        return program.evaluate(activation as never, {
+          namespaceFunction: namespaceDispatchOf(table as ModuleCallDispatch | undefined),
+        });
+      },
+      chains: extractAccessChains(parsed.root),
     };
-  } catch (err) {
-    result = { reason: err instanceof Error ? err.message : String(err) };
   }
   if (compiledRules.size >= RULE_CACHE_LIMIT) {
     const oldest = compiledRules.keys().next();
@@ -156,7 +209,7 @@ export function conditionRefusals(
 ): string[] {
   const out: string[] = [];
   const result = celEngine.analyze(condition, {
-    celEnv: ruleEnv(),
+    celEnv: moduleNamesEnvironment(ruleEnv(), moduleNames ?? EMPTY_NAMES),
     contextSchema: null,
     moduleNames,
   });
@@ -196,15 +249,11 @@ export function conditionCallRefusals(
   flagsOf: (qualified: string) => CallableFlags | undefined,
 ): string[] {
   const out: string[] = [];
-  let ast;
-  try {
-    ast = ruleEnv().parse(condition).ast;
-  } catch {
-    // `conditionRefusals` reports the syntax error.
-    return out;
-  }
+  const parsed = moduleNamesEnvironment(ruleEnv(), moduleNames).parse(condition);
+  // `conditionRefusals` reports the syntax error.
+  if (parsed.diagnostics.length > 0) return out;
   const reported = new Set<string>();
-  for (const qualified of resolveModuleCalls(ast as never, moduleNames)) {
+  for (const qualified of moduleCallNames(parsed.root)) {
     if (reported.has(qualified)) continue;
     reported.add(qualified);
     const flags = flagsOf(qualified);

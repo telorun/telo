@@ -1,4 +1,10 @@
-import { InvokeError, type ResourceContext } from "@telorun/sdk";
+import {
+  formatTimestamp,
+  InvokeError,
+  isCelTimestamp,
+  timestampNanos,
+  type ResourceContext,
+} from "@telorun/sdk";
 import type { Accessor } from "./chart-resource.js";
 
 /**
@@ -57,8 +63,9 @@ export function evaluate(
  * Null and non-finite are a HARD failure naming the row and the accessor,
  * because they are a defect in the data or in the expression, and a chart that
  * silently skipped them would draw a picture that is wrong in a way nobody can
- * see. Dates and numeric strings convert, because that is what arrives from a
- * database driver or a JSON payload rather than a mistake.
+ * see. Instants and numeric strings convert, because that is what arrives from a
+ * database driver or a JSON payload rather than a mistake — an instant as its
+ * epoch milliseconds, which is the number a time scale is drawn from.
  */
 export function requireNumber(
   value: unknown,
@@ -71,8 +78,8 @@ export function requireNumber(
       ? value
       : typeof value === "bigint"
         ? Number(value)
-        : value instanceof Date
-          ? value.getTime()
+        : isCelTimestamp(value)
+          ? Number(timestampNanos(value) / 1_000_000n)
           : typeof value === "string" && value.trim() !== ""
             ? Number(value)
             : Number.NaN;
@@ -87,7 +94,7 @@ export function requireNumber(
 }
 
 /** The label a category, a series or a band is known by. Stringified rather
- *  than required to be a string: a numeric or date key is a legitimate grouping
+ *  than required to be a string: a numeric or instant key is a legitimate grouping
  *  and would otherwise need a `string(...)` in every accessor. */
 export function requireKey(
   value: unknown,
@@ -102,7 +109,7 @@ export function requireKey(
         `a chart needs a value to name that mark by.`,
     );
   }
-  if (value instanceof Date) return value.toISOString();
+  if (isCelTimestamp(value)) return formatTimestamp(value);
   if (typeof value === "object") {
     throw new InvokeError(
       DATA_INVALID,

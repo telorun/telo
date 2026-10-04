@@ -1,0 +1,83 @@
+# `request` is a CEL binding, so every member of it has to BE a CEL value: a map a
+# host hands over is a plain object, and the member-read seam answers "this value
+# holds no members" for anything else rather than performing a host property read.
+# Fastify's query and parameter bags are not plain objects — its query parser builds
+# each one with a prototype of its own — so the router hands them over in the domain.
+# Read directly here rather than through a fake upstream, because the failure this
+# pins made every handler reading the query string answer 500 with no handler code
+# involved at all.
+kind: Telo.Application
+metadata:
+  name: HttpServerRequestBindingTest
+  version: 1.0.0
+imports:
+  Server: ../
+  Http: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: "http://localhost:8993"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: Api }
+    routes:
+      - request:
+          path: /echo/{tenant}
+          method: POST
+          schema:
+            query: { type: object, additionalProperties: true }
+            body: { type: object, additionalProperties: true }
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  # Every shape a member read is written in, over all four bags.
+                  fromQuery: !cel "request.query.page"
+                  queryHasKey: !cel "'page' in request.query"
+                  queryByKey: !cel "request.query['page']"
+                  fromParams: !cel "request.params.tenant"
+                  fromBody: !cel "request.body.note"
+                  fromHeaders: !cel "request.headers['x-probe']"
+                  # A map leaving CEL for an HTTP body reaches a reader that is not a
+                  # Telo runtime, so it is written as a map rather than as the
+                  # container the value domain holds it in.
+                  computed: !cel "{'echo': request.query.page}"
+  - kind: Server.Server
+    metadata: { name: Srv }
+    port: 8993
+    mounts:
+      - path: /
+        mount: !ref Api
+targets:
+  - !ref Srv
+steps:
+  - name: call
+    invoke:
+      kind: Http.Request
+      client: !ref client
+      url: /echo/acme
+      method: POST
+      query: { page: "2" }
+      headers: { x-probe: seen }
+      body: { note: hello }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.call.result.body"
+      expected:
+        fromQuery: "2"
+        queryHasKey: true
+        queryByKey: "2"
+        fromParams: acme
+        fromBody: hello
+        fromHeaders: seen
+        computed: { echo: "2" }

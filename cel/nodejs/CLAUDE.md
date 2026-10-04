@@ -119,7 +119,17 @@ a quoted or absolute name as a namespaced call; and container-dependent resoluti
 which would mean inventing a container Telo never declares.
 
 **Two cel-go libraries ship and the rest do not.** The **optional** library enters whole under
-`enableOptionalTypes`, and `cel.bind` — cel-go's *bindings* extension — is always here, because a name
+`enableOptionalTypes` — **whole including its presence reading**: cel-go answers "not found" for a
+receiver that is neither a mapper, a lister nor an indexer whenever the read is a presence test, and
+its error reading is an explicitly named opt-in (`EnableErrorOnBadPresenceTest`) which Telo
+deliberately does not carry, because a per-environment switch over what an expression MEANS would let
+the analyzer and a kernel disagree about one manifest. So `a.?b`, `a[?k]` and `has(a.b)` over a value
+that holds no members answer absence, and the library's own semantics are the authority for it —
+which is the adjudication rule below, applied to a library rather than to cel-spec. The engine
+answering the error by default was inventing a dialect inside a library it had declared the authority
+for.
+
+`cel.bind` — cel-go's *bindings* extension — is always here too, because a name
 for one value is how an expression stops repeating itself and its eight rows are compared like any other.
 Every other extension library (`strings`, `math`, `lists`, `encoders`, `sets`, `blocks`, …) is absent: a
 call into one is an unknown function. The string members this library declares beyond CEL's own are not
@@ -158,9 +168,35 @@ checker and on both backends:
   short-circuit. Never `undefined` passed along.
 - A CEL map is built **prototype-free**, so every key — those three included — round-trips as data.
   Dropping a key is swallowing, and is forbidden.
-- A select on a value that is not a map, a record or a registered type is a type error at check and a
-  CEL error at runtime — never a lookup that happens to find `length`, `name`, `call` or `apply`.
+- **What each of the four verdicts answers is written once** (`lookupAbsence`), and both presence
+  callers read it — so the two backends and the emitter cannot differ about it by construction. A
+  **presence-shaped** read — `.?`, `[?]`, `has()` — answers **absence** for *missing*, *out of range*
+  and *holds no members* alike, and the error only for an **unusable key**; an **ordinary** read
+  answers the error for all four; and the ordinary step of a chain that has entered optional land sits
+  between them, absent for a missing key and an error for a value holding no members. An unusable key
+  is the one refusal no form forgives: `[?3.1]` names an entry no container of that shape could hold.
+- A select on a value that is not a map, a record or a registered type is a type error at check and,
+  in the **non-presence** forms, a CEL error at runtime — never a lookup that happens to find
+  `length`, `name`, `call` or `apply`. The type error covers **both** forms: an operand whose type is
+  known to hold no members is refused whether the read is written `.b`, `.?b` or inside `has()`, so the
+  runtime's absence answer is reached only through a `dyn` the check could not judge. A union with at
+  least one member-holding branch is the exception, and the reason the rule is shaped this way: a
+  presence-shaped read over one is legal and typed `optional<T>` over the branches that hold the
+  member, which is how a two-shape field is discriminated with no type test; the ordinary read of it
+  stays refused.
 - An index on a list is a bounds-checked element read, not a property read.
+
+**A host hands a map over as a plain object, and the boundary of that is the prototype.**
+`Object.prototype` or `null` is a map; an object carrying a prototype of its OWN is not, however
+data-like it looks, because the seam resolves a key against a value's own entries and cannot tell
+a bag from an instance with methods. It is not a theoretical edge: a transport's query bag is
+routinely neither (`fast-querystring` builds each one as `new Empty()` over `Object.create(null)`,
+so its prototype is a null-prototype object), and read through CEL such a bag held no members at
+all — every HTTP handler reading the query string answered 500. **The engine does not widen to
+meet it**, and that is the decision rather than an omission: a reading that accepted any
+data-like object would make `length`, `call` and `apply` reachable from a computed key, which is
+the one guarantee this seam exists for. The host converts at its own boundary instead — one
+plain-object copy per bag, which is also where header lowercasing already happens.
 
 ## cel-spec is the specification; the vectors are evidence
 
@@ -397,6 +433,16 @@ beside the engine being replaced disappear. **A fix is a whole-source replacemen
 the tree and writing it back out, so a repair always parses and never depends on an offset that
 re-indenting would move.
 
+**A call on a name nothing registers names the names that would have worked** — the registered names
+accepting its form and arity, at most `UNKNOWN_FUNCTION_CANDIDATES` of them, by edit distance over the
+name as written then by name. The bound and the order are **declared** because the vectors pin the
+message byte for byte, and a selection rule a second engine cannot reproduce is a row it cannot pass; a
+name that cannot be written as a call (an operator's own symbol) is filtered out rather than ranked —
+without that filter `no(1)` offered `!` and `-` as its nearest spellings. It names **no command**:
+which listing a host offers is the host's, and the same engine embedded somewhere with no CLI could not
+honour it. The fix beside it stays **singular** — a list of five repairs is not a repair, and the
+alternatives are already in the message.
+
 **`CEL_NULLABLE_ACCESS` recognises exactly three guards: `?:`, `&&`, `||`** (`nullable-access.ts`).
 Recognising a fourth would make a consumer newly accept an expression on the day it changes engines;
 recognising fewer would make it newly reject one. A guard written as a function call is deliberately not
@@ -439,6 +485,15 @@ withholdings, each **structural rather than a flag** (`tests/namespace-declarati
   nothing reads, which no reader can tell from a list that is simply wrong. Such a declaration is listed as
   `total(…): double`, never as a function of no arguments.
 
+- **A type name nothing is registered under is accepted and read `dyn`**, and every call to that
+  function carries a ranged `CEL_TYPE_ERROR` naming it. A declaration is a host's own data — a module
+  function's declared result, out of a manifest — so a typo in one is the host disagreeing with its own
+  registry, reported where there is a range rather than thrown where there is none, exactly as
+  `named-type-unregistered` is for a schema node. It covers every type position of both declaration
+  forms, because leaving one form throwing for the identical typo is the asymmetry this guide calls a
+  finding. `CelTypeExpressionError` keeps what it is about — text this grammar cannot read — and
+  `CelUnknownTypeNameError` is what a caller holding its own source gets.
+
 **Why the engine declines rather than answers:** a host's name resolution can rest on vocabulary this
 package may not learn (an export gate, a capability, a re-export chain), and its signature grammar can be
 richer than CEL's (an optional trailing parameter, a declared JSON Schema per parameter — strictly stronger
@@ -466,11 +521,30 @@ nanosecond-precise, which no host date type holds — `string(timestamp('…9999
 `optional`, `map` (a map with int, uint or bool keys) and `error`. A host's named type registers its own
 key, refused at registration if it is one of those.
 
-**A map's entries are keyed by the canonical text of each key**, never by a property name
+**A map's entries are keyed by each key's own typed value** (`CelMapKey`: a string or a bool is itself,
+an int, a uint and a whole double are all the `bigint` CEL equality makes them), never by a property name
 (`cel-map-value.ts`): that is what lets one container hold CEL's four key types, makes `1` and `1u` one
 key as CEL equality requires, and means no key a map holds can reach a prototype. A map is **built** with
 an int, uint, bool or string key — a double is not a key type, even a whole one — and still **looks one
 up** by any numeric type, because `{1u: 1.0}[?1.0]` reads the entry.
+
+**The types separate themselves, which is why nothing is prefixed.** A `Map` compares a key by type as
+well as by value, so a string `"1"` and an int `1` are distinct keys and `"true"` is not `true` with no
+`s`/`n`/`b` namespace built per key. The prefix those three guarantees used to rest on was **46% of a
+map literal's build cost and was paid again on every lookup** — measured, against a prototype-free plain
+object for the entries, which turned out *slower* than the `Map` (five hidden-class transitions beat five
+`Map.set` the wrong way) and against the entry wrapper, which costs nothing. So the text was the
+mechanism and never the contract; a port keys an entry by its own discriminant instead of reproducing
+this engine's strings byte for byte. The rule is **not exported** — what identifies an entry is the
+entries map's own business, and publishing it is what let the SDK's typed frame grow a second copy of it;
+a host reads a map through the member-read seam and walks `entries` for the pairs.
+
+**The entries arrive flat** — key, value, key, value — so a literal of n entries costs one allocation
+rather than one per entry, and a duplicate is caught by the size not moving rather than by a probe per
+key. **The flat shape is type-compatible with the pairs shape it replaced** (an array of two-element
+arrays IS a `readonly CelValue[]`, because a list is a `CelValue`), so the compiler cannot catch a caller
+that was not converted — the conformance decoder was exactly that caller, and the replay is what found
+it. A new caller is checked by running the replay, never by the types.
 
 ## The semantics live once, under both backends
 
@@ -514,8 +588,17 @@ commented in its own corpus, and `int(double)` refuses a double at or beyond **e
 the same reason. An exact comparison would be defensible alone and indefensible as a cross-engine
 contract: a second engine on a conformant library would answer the other way on a comparison that can
 decide an authorization or a retry bound. **A map's key identity is not this comparison** and does not
-convert: a map is keyed by the canonical text of its key, so `{1u: 1.0}[?1.0]` reads the entry and
-`[?3.1]` names none.
+convert: a map is keyed by its key's own typed value, so `{1u: 1.0}[?1.0]` reads the entry while `[?3.1]`
+is `unsupported_key_type` — a double that is not whole is a mistake in the READ, since no key of any type
+could have been the one asked for, rather than an entry that is absent.
+
+**The duration GRAMMAR and the duration RANGE are separate questions, and both are exported.**
+`parseDuration` is CEL's text under CEL's range; `durationNanosFromText` is the same grammar with
+**no range applied**, answering an unbounded `bigint`. A consumer outside CEL has the same grammar
+with a different range — protobuf's `google.protobuf.Duration` reaches ±10,000 years, which cannot be
+held in an int64 of nanoseconds at all — so a reader that must carry one (a journal entry, a value off
+a transport, the `cel-duration` plain encoding) would otherwise restate this grammar. It does not: it
+takes the total and applies its own bound. `celDurationFromNanos` is what applies CEL's.
 
 **Nanosecond precision and the declared ranges are the domain's**, not a host type's. An instant is
 seconds plus nanos in `0001-01-01T00:00:00Z … 9999-12-31T23:59:59.999999999Z`. **A duration is the signed
@@ -565,6 +648,33 @@ not enough, since `dyn` reaches the runtime. A site holds its last resolution an
 the type names themselves — building a cache key per call is the allocation that costs most on the
 hottest path — with a bounded cache behind it for a polymorphic site. A container's element type is read
 as `dyn` rather than walked, so dispatch does not get more expensive as the data gets larger.
+
+**A dispatch is decided by the VALUES, at one site, from the registry** — never by a declared type, never
+by the emitter, and never by a table of operator behaviour beside the runtime library. The rule has teeth
+because the alternative was measured and is faster: a `typeof`-keyed fast table of operator
+implementations is 1.68× cel-js on a guard-and-concatenate expression where the decided shape is 1.30×.
+It is refused anyway, and **by execution rather than by argument**: such a table is global, so it sits
+outside the environment digest, and on a hit it consults no registry — a host that registers its own
+case-insensitive `==` over two strings gets the standard library's answer back, on every call, cold and
+warm, while the site as it is answers the host's. A replaceable standard library is what this package
+exists for, so a fast path that silently discards a registration is not a trade.
+
+**An implementation takes its call context first and its arguments positionally** (`CelImplementation`),
+up to `CALL_SITE_DIRECT_ARITY` — the widest arity any registration declares. So a call allocates nothing:
+both backends pick the entry point (`call0` … `call4`) from the arity they have, through the same rule,
+and the guard is a field compare per argument rather than a loop over an array. Context-first is
+load-bearing rather than cosmetic: an implementation shared across two arities of one name (`substring`,
+`indexOf`, `join`) would otherwise have the context land in a shifting position, and no CEL value is
+`undefined`, so an absent trailing argument is unambiguous. In a port the same contract is a context plus
+a slice, which allocates nothing either.
+
+**The bound is declared, so it is also enforced.** A signature wider than it is refused where it is
+registered (`signature_too_wide`), because an implementation could otherwise only be called with its tail
+dropped — a declared bound nothing checks is the silent wrong answer it exists to prevent. **But the
+arity of a CALL is the SOURCE's, not the dispatch key's**: anyone may write a call of any width, and
+`'42'.replace('2', '1', 1, false)` — five values — is a conformance row. A call past the bound takes the
+array form and answers the ordinary `no_matching_overload` naming the types it was handed. Assuming the
+dispatch key fixed a call's arity crashed the emitted module on that row, which the replay caught.
 
 **A registration's implementation is the host's half.** The engine's own implementations are looked up by
 dispatch key, so a registration carries one only where the host supplies it; a call that resolves to a
@@ -823,8 +933,10 @@ kind is written down and measured rather than absorbed into an exclusion.
 
 **A fourth driver answers the dialect files** (`conformance/dialect-replay.ts`, with the positions each
 file needs in `catalog-replay.ts` and `types-replay.ts`): `catalog.json`'s 178 rows and `types.json`'s
-26, replayed in place, under the same completeness rule — every row answered, corrected with a cited
-authority, or excluded with one of the same five reasons, which **do not grow**. Today each file has
+64, replayed in place, under the same completeness rule — every row answered, corrected with a cited
+authority, or excluded with one of the same five reasons, which **do not grow**. **Each file's row
+count is pinned** (`CATALOG_ROWS`, `TYPES_ROWS`), because a row that is DELETED leaves every other
+number in the report true — the one change a per-row driver cannot see. Today each file has
 exactly one correction and no exclusion: `catalog/string/timestamp`, which is character for character a
 language row the value replay already corrects, and `types/optional/none`, where an unresolved type
 parameter is reported as `dyn`.
@@ -918,7 +1030,32 @@ was supposed to hold it:
 9. an exclusion branch that compared a verdict and an offset and **no type**, so a fabricated row
    declaring `1 + 1` to check as `string` passed;
 10. an exclusion matched on a fact about a row's INPUT (`disable_check`) without asking whether the fact
-    is true of the row — nine rows the engine checks clean were counted as excused.
+    is true of the row — nine rows the engine checks clean were counted as excused;
+11. a cold-against-warm gate over a site's two dispatch paths, built from cases that **do not
+    discriminate**: `size` over a three-character string and over three bytes both answer `3n`, through
+    different overloads, so deleting the guard's type comparison altogether left it green. Its cases now
+    assert that their own types answer differently before they are allowed to prove anything;
+12. and the same gate comparing a program against **itself**: a compile from text is memoized, so the
+    "fresh site" it held each answer to was the very site it had just warmed. Both controls passed for
+    that reason alone. A fresh site is compiled from a parsed tree, which is deliberately not keyed on.
+13. **a value-domain change gated only by the suites of the package that MADE it.** The map
+    representation moved from a host `Map` to a `CelMap`, and this package's 310 tests, its 39
+    conformance rows and both backend-identity gates were green throughout — because every one of
+    them asks what the ENGINE answers, and the engine was right. What broke was every host reader
+    of a map outside it: the plain-JSON writer and the typed frame still recognised `Map`, so a
+    journal could not record a map and an HTTP body wrote `{"entries":{}}`; the arguments of a
+    module function and of `json()` crossed out unconverted; a log attribute, the debug wire and
+    four controllers read a class the domain no longer has. Thirteen manifest tests found them,
+    one symptom at a time. The filter is the package boundary, and nothing inside it can reach
+    past it: what covers the class is that a representation change enumerates its readers — the
+    engine exports the predicate (`isCelMap`) and the builder (`celMapFromEntries`) so there is
+    one way to ask and one way to make, and `grep` for the representation it replaced is the sweep.
+14. a **dialect replay whose row count nothing pinned**: every number it printed was derived from the
+    rows it read, so deleting a row left the report self-consistent and true. A per-row driver sees a row
+    that disagrees and cannot see a row that is gone — the vectors' whole purpose is to adjudicate a
+    question the NEXT time it is asked, and a row nobody misses adjudicates nothing. `CATALOG_ROWS` and
+    `TYPES_ROWS` are the pin; its own blind spot is that a row can still be rewritten in place, which is
+    a fixture diff a reviewer sees.
 
 Each was *true*. None was *complete*. So the question to ask of any gate added here is not "does it pass"
 and not even "does it fail when I break something" — it is **"what class of row can this mechanism not
@@ -940,6 +1077,8 @@ filter is a result waiting to be re-derived by hand.
 - A dotted declaration, an absolute name → `src/declared-chain.ts` (the one split, read by the checker
   and the backend), `qualifiedVariableType` in `src/checker.ts`
 - Types, their spelling, assignability and unification → `src/cel-type.ts`, `src/type-expression.ts`
+  (an unregistered NAME in a readable expression is `CelUnknownTypeNameError`, a verdict for a caller
+  that holds its source, never a refusal to register)
 - A schema or a field map as a type → `src/json-schema-type.ts`
 - A host's own named type → `src/nominal-type.ts`, and `registerType` in `src/environment.ts`
 - Registration, override, removal and overload resolution → `src/function-registry.ts`, `src/signature.ts`
@@ -964,7 +1103,9 @@ filter is a result waiting to be re-derived by hand.
   `src/value-equality.ts`, `src/value-text.ts`, `src/timestamp-value.ts`, `src/duration-value.ts`,
   `src/regular-expression.ts`
 - A macro's meaning, as a function of its body → `src/comprehension-runtime.ts`
-- Which forms bind a value into a body → `src/comprehension-bindings.ts` (`BINDING_FORMS`)
+- Which forms bind a value into a body → `src/comprehension-bindings.ts` (`BINDING_FORMS`,
+  `receiverMacroBinding`, `namespaceMacroBinding` — exported, because a host walking a tree needs the
+  engine's own enumeration rather than a list of comprehension method names kept in step with it)
 - What a value that must be awaited becomes, wherever one enters → `asyncValueRefused` in `src/cel-value.ts`
 - Tree to closures, and macro lowering → `src/closure-backend.ts`; tree to JavaScript source →
   `src/js-emitter.ts`; what both backends do at a site (a host value, a member read, a bool operand, a
@@ -977,6 +1118,11 @@ filter is a result waiting to be re-derived by hand.
   `tests/standard-library-identity.test.ts` (every registry call),
   `conformance/emitter-identity.ts` (every vector row), with the host that loads an emitted module in
   `tests/emitted-host.ts` and the one call-source generator both gates read in `tests/registry-calls.ts`
+- Whether a site answers the same cold as warm — its resolving path against its monomorphic one, which
+  no backend-identity gate compares because both backends run the same site →
+  `tests/call-site-identity.test.ts`
+- What identifies a map's entry, across a literal, a comprehension and `parseJson` →
+  `tests/map-key-identity.test.ts`
 - Whether the emitter writes the text it wrote before → `tests/emitter-text.test.ts`, over
   `tests/emitter-text-corpus.ts`, pinned in `tests/__fixtures__/emitter-text.json`
 - A bounded cache → `src/bounded-cache.ts`

@@ -14,7 +14,8 @@
  * declared scalars normalized and the arguments validated (`ERR_INPUT_INVALID`),
  * and the result is normalized and validated against `returns`
  * (`ERR_OUTPUT_INVALID`). Values arrive as CEL values: a `bigint` for an
- * integer, a `Date` for a timestamp, a `Duration`, a `Uint8Array` for bytes.
+ * integer, a branded timestamp (`celTimestamp`) or duration, a `Uint8Array` for
+ * bytes.
  */
 import type { EffectBody, EffectChain } from "./effect.js";
 import type { Logger } from "./logger.js";

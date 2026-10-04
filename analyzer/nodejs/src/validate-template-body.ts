@@ -5,13 +5,13 @@ import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateTargetProblems } from "./template-targets.js";
-import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
 import { templateBodies } from "./template-body.js";
-import { isSelfForward } from "./template-self-forward.js";
+import { computedRefSlots, refSlotComputedReason } from "./ref-slot-computed.js";
 import {
   DiagnosticSeverity,
   DiagnosticTag,
@@ -300,18 +300,15 @@ export function validateTemplateBody(
       } as ResourceManifest;
       // An expression at or ABOVE a slot leaves no value at the slot, so it is
       // found among the positions leading to one — at every depth of the data.
-      for (const position of registry.referencePositions(view, aliases, aliasesByModule, body.manifest)) {
-        const value = position.value;
-        if (!isTaggedSentinel(value) || value.engine !== CEL_ENGINE || isSelfForward(value.source)) {
-          continue;
-        }
+      // A body is expanded whole at the template's init(), so every position
+      // counts; the predicate is what the resource-level half narrows.
+      for (const slot of computedRefSlots(
+        registry.referencePositions(view, aliases, aliasesByModule, body.manifest),
+      )) {
         report(
-          "TEMPLATE_REF_COMPUTED",
-          `${body.prefix}.${position.path}`,
-          `'${position.path}: !cel "${value.source}"' on ${label} computes a value that ` +
-            `holds the reference slot '${position.fieldPath}'. CEL values are data, so the reference ` +
-            `cannot survive the expression. Forward it verbatim with a bare 'self.<path>' ` +
-            `(the whole value, shaped as the slot expects), or write the slot itself as '!ref'.`,
+          "REF_SLOT_COMPUTED",
+          `${body.prefix}.${slot.path}`,
+          refSlotComputedReason(slot, { at: `on ${label}`, forwardable: true }),
         );
       }
       for (const site of registry.referenceSites(view, aliases, aliasesByModule, body.manifest)) {

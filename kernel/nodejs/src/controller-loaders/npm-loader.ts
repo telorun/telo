@@ -364,6 +364,18 @@ export class NpmControllerLoader {
         "--no-fund",
         ...QUIET_INSTALL_FLAGS,
         ...PEER_INSTALL_FLAGS,
+        // **No lifecycle scripts for the REALM deps.** This install provisions the
+        // kernel's own already-built packages as `file:` references so a controller
+        // resolves one copy of them; none of them has anything to build here. Running
+        // their scripts instead runs them from wherever the kernel happens to live: a
+        // `prepare` that reaches a repo-relative path (`@telorun/cel` generates its
+        // version constant from `../../scripts/`) resolves against a pnpm virtual-store
+        // directory inside an installed kernel and fails the whole install — so every
+        // npm-delivered controller became unloadable in a packaged image while working
+        // from a checkout, where that path happens to exist. The per-controller install
+        // below keeps its scripts, because a module's own `postinstall` is how it fetches
+        // what it needs.
+        "--ignore-scripts",
       ]);
       await fs.writeFile(stateFile, JSON.stringify({ rootHash: newHash }, null, 2) + "\n");
     }, this.log);

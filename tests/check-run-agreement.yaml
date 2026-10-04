@@ -131,7 +131,6 @@ targets:
   - !ref callableInstanceSignatureAtRuntime
   - !ref callableInstanceTypeNameAtRuntime
   - !ref callableInstanceClaimAtRuntime
-  - !ref callableInstanceMacroNameAtRuntime
   - !ref functionDeterministicAtRuntime
   - !ref callableKinds
   - !ref callableDefinitionsAtRuntime
@@ -164,6 +163,8 @@ targets:
   - !ref templateRefComputed
   - !ref templateRefComputedAtRuntime
   - !ref templateRefComputedChainedAtRuntime
+  - !ref refSlotComputed
+  - !ref refSlotComputedAtRuntime
   - !ref templateForwardInvalid
   - !ref templateForwardInvalidAtRuntime
   - !ref throwsCeiling
@@ -910,8 +911,6 @@ expect:
       message: "declares `deterministic` on an instance of a function kind"
     - code: SCHEMA_VIOLATION
       message: "'deterministic' is not allowed"
-    - code: FUNCTION_NAME_RESERVED
-      message: "Telo.Function/filter: a function cannot be named 'filter'"
 ---
 # …and refused by the kernel as it creates each one, from a consumer whose
 # entry-scoped check is silent.
@@ -935,13 +934,6 @@ metadata:
 source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
 expect:
   runFails: "CALLABLE_DEFINITION_INVALID at deterministic"
----
-kind: Assert.Manifest
-metadata:
-  name: callableInstanceMacroNameAtRuntime
-source: ./__fixtures__/check-run-agreement/callable-instances/telo.yaml
-expect:
-  runFails: "FUNCTION_NAME_RESERVED at metadata.name: Telo.Function/filter: a function cannot be named 'filter'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -1243,19 +1235,23 @@ metadata:
 source: ./__fixtures__/check-run-agreement/template-ref-computed/lib/telo.yaml
 expect:
   errors:
-    - code: TEMPLATE_REF_COMPUTED
+    - code: REF_SLOT_COMPUTED
       message: "holds the reference slot 'routes[].handler'"
-    - code: TEMPLATE_REF_COMPUTED
+    - code: REF_SLOT_COMPUTED
       message: "'node.next: !cel \"{'target': self.target}\"' on the Reach.ViaRecursion entry 'chain'"
 ---
-# …and failed by the kernel's CEL evaluation when an instance initializes, from a
-# consumer whose entry-scoped check is silent.
+# …and refused by the kernel BEFORE it expands the body, from a consumer whose
+# entry-scoped check is silent. The text names the slot, which is what the
+# previous assertion could not: the run used to fail on the CEL dependency's
+# own internal refusal of a live instance inside a map literal — nothing an
+# author could act on, and nothing Telo owned, so the engine cutover turned both
+# of these rows green with the defect still in place.
 kind: Assert.Manifest
 metadata:
   name: templateRefComputedAtRuntime
 source: ./__fixtures__/check-run-agreement/template-ref-computed/telo.yaml
 expect:
-  runFails: "Unsupported type"
+  runFails: "the Http.Api entry 'api': 'routes: !cel"
 ---
 # The depth-2 case: the expression sits at `node.next` of a recursive shape.
 kind: Assert.Manifest
@@ -1264,7 +1260,31 @@ metadata:
 source: ./__fixtures__/check-run-agreement/template-ref-computed/chained.yaml
 expect:
   errors: []
-  runFails: "Expression !cel \"{'target': self.target}\" failed: Unsupported type"
+  runFails: "holds the reference slot 'node.target'"
+---
+# THE SECOND POSITION OF THE SAME RULE. A `Telo.Provider`'s whole root is
+# implicitly compile-eval, so an expression above one of its reference slots is a
+# legal eval site: every static check accepted it, and the kernel expanded it at
+# `create()` and left data at a `use: call` slot — refused lazily at dereference
+# as `ERR_REF_UNRESOLVED`, or never. Reported at the declaring library…
+kind: Assert.Manifest
+metadata:
+  name: refSlotComputed
+source: ./__fixtures__/check-run-agreement/ref-slot-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "holds the reference slot 'routes[].handler'"
+---
+# …and refused at BOOT by the compile-eval expansion itself, from a consumer
+# whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: refSlotComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-computed/telo.yaml
+expect:
+  errors: []
+  runFails: "RefSlotComputedLib.Bus/bus: 'routes: !cel"
 ---
 # A value a template body forwards with a bare `self.<path>` is a field of the
 # ENTRY's kind at boot, so it is checked as one: a forwarded route whose status

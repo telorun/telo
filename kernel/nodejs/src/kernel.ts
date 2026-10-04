@@ -2,6 +2,7 @@ import {
   AnalysisRegistry,
   authoredModuleMetadata,
   buildEvalPaths,
+  celEvalModeAt,
   collectModuleDocuments,
   declarationSignature,
   diffManifests,
@@ -109,6 +110,7 @@ import { injectAtSite } from "./dependency-injection.js";
 import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-sentinels.js";
 import { refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
+import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
 import { refuseMistypedResults } from "./compiled-results.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
@@ -2243,6 +2245,20 @@ export class Kernel implements IKernel {
           `Resource does not match schema for kind ${kind}: ${reason}`,
         );
       }
+    }
+
+    // An expression at or above a reference slot is refused BEFORE it is
+    // evaluated: CEL values are data, so expanding it leaves data where the
+    // slot's holder expects an instance, and nothing downstream recovers the
+    // reference. Compile-eval is a legal eval site — a `Telo.Provider`'s whole
+    // root is one implicitly — which is why this had to be stated here rather
+    // than being caught by the CEL rules. Same reader as `REF_SLOT_COMPUTED`.
+    if (compile.length) {
+      refuseComputedRefSlots(
+        resourceLabel,
+        this.registry.referencePositionsOf(resource),
+        { isEvaluated: (path) => celEvalModeAt({ compile, runtime, regions: [] }, path) === "compile" },
+      );
     }
 
     // Expand compile-time CEL fields before passing to the controller.

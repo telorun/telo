@@ -1,5 +1,11 @@
 import { effectiveAuthorSchema } from "@telorun/analyzer";
-import { Duration, RuntimeError } from "@telorun/sdk";
+import {
+  formatDuration,
+  formatTimestamp,
+  isCelDuration,
+  isCelTimestamp,
+  RuntimeError,
+} from "@telorun/sdk";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
@@ -377,12 +383,17 @@ describe("resolveApplicationEnv", () => {
       { OPENS: "2026-01-15T09:30:00+02:00", PRICE: '{"pricedAt":"2026-01-15T07:30:00Z"}' },
       buildValidator(),
     );
-    expect(result.variables.opens).toEqual(new Date("2026-01-15T07:30:00Z"));
-    expect((result.variables.price as { pricedAt: unknown }).pricedAt).toEqual(
-      new Date("2026-01-15T07:30:00Z"),
-    );
-    expect(result.variables.lasts).toBeInstanceOf(Duration);
-    expect(String(result.variables.lasts)).toBe("5400s");
+    // An instant is a branded VALUE too, not a host `Date`, and it renders through the
+    // engine — RFC 3339 in UTC with the fraction trimmed off a whole second.
+    expect(isCelTimestamp(result.variables.opens)).toBe(true);
+    expect(formatTimestamp(result.variables.opens as never)).toBe("2026-01-15T07:30:00Z");
+    const pricedAt = (result.variables.price as { pricedAt: unknown }).pricedAt;
+    expect(isCelTimestamp(pricedAt)).toBe(true);
+    expect(formatTimestamp(pricedAt as never)).toBe("2026-01-15T07:30:00Z");
+    expect(isCelDuration(result.variables.lasts)).toBe(true);
+    // A CEL duration is a branded VALUE, not a class, so it renders through the engine
+    // rather than through its own `toString`.
+    expect(formatDuration(result.variables.lasts as never)).toBe("5400s");
   });
 
   it("refuses env text the plain encoding does not read, naming the form", () => {

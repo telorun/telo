@@ -24,6 +24,7 @@
   "teloEditorProtocol": 1,
   "teloInlines": [
     "@telorun/analyzer",
+    "@telorun/cel",
     "@telorun/editor-protocol",
     "@telorun/glob",
     "@telorun/ide-support",

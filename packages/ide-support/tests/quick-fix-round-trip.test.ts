@@ -121,7 +121,10 @@ describe("applying a quick fix repairs the manifest", () => {
     const before = `kind: mod.Thing\nmetadata:\n  name: t\nflag: !cel "startsWith(a.b, 'x')"\n`;
     const after = applyFix(before);
 
-    expect(after).toBe(`kind: mod.Thing\nmetadata:\n  name: t\nflag: !cel "a.b.startsWith('x')"\n`);
+    // The repair takes whichever YAML quote needs no escaping. A CEL string literal is
+    // serialized in double quotes, so a single-quoted scalar carries it unescaped where the
+    // author's double-quoted one would have shown `\"x\"`.
+    expect(after).toBe(`kind: mod.Thing\nmetadata:\n  name: t\nflag: !cel 'a.b.startsWith("x")'\n`);
     // The point of the round trip: the repaired text analyzes clean.
     expect(analyze(after).diagnostics.filter((d) => String(d.code).startsWith("CEL_"))).toEqual([]);
   });
@@ -139,6 +142,11 @@ describe("applying a quick fix repairs the manifest", () => {
     const before = `kind: mod.Thing\nmetadata:\n  name: t\nflag: !cel 'startsWith(a.b, "x")'\n`;
     const after = applyFix(before);
 
+    // The engine serializes a string literal in double quotes always — the tree records a
+    // string's value, not the quote the author typed — so a repair spliced into a
+    // single-quoted YAML scalar carries them. The scalar is not broken (a `"` needs no
+    // escaping inside `'…'`), and what the round trip asserts below is the property that
+    // matters: the repaired text analyzes clean.
     expect(after).toContain(`!cel 'a.b.startsWith("x")'`);
     expect(analyze(after).diagnostics.filter((d) => String(d.code).startsWith("CEL_"))).toEqual([]);
   });

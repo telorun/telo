@@ -1,4 +1,4 @@
-import type { CompiledValue } from "@telorun/sdk";
+import { isCelTimestamp, timestampNanos, type CelTimestamp, type CompiledValue } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { substituteDecodedCelFields } from "../src/plain-literal-decoding.js";
@@ -39,9 +39,11 @@ describe("substituteCelFields", () => {
   it("decodes a literal at an instance slot, on a copy, and never an embed's text", () => {
     const schema = { type: "object", properties: { at: { "x-telo-type": "Telo.Timestamp" } } };
     const written = { at: "2026-01-15T09:30:00Z" };
-    expect(substituteDecodedCelFields(written, schema, undefined)).toEqual({
-      at: new Date("2026-01-15T09:30:00Z"),
-    });
+    const decoded = (substituteDecodedCelFields(written, schema, undefined) as { at: unknown }).at;
+    // Asked of the value domain rather than of a shape: an instant IS a branded CEL
+    // value, and `isCelTimestamp` is how every slot's assertion asks.
+    expect(isCelTimestamp(decoded)).toBe(true);
+    expect(timestampNanos(decoded as CelTimestamp)).toBe(1768469400_000_000_000n);
     expect(written).toEqual({ at: "2026-01-15T09:30:00Z" });
     // Left as text, so the slot's own assertion refuses it.
     expect(substituteDecodedCelFields({ at: "tomorrow" }, schema, undefined)).toEqual({

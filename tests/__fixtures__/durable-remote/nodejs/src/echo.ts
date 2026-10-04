@@ -5,7 +5,12 @@
  *  as anything else. Those are the two types a JSON hop silently changes — a
  *  timestamp into a string, bytes into an object keyed by index — so a fixture
  *  echoing only text would have passed just as well with the encoding removed. */
-import { InvokeError, type ResourceContext, type ResourceManifest } from "@telorun/sdk";
+import {
+  InvokeError,
+  isCelTimestamp,
+  type ResourceContext,
+  type ResourceManifest,
+} from "@telorun/sdk";
 
 interface EchoInputs {
   text?: string;
@@ -22,7 +27,7 @@ export class EchoController {
   async invoke(inputs: EchoInputs): Promise<unknown> {
     const at = inputs?.at;
     const key = inputs?.key;
-    if (!(at instanceof Date) || !(key instanceof Uint8Array)) {
+    if (!isCelTimestamp(at) || !(key instanceof Uint8Array)) {
       throw new InvokeError(
         "ERR_REMOTE_INPUT_UNTYPED",
         `The step's inputs crossed the process boundary as ${describe(at)} and ${describe(key)}, ` +
@@ -46,6 +51,9 @@ export class EchoController {
 function describe(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "nothing";
+  // A branded CEL value is a PLAIN object, so its constructor says `Object` for a
+  // timestamp as much as for a map — the brand is what names it.
+  if (isCelTimestamp(value)) return "a timestamp";
   const name = Object.getPrototypeOf(value)?.constructor?.name;
   return name ? `a ${name}` : typeof value;
 }

@@ -186,21 +186,23 @@ class Compiler {
     }));
     const { range } = node;
     return (frame) => {
-      const pairs: [CelValue, CelValue][] = [];
+      // Flat — key, value, key, value — so a literal of n entries costs one allocation
+      // rather than one per entry. The emitter writes the same call.
+      const flat: CelValue[] = [];
       for (const entry of entries) {
         const key = entry.key(frame);
         if (isCelError(key)) return key;
         const value = entry.value(frame);
         if (isCelError(value)) return value;
         if (!entry.optional) {
-          pairs.push([key, value]);
+          flat.push(key, value);
           continue;
         }
         const held = optionalEntry(value, range);
         if (isCelError(held)) return held;
-        if (held.present) pairs.push([key, held.held as CelValue]);
+        if (held.present) flat.push(key, held.held as CelValue);
       }
-      return celMapFromEntries(pairs, range);
+      return celMapFromEntries(flat, range);
     };
   }
 
@@ -297,20 +299,63 @@ class Compiler {
 
   /**
    * One dispatch: evaluate the arguments, carry the first error out, then hand the values
-   * to the site, which resolves the overload on their own types.
+   * to the site **positionally**, which resolves the overload on their own types. The arity
+   * is the dispatch key's and known at compile time, so the step is chosen once here and no
+   * argument array is built per call — the same choice the emitter writes into its text.
    */
   private callStep(name: string, form: CallForm, args: readonly CelStep[], range: SourceRange): CelStep {
     const site = callSiteOf(this.target, name, form, range);
-    const count = args.length;
-    return (frame) => {
-      const values: CelValue[] = new Array<CelValue>(count);
-      for (let at = 0; at < count; at += 1) {
-        const value = args[at]!(frame);
-        if (isCelError(value)) return value;
-        values[at] = value;
+    const [first, second, third, fourth] = args;
+    switch (args.length) {
+      case 0:
+        return () => site.call0();
+      case 1:
+        return (frame) => {
+          const a = first!(frame);
+          return isCelError(a) ? a : site.call1(a);
+        };
+      case 2:
+        return (frame) => {
+          const a = first!(frame);
+          if (isCelError(a)) return a;
+          const b = second!(frame);
+          return isCelError(b) ? b : site.call2(a, b);
+        };
+      case 3:
+        return (frame) => {
+          const a = first!(frame);
+          if (isCelError(a)) return a;
+          const b = second!(frame);
+          if (isCelError(b)) return b;
+          const c = third!(frame);
+          return isCelError(c) ? c : site.call3(a, b, c);
+        };
+      case 4:
+        return (frame) => {
+          const a = first!(frame);
+          if (isCelError(a)) return a;
+          const b = second!(frame);
+          if (isCelError(b)) return b;
+          const c = third!(frame);
+          if (isCelError(c)) return c;
+          const d = fourth!(frame);
+          return isCelError(d) ? d : site.call4(a, b, c, d);
+        };
+      default: {
+        // A call written wider than any signature may be. Its arguments are still evaluated
+        // in order, so an error in one carries out ahead of the refusal.
+        const count = args.length;
+        return (frame) => {
+          const values: CelValue[] = new Array<CelValue>(count);
+          for (let at = 0; at < count; at += 1) {
+            const held = args[at]!(frame);
+            if (isCelError(held)) return held;
+            values[at] = held;
+          }
+          return site.call(values);
+        };
       }
-      return site.call(values);
-    };
+    }
   }
 
   private qualifiedCallStep(

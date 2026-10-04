@@ -1,13 +1,11 @@
-import { ParseError } from "@marcbachmann/cel-js";
 import { isCompiledValue } from "@telorun/sdk";
 import {
-  buildCelEnvironment,
   celExpressionsOf,
   extractAccessChains,
   isTaggedSentinel,
   plainChainOf,
-  resolveModuleCalls,
 } from "@telorun/templating";
+import { parseCelSource } from "./cel-environment.js";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
 
 /** Annotation on an `x-telo-context` node naming the resource field that holds
@@ -49,10 +47,6 @@ export function findBindingSites(
   return fields.length > 0 ? { field: fields[0]!, fields, scopeNames } : undefined;
 }
 
-/** Parser for expressions that reach here uncompiled. Built once; the base
- *  environment is stateless and shared with the runtime's own. */
-let parseEnv: ReturnType<typeof buildCelEnvironment> | undefined;
-
 /**
  * Root identifiers an expression source reads — the first element of every
  * member-access chain, which is what a dependency edge is made of.
@@ -62,28 +56,20 @@ let parseEnv: ReturnType<typeof buildCelEnvironment> | undefined;
  * named after each other's *fields* look mutually recursive and reject a correct
  * manifest — the worst outcome a static check has. An expression that does not
  * parse contributes no edges; its syntax error is the engine pass's to report.
+ *
+ * Read under `moduleNames`, because a module call states no dependency on a
+ * SIBLING BINDING: `Billing.f(x)` reaches another module's function, and
+ * reading `Billing` as a root would make a binding of that name look like this
+ * one's dependency — a cycle reported against a manifest that has none.
  */
 function addRootIdentifiers(
   source: string,
   out: Set<string>,
   moduleNames?: ReadonlySet<string>,
 ): void {
-  parseEnv ??= buildCelEnvironment();
-  let ast;
-  try {
-    ast = parseEnv.parse(source).ast;
-  } catch (error) {
-    // Unparseable — see above. Only the parser's own refusal; anything else is a
-    // defect and propagates.
-    if (error instanceof ParseError) return;
-    throw error;
-  }
-  // A module call states no dependency on a SIBLING BINDING: `Billing.f(x)`
-  // reaches another module's function, and reading `Billing` as a root would
-  // make a binding of that name look like this one's dependency — a cycle
-  // reported against a manifest that has none.
-  resolveModuleCalls(ast, moduleNames);
-  for (const chain of extractAccessChains(ast)) {
+  const parsed = parseCelSource(source, moduleNames);
+  if (!parsed) return;
+  for (const chain of extractAccessChains(parsed.root)) {
     if (chain.length > 0) out.add(chain[0]!);
   }
 }

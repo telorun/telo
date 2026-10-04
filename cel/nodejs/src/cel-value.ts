@@ -82,12 +82,20 @@ export interface CelMapValueEntry {
 }
 
 /**
- * A map. Entries live in a `Map` keyed by the canonical text of each key, so the map
- * holds int, uint, bool and string keys alike and **no key is ever a property name**:
+ * What identifies a key inside a map's entries. A `Map` distinguishes its own keys **by
+ * type**, so the four CEL key types collapse onto three JS ones with no namespace to
+ * separate by hand: a string key is itself, a bool is itself, and an int, a uint and a
+ * whole double are all the `bigint` CEL equality makes them.
+ */
+export type CelMapKey = string | bigint | boolean;
+
+/**
+ * A map. Entries live in a `Map` keyed by each key's own `CelMapKey`, so the map holds
+ * int, uint, bool and string keys alike and **no key is ever a property name**:
  * `__proto__`, `constructor` and `prototype` are data here, as they are in any map.
  */
 export interface CelMap extends Branded<"map"> {
-  readonly entries: ReadonlyMap<string, CelMapValueEntry>;
+  readonly entries: ReadonlyMap<CelMapKey, CelMapValueEntry>;
 }
 
 /** Every evaluation failure this engine names. A code is never derived from a message. */

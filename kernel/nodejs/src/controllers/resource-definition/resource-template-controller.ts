@@ -18,9 +18,18 @@ import {
   templateTargetsOf,
   type CelEvalSites,
 } from "@telorun/analyzer";
-import { isCompiledValue, RuntimeError, type ResourceDefinition } from "@telorun/sdk";
+import {
+  isCompiledValue,
+  RuntimeError,
+  type ResourceDefinition,
+  type ResourceManifest,
+} from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
+import {
+  refuseComputedRefSlots,
+  type RefPositionHost,
+} from "../../refuse-computed-ref-slots.js";
 import { declaringContextOf } from "./declaring-context.js";
 
 /**
@@ -172,7 +181,13 @@ export function createTemplateController(definition: {
   mount?: unknown;
   provide?: unknown;
   result?: Record<string, any>;
-}): ControllerInstance {
+},
+/** Resolves a body entry's reference positions in the DEFINING module's scope —
+ *  the kernel's resource context (`ResourceContextImpl`). Optional for the same
+ *  reason every other kernel-supplied hook is: a third-party host keeps
+ *  compiling, and absent reads as "no positions", which is what a context that
+ *  cannot enumerate them already meant. */
+refPositions?: RefPositionHost): ControllerInstance {
   // Checked at registration (`templateTargetProblems`), so every item is a
   // `!ref` naming an entry by the time an instance exists.
   const startTargets = templateTargetsOf(definition as Record<string, unknown>).map((t) => t.name);
@@ -440,8 +455,22 @@ export function createTemplateController(definition: {
               // as `resources.<name>.<field>` does.
               childContext.bindContextValue?.("self", celSelfView(getSelf()));
               for (const template of definition.resources ?? []) {
+                const entry = stampDeclaringModule(template);
+                // An expression at or above one of the ENTRY's reference slots
+                // is refused before `expandSelf` evaluates it: CEL values are
+                // data, so the reference cannot survive it, and a body is
+                // expanded whole here — the one exemption is a bare
+                // `self.<path>`, which `expandSelf` NAVIGATES. Same reader as
+                // `REF_SLOT_COMPUTED`, so the refused positions are the ones
+                // `telo check` reports at the declaring library.
+                refuseComputedRefSlots(
+                  `Template '${resource.kind}/${resource.metadata.name}': the ` +
+                    `${entry?.kind} entry '${entry?.metadata?.name}'`,
+                  refPositions?.referencePositionsOf(entry as ResourceManifest) ?? [],
+                  { forwardable: true },
+                );
                 childContext.registerManifest(
-                  stampDeclaringModule(expandSelf(template, "", deferredPathsFor(template?.kind))),
+                  expandSelf(entry, "", deferredPathsFor(template?.kind)),
                 );
               }
               registered = true;

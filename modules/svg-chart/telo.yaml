@@ -11,6 +11,14 @@ metadata:
     labels. Each row maps to a mark through expressions checked against the declared
     row shape, so a misspelled column is a startup error rather than an empty picture.
     The markup drops into a PDF, an HTML page, an email or a tool result.
+requires:
+  # 0.108.0: a time axis reads an instant through the value domain
+  # (`isCelTimestamp`, `formatTimestamp`) rather than a host date class.
+  # `@telorun/sdk` is external and collapsed to the runtime's own copy, so on a
+  # runtime whose SDK does not export those names they are undefined and the
+  # chart dies at creation with a TypeError naming this module. Verified by
+  # execution: the published 0.107.0 tarball exports neither name.
+  telo: ">=0.108.0"
 imports:
   Font: ../font
 exports:

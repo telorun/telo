@@ -65,7 +65,7 @@ describe("CelScopeQuery", () => {
     // A path carrying no expression at all: this is what a cursor in a
     // half-written `!cel` addresses.
     const scope = query.scopeAt(resource, "steps[0].inputs.q");
-    const names = scope.env.getDefinitions().variables.map((v) => v.name);
+    const names = scope.env.definitions().variables.map((v) => v.name);
     expect(names).toContain("variables");
   });
 

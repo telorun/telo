@@ -4,7 +4,7 @@ import { CONFORMANCE_HANDLERS, runDialectRow, type DialectRow } from "./cel-conf
 import { conformanceValueCodec } from "./cel-conformance-value.js";
 
 const env = buildCelEnvironment(CONFORMANCE_HANDLERS);
-const codec = conformanceValueCodec(env);
+const codec = conformanceValueCodec();
 const row = (source: string): DialectRow => ({
   id: "scratch/json/unwritable",
   tag: "cel",

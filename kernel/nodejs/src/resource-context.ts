@@ -41,6 +41,7 @@ import {
   registerTeloKeywords,
   type DeclaredScalarPath,
   type NamedContractShape,
+  type ReachPosition,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -853,6 +854,15 @@ export class ResourceContextImpl implements ResourceContext {
    */
   resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinition | undefined {
     return this.kernel.getAnalysisRegistry().resolveDefinitionIn(kind, module);
+  }
+
+  /** Every position of a declaration at or above one of its reference slots,
+   *  resolved in the module its `metadata.module` names — the same enumeration
+   *  Phase-5 injection reads. A template controller asks it about each body
+   *  entry before it expands one (`refuseComputedRefSlots`); the host shape is
+   *  `DefinitionScopeHost`'s. */
+  referencePositionsOf(resource: ResourceManifest, data: unknown = resource): ReachPosition[] {
+    return this.kernel.getAnalysisRegistry().referencePositionsOf(resource, data);
   }
 
   registerDefinition(def: any) {
