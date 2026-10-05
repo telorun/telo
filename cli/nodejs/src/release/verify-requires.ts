@@ -62,6 +62,8 @@ import {
   type VersionRange,
 } from "@telorun/analyzer";
 import { execFile } from "node:child_process";
+import * as os from "node:os";
+import * as path from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
@@ -153,7 +155,12 @@ export async function verifyRequires(
 
 async function runEdge(manifestPath: string, edge: string): Promise<EdgeOutcome> {
   try {
-    await run("npx", ["-y", `@telorun/cli@${edge}`, "check", manifestPath], {
+    // Away from the module's own directory: `npx` reads the `.npmrc` of the
+    // directory it starts in, and one there naming another registry would decide
+    // which program is installed and run as `@telorun/cli`. Verifying a module
+    // must execute nothing the module supplies.
+    await run("npx", ["-y", `@telorun/cli@${edge}`, "check", path.resolve(manifestPath)], {
+      cwd: os.tmpdir(),
       timeout: EDGE_TIMEOUT_MS,
       maxBuffer: 8 * 1024 * 1024,
     });

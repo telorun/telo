@@ -63,6 +63,7 @@ import { parseAllDocuments } from "yaml";
 import { findModuleDoc, importSourceRefs } from "../commands/manifest-imports.js";
 import { assertLayerEntries, pinnedLayerBlob, type BuiltLayer } from "./built-layers.js";
 import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from "./manifest-text.js";
+import { PublishFailure } from "../publish-failure.js";
 import { expandDirectoryClaims } from "./module-path-claims.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, selectFiles } from "./select-files.js";
@@ -330,12 +331,14 @@ export class ModulePayloadBuilder {
             authoredPins.push({ alias: entry.alias, ref: base, integrity: declared });
             continue;
           }
-          throw new Error(
+          throw new PublishFailure(
+            "import_unpinned",
             `import '${entry.alias}' points at '${source}' with no integrity pin. ` +
               `A pin is written when the dependency is added or moved — run ` +
               `\`telo install\` or \`telo upgrade\` in ${path.basename(manifestDir)} — so that ` +
               `what this artifact embeds is decided by its author rather than by whatever the ` +
               `registry happened to serve at publish time.`,
+            { alias: entry.alias, ref: base },
           );
         }
 

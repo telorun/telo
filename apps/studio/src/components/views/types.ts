@@ -19,8 +19,10 @@ export interface ViewProps {
   readOnly: boolean;
   /** Why editing is disabled: `"agent"` while the authoring agent holds the
    *  workspace (a turn is in flight), `"remote"` for a module opened from a
-   *  registry/OCI source. Null when the module is editable. */
-  readOnlyReason: "agent" | "remote" | null;
+   *  registry/OCI source, `"viewer"` for a Telo Cloud workspace the user may
+   *  only read, `"cloud"` while a Cloud update is rewriting the working copy.
+   *  Null when the module is editable. */
+  readOnlyReason: "agent" | "remote" | "viewer" | "cloud" | null;
   viewData: ModuleViewData;
   /** Analysis registry for the active module's closure — supplies the field
    *  maps / capability lookups the overview graph needs. Null before the first

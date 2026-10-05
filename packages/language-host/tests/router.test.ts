@@ -404,7 +404,10 @@ describe("the language router", () => {
       await harness.initialize();
       harness.router.setActiveDocument(OWNER);
       harness.open(OWNER);
-      await new Promise((r) => setTimeout(r, 20));
+      // Waited for, not slept for: how long the router takes to reach the
+      // download is the machine's business, and a fixed pause read a status
+      // from before it got there on a slow one.
+      await harness.until(() => harness.router.status().starting === true, "the pinned engine's download");
       expect(harness.router.status()).toMatchObject({ version: "0.103.0", starting: true });
 
       serve();

@@ -34,6 +34,9 @@ export interface PublishResult {
   label: string;
   /** The location the artifact was written to. */
   url: string;
+  /** The content digest the artifact is addressed by at that location, for a
+   *  transport whose store is content-addressed. */
+  digest?: string;
 }
 
 export interface PublishOptions {

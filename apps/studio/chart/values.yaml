@@ -1,0 +1,55 @@
+# Telo Studio (web build) — default values.
+#
+# The image is static files behind nginx: it holds no credentials and no state,
+# and needs no Secret. It does NOT serve the Telo Cloud API. Studio signs in
+# through `/api` on its OWN origin, so whatever routes this host must send
+# `/api` to the Cloud API and everything else here — see `httpRoute` below.
+# Served on a host with nothing behind `/api`, Studio still works, with every
+# Telo Cloud control hidden.
+
+image:
+  repository: ghcr.io/telorun/studio-web
+  # EMPTY: the tag is the chart's own appVersion, the Studio version this chart
+  # was released with. Set it only to deliberately run another one.
+  tag: ""
+  # Deploy by digest (`sha256:…`) instead of by tag. When set, `tag` is ignored.
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicas: 2
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    memory: 96Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+
+service:
+  port: 8080
+
+# Gateway API route for everything on the Studio host. The Cloud API's own
+# route matches `/api` on the same host, and the longer prefix wins — add this
+# host to that route's hostnames, or sign-in has nothing to reach.
+httpRoute:
+  enabled: false
+  hostnames:
+    - studio.telo.run
+  # Required when enabled: the Gateway listener(s) this route attaches to.
+  parentRefs: []
+
+# The Ingress equivalent, for a cluster without Gateway API. `/api` must be
+# routed to the Cloud API by an Ingress of its own on the same host.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: studio.telo.run
+  # Name of a TLS Secret for `host`; empty leaves TLS to the controller.
+  tlsSecretName: ""

@@ -74,6 +74,8 @@ import {
 } from "../run";
 import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { useAgent } from "../agent";
+import { useCloud } from "../cloud/context";
+import { CloudWorkspaceBar } from "./cloud/CloudWorkspaceBar";
 import type { WorkspaceBridge } from "../agent";
 import { sessionWorkspace } from "../agent/agent-workspace";
 import { AGENT_APP_NAME } from "../agent/launch";
@@ -201,6 +203,19 @@ export function Editor() {
   const agentLocked = agent.locked;
   const agentLockedRef = useRef(agentLocked);
   agentLockedRef.current = agentLocked;
+  const cloud = useCloud();
+  // Why nothing may be written right now, or null. One reason for every write
+  // path — forms, source, files, undo — so no path can forget one of them.
+  const cloudLock = cloud.editingLock;
+  const editingPaused: string | null = agentLocked
+    ? "Editing is paused while the agent is working."
+    : cloudLock === "viewer"
+      ? "You have read-only access to this Telo Cloud workspace."
+      : cloudLock === "updating"
+        ? "Editing is paused while the workspace is updated."
+        : null;
+  const editingPausedRef = useRef(editingPaused);
+  editingPausedRef.current = editingPaused;
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // The pending terms gate: the runner's terms, the runner they belong to, and
@@ -239,6 +254,9 @@ export function Editor() {
     onImportDialogOpenChange,
     refreshFileTree,
     afterFileMutation,
+    openRoot,
+    closeRoot,
+    reloadFromDisk,
   } = useWorkspaceLifecycle({ state, setState, settings, persistedHint, setError });
 
   // Bridge the editor's workspace to the authoring agent: content-hash the tree
@@ -374,8 +392,11 @@ export function Editor() {
   // capability is enough to offer the panel: a runner may enable the agent as a
   // co-resident only, and hiding the entry point there would make the operator's
   // configuration have no effect.
+  // A viewer of a Telo Cloud workspace cannot change it, so the agent — which
+  // exists to change it — is not offered there.
   const agentVisible =
-    agentSupported || coResidentAgentName !== null || agent.overrideUrl.trim() !== "";
+    cloudLock !== "viewer" &&
+    (agentSupported || coResidentAgentName !== null || agent.overrideUrl.trim() !== "");
 
   const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Host-lifetime cache for per-library zone-export derivation. Owned here, not
@@ -819,6 +840,8 @@ export function Editor() {
   // One in-flight sync per app. Two rapid saves must not interleave writes into
   // one workspace, and the later one must still land.
   const syncQueueRef = useRef<Map<string, Promise<void>>>(new Map());
+  // Syncs not yet settled, so a Cloud update can wait for a quiet workspace.
+  const syncsInFlightRef = useRef(0);
 
   /** Push what changed into every live watch session, after a save. A no-op when
    *  the app has no watch session, so the save path calls it unconditionally. */
@@ -863,9 +886,14 @@ export function Editor() {
         // next save rather than believing the workspace already has the edit.
         syncedFilesRef.current.set(appPath, next);
       });
+      syncsInFlightRef.current += 1;
       syncQueueRef.current.set(
         appPath,
-        queued.catch((err) => {
+        queued
+          .finally(() => {
+            syncsInFlightRef.current -= 1;
+          })
+          .catch((err) => {
           // The runner lost the session (a restart drops every checkpoint). The
           // editor holds the authoritative workspace, so the remedy is to run
           // again — say that instead of a wire error the user cannot act on.
@@ -895,8 +923,8 @@ export function Editor() {
     // undo/redo, import ops): while an agent turn holds the workspace, nothing
     // may land — a mid-turn write isn't in the agent's seeded tree and the
     // end-of-turn reconcile would silently revert it.
-    if (agentLockedRef.current) {
-      setError("Editing is paused while the agent is working.");
+    if (editingPausedRef.current) {
+      setError(editingPausedRef.current);
       return workspace;
     }
 
@@ -950,6 +978,45 @@ export function Editor() {
   // Import authoring for the active module — add / remove / upgrade.
   const { handleAddImport, handleRemoveImport, handleUpgradeImport, handleUpgradeAllImports } =
     useImportOps({ state, setState, settings, manifestAdapterRef, persistModule });
+
+  // What the editor lends the Telo Cloud layer: it owns the open workspace, so
+  // opening one, closing it and re-reading it after an update rewrote the
+  // working copy are done here. Read through a ref — these close over state.
+  const cloudHostRef = useRef({ openRoot, closeRoot, reloadFromDisk, syncWatchSessions });
+  cloudHostRef.current = { openRoot, closeRoot, reloadFromDisk, syncWatchSessions };
+  const { registerHost: registerCloudHost, setActiveRoot: setCloudActiveRoot } = cloud;
+  useEffect(() => {
+    registerCloudHost({
+      open: (rootDir) => cloudHostRef.current.openRoot(rootDir),
+      close: (rootDir) => cloudHostRef.current.closeRoot(rootDir),
+      reload: async () => {
+        const reloaded = await cloudHostRef.current.reloadFromDisk();
+        // A running app reads the session's copy of these files, not this one.
+        if (reloaded) cloudHostRef.current.syncWatchSessions(reloaded);
+      },
+      idle: () => !agentLockedRef.current && syncsInFlightRef.current === 0,
+    });
+    return () => registerCloudHost(null);
+  }, [registerCloudHost]);
+
+  const workspaceRootDir = state.workspace?.rootDir ?? null;
+  useEffect(() => {
+    setCloudActiveRoot(workspaceRootDir);
+  }, [setCloudActiveRoot, workspaceRootDir]);
+
+  // The active module as Cloud names it: the directory of its `telo.yaml`
+  // relative to the repository root.
+  const cloudActiveModule = useMemo(() => {
+    if (!cloud.active || !activeManifest || !workspaceRootDir) return null;
+    const prefix = `${workspaceRootDir}/`;
+    if (!activeManifest.filePath.startsWith(prefix)) return null;
+    const relative = activeManifest.filePath.slice(prefix.length);
+    const slash = relative.lastIndexOf("/");
+    return {
+      name: activeManifest.metadata.name,
+      modulePath: slash === -1 ? "" : relative.slice(0, slash),
+    };
+  }, [cloud.active, activeManifest, workspaceRootDir]);
 
   // ---------------------------------------------------------------------------
   // Navigation (direct set, no stack)
@@ -1037,14 +1104,14 @@ export function Editor() {
     [],
   );
   const saveFileCb = useCallback((p: string, text: string) => {
-    if (agentLockedRef.current) {
-      return Promise.reject(new Error("Editing is paused while the agent is working."));
+    if (editingPausedRef.current) {
+      return Promise.reject(new Error(editingPausedRef.current));
     }
     return workspaceAdapterRef.current!.writeFile(p, text);
   }, []);
 
   async function handleCreateFile(parentDir: string, name: string) {
-    if (agentLocked) return;
+    if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const path = pathJoin(parentDir, name);
@@ -1059,7 +1126,7 @@ export function Editor() {
   }
 
   async function handleCreateFolder(parentDir: string, name: string) {
-    if (agentLocked) return;
+    if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const path = pathJoin(parentDir, name);
@@ -1077,7 +1144,7 @@ export function Editor() {
   }
 
   async function handleRenamePath(path: string, newName: string) {
-    if (agentLocked) return;
+    if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     const dest = pathJoin(pathDirname(path), newName);
@@ -1093,7 +1160,7 @@ export function Editor() {
   }
 
   async function handleMovePath(from: string, toDir: string) {
-    if (agentLocked) return;
+    if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     if (toDir === pathDirname(from)) return;
@@ -1111,7 +1178,7 @@ export function Editor() {
   }
 
   async function handleDeletePath(path: string) {
-    if (agentLocked) return;
+    if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
     if (!window.confirm(`Delete ${pathBasename(path)}? This cannot be undone.`)) return;
@@ -1361,11 +1428,15 @@ export function Editor() {
     !isWorkspaceModule(state.workspace, state.activeModulePath);
   // Single source of truth for the read-only state; `readOnly` is derived from
   // it so the two view props can never drift.
-  const readOnlyReason: "agent" | "remote" | null = agentLocked
+  const readOnlyReason: "agent" | "remote" | "viewer" | "cloud" | null = agentLocked
     ? "agent"
     : activeIsRemote
       ? "remote"
-      : null;
+      : cloudLock === "viewer"
+        ? "viewer"
+        : cloudLock === "updating"
+          ? "cloud"
+          : null;
 
   async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
@@ -2063,6 +2134,15 @@ export function Editor() {
           />
         ) : (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {cloud.active && (
+              <CloudWorkspaceBar
+                activeModule={cloudActiveModule}
+                onOpenManifest={() => {
+                  if (state.activeModulePath) handleOpenFile(state.activeModulePath);
+                  setState((s) => ({ ...s, activeView: "source" as ViewId }));
+                }}
+              />
+            )}
             <EditorTabs items={tabItems} onActivate={handleActivateTab} onClose={handleCloseTab} />
             {activeIsRemote && (
               <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-1 text-xs text-amber-700 dark:text-amber-300">
@@ -2076,11 +2156,12 @@ export function Editor() {
             <div className="flex min-h-0 flex-1 overflow-hidden">
               {activeTab?.type === "file" ? (
                 <FileEditor
-                  key={activeTab.path}
+                  // The epoch re-reads the file after a Cloud update rewrote it.
+                  key={`${activeTab.path}#${cloud.filesEpoch}`}
                   filePath={activeTab.path}
                   readFile={readFileCb}
                   saveFile={saveFileCb}
-                  readOnly={agentLocked}
+                  readOnly={editingPaused !== null}
                 />
               ) : activeTab?.type === "module" && viewData ? (
                 <ViewContainer

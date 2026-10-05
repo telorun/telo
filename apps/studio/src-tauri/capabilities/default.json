@@ -8,6 +8,8 @@
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
     "fs:allow-read-dir",
     "fs:allow-mkdir",
     "fs:allow-remove",
@@ -15,7 +17,7 @@
     "fs:allow-stat",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$HOME/**" }]
+      "allow": [{ "path": "$HOME/**" }, { "path": "$APPDATA" }, { "path": "$APPDATA/**" }]
     },
     "opener:allow-open-url",
     "opener:allow-default-urls"

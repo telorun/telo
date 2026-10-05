@@ -43,6 +43,24 @@ describe("verifyImportPins", () => {
     ).rejects.toThrow(/pinned to sha256-rsHT.*now serves sha256-ZZZT/s);
   });
 
+  it("names the refusal by a code a program can act on, with the import it is about", async () => {
+    const pins = payloadWithPins([
+      { alias: "Console", ref: "oci://ghcr.io/telorun/console@0.17.0", integrity: HASH },
+    ]);
+    fetchManifestHash.mockResolvedValueOnce(MOVED);
+    await expect(verifyImportPinsForTest(pins, createLogger(false))).rejects.toMatchObject({
+      code: "import_pin_mismatch",
+      details: { alias: "Console", ref: "oci://ghcr.io/telorun/console@0.17.0" },
+    });
+    // An origin that cannot be asked is a different refusal from one that
+    // answered with other bytes: only the second is the author's to re-pin.
+    fetchManifestHash.mockRejectedValueOnce(new Error("ENOTFOUND ghcr.io"));
+    await expect(verifyImportPinsForTest(pins, createLogger(false))).rejects.toMatchObject({
+      code: "import_unreachable",
+      details: { alias: "Console", ref: "oci://ghcr.io/telorun/console@0.17.0" },
+    });
+  });
+
   it("passes when the hash still matches, and actually asks", async () => {
     // The regression guard: this used to `continue` before fetching anything, so
     // every pin in the repo was "verified" without a single request.

@@ -239,6 +239,8 @@ describe("OciTransport round-trip against a mock registry", () => {
     ]);
     const result = await t.publish("oci://reg.test/aws/telo-s3", bundle);
     expect(result.url).toBe("oci://reg.test/aws/telo-s3@1.2.0");
+    // What the registry addresses the pushed artifact by.
+    expect(result.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
 
     // Reading a manifest pulls the manifest layer alone — the payload is a
     // separate blob, so nothing downloads it here.

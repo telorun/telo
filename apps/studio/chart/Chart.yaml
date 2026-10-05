@@ -1,0 +1,16 @@
+apiVersion: v2
+name: studio-web
+description: Telo Studio's web build — the static editor, served at / on its own host; the Telo Cloud API keeps /api on the same host.
+type: application
+# BOTH are `@telorun/studio`'s package version, written by
+# `scripts/stamp-chart-version.mjs` from the changesets Version PR and checked on
+# every PR: the chart deploys exactly one image, `ghcr.io/telorun/studio-web`,
+# tagged with that version.
+version: 0.24.0
+appVersion: "0.24.0"
+keywords:
+  - telo
+  - studio
+home: https://telo.run
+sources:
+  - https://github.com/telorun/telo

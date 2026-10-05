@@ -149,7 +149,8 @@ async function layerDrift(
   return drift;
 }
 
-async function manifestPin(text: string): Promise<string> {
+/** The integrity pin of a `telo.yaml`: what an import of it is verified against. */
+export async function manifestPin(text: string): Promise<string> {
   return `sha256-${await sha256Base64Url(new TextEncoder().encode(text))}`;
 }
 

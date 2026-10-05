@@ -32,7 +32,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Every chart in the workspace, with the package whose version it carries. */
-const CHARTS = [{ chart: "apps/k8s-runner/chart", pkg: "apps/k8s-runner" }];
+const CHARTS = [
+  { chart: "apps/k8s-runner/chart", pkg: "apps/k8s-runner" },
+  { chart: "apps/studio/chart", pkg: "apps/studio" },
+];
 
 const check = process.argv.includes("--check");
 const problems = [];

@@ -1,5 +1,10 @@
 mod background_command;
 mod cli_runner;
+mod cloud_auth;
+mod cloud_authorization;
+mod cloud_error;
+mod cloud_token_store;
+mod cloud_transport;
 mod local_runner;
 
 use tauri::{Manager, WindowEvent};
@@ -14,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(local_runner::LocalRunnerState::default())
         .manage(cli_runner::CliRunnerState::default())
+        .manage(cloud_auth::CloudState::default())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
                 // Both supervisors: a session of either kind outliving the
@@ -37,6 +43,11 @@ pub fn run() {
             cli_runner::cli_runner_status,
             cli_runner::cli_runner_ensure,
             cli_runner::cli_runner_teardown,
+            cloud_auth::cloud_session,
+            cloud_auth::cloud_sign_in,
+            cloud_auth::cloud_switch_organization,
+            cloud_auth::cloud_sign_out,
+            cloud_transport::cloud_request,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

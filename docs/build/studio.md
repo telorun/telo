@@ -29,6 +29,53 @@ A workspace is any directory containing one or more `Telo.Application` or `Telo.
 
 Module documentation (schema descriptions) is rendered inline next to each field, so authors don't need to context-switch to a docs site to know what a property does.
 
+## Telo Cloud workspaces
+
+Signing in is optional: everything above works without an account. Where Studio
+is served by Telo Cloud, and in the desktop build, **Sign in** adds **Open from
+Telo Cloud**, which lists your Cloud workspaces.
+
+Opening one copies its git repository to your device as a working copy, on the
+workspace's default branch. You edit, run and use the agent exactly as in any
+other workspace, and nothing reaches Cloud until you commit. The strip above the
+tabs shows the workspace, its branch and how many files have changed.
+
+| Action | What it does |
+| --- | --- |
+| **Commit** | Lists the changed files, asks for a message, and commits them to the branch as you. |
+| **Update** | Offered when the branch has new commits and you have local changes. Files only the branch changed are taken; a file both sides changed is yours to settle with **Keep mine** or **Take theirs**. Nothing is committed by an update. A working copy with no local changes follows the branch by itself. |
+| **Publish** | Publishes the open Application or Library at the last commit to your workspace's private registry and shows its ref, version, digest and integrity pin. Enabled once the module's directory has nothing uncommitted. It creates no app and starts no deployment — do that in the Telo Cloud console with the ref. |
+| **Published modules** | What the workspace has published, with each module's versions. A workspace admin can make a module public or private. |
+
+A workspace you can only view opens read-only: you can run it, not edit, commit
+or publish. If the git host protects the branch, Studio offers to commit to a
+new branch instead. Workspaces, members and repository connections are managed
+in the Telo Cloud console.
+
+Signing out removes the working copies from the device, after listing the
+workspaces whose changes were never committed.
+
+## Hosting the web build
+
+Each Studio release publishes the web build as the image
+`ghcr.io/telorun/studio-web:<version>` and a Helm chart for it:
+
+```
+helm install studio oci://ghcr.io/telorun/charts/studio-web --version <version> \
+  --set httpRoute.enabled=true \
+  --set 'httpRoute.parentRefs[0].name=<gateway>' \
+  --set 'httpRoute.hostnames[0]=studio.example.com'
+```
+
+The image is static files: it holds no credentials and no state. `ingress.*`
+is the equivalent for a cluster without Gateway API, and `image.digest` deploys
+by digest instead of by tag.
+
+Studio reaches Telo Cloud through `/api` on its own host, which this image does
+not serve. To offer sign-in, route `/api` on the same host to the Telo Cloud
+API; the chart's route takes everything else. On a host with nothing behind
+`/api` Studio works as before, with the Telo Cloud controls hidden.
+
 ## Open a manifest by link
 
 The web build opens a manifest named by the `open` query parameter:
