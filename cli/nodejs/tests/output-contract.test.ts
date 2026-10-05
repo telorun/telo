@@ -64,6 +64,17 @@ describe("-o json output contract", () => {
     expect(runCli(args).stdout).not.toContain("\x1b[");
   });
 
+  it("publish reports each module's failure by a stable code", () => {
+    // Refused before anything is built or fetched, so this needs no registry.
+    const missing = path.join(ROOT, "cli/nodejs/tests/__fixtures__/no-such-module");
+    const { stdout, status } = runCli(["publish", "-o", "json", "oci://registry.invalid/x", missing]);
+    const payload = JSON.parse(stdout);
+    expect(status).toBe(1);
+    expect(payload.ok).toBe(false);
+    expect(payload.modules).toHaveLength(1);
+    expect(payload.modules[0]).toMatchObject({ ok: false, error: { code: "module_not_found" } });
+  });
+
   it("check reports failures as data, not prose, and still exits non-zero", () => {
     const bad = path.join(ROOT, "cli/nodejs/tests/__fixtures__/unresolvable-import.yaml");
     const { stdout, status } = runCli(["check", "-o", "json", bad]);

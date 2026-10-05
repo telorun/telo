@@ -7,6 +7,7 @@ import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
 import type { TeloLanguage } from "../hooks/useLanguageSession";
 import { TeloVersionControl } from "./TeloVersionControl";
+import { CloudAccountControl } from "./cloud/CloudAccountControl";
 
 /** Workspace-global chrome only. Running belongs to one Application, so its
  *  trigger, status and history live in that module's own view-tab strip — a
@@ -106,6 +107,7 @@ export function TopBar({
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
         </Button>
+        <CloudAccountControl />
       </div>
     </div>
   );

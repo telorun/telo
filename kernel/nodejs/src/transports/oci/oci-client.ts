@@ -323,7 +323,9 @@ export class OciClient {
     return digest;
   }
 
-  async pushManifest(reference: string, manifest: OciManifest): Promise<void> {
+  /** Pushes the manifest and answers its digest — of the bytes sent, which is
+   *  what a registry addresses it by. */
+  async pushManifest(reference: string, manifest: OciManifest): Promise<string> {
     const body = Buffer.from(JSON.stringify(manifest), "utf-8");
     const res = await this.authedFetch(
       `${this.base()}/manifests/${reference}`,
@@ -336,6 +338,7 @@ export class OciClient {
         `OCI push manifest ${this.repo}:${reference} on ${this.host} failed: ${res.status} ${res.statusText} ${detail}`,
       );
     }
+    return `sha256:${createHash("sha256").update(body).digest("hex")}`;
   }
 
   /** Push the standard empty config blob and return its descriptor. */

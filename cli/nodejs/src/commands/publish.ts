@@ -6,6 +6,12 @@ import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@te
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
 import { fetchManifestHash } from "../manifest-hash.js";
+import {
+  PublishFailure,
+  publishFailureReport,
+  type PublishFailureCode,
+  type PublishFailureReport,
+} from "../publish-failure.js";
 import type { Argv } from "yargs";
 import { findModuleDoc, importSourceRefs } from "./manifest-imports.js";
 import { readOwnerVersion } from "../bundle/manifest-text.js";
@@ -18,7 +24,7 @@ import {
 import { pushableLayers } from "../bundle/built-layers.js";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
 import { describePartition } from "../bundle/partition-layers.js";
-import { checkPublishedPin, describePinMove } from "../bundle/payload-drift.js";
+import { checkPublishedPin, describePinMove, manifestPin } from "../bundle/payload-drift.js";
 import { parseAnnotationFlags } from "../publish-annotations.js";
 import { createLogger, formatAnalysisDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
@@ -146,13 +152,25 @@ export const verifyImportPinsForTest = verifyImportPins;
 
 async function verifyImportPins(payload: ModulePayload, log: Logger): Promise<void> {
   for (const { alias, ref, integrity } of payload.authoredPins) {
-    const actual = await fetchManifestHash(ref);
+    let actual: string;
+    try {
+      actual = await fetchManifestHash(ref);
+    } catch (err) {
+      throw new PublishFailure(
+        "import_unreachable",
+        `import '${alias}' (${ref}) could not be read to verify its pin: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        { alias, ref },
+      );
+    }
     if (actual !== integrity) {
-      throw new Error(
+      throw new PublishFailure(
+        "import_pin_mismatch",
         `import '${alias}' is pinned to ${integrity}, but ${ref} now serves ${actual}. ` +
           `A pin is what makes this artifact reproducible, so publishing over the disagreement ` +
           `would embed a claim that is already false. Re-pin with \`telo upgrade\` if the move ` +
           `is intended.`,
+        { alias, ref },
       );
     }
     stepOk(log, "pin", `${alias} verified`);
@@ -303,9 +321,27 @@ function indent(text: string): string {
 /** What one manifest's publish produced: whether it succeeded, and the complete
  *  annotation set it pushed (or would push, under `--dry-run`) once that set was
  *  known. */
-interface PublishOutcome {
-  ok: boolean;
-  annotations?: Record<string, string>;
+type PublishOutcome =
+  | {
+      ok: true;
+      annotations: Record<string, string>;
+      /** The module's `metadata.version`, when it declares one. */
+      version?: string;
+      /** The pin of the published `telo.yaml`: what an import of it verifies. */
+      integrity: string;
+      /** The pushed artifact's content digest. Absent under `--dry-run`. */
+      digest?: string;
+      /** This version was already published with exactly these bytes. */
+      identical: boolean;
+    }
+  | { ok: false; error: PublishFailureReport };
+
+function refused(
+  code: PublishFailureCode,
+  message: string,
+  details?: Record<string, unknown>,
+): PublishOutcome {
+  return { ok: false, error: { code, message, ...(details ? { details } : {}) } };
 }
 
 async function publishOne(
@@ -325,7 +361,7 @@ async function publishOne(
     }
   } catch {
     outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
-    return { ok: false };
+    return refused("module_not_found", `Cannot read file: ${filePath}`);
   }
 
   let content: string;
@@ -333,7 +369,7 @@ async function publishOne(
     content = fs.readFileSync(filePath, "utf-8");
   } catch {
     outErrLine(log.err.error("error") + `  Cannot read file: ${filePath}`);
-    return { ok: false };
+    return refused("module_not_found", `Cannot read file: ${filePath}`);
   }
 
   const manifestDir = path.dirname(filePath);
@@ -360,7 +396,7 @@ async function publishOne(
 
     if (!fs.existsSync(ctrl.localPath)) {
       step(log, "publish", log.error("error") + `  local_path not found: ${ctrl.localPath}`);
-      return { ok: false };
+      return refused("publish_failed", `controller local_path not found: ${ctrl.localPath}`);
     }
 
     // Bump
@@ -392,7 +428,10 @@ async function publishOne(
             .map((l) => `      ${l}`)
             .join("\n"),
         );
-        return { ok: false };
+        return refused(
+          "publish_failed",
+          `building ${ctrl.packageName} failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -465,22 +504,41 @@ async function publishOne(
       log.err.error("error") +
         `  Failed to load manifest for analysis: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return { ok: false };
+    return refused(
+      "manifest_invalid",
+      `Failed to load manifest for analysis: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   // A parse failure yields a mangled manifest tree; analyzing it would drown the
   // real error under spurious schema violations. Report the parse diagnostics
   // and stop before analysis — mirrors the kernel's load-time short-circuit.
   if (analysisGraph.parseDiagnostics.length > 0) {
-    formatAnalysisDiagnostics(analysisGraph.parseDiagnostics, analysisGraph, log, filePath);
-    return { ok: false };
+    const parsed = formatAnalysisDiagnostics(
+      analysisGraph.parseDiagnostics,
+      analysisGraph,
+      log,
+      filePath,
+    );
+    return refused("manifest_invalid", "the manifest does not parse", {
+      diagnostics: parsed.diagnostics,
+    });
   }
   const analysisManifests = flattenForAnalyzer(analysisGraph);
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests, {
     moduleDocuments: collectModuleDocuments(analysisGraph),
   });
-  const { errorCount } = formatAnalysisDiagnostics(diagnostics, analysisGraph, log, filePath);
+  const { errorCount, diagnostics: located } = formatAnalysisDiagnostics(
+    diagnostics,
+    analysisGraph,
+    log,
+    filePath,
+  );
   if (errorCount > 0) {
-    return { ok: false };
+    return refused(
+      "manifest_invalid",
+      `static analysis reported ${errorCount} error${errorCount !== 1 ? "s" : ""}`,
+      { diagnostics: located.filter((d) => d.severity === "error") },
+    );
   }
   // Some diagnostics are warnings while a manifest merely runs and fatal the
   // moment it is published. Descriptive metadata is the case: nothing reads
@@ -497,7 +555,15 @@ async function publishOne(
         `(reported as warnings above). These fields describe the module to everyone who finds it, ` +
         `and this version's copy of them cannot be changed once published.`,
     );
-    return { ok: false };
+    return refused(
+      "manifest_invalid",
+      `${blocking.length} metadata problem${blocking.length !== 1 ? "s" : ""} must be fixed before publishing`,
+      {
+        diagnostics: located.filter(
+          (d) => d.code !== undefined && PUBLISH_BLOCKING_CODES.has(d.code),
+        ),
+      },
+    );
   }
   stepOk(log, "check", "static analysis passed");
 
@@ -509,7 +575,10 @@ async function publishOne(
   // publisher's CI, and a wrong one hands a consumer a confusing failure instead
   // of a clear one, which is the exact outcome the mechanism exists to remove.
   if (!(await verifyDeclaredRequirements(filePath, analysisGraph, log))) {
-    return { ok: false };
+    return refused(
+      "requires_refuted",
+      "the module's declared `requires.telo` range does not hold; see the report on stderr",
+    );
   }
 
   // Build exactly what will be pushed, through the shared payload builder — the
@@ -529,7 +598,7 @@ async function publishOne(
     }).payload(filePath, destination);
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-    return { ok: false };
+    return { ok: false, error: publishFailureReport(err) };
   }
   content = payload.manifest;
   const partition = payload.partition;
@@ -541,6 +610,9 @@ async function publishOne(
   // invocation). Skipped on --dry-run (nothing is published yet).
   if (!dryRun) {
     const transports = defaultTransportRegistry();
+    // Every unpublished sibling is named, not only the first: the remedy is to
+    // publish them, and a reader told one at a time publishes one at a time.
+    const unpublished: string[] = [];
     for (const { ref } of payload.relativeImports) {
       try {
         const transport = transports.forRef(ref);
@@ -552,8 +624,16 @@ async function publishOne(
             `  relative import canonicalized to '${ref}', which does not resolve at its published ` +
             `location — publish the sibling first. Cause: ${err instanceof Error ? err.message : String(err)}`,
         );
-        return { ok: false };
+        unpublished.push(ref);
       }
+    }
+    if (unpublished.length > 0) {
+      return refused(
+        "sibling_not_published",
+        `${unpublished.length} imported sibling${unpublished.length !== 1 ? "s do" : " does"} not resolve at ` +
+          `${unpublished.length !== 1 ? "their" : "its"} published location — publish ${unpublished.length !== 1 ? "them" : "it"} first`,
+        { refs: unpublished },
+      );
     }
 
     // Every author-written pin still describes what the registry serves.
@@ -561,7 +641,7 @@ async function publishOne(
       await verifyImportPins(payload, log);
     } catch (err) {
       outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-      return { ok: false };
+      return { ok: false, error: publishFailureReport(err) };
     }
   }
 
@@ -571,6 +651,8 @@ async function publishOne(
   // against its telo.yaml. Runs before the push (and on --dry-run) so the
   // release fails while it is still a fixable working copy.
   const version = readOwnerVersion(content);
+  const integrity = await manifestPin(content);
+  let identical = false;
   if (version) {
     let check;
     try {
@@ -578,16 +660,21 @@ async function publishOne(
     } catch (err) {
       // A registry that could not answer is not a pass. Fail the publish and say
       // why, rather than shipping on the assumption that nothing changed.
-      outErrLine(
-        log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return { ok: false };
+      const message = err instanceof Error ? err.message : String(err);
+      outErrLine(log.err.error("error") + `  ${message}`);
+      return refused("registry_unavailable", message);
     }
     if (check.status === "moved") {
-      outErrLine(log.err.error("error") + `  ${describePinMove(destination, version, check)}`);
-      return { ok: false };
+      const message = describePinMove(destination, version, check);
+      outErrLine(log.err.error("error") + `  ${message}`);
+      return refused("version_content_mismatch", message, {
+        version,
+        publishedIntegrity: check.publishedPin,
+        builtIntegrity: check.builtPin,
+      });
     }
     if (check.status === "identical") {
+      identical = true;
       stepOk(log, "manifest", `identical to the published ${version} (${check.pin})`);
     }
   }
@@ -603,7 +690,7 @@ async function publishOne(
     );
   } catch (err) {
     outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-    return { ok: false };
+    return { ok: false, error: publishFailureReport(err) };
   }
 
   // A module whose controller is delivered from npm has to push that tarball
@@ -616,7 +703,7 @@ async function publishOne(
       const skew = describeVersionSkew(pkg, version);
       if (skew) {
         outErrLine(log.err.error("error") + `  ${skew}`);
-        return { ok: false };
+        return refused("publish_failed", skew);
       }
       if (await isPublished(pkg.name, pkg.packageVersion)) {
         stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} already published`);
@@ -634,7 +721,11 @@ async function publishOne(
             `  npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
             `${err instanceof Error ? err.message : String(err)}`,
         );
-        return { ok: false };
+        return refused(
+          "publish_failed",
+          `npm publish ${pkg.name}@${pkg.packageVersion} failed: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       stepOk(log, "npm", `${pkg.name}@${pkg.packageVersion} published`);
     }
@@ -644,7 +735,7 @@ async function publishOne(
     for (const line of describePartition(partition)) stepDry(log, "layer", line);
     for (const [key, value] of Object.entries(annotations)) stepDry(log, "annotate", `${key}=${value}`);
     stepDry(log, "push", destination);
-    return { ok: true, annotations };
+    return { ok: true, annotations, version, integrity, identical };
   }
 
   for (const line of describePartition(partition)) stepOk(log, "layer", line);
@@ -667,12 +758,13 @@ async function publishOne(
       },
     );
   } catch (err) {
-    outErrLine(log.err.error("error") + `  ${err instanceof Error ? err.message : String(err)}`);
-    return { ok: false };
+    const message = err instanceof Error ? err.message : String(err);
+    outErrLine(log.err.error("error") + `  ${message}`);
+    return refused("registry_unavailable", message);
   }
 
   stepOk(log, "push", `${result.label} → ${result.url}`);
-  return { ok: true, annotations };
+  return { ok: true, annotations, version, integrity, digest: result.digest, identical };
 }
 
 // ---------------------------------------------------------------------------
@@ -759,6 +851,7 @@ export async function publish(argv: {
   const published: string[] = [];
   const failures: string[] = [];
   const annotations: Record<string, Record<string, string>> = {};
+  const modules: Array<Record<string, unknown>> = [];
   for (const p of paths) {
     const filePath = path.resolve(process.cwd(), p);
     const relPath = path.relative(process.cwd(), filePath);
@@ -773,8 +866,20 @@ export async function publish(argv: {
       log,
     );
     (outcome.ok ? published : failures).push(relPath);
-    if (outcome.annotations) annotations[relPath] = outcome.annotations;
-    if (!outcome.ok) failed = true;
+    if (outcome.ok) {
+      annotations[relPath] = outcome.annotations;
+      modules.push({
+        path: relPath,
+        ok: true,
+        version: outcome.version ?? null,
+        digest: outcome.digest ?? null,
+        integrity: outcome.integrity,
+        identical: outcome.identical,
+      });
+    } else {
+      failed = true;
+      modules.push({ path: relPath, ok: false, error: outcome.error });
+    }
   }
   outLine("");
   outEmit({
@@ -784,6 +889,9 @@ export async function publish(argv: {
     published,
     failed: failures,
     annotations,
+    // One entry per manifest, in the order given: a stable failure code, or the
+    // version, digest and integrity of what was pushed.
+    modules,
   });
   // `process.exitCode`, not `process.exit()`: the structured payload was just
   // written, and on a pipe `write` is asynchronous while `exit` does not flush. A

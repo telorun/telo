@@ -427,9 +427,9 @@ export class OciTransport implements Transport {
       ],
       ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
     };
-    await client.pushManifest(tag, manifest);
+    const digest = await client.pushManifest(tag, manifest);
 
-    return { label: `${repo}@${tag}`, url: `${OCI_SCHEME}${host}/${repo}@${tag}` };
+    return { label: `${repo}@${tag}`, url: `${OCI_SCHEME}${host}/${repo}@${tag}`, digest };
   }
 
   canonicalizeSiblingRef(

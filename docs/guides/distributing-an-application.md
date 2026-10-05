@@ -59,6 +59,57 @@ The keys are checked before anything is built or fetched. Annotations are
 descriptive only: the pin does not cover them and nothing resolves a module by
 them.
 
+## Reading the result from a program
+
+`telo publish -o json` writes one document on stdout. Beside `ok`, `published`,
+`failed` and `annotations`, `modules` holds one entry per manifest, in the order
+given:
+
+```json
+{
+  "path": "apps/shop/telo.yaml",
+  "ok": true,
+  "version": "1.4.0",
+  "digest": "sha256:9f2c…",
+  "integrity": "sha256-viMWXJ7B…",
+  "identical": false
+}
+```
+
+`integrity` is the pin an import of this version verifies against, `digest` the
+registry's address of the pushed artifact (`null` under `--dry-run`), and
+`identical` says this version was already published with exactly these bytes.
+
+A module that was not published reports why:
+
+```json
+{
+  "path": "apps/shop/telo.yaml",
+  "ok": false,
+  "error": {
+    "code": "import_pin_mismatch",
+    "message": "import 'Console' is pinned to …",
+    "details": { "alias": "Console", "ref": "oci://ghcr.io/telorun/console@<version>" }
+  }
+}
+```
+
+| `code` | Meaning | `details` |
+| --- | --- | --- |
+| `module_not_found` | The path names no manifest. | |
+| `manifest_invalid` | The manifest does not parse or does not pass analysis. | `diagnostics` |
+| `requires_refuted` | The declared `requires.telo` range does not hold. | |
+| `import_unpinned` | A remote import carries no integrity pin. | `alias`, `ref` |
+| `import_pin_mismatch` | A pinned import's origin now serves other bytes. | `alias`, `ref` |
+| `import_unreachable` | A pinned import could not be read to verify it. | `alias`, `ref` |
+| `sibling_not_published` | A relatively imported module is not at its published location. | `refs` |
+| `version_content_mismatch` | This `metadata.version` is published with other content. | `version`, `publishedIntegrity`, `builtIntegrity` |
+| `registry_unavailable` | The registry could not be read or written. | |
+| `publish_failed` | Anything else; `message` says what. | |
+
+The set is closed: a consumer branches on `code`, never on `message`. Prose
+keeps going to stderr in both formats.
+
 ## A published version's pin never moves
 
 A consumer pins a version by the hash of its `telo.yaml` — the `#sha256-…` after

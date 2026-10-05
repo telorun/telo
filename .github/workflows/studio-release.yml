@@ -197,6 +197,68 @@ jobs:
             apps/studio/src-tauri/target/**/release/bundle/deb/*.deb
           if-no-files-found: error
 
+  # The web build, as the image Telo Cloud serves at `studio.telo.run` — behind
+  # Cloud's own ingress so its API is same-origin. Released on the same version
+  # move as the desktop bundles, so the two builds of one version are one commit.
+  web-image:
+    name: Publish ghcr.io/telorun/studio-web
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push studio-web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/studio/Dockerfile
+          target: production
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/telorun/studio-web:${{ needs.gate.outputs.version }}
+            ghcr.io/telorun/studio-web:latest
+          cache-from: type=gha,scope=studio-web
+          cache-to: type=gha,mode=max,scope=studio-web
+
+  # After the image it points at exists, never beside it: the chart's
+  # appVersion IS that image's tag.
+  web-chart:
+    name: Publish the studio-web Helm chart
+    needs: [gate, web-image]
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      - name: Verify the chart carries the released version
+        run: node scripts/stamp-chart-version.mjs --check
+
+      - name: Package and push the chart
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GITHUB_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm package apps/studio/chart --destination /tmp/charts
+          helm push /tmp/charts/*.tgz oci://ghcr.io/telorun/charts
+
   release:
     name: Publish release to telorun/studio
     needs: [gate, build]

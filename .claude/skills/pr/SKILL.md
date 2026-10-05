@@ -1,7 +1,7 @@
 ---
 name: pr
 description: Run only when the user types /pr. Never invoke it yourself, whatever the task.
-argument-hint: nothing (the staged change), or which part of the working tree to land (`for phase 1`, `the stdlib changes`), plus anything the commit message or PR body should say
+argument-hint: nothing (every change in the working tree), or which part of the working tree to land (`for phase 1`, `the stdlib changes`), plus anything the commit message or PR body should say
 ---
 
 The user has a change in the working tree and is away. You carry it to "a green PR", alone. The
@@ -11,8 +11,9 @@ force-push — for this change and this branch only. Merging is never yours.
 ## 1. Establish the change
 
 - **The branch is the current one.** Refuse to start on `main`: say so and stop.
-- **Without an argument naming a scope, the change is what is staged.** Leave unstaged and
-  untracked files alone. With nothing staged, say so and stop.
+- **Without an argument naming a scope, the change is everything in the working tree:** staged,
+  unstaged and untracked alike. Stage all of it (`git add -A`). What is already staged says
+  nothing about what the user meant to leave out. With a clean tree, say so and stop.
 - **With an argument naming a scope** (`for phase 1`, `the stdlib changes`), stage exactly that
   scope yourself:
   - **Work out what the scope means** from what the repo records about the work. That means the
@@ -80,7 +81,7 @@ A stop for any other reason gets the same message, saying where it stopped and w
 ## Never
 
 - Merge a PR, or push to `main`.
-- Commit anything outside the change: what the user staged, or the scope they named, plus fixes
+- Commit anything outside the change: the whole working tree, or the scope they named, plus fixes
   to it and to the flaky tests its CI exposes.
 - Guess a file into or out of a named scope.
 - Add a new commit to fix CI; amend instead.

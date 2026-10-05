@@ -5,6 +5,7 @@ import type { TeloStatus, VersionMarks } from "@telorun/language-host";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { resolveHubUrl } from "../hub-search";
 import { createManifestSources } from "../loader";
+import { CLOUD_ROOT_PREFIX } from "../cloud/working-copy-adapter";
 import { isInTauri } from "../loader/open";
 import { bundledEngine } from "../language/bundled-engine";
 import { CacheStorageEngineCache } from "../language/cache-storage-engine-cache";
@@ -125,7 +126,8 @@ export function useLanguageSession(options: {
         if (!adapter) throw new Error("no workspace is open.");
         return adapter;
       },
-      ...(isInTauri() ? {} : { confineTo: rootDir }),
+      // A Telo Cloud working copy is a virtual root on every build.
+      ...(isInTauri() && !rootDir.startsWith(CLOUD_ROOT_PREFIX) ? {} : { confineTo: rootDir }),
       hubUrl: () => resolveHubUrl(settingsRef.current.hubUrl),
       manifestSources: () => createManifestSources(settingsRef.current),
       spawner: webWorkerEngineSpawner,

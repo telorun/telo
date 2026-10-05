@@ -132,6 +132,14 @@ export interface WorkspaceLifecycle {
   onImportDialogOpenChange: (open: boolean) => void;
   refreshFileTree: (ws?: Workspace | null) => Promise<void>;
   afterFileMutation: (affected: string[]) => Promise<void>;
+  /** Opens the workspace at a root that can be attached without a picker (a
+   *  Telo Cloud working copy). */
+  openRoot: (rootDir: string) => Promise<void>;
+  /** Closes the workspace when it is the one at `rootDir`. */
+  closeRoot: (rootDir: string) => void;
+  /** Re-reads the whole workspace after its files changed beneath the editor;
+   *  resolves with the reloaded workspace, or null with none open. */
+  reloadFromDisk: () => Promise<Workspace | null>;
 }
 
 /** Owns workspace bootstrap: open / restore / remote-import, the adapter refs
@@ -413,6 +421,48 @@ export function useWorkspaceLifecycle({
     }
   }
 
+  async function openRoot(rootDir: string) {
+    const opened = reopenWorkspaceAt(rootDir);
+    if (!opened) throw new Error(`The workspace at ${rootDir} is not on this device.`);
+    setError(null);
+    setLoading(true);
+    try {
+      manifestAdapterRef.current = opened.manifestAdapter;
+      workspaceAdapterRef.current = opened.workspaceAdapter;
+      const workspace = await loadWorkspace(
+        opened.rootDir,
+        opened.manifestAdapter,
+        opened.workspaceAdapter,
+        createManifestSources(settings),
+      );
+      const initialActivePath = pickInitialActiveModule(workspace);
+      setState({
+        ...INITIAL_STATE,
+        workspace,
+        activeModulePath: initialActivePath,
+        openTabs: initialActivePath ? [{ type: "module", path: initialActivePath }] : [],
+        activeTabId: initialActivePath,
+        deploymentsByApp: loadDeploymentsForWorkspace(opened.rootDir),
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function closeRoot(rootDir: string) {
+    if (state.workspace?.rootDir !== rootDir) return;
+    manifestAdapterRef.current = null;
+    workspaceAdapterRef.current = null;
+    setState({ ...INITIAL_STATE });
+  }
+
+  async function reloadFromDisk(): Promise<Workspace | null> {
+    const reloaded = await reloadWorkspace();
+    if (reloaded) setState((s) => reconcileWorkspaceTabs(s, reloaded));
+    await refreshFileTree(reloaded);
+    return reloaded;
+  }
+
   // Creates a new module — blank or from a starter — and opens it.
   // With a workspace open, it lands in that workspace (apps/ or libs/) and the
   // reload preserves existing tabs; with none open (first-run), it lands in a
@@ -585,5 +635,8 @@ export function useWorkspaceLifecycle({
     onImportDialogOpenChange,
     refreshFileTree,
     afterFileMutation,
+    openRoot,
+    closeRoot,
+    reloadFromDisk,
   };
 }

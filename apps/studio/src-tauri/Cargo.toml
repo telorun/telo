@@ -31,6 +31,20 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["process", "io-util", "net", "rt-multi-thread", "time", "macros", "sync"] }
 
+# Telo Cloud sign-in and API transport. TLS is rustls with the ring provider
+# (installed by `cloud_auth`): reqwest's default provider, aws-lc, needs NASM
+# to build on Windows.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "http2", "system-proxy", "stream", "json", "form"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+# Default features: Keychain on macOS, Credential Manager on Windows, the
+# Secret Service elsewhere.
+keyring = "4.2"
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.4"
+url = "2.5"
+futures-util = "0.3"
+
 # One call: SIGTERM to the local runner, so it stops its own sessions before it
 # goes. `kill()` is SIGKILL, which skips that and orphans every `telo run
 # --watch` the runner started, still holding the user's ports.

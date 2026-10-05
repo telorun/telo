@@ -9,6 +9,7 @@ import { Toaster } from "./components/ui/sonner";
 import { Editor } from "./components/Editor";
 import { RunProvider, setupAdapters } from "./run";
 import { AgentProvider } from "./agent";
+import { CloudProvider } from "./cloud/context";
 import { installExternalLinkHandler } from "./external-link";
 import { migrateLegacyStorageKeys } from "./storage-key-migration";
 import { ColorModeProvider, useColorMode } from "./theme/color-mode";
@@ -31,7 +32,9 @@ function ThemedApp() {
     <Theme appearance={mode}>
       <RunProvider>
         <AgentProvider>
-          <Editor />
+          <CloudProvider>
+            <Editor />
+          </CloudProvider>
         </AgentProvider>
       </RunProvider>
       {/* Mounted beside the app, not inside it: `toast()` is called from

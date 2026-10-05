@@ -11,6 +11,8 @@ declare module "@tauri-apps/plugin-fs" {
 
   export function readTextFile(path: string): Promise<string>;
   export function writeTextFile(path: string, contents: string): Promise<void>;
+  export function readFile(path: string): Promise<Uint8Array>;
+  export function writeFile(path: string, contents: Uint8Array): Promise<void>;
   export function readDir(path: string): Promise<DirEntry[]>;
   export function mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
   export function remove(path: string, options?: { recursive?: boolean }): Promise<void>;
