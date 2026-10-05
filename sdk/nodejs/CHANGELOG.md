@@ -1,5 +1,11 @@
 # @telorun/sdk
 
+## 0.110.0
+
+### Patch Changes
+
+- @telorun/cel@0.110.0
+
 ## 0.109.0
 
 ### Minor Changes

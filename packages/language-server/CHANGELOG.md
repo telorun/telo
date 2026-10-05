@@ -1,5 +1,7 @@
 # @telorun/language-server
 
+## 0.110.0
+
 ## 0.109.0
 
 ### Minor Changes

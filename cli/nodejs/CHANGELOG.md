@@ -1,5 +1,24 @@
 # @telorun/cli
 
+## 0.110.0
+
+### Minor Changes
+
+- 9254474: Studio opens Telo Cloud workspaces: optional sign-in on the web and desktop builds, a local working copy of the workspace's git repository, commit, update with a per-file conflict choice, and publishing a module to the workspace's registry. The web build is also released as the container image `ghcr.io/telorun/studio-web`, with the Helm chart `oci://ghcr.io/telorun/charts/studio-web` to deploy it.
+
+  `telo publish -o json` reports one entry per manifest under `modules`: a stable failure `code` with its `details`, or the `version`, `digest` and `integrity` of what was pushed and whether it was `identical` to what is already published. Every unpublished sibling import is now reported, not only the first. A transport's publish result carries the pushed artifact's `digest`.
+
+  The `requires.telo` edge check now starts `npx` outside the module's directory, so a `.npmrc` beside the manifest no longer decides which registry `@telorun/cli` is installed from.
+
+### Patch Changes
+
+- Updated dependencies [9254474]
+  - @telorun/kernel@0.110.0
+  - @telorun/sdk@0.110.0
+  - @telorun/templating@0.110.0
+  - @telorun/analyzer@0.110.0
+  - @telorun/ide-support@0.110.0
+
 ## 0.109.0
 
 ### Minor Changes
