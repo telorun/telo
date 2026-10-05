@@ -52,6 +52,34 @@ export function applySchemaDefaults(
   return next;
 }
 
+/**
+ * The properties a schema marks `deprecated: true` — the standard keyword, so
+ * nothing here knows which field a runner retired or why. A runner deprecates a
+ * field it still accepts from older clients (an `image`, once a telo version
+ * chooses what runs).
+ */
+export function deprecatedProperties(schema: JSONSchema7 | undefined): string[] {
+  const props = schema?.properties;
+  if (!props || typeof props !== "object") return [];
+  return Object.entries(props)
+    .filter(([, raw]) => typeof raw === "object" && (raw as { deprecated?: unknown }).deprecated === true)
+    .map(([key]) => key);
+}
+
+/** The schema a settings form is drawn from: every deprecated property left
+ *  out, so a field that no longer decides anything is not offered. */
+export function withoutDeprecated(schema: JSONSchema7): JSONSchema7 {
+  const deprecated = new Set(deprecatedProperties(schema));
+  if (deprecated.size === 0) return schema;
+  return {
+    ...schema,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties ?? {}).filter(([key]) => !deprecated.has(key)),
+    ),
+    required: asStringArray(schema.required).filter((key) => !deprecated.has(key)),
+  };
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }

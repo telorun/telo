@@ -168,6 +168,10 @@ export interface ViewProps {
     /** The Application this pane can run — null for a Library, which is what
      *  hides the run bar and the dock. */
     appPath: string | null;
+    /** The telo version this Application's module is edited against right now;
+     *  absent while nothing serves it. A live run asked for one at its start,
+     *  and the dock says so when the two have since parted. */
+    editedTelo?: string;
     onRun: () => void;
     /** Active runner from settings, or null when none is selected. */
     runnerName: string | null;

@@ -18,6 +18,9 @@ export interface LocalCapabilitiesOptions {
  * is no image to choose and no pull policy to apply. A runner that borrowed the
  * container fields to look familiar would put a field on the form that changes
  * nothing.
+ *
+ * `teloVersions` is advertised because an application may name the telo it runs
+ * on: this one as itself, any other as that release's own binary.
  */
 export function localRunnerCapabilities(opts: LocalCapabilitiesOptions): RunnerCapabilities {
   return {
@@ -40,6 +43,7 @@ export function localRunnerCapabilities(opts: LocalCapabilitiesOptions): RunnerC
       io: ["streams"],
       ports: true,
       watch: opts.watch,
+      teloVersions: true,
     },
   };
 }

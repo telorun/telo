@@ -103,6 +103,22 @@ describe("watch session validation", () => {
     expect(res.json().error).toBe("watch_disabled");
   });
 
+  it("runs its own workspace container on the operator's kernel, not on the version an app names", async () => {
+    h = await harness(true);
+    const res = await startSession(h, {
+      bundle: BODY.bundle,
+      env: BODY.env,
+      mode: "watch",
+      telo: "0.105.0",
+    });
+
+    expect(res.statusCode).toBe(201);
+    // The first container a watch session creates is the runner's own, serving
+    // the runner's manifest — verified against the kernel the runner ships with.
+    expect(h.docker._lastCreateOpts?.name).toMatch(/-workspace$/);
+    expect(h.docker._lastCreateOpts?.Image).toBe("telorun/node:0-slim");
+  });
+
   it("advertises watch and the agent catalog on /v1/capabilities", async () => {
     h = await harness(true, CATALOG);
     const caps = (await h.app.inject({ method: "GET", url: "/v1/capabilities" })).json();

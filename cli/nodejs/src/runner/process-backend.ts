@@ -23,7 +23,8 @@ import {
   workspaceMarkerWrite,
 } from "@telorun/runner-core";
 
-import { selfCommand } from "./self-invocation.js";
+import { selfInvocation, type SelfInvocation } from "./self-invocation.js";
+import { TeloVersionUnavailable, type TeloSupply } from "./telo-supply.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 
 /**
@@ -60,6 +61,8 @@ export interface ProcessBackendDeps {
    *  developer's own machine has no operator to protect it from, and a session
    *  that dies mid-edit at a fixed hour is a defect rather than a policy. */
   stateRoot: string;
+  /** Where the telo an application names comes from when it is not this one. */
+  telo: TeloSupply;
 }
 
 /** The inspect endpoint of the first app; later apps take the next ports up.
@@ -73,7 +76,7 @@ export function createProcessBackend(deps: ProcessBackendDeps): RunnerBackend {
       // how to re-invoke itself, and the state root must be writable. Both are
       // reported as what they are rather than discovered at start.
       try {
-        selfCommand(["--version"]);
+        selfInvocation();
       } catch (err) {
         return {
           status: "unavailable",
@@ -92,6 +95,12 @@ export function createProcessBackend(deps: ProcessBackendDeps): RunnerBackend {
         };
       }
       return { status: "ready" };
+    },
+
+    // Only what is known without the network. A release this machine does not
+    // hold yet is downloaded by start, which has a stream to report it on.
+    async supplyTelo(version) {
+      return deps.telo.refusal(version);
     },
 
     async start(spec: BackendStartSpec): Promise<BackendSession> {
@@ -133,9 +142,16 @@ async function startRunSession(
     resolveDone();
   };
 
+  // Before anything is spawned: a telo that cannot be had leaves nothing behind
+  // but the staged directory, which goes with the failed start.
+  const telo = await teloFor(deps, app, spec).catch(async (err: unknown) => {
+    await removeDir(sessionDir(deps.stateRoot, spec.sessionId));
+    throw err;
+  });
   spec.onProgress("boot", "Starting the application", undefined, app.name);
   const inspectPort = spec.inspect ? await freeLoopbackPort() : undefined;
   const child = spawnApp({
+    telo,
     workspaceDir,
     app,
     env: spec.env,
@@ -213,7 +229,15 @@ async function startWatchSession(
     resolveDone();
   };
 
-  await startApps();
+  try {
+    await startApps();
+  } catch (err) {
+    // An app's telo could not be had: the ones already started go with it.
+    teardownInProgress = true;
+    await stopChildren();
+    await removeDir(sessionDir(deps.stateRoot, spec.sessionId));
+    throw err;
+  }
   spec.onStatus({ kind: "running", endpoints: endpointsFor(apps) });
 
   return {
@@ -259,9 +283,11 @@ async function startWatchSession(
 
   async function startApps(): Promise<void> {
     for (const [index, app] of apps.entries()) {
+      const telo = await teloFor(deps, app, spec);
       spec.onProgress("boot", "Starting the application", undefined, app.name);
       const inspectPort = await freeLoopbackPort(INSPECT_PORT_BASE + index);
       const child = spawnApp({
+        telo,
         workspaceDir,
         app,
         env: spec.env,
@@ -365,7 +391,28 @@ async function startWatchSession(
 
 // --- process plumbing --------------------------------------------------------
 
+/** The telo one application runs on: the one it names, or this one. A release
+ *  not held yet is downloaded here, reported on the session's stream; one that
+ *  cannot be had fails the start with its reason. */
+async function teloFor(
+  deps: ProcessBackendDeps,
+  app: BackendAppSpec,
+  spec: BackendStartSpec,
+): Promise<SelfInvocation> {
+  if (app.telo === undefined) return selfInvocation();
+  try {
+    return await deps.telo.invocation(app.telo, () =>
+      spec.onProgress("provision", `Downloading telo ${app.telo}`, undefined, app.name),
+    );
+  } catch (err) {
+    if (!(err instanceof TeloVersionUnavailable)) throw err;
+    throw new SessionStartError("start_failed", "create", err.message);
+  }
+}
+
 interface SpawnAppArgs {
+  /** How the telo this application runs on is invoked. */
+  telo: SelfInvocation;
   workspaceDir: string;
   app: BackendAppSpec;
   env: Record<string, string>;
@@ -375,8 +422,8 @@ interface SpawnAppArgs {
 }
 
 /**
- * One application process: `telo run <entry>` of THIS telo, in the session's
- * workspace.
+ * One application process: `telo run <entry>` in the session's workspace, of
+ * this telo or of the release the application names.
  *
  * `detached` on POSIX puts it in its own process group, which is what makes a
  * stop reach the whole tree — the kernel's own children (a controller's build,
@@ -398,8 +445,7 @@ function spawnApp(args: SpawnAppArgs): ChildProcess {
   }
   teloArgs.push(entry);
 
-  const { command, args: argv } = selfCommand(teloArgs);
-  const child = spawn(command, argv, {
+  const child = spawn(args.telo.command, [...args.telo.prefix, ...teloArgs], {
     cwd: args.workspaceDir,
     // The workload inherits this process's environment: a local run's whole
     // point is the machine it runs on (PATH, HOME, certificates), and the

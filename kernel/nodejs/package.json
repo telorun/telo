@@ -8,7 +8,7 @@
     "execution",
     "manifest"
   ],
-  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
@@ -61,6 +61,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "prepare": "node -e \"const f='../../scripts/generate-telo-version.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync(process.execPath,[f],{stdio:'inherit'})\"",
     "prepublishOnly": "tsc",
     "prepack": "cp ../../LICENSE . && cp ../README.md . && node ../../scripts/prepack-bake-overrides.mjs .",
     "postpack": "rm -f LICENSE && rm -f README.md",

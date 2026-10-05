@@ -21,7 +21,15 @@ export type PullPolicy = "missing" | "always" | "never";
 export interface RunnerCapabilities {
   displayName: string;
   description: string;
-  config: { schema: JsonSchema };
+  config: {
+    schema: JsonSchema;
+    /** The config properties a request must leave out once it names a telo
+     *  version, because the version answers what they answered (a container
+     *  runner's `image` and `pullPolicy`) — sent beside one, the request is
+     *  refused. Stated rather than inferred from `deprecated`, which says a
+     *  field is on its way out and nothing about what replaces it. */
+    supersededByTelo?: string[];
+  };
   features: RunnerFeatures;
   /** A usage agreement the operator requires before a session may start.
    *  Omitted (or undefined) when this runner has no terms — e.g. a local
@@ -70,6 +78,11 @@ export interface RunnerFeatures {
   /** Catalog names admissible as a session's co-resident `agent`. Empty/absent
    *  when the operator configured none. */
   agents?: string[];
+  /** An application's `telo` version is honoured: the runner runs exactly that
+   *  telo or refuses the request (`400 telo_version_unavailable`), never a
+   *  substitute. Absent, a request naming a version is refused
+   *  (`400 telo_version_unsupported`). */
+  teloVersions?: boolean;
 }
 
 /** An operator-predefined application the runner can launch by name. Only the
@@ -192,12 +205,64 @@ export interface SessionAppSpec {
   ports?: PortMapping[];
   /** Terminal or separated streams; defaults to `tty`. */
   io?: IoMode;
+  /** The telo release this app runs on — a plain version, the one its module
+   *  is edited against. Per app, never per session: two applications of one
+   *  workspace may resolve to different versions. Omitted, the runner's own
+   *  choice runs, as it always did. */
+  telo?: string;
+}
+
+/** A plain release version, optionally carrying a pre-release and build tag —
+ *  what an application's `telo` may name. It becomes an image tag and a release
+ *  asset name, so nothing else is admitted. */
+export const TELO_VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+/**
+ * The oldest telo release a runner supervises.
+ *
+ * A runner starts an application as `telo run --watch --inspect <addr> --no-open
+ * <entry>` beside a seeded `telo-workspace.yaml`, and reads its run outcomes off
+ * the debug stream. A release that predates any of those either fails to start
+ * with an error about its own command line, or runs with no generation ever
+ * opening — neither of which tells the user the version is simply too old.
+ *
+ * This is the oldest release VERIFIED BY EXECUTION to do all of it (a watch
+ * session on the local runner, whose generation opened; 0.103.2 likewise), not
+ * the point where it breaks: nothing older was run. Lower it only by running
+ * the candidate.
+ */
+export const MIN_SUPERVISABLE_TELO = "0.95.0";
+
+/** Why `version` is too old to be supervised, or `undefined`. */
+export function unsupervisableTelo(version: string): string | undefined {
+  const parts = (text: string) => text.split(/[-+]/)[0]!.split(".").map(Number);
+  const [asked, floor] = [parts(version), parts(MIN_SUPERVISABLE_TELO)];
+  for (let i = 0; i < 3; i++) {
+    if (asked[i]! > floor[i]!) return undefined;
+    if (asked[i]! < floor[i]!) {
+      return (
+        `telo ${version} is older than ${MIN_SUPERVISABLE_TELO}, the oldest release a runner ` +
+        `is verified to supervise (watch mode, the debug stream and the workspace marker)`
+      );
+    }
+  }
+  return undefined;
+}
+
+/** Whether a version is a BUILD identity (`X+unreleased`) rather than a release:
+ *  a working copy made while `X` was still pending, which no registry and no
+ *  release holds under that number. */
+export function isUnreleasedTelo(version: string): boolean {
+  return version.includes("+");
 }
 
 export interface StartSessionRequest {
   bundle: RunBundle;
   env: Record<string, string>;
   ports?: PortMapping[];
+  /** The telo version of the one application a request with no `apps` runs —
+   *  the same field {@link SessionAppSpec} carries per app. */
+  telo?: string;
   /** Whatever this runner's `/v1/capabilities` declares as editable. Omitted
    *  against a runner that declares none. */
   config?: SessionConfig;
@@ -309,7 +374,16 @@ export type RunTrigger = "initial" | "watch" | "manual" | "resume";
  * it asks the kernel for nothing.
  */
 export type RunOutcomeEvent =
-  | { type: "run"; app: string; generation: number; phase: "started"; trigger: RunTrigger }
+  | {
+      type: "run";
+      app: string;
+      generation: number;
+      phase: "started";
+      trigger: RunTrigger;
+      /** The version the runtime itself reported for this generation, passed on
+       *  unjudged. Absent from a runtime that reports none. */
+      telo?: string;
+    }
   | {
       type: "run";
       app: string;

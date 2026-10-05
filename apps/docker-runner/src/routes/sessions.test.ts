@@ -640,3 +640,133 @@ describe("POST /v1/apps/:name/sessions (predefined applications)", () => {
     }
   });
 });
+
+describe("POST /v1/sessions — an application naming its telo version", () => {
+  let h: TestHarness;
+
+  afterEach(async () => {
+    if (h) await teardownHarness(h);
+    vi.unstubAllEnvs();
+  });
+
+  const naming = (telo: string, config?: Record<string, unknown>) => ({
+    bundle: VALID_START_BODY.bundle,
+    env: {},
+    telo,
+    ...(config ? { config } : {}),
+  });
+
+  it("runs that version's kernel image", async () => {
+    h = await buildHarness();
+    const res = await startSession(h, naming("0.105.0"));
+
+    expect(res.statusCode).toBe(201);
+    expect(h.docker._lastCreateOpts?.Image).toBe("telorun/node:0.105.0-slim");
+  });
+
+  it("fails the session's start, not the request, for an image that cannot be pulled", async () => {
+    h = await buildHarness({
+      inspectImage: async () => {
+        throw Object.assign(new Error("image not found"), { statusCode: 404 });
+      },
+      pull: async () => {
+        throw new Error("manifest unknown");
+      },
+    });
+    const res = await startSession(h, naming("0.105.0"));
+
+    // The pull is the start's: it can take minutes, and the stream is where its
+    // progress and its failure belong.
+    expect(res.statusCode).toBe(201);
+    const { sessionId } = res.json() as { sessionId: string };
+    const status = h.registry.get(sessionId)?.status;
+    expect(status).toMatchObject({ kind: "failed" });
+    expect((status as { message: string }).message).toMatch(
+      /telorun\/node:0\.105\.0-slim.*manifest unknown/,
+    );
+    expect(h.docker._lastCreateOpts).toBeNull();
+  });
+
+  it("runs an unreleased build on the image the operator named for it", async () => {
+    vi.stubEnv("RUNNER_TELO_UNRELEASED_IMAGE", "telo-dev/node:local");
+    h = await buildHarness();
+    await startSession(h, naming("0.105.0+unreleased"));
+
+    expect(h.docker._lastCreateOpts?.Image).toBe("telo-dev/node:local");
+  });
+
+  it("refuses an unreleased build no image was named for, saying what to do", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: naming("0.105.0+unreleased"),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().reason).toMatch(/unreleased build/);
+    expect(res.json().reason).toMatch(/RUNNER_TELO_UNRELEASED_IMAGE/);
+    expect(h.registry.list()).toHaveLength(0);
+  });
+
+  it("refuses a version and an image together", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: naming("0.105.0", { image: "telorun/node:0-slim", pullPolicy: "missing" }),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: "invalid_config" });
+    expect(res.json().message).toMatch(/both say what runs/);
+  });
+
+  it("refuses a pull policy beside a version, since how a version is pulled is the operator's", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: naming("0.105.0", { pullPolicy: "always" }),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: "invalid_config" });
+    expect(res.json().message).toMatch(/pullPolicy.*operator's policy/);
+  });
+
+  it("pulls a version's image under the operator's policy", async () => {
+    vi.stubEnv("RUNNER_PULL_POLICY", "always");
+    let pulled: string | undefined;
+    h = await buildHarness({
+      pull: async (image) => {
+        pulled = image;
+        const { Readable } = await import("node:stream");
+        return Readable.from([]);
+      },
+    });
+    await startSession(h, naming("0.105.0"));
+
+    // `always` pulls an image the daemon already holds; the default would not.
+    expect(pulled).toBe("telorun/node:0.105.0-slim");
+  });
+
+  it("refuses a session where only some apps name a version", async () => {
+    h = await buildHarness();
+    const res = await h.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: {
+        bundle: VALID_START_BODY.bundle,
+        env: {},
+        apps: [
+          { name: "one", entryRelativePath: "telo.yaml", telo: "0.105.0" },
+          { name: "two", entryRelativePath: "telo.yaml" },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: "invalid_telo_version" });
+  });
+});

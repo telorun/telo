@@ -69,7 +69,7 @@ telo versions have none. Prereleases and deprecated releases are not offered.
 An editor built from a telo checkout before its release — a local build, or a
 deployment of the main branch — ships an engine that implements the coming
 release `X` but is not the `X` that will be published. It names itself
-`X+unreleased`, and the editor shows it as **Telo X (unreleased build)**. It
+`X+unreleased`, and the editor shows it as **Telo X (local)**. It
 counts as `X` for `requires: telo:` (a module declaring `>=X` is satisfied by
 it), but it is a different engine from a published `X`: where Auto could pick
 either, it picks the published one — except when it keeps the bundled engine

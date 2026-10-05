@@ -1,0 +1,8 @@
+modules:
+  modules/record-stream: Fixed
+  modules/record-stream-sql: Fixed
+  modules/watch: Fixed
+body: "A CEL duration and uint are read through the value domain's own predicates
+  (isCelDuration, isCelUint) rather than by class, so a value built by any copy of the
+  engine is recognised: identity is a string type key under
+  Symbol.for(\"telo.cel.value\"), not a constructor."

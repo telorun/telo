@@ -72,18 +72,21 @@ export async function buildRunBundle(
 
   const contents = await Promise.all(uniquePaths.map((p) => readFile(p)));
 
-  // Bundle root is the common ancestor directory of every file we're shipping.
-  // This means the tempdir layout inside `/srv` mirrors the workspace's
-  // relative layout: an Application at `/ws/app/telo.yaml` importing a
-  // Library at `/ws/libs/b/telo.yaml` produces a bundle with root `/ws`, so
-  // the entry ends up at `app/telo.yaml` and the library at `libs/b/telo.yaml`.
+  // **Bundle paths are relative to the WORKSPACE root**, so the session's
+  // workspace holds each file where the editor holds it: an Application at
+  // `<root>/apps/todo/telo.yaml` is `apps/todo/telo.yaml` there. The session
+  // workspace has more than one writer — the agent's sync writes the editor's
+  // whole tree into the same volume, relative to the same root — and two
+  // layouts over one directory is one of them deleting the other's files: the
+  // sync finds the app at a path the editor does not have, removes it, and the
+  // running kernel loses its entry manifest.
   //
-  // One side-effect worth knowing: adding or removing siblings can shift the
-  // root (e.g. removing the library collapses the root to `/ws/app`, making
-  // the entry `telo.yaml`). That's fine for docker — the runner mounts root
-  // at `/srv` and executes `./<entryRelativePath>` — but code that memoizes
-  // bundle paths across runs shouldn't assume stability.
-  const bundleRoot = commonAncestorDir(uniquePaths);
+  // A file the closure reaches OUTSIDE the workspace root (an import climbing
+  // above it) cannot be placed under that root, so such a bundle falls back to
+  // the common ancestor of what it ships — the only root that holds all of it.
+  const workspaceRoot = toPosix(workspace.rootDir).replace(/\/+$/, "");
+  const underRoot = (p: string) => workspaceRoot !== "" && p.startsWith(`${workspaceRoot}/`);
+  const bundleRoot = uniquePaths.every(underRoot) ? workspaceRoot : commonAncestorDir(uniquePaths);
   const entryPosix = toPosix(entryFilePath);
 
   return {

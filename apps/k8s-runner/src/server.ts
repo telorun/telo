@@ -68,8 +68,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // catalog-less runner accept an unusable one. An absent image is not a
     // violation; this runner supplies its own default, which is the operator's
     // choice rather than the caller's.
-    validateConfig: (sessionConfig: SessionConfig): string | undefined => {
-      const invalid = validateOptionalContainerConfig(sessionConfig);
+    validateConfig: (sessionConfig: SessionConfig, request): string | undefined => {
+      const invalid = validateOptionalContainerConfig(sessionConfig, request);
       if (invalid) return invalid;
       if (!catalog) return undefined;
       const { image } = optionalContainerConfig(sessionConfig);
@@ -115,8 +115,6 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  const backend = createKubernetesBackend({ kube, config, bundleStore, router: routing.router });
-
   const catalog = config.baseImageCatalog.enabled
     ? new BaseImageCatalog({
         repository: config.baseImageCatalog.repository,
@@ -126,6 +124,8 @@ async function main(): Promise<void> {
         refreshIntervalMs: config.baseImageCatalog.refreshIntervalMs,
       })
     : undefined;
+
+  const backend = createKubernetesBackend({ kube, config, bundleStore, router: routing.router });
 
   const { app, registry } = await buildServer({ backend, config, bundleStore, catalog });
 

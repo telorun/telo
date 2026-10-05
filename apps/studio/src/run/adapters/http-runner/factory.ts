@@ -2,6 +2,7 @@ import type { JSONSchema7 } from "json-schema";
 
 import {
   isTerminal,
+  TeloVersionRefusedError,
   TermsRequiredError,
   type AvailabilityReport,
   type ConfigIssue,
@@ -39,6 +40,16 @@ interface ErrorResponse {
   message?: string;
   stage?: string;
   daemonMessage?: string;
+  /** Why a `telo_version_*` refusal was made, in the runner's words. */
+  reason?: string;
+}
+
+function withoutProperties(
+  config: Record<string, unknown>,
+  withheld: string[] | undefined,
+): Record<string, unknown> {
+  if (!withheld || withheld.length === 0) return config;
+  return Object.fromEntries(Object.entries(config).filter(([key]) => !withheld.includes(key)));
 }
 
 /**
@@ -165,7 +176,8 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
             bundle: request.bundle,
             env: request.env ?? {},
             ports: request.ports ?? [],
-            config: opts.buildRequestConfig(config),
+            config: withoutProperties(opts.buildRequestConfig(config), request.withheldConfig),
+            ...(request.telo !== undefined ? { telo: request.telo } : {}),
             // Always request the debug stream so the run view's Debug panel is
             // populated; the runner relays it over this same session stream.
             inspect: true,
@@ -201,6 +213,12 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
           // fall through
         }
         const message = err?.daemonMessage ?? err?.message ?? `runner returned HTTP ${createRes.status}`;
+        if (
+          request.telo !== undefined &&
+          (err?.error === "telo_version_unavailable" || err?.error === "telo_version_unsupported")
+        ) {
+          throw new TeloVersionRefusedError(err.error, request.telo, err.reason ?? message);
+        }
         throw new Error(message);
       }
 

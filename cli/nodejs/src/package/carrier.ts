@@ -1,6 +1,4 @@
-import { readTarGz } from "@telorun/kernel";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -8,7 +6,12 @@ import * as path from "node:path";
 import { distributionKind } from "../distribution-versions.js";
 import { carriersRoot } from "./app-home.js";
 import { APP_MAGIC, MACHO_SECTION, MACHO_SEGMENT, encodeTrailer } from "./app-trailer.js";
-import { readZipEntry, zipEntryNames } from "./zip.js";
+import {
+  hostReleaseTarget,
+  RELEASE_BINARY_TARGETS,
+  releaseBinary,
+  ReleaseBinaryError,
+} from "../release-binary.js";
 import type { PlatformLike } from "./app-payload.js";
 
 /**
@@ -23,43 +26,8 @@ import type { PlatformLike } from "./app-payload.js";
  * supervises the running executable rather than a `telo` from `PATH`.
  */
 
-const RELEASE_REPO = process.env.TELO_REPO?.trim() || "telorun/telo";
-
-/**
- * Every platform a `telo` binary is published for, in Telo's own vocabulary,
- * with the ARCHIVE the release publishes it in.
- *
- * The format is part of the target rather than derived at the download, because
- * it is not one fact but two and they differ per platform: a Windows asset is a
- * `.zip` holding `telo.exe` at its root (built with `Compress-Archive`, which is
- * what `Expand-Archive` on a bare Windows machine can open), and every other is
- * a `.tar.gz` whose binary sits inside a `telo-<version>-<target>/` directory,
- * so an extract cannot scatter a bare `telo` into the current directory.
- * Assuming one shape for all of them is how packaging for Windows asked the
- * release for an asset that does not exist and reported it as a 404.
- *
- * `linux/arm64/musl` is absent because nodejs.org publishes no runtime to
- * inject into, so no carrier exists — said here rather than discovered as a
- * 404 at the download.
- */
-const CARRIER_TARGETS: Record<string, { exe: string; archive: "tar.gz" | "zip" }> = {
-  "linux-amd64-gnu": { exe: "", archive: "tar.gz" },
-  "linux-amd64-musl": { exe: "", archive: "tar.gz" },
-  "linux-arm64-gnu": { exe: "", archive: "tar.gz" },
-  "darwin-amd64": { exe: "", archive: "tar.gz" },
-  "darwin-arm64": { exe: "", archive: "tar.gz" },
-  "windows-amd64": { exe: ".exe", archive: "zip" },
-  "windows-arm64": { exe: ".exe", archive: "zip" },
-};
-
-/** Node's platform and architecture names in Telo's own vocabulary. Only the
- *  tuples a carrier exists for are named; everything else has no carrier. */
-const OS_TOKENS: Record<string, string | undefined> = {
-  linux: "linux",
-  darwin: "darwin",
-  win32: "windows",
-};
-const ARCH_TOKENS: Record<string, string | undefined> = { x64: "amd64", arm64: "arm64" };
+/** A carrier is the release binary of a platform — one table, read by both. */
+const CARRIER_TARGETS = RELEASE_BINARY_TARGETS;
 
 /** The release-asset spelling of a platform: `linux-amd64-gnu`. A filename in
  *  the download namespace, which is why `--platform` keeps the `os/arch/libc`
@@ -104,23 +72,7 @@ export function runningAsBinary(): boolean {
 }
 
 export function hostCarrierTarget(): string | null {
-  const os = OS_TOKENS[process.platform];
-  const arch = ARCH_TOKENS[process.arch];
-  if (!os || !arch) return null;
-  if (os !== "linux") return `${os}-${arch}`;
-  return `${os}-${arch}-${isMuslHost() ? "musl" : "gnu"}`;
-}
-
-/** Read from the interpreter this Node was linked against rather than from a
- *  distro name. */
-function isMuslHost(): boolean {
-  try {
-    return execFileSync("ldd", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-      .toLowerCase()
-      .includes("musl");
-  } catch (err) {
-    return /musl/i.test(String((err as { stderr?: unknown })?.stderr ?? ""));
-  }
+  return hostReleaseTarget();
 }
 
 /**
@@ -270,102 +222,30 @@ export async function carrierReadsPayloads(file: string): Promise<boolean> {
   }
 }
 
-/** The release asset for one target, verified against the release's own
- *  `checksums.txt` and kept in the user cache so a second packaging costs no
- *  download. */
+/** The release binary for one target — fetched, verified and cached by the
+ *  shared release fetch — with what its absence means for a packaging. */
 async function downloadCarrier(
   target: string,
   version: string,
   report: (message: string) => void,
 ): Promise<string> {
-  const spec = CARRIER_TARGETS[target];
-  const root = carriersRoot();
-  const cached = root ? path.join(root, version, `telo-${target}${spec.exe}`) : undefined;
-  if (cached && fs.existsSync(cached)) return cached;
-
-  const asset = `telo-${version}-${target}.${spec.archive}`;
-  const base = `https://github.com/${RELEASE_REPO}/releases/download/v${version}`;
-  report(`fetching ${base}/${asset}`);
-  const response = await fetch(`${base}/${asset}`);
-  if (!response.ok) {
-    throw new Error(
-      `no telo ${version} binary for ${target} at ${base}/${asset} (HTTP ${response.status}). ` +
-        `A packaged app carries the telo that built it, so packaging needs a released one — ` +
-        `either run this from a released telo, or build the standalone binary in this checkout ` +
-        `and package with that.`,
-    );
-  }
-  const archive = Buffer.from(await response.arrayBuffer());
-  await verifyChecksum(base, asset, archive);
-
-  const binary = await carrierFromArchive(archive, asset, target, version);
-  if (!cached) {
-    throw new Error(
-      `no writable cache directory for the downloaded carrier. Set TELO_APP_DIR to a writable path.`,
-    );
-  }
-  fs.mkdirSync(path.dirname(cached), { recursive: true });
-  fs.writeFileSync(cached, binary, { mode: 0o755 });
-  return cached;
-}
-
-/** The binary inside a release asset, at the path that asset's own format puts
- *  it — the two differ, and the archive says which one it is. */
-async function carrierFromArchive(
-  archive: Buffer,
-  asset: string,
-  target: string,
-  version: string,
-): Promise<Buffer> {
-  const spec = CARRIER_TARGETS[target];
-  if (spec.archive === "zip") {
-    const wanted = `telo${spec.exe}`;
-    const entry = readZipEntry(archive, wanted);
-    if (!entry) {
-      throw new Error(`${asset} does not contain ${wanted} (it holds ${zipEntryNames(archive).join(", ")})`);
+  try {
+    return await releaseBinary(target, version, { cacheRoot: carriersRoot(), report });
+  } catch (err) {
+    if (!(err instanceof ReleaseBinaryError)) throw err;
+    if (err.failure === "not-published" || err.failure === "unreachable") {
+      throw new Error(
+        `${err.message} A packaged app carries the telo that built it, so packaging needs a ` +
+          `released one — either run this from a released telo, or build the standalone binary ` +
+          `in this checkout and package with that.`,
+      );
     }
-    return entry.contents;
-  }
-  const wanted = `telo-${version}-${target}/telo${spec.exe}`;
-  for (const entry of await readTarGz(archive)) {
-    if (entry.name !== wanted || "link" in entry) continue;
-    return Buffer.from(entry.content);
-  }
-  throw new Error(`${asset} does not contain ${wanted}`);
-}
-
-/**
- * The release publishes one `checksums.txt` covering every asset, and this
- * download is **verified or refused**.
- *
- * Continuing unverified would bake a network-fetched executable into someone's
- * product on the strength of nothing. A release that ought to carry checksums
- * and does not is a condition to stop at, not to note in passing — and since
- * only a released telo may download a carrier at all, every reachable release is
- * one that publishes them.
- */
-async function verifyChecksum(base: string, asset: string, bytes: Buffer): Promise<void> {
-  const response = await fetch(`${base}/checksums.txt`);
-  if (!response.ok) {
-    throw new Error(
-      `no checksums.txt published beside ${asset} (HTTP ${response.status}), so the carrier ` +
-        `cannot be verified — and a carrier becomes part of every application packaged with it.`,
-    );
-  }
-  const text = await response.text();
-  const expected = text
-    .split("\n")
-    .map((line) => line.trim().split(/\s+/))
-    // `sha256sum` writes `<digest>  <name>` in text mode and `<digest> *<name>`
-    // in binary mode; reading only the first spelling took an ordinary file for
-    // one that lists nothing.
-    .find((parts) => parts[1]?.replace(/^\*/, "") === asset)?.[0];
-  if (!expected) {
-    throw new Error(`checksums.txt beside ${asset} does not list it, so it cannot be verified.`);
-  }
-  const actual = createHash("sha256").update(bytes).digest("hex");
-  if (actual !== expected) {
-    throw new Error(`checksum mismatch for ${asset}: expected ${expected}, got ${actual}`);
+    if (err.failure === "checksums-missing") {
+      throw new Error(
+        `${err.message} A carrier becomes part of every application packaged with it.`,
+      );
+    }
+    throw err;
   }
 }
 

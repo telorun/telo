@@ -22,6 +22,9 @@ export {
   defaultTransportRegistry,
 } from "./transports/transport-registry.js";
 export { makeTarGz, readTarGz, type BundleEntry } from "./bundle/tar.js";
+// The version this runtime reports for itself on `Kernel.Starting`: `X` for a
+// release, `X+unreleased` for a build made while `X` is still pending.
+export { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 export {
   computeFilesIntegrity,
   injectLayerIndex,

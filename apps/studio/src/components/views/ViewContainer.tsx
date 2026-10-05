@@ -121,7 +121,13 @@ export function ViewContainer({ activeView, onChangeView, viewProps }: ViewConta
         )}
       </div>
 
-      {appPath && <RunDock appPath={appPath} onOpenConfig={openRunTab} />}
+      {appPath && (
+        <RunDock
+          appPath={appPath}
+          editedTelo={viewProps.run.editedTelo}
+          onOpenConfig={openRunTab}
+        />
+      )}
     </div>
   );
 }

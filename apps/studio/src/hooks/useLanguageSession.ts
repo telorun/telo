@@ -27,6 +27,9 @@ export type TeloLanguage =
       kind: "running";
       /** What the active module is edited against, or why nothing serves it. */
       status: TeloStatus;
+      /** What the document at `path` is edited against — the version a run of
+       *  it asks its runner for. */
+      statusOf(path: string): TeloStatus;
       teloVersion: TeloVersionSetting;
       setTeloVersion(setting: TeloVersionSetting): Promise<void>;
       markVersions(): Promise<VersionMarks>;
@@ -191,6 +194,7 @@ export function useLanguageSession(options: {
     language: {
       kind: "running",
       status,
+      statusOf: (path) => session.statusOf(path),
       teloVersion,
       setTeloVersion: async (setting) => {
         setTeloVersionState(setting);

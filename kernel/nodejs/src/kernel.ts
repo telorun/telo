@@ -63,6 +63,7 @@ import {
   type LoadOptions,
   type TraceSinkInstance,
 } from "@telorun/sdk";
+import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { EventBus } from "./events.js";
 import { enableBigIntJson } from "./bigint-json.js";
@@ -1587,7 +1588,9 @@ export class Kernel implements IKernel {
     }
     this._targetsRan = true;
 
-    await this.eventBus.emit("Kernel.Starting", {});
+    // The runtime names itself: a runner passes this on, and an editor compares
+    // it with the version it asked to run on.
+    await this.eventBus.emit("Kernel.Starting", { telo: TELO_RUNTIME_VERSION });
     await this.rootContext.runTargets(this.bootCancellation.context, this._appName);
     await this.eventBus.emit("Kernel.Started", {});
   }

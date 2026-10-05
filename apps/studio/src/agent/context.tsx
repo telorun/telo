@@ -31,6 +31,7 @@ import {
   userMessageId,
 } from "./records";
 import {
+  clearConversationId,
   loadAgentSettings,
   loadConversationId,
   purgeStoredTranscripts,
@@ -872,6 +873,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (current && conversationAgentRef.current === key) return current;
     const identity = await currentIdentity();
     const c = client();
+    // This send settles the conversation a workspace opened with no agent waited for.
+    deferredResolveRef.current = false;
     if (hasFeature(identity, AGENT_FEATURES.conversations)) {
       if (current) {
         try {
@@ -890,13 +893,16 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       adoptConversation(created, key);
       return created.id;
     }
-    deferredResolveRef.current = false;
     if (current) return current;
-    const minted = crypto.randomUUID();
-    if (workspaceKeyRef.current) saveConversationId(workspaceKeyRef.current, minted);
-    conversationIdRef.current = minted;
-    setConversationId(minted);
-    return minted;
+    // A draft on an older agent: the id it keys this workspace's history by,
+    // minted when there is none.
+    const workspaceKey = workspaceKeyRef.current;
+    const stored = workspaceKey ? loadConversationId(workspaceKey) : null;
+    const id = stored ?? crypto.randomUUID();
+    if (!stored && workspaceKey) saveConversationId(workspaceKey, id);
+    conversationIdRef.current = id;
+    setConversationId(id);
+    return id;
   }, [adoptConversation, client, currentIdentity]);
 
   const dispatchTurn = useCallback(
@@ -1351,6 +1357,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       conversationAgentRef.current = null;
       setConversationMeta(null);
+      // No agent yet: whichever one appears — or the one a send launches —
+      // says whether the pointer is a conversation of its own, so no id is
+      // opened or minted before then.
+      if (!agent) {
+        deferredResolveRef.current = true;
+        switchTo(null);
+        return;
+      }
       const stored = loadConversationId(workspaceKey);
       if (stored) {
         switchTo(stored);
@@ -1414,6 +1428,14 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (hasFeature(identityRef.current, AGENT_FEATURES.conversations)) {
       // The current conversation stays the agent's, listed; the draft becomes
       // one on its first send.
+      showDraft();
+      return;
+    }
+    // No agent has said what it serves: the first send decides how the
+    // conversation is made, and the old one is no longer this workspace's.
+    if (identityRef.current === null) {
+      deferredResolveRef.current = false;
+      clearConversationId(key);
       showDraft();
       return;
     }

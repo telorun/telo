@@ -19,6 +19,8 @@ export interface PersistedRunEntry {
    *  endpoint tokens: a token is a live credential, and the one a re-attached
    *  session needs arrives again on the runner's status stream. */
   status: RunStatus;
+  /** The telo version this run asked its runner for, when it named one. */
+  requestedTelo?: string;
   /** The adapter config used to start the run — the address (e.g. runner
    *  `baseUrl` / docker host) needed to re-attach.
    *

@@ -1,3 +1,4 @@
+import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
 import {
   loadCoreConfig,
   parseBool,
@@ -102,6 +103,9 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  image as `RUNNER_IMAGE` at build time (the kernel version the runner was
    *  built against); the literal fallback below is for a source checkout only. */
   defaultImage: string;
+  /** Where the kernel image of a telo version an application names is pulled
+   *  from (`RUNNER_TELO_IMAGE_REPOSITORY`, `RUNNER_TELO_IMAGE_VARIANT`). */
+  teloImages: TeloImageSource;
   /** Small image for the bundle-fetch initContainer (needs wget + tar). */
   initImage: string;
   /** Optional dockerconfig Secret (in the session namespace) the kubelet pulls
@@ -248,6 +252,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
       env.RUNNER_DESCRIPTION?.trim() || "Runs the Telo application in a cloud environment",
     sessionNamespace,
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
+    teloImages: loadTeloImageSource(env),
     initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,

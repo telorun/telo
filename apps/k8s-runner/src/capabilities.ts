@@ -1,5 +1,5 @@
 import type { RunnerCapabilities, RunnerTerms } from "@telorun/runner-core";
-import { sessionConfigSchema } from "@telorun/runner-core/container";
+import { sessionConfigSchema, SUPERSEDED_BY_TELO } from "@telorun/runner-core/container";
 
 export interface KubernetesRunnerCapabilitiesOptions {
   /** Identity shown as the runner's label in studio; operator-configurable
@@ -42,6 +42,7 @@ export function kubernetesRunnerCapabilities(
       io: ["tty", "streams"],
       ports: true,
       watch: opts.watch,
+      teloVersions: true,
       ...(opts.agents && opts.agents.length > 0 ? { agents: opts.agents } : {}),
     },
     config: {
@@ -49,9 +50,11 @@ export function kubernetesRunnerCapabilities(
         imageDefault: defaultImage,
         enforced: true,
         imageEnum,
+        teloVersions: true,
         pullPolicyDescription:
           "Kernel-image freshness, applied as the Pod's imagePullPolicy. `always` re-pulls on every session, so a moving tag like `latest-slim` picks up a new release. `missing` pulls only when the node has no copy. `never` never pulls at all — on a node that has not already cached the image the session fails to start (ErrImageNeverPull), so it suits a cluster that pre-loads its images and nothing else.",
       }),
+      supersededByTelo: SUPERSEDED_BY_TELO,
     },
     terms,
   };

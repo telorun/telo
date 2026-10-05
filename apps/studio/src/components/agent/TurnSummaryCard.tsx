@@ -101,7 +101,8 @@ function ChangesView({ changes }: { changes: TurnChanges }) {
  * manifests it ran and the tokens it spent — with its changes as diffs and a
  * revert, where the agent serves them. A turn from before the agent kept
  * checkpoints (`files: null`) has neither, and no file list: what it changed is
- * unknown, not nothing.
+ * unknown, not nothing. A turn that changed nothing, ran nothing and was not
+ * reverted draws no card at all.
  */
 export function TurnSummaryCard({ turn, summary }: { turn: AssistantMessage; summary: TurnSummary }) {
   const agent = useAgent();
@@ -151,6 +152,12 @@ export function TurnSummaryCard({ turn, summary }: { turn: AssistantMessage; sum
       setBusy(null);
     }
   };
+
+  // A turn that changed nothing, ran nothing and was not reverted has nothing
+  // to summarise: a card saying "No files changed" under every answered
+  // question is noise. Unknown changes (`files: null`) are not nothing, and
+  // still show.
+  if (files !== null && files.length === 0 && summary.runs.length === 0 && !turn.revert) return null;
 
   const tokens = summary.usage.totalTokens;
 

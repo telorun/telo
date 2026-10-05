@@ -1,4 +1,5 @@
 import { loadCoreConfig, RunnerConfigError, type RunnerCoreConfig } from "@telorun/runner-core";
+import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
 
 export { RunnerConfigError };
 
@@ -11,7 +12,17 @@ export interface RunnerConfig extends RunnerCoreConfig {
    *  tcp port so studio renders a reachable link instead of falling back to
    *  the runner's own host. Unset (the default) keeps the host-less behaviour. */
   publicBaseUrl?: string;
+  /** Where the kernel image of a telo version an application names comes from,
+   *  and how every image the runner chooses itself is pulled
+   *  (`RUNNER_TELO_IMAGE_*`, `RUNNER_PULL_POLICY`). */
+  teloImages: TeloImageSource;
+  /** The kernel image the runner's own workspace container runs on
+   *  (`RUNNER_IMAGE`). */
+  workspaceImage: string;
 }
+
+/** The kernel image this runner's own containers run on unless told otherwise. */
+export const DEFAULT_KERNEL_IMAGE = "telorun/node:0-slim";
 
 export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
   const bundleVolume = env.BUNDLE_VOLUME?.trim();
@@ -45,5 +56,7 @@ export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
     bundleVolume,
     childNetwork,
     publicBaseUrl,
+    teloImages: loadTeloImageSource(env),
+    workspaceImage: env.RUNNER_IMAGE?.trim() || DEFAULT_KERNEL_IMAGE,
   };
 }

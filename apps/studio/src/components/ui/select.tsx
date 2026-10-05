@@ -104,8 +104,17 @@ function SelectLabel({
 function SelectItem({
   className,
   children,
+  description,
+  icon,
   ...props
-}: React.ComponentProps<typeof SelectPrimitive.Item>) {
+}: React.ComponentProps<typeof SelectPrimitive.Item> & {
+  /** A mark before the item's text. Like `description`, it is not part of the
+   *  item's value text, so the trigger does not repeat it. */
+  icon?: React.ReactNode
+  /** A second, quieter line under the item's text. It is not part of the
+   *  item's value text, so the trigger shows the first line alone. */
+  description?: React.ReactNode
+}) {
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
@@ -120,7 +129,15 @@ function SelectItem({
           <CheckIcon className="pointer-events-none" />
         </SelectPrimitive.ItemIndicator>
       </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      {icon}
+      {description ? (
+        <div className="flex min-w-0 flex-col items-start">
+          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+          <span className="text-xs text-muted-foreground">{description}</span>
+        </div>
+      ) : (
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      )}
     </SelectPrimitive.Item>
   )
 }

@@ -4,6 +4,9 @@ import {
   containerConfig,
   optionalContainerConfig,
   sessionConfigSchema,
+  loadTeloImageSource,
+  teloImage,
+  teloImageRefusal,
   validateContainerConfig,
   validateOptionalContainerConfig,
 } from "./container-config.js";
@@ -93,5 +96,48 @@ describe("validateOptionalContainerConfig", () => {
   it("refuses an unknown pull policy instead of coercing it to `missing`", () => {
     expect(validateOptionalContainerConfig({ pullPolicy: "sometimes" })).toMatch(/pullPolicy/);
     expect(() => optionalContainerConfig({ pullPolicy: "sometimes" })).toThrow(/pullPolicy/);
+  });
+});
+
+describe("a session whose apps name their telo version", () => {
+  it("needs no config at all", () => {
+    expect(validateContainerConfig({}, { telo: true })).toBeUndefined();
+  });
+
+  it("pulls under the operator's policy, which is refused when it names none", () => {
+    expect(loadTeloImageSource({}).pullPolicy).toBe("missing");
+    expect(loadTeloImageSource({ RUNNER_PULL_POLICY: "never" }).pullPolicy).toBe("never");
+    expect(() => loadTeloImageSource({ RUNNER_PULL_POLICY: "sometimes" })).toThrow(/RUNNER_PULL_POLICY/);
+  });
+});
+
+describe("the kernel image of a telo version", () => {
+  it("is the operator's repository and variant around the version", () => {
+    expect(teloImage("0.80.0", loadTeloImageSource({}))).toBe("telorun/node:0.80.0-slim");
+    expect(
+      teloImage(
+        "0.80.0",
+        loadTeloImageSource({ RUNNER_TELO_IMAGE_REPOSITORY: "mirror/node", RUNNER_TELO_IMAGE_VARIANT: "full" }),
+      ),
+    ).toBe("mirror/node:0.80.0-full");
+  });
+
+  it("does not exist for an unreleased build, unless the operator named one for it", () => {
+    const source = loadTeloImageSource({});
+    expect(teloImageRefusal("0.80.0", source)).toBeUndefined();
+    expect(teloImageRefusal("0.80.0+unreleased", source)).toMatch(/RUNNER_TELO_UNRELEASED_IMAGE/);
+
+    const dev = loadTeloImageSource({ RUNNER_TELO_UNRELEASED_IMAGE: "telo-dev/node:local" });
+    expect(teloImageRefusal("0.80.0+unreleased", dev)).toBeUndefined();
+    expect(teloImage("0.80.0+unreleased", dev)).toBe("telo-dev/node:local");
+    expect(teloImage("0.80.0", dev)).toBe("telorun/node:0.80.0-slim");
+  });
+
+  it("is advertised as the deprecated alternative once versions choose the image", () => {
+    const schema = sessionConfigSchema({ imageDefault: "telorun/node:0-slim", teloVersions: true });
+    const properties = schema.properties as Record<string, { deprecated?: boolean }>;
+    expect(properties.image.deprecated).toBe(true);
+    expect(properties.pullPolicy.deprecated).toBe(true);
+    expect(schema.required).toEqual([]);
   });
 });

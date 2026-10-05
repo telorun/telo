@@ -43,6 +43,13 @@ export interface RunnerBackend {
    *  with `SessionStartError` for any pre-start failure. */
   start(spec: BackendStartSpec): Promise<BackendSession>;
 
+  /** Make one telo version runnable for a session about to be created, or say
+   *  why it cannot be: the returned text is the `reason` of a
+   *  `400 telo_version_unavailable`. Called before the session exists, once per
+   *  distinct version it names, so a refusal starts nothing. Present on a
+   *  backend whose runner advertises `features.teloVersions`. */
+  supplyTelo?(version: string, config: SessionConfig): Promise<string | undefined>;
+
   /** Reap workloads orphaned by a prior runner process, matched by the
    *  backend's own labelling. Run once at boot — the session registry is
    *  in-memory, so a restart otherwise leaks running workloads. */
@@ -57,6 +64,9 @@ export interface BackendAppSpec {
   entryRelativePath: string;
   ports: PortMapping[];
   io: IoMode;
+  /** The telo version this app was requested on, already supplied by
+   *  `supplyTelo`. Absent, the backend's own choice runs. */
+  telo?: string;
 }
 
 /**

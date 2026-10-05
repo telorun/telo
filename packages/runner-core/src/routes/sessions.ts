@@ -10,6 +10,8 @@ import {
   type SessionAppSpec,
   type SessionConfig,
   type StartSessionRequest,
+  TELO_VERSION_PATTERN,
+  unsupervisableTelo,
   type WorkspaceChangeSet,
 } from "../contract.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
@@ -37,7 +39,12 @@ export interface SessionsRouteDeps {
    *  request with `400 invalid_config`, or `undefined` to accept. The runner is
    *  the source of truth, so this re-checks what `/v1/capabilities` advertises
    *  (e.g. an `image` allowlist) against a client that skipped the editor. */
-  validateConfig?: (config: SessionConfig) => string | undefined;
+  validateConfig?: ConfigGate;
+  /** Whether an application's `telo` version is honoured — what
+   *  `/v1/capabilities` advertises as `features.teloVersions`. A request naming
+   *  one to a runner that does not is refused, by the rule `io` and `watch`
+   *  already follow. */
+  teloVersions: boolean;
   /** The operator catalog a session's `agent` is resolved against — the same
    *  catalog `POST /v1/apps/:name/sessions` uses, because a co-resident agent IS
    *  an operator-predefined application, just one sharing a pod. */
@@ -53,6 +60,17 @@ export interface SessionsRouteDeps {
   io: IoMode[];
 }
 
+/**
+ * The runner's own answer to "is this session config acceptable". `telo` says
+ * whether the request names a telo version for any application: a backend whose
+ * config can also choose what runs (an image) refuses the two together, since
+ * picking either silently is a run on a version nobody chose.
+ */
+export type ConfigGate = (
+  config: SessionConfig,
+  request: { telo: boolean },
+) => string | undefined;
+
 const appsSchema = {
   type: "array",
   minItems: 1,
@@ -64,6 +82,7 @@ const appsSchema = {
       entryRelativePath: { type: "string", minLength: 1 },
       ports: portsSchema,
       io: { type: "string", enum: ["tty", "streams"] },
+      telo: { type: "string", minLength: 1 },
     },
   },
 } as const;
@@ -98,6 +117,7 @@ const startBodySchema = {
       additionalProperties: { type: "string" },
     },
     ports: portsSchema,
+    telo: { type: "string", minLength: 1 },
     // Opaque here, on purpose: what a session config may contain is the
     // runner's own answer (`/v1/capabilities`), enforced by `validateConfig`.
     // A runner that names an image and one that runs a local process cannot
@@ -325,11 +345,22 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
           reply.code(409).send({ error: "not_running", message: "session has no live workload" });
           return;
         }
-        const resolved = resolveApps(req.body.apps, undefined, [], deps.io);
+        const resolved = resolveApps(req.body.apps, undefined, [], deps.io, deps.teloVersions);
         if ("error" in resolved) {
           reply.code(400).send(resolved.error);
           return;
         }
+        // The session's config was accepted for the apps it started with; a new
+        // set must not change who chooses what runs out from under it.
+        const sessionConfig = entry.launch?.config ?? {};
+        const invalid = deps.validateConfig?.(sessionConfig, {
+          telo: resolved.apps.some((a) => a.telo !== undefined),
+        });
+        if (invalid) {
+          reply.code(400).send({ error: "invalid_config", message: invalid });
+          return;
+        }
+        if (!(await supplyTeloVersions(deps, resolved.apps, sessionConfig, reply))) return;
         // Channels for the NEW apps go in first — the backend starts emitting
         // output as soon as a container is up, and a push to an unknown app is
         // silently dropped. Removals wait until the backend has succeeded, so a
@@ -485,12 +516,15 @@ function resolveApps(
   bundleEntry: string | undefined,
   fallbackPorts: PortMapping[],
   io: IoMode[],
+  teloVersions: boolean,
+  fallbackTelo?: string,
 ): ResolvedApps {
   const specs: SessionAppSpec[] = declared ?? [
     {
       name: DEFAULT_APP_NAME,
       entryRelativePath: bundleEntry ?? "",
       ports: fallbackPorts,
+      ...(fallbackTelo !== undefined ? { telo: fallbackTelo } : {}),
     },
   ];
 
@@ -560,15 +594,88 @@ function resolveApps(
       };
     }
 
+    if (spec.telo !== undefined) {
+      if (!teloVersions) {
+        return {
+          error: {
+            error: "telo_version_unsupported",
+            message:
+              `app '${spec.name}' names telo ${spec.telo}, and this runner does not choose a telo ` +
+              `version per application (see /v1/capabilities)`,
+          },
+        };
+      }
+      if (!TELO_VERSION_PATTERN.test(spec.telo)) {
+        return {
+          error: {
+            error: "invalid_telo_version",
+            message: `app '${spec.name}' names telo '${spec.telo}', which is not a release version`,
+          },
+        };
+      }
+    }
+
     apps.push({
       name: spec.name,
       entryRelativePath,
       ports,
       io: spec.io ?? io[0] ?? "tty",
+      ...(spec.telo !== undefined ? { telo: spec.telo } : {}),
     });
   }
 
+  // One answer per session to "who chooses what runs": every application names
+  // its telo version, or none does and the runner's own config chooses. A
+  // session of both would need a config that is at once required and refused.
+  const naming = apps.filter((a) => a.telo !== undefined).length;
+  if (naming !== 0 && naming !== apps.length) {
+    return {
+      error: {
+        error: "invalid_telo_version",
+        message: "either every app of a session names its `telo` version, or none does",
+      },
+    };
+  }
+
   return { apps };
+}
+
+/**
+ * Have the backend make every telo version the apps name runnable, before the
+ * session exists. Sends the `400 telo_version_unavailable` and returns false on
+ * the first one it cannot supply — nothing has been started, so there is
+ * nothing to undo.
+ */
+async function supplyTeloVersions(
+  deps: SessionsRouteDeps,
+  apps: BackendAppSpec[],
+  config: SessionConfig,
+  reply: FastifyReply,
+): Promise<boolean> {
+  // Present on every backend whose runner advertises the feature — `buildServer`
+  // refuses the pairing otherwise — and a version only reaches here when it does.
+  const supply = deps.backend.supplyTelo?.bind(deps.backend);
+  if (!supply) return true;
+  const asked = new Map<string, string>();
+  for (const app of apps) {
+    if (app.telo !== undefined && !asked.has(app.telo)) asked.set(app.telo, app.name);
+  }
+  for (const [version, app] of asked) {
+    // The floor is core's: what a runner asks of a telo — its flags, its debug
+    // stream — is the contract's, the same on every backend.
+    const reason = unsupervisableTelo(version) ?? (await supply(version, config));
+    if (reason !== undefined) {
+      reply.code(400).send({
+        error: "telo_version_unavailable",
+        message: `telo ${version} cannot be run for app '${app}': ${reason}`,
+        app,
+        version,
+        reason,
+      });
+      return false;
+    }
+  }
+  return true;
 }
 
 async function startSession(
@@ -593,16 +700,15 @@ async function startSession(
     throw err;
   }
 
-  // Backend config gate (e.g. an image allowlist, or a required field core no
-  // longer knows about). The advertised capabilities constrain the editor; this
-  // enforces the same against any client.
+  // The advertised capabilities constrain the editor; the gate below enforces
+  // the same against any client.
   const config = body.config ?? {};
-  if (deps.validateConfig) {
-    const message = deps.validateConfig(config);
-    if (message) {
-      reply.code(400).send({ error: "invalid_config", message });
-      return;
-    }
+  if (body.telo !== undefined && body.apps !== undefined) {
+    reply.code(400).send({
+      error: "invalid_telo_version",
+      message: "a request declaring `apps` names each app's `telo` on the app, not on the request",
+    });
+    return;
   }
 
   const mode = body.mode ?? "run";
@@ -669,11 +775,34 @@ async function startSession(
     }
   }
 
-  const resolved = resolveApps(body.apps, entryRelative, body.ports ?? [], deps.io);
+  const resolved = resolveApps(
+    body.apps,
+    entryRelative,
+    body.ports ?? [],
+    deps.io,
+    deps.teloVersions,
+    body.telo,
+  );
   if ("error" in resolved) {
     reply.code(400).send(resolved.error);
     return;
   }
+
+  // Backend config gate (e.g. an image allowlist, or a required field core no
+  // longer knows about), asked AFTER the apps are resolved: whether the request
+  // names a telo version is something only a resolved, admitted app set says —
+  // a runner that does not offer versions has already answered
+  // `telo_version_unsupported`, not a complaint about a config beside one.
+  if (deps.validateConfig) {
+    const message = deps.validateConfig(config, {
+      telo: resolved.apps.some((a) => a.telo !== undefined),
+    });
+    if (message) {
+      reply.code(400).send({ error: "invalid_config", message });
+      return;
+    }
+  }
+  if (!(await supplyTeloVersions(deps, resolved.apps, config, reply))) return;
 
   // The agent's port shares the session's port space with the apps' — on
   // kubernetes literally (the pod's containers share one network namespace, so

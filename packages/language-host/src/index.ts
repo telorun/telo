@@ -7,6 +7,7 @@ export type {
   VersionMarks,
 } from "./language-router.js";
 export {
+  describeAcceptance,
   describeAutoMark,
   describeTeloStatus,
   describeVersionMark,

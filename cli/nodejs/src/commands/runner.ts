@@ -130,7 +130,18 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     return;
   }
 
-  const backend = createProcessBackend({ stateRoot: ownRoot });
+  const { createTeloSupply } = await import("../runner/telo-supply.js");
+  const { hostReleaseTarget } = await import("../release-binary.js");
+  const { carriersRoot } = await import("../package/app-home.js");
+  const { TELO_RUNTIME_VERSION } = await import("@telorun/kernel");
+  const backend = createProcessBackend({
+    stateRoot: ownRoot,
+    telo: createTeloSupply({
+      identity: TELO_RUNTIME_VERSION,
+      hostTarget: hostReleaseTarget(),
+      cacheRoot: carriersRoot(),
+    }),
+  });
   const capabilities = localRunnerCapabilities({ watch: argv.watchSessions });
 
   // The env-driven core config stays the way every runner reads it (ceilings,

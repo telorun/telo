@@ -18,24 +18,37 @@ export const localDockerDefaultConfig: LocalDockerConfig = {
   pullPolicy: "missing",
 };
 
+/** `deprecated` is a later-draft keyword the draft-07 type does not name, so the
+ *  properties are declared apart from the schema literal. */
+const imageProperty: JSONSchema7 & { deprecated: true } = {
+  type: "string",
+  minLength: 1,
+  default: localDockerDefaultConfig.image,
+  title: "Image",
+  description: "Docker image implementing the telo CLI entrypoint.",
+  // What runs is the telo version the module is edited against; `image` is
+  // only what a runner from before that still reads. Marked here as the
+  // runner marks it, so the field does not show until the runner answers.
+  deprecated: true,
+};
+
+const pullPolicyProperty: JSONSchema7 & { deprecated: true } = {
+  type: "string",
+  enum: ["missing", "always", "never"],
+  default: localDockerDefaultConfig.pullPolicy,
+  title: "Pull policy",
+  description:
+    "`missing` lets docker pull on first use; `always` forces a pull on every run; `never` fails if the image isn't present locally.",
+  // How a version's image is pulled is the runner operator's, as the runner
+  // itself advertises once it answers.
+  deprecated: true,
+};
+
 export const localDockerConfigSchema: JSONSchema7 = {
   type: "object",
-  required: ["image", "pullPolicy"],
+  required: [],
   properties: {
-    image: {
-      type: "string",
-      minLength: 1,
-      default: localDockerDefaultConfig.image,
-      title: "Image",
-      description: "Docker image implementing the telo CLI entrypoint.",
-    },
-    pullPolicy: {
-      type: "string",
-      enum: ["missing", "always", "never"],
-      default: localDockerDefaultConfig.pullPolicy,
-      title: "Pull policy",
-      description:
-        "`missing` lets docker pull on first use; `always` forces a pull on every run; `never` fails if the image isn't present locally.",
-    },
+    image: imageProperty,
+    pullPolicy: pullPolicyProperty,
   },
 };

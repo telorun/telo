@@ -33,7 +33,7 @@ against them.
 
 | Event | Payload | What a host does with it |
 | --- | --- | --- |
-| `Kernel.Starting` | — | Opens a run generation. |
+| `Kernel.Starting` | `{ telo?: string }` | Opens a run generation. `telo` is the version the runtime reports for itself (`X`, or `X+unreleased` for a build made while `X` is pending); a runtime released before the field existed sends none. |
 | `Kernel.Stopped` | `{ exitCode: number }` | Closes it, carrying the code. |
 | `Kernel.RunFailed` | `{ phase: "load" \| "start", code?: string, message: string }` | Reports a generation that never reached a running state, with the diagnostic code where there is one. Emitted where `Kernel.Starting` never fires (a manifest that fails to LOAD) or fires and is never followed by `Kernel.Stopped` (a boot failure). |
 | `Kernel.PortsResolved` | `{ ports: Array<{ name: string, port: number, protocol: "tcp" \| "udp" }> }` | Re-routes the workload. The Application's `ports:` block resolved to integers, re-emitted on every load — so a host patches its routing without re-parsing a manifest. DECLARED, not bound: whether anything is listening is a separate observation. |

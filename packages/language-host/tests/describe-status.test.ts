@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeAutoMark, describeTeloStatus, describeVersionMark } from "../src/describe-status.js";
+import { describeAcceptance, describeAutoMark, describeTeloStatus, describeVersionMark } from "../src/describe-status.js";
 import type { TeloStatus } from "../src/language-router.js";
 
 const host = { product: "studio", setting: "this workspace's telo version setting" };
@@ -42,9 +42,9 @@ describe("the status every host shows", () => {
       "an unreleased build",
       running({ version: "0.102.0+unreleased", reason: { kind: "bundled" } }),
       {
-        label: "Telo 0.102.0 (unreleased build)",
+        label: "Telo 0.102.0 (local)",
         detail:
-          "Telo 0.102.0 (unreleased build): the version bundled with studio — nothing in this module's imports asks for another.",
+          "Telo 0.102.0 (local): the version bundled with studio — nothing in this module's imports asks for another.",
       },
     ],
     ...(
@@ -74,19 +74,32 @@ describe("the status every host shows", () => {
 
   it("marks a picker row", () => {
     expect(describeVersionMark({ version: "0.102.0+unreleased", bundled: true, cached: true, accepted: false })).toEqual({
-      label: "0.102.0 (unreleased build)",
-      detail: "bundled · cached · refused by this module's requires: telo:",
+      label: "0.102.0 (local)",
+      detail: "bundled · refused by this module's requires: telo:",
     });
+    // Whether the engine is already on this machine is not a row's business.
     expect(describeVersionMark({ version: "0.103.0", bundled: false, cached: false })).toEqual({
       label: "0.103.0",
-      detail: "not cached",
+      detail: "",
     });
+    expect(describeVersionMark({ version: "0.103.0", bundled: false, cached: true })).toEqual({
+      label: "0.103.0",
+      detail: "",
+    });
+  });
+
+  it("leaves acceptance to a host that marks it its own way, and gives that mark its words", () => {
+    const refused = { version: "0.102.0+unreleased", bundled: true, cached: true, accepted: false };
+    expect(describeVersionMark(refused, { acceptance: false }).detail).toBe("bundled");
+    expect(describeAcceptance(refused)).toBe("refused by this module's requires: telo:");
+    expect(describeAcceptance({ ...refused, accepted: true })).toBe("accepted by this module");
+    expect(describeAcceptance({ version: "0.103.0", bundled: false, cached: false })).toBeUndefined();
   });
 
   it("words the Auto row as the others", () => {
     expect(describeAutoMark({ auto: "0.102.0+unreleased", versions: [] })).toEqual({
       label: "Auto",
-      detail: "resolves to 0.102.0 (unreleased build)",
+      detail: "resolves to 0.102.0 (local)",
     });
     expect(describeAutoMark({ versions: [] })).toEqual({ label: "Auto", detail: "" });
   });

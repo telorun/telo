@@ -24,7 +24,8 @@ export type {
   RunStatus,
   WorkspaceChangeSet,
 } from "./types";
-export { SessionGoneError, TermsRequiredError } from "./types";
+export { SessionGoneError, TeloVersionRefusedError, TermsRequiredError } from "./types";
+export { runVersionFor } from "./run-version";
 export { buildRunBundle } from "./bundle";
 export { selectModuleFiles } from "./select-module-files";
 export {
