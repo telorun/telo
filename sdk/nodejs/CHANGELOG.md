@@ -1,5 +1,44 @@
 # @telorun/sdk
 
+## 0.109.0
+
+### Minor Changes
+
+- 3fe9d3d: **One seam a CEL value crosses on its way out to a host reader, and every boundary goes through it.** A map has two representations in the value domain — a `CelMap`, whose entries are keyed by each key's own typed value so one container holds CEL's four key types and no key can ever be a property name, and the plain object a host hands one over as. `hostValueOf` (`@telorun/sdk`) converts the first into the second, recursively and by identity where nothing moved, and is applied at each boundary rather than restated at any: the result of a compiled value, a module function's arguments, a host-backed catalog function's arguments. A map with an int, uint or bool key is left exactly as it is, because a plain object cannot hold one and converting would collapse the four key types to text. It converts the map representation and nothing else — a `uint`, an instant, a duration and bytes cross unchanged, since a host reader of a typed slot must receive the value its contract declares.
+
+  **Every host reader of a map now reads one through the value domain rather than through `instanceof Map`.** A host `Map` is not a CEL value, and nothing had been moved with the representation: the **plain-JSON writer** wrote a map as its carrier (`{"entries":{}}`) at every boundary read outside Telo — an HTTP body, a log line, CLI JSON — and the **typed frame** could neither write one nor read one back, so a durable journal could not record a map and now refuses a host `Map` by name, which is what finds a controller still building one. `celMapFromEntries` is the only way a controller builds a map with a non-string key, and `isCelMap` the only way a reader recognises one; both are on the SDK's surface beside `isCelUint` / `isCelDuration`.
+
+  Four consequences a manifest can see:
+
+  - **A module function receives its arguments as data.** `WebSearch.sealCursor('searxng', {'query': 'q'}, '1-0')` reached the callable as `{"query":{"entries":{}}}` and was refused for a property its author had written (`ERR_INPUT_INVALID`), which also hid every engine's own `ERR_INVALID_INPUT` behind it.
+  - **`json(dyn)` writes the value, not its representation.** The host handler behind it writes through the plain-JSON writer — the one writer for a reader that is not a Telo runtime — so `json({'a': 1})` is `{"a":1}` rather than `{"entries":{}}`. Four other forms move with it, each to the one plain form its type declares: a `uint` to its decimal digits rather than `{"value":"7"}`, bytes to base64url, an instant to RFC 3339, a duration to its `5400s` text, a map with non-string keys keyed by each key's text (the protobuf JSON rule, with a key two of them would share refused rather than dropped).
+  - **A log attribute and the debug wire carry a map's contents**, where both put `{entries: {}}` on the wire for every map.
+  - **An `!interpolate` hole that holds a map says so**, both representations alike, rather than naming the host class of whichever carrier it was.
+
+  **A host hands a map over as a plain object, and the boundary of that is the prototype.** `Object.prototype` or `null` is a map; an object carrying a prototype of its own is not, however data-like it looks, because the member-read seam resolves a key against a value's own entries and cannot tell a bag from an instance with methods — which is what stops a computed key (`request.query[k]`) from ever reaching `length`, `call` or `constructor`. The engine deliberately does not widen to meet a host object: the host converts at its own boundary, and `modules/http-server` now does so for the transport's query and parameter bags, whose prototype is its parser's own.
+
+- 3fe9d3d: **An engine change invalidated controller bundles that are already published, and the repair is on the side that ships with the engine.** `@telorun/sdk` is external to a controller bundle and collapsed to the running kernel's own copy, so a module's published artifact imports whatever SDK the kernel carries. Two consequences of the value domain reached every app with such an artifact in its lock file, and neither can be fixed by a `requires: telo:` floor — the floor would have to have been declared in an artifact that is already published.
+
+  **A host's own bag is brought into the value domain where it enters an activation.** `request`, `inputs`, `item` and every other binding a controller hands over is a CEL binding, so each member of it has to BE a CEL value; the member-read seam resolves a string key against an object whose prototype is `Object.prototype` or `null` and answers "this value holds no members" for anything else, never performing a host property read — which is what stops a computed key (`request.query[k]`) from reaching a prototype, a method or `constructor`. Fastify's query parser builds each bag as a null-prototype object, so `request.query.name` answered 500 on every handler. Measured: no published `http-server` carries the module-side repair (0.32.0, 0.33.0 and 0.34.0 all lack it), so the kernel is the only side that can reach them.
+
+  Exactly one shape converts: prototype-free data, whose prototype is itself prototype-free and carries nothing. A value already readable returns by identity — which covers every branded value, since a brand is a plain object carrying a type key, and rebuilding one from its entries would drop the symbol and turn a duration into a pair of numbers. Everything that keeps a real prototype is left alone: a `Date`, a `Map`, a typed array, a `Stream`, a live resource instance. The test is the prototype's own shape rather than a list of host classes to exclude, and it is deliberately narrow — a controller binding a class instance still reaches the engine's refusal, which is the honest answer, because that value is not a map and no normalization makes it one.
+
+  **`Duration` and `UnsignedInt` are kept as deprecated shims.** Removing an exported name breaks every artifact importing it with a `SyntaxError` at load (`Export named 'Duration' not found`), which is what `record-stream@0.18.0` and `@0.19.0` hit. A shim produces a value in the DOMAIN rather than an instance of a class: `fromMilliseconds` returns the branded value, so what a published controller hands onward is a real CEL duration every reader accepts. The two things the old surface offered and a brand does not are supplied around it — `instanceof` answers through `Symbol.hasInstance`, which is `isCelDuration`, and `getMilliseconds()` is a non-enumerable own property, so published code reaches it while every walk that reads a value by its entries cannot see it.
+
+  The method rides on every duration a published controller can receive, not only on one the shim built: the guard in the published code is `if (!(value instanceof Duration)) throw …; return value.getMilliseconds()`, so both have to hold for a duration the shim never saw — one decoded from a manifest slot, and one the engine computed from `duration('30s')`. Answering `instanceof` without the method only converts the crash into that function's own `ERR_INVALID_VALUE`. So it is attached at the plain encoding's decode and at `hostValueOf`, the seam that already exists to say what a CEL value is to a host reader and the one point both paths cross.
+
+  Deprecated on arrival; a module moves to `celDurationFromNanos` / `durationNanos` / `isCelDuration` and `celUint` / `isCelUint` as it is touched. `Duration` is measured against published artifacts; `UnsignedInt` is precautionary, with no recorded consumer, and is shimmed because it was an exported name that was removed.
+
+  **Nothing about a converted value is cached.** A conversion produces a COPY, and the bag it was copied from is a live host object the framework still owns: a route's validator coerces the query _in place_, and a request guard reads the binding before that happens. Memoizing the copy served the guard's pre-coercion snapshot to the handler, so a boolean query parameter arrived as the string it was parsed as and failed the contract it was declared against — visible only on a route that has a guard, which is why a probe without one answered correctly. Caching a copy of a value someone else mutates is the defect; the conversion is cheap and runs per expression instead.
+
+### Patch Changes
+
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+  - @telorun/cel@0.109.0
+
 ## 0.108.0
 
 ### Minor Changes

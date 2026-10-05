@@ -1,5 +1,49 @@
 # @telorun/analyzer
 
+## 0.109.0
+
+### Minor Changes
+
+- 3fe9d3d: The analyzer's CEL half now runs on `@telorun/cel`; `@marcbachmann/cel-js` is no longer a dependency of it. The editor's CEL symbols read the new engine's types with it, so completion and hover answer what `telo check` resolves, and the engine bundle declares `@telorun/cel` among the workspace packages it inlines.
+
+  **A module's own names are NAMESPACES on the environment a site is read against.** Resolution used to be a rewrite applied to a parsed tree after the fact; a qualified call is now a node of its own, produced as the expression is READ over the name set, so every walk — access chains, the unused-declaration pass, the durable-nondeterminism pass, a callable's derived flags, a rule's condition — sees the resolved shape instead of re-deriving it. A namespace is declared **open**, with each reachable callable's declared result and no parameter list: whether a call reaches a function at all, and whether its arity and arguments fit, rest on the export gate, the dependency edge and a JSON Schema per parameter, which is `FUNCTION_UNRESOLVED` / `_NOT_EXPORTED` / `_NOT_CALLABLE` / `_ARITY_MISMATCH` / `_ARGUMENT_MISMATCH` — the analyzer's own verdicts, withheld by the engine by construction rather than suppressed after the fact.
+
+  **A name a module declares that CEL cannot read as a namespace is filtered, not refused.** A module name, an import alias and a library's `metadata.name` are YAML scalars nothing lexes where they are written — which is what `INVALID_NAME` / `INVALID_TYPE_NAME` exist to report — so a set reaching the engine routinely holds `my-module`, and the engine refuses such a set whole. Letting that throw would turn one reportable name into a crash losing every other diagnostic in the file.
+
+  **Reading never throws and never discards what it read**, so a `try { parse } catch` is now a check for one ranged diagnostic, and a scalar an author is mid-way through typing keeps its longest-prefix tree. Three verdict MESSAGES are the engine's own words now, with the same codes: an undeclared field reads `"dbb" is not declared here (declared: db)`, an operator with no overload `no "+" is declared over int, string`, and a repair the checker builds writes CEL's own string quoting (`a.b.startsWith("x")`).
+
+  **A branded CEL value is a plain object, so two structural walks stopped asking the prototype.** `precompileDoc` and the plain-literal decoder rebuilt a container from its entries, which drops the symbol a duration, a uint or a timestamp carries its brand under — silently turning a decoded duration into a pair of numbers — where the class instance they were written against came back untouched. Both now ask `isCelRecord`.
+
+  `steps` is registered as a closed record rather than a named type with an `in` operator of its own, since a record is a map with named keys and the standard library's `K in map<K, V>` already answers `'<step>' in steps`.
+
+- 3fe9d3d: **An expression is never evaluated at or above a reference slot** — one rule, one static code, one runtime code, one shared reader for the position set.
+
+  `TEMPLATE_REF_COMPUTED` is renamed **`REF_SLOT_COMPUTED`** and begins firing at a second position it never covered: an expression at or above a reference slot of a RESOURCE, in a field the kind evaluates at creation. A `Telo.Provider`'s whole root is implicitly compile-eval and providers in the standard library declare reference slots (`OpenAI.EmbeddingModel.request`, `OpenAI.ImageModel.request`), so a `!cel` written above one was accepted by every static check — a legal eval site, no concrete reference site left beneath it — and the kernel then expanded it at `create()` and left data at a `use: call` slot. The template-body message keeps its wording and its "forward it verbatim with a bare `self.<path>`" repair; the resource-level one drops that half, a resource having no enclosing instance to forward from.
+
+  The runtime half is **`ERR_REF_SLOT_COMPUTED`**, raised at both expansion sites the kernel owns — a template body's `self`-expansion and the compile-eval expansion every resource's `create()` performs — **before** evaluating, and from the same reader the static verdict uses, so the refused positions are the reported positions by construction. It names the resource (and, for a template child, the owning template instance and the entry), the expression's path as written, the reference-slot pattern it holds, and the repair. Phase-5 injection still leaves a non-reference value at a reference site untouched and `ctx.resolveRef` still refuses one at dereference as `ERR_REF_UNRESOLVED`; that backstop is unchanged, and being lazy and conditional is why it could not be the refusal.
+
+  **There was no kernel half before this.** The run failed — when it failed at all — on the CEL dependency's own internal refusal of a live instance inside a map literal, text that named nothing an author could act on and that Telo did not own. The agreement suite pinned that text, so swapping the CEL engine turned both of its runtime rows green with the defect still in place; pinning a dependency's internal error as a Telo refusal is what let the regression hide.
+
+  Keyed on **provenance, never on shape**: a reference slot legitimately holds a `{kind, name}` reference, a live instance, an inline declaration, a value-branch scalar and — at a type slot — raw JSON Schema, all of which still create and run unchanged. The one exemption is a bare `self.<path>`, which a template body navigates rather than evaluates. Where `validate-references` would add a second, shapeless verdict about the same line (`must have string 'kind' and 'name' fields`), it now reads the same set and stays quiet — a slot the kind never evaluates still reports there.
+
+- 3fe9d3d: A resource or referrer rule is no longer reported as defective for a subject nothing showed it, and one evaluation-time failure is one diagnostic.
+
+  **An absent pointer stays absent in what a `resolve:` rule reads.** The resolver short-circuits a pointer that resolves to nothing by handing back the absent value, and the rewriter wrote the key regardless — so after `resolve: [/nodes, /relationships]` on a store declaring no `relationships:`, the subject carried a `relationships` key that existed and held nothing. `self.?relationships` answered _present_, `.orValue([])` yielded nothing, and the comprehension over it got a non-collection range: a rule whose optional-field guard was exactly right reported as a defect in the rule, over the consumer's manifest. The field now stays absent, which is the line `in:`'s subject walk and the peers binder already drew ("an absent collection is an empty one"), so all three subject views agree — absent means absent, never a present key holding nothing. Seven of the eight `RESOURCE_RULE_INVALID` warnings a census over 1196 manifests reported fell to this, every one a `GraphSql.Store` omitting `relationships:`; the stores writing `relationships: []` explicitly always evaluated, and both now answer the same.
+
+  **A rule is not evaluated over a declaration its slot refuses, and reports nothing.** Where a reference names a resource of a kind the slot does not accept, the resource is already refused at that very slot (`REFERENCE_KIND_MISMATCH`) and the condition would read fields off a shape it was never shown — a language slot pointed at an orientation model, whose declaration carries no `code`. The binding fails with the new `kind-refused` reason, decided with the reference check's own acceptance rule, and that reason is reported by **nothing** — not `RESOURCE_RULE_SKIPPED` / `REFERRER_RULE_SKIPPED`, because coverage did not vary invisibly here and a second diagnostic about the rule's internals blames the kind's author for the manifest author's mistake. The eighth warning was this.
+
+  **An evaluation-time rule failure is one diagnostic per rule, where the reader can act on it.** A rule that throws on a subject the static check could not foresee, or that exhausts its 50 ms budget, reported per site: one upstream defect produced 107 diagnostics across 99 lines, every one pointing at a line the reader does not own and cannot fix. It is now reported once per `(declaring kind, rule code)` per analysis, anchored where the reader can act on it, with its severity following from whether that reader can fix it: a **warning** at the `imports:` entry that brought the kind in, since a consumer cannot change a dependency's rule and an error there would block `telo check` on a line they do not own; an **error** at the rule's own declaration (`schema.x-telo-resource-rules[<n>]` / `schema.x-telo-referrer-rules[<n>]`) for a kind of the workspace's own modules, where the reader is the author and a declared rule that cannot run is checking nothing. The first site it was seen at is named in the message as the example. A diagnostic count that grows with the consumer's manifest size for a single upstream defect is noise whose cost is superlinear in the thing being checked, not an actionable error. Both rule families take it through the half they already share.
+
+### Patch Changes
+
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+- Updated dependencies [3fe9d3d]
+  - @telorun/cel@0.109.0
+  - @telorun/templating@0.109.0
+
 ## 0.108.0
 
 ### Minor Changes
