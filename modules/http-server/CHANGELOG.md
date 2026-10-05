@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.3 - 2026-10-05
+### Fixed
+* A handler's CEL now reads request.query and request.params: the router hands each of the transport's bags over as a map in the CEL value domain, where Fastify builds them with a prototype of its own and every expression reading one failed, answering HTTP 500.
+
 ## 0.34.2 - 2026-10-04
 ### Fixed
 * A handler's CEL now reads request.query and request.params: the router hands each of the transport's bags over as a map in the CEL value domain, where Fastify builds them with a prototype of its own and every expression reading one failed, answering HTTP 500.

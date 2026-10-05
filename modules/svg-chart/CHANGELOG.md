@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 - 2026-10-05
+### Fixed
+* A time axis and a time-keyed mark read a Telo timestamp. An instant arrives as the CEL value it is — seconds plus nanoseconds — rather than as a host date object, so a row whose accessor yields one is drawn at its epoch milliseconds and a key naming one is labelled as RFC 3339 text in UTC with its fraction trimmed.
+
 ## 0.2.1 - 2026-10-04
 ### Fixed
 * A time axis and a time-keyed mark read a Telo timestamp. An instant arrives as the CEL value it is — seconds plus nanoseconds — rather than as a host date object, so a row whose accessor yields one is drawn at its epoch milliseconds and a key naming one is labelled as RFC 3339 text in UTC with its fraction trimmed.
