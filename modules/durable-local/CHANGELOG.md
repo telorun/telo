@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3 - 2026-10-05
+### Fixed
+* A recorded value is written under codec version 2, whose timestamp payload is RFC 3339 with a trimmed nanosecond fraction. An entry written under version 1 is still read, under that version's own three-digit grammar, so a run parked before the change resumes rather than being refused.
+
 ## 0.4.2 - 2026-10-04
 ### Fixed
 * A recorded value is written under codec version 2, whose timestamp payload is RFC 3339 with a trimmed nanosecond fraction. An entry written under version 1 is still read, under that version's own three-digit grammar, so a run parked before the change resumes rather than being refused.

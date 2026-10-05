@@ -1,5 +1,0 @@
-modules:
-  modules/mcp-server: Fixed
-body: "The documented plain form of a timestamp in a rendered result matches what is
-  written: RFC 3339 in UTC with the fraction absent when the instant is whole and
-  carrying no trailing zero otherwise."
