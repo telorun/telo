@@ -1,6 +1,6 @@
 {
   "name": "@telorun/kernel",
-  "version": "0.108.0",
+  "version": "0.109.0",
   "description": "Telo Runtime - A lightweight, polyglot execution host.",
   "keywords": [
     "telo",
@@ -8,7 +8,7 @@
     "execution",
     "manifest"
   ],
-  "author": "Bartosz Pasi\u0144ski <bartosz.pasinski@codenet.pl>",
+  "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
