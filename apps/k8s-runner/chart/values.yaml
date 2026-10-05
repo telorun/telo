@@ -159,6 +159,19 @@ session:
   # kernel two releases old ran a module published against a newer one. Set it
   # only to deliberately run sessions on a different kernel than the runner's.
   image: ""
+  # Where the kernel image of a telo version an application names is pulled
+  # from: `<repository>:<version>-<variant>`. Set `repository` to a mirror or a
+  # private registry; empty leaves the runner's defaults (telorun/node, slim).
+  teloImages:
+    repository: ""
+    variant: ""
+    # The kernel image an unreleased build identity (`X+unreleased`) runs on.
+    # Empty → such a request is refused. Only a development stack sets this.
+    unreleased: ""
+    # imagePullPolicy of a session whose applications name a telo version:
+    # missing | always | never. Empty → missing. `never` suits a cluster that
+    # preloads its images.
+    pullPolicy: ""
   # Small image for the bundle-fetch initContainer (needs wget + tar).
   initImage: "busybox:stable"
   # Existing dockerconfigjson Secret in sessionNamespace the kubelet pulls

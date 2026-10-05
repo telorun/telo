@@ -78,3 +78,15 @@ describe("sessionWorkspaceMount", () => {
     expect(mount.Target).not.toBe("/srv");
   });
 });
+
+describe("the command an application container runs", () => {
+  it("puts every telo option before the manifest path, which is its last token", async () => {
+    const { APP_WATCH_COMMAND } = await import("./watch-session.js");
+    const run = APP_WATCH_COMMAND.slice(APP_WATCH_COMMAND.indexOf("exec telo run"));
+    // Everything after the path is the application's own arguments, so an
+    // option placed there is refused by an application that declares none.
+    expect(run.trimEnd().endsWith('"$TELO_ENTRY"')).toBe(true);
+    expect(run.indexOf("--watch")).toBeLessThan(run.indexOf('"$TELO_ENTRY"'));
+    expect(run.indexOf("--inspect")).toBeLessThan(run.indexOf('"$TELO_ENTRY"'));
+  });
+});

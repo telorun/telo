@@ -62,7 +62,7 @@ export class TeloVersionStatus implements vscode.Disposable {
       { label: auto.label, description: auto.detail || undefined, value: "auto" },
       ...marks.versions.map((v) => {
         const { label, detail } = describeVersionMark(v);
-        return { label, description: detail, value: v.version };
+        return { label, description: detail || undefined, value: v.version };
       }),
     ];
     const picked = await vscode.window.showQuickPick(items, {

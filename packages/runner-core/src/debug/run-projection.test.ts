@@ -40,6 +40,18 @@ describe("RunProjection", () => {
     ]);
   });
 
+  it("passes on the version the runtime reports, and none where it reports none", () => {
+    const h = harness();
+    h.projection.frame("app", event("Kernel.Starting", { telo: "0.80.0" }));
+    h.projection.frame("app", event("Kernel.Stopped", { exitCode: 0 }));
+    h.projection.frame("app", event("Kernel.Starting", {}));
+
+    const started = h.runs().filter((e) => e.type === "run" && e.phase === "started");
+    expect(started[0]).toMatchObject({ generation: 1, telo: "0.80.0" });
+    expect(started[1]).toMatchObject({ generation: 2 });
+    expect(started[1]).not.toHaveProperty("telo");
+  });
+
   it("leaves the session running when a generation completes", () => {
     const h = harness();
     h.projection.expectAll("initial");

@@ -77,7 +77,12 @@ export interface RunAdapter<Config = unknown> {
 export interface RunnerCapabilities {
   displayName: string;
   description: string;
-  config: { schema: JSONSchema7 };
+  config: {
+    schema: JSONSchema7;
+    /** The config properties a request leaves out once it names a telo version,
+     *  because the runner refuses them beside one. */
+    supersededByTelo?: string[];
+  };
   /** What this runner offers. `io` lists the byte-channel attach modes;
    *  `watch` gates the editor's watch-mode entry point — a runner with it off
    *  rejects the field, so the editor must not offer it. `agents` names the
@@ -87,6 +92,9 @@ export interface RunnerCapabilities {
     ports: boolean;
     watch?: boolean;
     agents?: string[];
+    /** The runner runs each application on the telo version the request names,
+     *  or refuses; absent, it is sent none and chooses for itself. */
+    teloVersions?: boolean;
   };
   /** Operator-predefined applications the runner can launch by name (mirrors
    *  runner-core's `RunnerAppDescriptor`). The agent entry point shows only
@@ -103,6 +111,20 @@ export interface RunnerTerms {
   version: string;
   title: string;
   body: string;
+}
+
+/** Thrown by `start` when the runner cannot run the application on the telo
+ *  version the request named. Nothing was started; `reason` is the runner's own
+ *  account of why, shown to the user as written. */
+export class TeloVersionRefusedError extends Error {
+  constructor(
+    readonly code: "telo_version_unavailable" | "telo_version_unsupported",
+    readonly version: string,
+    readonly reason: string,
+  ) {
+    super(reason);
+    this.name = "TeloVersionRefusedError";
+  }
 }
 
 /** Thrown by `start` when the runner rejects a session because the terms haven't
@@ -154,6 +176,14 @@ export interface RunRequest {
    *  writes. Only sent when the runner advertises the name in
    *  `features.agents`. */
   agent?: string;
+  /** The telo version the application's module is edited against, which the
+   *  runner runs it on or refuses. Sent only to a runner advertising
+   *  `features.teloVersions`. */
+  telo?: string;
+  /** Session config properties left out of this request: the ones the runner
+   *  says a telo version supersedes (`config.supersededByTelo`), which it
+   *  refuses beside one. */
+  withheldConfig?: string[];
 }
 
 /** An explicit write/delete list, not a whole-tree replace: a deletion has to be
@@ -290,7 +320,16 @@ export type RunTrigger = "initial" | "watch" | "manual" | "resume";
 /** A RUN outcome — one per app per reload generation, distinct from the session
  *  status. `generation` is monotonic per app and starts at 1. */
 export type RunOutcomeEvent =
-  | { type: "run"; app: string; generation: number; phase: "started"; trigger: RunTrigger }
+  | {
+      type: "run";
+      app: string;
+      generation: number;
+      phase: "started";
+      trigger: RunTrigger;
+      /** The version the runtime reported for this generation; absent from a
+       *  runtime that reports none. */
+      telo?: string;
+    }
   | {
       type: "run";
       app: string;

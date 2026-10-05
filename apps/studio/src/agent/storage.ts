@@ -97,3 +97,7 @@ export function loadConversationId(workspaceKey: string): string | null {
 export function saveConversationId(workspaceKey: string, id: string): void {
   writeJson(CONV_PREFIX + workspaceKey, { id });
 }
+
+export function clearConversationId(workspaceKey: string): void {
+  localStorage.removeItem(CONV_PREFIX + workspaceKey);
+}

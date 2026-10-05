@@ -173,6 +173,18 @@ services:
       - .:/telo
     working_dir: /telo
 
+  # The kernel image of THIS tree — what an application runs on when the editor
+  # asks for its own unreleased build (RUNNER_TELO_UNRELEASED_IMAGE on the
+  # runner). Build-only: it is an image session containers are started from, not
+  # a service of the stack, so it sits in a profile `up` does not start.
+  kernel:
+    image: telo-dev/node:local
+    profiles: ["kernel"]
+    build:
+      context: .
+      dockerfile: ./cli/nodejs/Dockerfile
+      target: lean-slim
+
   runner:
     image: telorun/docker-runner:${DOCKER_TAG:-latest}
     build:
@@ -202,6 +214,14 @@ services:
       # Short idle window locally. A dev machine is not paying for capacity, and
       # a fast suspend/resume cycle is the part worth exercising by hand.
       RUNNER_WATCH_IDLE_SECONDS: ${RUNNER_WATCH_IDLE_SECONDS:-600}
+      # The studio of this stack is built from the working tree, so its bundled
+      # engine is an unreleased build, and no registry holds a kernel image for
+      # that identity. The `kernel` service below builds one from this same
+      # tree; a run on the unreleased identity uses it, so what runs is what the
+      # editor checks against and the run dock's mismatch warning stays a real
+      # signal. Build it before the first run, and again after changing the
+      # runtime:  docker compose --profile kernel build kernel
+      RUNNER_TELO_UNRELEASED_IMAGE: ${RUNNER_TELO_UNRELEASED_IMAGE:-telo-dev/node:local}
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:

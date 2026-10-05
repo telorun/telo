@@ -66,7 +66,7 @@ Version lookups and compatibility answers are memoized so lens resolution stays 
 
 ## Which telo you edit against
 
-The status bar shows **Telo X** — the telo version the active file's module is edited against — with **(pinned)** when the `telo.version` setting fixes it, and **(unreleased build)** when the engine is a development build of `X` rather than the published one. Its tooltip says what chose `X`, or names the error when no version can run — including an engine that crashed or never started, which **Retry** starts again. Click it, or run **Telo: Select Telo Version**, to choose: **Auto** (with the version it resolves to), then the bundled version and every available version newest first, each marked as accepted or refused by the module's `requires: telo:` ranges and as cached or not. Picking one writes `telo.version`.
+The status bar shows **Telo X** — the telo version the active file's module is edited against — with **(pinned)** when the `telo.version` setting fixes it, and **(local)** when the engine is a development build of `X` rather than the published one. Its tooltip says what chose `X`, or names the error when no version can run — including an engine that crashed or never started, which **Retry** starts again. Click it, or run **Telo: Select Telo Version**, to choose: **Auto** (with the version it resolves to), then the bundled version and every available version newest first, each marked as accepted or refused by the module's `requires: telo:` ranges and as cached or not. Picking one writes `telo.version`.
 
 With `auto`, each module gets a version of its own:
 

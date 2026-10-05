@@ -72,9 +72,11 @@ describe("buildRunBundle", () => {
     const bundle = await buildRunBundle(ws, "/ws/app/telo.yaml", readFile);
 
     expect(bundle.files).toHaveLength(1);
-    expect(bundle.files[0]!.relativePath).toBe("telo.yaml");
+    // Where the editor holds it under the workspace root — the layout the
+    // agent's sync writes into the same session workspace.
+    expect(bundle.files[0]!.relativePath).toBe("app/telo.yaml");
     expect(bundle.files[0]!.contents).toBe("# contents of /ws/app/telo.yaml");
-    expect(bundle.entryRelativePath).toBe("telo.yaml");
+    expect(bundle.entryRelativePath).toBe("app/telo.yaml");
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
@@ -110,7 +112,7 @@ describe("buildRunBundle", () => {
     const bundle = await buildRunBundle(ws, "/ws/app/telo.yaml", readFile);
 
     expect(bundle.files).toHaveLength(1);
-    expect(bundle.files[0]!.relativePath).toBe("telo.yaml");
+    expect(bundle.files[0]!.relativePath).toBe("app/telo.yaml");
     expect(readFile).toHaveBeenCalledTimes(1);
   });
 
@@ -148,9 +150,9 @@ describe("buildRunBundle", () => {
       bundle.files.map((f) => [f.relativePath, f.contents]),
     );
     expect(byPath).toEqual({
-      "telo.yaml": "# main",
-      "sub.yaml": "# sub",
-      "nested/deep.yaml": "# deep",
+      "app/telo.yaml": "# main",
+      "app/sub.yaml": "# sub",
+      "app/nested/deep.yaml": "# deep",
     });
     expect(readFile).toHaveBeenCalledWith("/ws/app/sub.yaml");
     expect(readFile).toHaveBeenCalledWith("/ws/app/nested/deep.yaml");
@@ -175,11 +177,29 @@ describe("buildRunBundle", () => {
 
     const byPath = Object.fromEntries(bundle.files.map((f) => [f.relativePath, f.contents]));
     expect(byPath).toEqual({
-      "telo.yaml": "# main",
-      "public/app.js": "// app",
-      "public/index.html": "<html>",
+      "app/telo.yaml": "# main",
+      "app/public/app.js": "// app",
+      "app/public/index.html": "<html>",
     });
     expect(selectFiles).toHaveBeenCalledWith("/ws/app/telo.yaml", ["public/app.js", "public/**"]);
+  });
+
+  it("falls back to what it ships when an import climbs above the workspace root", async () => {
+    const shared = makeManifest("/elsewhere/shared/telo.yaml", "Library");
+    const app = makeManifest("/ws/app/telo.yaml", "Application", {
+      imports: [makeImport("Shared", "../../elsewhere/shared", "local", "/elsewhere/shared/telo.yaml")],
+    });
+    const ws = makeWorkspace([app, shared]);
+
+    const bundle = await buildRunBundle(ws, "/ws/app/telo.yaml", stubReadFile());
+
+    // Nothing under the workspace root can hold a file outside it, so the
+    // bundle is rooted at the common ancestor of the two.
+    expect(bundle.files.map((f) => f.relativePath).sort()).toEqual([
+      "elsewhere/shared/telo.yaml",
+      "ws/app/telo.yaml",
+    ]);
+    expect(bundle.entryRelativePath).toBe("ws/app/telo.yaml");
   });
 
   it("throws when a module declares files: but no file selector is provided", async () => {

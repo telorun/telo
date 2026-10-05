@@ -41,6 +41,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     childNetwork: deps.runnerConfig.childNetwork,
     publicBaseUrl: deps.runnerConfig.publicBaseUrl,
     watchMaxTtlSeconds: deps.runnerConfig.watch.maxTtlSeconds,
+    teloImages: deps.runnerConfig.teloImages,
+    workspaceImage: deps.runnerConfig.workspaceImage,
   });
 
   const apps = loadResolvedApps(process.env);

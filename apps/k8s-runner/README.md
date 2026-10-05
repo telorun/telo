@@ -294,6 +294,10 @@ outcome than a URL that silently reaches the wrong app.
 | `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling for predefined-app pods |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
+| `RUNNER_TELO_IMAGE_REPOSITORY` | `telorun/node` | Where the kernel image of a telo version an application names is pulled from: `<repository>:<version>-<variant>`. Point it at a mirror or a private registry (chart: `session.teloImages.repository`) |
+| `RUNNER_TELO_IMAGE_VARIANT` | `slim` | The variant suffix of that image tag (chart: `session.teloImages.variant`) |
+| `RUNNER_TELO_UNRELEASED_IMAGE` | _(unset → refused)_ | The kernel image an unreleased build identity (`X+unreleased`) runs on (chart: `session.teloImages.unreleased`) |
+| `RUNNER_PULL_POLICY` | `missing` | The `imagePullPolicy` of a session whose applications name a telo version: `missing`, `always` or `never` (a cluster that preloads its images) (chart: `session.teloImages.pullPolicy`) |
 | `RUNNER_INIT_IMAGE` | `busybox:stable` | Bundle-fetch initContainer image (wget + tar) |
 | `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls session images with — needed only for a kernel or catalog image in a private registry |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
@@ -322,6 +326,36 @@ outcome than a URL that silently reaches the wrong app.
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
+
+### The telo version an application runs on
+
+A session request may name, per application, the telo version it runs on
+(`telo`, on each entry of `apps`, or on the request for a single-app session) —
+the version the editor checks that module against. The runner advertises
+`features.teloVersions` and runs that application's container on
+`<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>`, never a
+substitute. The base-image catalog does not gate this: it is the menu
+`config.image` is picked from — a bounded, newest-first list read from
+`RUNNER_BASE_IMAGE_REPO` — while which versions may run is the telo image
+source's own rule. An image the cluster cannot pull fails the session on its
+event stream, since a pull happens on a node after the pod exists. A release
+older than 0.95.0, the oldest a runner is verified to supervise, is refused
+before the session exists (`400 telo_version_unavailable`). An unreleased build
+(`0.80.0+unreleased`) has no published image: it runs on
+`RUNNER_TELO_UNRELEASED_IMAGE` when the operator set one (a development stack
+whose editor is built from the same tree), and is refused naming that variable
+otherwise. The pod's own `workspace` container always runs on `RUNNER_IMAGE`.
+
+`config.image` and `config.pullPolicy` are **deprecated**: they are what a client
+naming no version still sends, and they behave as before for that client. A
+request naming a version beside either is `400 invalid_config` — a version's
+image is pulled under the operator's `RUNNER_PULL_POLICY`, applied as the Pod's
+`imagePullPolicy` — and a session's applications either all name a version or
+none does.
+
+Each generation's `run` event carries the version the runtime itself reported
+(`telo`), passed on unjudged — the editor compares it with what it asked for and
+warns on a difference.
 
 ### Base-image picker
 

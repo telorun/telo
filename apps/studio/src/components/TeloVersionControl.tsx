@@ -1,5 +1,12 @@
-import { describeAutoMark, describeTeloStatus, describeVersionMark, type VersionMarks } from "@telorun/language-host";
-import { AlertTriangle, Loader2, RotateCw } from "lucide-react";
+import {
+  describeAcceptance,
+  describeAutoMark,
+  describeTeloStatus,
+  describeVersionMark,
+  type VersionMarks,
+} from "@telorun/language-host";
+import { versionMenuRows } from "../language/version-menu";
+import { AlertTriangle, CircleCheck, CircleX, Loader2, RotateCw } from "lucide-react";
 import { useState } from "react";
 import type { TeloLanguage } from "../hooks/useLanguageSession";
 import { Button } from "./ui/button";
@@ -29,7 +36,12 @@ export function TeloVersionControl({ language }: { language: TeloLanguage }) {
   }
 
   const { status, teloVersion } = language;
-  const { label, detail } = describeTeloStatus(status, HOST);
+  const { detail } = describeTeloStatus(status, HOST);
+  // Beside the menu, which already names the choice: the version in effect, and
+  // only whether Auto chose it. Everything else about it is the tooltip's.
+  const label =
+    (status.version === undefined ? "Telo" : `Telo ${status.version.split("+")[0]}`) +
+    (teloVersion === "auto" ? " (auto)" : "");
   const run = (action: Promise<unknown>) => {
     setActionError(null);
     action.catch((error: unknown) => setActionError(error instanceof Error ? error.message : String(error)));
@@ -72,17 +84,40 @@ export function TeloVersionControl({ language }: { language: TeloLanguage }) {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="auto">{auto.detail ? `${auto.label} · ${auto.detail}` : auto.label}</SelectItem>
+            <SelectItem value="auto" description={auto.detail || undefined}>
+              {auto.label}
+            </SelectItem>
             {current.map((version) => (
-              <SelectItem key={version} value={version}>
-                {marks ? `${version} · not offered` : version}
+              <SelectItem key={version} value={version} description={marks ? "not offered" : undefined}>
+                {version}
               </SelectItem>
             ))}
-            {listed.map((v) => {
-              const mark = describeVersionMark(v);
+            {versionMenuRows(listed, teloVersion === "auto" ? undefined : teloVersion).map((row) => {
+              const mark = describeVersionMark(row.mark, { acceptance: false });
+              const acceptance = describeAcceptance(row.mark);
               return (
-                <SelectItem key={v.version} value={v.version}>
-                  {mark.label} · {mark.detail}
+                <SelectItem
+                  key={row.mark.version}
+                  value={row.mark.version}
+                  description={mark.detail || undefined}
+                  icon={
+                    acceptance === undefined ? undefined : row.mark.accepted ? (
+                      <CircleCheck
+                        role="img"
+                        aria-label={acceptance}
+                        className="size-3.5 text-green-600 dark:text-green-400"
+                      />
+                    ) : (
+                      <CircleX
+                        role="img"
+                        aria-label={acceptance}
+                        className="size-3.5 text-red-600 dark:text-red-400"
+                      />
+                    )
+                  }
+                  className={row.nested ? "pl-6" : undefined}
+                >
+                  {mark.label}
                 </SelectItem>
               );
             })}

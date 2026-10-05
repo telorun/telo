@@ -238,7 +238,7 @@ export function launchWorkload(
       // terminal status; the SSE channel delivers it, then closes).
       const message =
         err instanceof SessionStartError
-          ? `${err.stage}: ${err.message}`
+          ? `${err.stage}: ${err.message}${err.daemonMessage ? ` (${err.daemonMessage})` : ""}`
           : err instanceof Error
             ? err.message
             : String(err);

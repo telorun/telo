@@ -95,6 +95,12 @@ export interface RunRecord {
    *  completing leaves the session running and starts a new generation on the
    *  next edit. A run session has exactly one entry, named `app`. */
   runs: Record<string, RunOutcomeEvent>;
+  /** The telo version this run asked its runner for; absent when the runner
+   *  does not choose one per application. */
+  requestedTelo?: string;
+  /** The version each application's runtime last reported for itself, by app
+   *  name. An app missing here runs on a runtime that reports none. */
+  reportedTelo: Record<string, string>;
   /** Declared ports the runner could not route, by port, with its reason. The
    *  design's whole point is that such a port is reported rather than dropped;
    *  dropping it here would put the silence back. */
@@ -243,9 +249,10 @@ interface RunContextValue {
   setDockHeight(appPath: string, height: number): void;
   setDockMaximized(appPath: string, maximized: boolean): void;
 
-  /** Forget everything held for an Application — its dock, its blocker and its
-   *  selection. For a module that no longer exists; its runs are dropped by the
-   *  eviction path, and these maps are keyed by the same path. */
+  /** Forget everything held for an Application — its runs, its dock, its
+   *  blocker and its selection — stopping any session of it still running. For
+   *  a module that no longer exists: all of these are keyed by its path, and
+   *  would otherwise be inherited by a module later created there. */
   forgetApp(appPath: string): void;
 
   /** The live terminal buffer for a run, or null (log-only / unknown run). */
@@ -383,6 +390,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
           hasTerminal: record.hasTerminal,
           startedAt: record.startedAt,
           status: record.status,
+          ...(record.requestedTelo !== undefined ? { requestedTelo: record.requestedTelo } : {}),
           config: meta?.config,
         });
       }
@@ -902,6 +910,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
         portReachability: new Map(),
         portRoutes: new Map(),
         runs: {},
+        ...(request.telo !== undefined ? { requestedTelo: request.telo } : {}),
+        reportedTelo: {},
         unroutablePorts: new Map(),
       };
 
@@ -990,6 +1000,30 @@ export function RunProvider({ children }: { children: ReactNode }) {
 
   const forgetApp = useCallback(
     (appPath: string) => {
+      // The application is gone, so nothing of it may keep running: a live
+      // session left behind is a workload nobody can reach from the editor, and
+      // every later save would try to sync a module that no longer exists.
+      // Dropping the records stops the sessions this tab holds (the teardown of
+      // a run that leaves state); one restored from history and never
+      // re-attached has no session object, so it is stopped by id here.
+      for (const record of runsByApp.get(appPath) ?? []) {
+        if (isTerminal(record.status) || runtimes.current.has(record.id)) continue;
+        const meta = attachMeta.current.get(record.id);
+        const adapter = meta ? registry.get(meta.adapterId) : undefined;
+        if (!meta || !adapter?.stopSession) continue;
+        void adapter.stopSession(record.id, meta.config).catch((err: unknown) => {
+          toast.error("Couldn't stop a run of the deleted application", {
+            description: `${appPath}: ${err instanceof Error ? err.message : String(err)}`,
+            duration: 10_000,
+          });
+        });
+      }
+      setRunsByApp((prev) => {
+        if (!prev.has(appPath)) return prev;
+        const next = new Map(prev);
+        next.delete(appPath);
+        return next;
+      });
       setBlocker(appPath, null);
       setDockByApp((prev) => {
         if (!prev.has(appPath)) return prev;
@@ -1004,7 +1038,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [setBlocker],
+    [setBlocker, runsByApp],
   );
 
   const value = useMemo<RunContextValue>(
@@ -1104,8 +1138,19 @@ function shellFromEntry(entry: PersistedRunEntry): RunRecord {
     portReachability: new Map(),
     portRoutes: new Map(),
     runs: {},
+    ...(entry.requestedTelo !== undefined ? { requestedTelo: entry.requestedTelo } : {}),
+    reportedTelo: {},
     unroutablePorts: new Map(),
   };
+}
+
+function reportedAfter(
+  reported: Record<string, string>,
+  app: string,
+  telo: string | undefined,
+): Record<string, string> {
+  const rest = Object.fromEntries(Object.entries(reported).filter(([name]) => name !== app));
+  return telo === undefined ? rest : { ...rest, [app]: telo };
 }
 
 function applyRunEvent(
@@ -1178,6 +1223,11 @@ function applyRunEvent(
     updateRecord(runId, (record) => ({
       ...record,
       runs: { ...record.runs, [event.app]: event },
+      // Each start speaks for itself: one that reports no version leaves the
+      // app with none, rather than the previous generation's.
+      ...(event.phase === "started"
+        ? { reportedTelo: reportedAfter(record.reportedTelo, event.app, event.telo) }
+        : {}),
     }));
     return;
   }

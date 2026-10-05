@@ -22,6 +22,11 @@ Optional, with defaults:
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8061` | HTTP listen port |
+| `RUNNER_TELO_IMAGE_REPOSITORY` | `telorun/node` | Where the kernel image of a telo version an application names is pulled from: `<repository>:<version>-<variant>` |
+| `RUNNER_TELO_IMAGE_VARIANT` | `slim` | The variant suffix of that image tag |
+| `RUNNER_TELO_UNRELEASED_IMAGE` | _(unset → refused)_ | The kernel image an unreleased build identity (`X+unreleased`) runs on — for a development stack whose editor is built from the same tree |
+| `RUNNER_PULL_POLICY` | `missing` | How the runner pulls every image it chooses itself — a telo version's and its own workspace container's: `missing`, `always` or `never` (a host with its images preloaded) |
+| `RUNNER_IMAGE` | `telorun/node:0-slim` | The kernel image the runner's own `workspace` container runs on in a watch session whose applications name a telo version |
 | `BUNDLE_ROOT` | `/bundles` | Path inside the runner where bundles are written; must match the named-volume mount path |
 | `LOG_LEVEL` | `info` | Pino log level |
 | `RUNNER_MAX_SESSIONS` | `32` | Cap on retained sessions; at capacity the oldest exited session is evicted, and only an all-live runner rejects with 409 |
@@ -107,6 +112,40 @@ SSE stream. Events: `status`, `progress`, `debug`, `reachability`, `run`, `endpo
 **Workload output does not travel this stream.** It goes over the byte channel (`/v1/sessions/:id/io`), which exists precisely because per-chunk events are wasteful for high-volume output. This section previously listed `stdout` and `stderr` events; nothing ever emitted them, and they are gone.
 
 `status` is the SESSION's state, `run` is one application's outcome, and the two are deliberately separate nouns: in a watch session a one-shot app completing emits `run` with `phase: "completed"` and leaves the session `running`, so the next edit starts that app's next generation.
+
+## The telo version an application runs on
+
+A session request may name, per application, the telo version it runs on
+(`telo`, on each entry of `apps`, or on the request for a single-app session) —
+the version the editor checks that module against. The runner advertises
+`features.teloVersions` and runs that application's container on
+`<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>`
+(`telorun/node:0.80.0-slim` by default), pulled under the operator's
+`RUNNER_PULL_POLICY`. The image is pulled while the session starts, with
+progress on its event stream; one that cannot be pulled, or is not held under
+`never`, fails that session with the daemon's answer. Never a substitute. A
+release older than 0.95.0, the oldest a runner is verified to supervise, is
+refused before the session exists (`400 telo_version_unavailable`).
+
+An unreleased build (`0.80.0+unreleased`, what an editor built from an
+unreleased tree asks for) has no published image. Set
+`RUNNER_TELO_UNRELEASED_IMAGE` to a kernel image built from that same tree and
+it runs on that; unset, the request is refused before a session exists
+(`400 telo_version_unavailable`) with a reason naming the variable.
+
+The runner's own `workspace` container in a watch session does not follow the
+application's version: it runs on `RUNNER_IMAGE` (default `telorun/node:0-slim`),
+the kernel the runner's own manifest is verified against.
+
+`config.image` and `config.pullPolicy` are **deprecated**: they are what a client
+naming no version still sends, and they behave as before for that client. A
+request naming a version beside either is `400 invalid_config` — a version tag
+does not move, so how its image is pulled is a property of the deployment, not
+of a run — and a session's applications either all name a version or none does.
+
+Each generation's `run` event carries the version the runtime itself reported
+(`telo`), passed on unjudged — the editor compares it with what it asked for and
+warns on a difference.
 
 ## Watch sessions
 

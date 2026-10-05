@@ -3,14 +3,14 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
-import type { ResolvedRunnerApp, RunnerCoreConfig } from "./config.js";
-import type { RunnerAppDescriptor, RunnerCapabilities, SessionConfig } from "./contract.js";
+import { RunnerConfigError, type ResolvedRunnerApp, type RunnerCoreConfig } from "./config.js";
+import type { RunnerAppDescriptor, RunnerCapabilities } from "./contract.js";
 import { appsRoute } from "./routes/apps.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
-import { sessionsRoute } from "./routes/sessions.js";
+import { sessionsRoute, type ConfigGate } from "./routes/sessions.js";
 import { SessionRegistry } from "./session/registry.js";
 import { WatchSupervisor } from "./session/watch-supervisor.js";
 
@@ -27,7 +27,7 @@ export interface ServerDeps {
   /** Backend config gate, enforced on `POST /v1/sessions` before the workload
    *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`.
    *  Not consulted for app sessions — their image comes from `apps`. */
-  validateConfig?: (config: SessionConfig) => string | undefined;
+  validateConfig?: ConfigGate;
   /** Operator-predefined applications launchable by name (usually
    *  `loadResolvedApps(process.env)`). Advertised on /v1/capabilities as
    *  `apps` descriptors; sessions of them are created via
@@ -133,6 +133,16 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   const capabilitiesValue =
     typeof capabilitiesGetter === "function" ? capabilitiesGetter() : capabilitiesGetter;
 
+  // The advertised feature and the backend seam are one statement: a runner
+  // that says it honours a telo version over a backend that cannot be asked
+  // would accept every version and run whatever it pleased.
+  if (capabilitiesValue.features.teloVersions === true && !deps.backend.supplyTelo) {
+    throw new RunnerConfigError(
+      "this runner advertises `features.teloVersions` over a backend with no `supplyTelo` — " +
+        "it would accept a telo version it has no way to honour.",
+    );
+  }
+
   await app.register(healthRoute(deps.version));
   await app.register(capabilitiesRoute(capabilitiesGetter));
   await app.register(probeRoute({ backend: deps.backend }));
@@ -159,6 +169,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       // `io: "tty"` here, rather than handing back a session that says it has a
       // terminal and does not.
       io: capabilitiesValue.features.io,
+      teloVersions: capabilitiesValue.features.teloVersions === true,
     }),
   );
   await app.register(

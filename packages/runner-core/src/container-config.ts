@@ -1,4 +1,5 @@
-import type { JsonSchema, PullPolicy, SessionConfig } from "./contract.js";
+import { RunnerConfigError } from "./config.js";
+import { isUnreleasedTelo, type JsonSchema, type PullPolicy, type SessionConfig } from "./contract.js";
 
 /**
  * The session config of a backend that runs CONTAINERS — the schema it
@@ -30,6 +31,11 @@ export interface SessionConfigSchemaOptions {
    *  effect once `imageEnum` is set (the picker is the constraint). `pullPolicy`
    *  is always client-editable. */
   enforced?: boolean;
+  /** The runner chooses its image from each application's `telo` version and
+   *  pulls it under the operator's own policy, so `image` and `pullPolicy` are
+   *  only what a client sending no version still names: advertised
+   *  `deprecated` and no longer required. */
+  teloVersions?: boolean;
 }
 
 /**
@@ -52,6 +58,7 @@ export function sessionConfigSchema(opts: SessionConfigSchemaOptions): JsonSchem
       // An allowlist renders as an editable picker; otherwise fall back to the
       // enforced (readOnly) single value.
       ...(hasEnum ? { enum: opts.imageEnum } : readOnly ? { readOnly: true } : {}),
+      ...(opts.teloVersions ? { deprecated: true } : {}),
     },
     pullPolicy: {
       type: "string",
@@ -61,11 +68,12 @@ export function sessionConfigSchema(opts: SessionConfigSchemaOptions): JsonSchem
       description:
         opts.pullPolicyDescription ??
         "`missing` pulls on first use; `always` forces a pull every run; `never` fails if the image isn't present.",
+      ...(opts.teloVersions ? { deprecated: true } : {}),
     },
   };
   return {
     type: "object",
-    required: ["image", "pullPolicy"],
+    required: opts.teloVersions ? [] : ["image", "pullPolicy"],
     properties,
   };
 }
@@ -79,6 +87,92 @@ export interface ContainerConfig {
 const PULL_POLICIES: readonly PullPolicy[] = ["missing", "always", "never"];
 
 /**
+ * What a session naming telo versions may not also send. An `image` is a second
+ * answer to "what runs" — picking either silently is a run on a version nobody
+ * chose. A `pullPolicy` is refused rather than ignored for the same reason a
+ * config is ever refused: a field the runner accepts and does nothing with
+ * tells its sender something false. How a version's image is pulled is the
+ * operator's (`RUNNER_PULL_POLICY`): a version tag does not move, so `always`
+ * buys nothing, and `never` describes a deployment, not a run.
+ */
+/** The config properties a telo version supersedes on a container backend —
+ *  what {@link besideTelo} refuses, advertised so a client leaves them out. */
+export const SUPERSEDED_BY_TELO = ["image", "pullPolicy"];
+
+function besideTelo(config: SessionConfig): string | undefined {
+  if (config.image !== undefined) {
+    return (
+      "`config.image` and an application's `telo` version both say what runs; send one. " +
+      "`config.image` is deprecated — name the telo version instead."
+    );
+  }
+  if (config.pullPolicy !== undefined) {
+    return (
+      "`config.pullPolicy` does not apply to a session whose applications name their `telo` " +
+      "version: the runner pulls a version's image under its operator's policy. Omit it."
+    );
+  }
+  return undefined;
+}
+
+/** Where a container backend finds the kernel image of a telo version:
+ *  `<repository>:<version>-<variant>`. The operator's, so a mirror or a private
+ *  registry needs no client change. */
+export interface TeloImageSource {
+  repository: string;
+  variant: string;
+  /** The image an UNRELEASED build identity (`X+unreleased`) runs on
+   *  (`RUNNER_TELO_UNRELEASED_IMAGE`). Such a version names a working copy, so
+   *  no registry holds it under a version tag; an operator who builds a kernel
+   *  image from that same tree — a development stack — names it here. Unset,
+   *  an unreleased identity is refused. */
+  unreleasedImage?: string;
+  /** How the runner pulls every image it chooses itself — a telo version's, and
+   *  its own workspace container's (`RUNNER_PULL_POLICY`, default `missing`). */
+  pullPolicy: PullPolicy;
+}
+
+export function loadTeloImageSource(env: NodeJS.ProcessEnv): TeloImageSource {
+  const pullPolicy = env.RUNNER_PULL_POLICY?.trim() || "missing";
+  if (!PULL_POLICIES.includes(pullPolicy as PullPolicy)) {
+    throw new RunnerConfigError(
+      `RUNNER_PULL_POLICY must be one of ${PULL_POLICIES.join(", ")}, got '${pullPolicy}'.`,
+    );
+  }
+  return {
+    pullPolicy: pullPolicy as PullPolicy,
+    repository: env.RUNNER_TELO_IMAGE_REPOSITORY?.trim() || "telorun/node",
+    variant: env.RUNNER_TELO_IMAGE_VARIANT?.trim() || "slim",
+    unreleasedImage: env.RUNNER_TELO_UNRELEASED_IMAGE?.trim() || undefined,
+  };
+}
+
+/** Why a container backend cannot run `version` whatever its registry holds, or
+ *  `undefined`. A build identity (`X+unreleased`) names no published image: it
+ *  is a working copy, run only where the operator said which image was built
+ *  from it. The refusal says what to do, for both people who can act on it. */
+export function teloImageRefusal(version: string, source: TeloImageSource): string | undefined {
+  if (!isUnreleasedTelo(version) || source.unreleasedImage !== undefined) return undefined;
+  return (
+    `${version} is an unreleased build, which has no published image. Pin a released telo ` +
+    `version for this workspace, or have the runner's operator set RUNNER_TELO_UNRELEASED_IMAGE ` +
+    `to a kernel image built from that same tree`
+  );
+}
+
+/** Callers ask {@link teloImageRefusal} first; an unreleased identity reaching
+ *  here with no image named for it is a gate that was skipped. */
+export function teloImage(version: string, source: TeloImageSource): string {
+  if (isUnreleasedTelo(version)) {
+    if (source.unreleasedImage === undefined) {
+      throw new Error(teloImageRefusal(version, source));
+    }
+    return source.unreleasedImage;
+  }
+  return `${source.repository}:${version}-${source.variant}`;
+}
+
+/**
  * The `validateConfig` gate for a container backend: the message a bad config is
  * rejected with (`400 invalid_config`), or `undefined` when it is usable.
  *
@@ -87,9 +181,15 @@ const PULL_POLICIES: readonly PullPolicy[] = ["missing", "always", "never"];
  * what keeps the rejection a 400 naming the field rather than a start failure
  * arriving on the event stream.
  */
-export function validateContainerConfig(config: SessionConfig): string | undefined {
+export function validateContainerConfig(
+  config: SessionConfig,
+  request: { telo: boolean } = { telo: false },
+): string | undefined {
   const image = config.image;
-  if (typeof image !== "string" || image.trim() === "") {
+  if (request.telo) {
+    const beside = besideTelo(config);
+    if (beside) return beside;
+  } else if (typeof image !== "string" || image.trim() === "") {
     return "`config.image` is required: this runner spawns a container per run and needs the image to run.";
   }
   const pullPolicy = config.pullPolicy;
@@ -106,7 +206,11 @@ export function validateContainerConfig(config: SessionConfig): string | undefin
  * refused rather than coerced, or `{"image": 42, "pullPolicy": "sometimes"}`
  * starts a pod on the default image under the wrong policy and tells nobody.
  */
-export function validateOptionalContainerConfig(config: SessionConfig): string | undefined {
+export function validateOptionalContainerConfig(
+  config: SessionConfig,
+  request: { telo: boolean } = { telo: false },
+): string | undefined {
+  if (request.telo) return besideTelo(config);
   if (config.image !== undefined && (typeof config.image !== "string" || config.image.trim() === "")) {
     return "`config.image` must be a non-empty string when given; omit it to use this runner's default image.";
   }
@@ -147,4 +251,15 @@ export function containerConfig(config: SessionConfig): ContainerConfig {
     image: config.image as string,
     pullPolicy: (config.pullPolicy as PullPolicy | undefined) ?? "missing",
   };
+}
+
+/** What one application's container runs on: its telo version's image when it
+ *  names one, the session's `image` otherwise. */
+export function appContainerConfig(
+  config: SessionConfig,
+  telo: string | undefined,
+  source: TeloImageSource,
+): ContainerConfig {
+  if (telo === undefined) return containerConfig(config);
+  return { image: teloImage(telo, source), pullPolicy: source.pullPolicy };
 }

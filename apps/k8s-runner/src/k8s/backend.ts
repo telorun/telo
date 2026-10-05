@@ -11,7 +11,11 @@ import type {
   RunnerBackend,
 } from "@telorun/runner-core";
 import { relayDebugStream, SessionStartError, watchReachability } from "@telorun/runner-core";
-import { optionalContainerConfig } from "@telorun/runner-core/container";
+import {
+  optionalContainerConfig,
+  teloImage,
+  teloImageRefusal,
+} from "@telorun/runner-core/container";
 
 import type { BundleStore } from "../bundle-store.js";
 import type { K8sRunnerConfig } from "../config.js";
@@ -143,8 +147,13 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
         env: spec.env,
         ports: app.ports,
         limits,
-        image: sessionImage.image ?? config.defaultImage,
-        pullPolicy: sessionImage.pullPolicy,
+        image:
+          app.telo !== undefined
+            ? teloImage(app.telo, config.teloImages)
+            : (sessionImage.image ?? config.defaultImage),
+        // A version's image is pulled under the operator's policy; a session
+        // that names its own image keeps the policy it sent with it.
+        pullPolicy: app.telo !== undefined ? config.teloImages.pullPolicy : sessionImage.pullPolicy,
         bundleUrl,
         inspect: spec.inspect,
       });
@@ -495,7 +504,19 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     }
   }
 
-  return { probe, start, reapOrphans };
+  // Which versions may run is the telo image source's own rule — a release
+  // version becomes `<repository>:<version>-<variant>`, an unreleased identity
+  // the image the operator named for it — and nothing else gates it. The
+  // base-image catalog is the menu `config.image` is picked from: a bounded,
+  // newest-first display list read from another repository setting, so using
+  // it as the allowlist here refused an older pin and every version on a
+  // mirror. A cluster's image pull happens on a node, after the pod exists, so
+  // an image it cannot pull fails the session on its stream.
+  async function supplyTelo(version: string): Promise<string | undefined> {
+    return teloImageRefusal(version, config.teloImages);
+  }
+
+  return { probe, start, supplyTelo, reapOrphans };
 }
 
 /** Create the session Service and publish its routes on whichever layer the

@@ -11,7 +11,11 @@ import type {
   RunnerEndpoint,
   WorkspaceAccess,
 } from "@telorun/runner-core";
-import { containerConfig } from "@telorun/runner-core/container";
+import {
+  appContainerConfig,
+  containerConfig,
+  type TeloImageSource,
+} from "@telorun/runner-core/container";
 import {
   portKey,
   portsResolvedFrom,
@@ -81,6 +85,10 @@ export interface DockerWatchDeps {
    *  `activeDeadlineSeconds`, so the runner holds the timer — without it the
    *  configured ceiling would be a knob that parses and does nothing. */
   maxTtlSeconds: number;
+  /** Where the kernel image of a requested telo version is pulled from. */
+  teloImages: TeloImageSource;
+  /** The operator's kernel image, for the runner's own workspace container. */
+  workspaceImage: string;
   /** Runner-visible path of the shared bundle volume. */
   bundleRoot: string;
   /** Daemon-visible volume name to mount into spawned containers. */
@@ -88,6 +96,18 @@ export interface DockerWatchDeps {
   childNetwork: string;
   publicBaseUrl?: string;
 }
+
+/**
+ * What an application container runs: wait for its entry manifest, then watch it.
+ *
+ * `telo run`'s own options precede the path — every token after it is the
+ * application's, and one the application does not declare is refused at load
+ * (`unknown option --watch`). Both values ride the environment rather than the
+ * command line, so a path can never close a quote.
+ */
+export const APP_WATCH_COMMAND =
+  'while [ ! -f "$TELO_ENTRY" ]; do sleep 0.2; done; ' +
+  'exec telo run --watch --inspect "$TELO_INSPECT_ADDR" --no-open "$TELO_ENTRY"';
 
 /**
  * A docker watch session. The same shape as the kubernetes one — one workspace,
@@ -124,8 +144,21 @@ export async function startDockerWatchSession(
   await mkdir(appHostDir, { recursive: true });
   await writeFile(join(appHostDir, WORKSPACE_APP_FILENAME), workspaceAppManifest(), "utf8");
 
-  const image = containerConfig(spec.config);
+  const imageOf = (app: BackendAppSpec) => appContainerConfig(spec.config, app.telo, deps.teloImages);
+  // The workspace container is the runner's own and runs the runner's manifest,
+  // so it runs on the operator's kernel image — never on the version a user's
+  // application names, which the runner was not built against. A session that
+  // names no version keeps the `image` it sent, as before.
+  const image = spec.apps.some((a) => a.telo !== undefined)
+    ? { image: deps.workspaceImage, pullPolicy: deps.teloImages.pullPolicy }
+    : containerConfig(spec.config);
   await ensureImage(deps.docker, image.image, image.pullPolicy);
+  for (const app of spec.apps) {
+    if (app.telo === undefined) continue;
+    spec.onProgress("provision", `Pulling telo ${app.telo}`, undefined, app.name);
+    const appImage = imageOf(app);
+    await ensureImage(deps.docker, appImage.image, appImage.pullPolicy);
+  }
   if (spec.agent) await ensureImage(deps.docker, spec.agent.image, spec.agent.pullPolicy);
 
   let apps = spec.apps;
@@ -286,6 +319,15 @@ export async function startDockerWatchSession(
       // time — but the contract is one path for changing the app set, so this
       // takes the same one the kubernetes backend must take. A second shape
       // would mean the editor observing a different sequence per backend.
+      // Every image of the NEW set first: a pull can fail (an unknown version,
+      // `never` with nothing held, a registry that is down), and failing after
+      // the running containers are gone leaves a session that reports itself up
+      // with no application in it. A pull that throws here leaves them running.
+      for (const app of next) {
+        if (app.telo === undefined) continue;
+        const appImage = imageOf(app);
+        await ensureImage(deps.docker, appImage.image, appImage.pullPolicy);
+      }
       for (const app of apps) await removeContainer(app.name);
       teardownInProgress = false;
       apps = next;
@@ -327,11 +369,11 @@ export async function startDockerWatchSession(
       const container = await createAndStart(
         name,
         baseOpts({
+          Image: imageOf(app).image,
           Cmd: [
             "sh",
             "-c",
-            'while [ ! -f "$TELO_ENTRY" ]; do sleep 0.2; done; ' +
-              'exec telo run "$TELO_ENTRY" --watch --inspect "$TELO_INSPECT_ADDR" --no-open',
+            APP_WATCH_COMMAND,
           ],
           WorkingDir: appWorkspaceDir,
           Env: env,

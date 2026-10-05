@@ -64,8 +64,10 @@ import {
   diffBundle,
   isEmptyChangeSet,
   registry as runRegistry,
+  runVersionFor,
   selectModuleFiles,
   SessionGoneError,
+  TeloVersionRefusedError,
   TermsRequiredError,
   useRun,
   type SyncedFiles,
@@ -508,9 +510,12 @@ export function Editor() {
     const adapter = workspaceAdapterRef.current;
     if (!workspace || !adapter) return;
     const updated = await deleteModule(workspace, filePath, adapter);
-    // The run context is keyed by module path, so a deleted module's dock,
-    // blocker and selection would outlive it — and be inherited by a module
+    // The run context is keyed by module path, so a deleted module's runs,
+    // dock, blocker and selection would outlive it — a session still running
+    // for an application that is gone, and all of it inherited by a module
     // later created at the same path.
+    syncedFilesRef.current.delete(filePath);
+    syncQueueRef.current.delete(filePath);
     runContext.forgetApp(filePath);
     setState((s) => {
       const openTabs = closeTab(s.openTabs, filePath);
@@ -656,6 +661,23 @@ export function Editor() {
     }
     const acceptedTermsVersion = terms?.version;
 
+    // The version this module is edited against is the version it runs on. A
+    // runner that aligns versions is asked for exactly it; a module with no
+    // engine has no version to ask for, and the status that already explains
+    // why is the reason shown.
+    const versioned = capabilities?.features?.teloVersions === true;
+    const alignedRun = versioned ? runVersionFor(teloLanguage, filePath) : null;
+    if (alignedRun && "refusal" in alignedRun) {
+      runContext.showBlocker(filePath, {
+        kind: "unavailable",
+        adapterId: adapter.id,
+        adapterDisplayName: adapter.displayName,
+        message: alignedRun.refusal,
+        remediation: "Resolve the telo version shown in the top bar, then run again.",
+      });
+      return;
+    }
+
     const liveRun = runContext.liveRunForApp(filePath);
     if (liveRun) {
       const proceed = window.confirm("Stop the current run and start a new one?");
@@ -720,6 +742,15 @@ export function Editor() {
           ports: resolveDeclaredPorts(manifest, environment.env),
           acceptedTermsVersion,
           mode,
+          ...(alignedRun
+            ? {
+                telo: alignedRun.version,
+                // Exactly what the runner says a version supersedes — not
+                // everything it deprecates, which may be on its way out for a
+                // reason that has nothing to do with versions.
+                withheldConfig: capabilities?.config.supersededByTelo ?? [],
+              }
+            : {}),
           // A watch session is where the authoring agent belongs: co-resident,
           // it writes the very volume these containers watch, so its edits
           // reload the app the user is looking at. Requested whenever the
@@ -741,6 +772,21 @@ export function Editor() {
       // with the current terms — surface the gate and let the user retry.
       if (err instanceof TermsRequiredError) {
         setTermsGate({ terms: err.terms, runnerId: runner.id, resume: { kind: "run", filePath } });
+        return;
+      }
+      // Nothing was started: the runner could not run this module's telo
+      // version, and its own account of why is what the user reads.
+      if (err instanceof TeloVersionRefusedError) {
+        runContext.showBlocker(filePath, {
+          kind: "unavailable",
+          adapterId: adapter.id,
+          adapterDisplayName: adapter.displayName,
+          message: `Telo ${err.version} cannot be run here: ${err.reason}`,
+          remediation:
+            err.code === "telo_version_unavailable"
+              ? "Pick another telo version in the top bar, or another runner."
+              : undefined,
+        });
         return;
       }
       setError(
@@ -787,6 +833,16 @@ export function Editor() {
     }
     for (const run of live) {
       const appPath = run.appPath;
+      // An application removed by something other than the editor's own delete
+      // — the agent, a file gone from disk — still has its session. There is no
+      // module left to sync into it, so it ends here rather than failing every
+      // save with an error about an app the user no longer has.
+      if (!workspace.modules.has(appPath)) {
+        syncedFilesRef.current.delete(appPath);
+        syncQueueRef.current.delete(appPath);
+        runContext.forgetApp(appPath);
+        continue;
+      }
       const queued = (syncQueueRef.current.get(appPath) ?? Promise.resolve()).then(async () => {
         // No snapshot means this session was re-attached after a page reload, so
         // what the workspace holds is unknown: push everything once and diff from
@@ -2081,6 +2137,10 @@ export function Editor() {
                       },
                       run: {
                         appPath: activeAppPath,
+                        editedTelo:
+                          activeAppPath && teloLanguage?.kind === "running"
+                            ? teloLanguage.statusOf(activeAppPath).version
+                            : undefined,
                         onRun: () => {
                           if (activeAppPath) void handleRunModule(activeAppPath);
                         },

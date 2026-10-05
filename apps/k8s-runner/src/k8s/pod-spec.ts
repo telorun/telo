@@ -1,5 +1,7 @@
 import type { V1Container, V1Pod, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
 
+import { teloImage } from "@telorun/runner-core/container";
+
 import type { K8sRunnerConfig } from "../config.js";
 import type { ResolvedLimits } from "../limits.js";
 import type {
@@ -319,9 +321,10 @@ export interface BuildWatchPodArgs {
    *  Its env is the operator's, LLM key included. */
   agent?: ResolvedRunnerApp;
   limits: ResolvedLimits;
-  /** Base image every app container and the workspace container run — the plain
-   *  kernel image (`telorun/node`). Each resolves its own module closure into
-   *  the shared workspace volume, which lives as long as the pod. */
+  /** The plain kernel image (`telorun/node`) the workspace container runs, and
+   *  every app container that names no telo version of its own. Each resolves
+   *  its own module closure into the shared workspace volume, which lives as
+   *  long as the pod. */
   image: string;
   pullPolicy: PullPolicy;
   /** Name of the ConfigMap holding the workspace application's manifest. */
@@ -498,7 +501,7 @@ function appContainer(args: BuildWatchPodArgs, app: BackendAppSpec, index: numbe
   const tty = app.io === "tty";
   return {
     name: `app-${app.name}`,
-    image: args.image,
+    image: app.telo !== undefined ? teloImage(app.telo, args.config.teloImages) : args.image,
     imagePullPolicy: pullPolicyToK8s(args.pullPolicy),
     workingDir: WORK_DIR,
     // Wait for the entry manifest before starting. The workspace arrives over

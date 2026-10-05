@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import type { RunAdapter, RunnerCapabilities } from "../types";
-import { applySchemaDefaults, mergeCapabilitySchema } from "./capability-form";
+import { applySchemaDefaults, mergeCapabilitySchema, withoutDeprecated } from "./capability-form";
 
 interface RunnerEditDialogProps {
   open: boolean;
@@ -94,7 +94,9 @@ export function RunnerEditDialog({
   }, [open, baseUrl, adapter]);
 
   const mergedSchema = useMemo(
-    () => mergeCapabilitySchema(adapter.configSchema, caps),
+    // A field the runner deprecates no longer decides anything on a runner that
+    // advertises it so, and is not offered.
+    () => withoutDeprecated(mergeCapabilitySchema(adapter.configSchema, caps)),
     [adapter, caps],
   );
 

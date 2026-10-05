@@ -14,7 +14,8 @@ import type { SessionRegistry } from "../session/registry.js";
  * nothing.
  *
  * Three event names are read, and only three:
- *  - `Kernel.Starting`  → the generation began
+ *  - `Kernel.Starting`  → the generation began, carrying the runtime's `telo`
+ *                         version when it reports one
  *  - `Kernel.Stopped`   → it ended, carrying `exitCode`
  *  - `Kernel.RunFailed` → it never reached a running state, carrying why
  *
@@ -51,7 +52,7 @@ export class RunProjection {
     if (!isEventFrame(frame)) return;
     switch (frame.event) {
       case "Kernel.Starting":
-        this.begin(app);
+        this.begin(app, teloOf(frame.payload));
         return;
       case "Kernel.Stopped":
         this.registry.finishGeneration(this.sessionId, app, {
@@ -95,15 +96,22 @@ export class RunProjection {
 
   /** Open a generation unless one is already open — `Kernel.Starting` followed
    *  by a `Kernel.RunFailed` from the boot phase must not count twice. */
-  private begin(app: string): void {
+  private begin(app: string, telo?: string): void {
     const channel = this.registry.get(this.sessionId)?.apps.get(app);
     if (!channel || channel.startedAt !== null) return;
     const trigger = this.triggers.get(app) ?? "watch";
     // Consumed: the next generation is a plain watch reload unless something
     // says otherwise again.
     this.triggers.delete(app);
-    this.registry.startGeneration(this.sessionId, app, trigger);
+    this.registry.startGeneration(this.sessionId, app, trigger, telo);
   }
+}
+
+/** The version the runtime says it is. Passed on, never compared: by the time
+ *  this frame arrives the manifest has loaded on that runtime. */
+function teloOf(payload: unknown): string | undefined {
+  const telo = (payload as { telo?: unknown } | undefined)?.telo;
+  return typeof telo === "string" && telo !== "" ? telo : undefined;
 }
 
 function exitCodeOf(payload: unknown): number {

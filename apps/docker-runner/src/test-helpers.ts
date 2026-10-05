@@ -7,7 +7,9 @@ import type {
   SessionDockerClient,
   SessionDockerContainer,
 } from "./docker/run-session.js";
-import type { RunnerConfig } from "./config.js";
+import { loadTeloImageSource } from "@telorun/runner-core/container";
+
+import { DEFAULT_KERNEL_IMAGE, type RunnerConfig } from "./config.js";
 
 export interface FakeDockerBehavior {
   ping?: () => Promise<unknown>;
@@ -167,6 +169,10 @@ export function makeRunnerConfig(overrides: Partial<RunnerConfig> = {}): RunnerC
       suspendedTtlMs: 86_400_000,
       checkpointMs: 30_000,
     },
+    // Read from the environment as the runner does, so a test stubbing a
+    // `RUNNER_*` variable configures the server it then builds.
+    teloImages: loadTeloImageSource(process.env),
+    workspaceImage: process.env.RUNNER_IMAGE?.trim() || DEFAULT_KERNEL_IMAGE,
     ...overrides,
   };
 }

@@ -1,4 +1,13 @@
-import { Bug, ChevronDown, ChevronUp, Maximize2, Minimize2, Play, RotateCw } from "lucide-react";
+import {
+  Bug,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2,
+  Play,
+  RotateCw,
+  TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "../../components/ui/button";
@@ -6,6 +15,7 @@ import { RUN_DOCK_MIN_HEIGHT, useRun } from "../context";
 import type { RunRecord } from "../context";
 import { RunOutput } from "./RunOutput";
 import { RunStatusChip } from "./RunStatusChip";
+import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
 import { useElapsed } from "./use-elapsed";
 
 /** Vertical space the views above keep while the dock is dragged. */
@@ -14,6 +24,8 @@ const MIN_VIEW_HEIGHT = 120;
 interface RunDockProps {
   /** The Application whose runs this dock shows. */
   appPath: string;
+  /** The telo version that Application's module is edited against right now. */
+  editedTelo?: string;
   /** Switch the module pane to its Variables tab — where a blocker's fix lives. */
   onOpenConfig: () => void;
 }
@@ -22,7 +34,7 @@ interface RunDockProps {
  *  It sits UNDER the module's view tabs rather than over them, which is what
  *  keeps a run legible as this application running instead of a mode the window
  *  entered. Renders nothing until the app has something to show. */
-export function RunDock({ appPath, onOpenConfig }: RunDockProps) {
+export function RunDock({ appPath, editedTelo, onOpenConfig }: RunDockProps) {
   const {
     selectedRunForApp,
     liveRunForApp,
@@ -160,6 +172,8 @@ export function RunDock({ appPath, onOpenConfig }: RunDockProps) {
           </span>
         )}
         {run && <RunGenerations runs={run.runs} />}
+        {run && <RunTeloVersions run={run} />}
+        {run && <StaleRunVersion run={run} editedTelo={editedTelo} />}
         <div className="flex-1" />
         {run && <WatchControls run={run} />}
         <Button
@@ -234,6 +248,83 @@ function RunGenerations({ runs }: { runs: RunRecord["runs"] }) {
           </span>
         </span>
       ))}
+    </span>
+  );
+}
+
+/**
+ * The telo version each application runs on, as its runtime reports it, set
+ * against the version this run asked for. A runtime on another version is a
+ * warning and nothing more: the run goes on, and the user is told that what
+ * they see was not produced by the version they selected.
+ */
+function RunTeloVersions({ run }: { run: RunRecord }) {
+  // An app is spoken for once it has started: before that, a runtime that has
+  // said nothing has simply not said it yet.
+  const apps = Object.keys(run.runs);
+  if (apps.length === 0) {
+    if (run.requestedTelo === undefined) return null;
+    return (
+      <span
+        className="whitespace-nowrap text-[11px] text-zinc-500 dark:text-zinc-400"
+        title={`Asked to run on telo ${run.requestedTelo}.`}
+      >
+        telo {run.requestedTelo}
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-2">
+      {apps.map((app) => {
+        const alignment = teloAlignment(run.requestedTelo, run.reportedTelo[app]);
+        if (!alignment) return null;
+        const mismatch = alignment.kind === "mismatch";
+        return (
+          <span
+            key={app}
+            role={mismatch ? "alert" : undefined}
+            className={
+              "inline-flex items-center gap-1 whitespace-nowrap text-[11px] " +
+              (mismatch
+                ? "font-medium text-amber-700 dark:text-amber-400"
+                : "text-zinc-500 dark:text-zinc-400")
+            }
+            title={describeTeloAlignment(alignment)}
+          >
+            {mismatch && <TriangleAlert size={12} aria-hidden />}
+            {apps.length > 1 && <span>{app}</span>}
+            {alignment.kind === "mismatch"
+              ? `telo ${alignment.reported}, not ${alignment.requested}`
+              : alignment.kind === "unconfirmed"
+                ? `telo ${alignment.requested} (not confirmed)`
+                : `telo ${alignment.version}`}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+/**
+ * A live run whose module has since moved to another telo version: the editor
+ * now checks against one version while the session still runs the one it was
+ * started on, and each agrees with itself. Said here, because nothing else
+ * would — a run's telo is fixed when its process starts.
+ */
+function StaleRunVersion({ run, editedTelo }: { run: RunRecord; editedTelo?: string }) {
+  const stale = staleRunVersion(run.status.kind, run.requestedTelo, editedTelo);
+  if (!stale) return null;
+  return (
+    <span
+      role="alert"
+      className="inline-flex items-center gap-1 whitespace-nowrap text-[11px] font-medium text-amber-700 dark:text-amber-400"
+      title={
+        `This run was started on telo ${stale.running}, and the module is now edited against ` +
+        `telo ${stale.edited}. Run again to move it to ${stale.edited}.`
+      }
+    >
+      <TriangleAlert size={12} aria-hidden />
+      edited against telo {stale.edited} — run again
     </span>
   );
 }

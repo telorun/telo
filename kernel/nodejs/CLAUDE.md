@@ -125,6 +125,12 @@ Every report goes through the caller's logger, never `process.stderr`: a kernel 
 
 One seam (`controller-loaders/esbuild-runtime.ts`) loads esbuild for both bundle builders, and a host that carries the executable rather than installing it registers a provider (`setEsbuildExecutableProvider`) consulted lazily on first use. **Only the asynchronous API is ever used**: the synchronous entry points start a worker from the running program's own path, which in a single-file executable re-enters the program and never returns.
 
+## What the runtime says it is
+
+**`Kernel.Starting` carries `{ telo }`** — this kernel's own identity, `X` for a release and `X+unreleased` for a build made while `X` is pending — so a runner can pass on which version it actually started and an editor can compare it with the one it asked for. The value is the kernel's own generated constant (`src/telo-runtime-version.ts`, written by `scripts/generate-telo-version.mjs` from the version line, exported as `TELO_RUNTIME_VERSION`), not one borrowed from another package that happens to share the line. Reported, never enforced: nothing in the kernel refuses to start on account of it.
+
+**Polyglot debt:** `kernel/rust` emits no `Kernel.Starting` at all — it has no debug stream — so a run on it reports no version and an editor shows the requested one as not confirmed. It owes the event, and with it this field, written from the same version line.
+
 ## Where to look
 
 - Module/import scoping → `evaluation-context.ts`, `module-context-registry.ts`, `import-controller.ts`

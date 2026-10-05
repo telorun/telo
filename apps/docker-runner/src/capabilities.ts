@@ -1,8 +1,10 @@
 import type { RunnerCapabilities } from "@telorun/runner-core";
-import { sessionConfigSchema } from "@telorun/runner-core/container";
+import { sessionConfigSchema, SUPERSEDED_BY_TELO } from "@telorun/runner-core/container";
+
+import { DEFAULT_KERNEL_IMAGE } from "./config.js";
 
 /** Default image the docker-runner spawns when the client doesn't pick one. */
-export const DEFAULT_SESSION_IMAGE = "telorun/node:0-slim";
+export const DEFAULT_SESSION_IMAGE = DEFAULT_KERNEL_IMAGE;
 
 export interface DockerRunnerCapabilitiesOptions {
   /** Whether the operator enabled watch sessions. */
@@ -11,9 +13,7 @@ export interface DockerRunnerCapabilitiesOptions {
   agents?: string[];
 }
 
-/** What docker-runner advertises on `/v1/capabilities`. Image and pullPolicy
- *  are both user-editable — the docker-runner trusts the caller to pick the
- *  image. */
+/** What docker-runner advertises on `/v1/capabilities`. */
 export function dockerRunnerCapabilities(
   opts: DockerRunnerCapabilitiesOptions,
 ): RunnerCapabilities {
@@ -21,7 +21,11 @@ export function dockerRunnerCapabilities(
     displayName: "Docker runner",
     description: "Runs the Application via a docker-runner HTTP service.",
     config: {
-      schema: sessionConfigSchema({ imageDefault: DEFAULT_SESSION_IMAGE }),
+      // `image` and `pullPolicy` are what a client naming no telo version still
+      // sends; the version an application names chooses its image, pulled under
+      // the operator's policy.
+      schema: sessionConfigSchema({ imageDefault: DEFAULT_SESSION_IMAGE, teloVersions: true }),
+      supersededByTelo: SUPERSEDED_BY_TELO,
     },
     features: {
       // Both attach modes: docker's non-TTY attach already returns a
@@ -30,6 +34,7 @@ export function dockerRunnerCapabilities(
       io: ["tty", "streams"],
       ports: true,
       watch: opts.watch,
+      teloVersions: true,
       ...(opts.agents && opts.agents.length > 0 ? { agents: opts.agents } : {}),
     },
   };

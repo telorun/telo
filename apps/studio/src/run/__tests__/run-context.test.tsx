@@ -138,3 +138,38 @@ describe("run state is keyed by Application", () => {
     expect(result.current.liveRunForApp(APP_B)?.id).toBe("run-b");
   });
 });
+
+describe("an Application that no longer exists", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("has its running session stopped and its runs dropped, leaving the other app's alone", async () => {
+    const { result } = renderHook(() => useRun(), { wrapper });
+    const a = fakeAdapter("run-a");
+    const b = fakeAdapter("run-b");
+    await start(result.current, APP_A, a.adapter);
+    await start(result.current, APP_B, b.adapter);
+    act(() => a.emit({ type: "status", status: { kind: "running" } }));
+    act(() => b.emit({ type: "status", status: { kind: "running" } }));
+    const stopped: string[] = [];
+    const sessionA = result.current.runsForApp(APP_A)[0]!;
+    expect(sessionA.status.kind).toBe("running");
+
+    // The stop arrives through the session's own status stream.
+    const unsubscribe = (await a.adapter.start(request, {})).subscribe((event) => {
+      if (event.type === "status") stopped.push(event.status.kind);
+    });
+
+    await act(async () => {
+      result.current.forgetApp(APP_A);
+    });
+    unsubscribe();
+
+    // A session left running for a deleted app is a workload nothing in the
+    // editor can reach, and every later save would try to sync into it.
+    expect(stopped).toEqual(["stopped"]);
+    expect(result.current.runsForApp(APP_A)).toEqual([]);
+    expect(result.current.liveRunForApp(APP_A)).toBeNull();
+    expect(result.current.dockForApp(APP_A).open).toBe(false);
+    expect(result.current.liveRunForApp(APP_B)?.id).toBe("run-b");
+  });
+});

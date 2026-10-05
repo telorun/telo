@@ -109,6 +109,11 @@ export class LanguageSession {
     return this.router.status();
   }
 
+  /** What the document at `path` is edited against. */
+  statusOf(path: string): TeloStatus {
+    return this.router.statusOf(pathToFileUri(path));
+  }
+
   onStatus(listener: (status: TeloStatus) => void): { dispose(): void } {
     return this.router.onStatus(listener);
   }

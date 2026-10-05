@@ -126,7 +126,11 @@ export async function startWatchSession(
       agent: spec.agent,
       limits,
       image: sessionImage.image ?? config.defaultImage,
-      pullPolicy: sessionImage.pullPolicy,
+      // A version's image is pulled under the operator's policy; a session that
+      // names its own image keeps the policy it sent with it.
+      pullPolicy: apps.some((a) => a.telo !== undefined)
+        ? config.teloImages.pullPolicy
+        : sessionImage.pullPolicy,
       workspaceAppConfigMap,
     });
 

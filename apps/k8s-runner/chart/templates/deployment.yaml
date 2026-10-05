@@ -96,6 +96,22 @@ spec:
             - name: RUNNER_IMAGE
               value: {{ .Values.session.image | quote }}
             {{- end }}
+            {{- if .Values.session.teloImages.repository }}
+            - name: RUNNER_TELO_IMAGE_REPOSITORY
+              value: {{ .Values.session.teloImages.repository | quote }}
+            {{- end }}
+            {{- if .Values.session.teloImages.variant }}
+            - name: RUNNER_TELO_IMAGE_VARIANT
+              value: {{ .Values.session.teloImages.variant | quote }}
+            {{- end }}
+            {{- if .Values.session.teloImages.unreleased }}
+            - name: RUNNER_TELO_UNRELEASED_IMAGE
+              value: {{ .Values.session.teloImages.unreleased | quote }}
+            {{- end }}
+            {{- if .Values.session.teloImages.pullPolicy }}
+            - name: RUNNER_PULL_POLICY
+              value: {{ .Values.session.teloImages.pullPolicy | quote }}
+            {{- end }}
             - name: RUNNER_INIT_IMAGE
               value: {{ .Values.session.initImage | quote }}
             - name: RUNNER_BASE_IMAGE_CATALOG_ENABLED

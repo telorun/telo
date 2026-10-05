@@ -287,7 +287,13 @@ export class LanguageRouter {
   }
 
   status(): TeloStatus {
-    const uri = this.active;
+    return this.statusOf(this.active);
+  }
+
+  /** What `uri` is edited against — the same answer `status()` gives for the
+   *  active document, for any document a host needs it for (the manifest a run
+   *  is about to start). */
+  statusOf(uri: string | undefined): TeloStatus {
     const key = uri === undefined ? undefined : canonicalUri(uri);
     const owner = key === undefined ? undefined : this.documentOwner.get(key);
     const state = owner === undefined ? undefined : this.owners.get(owner);

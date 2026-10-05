@@ -306,6 +306,7 @@ export class SessionRegistry {
     sessionId: string,
     appName: string,
     trigger: "initial" | "watch" | "manual" | "resume",
+    telo?: string,
   ): number | undefined {
     const channel = this.sessions.get(sessionId)?.apps.get(appName);
     if (!channel) return undefined;
@@ -317,6 +318,7 @@ export class SessionRegistry {
       generation: channel.generation,
       phase: "started",
       trigger,
+      ...(telo !== undefined ? { telo } : {}),
     });
     return channel.generation;
   }
