@@ -88,9 +88,10 @@ export function EditorTabs({ items, onActivate, onClose }: EditorTabsProps) {
               onClose(item.path);
             }}
             title="Close"
-            className="invisible flex size-4 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 group-hover:visible dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+            aria-label={`Close ${item.label}`}
+            className="invisible flex size-4 shrink-0 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 group-hover:visible touch:visible touch:size-7 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
           >
-            <X className="size-3" />
+            <X className="size-3 touch:size-4" />
           </button>
         </div>
       ))}

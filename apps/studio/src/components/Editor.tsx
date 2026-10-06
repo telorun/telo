@@ -75,7 +75,10 @@ import {
 import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { useAgent } from "../agent";
 import { useCloud } from "../cloud/context";
+import { cloudWorkspaceIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
+import { findWorkingCopy } from "../cloud/working-copy-index";
 import { CloudWorkspaceBar } from "./cloud/CloudWorkspaceBar";
+import type { OpenWorkspaceKind } from "./WorkspaceSwitcher";
 import type { WorkspaceBridge } from "../agent";
 import { sessionWorkspace } from "../agent/agent-workspace";
 import { AGENT_APP_NAME } from "../agent/launch";
@@ -218,6 +221,8 @@ export function Editor() {
   editingPausedRef.current = editingPaused;
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The sidebar as a drawer; read at phone width only.
+  const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   // The pending terms gate: the runner's terms, the runner they belong to, and
   // what to resume once accepted — the run that was blocked, or the agent turn
   // whose launch was refused. Null when no gate is shown.
@@ -256,6 +261,9 @@ export function Editor() {
     afterFileMutation,
     openRoot,
     closeRoot,
+    openBrowserWorkspace,
+    closeWorkspace,
+    browserWorkspaceOpen,
     reloadFromDisk,
   } = useWorkspaceLifecycle({ state, setState, settings, persistedHint, setError });
 
@@ -1003,6 +1011,36 @@ export function Editor() {
   useEffect(() => {
     setCloudActiveRoot(workspaceRootDir);
   }, [setCloudActiveRoot, workspaceRootDir]);
+
+  // A workspace opened with nothing in it shows the drawer: at phone width the
+  // sidebar is the only way forward there.
+  const nothingOpen = state.activeTabId === null;
+  useEffect(() => {
+    setNavDrawerOpen(workspaceRootDir !== null && nothingOpen);
+    // Decided when a workspace opens, not each time its last tab closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceRootDir]);
+
+  const openWorkspaceKind = useMemo((): OpenWorkspaceKind | null => {
+    if (!workspaceRootDir) return null;
+    const cloudWorkspaceId = cloudWorkspaceIdOf(workspaceRootDir);
+    if (cloudWorkspaceId) {
+      return {
+        kind: "cloud",
+        workspaceId: cloudWorkspaceId,
+        name: findWorkingCopy(cloudWorkspaceId)?.workspaceName ?? "Telo Cloud",
+      };
+    }
+    return browserWorkspaceOpen
+      ? { kind: "browser" }
+      : { kind: "folder", rootDir: workspaceRootDir };
+  }, [workspaceRootDir, browserWorkspaceOpen]);
+
+  function switchWorkspace(opening: Promise<void>): Promise<void> {
+    return opening.catch((err: unknown) =>
+      setError(err instanceof Error ? err.message : String(err)),
+    );
+  }
 
   // The active module as Cloud names it: the directory of its `telo.yaml`
   // relative to the repository root.
@@ -2078,7 +2116,16 @@ export function Editor() {
       <TopBar
         workspace={state.workspace}
         activeManifest={activeManifest}
-        onOpen={openMode === "chooser" ? handleOpen : undefined}
+        workspaceSwitcher={{
+          current: openWorkspaceKind,
+          alwaysOfferBrowserWorkspace: openMode === "single",
+          onOpenBrowserWorkspace: () => void switchWorkspace(openBrowserWorkspace()),
+          onOpenWorkingCopy: (workspaceId) =>
+            void switchWorkspace(openRoot(cloudWorkspaceRoot(workspaceId))),
+          onOpenFolder: openMode === "chooser" ? handleOpen : undefined,
+          onClose: closeWorkspace,
+        }}
+        onOpenNav={state.workspace ? () => setNavDrawerOpen(true) : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
         onUndo={canUndo ? () => void handleUndo() : undefined}
         onRedo={canRedo ? () => void handleRedo() : undefined}
@@ -2114,16 +2161,24 @@ export function Editor() {
           fileTree={fileTree}
           expandedDirs={expandedDirsSet}
           onToggleDir={handleToggleDir}
-          onOpenFile={handleOpenFile}
+          onOpenFile={(path) => {
+            handleOpenFile(path);
+            setNavDrawerOpen(false);
+          }}
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
           onRenamePath={handleRenamePath}
           onDeletePath={handleDeletePath}
           onMovePath={handleMovePath}
-          onOpenModule={handleOpenModule}
+          onOpenModule={(filePath) => {
+            handleOpenModule(filePath);
+            setNavDrawerOpen(false);
+          }}
           onNewModule={setCreateModuleKind}
           onDeleteModule={handleDeleteModule}
           onRunModule={handleRunModule}
+          drawerOpen={navDrawerOpen}
+          onDrawerOpenChange={setNavDrawerOpen}
         />
         {!state.workspace ? (
           <AppLifecyclePanel

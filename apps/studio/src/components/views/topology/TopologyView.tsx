@@ -182,7 +182,7 @@ export function TopologyView({
       : null;
 
   return (
-    <div className="flex h-full min-w-0 flex-1 overflow-hidden">
+    <div className="relative flex h-full min-w-0 flex-1 overflow-hidden">
       {/* Module chrome, not canvas content: what a module DECLARES is true
           whichever resource is selected. The module root is not a box, so its
           boot sequence and `logging:` are reached here too. */}
@@ -267,6 +267,7 @@ export function TopologyView({
         onSelectResource={onSelectResource}
         onSelect={onSelect}
         onCreateAndLink={onCreateAndLink}
+        onClose={onClearSelection}
       />
     </div>
   );

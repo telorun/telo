@@ -1,13 +1,30 @@
-import { MessageSquare, Monitor, Moon, Redo2, Sun, Undo2 } from "lucide-react";
+import {
+  Menu,
+  MessageSquare,
+  Monitor,
+  Moon,
+  MoreVertical,
+  Redo2,
+  Settings,
+  Sun,
+  Undo2,
+} from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
 import { DiagnosticBadge } from "./diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "./diagnostics/DiagnosticsContext";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import type { TeloLanguage } from "../hooks/useLanguageSession";
 import { TeloVersionControl } from "./TeloVersionControl";
 import { CloudAccountControl } from "./cloud/CloudAccountControl";
+import { WorkspaceSwitcher, type WorkspaceSwitcherProps } from "./WorkspaceSwitcher";
 
 /** Workspace-global chrome only. Running belongs to one Application, so its
  *  trigger, status and history live in that module's own view-tab strip — a
@@ -15,10 +32,9 @@ import { CloudAccountControl } from "./cloud/CloudAccountControl";
 interface TopBarProps {
   workspace: Workspace | null;
   activeManifest: ParsedManifest | null;
-  /** Opens a directory picker. Absent where the environment offers no choice of
-   *  workspace — there is exactly one, so an "open" action would re-open what is
-   *  already open. */
-  onOpen?: () => void;
+  workspaceSwitcher: WorkspaceSwitcherProps;
+  /** Opens the sidebar drawer; the button exists at phone width only. */
+  onOpenNav?: () => void;
   onOpenSettings: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
@@ -35,7 +51,8 @@ interface TopBarProps {
 export function TopBar({
   workspace,
   activeManifest,
-  onOpen,
+  workspaceSwitcher,
+  onOpenNav,
   onOpenSettings,
   onUndo,
   onRedo,
@@ -50,50 +67,66 @@ export function TopBar({
   const topBarSummary = activeManifest
     ? summarizeFiles(diagState, getModuleFiles(activeManifest))
     : null;
+  // What is open below the workspace: the module and the telo it is edited
+  // against. Beside the workspace menu, or on a row of its own at phone width.
+  const moduleContext = (
+    <>
+      {workspace && (
+        <>
+          <span className="truncate text-zinc-700 dark:text-zinc-300">{label}</span>
+          <DiagnosticBadge summary={topBarSummary} size="sm" stopPropagation={false} />
+        </>
+      )}
+      {teloLanguage && <TeloVersionControl language={teloLanguage} />}
+    </>
+  );
   return (
-    <div className="flex h-10 items-center border-b border-zinc-200 bg-white px-4 text-sm dark:border-zinc-800 dark:bg-zinc-950">
-      <span className="font-semibold text-zinc-900 dark:text-zinc-100">Telo Studio</span>
+    <>
+    <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 bg-white px-4 text-sm max-md:px-2 dark:border-zinc-800 dark:bg-zinc-950">
+      {onOpenNav && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="mr-1 md:hidden"
+          onClick={onOpenNav}
+          title="Files and modules"
+          aria-label="Files and modules"
+        >
+          <Menu />
+        </Button>
+      )}
+      <span className="shrink-0 font-semibold text-zinc-900 dark:text-zinc-100">Telo Studio</span>
 
-      <div className="mx-4 flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-500 dark:text-zinc-400">
-        {workspace && (
-          <>
-            <span className="truncate text-zinc-700 dark:text-zinc-300">{label}</span>
-            <DiagnosticBadge summary={topBarSummary} size="sm" stopPropagation={false} />
-          </>
-        )}
+      <div className="mx-3 flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-zinc-500 max-md:mx-1 dark:text-zinc-400">
+        <WorkspaceSwitcher {...workspaceSwitcher} />
+        <div className="flex min-w-0 items-center gap-2 max-md:hidden">{moduleContext}</div>
       </div>
 
-      <div className="flex items-center gap-2">
-        {teloLanguage && <TeloVersionControl language={teloLanguage} />}
-        {onOpen && (
-          <Button variant="ghost" size="sm" onClick={onOpen}>
-            Open folder…
+      <div className="flex shrink-0 items-center gap-1">
+        <div className="flex items-center gap-1 max-md:hidden">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo"
+            aria-label="Undo"
+          >
+            <Undo2 />
           </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onUndo}
-          disabled={!canUndo}
-          title="Undo"
-          aria-label="Undo"
-        >
-          <Undo2 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onRedo}
-          disabled={!canRedo}
-          title="Redo"
-          aria-label="Redo"
-        >
-          <Redo2 />
-        </Button>
-        <Button variant="ghost" size="sm" disabled>
-          Save
-        </Button>
-        <ThemeToggleButton />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo"
+            aria-label="Redo"
+          >
+            <Redo2 />
+          </Button>
+          <ThemeToggleButton />
+        </div>
+        <EditMenu onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} />
         {onToggleChat && (
           <Button
             variant={chatOpen ? "secondary" : "ghost"}
@@ -104,12 +137,70 @@ export function TopBar({
             <MessageSquare className="size-4" />
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-          Settings
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onOpenSettings}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <Settings />
         </Button>
         <CloudAccountControl />
       </div>
     </div>
+    {(workspace || teloLanguage) && (
+      <div className="flex h-8 shrink-0 items-center gap-2 overflow-hidden border-b border-zinc-200 bg-white px-3 text-sm text-zinc-500 md:hidden dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+        {moduleContext}
+      </div>
+    )}
+    </>
+  );
+}
+
+/** Undo, Redo and the theme, folded into one menu at phone width. */
+function EditMenu({
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+}: Pick<TopBarProps, "onUndo" | "onRedo" | "canUndo" | "canRedo">) {
+  const { preference, setPreference } = useColorModeControls();
+  const ThemeIcon = PREFERENCE_ICON[preference];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden"
+          title="Undo, redo and theme"
+          aria-label="Undo, redo and theme"
+        >
+          <MoreVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem disabled={!canUndo} onSelect={onUndo}>
+          <Undo2 />
+          Undo
+        </DropdownMenuItem>
+        <DropdownMenuItem disabled={!canRedo} onSelect={onRedo}>
+          <Redo2 />
+          Redo
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          // Stays open: the theme cycles, and one tap rarely lands on the wanted one.
+          onSelect={(event) => {
+            event.preventDefault();
+            setPreference(NEXT_PREFERENCE[preference]);
+          }}
+        >
+          <ThemeIcon />
+          Theme: {preference}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

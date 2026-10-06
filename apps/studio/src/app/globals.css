@@ -9,6 +9,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Where hover cannot be counted on: a touch screen, or a phone-width window.
+   Anything revealed by hover is shown outright under this variant — a control
+   that only appears on hover does not exist for a finger. */
+@custom-variant touch {
+  @media (hover: none), (pointer: coarse), (max-width: 767.98px) {
+    @slot;
+  }
+}
+
 :root {
   --font-geist-sans: "Geist", sans-serif;
   --font-geist-mono: "Geist Mono", monospace;

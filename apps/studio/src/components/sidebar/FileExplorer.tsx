@@ -6,6 +6,7 @@ import {
   Folder,
   FolderOpen,
   FolderPlus,
+  MoreVertical,
 } from "lucide-react";
 import { useState } from "react";
 import type { FileNode } from "../../loader";
@@ -18,6 +19,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "../ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 interface FileExplorerProps {
   rootDir: string;
@@ -38,8 +46,9 @@ type Editing =
   | { mode: "rename"; path: string }
   | null;
 
+// 16px at phone width: iOS zooms the page when a smaller input takes focus.
 const inputCls =
-  "w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
+  "w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-xs max-md:py-1.5 max-md:text-base text-zinc-900 outline-none focus:border-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100";
 
 export function FileExplorer({
   rootDir,
@@ -108,18 +117,20 @@ export function FileExplorer({
           <Button
             variant="ghost"
             size="icon-xs"
+            className="max-md:size-9"
             title="New file"
             onClick={() => startCreate(createTargetDir(), "create-file")}
           >
-            <FilePlus className="size-3" />
+            <FilePlus className="size-3 max-md:size-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon-xs"
+            className="max-md:size-9"
             title="New folder"
             onClick={() => startCreate(createTargetDir(), "create-folder")}
           >
-            <FolderPlus className="size-3" />
+            <FolderPlus className="size-3 max-md:size-4" />
           </Button>
         </div>
       </div>
@@ -179,7 +190,7 @@ function TreeRow({ node, depth, ctx }: { node: FileNode; depth: number; ctx: Row
   const highlighted =
     node.path === ctx.selectedPath ||
     (!node.isDirectory && node.path === ctx.activeFilePath);
-  const rowCls = `group flex items-center gap-1 py-0.5 pr-2 text-xs cursor-pointer select-none ${
+  const rowCls = `group flex items-center gap-1 py-0.5 pr-2 text-xs cursor-pointer select-none max-md:py-0 max-md:pr-1 max-md:text-sm ${
     highlighted
       ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
       : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900"
@@ -228,7 +239,45 @@ function TreeRow({ node, depth, ctx }: { node: FileNode; depth: number; ctx: Row
             ) : (
               <FileIcon className="ml-3 size-3.5 shrink-0 text-zinc-400" />
             )}
-            <span className="min-w-0 flex-1 truncate">{node.name}</span>
+            <span className="min-w-0 flex-1 truncate max-md:py-2.5">{node.name}</span>
+            {/* A touch screen has no right-click: the same actions, on a button. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-9 shrink-0 text-zinc-400 md:hidden"
+                  aria-label={`Actions for ${node.name}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-44"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {node.isDirectory && (
+                  <>
+                    <DropdownMenuItem onSelect={() => ctx.startCreate(node.path, "create-file")}>
+                      New file
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => ctx.startCreate(node.path, "create-folder")}>
+                      New folder
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
+                <DropdownMenuItem onSelect={() => ctx.startRename(node.path)}>Rename</DropdownMenuItem>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => void ctx.onDelete(node.path)}
+                >
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-44">
@@ -283,7 +332,7 @@ function EditingInput({
 }) {
   const [value, setValue] = useState(initial);
   return (
-    <div className="py-0.5 pr-2" style={{ paddingLeft: `${depth * 12 + 24}px` }}>
+    <div className="py-0.5 pr-2 max-md:py-1.5" style={{ paddingLeft: `${depth * 12 + 24}px` }}>
       <input
         autoFocus
         value={value}

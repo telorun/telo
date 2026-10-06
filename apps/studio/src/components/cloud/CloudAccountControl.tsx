@@ -1,5 +1,4 @@
 import { Cloud, CloudOff, LogIn } from "lucide-react";
-import { useState } from "react";
 import { useCloud } from "../../cloud/context";
 import { displayName } from "../../cloud/session";
 import {
@@ -21,13 +20,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { OpenCloudWorkspaceDialog } from "./OpenCloudWorkspaceDialog";
 
 /** The top bar's Telo Cloud entry: nothing where Cloud is not available, a
  *  sign-in button for an anonymous user, the account menu for a signed-in one. */
 export function CloudAccountControl() {
   const cloud = useCloud();
-  const [openDialog, setOpenDialog] = useState(false);
   const { session } = cloud;
 
   if (session.status === "loading" || session.status === "unavailable") return null;
@@ -54,9 +51,13 @@ export function CloudAccountControl() {
       {session.status === "signedIn" && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" title="Telo Cloud account">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              title={`Telo Cloud account: ${displayName(session.identity)}`}
+              aria-label="Telo Cloud account"
+            >
               <Cloud />
-              <span className="max-w-32 truncate">{displayName(session.identity)}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
@@ -72,9 +73,6 @@ export function CloudAccountControl() {
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setOpenDialog(true)}>
-              Open from Telo Cloud…
-            </DropdownMenuItem>
             <DropdownMenuItem onSelect={cloud.switchOrganization}>
               Switch organization
             </DropdownMenuItem>
@@ -83,8 +81,6 @@ export function CloudAccountControl() {
           </DropdownMenuContent>
         </DropdownMenu>
       )}
-
-      <OpenCloudWorkspaceDialog open={openDialog} onOpenChange={setOpenDialog} />
 
       <AlertDialog
         open={cloud.signOutPrompt !== null}

@@ -18,7 +18,8 @@ import {
   VIRTUAL_WORKSPACE_ROOT,
   writeRemoteImportPlan,
 } from "../loader";
-import type { FileNode, NewModuleSelection, RemoteImportPlan } from "../loader";
+import type { FileNode, NewModuleSelection, OpenedWorkspace, RemoteImportPlan } from "../loader";
+import { LocalStorageAdapter } from "../loader/adapters/local-storage";
 import { pathBasename } from "../loader/paths";
 import type {
   AppSettings,
@@ -29,6 +30,7 @@ import type {
   Workspace,
   WorkspaceAdapter,
 } from "../model";
+import { forgetWorkspaceRoot } from "../storage";
 import { loadDeploymentsForWorkspace } from "../storage-deployments";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
@@ -137,6 +139,13 @@ export interface WorkspaceLifecycle {
   openRoot: (rootDir: string) => Promise<void>;
   /** Closes the workspace when it is the one at `rootDir`. */
   closeRoot: (rootDir: string) => void;
+  /** Opens the workspace kept in this browser's own storage. */
+  openBrowserWorkspace: () => Promise<void>;
+  /** Closes whatever workspace is open; its files stay where they are, and
+   *  nothing is reopened on the next launch. */
+  closeWorkspace: () => void;
+  /** The open workspace is the browser-stored one. */
+  browserWorkspaceOpen: boolean;
   /** Re-reads the whole workspace after its files changed beneath the editor;
    *  resolves with the reloaded workspace, or null with none open. */
   reloadFromDisk: () => Promise<Workspace | null>;
@@ -421,9 +430,7 @@ export function useWorkspaceLifecycle({
     }
   }
 
-  async function openRoot(rootDir: string) {
-    const opened = reopenWorkspaceAt(rootDir);
-    if (!opened) throw new Error(`The workspace at ${rootDir} is not on this device.`);
+  async function openAttached(opened: OpenedWorkspace) {
     setError(null);
     setLoading(true);
     try {
@@ -449,11 +456,33 @@ export function useWorkspaceLifecycle({
     }
   }
 
-  function closeRoot(rootDir: string) {
-    if (state.workspace?.rootDir !== rootDir) return;
+  async function openRoot(rootDir: string) {
+    const opened = reopenWorkspaceAt(rootDir);
+    if (!opened) throw new Error(`The workspace at ${rootDir} is not on this device.`);
+    await openAttached(opened);
+  }
+
+  // Named by its backend, not its root: where a directory picker exists, a
+  // picked folder called `workspace` has the same root.
+  async function openBrowserWorkspace() {
+    const adapter = createVirtualWorkspaceAdapter();
+    await openAttached({
+      manifestAdapter: adapter,
+      workspaceAdapter: adapter,
+      rootDir: VIRTUAL_WORKSPACE_ROOT,
+    });
+  }
+
+  function closeWorkspace() {
     manifestAdapterRef.current = null;
     workspaceAdapterRef.current = null;
     setState({ ...INITIAL_STATE });
+    forgetWorkspaceRoot();
+  }
+
+  function closeRoot(rootDir: string) {
+    if (state.workspace?.rootDir !== rootDir) return;
+    closeWorkspace();
   }
 
   async function reloadFromDisk(): Promise<Workspace | null> {
@@ -637,6 +666,10 @@ export function useWorkspaceLifecycle({
     afterFileMutation,
     openRoot,
     closeRoot,
+    openBrowserWorkspace,
+    closeWorkspace,
+    browserWorkspaceOpen:
+      !!state.workspace && workspaceAdapterRef.current instanceof LocalStorageAdapter,
     reloadFromDisk,
   };
 }

@@ -7,6 +7,7 @@ import {
 import { describeRemedy } from "@telorun/ide-support";
 import { ArrowUp, ChevronLeft, ExternalLink, GitBranch, Plus, Settings2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useIsMobile } from "../../../hooks/useIsMobile";
 import {
   bindingEntrySchema,
   importEntrySchema,
@@ -124,7 +125,9 @@ export function ModuleBar({
   onCreateResourceOfKind: (kind: string) => void;
   onSelect: (selection: Selection) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  // Phone width: the canvas gets the screen, and the rail opens OVER it.
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(!isMobile);
   const [addOpen, setAddOpen] = useState(false);
   // The same lookups the imports view uses, so an import added here is gated on
   // compatibility exactly as one added there — an import pinned at a version
@@ -369,19 +372,31 @@ export function ModuleBar({
       />
     ));
 
-  if (!open) {
-    return (
-      <button
-        className="flex h-full w-6 shrink-0 items-center justify-center border-r border-zinc-200 text-zinc-400 hover:text-zinc-600 dark:border-zinc-800"
-        onClick={() => setOpen(true)}
-        title="Show module declarations"
-      >
-        <Settings2 className="size-4" />
-      </button>
-    );
-  }
+  const handle = (
+    <button
+      className="flex h-full w-6 shrink-0 items-center justify-center border-r border-zinc-200 text-zinc-400 hover:text-zinc-600 max-md:w-9 dark:border-zinc-800"
+      onClick={() => setOpen(true)}
+      title="Show module declarations"
+      aria-label="Show module declarations"
+    >
+      <Settings2 className="size-4" />
+    </button>
+  );
+  if (!open) return handle;
 
   return (
+    <>
+    {/* The handle keeps its place under the overlay, so opening the rail does
+        not move the canvas; the backdrop closes it and keeps the other drawer
+        from opening beside it. */}
+    {isMobile && handle}
+    {isMobile && (
+      <div
+        className="fixed inset-0 z-10 bg-black/20"
+        onClick={() => setOpen(false)}
+        aria-hidden
+      />
+    )}
     <div
       // `pr-1.5` is the scrollbar's own lane. An OVERLAY scrollbar (Chromium and
       // GTK on Linux, macOS always) paints over the content box rather than
@@ -389,7 +404,7 @@ export function ModuleBar({
       // edge — a section's add button, a chip's remove. `scrollbar-gutter` is no
       // help: the spec fixes it at zero for overlay scrollbars, so it reserves
       // space only on the platforms that never had the problem.
-      className="flex h-full w-56 shrink-0 flex-col overflow-y-auto border-r border-zinc-200 bg-white pr-1.5 dark:border-zinc-800 dark:bg-zinc-950"
+      className="flex h-full w-56 shrink-0 flex-col overflow-y-auto border-r border-zinc-200 bg-white pr-1.5 max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-20 max-md:w-72 max-md:max-w-[85%] max-md:shadow-xl dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="flex items-center justify-between px-2 py-1.5">
         <span className="truncate text-xs font-semibold text-zinc-700 dark:text-zinc-200">
@@ -400,7 +415,7 @@ export function ModuleBar({
             {manifest.kind}
           </span>
           <button
-            className="text-zinc-400 hover:text-zinc-600"
+            className="flex items-center justify-center text-zinc-400 hover:text-zinc-600 max-md:size-8"
             onClick={() => setOpen(false)}
             title="Collapse"
           >
@@ -560,6 +575,7 @@ export function ModuleBar({
         onSubmit={onAddImport}
       />
     </div>
+    </>
   );
 }
 

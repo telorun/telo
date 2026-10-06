@@ -64,6 +64,9 @@ function normalizeView(view: string | undefined): string {
 // is rebuilt by `loadWorkspace` on launch, not serialized.
 interface PersistedState {
   rootDir: string | null;
+  /** The user closed the workspace: nothing is reopened on the next launch,
+   *  not even a browser-stored workspace found by its files. */
+  closed?: boolean;
   activeModulePath: string | null;
   activeView?: string;
   openTabs?: EditorTab[];
@@ -96,6 +99,7 @@ export function saveState(state: EditorState): void {
     }
     const persisted: PersistedState = {
       rootDir: state.workspace?.rootDir ?? prev?.rootDir ?? null,
+      ...(!state.workspace && prev?.closed ? { closed: true } : {}),
       activeModulePath: state.activeModulePath,
       activeView: state.activeView,
       openTabs: state.openTabs,
@@ -114,7 +118,7 @@ export function loadPersistedState(): PersistedState | null {
     const raw = localStorage.getItem(KEY);
     const data = raw ? (JSON.parse(raw) as PersistedState) : null;
     return {
-      rootDir: data?.rootDir ?? detectStoredWorkspaceRoot(),
+      rootDir: data?.rootDir ?? (data?.closed ? null : detectStoredWorkspaceRoot()),
       activeModulePath: data?.activeModulePath ?? null,
       activeView: normalizeView(data?.activeView),
       openTabs: Array.isArray(data?.openTabs) ? data.openTabs.filter(isValidTab) : [],
@@ -128,6 +132,15 @@ export function loadPersistedState(): PersistedState | null {
   }
 }
 
+/** Records that the user closed the workspace. `saveState` deliberately keeps
+ *  the last root through a workspace-less state, since that is usually a
+ *  transient gap — so a deliberate close has to say so itself. */
+export function forgetWorkspaceRoot(): void {
+  if (typeof window === "undefined") return;
+  const persisted: PersistedState = { rootDir: null, activeModulePath: null, closed: true };
+  localStorage.setItem(KEY, JSON.stringify(persisted));
+}
+
 /** Best-effort recovery hint: if any `telo-studio:workspace:` keys exist
  *  under `/workspace` (the LocalStorageAdapter's default root in
  *  `openWorkspaceDirectory`), return `/workspace` so studio offers to
@@ -135,13 +148,18 @@ export function loadPersistedState(): PersistedState | null {
  *  hint was lost (init-time error, partial migration, etc.) but the user's
  *  workspace files are still stored in localStorage. */
 function detectStoredWorkspaceRoot(): string | null {
-  if (typeof window === "undefined") return null;
+  return browserWorkspaceHasFiles() ? "/workspace" : null;
+}
+
+/** Whether the browser-stored workspace holds any file. */
+export function browserWorkspaceHasFiles(): boolean {
+  if (typeof window === "undefined") return false;
   const PREFIX = `${LOCAL_PREFIXES.workspace}/workspace/`;
   for (let i = 0; i < window.localStorage.length; i++) {
     const k = window.localStorage.key(i);
-    if (k && k.startsWith(PREFIX)) return "/workspace";
+    if (k && k.startsWith(PREFIX)) return true;
   }
-  return null;
+  return false;
 }
 
 export function clearState(): void {

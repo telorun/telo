@@ -1,5 +1,7 @@
 import type { FileNode } from "../../loader";
 import type { ModuleKind, Workspace } from "../../model";
+import { useIsMobile } from "../../hooks/useIsMobile";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 import { FileExplorer } from "./FileExplorer";
 import { SectionDivider } from "./primitives";
 import { WorkspaceTree } from "./WorkspaceTree";
@@ -21,6 +23,9 @@ interface SidebarProps {
   onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
   onRunModule: (filePath: string) => void;
+  /** Phone width only, where the sidebar is a drawer over the content. */
+  drawerOpen: boolean;
+  onDrawerOpenChange: (open: boolean) => void;
 }
 
 export function Sidebar({
@@ -40,10 +45,13 @@ export function Sidebar({
   onNewModule,
   onDeleteModule,
   onRunModule,
+  drawerOpen,
+  onDrawerOpenChange,
 }: SidebarProps) {
+  const isMobile = useIsMobile();
   if (!workspace) return null;
-  return (
-    <div className="flex h-full w-56 flex-col overflow-y-auto border-r border-zinc-200 bg-white text-sm dark:border-zinc-800 dark:bg-zinc-950">
+  const content = (
+    <div className="flex h-full w-56 flex-col overflow-y-auto border-r border-zinc-200 bg-white text-sm max-md:w-full max-md:border-r-0 dark:border-zinc-800 dark:bg-zinc-950">
       <FileExplorer
         rootDir={workspace.rootDir}
         tree={fileTree}
@@ -67,5 +75,15 @@ export function Sidebar({
         onRunModule={onRunModule}
       />
     </div>
+  );
+  if (!isMobile) return content;
+  return (
+    <Sheet open={drawerOpen} onOpenChange={onDrawerOpenChange}>
+      <SheetContent side="left" className="w-4/5 gap-0 p-0 pt-10">
+        <SheetTitle className="sr-only">Workspace</SheetTitle>
+        <SheetDescription className="sr-only">Files, applications and libraries</SheetDescription>
+        {content}
+      </SheetContent>
+    </Sheet>
   );
 }
