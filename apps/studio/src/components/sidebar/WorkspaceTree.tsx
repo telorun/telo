@@ -167,7 +167,13 @@ function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectio
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
           {label}
         </span>
-        <Button variant="ghost" size="icon-xs" onClick={onAdd} title={addLabel}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="max-md:size-9 max-md:text-base"
+          onClick={onAdd}
+          title={addLabel}
+        >
           +
         </Button>
       </div>
@@ -201,7 +207,8 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
   const { liveRunForApp } = useRun();
   const liveRun = isLibrary ? null : liveRunForApp(node.manifest.filePath);
 
-  const base = "flex items-center gap-1.5 px-4 py-0.5 cursor-pointer select-none group";
+  const base =
+    "flex items-center gap-1.5 px-4 py-0.5 cursor-pointer select-none group max-md:py-0 max-md:pr-1";
   const hoverOrActive = active
     ? "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
     : "text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-900";
@@ -209,7 +216,7 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
   return (
     <div className={`${base} ${hoverOrActive} ${dim ? "opacity-50" : ""}`} onClick={onOpen}>
       <span className="text-zinc-400">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{node.manifest.metadata.name}</span>
+      <span className="min-w-0 flex-1 truncate max-md:py-2.5">{node.manifest.metadata.name}</span>
       {liveRun && (
         <span
           title={liveRun.status.kind === "running" ? "Running" : "Starting"}
@@ -231,7 +238,7 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
         <Button
           variant="ghost"
           size="icon-xs"
-          className="invisible text-zinc-400 group-hover:visible hover:text-emerald-600 dark:hover:text-emerald-400"
+          className="invisible text-zinc-400 group-hover:visible hover:text-emerald-600 touch:visible max-md:size-9 dark:hover:text-emerald-400"
           onClick={(e) => {
             e.stopPropagation();
             onRun();
@@ -244,7 +251,7 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
       <Button
         variant="ghost"
         size="icon-xs"
-        className="invisible text-zinc-400 group-hover:visible hover:text-red-500 dark:hover:text-red-400"
+        className="invisible text-zinc-400 group-hover:visible hover:text-red-500 touch:visible max-md:size-9 dark:hover:text-red-400"
         onClick={(e) => {
           e.stopPropagation();
           onDelete();

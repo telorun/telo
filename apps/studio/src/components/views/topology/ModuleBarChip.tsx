@@ -1,11 +1,15 @@
-import { Pencil, X } from "lucide-react";
+import { MoreVertical, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "../../../hooks/useIsMobile";
 import type { ParsedResource, Selection } from "../../../model";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../../ui/dropdown-menu";
 import type { DeclarationChip } from "./module-declarations";
@@ -36,7 +40,11 @@ export interface ChipAction {
  *  bare glyph: these sit at the edge of a 224px rail, and a 12px icon with no
  *  padding is both hard to see and hard to hit. */
 const ACTION_CLASS =
-  "flex size-6 shrink-0 items-center justify-center rounded transition-colors";
+  "flex size-6 shrink-0 items-center justify-center rounded transition-colors max-md:size-8";
+
+/** More buttons than this are one menu at phone width: the cluster is always
+ *  shown on a touch screen, and four of them cover the name they belong to. */
+const FOLD_ABOVE = 2;
 
 const ACTION_TONE: Record<NonNullable<ChipAction["tone"]>, string> = {
   default:
@@ -115,6 +123,10 @@ export function Chip({
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const error = draft === null ? undefined : onRename?.validate(draft);
+  const isMobile = useIsMobile();
+  const clusterSize =
+    (menus?.length ?? 0) + (actions?.length ?? 0) + (onRename ? 1 : 0) + (onRemove ? 1 : 0);
+  const folded = isMobile && clusterSize > FOLD_ABOVE;
 
   if (draft !== null && onRename) {
     return (
@@ -160,7 +172,7 @@ export function Chip({
       }}
     >
       <button
-        className="min-w-0 flex-1 select-none px-1.5 py-0.5 text-left"
+        className="min-w-0 flex-1 select-none px-1.5 py-0.5 text-left max-md:py-2"
         onClick={onOpen}
         // Double-click renames, the other half of the same convention. The
         // single click that precedes it has already opened the entry, which is
@@ -187,12 +199,59 @@ export function Chip({
       {/* `bg-inherit` takes the row's own background, so the cluster is only
           ever painted over a solid colour — it is revealed by hover and by
           focus, which are exactly the states in which the row has one.
-          `pointer-coarse` has no hover at all, so there it stays visible. */}
+          Under `touch` there is no hover to count on, so there it stays visible. */}
       <div
-        className={`absolute inset-y-0 right-0 flex items-center gap-0.5 rounded-r bg-inherit pl-3 pr-0.5 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 has-[[data-state=open]]:opacity-100 pointer-coarse:opacity-100 ${
+        // In the flow at phone width: there the cluster is always shown, and
+        // floating it would cover the end of the name for good.
+        className={`absolute inset-y-0 right-0 flex items-center gap-0.5 rounded-r bg-inherit pl-3 pr-0.5 transition-opacity max-md:static max-md:shrink-0 max-md:pl-0 group-hover:opacity-100 group-focus-within:opacity-100 has-[[data-state=open]]:opacity-100 touch:opacity-100 ${
           alert ? "opacity-100" : "opacity-0"
         }`}
       >
+        {folded ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className={`${ACTION_CLASS} ${alert ? ACTION_TONE.alert : ACTION_TONE.default}`}
+                title={`Actions for ${chip.name}`}
+                aria-label={`Actions for ${chip.name}`}
+              >
+                <MoreVertical className="size-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-auto min-w-48">
+              {(menus ?? []).map((menu) => (
+                <DropdownMenuSub key={menu.key} onOpenChange={menu.onOpenChange}>
+                  <DropdownMenuSubTrigger className="gap-2 text-xs">
+                    {menu.icon}
+                    {menu.title}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-72 w-auto min-w-44 overflow-y-auto">
+                    <ChipMenuItems menu={menu} />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              ))}
+              {(actions ?? []).map((item) => (
+                <DropdownMenuItem key={item.key} className="gap-2 text-xs" onSelect={item.onClick}>
+                  {item.icon}
+                  {item.title}
+                </DropdownMenuItem>
+              ))}
+              {onRename && (
+                <DropdownMenuItem className="gap-2 text-xs" onSelect={() => setDraft(chip.name)}>
+                  <Pencil className="size-3.5" />
+                  Rename {chip.name}
+                </DropdownMenuItem>
+              )}
+              {onRemove && (
+                <DropdownMenuItem variant="destructive" className="gap-2 text-xs" onSelect={onRemove}>
+                  <X className="size-4" />
+                  Remove {chip.name}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <>
         {(menus ?? []).map((menu) => (
           <DropdownMenu key={menu.key} onOpenChange={menu.onOpenChange}>
             <DropdownMenuTrigger asChild>
@@ -209,6 +268,49 @@ export function Chip({
               // width, and this trigger is one icon.
               className="max-h-72 w-auto min-w-44 overflow-y-auto"
             >
+              <ChipMenuItems menu={menu} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ))}
+        {(actions ?? []).map((item) => (
+          <button
+            key={item.key}
+            className={`${ACTION_CLASS} ${ACTION_TONE[item.tone ?? "default"]}`}
+            onClick={item.onClick}
+            title={item.title}
+          >
+            {item.icon}
+          </button>
+        ))}
+        {onRename && (
+          <button
+            className={`${ACTION_CLASS} ${ACTION_TONE.default}`}
+            onClick={() => setDraft(chip.name)}
+            title={`Rename ${chip.name}`}
+          >
+            <Pencil className="size-3.5" />
+          </button>
+        )}
+        {onRemove && (
+          <button
+            className={`${ACTION_CLASS} ${ACTION_TONE.danger}`}
+            onClick={onRemove}
+            title={`Remove ${chip.name}`}
+          >
+            <X className="size-4" />
+          </button>
+        )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A row menu's entries — the same list beside the row and inside the folded menu. */
+function ChipMenuItems({ menu }: { menu: ChipMenu }) {
+  return (
+    <>
               {menu.label && <DropdownMenuLabel>{menu.label}</DropdownMenuLabel>}
               {menu.items.map((item) => (
                 <DropdownMenuItem
@@ -241,39 +343,7 @@ export function Chip({
                   )}
                 </DropdownMenuItem>
               ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ))}
-        {(actions ?? []).map((item) => (
-          <button
-            key={item.key}
-            className={`${ACTION_CLASS} ${ACTION_TONE[item.tone ?? "default"]}`}
-            onClick={item.onClick}
-            title={item.title}
-          >
-            {item.icon}
-          </button>
-        ))}
-        {onRename && (
-          <button
-            className={`${ACTION_CLASS} ${ACTION_TONE.default}`}
-            onClick={() => setDraft(chip.name)}
-            title={`Rename ${chip.name}`}
-          >
-            <Pencil className="size-3.5" />
-          </button>
-        )}
-        {onRemove && (
-          <button
-            className={`${ACTION_CLASS} ${ACTION_TONE.danger}`}
-            onClick={onRemove}
-            title={`Remove ${chip.name}`}
-          >
-            <X className="size-4" />
-          </button>
-        )}
-      </div>
-    </div>
+    </>
   );
 }
 

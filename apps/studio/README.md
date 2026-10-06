@@ -74,6 +74,19 @@ it, and `pnpm stage:cli` rebuilds it after CLI changes — the hook reports what
 is staged rather than deciding it is current. A shell started with no sidecar
 beside it (`cargo run`) falls back to this checkout's CLI.
 
+### Signing in to Telo Cloud in the web dev build
+
+The web build reaches Telo Cloud through `/api` on its own origin, and its
+session cookie belongs to that origin, so the page and `/api` must be served
+together. The dev server alone has no `/api` and Studio hides every Cloud
+control there. The Telo Cloud repository's local stack provides the origin:
+with both compose stacks up — this repository's (`docker compose up`) and the
+Cloud one — open **`https://studio.telo.localhost:9050`** rather than port
+8060. Its `/api` is the local Cloud API and everything else is this
+repository's dev server, so "Sign in" goes to the local identity provider and
+comes back signed in. Trusting that stack's certificate authority is described
+in the Cloud repository's accounts runbook.
+
 ## Building
 
 ```bash

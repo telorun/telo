@@ -1,0 +1,79 @@
+name: Retry failed publish
+
+# Re-runs the failed jobs of a publishing workflow, up to MAX_ATTEMPTS attempts
+# in total.
+#
+# A retry has to live OUTSIDE the workflow it retries. The failure this exists
+# for is a job that never started ("The job was not acquired by Runner of type
+# hosted"): no step ran, so no step-level retry could have fired, and a release
+# was left half-published until someone noticed and re-ran it by hand. A re-run
+# of the failed jobs covers that and a transient step failure (a registry 5xx, a
+# rate limit) alike.
+#
+# Safe because every workflow listed is already written to be re-run: each gates
+# on what is published rather than on a previous step's exit code, and a re-run
+# keeps the original event, so a version-bump gate answers as it did the first
+# time.
+#
+# `workflow_run` reads this file from the default branch only, and fires again
+# when the re-run it started completes — which is what makes the attempts chain.
+
+on:
+  workflow_run:
+    workflows:
+      - Publish
+      - Publish Docker Images
+      - Release standalone CLI
+      - Release Studio
+      - Release VS Code Extension
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  MAX_ATTEMPTS: 3
+
+jobs:
+  retry:
+    name: Re-run failed jobs
+    # `failure` only: a cancelled run was stopped by someone, or superseded.
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-run the failed jobs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+            echo "::error::$WORKFLOW run $RUN_ID failed $ATTEMPT times; not retrying again."
+            exit 1
+          fi
+
+          # Longer before each later attempt: an outage that cancelled every job
+          # is not over a few seconds later.
+          sleep $((ATTEMPT * 120))
+
+          # This workflow moves `:latest` on every push, so re-running a commit
+          # main has moved past could put an older image behind the tag. The
+          # newer push builds the images itself. The release workflows publish
+          # under their own version and are retried wherever main is.
+          if [ "$WORKFLOW" = "Publish Docker Images" ]; then
+            tip=$(gh api "repos/$REPO/commits/main" --jq .sha)
+            if [ "$tip" != "$HEAD_SHA" ]; then
+              echo "main is at $tip, past $HEAD_SHA; leaving the images to that push."
+              exit 0
+            fi
+          fi
+
+          echo "Re-running the failed jobs of $WORKFLOW run $RUN_ID (attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS)."
+          gh run rerun "$RUN_ID" --repo "$REPO" --failed

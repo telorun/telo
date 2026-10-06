@@ -34,7 +34,8 @@ export function PreviewNotice() {
   return (
     <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
       <TriangleAlert className="size-3.5 shrink-0" />
-      <span>
+      {/* One line at phone width: wrapped in a narrow column it outgrew the canvas. */}
+      <span className="min-w-0 max-md:truncate">
         The Telo editor is an early preview — visual editing isn't fully supported yet and some
         changes may not apply. Use the Source tab if something looks off.
       </span>

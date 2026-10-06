@@ -712,7 +712,7 @@ function SlotButton({
       type="button"
       data-no-open
       title={kind === "add" ? "Fill this slot" : "Empty this slot"}
-      className="nodrag nopan absolute right-2 hidden rounded p-0.5 text-zinc-400 group-hover:block hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+      className="nodrag nopan absolute right-2 hidden rounded p-0.5 text-zinc-400 group-hover:block touch:block hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
       onClick={(e) => {
         e.stopPropagation();
         onClick(pointOf(e));
@@ -858,7 +858,7 @@ function PickerRow({
             <button
               type="button"
               title="Remove this entry"
-              className="nodrag nopan invisible rounded p-0.5 text-zinc-400 group-hover:visible hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              className="nodrag nopan invisible rounded p-0.5 text-zinc-400 group-hover:visible touch:visible hover:bg-zinc-200 hover:text-zinc-700 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
               onClick={(e) => {
                 e.stopPropagation();
                 onRemove();
@@ -1017,7 +1017,7 @@ function RowLine({
           → {dispatch}
         </span>
       )}
-      <span className="ml-auto hidden shrink-0 items-center gap-0.5 group-hover:flex">
+      <span className="ml-auto hidden shrink-0 items-center gap-0.5 group-hover:flex touch:flex">
         {onCreate && (
           <RowButton title="Create a resource and wire it here" onClick={onCreate}>
             <Plus className="size-2.5" />

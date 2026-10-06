@@ -1,6 +1,7 @@
 import type { GraphKind, GraphNode } from "@telorun/analyzer";
 import { Braces, ChevronRight, Database, Layers, LogIn, PackageOpen, Shapes } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
+import { useIsMobile } from "../../../../hooks/useIsMobile";
 import { DiagnosticBadge } from "../../../diagnostics/DiagnosticBadge";
 import { useActiveFilePaths, useDiagnosticsState } from "../../../diagnostics/DiagnosticsContext";
 import { groupTotal, isEmpty, type DrawerGroups } from "./drawer-groups";
@@ -53,20 +54,40 @@ export function ModuleDrawer({
   selectedResource,
   onSelectResource,
 }: ModuleDrawerProps) {
+  const isMobile = useIsMobile();
   if (isEmpty(groups)) return null;
   const shown = sole || open;
   const picked = (node: GraphNode) =>
     selectedResource?.kind === node.kind && selectedResource?.name === node.name;
+  // Phone width: the drawer lies OVER the canvas, so a selection — whose whole
+  // effect is the ring it draws on that canvas — has to get it out of the way.
+  const overlay = isMobile && shown && !sole;
+  const selectResource: typeof onSelectResource = (kind, name) => {
+    onSelectResource(kind, name);
+    if (overlay) onToggle();
+  };
+  const selectKind: typeof onSelectKind = (kindId) => {
+    onSelectKind(kindId);
+    if (overlay) onToggle();
+  };
 
   return (
+    <>
+    {/* The collapsed width stays in the row, so opening does not move the canvas. */}
+    {overlay && <div className="w-9 shrink-0" />}
+    {overlay && <div className="fixed inset-0 z-10 bg-black/20" onClick={onToggle} aria-hidden />}
     <div
       className={`flex min-h-0 flex-col border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 ${
-        sole ? "flex-1" : shown ? "w-64" : "w-9"
+        sole
+          ? "flex-1"
+          : shown
+            ? "w-64 max-md:absolute max-md:inset-y-0 max-md:right-0 max-md:z-20 max-md:w-72 max-md:max-w-[85%] max-md:shadow-xl"
+            : "w-9"
       }`}
     >
       <button
         type="button"
-        className="flex items-center gap-1.5 border-b border-zinc-100 px-2 py-1.5 text-left dark:border-zinc-800"
+        className="flex items-center gap-1.5 border-b border-zinc-100 px-2 py-1.5 text-left max-md:min-h-9 dark:border-zinc-800"
         onClick={onToggle}
         title={shown ? "Hide" : `${groupTotal(groups)} not drawn on the canvas`}
       >
@@ -89,7 +110,7 @@ export function ModuleDrawer({
                 icon={Database}
                 held={heldBy.get(node.id) ?? 0}
                 selected={picked(node)}
-                onSelect={onSelectResource}
+                onSelect={selectResource}
               />
             ))}
           </Group>
@@ -101,7 +122,7 @@ export function ModuleDrawer({
                 icon={Braces}
                 held={heldBy.get(node.id) ?? 0}
                 selected={picked(node)}
-                onSelect={onSelectResource}
+                onSelect={selectResource}
               />
             ))}
           </Group>
@@ -111,7 +132,7 @@ export function ModuleDrawer({
                 key={kind.id}
                 kind={kind}
                 selected={selectedKind === kind.id}
-                onSelect={onSelectKind}
+                onSelect={selectKind}
                 {...(kind.template && onOpenTemplate
                   ? { onOpen: () => onOpenTemplate(kind.id) }
                   : {})}
@@ -126,13 +147,14 @@ export function ModuleDrawer({
                 icon={PackageOpen}
                 held={heldBy.get(node.id) ?? 0}
                 selected={picked(node)}
-                onSelect={onSelectResource}
+                onSelect={selectResource}
               />
             ))}
           </Group>
         </div>
       )}
     </div>
+    </>
   );
 }
 

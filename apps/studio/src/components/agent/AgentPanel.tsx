@@ -197,7 +197,12 @@ export function AgentPanel({ className }: { className?: string }) {
   return (
     <div
       ref={frame}
-      className={cn("relative flex min-w-0 flex-col border-l border-border bg-background", className)}
+      // Phone width: over the whole editor rather than beside it, whatever
+      // width the user dragged it to on a wider window.
+      className={cn(
+        "relative flex min-w-0 flex-col border-l border-border bg-background max-md:fixed max-md:inset-0 max-md:z-40 max-md:w-full! max-md:border-l-0",
+        className,
+      )}
       style={{ width: draftWidth ?? agent.panelWidth }}
     >
       <div
@@ -205,7 +210,7 @@ export function AgentPanel({ className }: { className?: string }) {
         onDoubleClick={() => agent.setPanelWidth(AGENT_PANEL_DEFAULT_WIDTH)}
         // Overhangs the border on both sides: a 1px hit area is a border, not a
         // handle. Absolute so it costs the layout nothing.
-        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-blue-400/60"
+        className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-blue-400/60 max-md:hidden"
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize the agent panel"

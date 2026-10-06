@@ -63,7 +63,7 @@ export function MessageActions({
     <TooltipProvider>
       <div
         className={cn(
-          "flex gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+          "flex gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 touch:opacity-100",
           className,
         )}
       >

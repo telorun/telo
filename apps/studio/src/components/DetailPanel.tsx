@@ -30,11 +30,14 @@ import { PickCanvas } from "./views/pick-canvas";
 import { DetailYamlPane } from "./DetailYamlPane";
 import { ExtractInlineDialog } from "./ExtractInlineDialog";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
-import { FileOutput } from "lucide-react";
+import { FileOutput, X } from "lucide-react";
 
 type DetailMode = "form" | "yaml";
 
 interface DetailPanelProps {
+  /** Dismisses the panel. Where given, the panel covers the editor at phone
+   *  width instead of sharing a row with it. */
+  onClose?: () => void;
   selectedResource: { kind: string; name: string } | null;
   selection: Selection | null;
   /** True while the module cannot be edited (remote, or the agent holds it).
@@ -133,6 +136,7 @@ export function DetailPanel({
   onSelectResource,
   onSelect,
   onCreateAndLink,
+  onClose,
 }: DetailPanelProps) {
   // Sticky across selections and resources: the choice is about how the user
   // wants to work, not about what is selected, so re-deriving it per selection
@@ -451,7 +455,11 @@ export function DetailPanel({
       // `flex-1` over a zero basis, so it silently absorbed whatever was left
       // rather than pushing back. Growing to the same cap and no further keeps
       // the panel from ever being wider than what it annotates.
-      className="flex h-full min-w-80 max-w-xl flex-1 flex-col overflow-hidden border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
+      className={`flex h-full min-w-80 max-w-xl flex-1 flex-col overflow-hidden border-l border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${
+        onClose
+          ? "max-md:fixed max-md:inset-x-0 max-md:top-10 max-md:bottom-0 max-md:z-30 max-md:h-auto max-md:max-w-none max-md:min-w-0 max-md:border-l-0 max-md:border-t"
+          : ""
+      }`}
     >
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-zinc-100 px-3 dark:border-zinc-800">
         <div className="flex min-w-0 items-center gap-2">
@@ -498,6 +506,16 @@ export function DetailPanel({
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="ml-1 flex size-8 shrink-0 items-center justify-center rounded text-zinc-500 hover:bg-zinc-100 md:hidden dark:hover:bg-zinc-800"
+          >
+            <X className="size-4" />
+          </button>
+        )}
       </div>
 
       {mode === "yaml" ? (

@@ -1,3 +1,7 @@
+import { Cloud } from "lucide-react";
+import { useState } from "react";
+import { useCloud } from "../cloud/context";
+import { OpenCloudWorkspaceDialog } from "./cloud/OpenCloudWorkspaceDialog";
 import { Button } from "./ui/button";
 
 interface AppLifecyclePanelProps {
@@ -21,6 +25,9 @@ export function AppLifecyclePanel({
   recentRootDir,
 }: AppLifecyclePanelProps) {
   const chooser = openMode === "chooser";
+  const cloud = useCloud();
+  const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
+  const cloudStatus = cloud.session.status;
   return (
     <div className="flex h-full flex-1 flex-col items-center justify-center gap-4 bg-zinc-50 px-6 text-center dark:bg-zinc-900">
       <div className="flex flex-col items-center gap-1">
@@ -28,7 +35,7 @@ export function AppLifecyclePanel({
         <p className="max-w-sm text-xs text-zinc-500 dark:text-zinc-500">
           {chooser
             ? "Start from a starter — a working app copied into your workspace — or open a directory to load its modules. An empty directory becomes a new workspace — you can add applications and libraries from the sidebar."
-            : "Start from a starter — a working app copied into your workspace — or create an empty workspace. This browser can't open a directory, so the workspace is kept in its own storage — you can add applications and libraries from the sidebar."}
+            : "Start from a starter — a working app copied into your workspace — or open the browser workspace. This browser can't open a directory, so that workspace is kept in the browser's own storage — you can add applications and libraries from the sidebar."}
         </p>
       </div>
       <div className="flex flex-col items-center gap-2">
@@ -37,8 +44,20 @@ export function AppLifecyclePanel({
             Start from a starter
           </Button>
           <Button variant="outline" onClick={onOpen}>
-            {chooser ? "Open folder…" : "Create workspace"}
+            {chooser ? "Open folder…" : "Open browser workspace"}
           </Button>
+          {cloudStatus === "signedIn" && (
+            <Button variant="outline" onClick={() => setCloudDialogOpen(true)}>
+              <Cloud />
+              Open from Telo Cloud…
+            </Button>
+          )}
+          {cloudStatus === "anonymous" && (
+            <Button variant="outline" onClick={cloud.signIn}>
+              <Cloud />
+              Sign in to Telo Cloud
+            </Button>
+          )}
         </div>
         {chooser && recentRootDir && (
           <button
@@ -50,6 +69,7 @@ export function AppLifecyclePanel({
           </button>
         )}
       </div>
+      <OpenCloudWorkspaceDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
     </div>
   );
 }
