@@ -9,7 +9,7 @@
     "knowledge-graph"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",

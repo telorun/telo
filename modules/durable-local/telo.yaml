@@ -3,7 +3,7 @@ metadata:
   name: DurableLocal
   version: 0.4.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Reliability, Coordination]
   description: |
     Runs a body of steps so that a crash and a restart continue where the work stopped,

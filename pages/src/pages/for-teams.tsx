@@ -47,7 +47,7 @@ export default function BusinessFirst() {
         {
           icon: "🔓",
           title: "You own the application",
-          body: "Telo is fair-code and source-available: your manifests are open-standard YAML kept in your own repository, and you can read, modify, and run the kernel yourself. Your backend is an asset you own, not something trapped inside a vendor's console.",
+          body: "Telo's SDK and standard library are MIT, and its runtime is fair-code and source-available: your manifests are open-standard YAML kept in your own repository, and you can read, modify, and run the kernel yourself. Your backend is an asset you own, not something trapped inside a vendor's console.",
         },
         {
           icon: "🏠",

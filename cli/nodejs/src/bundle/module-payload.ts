@@ -66,7 +66,7 @@ import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from ".
 import { PublishFailure } from "../publish-failure.js";
 import { expandDirectoryClaims } from "./module-path-claims.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
-import { assertWithinModule, selectFiles } from "./select-files.js";
+import { assertWithinModule, MODULE_LICENSE_FILE, selectFiles } from "./select-files.js";
 import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
 
 export interface ModulePayload {
@@ -398,11 +398,17 @@ export class ModulePayloadBuilder {
     // A notice and a staged file ship because their source names them, as if
     // `files:` selected them; each is claimed, so the partition places it.
     const notices = sources.flatMap((source) => source.notices);
+    // The module's own license ships the same way, so an artifact carries the
+    // text its `metadata.license` names.
+    const license = fs.existsSync(path.join(manifestDir, MODULE_LICENSE_FILE))
+      ? [MODULE_LICENSE_FILE]
+      : [];
     const partition = partitionLayers(
       claims,
       [
         ...new Set([
           ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
+          ...license,
           ...notices,
           ...staged.keys(),
         ]),

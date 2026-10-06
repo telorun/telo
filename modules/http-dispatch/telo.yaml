@@ -3,7 +3,7 @@ metadata:
   name: HttpDispatch
   version: 0.14.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Transport]
   description: >-
     The shared value shapes every HTTP transport anchors against: the canonical

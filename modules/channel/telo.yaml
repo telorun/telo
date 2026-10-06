@@ -3,7 +3,7 @@ metadata:
   name: Channel
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Streaming]
   description: >-
     Holds a conversation with a running program over a line-oriented text channel:

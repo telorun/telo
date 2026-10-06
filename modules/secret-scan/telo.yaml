@@ -3,7 +3,7 @@ metadata:
   name: SecretScan
   version: "0.2.0"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Security]
   description: >-
     Find credentials in text before it is written or sent: API keys, access tokens,

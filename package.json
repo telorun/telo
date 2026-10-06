@@ -31,6 +31,7 @@
     "check:docs": "node scripts/check-doc-versions.mjs",
     "check:controller-protocol": "node scripts/check-controller-protocol.mjs",
     "check:cel-conformance": "node scripts/check-cel-conformance.mjs",
+    "check:licenses": "node scripts/check-licenses.mjs",
     "test": "bun ./cli/nodejs/bin/telo.ts ./test-suite.yaml",
     "test:integration": "bun ./cli/nodejs/bin/telo.ts ./test-suite-integration.yaml",
     "test:e2e:hub": "node scripts/hub-e2e.mjs",

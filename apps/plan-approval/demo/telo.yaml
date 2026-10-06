@@ -3,7 +3,7 @@ metadata:
   name: PlanApprovalDemo
   version: 0.1.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   description: |
     Seeds a running plan-approval server with demo data for trying the review
     UI, playing a reviewer, an agent and a runner over HTTP: a product with a 1s

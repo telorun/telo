@@ -2,6 +2,10 @@ import { HARD_IGNORE, lastMatchIndex, selectByPatterns } from "@telorun/glob";
 import * as fs from "fs";
 import * as path from "path";
 
+/** A module's own license text, at its root. Carried by `telo publish` and
+ *  `telo package` whenever it exists, with no `files:` entry. */
+export const MODULE_LICENSE_FILE = "LICENSE";
+
 /**
  * Select files under `manifestDir` matching the ordered, `.gitignore`-style
  * allowlist `patterns`. The match itself runs through the monorepo's single

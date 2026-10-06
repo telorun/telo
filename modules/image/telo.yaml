@@ -3,7 +3,7 @@ metadata:
   name: Image
   version: 0.8.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Image generation and annotation: make a solid-colour canvas at a given size, and

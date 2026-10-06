@@ -3,7 +3,7 @@ metadata:
   name: KeyValueStoreRedis
   version: 0.7.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage]
   description: |
     Redis-backed key/value storage with atomic conditional writes, shared across every

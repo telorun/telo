@@ -5,7 +5,7 @@ metadata:
   name: TesseractLangGlg
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: |
     Recognize Galician text in images, offline: the trained model for reading

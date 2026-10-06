@@ -3,7 +3,7 @@ metadata:
   name: Assert
   version: 0.20.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Testing]
   description: >-
     Assertions for manifest tests: deep equality, regular-expression match,

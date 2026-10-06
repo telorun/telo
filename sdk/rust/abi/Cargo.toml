@@ -4,6 +4,7 @@ name = "telorun-abi"
 # it is versioned by is the ABI generation, written on every candidate that
 # opens it (`abi=telo-<n>`), not by this field.
 version = "0.0.0"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "C ABI contract between a Rust Telo kernel and a Rust controller loaded from a cdylib."

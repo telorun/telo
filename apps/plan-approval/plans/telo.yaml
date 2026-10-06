@@ -3,7 +3,7 @@ metadata:
   name: PlanApprovalPlans
   version: 0.1.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Coordination, Storage]
   description: >-
     Review and approval of agent-written plans, stored in SQLite: products and

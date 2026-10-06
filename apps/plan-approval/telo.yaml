@@ -3,7 +3,7 @@ metadata:
   name: PlanApproval
   version: 0.1.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   description: |
     Plan approval for agent sessions across products and repositories. Agents
     submit plans and revisions over /api/agent/ and long-poll a plan's events;

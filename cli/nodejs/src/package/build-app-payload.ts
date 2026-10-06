@@ -32,7 +32,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { selectFiles } from "../bundle/select-files.js";
+import { MODULE_LICENSE_FILE, selectFiles } from "../bundle/select-files.js";
 import { expandDirectoryClaims } from "../bundle/module-path-claims.js";
 import { cliVersion } from "../distribution-versions.js";
 import { stageModule } from "../release/stage.js";
@@ -286,6 +286,7 @@ async function stageLocalModules(options: {
       const local = localPathOf(file.source);
       if (local) copy(path.relative(dir, local).split(path.sep).join("/"), "a manifest file");
     }
+    if (fs.existsSync(path.join(dir, MODULE_LICENSE_FILE))) copy(MODULE_LICENSE_FILE, "the module's license");
 
     // Everything the manifest NAMES: embedded files, assets, controller and
     // library entry points, native files.

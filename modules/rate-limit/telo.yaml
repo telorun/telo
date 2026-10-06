@@ -3,7 +3,7 @@ metadata:
   name: RateLimit
   version: 0.12.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Performance, Reliability]
   description: |
     Throttling and quota enforcement per client, tenant or API key: a sliding-window

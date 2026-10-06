@@ -9,7 +9,7 @@
     "parser"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
@@ -44,7 +44,7 @@
     "check:browser-safe": "node scripts/check-browser-safe.mjs",
     "check:signatures": "pnpm run build && node scripts/check-signatures.mjs",
     "prepare": "node -e \"const f='../../scripts/generate-telo-version.mjs';if(require('fs').existsSync(f))require('child_process').execFileSync(process.execPath,[f],{stdio:'inherit'})\"",
-    "prepack": "cp ../../LICENSE .",
+    "prepack": "cp ../LICENSE .",
     "postpack": "rm -f LICENSE"
   },
   "dependencies": {

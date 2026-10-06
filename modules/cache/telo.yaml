@@ -3,7 +3,7 @@ metadata:
   name: Cache
   version: 0.12.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Performance, Storage]
   description: |
     Caching of computed or fetched values under a key, with freshness windows: an

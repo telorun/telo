@@ -3,7 +3,7 @@ metadata:
   name: PlainTextCodec
   version: 0.10.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Plain UTF-8 text on the wire: a stream of text pieces — including the delta

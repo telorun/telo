@@ -3,7 +3,7 @@ metadata:
   name: Log
   version: "0.2.0"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Observability]
   description: >-
     Write a structured diagnostic log record from a manifest: a startup warning, an

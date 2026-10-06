@@ -3,7 +3,7 @@ metadata:
   name: SQL
   version: 0.26.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage]
   description: >-
     SQL database access independent of the engine: run queries and mutations with

@@ -3,7 +3,7 @@ metadata:
   name: Lease
   version: 0.13.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Coordination, Reliability]
   description: |
     Mutual exclusion across processes and hosts: work wrapped in a lease runs for at

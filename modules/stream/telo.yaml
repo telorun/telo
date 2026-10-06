@@ -3,7 +3,7 @@ metadata:
   name: Stream
   version: 0.13.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Streaming]
   description: |
     The ends and the middle of a stream pipeline: turn a list of values into a stream,

@@ -16,7 +16,7 @@ metadata:
   name: Type
   version: "0.12.2"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: >-
     Reusable data shapes declared once and referenced anywhere a type is

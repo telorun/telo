@@ -3,7 +3,7 @@ metadata:
   name: Benchmark
   version: 0.10.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Testing, Performance]
   description: >-
     Load and performance benchmarking for any callable resource: drives weighted

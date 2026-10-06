@@ -302,6 +302,11 @@ a source's `url` — a moved mirror, the same bytes — moves no digest and bump
 nothing. Each source's notice files ship in the `common` layer, and a staged
 file an `assets:` pattern selects in the `assets` layer, with no `files:` entry.
 
+A `LICENSE` file at the module root ships in the `common` layer the same way, so
+the artifact carries the text `metadata.license` names. Keep it beside
+`telo.yaml`: a license file in a parent directory is outside the module and is
+not published. `telo package` carries it into a packaged application too.
+
 ## npm packages
 
 `@telorun/kernel`, `cli`, `sdk`, `analyzer` and the other infrastructure

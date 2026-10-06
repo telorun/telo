@@ -3,7 +3,7 @@ metadata:
   name: Embedding
   version: 0.11.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: |
     Turns text into vectors for semantic search over any embedding provider. Search

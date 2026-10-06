@@ -106,6 +106,12 @@ jobs:
       - name: Check the controller protocol
         run: pnpm run check:controller-protocol
 
+      # Two licenses share this repository, and they stay separable only while
+      # nothing MIT depends on anything that is not. A declaration nothing checks
+      # drifts the first time a package gains a convenient import.
+      - name: Check the license boundary
+        run: pnpm run check:licenses
+
       # `@telorun/cel`'s own suite deliberately runs with no vectors directory
       # reachable, so the conformance replay lives under its own config and is
       # driven only from here. This is the one artifact naming

@@ -3,7 +3,7 @@ metadata:
   name: McpServer
   version: "0.17.2"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Transport, AI]
   description: >-
     Exposes an application to AI clients over the Model Context Protocol: bundle

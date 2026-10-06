@@ -3,7 +3,7 @@ metadata:
   name: YAML
   version: 0.10.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Turns YAML text into ordinary data a manifest can read — configuration files,

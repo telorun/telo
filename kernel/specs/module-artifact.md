@@ -92,6 +92,13 @@ notice files each source names are part of the payload and belong in the
 `common` layer. A publisher MUST refuse a staged file whose bytes or execute bit
 do not match its pin.
 
+A file named `LICENSE` at the module root is the module's own license text. A
+publisher MUST include it whether or not `files:` selects it, and place it in
+the `common` layer: `metadata.license` names a license, and an artifact that
+names one without carrying its text and copyright line cannot be redistributed
+under a license whose condition is that the notice travels with the copy. A
+module with no such file publishes none.
+
 A `native:` entry names a logical `name`, the selector axes `format`, `os`,
 `arch` and optionally `libc` and `abi`, and a module-relative `path`, which is
 the in-layer path. Because every layer extracts into one module directory (§5),

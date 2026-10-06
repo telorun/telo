@@ -3,7 +3,7 @@ metadata:
   name: Exa
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data, Transport]
   description: >-
     Web search through the Exa Search API, a neural search engine for AI

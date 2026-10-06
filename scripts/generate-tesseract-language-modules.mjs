@@ -16,6 +16,8 @@ const tesseractDir = join(repoRoot, "modules", "tesseract");
 const tablePath = join(here, "tesseract-languages.json");
 const familyDir = join(repoRoot, "modules", "tesseract-lang");
 const notice = join(tesseractDir, "notices", "tessdata.LICENSE");
+// The module's own license, shipped in its artifact; the notice covers the model.
+const license = join(repoRoot, "modules", "LICENSE");
 const pin = !process.argv.includes("--no-pin");
 const onlyAt = process.argv.indexOf("--only");
 const only = onlyAt >= 0 ? new Set(process.argv[onlyAt + 1].split(",")) : undefined;
@@ -50,7 +52,7 @@ metadata:
   name: TesseractLang${alias}
   version: ${INITIAL_VERSION}
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: |
     Recognize ${subject(lang)} in images, offline: the trained model for reading
@@ -151,6 +153,7 @@ for (const lang of languages) {
   writeFileSync(join(dir, ".gitignore"), GITIGNORE);
   if (!existsSync(join(dir, "CHANGELOG.md"))) writeFileSync(join(dir, "CHANGELOG.md"), "# Changelog\n");
   copyFileSync(notice, join(dir, "notices", "tessdata.LICENSE"));
+  copyFileSync(license, join(dir, "LICENSE"));
   written.push(relative(repoRoot, dir));
 }
 console.log(`wrote ${written.length} modules under ${relative(repoRoot, familyDir)}/`);

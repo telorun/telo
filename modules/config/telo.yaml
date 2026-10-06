@@ -3,7 +3,7 @@ metadata:
   name: Config
   version: "0.9.3"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Configuration]
   description: >-
     Reads configuration values and secrets out of environment variables into typed,

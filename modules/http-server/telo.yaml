@@ -3,7 +3,7 @@ metadata:
   name: HttpServer
   version: "0.34.3"
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Transport]
   description: >-
     Serving HTTP: a listener bound to a port with CORS, per-mount request guards for

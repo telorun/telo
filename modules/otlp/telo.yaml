@@ -3,7 +3,7 @@ metadata:
   name: OTLP
   version: 0.6.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Observability]
   description: >-
     Ships an application's structured log records and finished trace spans to an

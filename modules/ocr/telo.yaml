@@ -3,7 +3,7 @@ metadata:
   name: Ocr
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI, Data]
   description: |
     Optical character recognition (OCR) over any engine: read the printed text in an

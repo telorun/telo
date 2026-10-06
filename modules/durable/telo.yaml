@@ -3,7 +3,7 @@ metadata:
   name: Durable
   version: 0.2.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Reliability, Coordination]
   description: |
     Work that survives process death: a body of steps whose progress is recorded as it

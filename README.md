@@ -87,7 +87,16 @@ Those manifests were taken to the next level by allowing them to run inside a st
 
 ## License
 
-See [LICENSE](https://github.com/telorun/telo/blob/main/LICENSE).
+Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; everything else falls under the root [LICENSE](https://github.com/telorun/telo/blob/main/LICENSE), the Sustainable Use License.
+
+| MIT | Sustainable Use |
+| --- | --- |
+| `cel/`, `sdk/`, `templating/`, `packages/glob/`, `packages/editor-protocol/` — the expression engine, the SDK and what a controller links against | `analyzer/`, `kernel/`, `cli/` — what loads, checks and runs a manifest |
+| `modules/`, `blueprints/` — the standard library | `packages/ide-support/`, `packages/language-server/`, `packages/language-host/`, `ide/` — the editor tooling |
+| `starters/`, `examples/`, `docs/`, `benchmarks/` | `packages/runner-core/`, `packages/debug-wire/`, `packages/debug-ui/`, `apps/docker-runner/`, `apps/k8s-runner/` — the runners |
+| `apps/hub/`, `apps/hub-web/`, `apps/plan-approval*/` | `apps/studio/`, `apps/authoring-agent/`, `pages/` and everything not listed |
+
+No MIT package depends on a Sustainable Use one, which `pnpm run check:licenses` enforces.
 
 ## Contribution Note
 

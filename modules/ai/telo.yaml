@@ -3,7 +3,7 @@ metadata:
   name: AI
   version: 0.25.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: |
     Language and image models over any provider: buffered text, token-by-token
