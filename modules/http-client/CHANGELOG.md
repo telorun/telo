@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.22.2 - 2026-09-17
 ### Fixed
 * A JSON or URL-encoded request body writes a CEL value in its plain encoding - a timestamp as RFC 3339 text in UTC, a duration as seconds such as 5400s, bytes inside a JSON object as base64url, a uint as its digits - where a duration and a uint used to leave as an empty object and a timestamp in a form body as locale text.

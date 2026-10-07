@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.26.1 - 2026-10-03
 ### Fixed
 * A structured throw inside a Sql.Transaction body can be named in a route's catches: list. The transaction now declares throws: { inherit: true }, so its throw union is its body's: telo check no longer reports UNDECLARED_THROW_CODE for such an entry, and the run renders the throw after rolling back every write made before it.

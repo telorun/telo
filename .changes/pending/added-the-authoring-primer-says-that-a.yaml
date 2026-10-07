@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The authoring primer says that a LICENSE file beside telo.yaml is the license text
-  publish and package carry, and that the agent never chooses a license for a user's
-  module or application.

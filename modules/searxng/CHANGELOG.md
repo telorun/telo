@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.2.0 - 2026-09-30
 ### Added
 * Web search through a self-hosted SearXNG instance. modules/searxng implements the web search contract over the instance's JSON API with no controller: it sends the query, safe-search level, the language hint mapped onto SearXNG's codes and the recency hint as time_range, returns each result's title, URL, content as snippet and its publication date (a date without an offset read as UTC), and pages with a cursor over SearXNG's numbered pages whatever their size. A disabled JSON format is ERR_SEARCH_ACCESS_DENIED naming search.formats, 429 is ERR_SEARCH_RATE_LIMITED, and any other failure ERR_SEARCH_FAILED.

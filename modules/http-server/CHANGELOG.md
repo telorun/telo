@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.35.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.34.3 - 2026-10-05
 ### Fixed
 * A handler's CEL now reads request.query and request.params: the router hands each of the transport's bags over as a map in the CEL value domain, where Fastify builds them with a prototype of its own and every expression reading one failed, answering HTTP 500.

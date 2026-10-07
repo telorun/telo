@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.6.0 - 2026-09-29
 ### Added
 * An engine schema resource addresses the tables it lists for consumers: its instance renders the qualified, quoted name of a listed table from its own namespace and the engine's quoting (PostgreSQL qualifies with the schema's namespace, SQLite names the bare table), so a consumer reading or writing those tables no longer depends on the connection's search_path. Engine implementers add the new required member to their schema instance.

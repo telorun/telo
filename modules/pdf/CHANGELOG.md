@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.10.0 - 2026-10-03
 ### Added
 * Breaking: the document and image slots of `Pdf.Rasterizer` (input `data`, output `image`) and `Pdf.FormFields` (input `data`, output `data`) are declared as bytes (`Telo.Bytes`) instead of `type: object`. A `data` argument that is not bytes now fails the call with `ERR_INPUT_INVALID` before the controller runs, where it raised `ERR_INVALID_INPUT`, and `telo check` reports an expression of another type. The outputs no longer fit a slot declared as a JSON type; pass them to a slot declared as bytes.

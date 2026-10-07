@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.11.0 - 2026-09-24
 ### Added
 * Test.Suite fields `include`, `exclude`, `filter` and `concurrency` now take CEL evaluated at startup, so the suite application decides which of them the command line sets: a `variables:` entry bound with `arg:`, passed in as `!cel "variables.include"`. Breaking for a suite relying on the controller reading the command line itself — `--filter`, `-f` and the bare positional filter work only once the suite application declares them.

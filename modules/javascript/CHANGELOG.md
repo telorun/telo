@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.13.0 - 2026-09-09
 ### Deprecated
 * `JavaScript.Script` is deprecated. It runs unchanged and existing manifests keep working, but declaring it now reports a `DEPRECATED_KIND` warning at the resource's `kind:` line in `telo check` and in the editor.

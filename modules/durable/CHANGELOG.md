@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.2.1 - 2026-09-07
 ### Fixed
 * Starting a run now declares what it answers with. `Durable.Run` states the floor every engine keeps — the run's id and where it stood — and `DurableLocal.Workflow` narrows it to `{ runId, status }` plus `started` / `attached` / `result`. Undeclared, that contract typed as an open object, so a manifest could read a field the start has never returned and hear about it only at runtime; reading one is now a `telo check` error naming the fields there are. A start is an acknowledgement, not an outcome: the body is dispatched detached and answers before its first step has run.

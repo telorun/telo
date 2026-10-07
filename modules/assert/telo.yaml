@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Assert
-  version: 0.20.1
+  version: 0.21.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Testing]

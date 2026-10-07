@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.16.0 - 2026-09-26
 ### Fixed
 * AiMcp.ToolProvider runs tools/call under the agent turn's context and abandons the call with ERR_INVOKE_CANCELLED when that turn is cancelled, instead of leaving the agent waiting on a tool nobody wants any more.

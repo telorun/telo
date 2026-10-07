@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.9.1 - 2026-09-07
 ### Fixed
 * A running schedule now takes a kernel hold, so an application whose only work is scheduled stays alive between ticks instead of exiting before the first one. The hold is released when the schedule is torn down, and early when a bounded cron expression has no further occurrences.

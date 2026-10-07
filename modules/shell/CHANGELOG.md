@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.12.0 - 2026-10-03
 ### Added
 * Shell.Command and Shell.CommandStream take an optional per-call cwd input: the directory that call starts in, overlaid on the host's working directory the way env overlays its environment. It works with both args and command, and a relative value is resolved against the host's working directory. The value reaches every host driver through the exec seam as a call-level option.

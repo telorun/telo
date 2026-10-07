@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.8.4 - 2026-10-03
 ### Fixed
 * The terminal sign-in no longer fails dispatch with `ERR_INPUT_INVALID` when the authorization server sends no `iss`: `TokenExchange` takes a null `iss` (the response carried none) and its own issuer check decides, refusing only when the server advertises the parameter. The documented flow stops when the redirect carried no code and passes `iss` through as it arrived.

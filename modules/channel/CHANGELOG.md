@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.2.0 - 2026-09-19
 ### Added
 * Channel.SendLine and Channel.ReadUntil report what actually went wrong: writing to a program that has not started is ERR_CHANNEL_NOT_STARTED rather than a closed-channel error, and a second read while one is already waiting is ERR_CHANNEL_CONCURRENT_READ rather than two reads silently interleaving what they consume.
