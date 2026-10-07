@@ -14,7 +14,8 @@ import semver from "semver";
 import { parseAllDocuments } from "yaml";
 import type { Argv } from "yargs";
 import { createLogger, type Logger } from "../logger.js";
-import { outEmit, outErrLine, outLine, output } from "../output.js";
+import { outEmit, outErrLine, outLine, outProgress, output } from "../output.js";
+import { LocalImportPinner, type LocalImportVerdict } from "../release/local-import-pins.js";
 import { findModuleDoc, importSourceRefs, type ImportSourceRef } from "./manifest-imports.js";
 
 /** The version-independent label for a versioned `source`, for diagnostics —
@@ -117,10 +118,29 @@ function describeReason(reason: Exclude<Compatibility, "yes"> | null): string {
 }
 
 interface ImportUpgrade {
+  /** The manifest holding the import, as displayed. */
+  manifest?: string;
   packagePath: string;
   from: string;
   to: string;
 }
+
+/** A relative import of a released module, rewritten to its published pin. */
+interface LocalRepin {
+  manifest?: string;
+  source: string;
+  to: string;
+}
+
+/** A relative import of a released module that stays relative, and why. */
+interface PendingLocalImport {
+  manifest?: string;
+  source: string;
+  reason: string;
+}
+
+/** Decides one relative import of the manifest being upgraded. */
+type PinLocalImport = (source: string) => Promise<LocalImportVerdict>;
 
 interface UpgradeResult {
   changed: boolean;
@@ -128,6 +148,8 @@ interface UpgradeResult {
   /** Imports already at the latest version that were newly pinned (integrity
    *  hash added without a version change). */
   pinned: number;
+  repins: LocalRepin[];
+  pendingLocal: PendingLocalImport[];
   unchanged: number;
   skipped: number;
   errors: number;
@@ -165,13 +187,18 @@ export async function upgradeManifest(args: {
   /** When set, local sibling imports are followed by the caller — so they are
    *  neither counted nor reported as skipped here. */
   recursive?: boolean;
+  /** When set, a relative import of a released module is rewritten to its
+   *  published pin once the published artifact is the working copy's. */
+  pinLocal?: PinLocalImport;
 }): Promise<{ content: string; result: UpgradeResult; relativeImports: string[] }> {
-  const { content, includePrerelease, log, displayName, recursive } = args;
+  const { content, includePrerelease, log, displayName, recursive, pinLocal } = args;
 
   const result: UpgradeResult = {
     changed: false,
     upgrades: [],
     pinned: 0,
+    repins: [],
+    pendingLocal: [],
     unchanged: 0,
     skipped: 0,
     errors: 0,
@@ -202,7 +229,8 @@ export async function upgradeManifest(args: {
 
   const moduleDoc = findModuleDoc(docs);
   const importRefs = moduleDoc ? importSourceRefs(moduleDoc) : [];
-  const relativeImports = importRefs.map((r) => r.source).filter(isLocalPathSource);
+  // Relative imports that stay relative — what `--recursive` descends into.
+  const relativeImports: string[] = [];
 
   // An import already at the latest version isn't upgraded — but if it carries
   // no integrity hash yet (neither a `#sha256-...` fragment nor an object-form
@@ -252,6 +280,34 @@ export async function upgradeManifest(args: {
     // here. Under `--recursive` the caller descends into it, so stay silent;
     // otherwise report it skipped and point at the flag.
     if (isLocalPathSource(source)) {
+      const verdict = pinLocal ? await pinLocal(source) : undefined;
+      if (verdict?.kind === "pinned") {
+        const edit = buildSourceEdit(importRef.node, content, verdict.pin);
+        if (!edit) {
+          outErrLine(
+            `  ${log.err.error("✗")}  ${source}  source scalar has no range — skipping`,
+          );
+          result.errors++;
+          continue;
+        }
+        edits.push(edit);
+        result.changed = true;
+        const to = splitIntegrity(verdict.pin).base;
+        result.repins.push({ source, to });
+        outLine(`  ${log.ok("⇢")}  ${source} → ${log.ok(to)}  ${log.dim("(published)")}`);
+        continue;
+      }
+      relativeImports.push(source);
+      if (verdict?.kind === "error") {
+        outErrLine(`  ${log.err.error("✗")}  ${source}  ${verdict.message}`);
+        result.errors++;
+        continue;
+      }
+      if (verdict?.kind === "pending") {
+        result.pendingLocal.push({ source, reason: verdict.reason });
+        outLine(`  ${log.dim("·")}  ${source}  ${log.dim(`kept local — ${verdict.reason}`)}`);
+        continue;
+      }
       if (!recursive) {
         outLine(
           `  ${log.dim("·")}  ${source}  ${log.dim("skipped (local import — use --recursive to follow)")}`,
@@ -459,17 +515,42 @@ function buildSourceEdit(
 }
 
 function emptyResult(errors = 0): UpgradeResult {
-  return { changed: false, upgrades: [], pinned: 0, unchanged: 0, skipped: 0, errors };
+  return {
+    changed: false,
+    upgrades: [],
+    pinned: 0,
+    repins: [],
+    pendingLocal: [],
+    unchanged: 0,
+    skipped: 0,
+    errors,
+  };
 }
 
 /** Fold `child` counters into `into` (recursion aggregation). */
 function mergeResults(into: UpgradeResult, child: UpgradeResult): void {
   into.upgrades.push(...child.upgrades);
   into.pinned += child.pinned;
+  into.repins.push(...child.repins);
+  into.pendingLocal.push(...child.pendingLocal);
   into.unchanged += child.unchanged;
   into.skipped += child.skipped;
   into.errors += child.errors;
   into.changed ||= child.changed;
+}
+
+/**
+ * `--pin-local`, as one invocation holds it.
+ *
+ * Only the manifests NAMED on the command line are repinned. One reached through
+ * `--recursive` is some module's own manifest, and a released module's relative
+ * imports are the edges its release is planned along — pinning those would
+ * detach it from the siblings it is versioned with.
+ */
+export interface LocalImportPins {
+  readonly pinner: LocalImportPinner;
+  /** Absolute paths of the manifests named on the command line. */
+  readonly named: ReadonlySet<string>;
 }
 
 export async function upgradeOne(
@@ -479,6 +560,7 @@ export async function upgradeOne(
   log: Logger,
   recursive = false,
   visited: Set<string> = new Set(),
+  pinLocal?: LocalImportPins,
 ): Promise<UpgradeResult> {
   const { filePath, error: resolveError } = resolveManifestPath(inputPath);
   const displayPath = path.relative(process.cwd(), filePath);
@@ -510,14 +592,20 @@ export async function upgradeOne(
     log,
     displayName: displayPath,
     recursive,
+    ...(pinLocal?.named.has(filePath)
+      ? { pinLocal: (source: string) => pinLocal.pinner.verdictFor(path.dirname(filePath), source) }
+      : {}),
   });
+  for (const entry of [...result.upgrades, ...result.repins, ...result.pendingLocal]) {
+    entry.manifest = displayPath;
+  }
 
   if (result.changed && !dryRun) {
     fs.writeFileSync(filePath, nextContent, "utf-8");
   }
 
   if (result.changed && dryRun) {
-    const count = result.upgrades.length + result.pinned;
+    const count = result.upgrades.length + result.pinned + result.repins.length;
     outLine(`  ${log.dim(`dry-run: ${count} import(s) would be updated`)}`);
   }
 
@@ -533,6 +621,7 @@ export async function upgradeOne(
         log,
         recursive,
         visited,
+        pinLocal,
       );
       mergeResults(result, child);
     }
@@ -546,10 +635,28 @@ export async function upgrade(argv: {
   includePrerelease: boolean;
   dryRun: boolean;
   recursive?: boolean;
+  pinLocal?: boolean;
+  registry?: string;
 }): Promise<void> {
   const log = createLogger(false);
 
-  let totalUpgrades = 0;
+  const pinLocal: LocalImportPins | undefined = argv.pinLocal
+    ? {
+        pinner: new LocalImportPinner({
+          rungs: {
+            ...(argv.registry ? { flag: argv.registry } : {}),
+            ...(process.env.TELO_OCI_REGISTRY ? { env: process.env.TELO_OCI_REGISTRY } : {}),
+          },
+          onModule: (module, index, total) =>
+            outProgress(log.err.dim(`  [${index + 1}/${total}] ${module.key}`)),
+        }),
+        named: new Set(argv.paths.map((p) => resolveManifestPath(p).filePath)),
+      }
+    : undefined;
+
+  const upgrades: ImportUpgrade[] = [];
+  const repins: LocalRepin[] = [];
+  const pendingLocal: PendingLocalImport[] = [];
   let totalPinned = 0;
   let totalUnchanged = 0;
   let totalSkipped = 0;
@@ -567,19 +674,25 @@ export async function upgrade(argv: {
       log,
       argv.recursive ?? false,
       visited,
+      pinLocal,
     );
-    totalUpgrades += r.upgrades.length;
+    upgrades.push(...r.upgrades);
+    repins.push(...r.repins);
+    pendingLocal.push(...r.pendingLocal);
     totalPinned += r.pinned;
     totalUnchanged += r.unchanged;
     totalSkipped += r.skipped;
     totalErrors += r.errors;
   }
 
+  const totalUpgrades = upgrades.length;
   const parts: string[] = [];
   parts.push(
     `${totalUpgrades} upgraded${argv.dryRun && totalUpgrades > 0 ? log.dim(" (dry-run)") : ""}`,
   );
   if (totalPinned > 0) parts.push(`${totalPinned} newly pinned`);
+  if (repins.length > 0) parts.push(`${repins.length} local pinned to published`);
+  if (pendingLocal.length > 0) parts.push(log.dim(`${pendingLocal.length} kept local`));
   if (totalUnchanged > 0) parts.push(log.dim(`${totalUnchanged} already current`));
   if (totalSkipped > 0) parts.push(log.dim(`${totalSkipped} skipped`));
   if (totalErrors > 0) parts.push(log.error(`${totalErrors} error${totalErrors !== 1 ? "s" : ""}`));
@@ -590,6 +703,11 @@ export async function upgrade(argv: {
     dryRun: argv.dryRun ?? false,
     upgraded: totalUpgrades,
     pinned: totalPinned,
+    repinned: repins.length,
+    keptLocal: pendingLocal.length,
+    upgrades,
+    repins,
+    pendingLocal,
     unchanged: totalUnchanged,
     skipped: totalSkipped,
     errorCount: totalErrors,
@@ -629,6 +747,17 @@ export function upgradeCommand(yargs: Argv): Argv {
           type: "boolean",
           default: false,
           describe: "Follow relative (local) imports and upgrade their manifests too",
+        })
+        .option("pin-local", {
+          type: "boolean",
+          default: false,
+          describe:
+            "Rewrite a relative import of a released workspace module to its published pin, once the published artifact matches the working copy. Applies to the manifests named here, not to ones reached through --recursive.",
+        })
+        .option("registry", {
+          type: "string",
+          describe:
+            "With --pin-local: publish destination base (oci://host/org) for modules whose workspace entry declares none.",
         }),
     async (argv) => {
       await upgrade(argv as any);

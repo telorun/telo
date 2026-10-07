@@ -21,7 +21,6 @@ import {
   diffLayerDigests,
   isFragmentKind,
   orderByImports,
-  planRelease,
   serializeFragment,
   type FragmentKind,
   type LayerDigests,
@@ -41,11 +40,10 @@ import { outEmit, outErrLine, outLine, outProgress } from "../output.js";
 import { recordLedger, writePlannedVersions } from "../release/apply-plan.js";
 import { checkWorkspaceRequires } from "../release/check-requires.js";
 import { checkCrateInputs } from "../release/crate-inputs.js";
-import { collectEvidence, digestPayload, type ModuleTarget } from "../release/evidence.js";
+import { digestPayload, type ModuleTarget } from "../release/evidence.js";
 import { readImportGraph, resolveTargets } from "../release/targets.js";
 import {
   deleteFragment,
-  readFragments,
   readLedger,
   writeFragment,
   writeLedger,
@@ -54,6 +52,7 @@ import { planPayload, renderDiagnostics, renderPlan } from "../release/render.js
 import { createArchiveReader } from "@telorun/kernel";
 import { stageModule, type StageFailure, type StageOutcome } from "../release/stage.js";
 import { loadWorkspace, requireModule, type Workspace } from "../release/workspace.js";
+import { planWorkspace } from "../release/workspace-plan.js";
 
 interface CommonArgv {
   registry?: string;
@@ -67,50 +66,21 @@ function registryRungs(argv: CommonArgv): { flag?: string; env?: string } {
   };
 }
 
-/**
- * Resolve, check the destinations, then collect evidence.
- *
- * The two destination checks run FIRST and short-circuit: both are decidable
- * from the manifests alone, and reporting them after sixty payload builds would
- * spend two minutes to say the workspace file is inconsistent — while the
- * payload builder's own refusal, which is what would fire instead, speaks about
- * a manifest published to two places rather than about the file that said so.
- */
 async function buildPlan(argv: CommonArgv, log: Logger): Promise<{
   workspace: Workspace;
   targets: ReadonlyMap<ModuleKey, ModuleTarget>;
   plan: ReleasePlan;
 }> {
   const workspace = loadWorkspace();
-  const ledger = readLedger(workspace.root);
-  const fragments = readFragments(workspace.root);
-  const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workspace.root, ".telo") });
-
-  const { targets, diagnostics } = resolveTargets(workspace, ledger, registryRungs(argv));
-  const graph = await readImportGraph(workspace, targets, builder);
-  // The marker's own diagnostics travel with the plan, so an entry that
-  // discovers nothing is reported by CI and not only by the editor.
-  const upfront = [...workspace.diagnostics, ...diagnostics, ...graph.diagnostics];
-  if (upfront.some((diagnostic) => diagnostic.severity === "error")) {
-    return { workspace, targets, plan: { modules: [], fragments: [], diagnostics: upfront } };
-  }
-
-  const modules = await collectEvidence(workspace, {
-    targets,
-    builder,
+  const { targets, plan } = await planWorkspace(workspace, {
+    rungs: registryRungs(argv),
     baseRef: argv.base,
     // A ticker, not a diagnostic: sixty-one of these are what a human watching a
     // two-minute build wants and what a CI log or a `-o json` consumer does not.
     onModule: (module, index, total) =>
       outProgress(log.err.dim(`  [${index + 1}/${total}] ${module.key}`)),
   });
-
-  const plan = planRelease({ modules, ledger, fragments });
-  return {
-    workspace,
-    targets,
-    plan: { ...plan, diagnostics: [...upfront, ...plan.diagnostics] },
-  };
+  return { workspace, targets, plan };
 }
 
 /** The registry-verifiable half of a digest map. */

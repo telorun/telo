@@ -248,6 +248,7 @@ telo upgrade ./apps/my-app                       # directory → ./apps/my-app/t
 telo upgrade ./apps/a ./apps/b --dry-run
 telo upgrade ./apps/my-app --recursive           # follow ./relative imports too
 telo upgrade ./manifest.yaml --include-prerelease
+telo upgrade ./examples/todo-app --pin-local     # relative import of a released module → its pin
 ```
 
 **Options:**
@@ -255,6 +256,8 @@ telo upgrade ./manifest.yaml --include-prerelease
 - `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
 - `--dry-run` — Show the proposed rewrites without touching any files.
 - `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
+- `--pin-local` — Rewrite a relative import of a released module to its published pin (`../../modules/sql` → `oci://host/org/sql@0.27.0#sha256-…`). It is for a repository that holds both modules and their consumers: a consumer imports a module by relative path while a change to it is unreleased, and this turns the import back once the change has shipped. An import is rewritten only when all of these hold: its target is a module of a [release workspace](https://telo.run/extend/releasing-modules); the release plan (`telo release status`) has no pending bump for it, so the published artifact is what the working copy holds; and that version exists at the registry. Otherwise the import stays relative and the reason is printed — `kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`. A relative import of anything else (an application's own `./database` library) is left exactly as without the flag, and so is a manifest that sits inside the module it imports. Applies only to the manifests named on the command line, never to one reached through `--recursive`: a released module's own relative imports are what its release is planned along. Building the plan builds every module of the workspace, once per invocation.
+- `--registry <oci://host/org>` — With `--pin-local`: the publish destination base for modules whose workspace entry declares none, as for `telo release`.
 
 **Behavior per import:**
 

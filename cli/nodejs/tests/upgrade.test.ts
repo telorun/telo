@@ -1,4 +1,4 @@
-import { makeTarGz } from "@telorun/kernel";
+import { defaultTransportRegistry, makeTarGz } from "@telorun/kernel";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -7,6 +7,7 @@ import nock from "nock";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pickLatest, upgradeManifest, upgradeOne } from "../src/commands/upgrade.js";
 import { createLogger } from "../src/logger.js";
+import { verdictForModule } from "../src/release/local-import-pins.js";
 
 const HOST = "oci.example.test";
 const ORIGIN = `https://${HOST}`;
@@ -525,6 +526,161 @@ describe("upgradeManifest — origin interactions (in-memory)", () => {
 // upgradeManifest suite above.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// --pin-local — a relative import of a released module
+// ---------------------------------------------------------------------------
+
+describe("upgradeManifest — pinLocal", () => {
+  it("rewrites a relative import to the published pin and stops following it", async () => {
+    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
+    const pin = `${ref("telorun/run", "0.2.7")}#sha256-PUBLISHED`;
+
+    const { content, result, relativeImports } = await upgradeManifest({
+      content: input,
+      includePrerelease: false,
+      log,
+      recursive: true,
+      pinLocal: async () => ({ kind: "pinned", pin, version: "0.2.7" }),
+    });
+
+    expect(content).toBe(buildManifest([{ name: "Run", source: pin }]));
+    expect(result.repins).toEqual([
+      { source: "../../modules/run", to: ref("telorun/run", "0.2.7") },
+    ]);
+    expect(result.changed).toBe(true);
+    expect(relativeImports).toEqual([]);
+  });
+
+  it("keeps a relative import whose module has an unreleased change, and says why", async () => {
+    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
+
+    const { content, result, relativeImports } = await upgradeManifest({
+      content: input,
+      includePrerelease: false,
+      log,
+      recursive: true,
+      pinLocal: async () => ({ kind: "pending", reason: "modules/run has an unreleased change" }),
+    });
+
+    expect(content).toBe(input);
+    expect(result.pendingLocal).toEqual([
+      { source: "../../modules/run", reason: "modules/run has an unreleased change" },
+    ]);
+    expect(result.changed).toBe(false);
+    expect(relativeImports).toEqual(["../../modules/run"]);
+  });
+
+  it("treats an import of no released module exactly as without the flag", async () => {
+    const input = buildManifest([{ name: "Db", source: "./database" }]);
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      includePrerelease: false,
+      log,
+      pinLocal: async () => ({ kind: "unmanaged" }),
+    });
+
+    expect(content).toBe(input);
+    expect(result.skipped).toBe(1);
+    expect(result.pendingLocal).toEqual([]);
+  });
+
+  it("counts a verdict that could not be reached as an error", async () => {
+    const input = buildManifest([{ name: "Run", source: "../../modules/run" }]);
+
+    const { content, result } = await upgradeManifest({
+      content: input,
+      includePrerelease: false,
+      log,
+      pinLocal: async () => ({ kind: "error", message: "registry unreachable" }),
+    });
+
+    expect(content).toBe(input);
+    expect(result.errors).toBe(1);
+  });
+});
+
+describe("verdictForModule", () => {
+  const module = { key: "modules/run", version: "0.2.7" };
+  const destination = `oci://${HOST}/telorun/run`;
+  const published = { version: "0.2.7", layers: {} };
+
+  it("is pending while the release plan bumps the module, naming the reason", async () => {
+    const verdict = await verdictForModule(
+      {
+        module,
+        destination,
+        published,
+        planned: {
+          key: "modules/run",
+          name: "Run",
+          from: "0.2.7",
+          to: "0.2.8",
+          level: "patch",
+          reasons: [{ kind: "imports", module: "modules/sql" }],
+          changed: [],
+          entries: [],
+        },
+      },
+      defaultTransportRegistry(),
+    );
+
+    expect(verdict).toEqual({
+      kind: "pending",
+      reason: "modules/run has an unreleased change (0.2.7 → 0.2.8: imports modules/sql)",
+    });
+  });
+
+  it("is pending for a module the ledger has never recorded", async () => {
+    const verdict = await verdictForModule(
+      { module, destination, published: undefined, planned: undefined },
+      defaultTransportRegistry(),
+    );
+
+    expect(verdict).toEqual({ kind: "pending", reason: "modules/run has never been released" });
+  });
+
+  it("is pending when the settled version is not at the registry yet", async () => {
+    mockVersions("telorun/run", ["0.2.4"]);
+
+    const verdict = await verdictForModule(
+      { module, destination, published, planned: undefined },
+      defaultTransportRegistry(),
+    );
+
+    expect(verdict).toEqual({
+      kind: "pending",
+      reason: `modules/run@0.2.7 is not published at ${destination} yet`,
+    });
+  });
+
+  it("pins a settled, published module to the registry's own hash", async () => {
+    mockVersions("telorun/run", ["0.2.4", "0.2.7"]);
+    mockManifest("telorun/run", "0.2.7");
+
+    const verdict = await verdictForModule(
+      { module, destination, published, planned: undefined },
+      defaultTransportRegistry(),
+    );
+
+    expect(verdict.kind).toBe("pinned");
+    expect(verdict.kind === "pinned" && verdict.pin).toMatch(
+      new RegExp(`^${ref("telorun/run", "0.2.7").replace(/[.]/g, "\\.")}#sha256-`),
+    );
+  });
+
+  it("reports a registry failure instead of guessing", async () => {
+    nock(ORIGIN).get("/v2/telorun/run/tags/list").query(true).reply(500);
+
+    const verdict = await verdictForModule(
+      { module, destination, published, planned: undefined },
+      defaultTransportRegistry(),
+    );
+
+    expect(verdict.kind).toBe("error");
+  });
+});
+
 describe("upgradeOne — filesystem wrapper", () => {
   let workdir: string;
 
@@ -561,7 +717,7 @@ describe("upgradeOne — filesystem wrapper", () => {
 
     const result = await upgradeOne(manifestPath, false, true, log);
 
-    expect(result.upgrades).toEqual([
+    expect(result.upgrades).toMatchObject([
       { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
     ]);
     expect(fs.readFileSync(manifestPath, "utf-8")).toBe(input);
@@ -615,7 +771,7 @@ describe("upgradeOne — filesystem wrapper", () => {
     const result = await upgradeOne(rootPath, false, false, log, true);
 
     // Aggregated over both files, and the relative import is not counted skipped.
-    expect(result.upgrades).toEqual([
+    expect(result.upgrades).toMatchObject([
       { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
       { packagePath: label("telorun/type"), from: "1.0.0", to: "1.0.5" },
     ]);
@@ -652,7 +808,7 @@ describe("upgradeOne — filesystem wrapper", () => {
 
     const result = await upgradeOne(aPath, false, false, log, true);
 
-    expect(result.upgrades).toEqual([
+    expect(result.upgrades).toMatchObject([
       { packagePath: label("telorun/run"), from: "0.2.4", to: "0.2.7" },
       { packagePath: label("telorun/type"), from: "1.0.0", to: "1.0.5" },
     ]);

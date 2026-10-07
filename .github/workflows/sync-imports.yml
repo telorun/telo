@@ -1,0 +1,99 @@
+name: Sync imports
+
+# Keeps the imports of the in-repo consumers — examples, starters, apps and
+# blueprints — pointing at what is published, in one rolling pull request.
+#
+# Two things drift without it. A consumer imports a module by relative path
+# while a change to that module is unreleased, and nothing turns the import back
+# into a pin once the change ships. And a pinned import stays on the version it
+# was written at until someone runs `pnpm run upgrade:imports`.
+#
+# The job decides nothing itself: `telo upgrade --pin-local` rewrites a relative
+# import only when the release plan says the module's published artifact is the
+# working copy's, and leaves the rest relative with the reason, which the PR
+# body lists.
+#
+# It runs no tests. The pull request is opened with TELO_BOT_TOKEN rather than
+# the default token precisely so that the ordinary pull-request workflows run on
+# it — an event caused by the default token starts no workflow — and a bad pin
+# shows as a red check on the PR, where it is read.
+
+on:
+  # A module release is the moment a relative import becomes pinnable.
+  # `workflow_run` reads this file from the default branch only.
+  workflow_run:
+    workflows: [Publish]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-imports
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync imports
+    # A failed publish may have pushed only some modules; the retry workflow
+    # re-runs it and the next completion, or the schedule, picks the rest up.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The release plan `--pin-local` reads is built by the workspace CLI.
+      - name: Build workspace
+        run: pnpm -r --if-present build
+
+      # A failure here is recorded rather than fatal: the imports that could be
+      # decided are still worth a pull request, and the last step fails the job.
+      - name: Sync imports
+        id: sync
+        env:
+          TELO_CLI: node ./cli/nodejs/bin/telo.mjs
+        run: |
+          set +e
+          node scripts/upgrade-imports.mjs --pin-local --output=json > /tmp/sync-imports.json
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Render the PR body
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/sync-imports-pr-body.mjs /tmp/sync-imports.json > /tmp/sync-imports-body.md
+
+      # Opens nothing when no import moved.
+      - name: Open the pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.TELO_BOT_TOKEN }}
+          branch: imports/main
+          base: main
+          title: "chore(imports): sync imports with published modules"
+          commit-message: "chore(imports): sync imports with published modules"
+          body-path: /tmp/sync-imports-body.md
+
+      - name: Fail when an import could not be decided
+        if: steps.sync.outputs.status != '0'
+        run: |
+          echo "::error::telo upgrade exited ${{ steps.sync.outputs.status }} — see the 'Sync imports' step."
+          exit 1

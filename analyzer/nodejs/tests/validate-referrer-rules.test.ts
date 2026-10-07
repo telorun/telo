@@ -1,6 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readReferrerRules, rewriteReferrerRuleKinds } from "../src/referrer-rule.js";
 import { PeerBinder, type PeerBinderEnv } from "../src/peer-binding.js";
 import { declaredReach, reachSites } from "../src/reference-reach.js";
@@ -12,6 +12,15 @@ import {
   type Referrer,
   type ReferrerRuleContext,
 } from "../src/validate-referrer-rules.js";
+
+// A rule's evaluation budget is wall-clock, so a slow runner turns a rule that
+// holds into an extra `over-budget` finding. No case here is about the budget.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 const tableSlot = { "x-telo-ref": { kind: "SQL.Table", use: "dependency" } };
 

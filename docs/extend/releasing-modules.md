@@ -235,6 +235,28 @@ running from a source checkout stages the one file it needs on first use, so
 running a manifest needs no `stage`; publish, which reads every tuple, does. See
 [Native Files](./native-files.md#where-the-files-come-from-sources).
 
+## Consumers in the same repository
+
+An example, a starter or an application that lives beside the modules it uses
+normally imports them by pin. While a change to a module is unreleased, the
+consumer that needs it imports the module by relative path instead — and should
+name the published artifact again once the change ships.
+
+`telo upgrade --pin-local <manifests..>` does that. For each relative import
+whose target is a module of the workspace, it asks the release plan:
+
+- the plan bumps the module — the published artifact is not the working copy, so
+  the import stays relative and the plan's reason is printed
+  (`kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`);
+- the plan does not, and that version exists at the registry — the import is
+  rewritten to `<destination>@<version>` with its integrity pin;
+- the version is not at the registry yet — it stays relative until the next run.
+
+A dependent held back by a sibling says so: `imports modules/sql` in the reason
+names the module that has to ship first. Only the manifests you name are
+rewritten; a released module's own relative imports are what its release is
+planned along, and stay.
+
 ## Reading your own version
 
 A manifest can read the module doc's metadata instead of restating it:

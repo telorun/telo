@@ -1,11 +1,20 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readResourceRules, resolveRuleSubjects, findDynamicLeaf } from "../src/resource-rule.js";
 import {
   evaluateResourceRules,
   validateResourceRuleDeclarations,
 } from "../src/validate-resource-rules.js";
+
+// A rule's evaluation budget is wall-clock, so a slow runner turns a rule that
+// holds into an extra `over-budget` finding. No case here is about the budget.
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 /** Conditions are written with the `!cel` tag — the strict half reports one that
  *  is not, since untagged it stops being CEL to every surface but evaluation. */
