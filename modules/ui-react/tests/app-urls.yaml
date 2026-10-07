@@ -1,0 +1,192 @@
+kind: Telo.Application
+metadata:
+  name: UiReactAppUrlsTest
+  version: 1.0.0
+  description: |
+    Everything an application serves under its mount: the shell at every page
+    address (404 for a path no page declares), its import map giving the page
+    one React and the host module at content-addressed, immutable URLs that
+    export what they declare, the application and page documents with their
+    digest as an ETag and a 304 for a holder, and JSON 404s under the reserved
+    prefix.
+imports:
+  App: ../../app
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/app/telo.yaml
+    ports:
+      http: 19311
+targets:
+  - !ref fixture
+steps:
+  - name: shell
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/done", responseType: text }
+  - name: undeclared
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/no/such/page", responseType: text }
+  - name: reserved
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/nothing" }
+  - name: verifyShell
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shell:
+          status: !cel "steps.shell.result.status"
+          cache: !cel "steps.shell.result.headers['cache-control']"
+          type: !cel "steps.shell.result.headers['content-type']"
+          lang: !cel "steps.shell.result.body.contains('<html lang=\"en\">')"
+          title: !cel "steps.shell.result.body.contains('<title>Fixture Admin</title>')"
+          mount: !cel "steps.shell.result.body.contains('data-telo-mount=\"/admin\"')"
+          layers: !cel "steps.shell.result.body.contains('@layer telo.base, telo.theme, telo.component;')"
+          rendererNotMapped: !cel "!steps.shell.result.body.contains('\"@telorun/ui-react-renderer\"')"
+        undeclared:
+          status: !cel "steps.undeclared.result.status"
+          sameShell: !cel "steps.undeclared.result.body == steps.shell.result.body"
+        reserved:
+          status: !cel "steps.reserved.result.status"
+          error: !cel "steps.reserved.result.body.error"
+      expected:
+        shell:
+          status: 200
+          cache: no-cache
+          type: text/html; charset=utf-8
+          lang: true
+          title: true
+          mount: true
+          layers: true
+          rendererNotMapped: true
+        undeclared: { status: 404, sameShell: true }
+        reserved: { status: 404, error: NotFound }
+
+  - name: components
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/components" }
+  - name: modules
+    invoke: { kind: Probe.ImportMap }
+    inputs:
+      url: http://127.0.0.1:19311/admin/
+      alsoRead: !cel >-
+        '/admin/_telo/ui/assets/' + steps.components.result.body.children[0].children[0].module.digest
+        + '/' + steps.components.result.body.children[0].children[0].module.name
+  - name: verifyModules
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.modules.result.status"
+        specifiers: !cel "sort(steps.modules.result.entries.map(k, k))"
+        served: !cel "steps.modules.result.entries.map(k, steps.modules.result.entries[k]).all(e, e.addressed && e.status == 200 && e.mediaType == 'text/javascript' && e.cacheControl == 'public, max-age=31536000, immutable')"
+        host: !cel "steps.modules.result.entries['@telorun/ui-react'].exports"
+        jsx: !cel "steps.modules.result.entries['react/jsx-runtime'].exports"
+        client: !cel "steps.modules.result.entries['react-dom/client'].exports"
+        react: !cel "['useState', 'useEffect', 'createContext', 'Suspense', 'lazy'].all(n, n in steps.modules.result.entries['react'].exports)"
+        reactDom: !cel "['createPortal', 'flushSync'].all(n, n in steps.modules.result.entries['react-dom'].exports)"
+        rendererImports: !cel "steps.modules.result.rendererImports"
+        componentImports: !cel "steps.modules.result.alsoImports"
+      expected:
+        status: 200
+        specifiers: ["@telorun/ui-react", react, react-dom, react-dom/client, react/jsx-runtime]
+        served: true
+        host: [useHost]
+        jsx: [Fragment, jsx, jsxs]
+        client: [createRoot, hydrateRoot, version]
+        react: true
+        reactDom: true
+        rendererImports: [react, react-dom, react-dom/client, react/jsx-runtime]
+        componentImports: ["@telorun/ui-react", react, react-dom, react/jsx-runtime]
+
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/app" }
+  - name: appAgain
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:19311/admin/_telo/ui/app
+      headers:
+        if-none-match: !cel "steps.app.result.headers['etag']"
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/done" }
+  - name: pageAgain
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: http://127.0.0.1:19311/admin/_telo/ui/page?path=/done
+      headers:
+        if-none-match: !cel "steps.page.result.headers['etag']"
+  - name: noPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/nowhere" }
+  - name: stylesheet
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19311' + steps.app.result.body.stylesheets[0]"
+  - name: verifyDocuments
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        app:
+          status: !cel "steps.app.result.status"
+          cache: !cel "steps.app.result.headers['cache-control']"
+          etagIsDigest: !cel "steps.app.result.headers['etag'] == '\"' + steps.app.result.body.digest + '\"'"
+          keys: !cel "sort(steps.app.result.body.map(k, k))"
+          specVersion: !cel "steps.app.result.body.specVersion"
+          title: !cel "steps.app.result.body.title"
+          lang: !cel "steps.app.result.body.lang"
+          pages: !cel "steps.app.result.body.pages.map(p, p.path)"
+          stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
+          bundleIsRenderer: !cel "steps.shell.result.body.contains('/_telo/ui/assets/' + steps.app.result.body.bundle + '/renderer.js')"
+        appAgain: !cel "steps.appAgain.result.status"
+        page:
+          status: !cel "steps.page.result.status"
+          cache: !cel "steps.page.result.headers['cache-control']"
+          etagIsDigest: !cel "steps.page.result.headers['etag'] == '\"' + steps.page.result.body.digest + '\"'"
+          keys: !cel "sort(steps.page.result.body.map(k, k))"
+          path: !cel "steps.page.result.body.path"
+          title: !cel "steps.page.result.body.title"
+          sameBundle: !cel "steps.page.result.body.bundle == steps.app.result.body.bundle"
+          children: !cel "steps.page.result.body.children.map(c, c.type)"
+          fixedFilter: !cel "steps.page.result.body.children[1].filters"
+        pageAgain: !cel "steps.pageAgain.result.status"
+        noPage:
+          status: !cel "steps.noPage.result.status"
+          error: !cel "steps.noPage.result.body.error"
+        stylesheet:
+          status: !cel "steps.stylesheet.result.status"
+          type: !cel "steps.stylesheet.result.headers['content-type'].startsWith('text/css')"
+          cache: !cel "steps.stylesheet.result.headers['cache-control']"
+          baseLayer: !cel "steps.stylesheet.result.body.contains('@layer telo.base')"
+      expected:
+        app:
+          status: 200
+          cache: private, no-cache
+          etagIsDigest: true
+          keys: [bundle, digest, lang, pages, specVersion, stylesheets, title]
+          specVersion: 1
+          title: Fixture Admin
+          lang: en
+          pages: [/, /done, /all, /variants, /new, /components, /gallery]
+          stylesheets: [renderer.css, default-theme.css, theme.css, ui.css]
+          bundleIsRenderer: true
+        appAgain: 304
+        page:
+          status: 200
+          cache: private, no-cache
+          etagIsDigest: true
+          keys: [bundle, children, digest, path, specVersion, title]
+          path: /done
+          title: Done
+          sameBundle: true
+          children: [text, table]
+          fixedFilter: { isDone: true }
+        pageAgain: 304
+        noPage: { status: 404, error: NotFound }
+        stylesheet:
+          status: 200
+          type: true
+          cache: public, max-age=31536000, immutable
+          baseLayer: true

@@ -1,0 +1,86 @@
+/* Layout only. Colour, spacing and type belong to the theme layer. */
+@layer telo.base {
+  [data-telo-part="app"] { display: flex; flex-direction: column; min-height: 100vh; }
+  [data-telo-part="header"] { display: flex; align-items: center; flex-wrap: wrap; }
+  [data-telo-part="nav"] { display: flex; flex-wrap: wrap; }
+  [data-telo-part="main"] { flex: 1; min-width: 0; }
+  [data-telo-part="page"],
+  [data-telo-part="stack"],
+  [data-telo-part="table"],
+  [data-telo-part="form"] { display: flex; flex-direction: column; }
+  [data-telo-part="box"] { display: block; }
+  [data-telo-part="columns"] { display: flex; flex-wrap: wrap; align-items: flex-start; }
+  [data-telo-part="column"] { flex: 1 1 0; min-width: 0; }
+  [data-telo-part="badge"] { display: inline-flex; align-items: center; white-space: nowrap; }
+  [data-telo-part="image"],
+  [data-telo-part="svg"] { max-width: 100%; height: auto; }
+  [data-telo-part="icon"] { flex: none; pointer-events: none; }
+  :where(button)[data-telo-part] { display: inline-flex; align-items: center; justify-content: center; flex: none; white-space: nowrap; }
+
+  [data-telo-part="table-frame"] { overflow-x: auto; }
+  [data-telo-part="table-grid"] { border-collapse: collapse; width: 100%; }
+  [data-telo-part="table-toolbar"],
+  [data-telo-part="pager"],
+  [data-telo-part="form-actions"] { display: flex; align-items: center; }
+  [data-telo-part="table-toolbar"],
+  [data-telo-part="pager"] { justify-content: flex-end; }
+  [data-telo-part="pager-status"] { flex: 1; }
+  [data-telo-part="row-actions"] { white-space: nowrap; text-align: right; width: 1%; }
+  [data-telo-part="table-empty"],
+  [data-telo-part="table-loading"] { text-align: center; }
+
+  [data-telo-part="field"],
+  [data-telo-part="filter"] { display: flex; flex-direction: column; }
+  /* A boolean field is one line: the box, then its label. */
+  [data-telo-part="field"]:has(> [data-telo-part="checkbox"]) { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="field"]:has(> [data-telo-part="checkbox"]) > [data-telo-part="field-error"] { flex-basis: 100%; }
+  [data-telo-part="input"],
+  [data-telo-part="textarea"],
+  [data-telo-part="filter-input"] { box-sizing: border-box; min-width: 0; }
+  [data-telo-part="input"],
+  [data-telo-part="textarea"],
+  [data-telo-part="select"] { width: 100%; }
+  button[data-telo-part="select"],
+  button[data-telo-part="filter-select"] { justify-content: space-between; box-sizing: border-box; min-width: 0; }
+  [data-telo-part="select"] > span,
+  [data-telo-part="filter-select"] > span { overflow: hidden; text-overflow: ellipsis; }
+  [data-telo-part="filters"] { display: flex; flex-wrap: wrap; align-items: flex-end; }
+  [data-telo-part="filters"] > :not([data-telo-part="filter"]):not([data-telo-part="filters-reset"]) { flex-basis: 100%; }
+
+  [data-telo-part="select-content"] {
+    box-sizing: border-box;
+    z-index: 50;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-width: max(9rem, var(--radix-select-trigger-width, 0px), var(--radix-dropdown-menu-trigger-width, 0px));
+    max-height: min(var(--radix-select-content-available-height, 100vh), var(--radix-dropdown-menu-content-available-height, 100vh));
+  }
+  [data-telo-part="select-item"] { position: relative; display: flex; align-items: center; cursor: default; user-select: none; }
+  [data-telo-part="select-item"] [data-telo-part="icon"] { position: absolute; }
+  [data-telo-part="tooltip"] { z-index: 50; width: fit-content; }
+
+  [data-telo-part="dialog-overlay"] { position: fixed; inset: 0; z-index: 50; }
+  [data-telo-part="dialog"] {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    box-sizing: border-box;
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    display: grid;
+    align-content: start;
+  }
+  [data-telo-part="dialog"] > * { min-width: 0; }
+  [data-telo-part="dialog-header"] { display: flex; flex-direction: column; }
+  [data-telo-part="dialog-close"] { position: absolute; }
+  [data-telo-part="dialog"] [data-telo-part="form-actions"] { justify-content: flex-end; }
+
+  [data-telo-part="error"] { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  [data-telo-part="error"] > [data-telo-part="icon"] { grid-row: span 2; }
+  [data-telo-part="error-code"],
+  [data-telo-part="error-message"] { grid-column: 2; overflow-wrap: anywhere; }
+  [data-telo-part="loading"] { display: inline-flex; align-items: center; }
+}

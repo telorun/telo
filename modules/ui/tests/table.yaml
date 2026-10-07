@@ -1,0 +1,176 @@
+kind: Telo.Application
+metadata:
+  name: UiTableTest
+  version: 1.0.0
+  description: |
+    A table provides its node from the row model: one column per property when
+    none are listed, each header from the property's title or name, sortable
+    exactly where the value is a scalar property, and shown as the property's
+    type and format say — the same for a column written by hand. A cell may be
+    a component given values of the row, whose files the table lists.
+imports:
+  Ui: ../
+  Widgets: ./__fixtures__/widgets
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  required: [text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean }
+    dueOn: { type: [string, "null"], format: date }
+    owner:
+      type: object
+      properties:
+        name: { type: string }
+---
+kind: Ui.Table
+metadata:
+  name: derived
+model: !ref Todo
+source: { basePath: /api/todos }
+---
+kind: Ui.Form
+metadata:
+  name: todoForm
+model: !ref Todo
+source: { basePath: /api/todos }
+fields:
+  - property: text
+  - property: dueOn
+---
+kind: Ui.Table
+metadata:
+  name: written
+model: !ref Todo
+source:
+  basePath: /api/todos
+  filters: { isDone: false }
+rowKey: id
+pageSize: 10
+rowStyle:
+  by: !cel "row.isDone"
+  cases: { "true": muted }
+  default: strong
+columns:
+  - value: !cel "row.dueOn"
+  - header: Owner
+    value: !cel "row.owner.name"
+    style:
+      by: !cel "row.owner.name"
+      cases: { ada: [accent, strong] }
+  - header: Fixed
+    value: always
+  - header: Status
+    cell:
+      kind: Ui.Component
+      component: !ref Widgets.statusPill
+      model: !ref Todo
+      props:
+        done: !cel "row.isDone"
+        label: Done
+create: !ref todoForm
+edit:
+  kind: Ui.Form
+  model: !ref Todo
+  source: { basePath: /api/todos }
+delete: true
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: derived
+    invoke: { kind: Probe.Read, source: !ref derived }
+  - name: written
+    invoke: { kind: Probe.Read, source: !ref written }
+  - name: checkDerived
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        columns: !cel "steps.derived.result.node.columns"
+        rest: !cel >-
+          {
+            'basePath': steps.derived.result.node.basePath,
+            'rowKey': steps.derived.result.node.rowKey,
+            'pageSize': steps.derived.result.node.pageSize,
+            'delete': steps.derived.result.node.delete,
+            'schemaRequired': steps.derived.result.node.schema.required,
+            'assets': steps.derived.result.assets
+          }
+      expected:
+        columns:
+          - { header: id, value: { root: row, path: [id] }, sort: id, present: { type: integer } }
+          - { header: Task, value: { root: row, path: [text] }, sort: text, present: { type: string } }
+          - { header: isDone, value: { root: row, path: [isDone] }, sort: isDone, present: { type: boolean } }
+          - { header: dueOn, value: { root: row, path: [dueOn] }, sort: dueOn, present: { type: [string, "null"], format: date } }
+          - { header: owner, value: { root: row, path: [owner] }, present: { type: object } }
+        rest:
+          basePath: /api/todos
+          rowKey: id
+          pageSize: 25
+          delete: false
+          schemaRequired: [text]
+          assets: []
+  - name: checkWritten
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        dateColumnsAgree: !cel "steps.written.result.node.columns[0] == steps.derived.result.node.columns[3]"
+        columns: !cel "steps.written.result.node.columns.map(c, has(c.cell) ? {'header': c.header, 'cell': {'type': c.cell.type, 'export': c.cell.export, 'abi': c.cell.abi, 'external': c.cell.external, 'props': c.cell.props, 'entry': c.cell.module.name, 'stylesheets': c.cell.stylesheets.map(s, s.name)}} : c)"
+        filters: !cel "steps.written.result.node.filters"
+        pageSize: !cel "steps.written.result.node.pageSize"
+        rowStyle: !cel "steps.written.result.node.rowStyle"
+        create: !cel "steps.written.result.node.create.fields"
+        edit: !cel "steps.written.result.node.edit.fields"
+        delete: !cel "steps.written.result.node.delete"
+        assets: !cel "steps.written.result.assets.map(a, {'name': a.name, 'mediaType': a.mediaType, 'sameDigest': a.digest == steps.written.result.node.columns[3].cell.module.digest})"
+      expected:
+        dateColumnsAgree: true
+        columns:
+          - { header: dueOn, value: { root: row, path: [dueOn] }, sort: dueOn, present: { type: [string, "null"], format: date } }
+          - header: Owner
+            value: { root: row, path: [owner, name] }
+            present: { type: string }
+            style:
+              by: { root: row, path: [owner, name] }
+              cases: { ada: [accent, strong] }
+          - { header: Fixed, value: { value: always } }
+          - header: Status
+            cell:
+              type: component
+              export: StatusPill
+              abi: ui_react-1
+              external: [react]
+              entry: badges.js
+              stylesheets: [badges.css]
+              props:
+                done: { root: row, path: [isDone] }
+                label: { value: Done }
+        filters: { isDone: false }
+        pageSize: 10
+        rowStyle:
+          by: { root: row, path: [isDone] }
+          cases: { "true": muted }
+          default: strong
+        create:
+          - { property: text, label: Task }
+          - { property: dueOn, label: dueOn }
+        edit:
+          - { property: id, label: id }
+          - { property: text, label: Task }
+          - { property: isDone, label: isDone }
+          - { property: dueOn, label: dueOn }
+        delete: true
+        assets:
+          - { name: badges.js, mediaType: text/javascript, sameDigest: true }
+          - { name: badges.css, mediaType: text/css, sameDigest: true }

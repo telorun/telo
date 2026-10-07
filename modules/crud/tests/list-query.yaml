@@ -1,0 +1,329 @@
+kind: Telo.Application
+metadata:
+  name: CrudListQueryTest
+  version: 1.0.0
+  description: |
+    The list route as a collection: pages walked by cursor stay exact while
+    rows are inserted, an earlier cursor replays its page, nulls sort last in
+    both directions, each operator family returns the right rows, `total`
+    counts the filtered set, a boolean property is `true` / `false` through
+    create, filter, list and read-one, and every bad query is the
+    request-validation envelope naming the parameter that carried it.
+imports:
+  Crud: ../
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+migrations:
+  0001_tasks:
+    statement: |
+      CREATE TABLE tasks (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        text     TEXT    NOT NULL,
+        is_done  INTEGER NOT NULL DEFAULT 0,
+        priority INTEGER,
+        status   TEXT,
+        due_on   TEXT
+      )
+  0002_seed:
+    statement: |
+      INSERT INTO tasks (text, is_done, priority, status, due_on) VALUES
+        ('Write the plan',  1, 2,    'done',    '2026-10-01'),
+        ('Review the plan', 0, 1,    'open',    '2026-10-07'),
+        ('Ship 100%',       0, 3,    'blocked', NULL),
+        ('ship_it',         0, NULL, 'open',    '2026-10-12'),
+        ('Record the demo', 0, 5,    'open',    NULL)
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string, minLength: 1 }
+    isDone: { type: boolean }
+    priority: { type: integer }
+    status: { enum: [open, blocked, done] }
+    dueOn: { type: string, format: date }
+---
+kind: Crud.Resource
+metadata: { name: tasks }
+connection: !ref db
+singular: task
+plural: tasks
+model: !ref Task
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 19313
+    baseUrl: http://127.0.0.1:19313
+    openapi:
+      info: { title: Tasks API, version: 1.0.0 }
+    mounts:
+      - path: /tasks
+        mount: !ref tasks
+      - path: /reference
+        mount: !ref docs
+targets:
+  - !ref server
+steps:
+  # ── Typed values: a boolean is true / false although SQLite stores 0 / 1 ──
+  - name: create
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks", method: POST }
+    inputs:
+      body: { text: Typed, isDone: true }
+  - name: filterDone
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?isDone=true" }
+  - name: readOne
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/6" }
+  - name: undo
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/1", method: PUT }
+    inputs:
+      body: { text: Write the plan, isDone: false, priority: 2, status: done, dueOn: "2026-10-01" }
+  - name: readUndone
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/1" }
+  - name: verifyTyped
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: !cel "steps.create.result.status"
+        filtered: !cel "steps.filterDone.result.body"
+        readOne: !cel "steps.readOne.result.body"
+        undone: !cel "steps.readUndone.result.body"
+      expected:
+        created: 201
+        filtered:
+          rows:
+            - { id: 1, text: Write the plan, isDone: true, priority: 2, status: done, dueOn: "2026-10-01" }
+            - { id: 6, text: Typed, isDone: true, status: null }
+          total: 2
+          next: null
+        readOne: { id: 6, text: Typed, isDone: true, status: null }
+        undone: { id: 1, text: Write the plan, isDone: false, priority: 2, status: done, dueOn: "2026-10-01" }
+
+  # ── Paging: a row inserted mid-walk, sorting before the cursor, moves nothing ──
+  - name: page1
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=text&limit=2" }
+  - name: insertEarlier
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks", method: POST }
+    inputs:
+      body: { text: Aardvark }
+  - name: page2
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19313/tasks?sort=text&limit=2&cursor=' + steps.page1.result.body.next"
+  - name: page3
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19313/tasks?sort=text&limit=2&cursor=' + steps.page2.result.body.next"
+  - name: page2Again
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19313/tasks?sort=text&limit=2&cursor=' + steps.page1.result.body.next"
+  - name: verifyPaging
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        walked: !cel "(steps.page1.result.body.rows + steps.page2.result.body.rows + steps.page3.result.body.rows).map(r, r.id)"
+        totalBefore: !cel "steps.page1.result.body.total"
+        totalAfter: !cel "steps.page2.result.body.total"
+        last: !cel "steps.page3.result.body.next"
+        replayed: !cel "steps.page2Again.result.body == steps.page2.result.body"
+      expected:
+        # By text, byte order: Record, Review, Ship, Typed, Write, ship_it.
+        walked: [5, 2, 3, 6, 1, 4]
+        totalBefore: 6
+        totalAfter: 7
+        last: null
+        replayed: true
+
+  # ── Nulls last in both directions, and across a page boundary ──
+  - name: dueAscending
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=dueOn" }
+  - name: dueDescending
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=-dueOn&limit=4" }
+  - name: dueDescendingRest
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19313/tasks?sort=-dueOn&limit=4&cursor=' + steps.dueDescending.result.body.next"
+  - name: verifyNulls
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        ascending: !cel "steps.dueAscending.result.body.rows.map(r, r.id)"
+        descending: !cel "steps.dueDescending.result.body.rows.map(r, r.id)"
+        rest: !cel "steps.dueDescendingRest.result.body.rows.map(r, r.id)"
+      expected:
+        ascending: [1, 2, 4, 3, 5, 6, 7]
+        descending: [4, 2, 1, 3]
+        rest: [5, 6, 7]
+
+  # ── Each operator family ──
+  - name: equal
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?status=open&limit=1" }
+  - name: contains
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.contains=SHIP" }
+  - name: containsPercent
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.contains=0%25" }
+  - name: containsUnderscore
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.contains=_" }
+  - name: atLeast
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?priority.gte=3" }
+  - name: between
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?dueOn.gt=2026-10-01&dueOn.lte=2026-10-12" }
+  - name: oneOf
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?status.in=done&status.in=blocked" }
+  - name: oneOfSingle
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?id.in=4" }
+  - name: byIdDescending
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?id.lt=4&sort=-id" }
+  - name: verifyOperators
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        equal:
+          ids: !cel "steps.equal.result.body.rows.map(r, r.id)"
+          total: !cel "steps.equal.result.body.total"
+          more: !cel "steps.equal.result.body.next != null"
+        contains: !cel "steps.contains.result.body.rows.map(r, r.id)"
+        containsPercent: !cel "steps.containsPercent.result.body.rows.map(r, r.id)"
+        containsUnderscore: !cel "steps.containsUnderscore.result.body.rows.map(r, r.id)"
+        atLeast: !cel "steps.atLeast.result.body.rows.map(r, r.id)"
+        between: !cel "steps.between.result.body.rows.map(r, r.id)"
+        oneOf: !cel "steps.oneOf.result.body.rows.map(r, r.id)"
+        oneOfSingle: !cel "steps.oneOfSingle.result.body.rows.map(r, r.id)"
+        byIdDescending: !cel "steps.byIdDescending.result.body.rows.map(r, r.id)"
+      expected:
+        # `total` is every match, not the page.
+        equal: { ids: [2], total: 3, more: true }
+        contains: [3, 4]
+        containsPercent: [3]
+        containsUnderscore: [4]
+        atLeast: [3, 5]
+        between: [2, 4]
+        oneOf: [1, 3]
+        oneOfSingle: [4]
+        byIdDescending: [3, 2, 1]
+
+  # ── Refusals: one envelope, naming the parameter ──
+  - name: unknownProperty
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.gt=a&nope=1" }
+  - name: multiKeySort
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=text,dueOn" }
+  - name: unknownOperator
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.like=a" }
+  - name: operatorNotApplicable
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?isDone.contains=t" }
+  - name: unparsableValue
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?priority=high" }
+  - name: spelledEquality
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?text.eq=Typed" }
+  - name: limitTooLarge
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?limit=101" }
+  - name: limitTooSmall
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?limit=0" }
+  - name: limitNotANumber
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?limit=abc" }
+  - name: repeatedSort
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=text&sort=dueOn" }
+  - name: repeatedCursor
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?cursor=a&cursor=b" }
+  # Wrong in a typed parameter and in a filter: the typed parameter is named.
+  - name: typedBeforeFilter
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?limit=0&nope=1" }
+  - name: malformedCursor
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?cursor=not-a-cursor" }
+  - name: cursorOfAnotherSort
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19313/tasks?sort=-text&limit=2&cursor=' + steps.page1.result.body.next"
+  - name: verifyRefusals
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        unknownProperty:
+          status: !cel "steps.unknownProperty.result.status"
+          body: !cel "steps.unknownProperty.result.body"
+        multiKeySort: !cel "steps.multiKeySort.result.body.details"
+        unknownOperator: !cel "steps.unknownOperator.result.body.details.map(d, d.path)"
+        operatorNotApplicable: !cel "steps.operatorNotApplicable.result.body.details"
+        unparsableValue: !cel "steps.unparsableValue.result.body.details"
+        spelledEquality: !cel "steps.spelledEquality.result.body.details.map(d, d.path)"
+        limitTooLarge: !cel "steps.limitTooLarge.result.body.details"
+        limitTooSmall: !cel "steps.limitTooSmall.result.body.details"
+        limitNotANumber: !cel "steps.limitNotANumber.result.body.details"
+        repeatedSort: !cel "steps.repeatedSort.result.body.details"
+        repeatedCursor: !cel "steps.repeatedCursor.result.body.details"
+        typedBeforeFilter: !cel "steps.typedBeforeFilter.result.body.details.map(d, d.path)"
+        malformedCursor: !cel "steps.malformedCursor.result.body.details"
+        cursorOfAnotherSort: !cel "steps.cursorOfAnotherSort.result.body.details"
+        statuses: !cel >-
+          [steps.multiKeySort, steps.unknownOperator, steps.operatorNotApplicable, steps.unparsableValue,
+           steps.spelledEquality, steps.limitTooLarge, steps.limitTooSmall, steps.limitNotANumber,
+           steps.repeatedSort, steps.repeatedCursor, steps.typedBeforeFilter,
+           steps.malformedCursor, steps.cursorOfAnotherSort]
+          .map(s, s.result.status)
+      expected:
+        unknownProperty:
+          status: 400
+          body:
+            error: ValidationError
+            message: Request validation failed
+            status: 400
+            details:
+              - { location: query, path: nope, message: names no property of this collection }
+        multiKeySort:
+          - { location: query, path: sort, message: "takes one property; `id` is always the tiebreaker" }
+        unknownOperator: [text.like]
+        operatorNotApplicable:
+          - { location: query, path: isDone.contains, message: does not apply to a property of type boolean }
+        unparsableValue:
+          - { location: query, path: priority, message: is not a value of type integer }
+        spelledEquality: [text.eq]
+        limitTooLarge:
+          - { location: query, path: limit, message: must be <= 100 }
+        limitTooSmall:
+          - { location: query, path: limit, message: must be >= 1 }
+        limitNotANumber:
+          - { location: query, path: limit, message: must be integer }
+        repeatedSort:
+          - { location: query, path: sort, message: must be string }
+        repeatedCursor:
+          - { location: query, path: cursor, message: must be string }
+        typedBeforeFilter: [limit]
+        malformedCursor:
+          - { location: query, path: cursor, message: is not a cursor this collection issued }
+        cursorOfAnotherSort:
+          - { location: query, path: cursor, message: "was issued for a different sort; start again without it" }
+        statuses: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
+
+  # ── The envelope is the documented response ──
+  - name: spec
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/reference/openapi.json" }
+  - name: verifySpec
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.required"
+      expected: [rows, total, next]

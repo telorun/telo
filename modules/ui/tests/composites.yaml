@@ -1,0 +1,120 @@
+kind: Telo.Application
+metadata:
+  name: UiCompositesTest
+  version: 1.0.0
+  description: |
+    A filter bar provides one control per listed property with the operator
+    written or the one the property's type defaults to — and one per scalar
+    property when none are listed — around the node it filters, and nothing at
+    all when that node is switched off. A standalone
+    form lists every scalar property. A theme provides its tokens by name, its
+    typefaces apart from its CSS values.
+imports:
+  Ui: ../
+  Font: ../../font
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string, title: Task }
+    isDone: { type: boolean }
+    priority: { type: integer }
+    status: { enum: [open, blocked, done] }
+    tags: { type: array, items: { type: string } }
+---
+kind: Ui.Filters
+metadata:
+  name: derived
+model: !ref Todo
+content: { type: text, text: Todos, when: false }
+---
+kind: Ui.Filters
+metadata:
+  name: shown
+model: !ref Todo
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: written
+model: !ref Todo
+fields:
+  - property: priority
+    operator: gte
+  - property: text
+content:
+  type: stack
+  children:
+    - type: composite
+      ref: { kind: Ui.Table, model: !ref Todo, source: { basePath: /api/todos }, columns: [{ value: !cel "row.text" }] }
+---
+kind: Ui.Form
+metadata:
+  name: form
+model: !ref Todo
+source: { basePath: /api/todos }
+---
+kind: Font.Family
+metadata:
+  name: inter
+family: Inter
+---
+kind: Ui.Theme
+metadata:
+  name: brand
+tokens:
+  color.accent: "#1f8fff"
+  radius.md: 6px
+  font.body: !ref inter
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: derived
+    invoke: { kind: Probe.Read, source: !ref derived }
+  - name: shown
+    invoke: { kind: Probe.Read, source: !ref shown }
+  - name: written
+    invoke: { kind: Probe.Read, source: !ref written }
+  - name: form
+    invoke: { kind: Probe.Read, source: !ref form }
+  - name: theme
+    invoke: { kind: Probe.Read, source: !ref brand }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        derived: !cel "steps.shown.result.node.fields.map(f, {'property': f.property, 'operator': f.operator, 'label': f.label})"
+        derivedContent: !cel "has(steps.derived.result.node)"
+        written: !cel "steps.written.result.node.fields"
+        writtenContent: !cel "steps.written.result.node.content.children.map(c, c.type)"
+        form: !cel "steps.form.result.node.fields"
+        theme: !cel "{'tokens': steps.theme.result.tokens, 'body': steps.theme.result.fonts['font.body'].family}"
+      expected:
+        derived:
+          - { property: text, operator: contains, label: Task }
+          - { property: isDone, operator: eq, label: isDone }
+          - { property: priority, operator: eq, label: priority }
+          - { property: status, operator: in, label: status }
+        derivedContent: false
+        written:
+          - { property: priority, operator: gte, label: priority, schema: { type: integer } }
+          - { property: text, operator: contains, label: Task, schema: { type: string, title: Task } }
+        writtenContent: [table]
+        form:
+          - { property: text, label: Task }
+          - { property: isDone, label: isDone }
+          - { property: priority, label: priority }
+          - { property: status, label: status }
+        theme:
+          tokens: { color.accent: "#1f8fff", radius.md: 6px }
+          body: Inter

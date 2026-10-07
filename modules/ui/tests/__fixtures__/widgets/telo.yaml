@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: UiWidgets
+  version: 1.0.0
+  description: >-
+    Test fixture shipping one browser component with a stylesheet, published
+    for pages to place, with the properties it accepts.
+imports:
+  Ui: ../../../
+exports:
+  resources: [statusPill]
+  browser:
+    - specifier: "@fixture/badges"
+      path: ./browser/badges.js
+      source: ./browser/src/badges.js
+      abi: ui_react-1
+      external: [react]
+      exports: [StatusPill]
+---
+kind: Ui.ComponentExport
+metadata:
+  name: statusPill
+entry: "@fixture/badges"
+export: StatusPill
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [done]
+    properties:
+      done: { type: boolean }
+      label: { type: string }

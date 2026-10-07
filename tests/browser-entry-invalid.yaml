@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: BrowserEntryInvalidTest
+  version: 1.0.0
+  description: |
+    A browser entry that cannot be read is reported at the library declaring
+    it, one diagnostic per entry: a specifier declared twice, a missing path, a
+    platform axis, an abi that is not `<family>-<version>`, an entry with no
+    source in a source checkout, an `exports` that is not a list, and a `path`
+    or `source` that is absolute or points above the module root.
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref invalidEntries
+---
+kind: Assert.Manifest
+metadata:
+  name: invalidEntries
+source: ./__fixtures__/browser-entry-invalid/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[1] ('@demo/ok'): a second entry declares the specifier '@demo/ok'"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[2] ('@demo/pathless'): 'path' is required"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[3] ('@demo/platform'): 'os' cannot be stated"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[4] ('@demo/abi'): abi value 'latest' must have the form <family>-<version>"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[5] ('@demo/sourceless'): 'source' is required"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[6] ('@demo/exports'): 'exports' must be a list of non-empty strings"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[7] ('@demo/absolute'): 'path' is '/srv/browser/absolute.js', which is not relative to the module root"
+    - code: BROWSER_ENTRY_INVALID
+      message: "exports.browser[8] ('@demo/above'): 'source' is '../outside/above.js', which points above the module root"

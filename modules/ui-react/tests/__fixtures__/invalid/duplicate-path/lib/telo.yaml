@@ -1,0 +1,24 @@
+# Two pages at one path.
+kind: Telo.Library
+metadata:
+  name: UiReactDuplicatePath
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application that declares two pages at the same
+    path.
+imports:
+  UiReact: ../../../../../
+exports:
+  resources: [twice]
+---
+kind: UiReact.App
+metadata:
+  name: twice
+title: Twice
+pages:
+  - path: /reports
+    title: Reports
+    children: []
+  - path: /reports
+    title: Reports again
+    children: []

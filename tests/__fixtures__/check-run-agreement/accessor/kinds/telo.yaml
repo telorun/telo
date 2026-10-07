@@ -1,0 +1,94 @@
+# A kind with ACCESSOR fields: each names a value for whoever consumes the
+# resource to resolve, and is never evaluated. A provider, so every other field
+# is evaluated once at creation — the accessor annotation is what keeps these
+# out of that.
+kind: Telo.Library
+metadata:
+  name: AccessorKinds
+  version: 1.0.0
+  description: >-
+    Fixture library whose table kind takes row accessors — plain chains typed
+    against the table's row model — and hands them to its controller as
+    bindings.
+exports:
+  kinds: [Table, Preset, Read]
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: Provides the title and the row accessors it was configured with, exactly as it received them.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Table
+schema:
+  type: object
+  additionalProperties: false
+  required: [model]
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    title: { type: string }
+    rowStyle:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row:
+            x-telo-context-ref-from: "model/schema"
+    columns:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [header]
+        properties:
+          header: { type: string }
+          value:
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row:
+                  x-telo-context-from-root: "model"
+---
+# A templated kind composing a table. The accessor it writes in its body reaches
+# the table as written — the body's expansion evaluates only what reads `self`.
+kind: Telo.Definition
+metadata:
+  name: Preset
+  description: Provides a table over the given row model, styled by each row's status and titled from a label.
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, label]
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    label: { type: string }
+resources:
+  - kind: Self.Table
+    metadata: { name: table }
+    model: !cel "self.model"
+    title: !cel "'Preset ' + self.label"
+    rowStyle: !cel "row.status"
+    columns:
+      - header: Label
+        value: !cel "self.label"
+provide: !ref table
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+  description: Returns what the value source it holds provides.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Read
+schema:
+  type: object
+  required: [source]
+  additionalProperties: false
+  properties:
+    source:
+      x-telo-ref: { kind: Telo.Provider, use: call }

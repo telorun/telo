@@ -1,0 +1,38 @@
+# A library with no controller of its own: its kind is a template that provides
+# through a view, so an application drops a ready section into a page.
+kind: Telo.Library
+metadata:
+  name: UiFixtureViews
+  version: 1.0.0
+  description: >-
+    Test fixture: a ready-made page section built from layout and text alone,
+    with a heading and a caption supplied by whoever places it.
+imports:
+  Ui: ../../../../ui
+exports:
+  kinds: [Banner]
+---
+kind: Telo.Definition
+metadata:
+  name: Banner
+  description: >-
+    A titled banner: a heading over a muted caption, placed on a page as one
+    section.
+capability: Telo.Provider
+extends: Ui.Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [heading, caption]
+  properties:
+    heading: { type: string }
+    caption: { type: string }
+resources:
+  - kind: Ui.View
+    metadata: { name: view }
+    content:
+      type: stack
+      children:
+        - { type: text, text: !cel "self.heading", style: heading }
+        - { type: text, text: !cel "self.caption", style: muted }
+provide: !ref view

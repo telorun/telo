@@ -21,7 +21,13 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import {
+  CEL_ENGINE,
+  EACH_SEGMENT,
+  INDEX_SEGMENT,
+  isRefSentinel,
+  isTaggedSentinel,
+} from "@telorun/templating";
 
 export const RESOURCE_RULES_ANNOTATION = "x-telo-resource-rules";
 
@@ -282,6 +288,13 @@ export function findDynamicLeaf(value: unknown, base = ""): DynamicLeaf | undefi
   return undefined;
 }
 
+/** A node a condition reads, with the chain that reached it spelled as a path
+ *  (`self.routes[1].path`). */
+export interface ReadNode {
+  readonly node: unknown;
+  readonly path: string;
+}
+
 /**
  * The nodes a condition actually READS, resolved against the resource and the
  * element under test — the input to the dynamic-leaf check.
@@ -290,13 +303,18 @@ export function findDynamicLeaf(value: unknown, base = ""): DynamicLeaf | undefi
  * the shape it matters most: a resource-wide rule takes the whole resource as
  * its subject, so one unrelated `!cel` anywhere (a `version:` read from
  * `module.version`, which is the conventional spelling) would switch off every
- * such rule. Chains are the same primitive the binding-order derivation uses:
- * parsed, never lexed, so a name inside a string literal reads nothing.
+ * such rule. Chains are parsed, never lexed, so a name inside a string literal
+ * reads nothing.
  *
  * A chain stops at a computed index (`INDEX_SEGMENT`): what it selects is not
  * known statically, so the node reached so far is what gets checked — the
  * over-approximating direction, which errs toward skipping rather than toward
  * evaluating a placeholder.
+ *
+ * `EACH_SEGMENT` is a comprehension's iteration variable: the rest of the chain
+ * is read on every element of the collection reached so far. A chain ENDING
+ * there is a collection that is only iterated — none of its elements is read,
+ * and only a collection that is itself not known until creation counts.
  */
 export function readNodes(
   chains: readonly (readonly string[])[],
@@ -304,25 +322,64 @@ export function readNodes(
    *  `self`/`referrer` for a referrer rule. A chain rooted at a name that is not
    *  bound reads nothing. */
   roots: Record<string, unknown>,
-): unknown[] {
-  const nodes: unknown[] = [];
-  for (const chain of chains) {
-    const root = chain[0];
-    let current: unknown = root !== undefined && root in roots ? roots[root] : undefined;
-    if (current === undefined) continue;
-    for (const segment of chain.slice(1)) {
-      if (segment === "[*]") break;
+): ReadNode[] {
+  const nodes: ReadNode[] = [];
+  const walk = (start: unknown, chain: readonly string[], from: number, at: string): void => {
+    let current = start;
+    let path = at;
+    for (let i = from; i < chain.length; i++) {
+      const segment = chain[i]!;
+      if (segment === INDEX_SEGMENT) break;
+      if (segment === EACH_SEGMENT) {
+        if (dynamicNode(current, path)) break;
+        if (i === chain.length - 1) return;
+        if (Array.isArray(current)) {
+          current.forEach((item, index) => walk(item, chain, i + 1, `${path}[${index}]`));
+        } else if (isObject(current)) {
+          for (const [key, item] of Object.entries(current)) {
+            walk(item, chain, i + 1, `${path}.${key}`);
+          }
+        }
+        return;
+      }
       if (Array.isArray(current)) {
         const index = Number(segment);
         current = Number.isInteger(index) ? current[index] : undefined;
+        path = `${path}[${segment}]`;
       } else if (isObject(current)) {
         current = current[segment];
+        path = `${path}.${segment}`;
       } else {
         current = undefined;
       }
-      if (current === undefined) break;
+      if (current === undefined) return;
     }
-    if (current !== undefined) nodes.push(current);
+    if (current !== undefined) nodes.push({ node: current, path });
+  };
+  for (const chain of chains) {
+    const root = chain[0];
+    if (root === undefined || !(root in roots) || roots[root] === undefined) continue;
+    walk(roots[root], chain, 1, root);
   }
   return nodes;
+}
+
+/** The first leaf a condition reads that is not known until the resource is
+ *  created, named by the chain that reads it. */
+export function findDynamicRead(
+  chains: readonly (readonly string[])[],
+  roots: Record<string, unknown>,
+): DynamicLeaf | undefined {
+  for (const read of readNodes(chains, roots)) {
+    const leaf = findDynamicLeaf(read.node);
+    if (!leaf) continue;
+    const own = dynamicNode(read.node, "") !== undefined;
+    const path = own
+      ? read.path
+      : leaf.path.startsWith("[")
+        ? `${read.path}${leaf.path}`
+        : `${read.path}.${leaf.path}`;
+    return { path, what: leaf.what };
+  }
+  return undefined;
 }

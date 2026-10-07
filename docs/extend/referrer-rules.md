@@ -207,6 +207,10 @@ completion or hover — so the strict half reports it while the rule keeps worki
   is reported (`REFERRER_RULE_SKIPPED`), naming the tag it found. Only the nodes
   the condition actually reads count: a server carrying
   `port: !cel "ports.http"` does not disable a rule about its `openapi:` block.
+  A member read through a comprehension's variable is a read of that member on
+  each element — `referrer.mounts.all(m, m.prefix.startsWith("/"))` reads every
+  mount's `prefix` and nothing else of a mount — while a variable used bare
+  reads the whole element.
 
   **A `!ref` is not one of them.** It names a declaration — a value a rule
   compares perfectly well, and the one peer rules are built on — so a slot

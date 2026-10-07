@@ -1,9 +1,11 @@
 import {
   parseLayerIndex,
+  readBrowserEntries,
   readLibraryCandidates,
   readModuleSources,
   readNativeEntries,
   type ArtifactLayer,
+  type BrowserEntry,
   type LibraryCandidate,
   type ModuleSources,
   type NativeEntries,
@@ -45,6 +47,9 @@ export interface OwnerManifest {
    *  format, each naming the bare specifier it is imported by. Empty for a module
    *  nothing imports the source of. */
   library: LibraryCandidate[];
+  /** The ES modules this module ships for a browser, by specifier. A malformed
+   *  entry is absent here and reported by the analyzer. */
+  browser: BrowserEntry[];
   /** True when the owner doc declares a non-empty `files:` list. */
   declaresFiles: boolean;
   /** The `native:` block, read whole: an entry that cannot be read is a problem
@@ -94,6 +99,7 @@ export function ownerManifestOf(owner: unknown): OwnerManifest {
     // the surface that can point at the line. A dropped candidate leaves the
     // specifier unresolved at load, which fails loudly rather than silently.
     library: readLibraryCandidates(parsed).candidates,
+    browser: readBrowserEntries(parsed).entries,
     declaresFiles: Array.isArray(parsed?.files) && parsed.files.length > 0,
     native: readNativeEntries(parsed),
     sources: readModuleSources(parsed),

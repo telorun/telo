@@ -1,0 +1,28 @@
+# A value holding a reference slot a NAMED SHAPE declares, computed in a field
+# the kind evaluates at creation: the expression's result is data, so the
+# reference inside it cannot survive. Reported here as `REF_SLOT_COMPUTED`, and
+# refused by the kernel before it evaluates the field.
+kind: Telo.Library
+metadata:
+  name: RefSlotShapeComputedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose provider computes a tree holding a reference at a slot
+    a named shape declares.
+imports:
+  Shape: ../../../kinds
+  Run: ../../../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Shape.ProviderViaShape
+metadata:
+  name: held
+tree: !cel "{'label': 'root', 'target': 'five'}"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

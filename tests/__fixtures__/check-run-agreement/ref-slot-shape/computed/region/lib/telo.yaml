@@ -1,0 +1,35 @@
+# A field a REGION covers — `x-telo-context` with no `x-telo-eval` — is evaluated
+# by the controller too, so a value computed at or above a reference slot there
+# is data the moment it is expanded. A list of children computed with `!cel`, a
+# target written with `!interpolate` and an expression at a slot whose own node
+# carries the region are each `REF_SLOT_COMPUTED`; the computed label beside
+# them is a leaf and stays legal.
+kind: Telo.Library
+metadata:
+  name: RefSlotRegionComputedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose resource computes, inside fields a CEL region covers,
+    values that hold reference slots.
+imports:
+  Shape: ../../../kinds
+  Run: ../../../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Shape.ViaRegionShape
+metadata:
+  name: regional
+prefix: r
+handler: !cel "request.prefix"
+tree:
+  label: !cel "request.prefix"
+  target: !interpolate "${{ request.prefix }}"
+  children: !cel "[{'label': 'leaf', 'target': 'five'}]"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

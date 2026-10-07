@@ -58,6 +58,11 @@ export interface Partition {
  * so a controller-only module publishes exactly one payload layer. `native` is
  * what `readNativeEntries` read off the module doc.
  *
+ * A **browser layer** per distinct selector of the module's `exports.browser:`
+ * entries, holding each entry and the files built beside it. Those files exist
+ * only once the entry is built, so the caller that builds hands them in as
+ * `builtBeside`, keyed by the entry's path.
+ *
  * Throws when a `native:` entry names a file the manifest also names as code or
  * as an embed: a file extracts from exactly one layer.
  */
@@ -66,6 +71,7 @@ export function partitionLayers(
   files: string[],
   assetPatterns: string[],
   native: readonly NativeEntry[] = [],
+  builtBeside: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Partition {
   const nativeFiles = new Set(native.map((entry) => entry.path));
   assertNativeFilesUnclaimed(native, claims);
@@ -79,6 +85,9 @@ export function partitionLayers(
   );
   const libraries = claims.filter(
     (claim): claim is Extract<ModuleFileClaim, { role: "library" }> => claim.role === "library",
+  );
+  const browserEntries = claims.filter(
+    (claim): claim is Extract<ModuleFileClaim, { role: "browser" }> => claim.role === "browser",
   );
   const claimedAssets = claims.filter((claim) => claim.role === "assets");
   /** Library entry points, by path: a file claimed as both a controller entry and
@@ -148,6 +157,22 @@ export function partitionLayers(
       // ships once, in the library layer; the controller layer would be a second
       // copy of the same bytes under a different digest.
       if (libraryFiles.has(file)) continue;
+      if (!plan.files.includes(file)) plan.files.push(file);
+    }
+  }
+
+  // An entry and everything built beside it ship together: a page that loads
+  // the entry loads its chunks, and a chunk two entries share is in the layer
+  // of each selector that needs it.
+  for (const claim of browserEntries) {
+    const key = `browser\0${selectorKey(claim.selector)}`;
+    let plan = bySelector.get(key);
+    if (!plan) {
+      plan = { role: "browser", selector: claim.selector, files: [] };
+      bySelector.set(key, plan);
+    }
+    for (const file of [claim.path, ...(builtBeside.get(claim.path) ?? [])]) {
+      unclaimed.delete(file);
       if (!plan.files.includes(file)) plan.files.push(file);
     }
   }

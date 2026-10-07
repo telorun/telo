@@ -1,0 +1,39 @@
+# A kind whose resources name a browser entry and one of its exports, and whose
+# controller ships a browser entry of its own. The two are resolved against
+# different modules: the entry a resource names belongs to the module that
+# declared the resource, the controller's own to the module declaring the kind.
+kind: Telo.Library
+metadata:
+  name: BrowserKinds
+  version: 1.0.0
+  description: >-
+    Fixture library whose widget kind names a browser entry export and reports
+    what each browser entry it can reach resolves to.
+exports:
+  kinds: [Widget]
+  browser:
+    - specifier: "@fixture/shell"
+      path: ./browser/shell.js
+      source: ./browser/src/shell.js
+      exports: [mount]
+---
+kind: Telo.Definition
+metadata:
+  name: Widget
+  description: >-
+    Names a browser entry and one of its exports. Invoked, it reports what the
+    named entries and its own module's shell entry resolve to.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Widget
+schema:
+  type: object
+  additionalProperties: false
+  required: [entry, export]
+  properties:
+    entry: { type: string }
+    export:
+      type: string
+      x-telo-browser-export: { entry: /entry }
+    beside:
+      type: string

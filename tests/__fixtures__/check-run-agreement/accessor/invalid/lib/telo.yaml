@@ -1,0 +1,81 @@
+# What an accessor field cannot hold. Nothing evaluates it, so an expression
+# there is a plain chain or nothing: a call, an operator, an index,
+# `!interpolate`, a tag beneath the field and a chain rooted at a kernel global
+# are each `ACCESSOR_NOT_PLAIN_CHAIN`. A chain that IS plain is typed like any
+# CEL leaf — a member the row model does not declare, a name nothing binds and
+# a value of the wrong type are reported under their ordinary codes, against
+# the model given inline exactly as against one given by `!ref`.
+kind: Telo.Library
+metadata:
+  name: AccessorInvalidLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose tables write values an accessor field cannot hold,
+    and chains the row model refuses.
+imports:
+  Acc: ../../kinds
+  Run: ../../../../../../modules/run
+variables:
+  style: { type: string, default: plain }
+exports:
+  resources: [probe]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  additionalProperties: false
+  required: [text, done]
+  properties:
+    text: { type: string }
+    done: { type: boolean }
+    tags: { type: array, items: { type: string } }
+---
+kind: Acc.Table
+metadata:
+  name: notChains
+model: !ref Todo
+rowStyle: !cel "variables.style"
+columns:
+  - header: Call
+    value: !cel "row.text.upperAscii()"
+  - header: Operator
+    value: !cel "row.text + '!'"
+  - header: Index
+    value: !cel "row.tags[0]"
+  - header: Interpolated
+    value: !interpolate "${{ row.text }}!"
+  - header: Nested
+    value:
+      label: !cel "row.text"
+---
+kind: Acc.Table
+metadata:
+  name: mistyped
+model: !ref Todo
+rowStyle: !cel "row.done"
+columns:
+  - header: Unknown member
+    value: !cel "row.txt"
+  - header: Unknown name
+    value: !cel "rwo.text"
+---
+kind: Acc.Table
+metadata:
+  name: mistypedInline
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      text: { type: string }
+rowStyle: !cel "row.txt"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

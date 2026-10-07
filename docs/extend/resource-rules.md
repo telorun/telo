@@ -162,7 +162,14 @@ written rather than on somebody's manifest:
 
 A rule is skipped when a value it reads holds a `!cel` or an `!include-*` embed —
 the comparison would run against a placeholder — and the skip names the tag it
-found. A **`!ref` is not one of them**: it names a declaration, which is a value
+found and the value that holds it (`self.routes[1].path`).
+
+What a condition reads follows a comprehension's variable. In
+`self.routes.all(r, r.path.startsWith("/"))` the rule reads each route's `path`
+and nothing else of a route, so a route whose `handler:` or `inputs:` holds an
+expression is still judged; only a `path` that is itself an expression skips
+the rule. A variable used bare (`size(r)`, `r in self.names`) reads the whole
+element, and so does any other use of the collection (`size(self.routes)`). A **`!ref` is not one of them**: it names a declaration, which is a value
 a rule compares perfectly well.
 
 ## Guard your optional fields
@@ -190,7 +197,8 @@ reported:
   expression, which is not known until the resource is created. Skipped **per
   element**, and only when a node the condition actually *reads* is dynamic: an
   unrelated `version: !cel "module.version"` elsewhere on the resource does not
-  disable the rule.
+  disable the rule, and neither does an expression in a field of a list entry
+  when the condition reads another field of it through a comprehension.
 - **`RESOURCE_RULE_UNEXERCISED`** — the `in:` collection was empty on every
   resource of the kind in this workspace, so nothing proved the condition. Worth
   knowing, because cel-js types `self` only shallowly: a typo below the first

@@ -76,6 +76,31 @@ export interface InvokeByNameOptions {
   ctx?: InvokeContext;
 }
 
+/**
+ * A browser entry, resolved: the built ES module, the files built beside it,
+ * and what its `exports.browser:` entry declares. Every file is a `file://`
+ * **URI**, and the siblings keep their place relative to the entry — the entry
+ * imports its chunks by relative path, so a host serves them as it finds them.
+ */
+export interface BrowserEntryFiles {
+  /** The import-map key the entry is declared under. */
+  specifier: string;
+  /** The built ES module. */
+  file: string;
+  /** Every other file the entry loads: the chunks it shares with other entries
+   *  of its module, and its stylesheet when it has one. */
+  siblings: string[];
+  /** Content digest over the entry and its siblings — changes when any byte a
+   *  page would load does. */
+  digest: string;
+  /** The host contract the entry was written against, `<family>-<version>`. */
+  abi?: string;
+  /** Bare specifiers the entry leaves for its host to supply. */
+  external: string[];
+  /** The export names resources may name. */
+  exports: string[];
+}
+
 export interface ResourceContext extends ControllerContext {
   /** The id prefix of the context this resource was created in (the creating
    *  {@link EvaluationContext}'s `ownerPrefix`). A controller that spawns
@@ -421,6 +446,34 @@ export interface ResourceContext extends ControllerContext {
    * use.
    */
   resolveNativeFile(name: string): Promise<string>;
+  /**
+   * Resolve a browser entry — an ES module a `exports.browser:` entry names —
+   * by its `specifier`, against the module that declared THIS RESOURCE: the
+   * entry a resource's author named ships with the author's module.
+   *
+   * From a published module the entry's `browser` layer is fetched on first
+   * use; from a source checkout the entry is built from its `source`, together
+   * with every entry of the module declaring the same `external` set.
+   *
+   * Rejects with `ERR_BROWSER_ENTRY_UNKNOWN` when the module declares no such
+   * specifier, `ERR_BROWSER_BUILD_FAILED` when a checkout's entry does not
+   * build, and `ERR_BROWSER_ENTRY_UNAVAILABLE` when a published module ships no
+   * layer for it, or when the list of files the entry loads — the
+   * `<path>.siblings.json` its build wrote beside it, `{ files: [{ path }] }` —
+   * is missing, malformed or names a file outside the directory it is in.
+   *
+   * Polyglot debt: served by the Node kernel only. The Rust SDK has no
+   * counterpart, and the Rust kernel skips `browser` layers.
+   */
+  resolveBrowserEntry(specifier: string): Promise<BrowserEntryFiles>;
+  /**
+   * As {@link resolveBrowserEntry}, against the module that declares the
+   * controller this resource runs — found as {@link resolveNativeFile} finds
+   * it. This is how a controller reaches the browser code its own module ships.
+   *
+   * Polyglot debt: served by the Node kernel only, as above.
+   */
+  resolveControllerBrowserEntry(specifier: string): Promise<BrowserEntryFiles>;
   /** Load a single module (its own file + `include`d partials). Use this when
    *  you need just the declaring file's manifests. */
   loadModule(url: string, options?: LoadOptions): Promise<ResourceManifest[]>;

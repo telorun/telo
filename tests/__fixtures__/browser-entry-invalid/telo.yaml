@@ -1,0 +1,37 @@
+# Every way an `exports.browser:` entry can fail to be one.
+kind: Telo.Library
+metadata:
+  name: BrowserEntryInvalid
+  version: 1.0.0
+  description: >-
+    Fixture library whose browser entries are each malformed in a different way.
+exports:
+  browser:
+    - specifier: "@demo/ok"
+      path: ./browser/ok.js
+      source: ./src/ok.js
+    - specifier: "@demo/ok"
+      path: ./browser/again.js
+      source: ./src/again.js
+    - specifier: "@demo/pathless"
+      source: ./src/pathless.js
+    - specifier: "@demo/platform"
+      path: ./browser/platform.js
+      source: ./src/platform.js
+      os: linux
+    - specifier: "@demo/abi"
+      path: ./browser/abi.js
+      source: ./src/abi.js
+      abi: latest
+    - specifier: "@demo/sourceless"
+      path: ./browser/sourceless.js
+    - specifier: "@demo/exports"
+      path: ./browser/exports.js
+      source: ./src/exports.js
+      exports: StatusPill
+    - specifier: "@demo/absolute"
+      path: /srv/browser/absolute.js
+      source: ./src/absolute.js
+    - specifier: "@demo/above"
+      path: ./browser/above.js
+      source: ../outside/above.js

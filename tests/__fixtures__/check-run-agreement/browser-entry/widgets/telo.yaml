@@ -1,0 +1,35 @@
+# A library shipping two browser entries built together — they declare the same
+# `external` set, so what they share is one chunk — and a widget naming one of
+# them. The widget's kind lives in another module; the entry it names is this
+# module's own.
+kind: Telo.Library
+metadata:
+  name: BrowserWidgets
+  version: 1.0.0
+  description: >-
+    Fixture library shipping two browser entries that share code, and a widget
+    naming an export of one of them.
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [pill]
+  browser:
+    - specifier: "@fixture/badges"
+      path: ./browser/badges.js
+      source: ./browser/src/badges.js
+      abi: ui-1
+      external: ["@fixture/host"]
+      exports: [StatusPill]
+    - specifier: "@fixture/charts"
+      path: ./browser/charts.js
+      source: ./browser/src/charts.js
+      abi: ui-1
+      external: ["@fixture/host"]
+      exports: [Bar]
+---
+kind: Kinds.Widget
+metadata:
+  name: pill
+entry: "@fixture/badges"
+export: StatusPill
+beside: "@fixture/charts"

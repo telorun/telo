@@ -28,18 +28,33 @@ export {
     type ReExportSpec,
 } from "./flatten-for-analyzer.js";
 export {
+  accessorBindingOf,
+  accessorFields,
+  accessorProblems,
+  accessorTagEngines,
+  type AccessorBinding,
+  type AccessorField,
+  type AccessorProblem,
+} from "./accessor-binding.js";
+export {
+  accessorFieldAt,
+  accessorSiteAt,
+  buildAccessorSites,
   buildEvalPaths,
   celEvalModeAt,
   celEvalSites,
   concreteEvalPaths,
+  declaredEvalMode,
   declaresCelRegion,
   evalPathCovers,
+  extractCelRegionScopes,
+  governedCelEvalSites,
   implicitEvalSites,
   mergeCelEvalSites,
   pathMatchesScope,
   NO_CEL_EVAL_SITES,
 } from "./eval-paths.js";
-export type { CelEvalSites } from "./eval-paths.js";
+export type { AccessorSite, CelEvalMode, CelEvalSites } from "./eval-paths.js";
 export { isSelfForward, SELF_PATH } from "./template-self-forward.js";
 export {
   injectedDeclarations,
@@ -242,6 +257,7 @@ export { reachPositions, reachSites, type ReachPosition } from "./reference-reac
 export {
   computedRefSlots,
   evaluatedCelSource,
+  evaluatedField,
   refSlotComputedReason,
   type ComputedRefSlot,
 } from "./ref-slot-computed.js";
@@ -645,6 +661,15 @@ export type {
   StagedAssets,
 } from "./module-named-files.js";
 export { readLibraryCandidates } from "./module-library.js";
+export { BROWSER_FORMAT, readBrowserEntries } from "./module-browser.js";
+export type { BrowserEntries, BrowserEntry, BrowserEntryProblem } from "./module-browser.js";
+export {
+  BROWSER_EXPORT_ANNOTATION,
+  browserExportProblems,
+  browserExportSites,
+  type BrowserExportProblem,
+  type BrowserExportSite,
+} from "./browser-export-slot.js";
 export type {
   LibraryCandidate,
   LibraryCandidateProblem,
@@ -652,6 +677,7 @@ export type {
 } from "./module-library.js";
 export {
   LayerIndexError,
+  browserLayerFor,
   codeLayerFor,
   matchCodeLayers,
   parseLayerIndex,

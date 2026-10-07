@@ -1,4 +1,4 @@
-import { checkSchemaCompatibility } from "@telorun/analyzer";
+import { accessorTagEngines, checkSchemaCompatibility, type CelEvalMode } from "@telorun/analyzer";
 import { builtinEngines, producedTypeOf } from "@telorun/templating";
 
 /**
@@ -101,11 +101,20 @@ export function valueTag(id: string): ValueTag | undefined {
  * `prop` undefined is a field with no declared schema, which constrains
  * nothing. `evalMode` undefined means no rule decides whether the field is
  * evaluated, so the second question is not asked.
+ *
+ * An ACCESSOR field is neither: its value is named for the resource's consumer
+ * and never evaluated, so what may be written there is the accessor reader's to
+ * say — one `!cel` chain as the field's whole value, and no tag at all beneath
+ * it. `accessorField` says which of the two the position is.
  */
 export function offeredValueTags(
   prop: Record<string, unknown> | undefined,
-  evalMode: "compile" | "runtime" | null | undefined,
+  evalMode: CelEvalMode | null | undefined,
+  accessorField = false,
 ): ValueTag[] {
+  if (evalMode === "accessor") {
+    return accessorTagEngines(accessorField).flatMap((id) => valueTag(id) ?? []);
+  }
   const out: ValueTag[] = [];
   for (const engine of builtinEngines) {
     const tag = valueTag(engine.name);

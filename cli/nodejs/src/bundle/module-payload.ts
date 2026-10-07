@@ -61,6 +61,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseAllDocuments } from "yaml";
 import { findModuleDoc, importSourceRefs } from "../commands/manifest-imports.js";
+import { assertSidecarNamesFree, buildBrowserClaims } from "./browser-entries.js";
 import { assertLayerEntries, pinnedLayerBlob, type BuiltLayer } from "./built-layers.js";
 import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from "./manifest-text.js";
 import { PublishFailure } from "../publish-failure.js";
@@ -403,18 +404,31 @@ export class ModulePayloadBuilder {
     const license = fs.existsSync(path.join(manifestDir, MODULE_LICENSE_FILE))
       ? [MODULE_LICENSE_FILE]
       : [];
+    // Browser entries are built first: the files a build puts beside an entry
+    // — shared chunks, a stylesheet — are part of its layer, and only the build
+    // knows them.
+    const selected = [
+      ...new Set([
+        ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
+        ...license,
+        ...notices,
+        ...staged.keys(),
+      ]),
+    ].sort();
+    assertSidecarNamesFree(claims, [
+      ...selected,
+      ...claims.map((claim) => claim.path),
+      ...native.map((entry) => entry.path),
+    ]);
+    const browser = await buildBrowserClaims(manifestDir, claims, this.options.cacheRoot);
+    const built = new Map<string, Uint8Array>(browser.files);
+    const buildInputs = new Set<string>(browser.inputs);
     const partition = partitionLayers(
       claims,
-      [
-        ...new Set([
-          ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
-          ...license,
-          ...notices,
-          ...staged.keys(),
-        ]),
-      ].sort(),
+      selected,
       assetPatterns,
       native,
+      browser.beside,
     );
 
     // Every code entry point is BUILT, not read: `path=` names a gitignored
@@ -429,8 +443,6 @@ export class ModulePayloadBuilder {
     // on a checkout with no `.mjs` files, publish refused before the builder ran
     // and told the author to run a build step this design removed.
     const externals = siblingLibrariesOf(relativeImports);
-    const built = new Map<string, Uint8Array>();
-    const buildInputs = new Set<string>();
     for (const claim of claims) {
       if (claim.role !== "controller" && claim.role !== "library") continue;
       if (!claim.localPath) continue;

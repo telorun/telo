@@ -135,6 +135,7 @@ When an incoming HTTP request is received, the underlying framework must normali
 - If the `content-type` is `application/json`, the `body` MUST be parsed into its native JSON value before evaluation — an object, an array, a string, a number.
 - `request.body` is **untyped** in a route's `inputs:` until the route's `request.schema.body` declares it, and always untyped in `notFoundHandler.inputs`, which has no route to declare one. A body is whatever the client sent, so an undeclared one passes `telo check` into a handler argument of any type (`items: !cel "request.body"` into an array) and its members are read unchecked; what the handler then receives is held to its `inputType` at dispatch. Declaring `request.schema.body` types `request.body` and everything beneath it, so a misspelled field is `CEL_UNKNOWN_FIELD` and a body wired into an argument of another type is `CEL_TYPE_ERROR`. `request.query`, `request.headers` and `request.params` are maps whether or not a schema is declared.
 - A slot of `request.schema` declaring `type: integer` arrives in CEL as an `int`, whatever number form the client sent it in — `request.body.price + 1` is integer arithmetic.
+- **A part of a request is read as its encoding carries it.** A query, path-parameter or header value is text by transport, so it is read into the type its schema declares: `?limit=5` against `type: integer` arrives as the integer `5`, and text that is no integer is a 400. A body arrives parsed and already typed, so it is validated as the value it is and never converted: `"5"` at a property declared `integer`, or a `null` at one declared `string`, `integer`, `number` or `boolean`, is a 400 naming the property. A property that may be `null` says so in its schema (`type: [string, "null"]`). The same holds for a body a `contentTypeParsers` entry's `parser` produced: it is validated as the value the parser returned.
 - A slot of `request.schema` declaring a value type with a plain encoding (`x-telo-type: Telo.Timestamp`, `Telo.Duration`, `Telo.Bytes`) is validated — and documented in the OpenAPI document — as the text a client sends (`type: string, format: date-time` for a timestamp), and arrives in CEL as the value itself: `request.body.at + duration('1h')` is timestamp arithmetic. Text the type's encoding does not read is a 400 with the envelope below, one detail per refused field, its `path` naming the field inside the location (`at`, `items[0].at`).
 
 #### 2.2 Standardized Telo Response Object (output)
@@ -170,19 +171,18 @@ When a request fails schema validation (defined in the `request.schema` of the m
     {
       "location": "body",
       "path": "user.age",
-      "message": "must be an integer"
-    },
-    {
-      "location": "query",
-      "path": "active",
-      "message": "is a required property"
+      "message": "must be integer"
     }
   ]
 }
 ```
 
-- **`location` enum:** `body` | `query` | `params` | `headers`.
-- **Module responsibility:** the module author must write an error handler/mapper that transforms the native framework's validation output into the Telo `details` array.
+- **A JSON body is not coerced; query, path and header values are.** `{"n": "5"}` or `{"n": null}` against `n: { type: integer }` is refused with `{ "location": "body", "path": "n", "message": "must be integer" }`, while `?n=5` is accepted and read as `5`.
+- **One detail per finding of the validator.** The validator stops at the first part of the request it refuses (path parameters, then the body, then the query, then the headers) and at the first finding in it.
+- **`location`** — the part of the request that was validated: `body` | `query` | `params` | `headers`.
+- **`path`** — the path of the refused value from that part's root: property names joined by `.` (`note`, `address.street`), and a list position written in brackets against the list that holds it, with no dot (`items[0].name`; `[0].name` when the part is itself a list). A query, path or header parameter is its own name (`limit`). A missing required property and a property the schema does not declare are each named themselves — the parent's path plus the name — and a finding about the part as a whole has the empty path.
+- **`message`** — the validator's own sentence, read after the path: `must be integer`, `must NOT have more than 5 characters`, `must match format "date"`, `must NOT have additional properties`. A missing required property reads `is a required property`.
+- **Module responsibility:** the module builds `details` from the validator's structured findings, never from the text of its error message.
 
 ### 4. Manifest schema upgrades
 

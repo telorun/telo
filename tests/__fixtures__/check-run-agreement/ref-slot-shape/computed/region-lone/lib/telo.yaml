@@ -1,0 +1,28 @@
+# The computed list is the resource's ONLY content: no concrete tree exists
+# anywhere in it, and the shape holding the slot is reached one level below the
+# field. The value still holds every slot of every tree it would produce, so it
+# is `REF_SLOT_COMPUTED` all the same.
+kind: Telo.Library
+metadata:
+  name: RefSlotRegionLoneLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose resource computes its whole list of trees, with no
+    tree written anywhere in it.
+imports:
+  Shape: ../../../kinds
+  Run: ../../../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Shape.ViaRegionList
+metadata:
+  name: lone
+trees: !cel "[]"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

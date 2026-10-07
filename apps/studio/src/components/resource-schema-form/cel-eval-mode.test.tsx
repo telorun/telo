@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { celEvalModeAtPointer, getCelEvalMode } from "./cel-utils";
 import { ResourceSchemaForm } from "./index";
@@ -172,6 +173,56 @@ describe("a predicate inside a CEL region", () => {
         onChange={() => undefined}
       />,
     );
+    expect(screen.queryByTitle("How this value is written")).toBeNull();
+  });
+});
+
+describe("an accessor field", () => {
+  // Named for the resource's consumer and never evaluated: `telo check` accepts
+  // one `!cel` chain as the field's whole value and refuses any tag beneath it.
+  const schema = {
+    type: "object",
+    properties: {
+      value: {
+        title: "Value",
+        type: "object",
+        "x-telo-eval": "accessor",
+        properties: { label: { title: "Label", type: "string" } },
+      },
+    },
+  };
+
+  it("offers !cel alone at the field, and no tag beneath it", async () => {
+    render(
+      <ResourceSchemaForm
+        schema={schema}
+        values={{ value: { label: "Done" } }}
+        onChange={() => undefined}
+        // A provider's root is compile-eval, where a string field takes every
+        // expression tag — the accessor field and its contents do not.
+        rootCelEval="compile"
+      />,
+    );
+    const pickers = screen.getAllByTitle("How this value is written");
+    expect(pickers).toHaveLength(1);
+
+    await userEvent.click(pickers[0]);
+    const offered = (await screen.findAllByRole("menuitem")).map(
+      (item) => item.querySelector(".font-mono")?.textContent,
+    );
+    expect(offered).toEqual(["value", "!cel"]);
+  });
+
+  it("offers no tag in a form rooted at the field, whose members are its value", () => {
+    render(
+      <ResourceSchemaForm
+        schema={schema.properties.value}
+        values={{ label: "Done" }}
+        onChange={() => undefined}
+        rootCelEval={celEvalModeAtPointer(schema, "/value")}
+      />,
+    );
+    expect(celEvalModeAtPointer(schema, "/value/label")).toBe("accessor");
     expect(screen.queryByTitle("How this value is written")).toBeNull();
   });
 });

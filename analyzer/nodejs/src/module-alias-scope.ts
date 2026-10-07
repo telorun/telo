@@ -85,6 +85,8 @@ export function definitionInScope<D>(
  *  the one site that does (a template body) reach for a cast. */
 export interface KindResolver {
   resolveKind(kind: string): string | undefined;
+  /** The module an import alias names, where the resolver holds an alias table. */
+  moduleForAlias?(alias: string): string | undefined;
 }
 
 /** An empty table, shared: a non-root module with no aliases of its own resolves

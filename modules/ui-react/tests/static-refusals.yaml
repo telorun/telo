@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: UiReactStaticRefusalsTest
+  version: 1.0.0
+  description: |
+    What an application is refused for before it serves anything, by `telo
+    check` where it is declared and by the application itself where a consumer's
+    check cannot see: a page whose list of nodes is computed, and two pages at
+    one path. An application whose pages hold per-request expressions is
+    checked for duplicate paths all the same — the rule is not skipped. A page
+    path and a link address written `//…` are refused as written: a browser
+    reads either as another host.
+imports:
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref computedChildren
+  - !ref computedChildrenAtRuntime
+  - !ref duplicatePath
+  - !ref duplicatePathAtRuntime
+  - !ref offsiteReferences
+  - !ref ruleRuns
+---
+kind: Assert.Manifest
+metadata:
+  name: computedChildren
+source: ./__fixtures__/invalid/computed-children/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "UiReact.App/computed: 'pages[0].children: !cel \"[]\"' computes a value that holds the reference slot"
+---
+kind: Assert.Manifest
+metadata:
+  name: computedChildrenAtRuntime
+source: ./__fixtures__/invalid/computed-children/telo.yaml
+expect:
+  errors: []
+  runFails: "ERR_REF_SLOT_COMPUTED"
+---
+kind: Assert.Manifest
+metadata:
+  name: duplicatePath
+source: ./__fixtures__/invalid/duplicate-path/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/twice at 'pages[0]': declares a path another page already has"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/twice at 'pages[1]': declares a path another page already has"
+---
+kind: Assert.Manifest
+metadata:
+  name: duplicatePathAtRuntime
+source: ./__fixtures__/invalid/duplicate-path/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
+---
+kind: Assert.Manifest
+metadata:
+  name: offsiteReferences
+source: ./__fixtures__/invalid/app-relative/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match pattern"
+---
+kind: Run.Sequence
+metadata:
+  name: ruleRuns
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/app/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result"
+      expected: { loadError: null, codes: [] }

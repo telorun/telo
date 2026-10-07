@@ -1,0 +1,25 @@
+# An application whose only page computes its list of children, with no node
+# written anywhere. The tree's structure is literal — a composite inside a
+# computed list could not be a reference — so `telo check` refuses it here, and
+# the application is refused at creation for a consumer whose own check sees
+# nothing.
+kind: Telo.Library
+metadata:
+  name: UiReactComputedChildren
+  version: 1.0.0
+  description: >-
+    Test fixture exporting an application whose page computes its list of
+    nodes instead of writing it.
+imports:
+  UiReact: ../../../../../
+exports:
+  resources: [computed]
+---
+kind: UiReact.App
+metadata:
+  name: computed
+title: Computed
+pages:
+  - path: /
+    title: Home
+    children: !cel "[]"

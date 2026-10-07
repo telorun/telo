@@ -133,17 +133,29 @@ export function satisfiesValueBranch(
  * The member condition is JSON Schema's own: a union accepts a value only when
  * the WHOLE object fits one member, so in a discriminated union the rest of the
  * object decides whether a sibling branch's plain value applies at the slot.
- * Expressions in that object stand in as their slot's placeholder, as in every
- * other schema check of a manifest.
+ * Expressions stand in as their slot's placeholder, as in every other schema
+ * check of a manifest — in that object, and in a value the slot's own branch
+ * describes: a list entry's `when: !cel …` is judged as the boolean its slot
+ * declares, never as the tag object, which would fail the branch and leave the
+ * list to be read as a malformed reference.
  */
 export function satisfiesSiteValue(
   value: unknown,
-  refs: readonly Pick<ReachRef, "node" | "alternatives">[],
+  refs: readonly Pick<ReachRef, "node" | "alternatives" | "declaredIn">[],
   registry: ValueBranchValidator,
 ): boolean {
   return refs.some(
     (ref) =>
-      satisfiesValueBranch(value, readRefSlot(ref.node)?.valueBranches, registry) ||
+      (readRefSlot(ref.node)?.valueBranches ?? []).some((branch) => {
+        const standIns: StandIns = new Map();
+        const substituted = substituteCelFields(
+          value,
+          valueBranchSchema(branch),
+          ref.declaredIn.document,
+          { standIns },
+        );
+        return satisfiesValueBranch(substituted, [branch], registry, standIns);
+      }) ||
       ref.alternatives.some(
         ({ node, members }) =>
           members !== undefined &&
@@ -169,7 +181,7 @@ export function satisfiesSiteValue(
  */
 export function isValueAtSlot(
   value: unknown,
-  refs: readonly Pick<ReachRef, "node" | "alternatives">[],
+  refs: readonly Pick<ReachRef, "node" | "alternatives" | "declaredIn">[],
   registry: ValueBranchValidator,
 ): boolean {
   const nodeUnionsValue = refs.some((ref) => (readRefSlot(ref.node)?.valueBranches.length ?? 0) > 0);

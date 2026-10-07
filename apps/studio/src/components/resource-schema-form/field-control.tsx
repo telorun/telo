@@ -13,7 +13,7 @@ import {
 } from "./field-diagnostics";
 import { offeredValueTags } from "./value-tag";
 import { ValueTagField } from "./value-tag-field";
-import { getCelEvalMode, type CelEvalMode } from "./cel-utils";
+import { getCelEvalMode, isAccessorField, type CelEvalMode } from "./cel-utils";
 import { JsonSchemaField } from "./json-schema-field";
 import { MapField } from "./map-field";
 import { ObjectField } from "./object-field";
@@ -422,7 +422,7 @@ export function FieldControl({
   // Offered tags, not the eval mode, decide whether the field gets a picker: an
   // `!include-bytes` slot need not be CEL-eligible at all, and gating on eval
   // would leave a byte slot with no way to author it.
-  const tagOptions = offeredValueTags(prop, evalMode);
+  const tagOptions = offeredValueTags(prop, evalMode, isAccessorField(prop, rootCelEval));
   const wrapped = tagOptions.length > 0 ? (
     <ValueTagField
       options={tagOptions}

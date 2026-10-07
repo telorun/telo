@@ -1,0 +1,82 @@
+kind: Telo.Application
+metadata:
+  name: ListPositionPathsTest
+  version: 1.0.0
+  description: |
+    One route, two producers of the 400 envelope: the validator refuses text the
+    schema does not accept, and a plain-encoded slot refuses text its encoding
+    does not read. Both name a list position the same way — in brackets against
+    the list that holds it (`items[0].name`, `items[0].at`).
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /events
+      method: POST
+      schema:
+        body:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string, maxLength: 3 }
+                  at: { x-telo-type: Telo.Timestamp }
+    handler:
+      kind: Run.Value
+      value: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8997
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref Server
+steps:
+  - name: tooLong
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8997/events
+      method: POST
+      body: { items: [{ name: "too long" }] }
+  - name: undecodable
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8997/events
+      method: POST
+      body: { items: [{ name: "a", at: "0000-01-01T00:00:00Z" }] }
+  - name: assertBracketSpelling
+    inputs:
+      actual:
+        tooLong:
+          status: !cel "steps.tooLong.result.status"
+          where: !cel "steps.tooLong.result.body.details.map(d, d.location + ':' + d.path)"
+        undecodable:
+          status: !cel "steps.undecodable.result.status"
+          where: !cel "steps.undecodable.result.body.details.map(d, d.location + ':' + d.path)"
+      expected:
+        tooLong: { status: 400, where: ["body:items[0].name"] }
+        undecodable: { status: 400, where: ["body:items[0].at"] }
+    invoke:
+      kind: Assert.Equals

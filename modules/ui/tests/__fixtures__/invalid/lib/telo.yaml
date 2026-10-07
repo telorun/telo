@@ -1,0 +1,57 @@
+# Four composites, each naming something its model cannot answer for. `telo
+# check` reports all four here; a consumer's own check sees none of them, so
+# there each is refused by the composite when it is first read.
+kind: Telo.Library
+metadata:
+  name: UiInvalid
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a table, a form and two filter bars that each name a
+    property or an operator their data model does not support.
+imports:
+  Ui: ../../../../
+exports:
+  resources: [sourceFilter, formField, filterProperty, filterOperator]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+    isDone: { type: boolean }
+---
+kind: Ui.Table
+metadata:
+  name: sourceFilter
+model: !ref Todo
+source:
+  basePath: /api/todos
+  filters: { done: true }
+---
+kind: Ui.Form
+metadata:
+  name: formField
+model: !ref Todo
+source: { basePath: /api/todos }
+fields:
+  - property: text
+  - property: title
+---
+kind: Ui.Filters
+metadata:
+  name: filterProperty
+model: !ref Todo
+fields:
+  - property: status
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterOperator
+model: !ref Todo
+fields:
+  - property: isDone
+    operator: contains
+content: { type: text, text: Todos }

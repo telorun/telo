@@ -1,0 +1,34 @@
+# A templated kind whose instances name a type, forwarded verbatim into the
+# type slot of the entry the body composes. The entry's input contract is then
+# the instance's own type, whichever way the instance gave it.
+kind: Telo.Library
+metadata:
+  name: TypeForward
+  version: 1.0.0
+  description: >-
+    Fixture library exporting a callable kind that takes its input type from
+    each instance and hands it to the value it composes.
+imports:
+  Run: ../../../modules/run
+exports:
+  kinds: [Shaped]
+---
+kind: Telo.Definition
+metadata:
+  name: Shaped
+  description: Returns the inputs it was called with, as the instance's own type admits and completes them.
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [model]
+  additionalProperties: false
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Run.Value
+    metadata: { name: echo }
+    inputType: !cel "self.model"
+    value: !cel "inputs"
+invoke: !ref echo
+inputs: !cel "inputs"

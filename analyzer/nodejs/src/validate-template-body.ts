@@ -5,7 +5,10 @@ import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateTargetProblems } from "./template-targets.js";
-import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { celExpressionsOf, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { accessorFields, accessorProblems, type AccessorTag } from "./accessor-binding.js";
+import { accessChains } from "./cel-access-chains.js";
+import { kindCelEvalSites } from "./eval-paths.js";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
@@ -20,6 +23,18 @@ import {
 } from "./types.js";
 
 const SOURCE = "telo-analyzer";
+
+/** True when every value a tag's expressions read is rooted at `self`. */
+function readsOnlySelf(tag: AccessorTag): boolean {
+  const expressions = celExpressionsOf(tag.engine, tag.source);
+  return (
+    expressions.length > 0 &&
+    expressions.every((expression) => {
+      const chains = accessChains(expression);
+      return chains.length > 0 && chains.every((chain) => chain[0] === "self");
+    })
+  );
+}
 
 /** The four slots a `Telo.Definition` names its dispatch target in.
  *
@@ -310,6 +325,21 @@ export function validateTemplateBody(
           `${body.prefix}.${slot.path}`,
           refSlotComputedReason(slot, { at: `on ${label}`, forwardable: true }),
         );
+      }
+      // An accessor field of the entry holds a plain chain or a literal. An
+      // expression reading only `self` is a literal by then: the body is
+      // expanded against `self` before the entry is created.
+      if (body.definition) {
+        const sites = kindCelEvalSites(body.definition, resolveDef);
+        for (const field of accessorFields(body.manifest as Record<string, unknown>, sites)) {
+          for (const problem of accessorProblems(field, readsOnlySelf)) {
+            report(
+              "ACCESSOR_NOT_PLAIN_CHAIN",
+              `${body.prefix}.${problem.path}`,
+              `On ${label}, ${problem.message}`,
+            );
+          }
+        }
       }
       for (const site of registry.referenceSites(view, aliases, aliasesByModule, body.manifest)) {
         if (site.refs.length === 0) continue;

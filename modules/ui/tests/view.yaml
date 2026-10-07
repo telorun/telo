@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: UiViewTest
+  version: 1.0.0
+  description: |
+    A view provides its node tree resolved: every structural node kept as
+    written, a node whose `when:` is false left out, and a composite replaced
+    by what it provides, carrying the style of the node that placed it. A view
+    whose own content is switched off provides no node, and is left out of its
+    parent like any node that is off.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Ui.View
+metadata:
+  name: inner
+content:
+  type: text
+  text: Inner
+---
+kind: Ui.View
+metadata:
+  name: switchedOff
+content:
+  type: text
+  text: Never shown
+  when: false
+---
+kind: Ui.View
+metadata:
+  name: page
+content:
+  type: stack
+  style: [strong]
+  children:
+    - { type: text, text: Title, style: heading }
+    - { type: badge, text: New, style: [accent, strong] }
+    - { type: link, text: Docs, href: /docs }
+    - { type: image, src: /logo.png, alt: "" }
+    - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: Chart }
+    - { type: text, text: Hidden, when: false }
+    - type: columns
+      children:
+        - type: box
+          children:
+            - { type: composite, ref: !ref inner, style: muted }
+        - { type: composite, ref: !ref switchedOff }
+        - type: composite
+          ref:
+            kind: Ui.View
+            content: { type: text, text: !cel "'v' + module.version" }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: read
+    invoke: { kind: Probe.Read, source: !ref page }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected:
+        assets: []
+        node:
+          type: stack
+          style: [strong]
+          children:
+            - { type: text, text: Title, style: heading }
+            - { type: badge, text: New, style: [accent, strong] }
+            - { type: link, text: Docs, href: /docs }
+            - { type: image, src: /logo.png, alt: "" }
+            - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg'/>", alt: Chart }
+            - type: columns
+              children:
+                - type: box
+                  children:
+                    - { type: text, text: Inner, style: muted }
+                - { type: text, text: v1.0.0 }

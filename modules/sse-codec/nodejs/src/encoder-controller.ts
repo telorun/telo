@@ -1,5 +1,6 @@
 import type { ControllerContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { InvokeError, Stream, writePlainJson } from "@telorun/sdk";
+import { InvokeError, Stream } from "@telorun/sdk";
+import { sseFrame } from "./sse-frame.js";
 
 interface EncoderResource {
   metadata: { name: string; module?: string };
@@ -61,7 +62,7 @@ async function* encode(
 ): AsyncIterable<Uint8Array> {
   try {
     for await (const item of input) {
-      yield Buffer.from(formatFrame(item, name), "utf8");
+      yield Buffer.from(sseFrame(item, `Sse.Encoder "${name}"`), "utf8");
     }
   } catch (err) {
     // The frame tells the client, and nothing else does: the stream has already
@@ -81,42 +82,6 @@ async function* encode(
     const payload = { message, ...(code === undefined ? {} : { code }) };
     yield Buffer.from(`event: error\ndata: ${JSON.stringify(payload)}\n\n`, "utf8");
   }
-}
-
-function formatFrame(item: unknown, name: string): string {
-  if (typeof item === "string") {
-    return `event: message\ndata: ${writePlainJson(item)}\n\n`;
-  }
-  if (!item || typeof item !== "object") {
-    throw new InvokeError(
-      "ERR_INVALID_INPUT",
-      `Sse.Encoder "${name}": items must be an object or string; got ${typeof item}.`,
-    );
-  }
-  const { type, id, ...rest } = item as { type?: unknown; id?: unknown; [k: string]: unknown };
-  if (type !== undefined && typeof type !== "string") {
-    throw new InvokeError(
-      "ERR_INVALID_INPUT",
-      `Sse.Encoder "${name}": 'type' must be a string when present; got ${typeof type}.`,
-    );
-  }
-  // A newline in 'type'/'id' would terminate the SSE field and inject arbitrary
-  // frames (the wire uses \n to delimit fields and \n\n to end an event).
-  if (typeof type === "string" && /[\r\n]/.test(type)) {
-    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'type' must not contain a newline.`);
-  }
-  if (typeof id === "string" && /[\r\n]/.test(id)) {
-    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'id' must not contain a newline.`);
-  }
-  if (typeof id === "number" && !Number.isFinite(id)) {
-    throw new InvokeError("ERR_INVALID_INPUT", `Sse.Encoder "${name}": 'id' must be a finite number.`);
-  }
-  const event = typeof type === "string" ? type : "message";
-  // Accept bigint too — a CEL integer id can cross the boundary as one, and
-  // silently dropping it would break Last-Event-ID resumption without a signal.
-  const idLine =
-    typeof id === "string" || typeof id === "number" || typeof id === "bigint" ? `id: ${id}\n` : "";
-  return `${idLine}event: ${event}\ndata: ${writePlainJson(rest)}\n\n`;
 }
 
 export function register(_ctx: ControllerContext): void {}

@@ -20,7 +20,9 @@ export {
   type InterpolationShape,
 } from "./cel/interpolation-holes.js";
 export {
+  EACH_SEGMENT,
   extractAccessChains,
+  extractReadChains,
   findNullableAccessIssues,
   INDEX_SEGMENT,
   validateChainAgainstSchema,

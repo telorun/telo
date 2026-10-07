@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: UiFixtureCollection
+  version: 1.0.0
+  description: >-
+    Test fixture: a hand-written REST collection held in memory, speaking the
+    collection contract a data grid reads — limit, cursor, one-key sort,
+    filters, a total — with create, replace and delete on its items.
+exports:
+  kinds: [Collection]
+---
+kind: Telo.Definition
+metadata:
+  name: Collection
+  description: >-
+    Serves a list of rows held in memory as a paginated, sortable, filterable
+    collection with item routes, refusing a record that lacks a required
+    property with the request-validation envelope.
+capability: Telo.Mount
+controllers:
+  - pkg:telo/local/js?path=./collection.mjs#Collection
+schema:
+  type: object
+  additionalProperties: false
+  required: [rows]
+  properties:
+    rows:
+      type: array
+      items: { type: object }
+    required:
+      type: array
+      items: { type: string }

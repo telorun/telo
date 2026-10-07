@@ -18,12 +18,14 @@ export interface ValueTagOption extends ValueTag {
 }
 
 /** The tags offerable at one field, each with its widget. A ref slot never
- *  reaches here — it is dispatched to the reference picker first. */
+ *  reaches here — it is dispatched to the reference picker first.
+ *  `accessorField` tells an accessor field from a place beneath one. */
 export function offeredValueTags(
   prop: JsonSchemaProperty,
   evalMode: CelEvalMode | null,
+  accessorField = false,
 ): ValueTagOption[] {
-  return tagsOfferedAt(prop as Record<string, unknown>, evalMode).map((tag) => ({
+  return tagsOfferedAt(prop as Record<string, unknown>, evalMode, accessorField).map((tag) => ({
     ...tag,
     editor: tag.names ? "path" : "expression",
   }));

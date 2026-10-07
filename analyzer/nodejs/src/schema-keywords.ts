@@ -246,9 +246,18 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   "x-telo-eval": {
     title: "Evaluation mode",
     description:
-      "When CEL in this field (`!cel`, `!interpolate`) is evaluated: `compile` at load, `runtime` per invocation. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
+      "When CEL in this field (`!cel`, `!interpolate`) is evaluated: `compile` at load, `runtime` per invocation. `accessor` is never evaluated — the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal, and the controller receives it as a binding. A CEL-bearing field MUST declare one, or the expression is read as a literal.",
     type: "string",
-    enum: ["compile", "runtime"],
+    enum: ["compile", "runtime", "accessor"],
+  },
+  "x-telo-browser-export": {
+    title: "Browser export",
+    description:
+      "This string names an export of a browser entry. `entry` is a JSON Pointer, relative to the enclosing object, to the sibling string holding the entry's specifier — one the module declaring the resource lists under `exports.browser`.",
+    type: "object",
+    required: ["entry"],
+    properties: { entry: { type: "string" } },
+    additionalProperties: false,
   },
   "x-telo-ref": {
     title: "Reference slot",

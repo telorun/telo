@@ -1,0 +1,725 @@
+kind: Telo.Library
+metadata:
+  name: Ui
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [UI]
+  description: >-
+    Declarative user interfaces written as data: pages built from layout, text,
+    links and images, plus data tables with sorting, paging and row actions,
+    create and edit forms validated against a data model, filter bars, custom
+    components and design tokens. A renderer turns the result into a web admin
+    panel, dashboard or back-office screen without hand-written frontend code.
+requires:
+  # 0.111.0 checks this file clean, but does not know `x-telo-eval: accessor`:
+  # its kernel evaluates `row.<property>`
+  # in a table ("no such variable: row.isDone"), and a table placed on a page
+  # is refused on the application's own lines (`'row' is not defined`,
+  # CEL_UNKNOWN_FIELD). Verified by execution (`run` and `check` of
+  # applications over these kinds) against 0.111.0.
+  telo: ">=0.112.0"
+imports:
+  Font: ../font
+exports:
+  kinds:
+    - Composite
+    - View
+    - Table
+    - Form
+    - Filters
+    - Component
+    - ComponentExport
+    - Theme
+  resources:
+    - Node
+    - SpecNode
+  # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
+  # how a built browser entry becomes the files a page loads, so a renderer
+  # addresses its own entries exactly as a placed component's are addressed.
+  code:
+    - specifier: "@telorun/ui"
+      format: js
+      path: ./nodejs/ui.mjs
+      source: ./nodejs/src/index.ts
+---
+# One node of a page, as an author writes it. Internally tagged on `type`, each
+# branch closed, so a misspelled type lists the valid ones and a stray key is
+# reported on the branch it was written in. Layout is not a field anywhere: it
+# belongs to the styling contract of whatever renders the tree.
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+schema:
+  type: object
+  # One closed branch per `type`, each pinning it.
+  oneOf:
+    - additionalProperties: false
+      required: [type, children]
+      properties:
+        type: { enum: [box, stack, columns] }
+        children: { type: array, items: { $ref: "#" } }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+    - additionalProperties: false
+      required: [type, text]
+      properties:
+        type: { enum: [text, badge] }
+        text: { type: string }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+    - additionalProperties: false
+      required: [type, text, href]
+      properties:
+        type: { const: link }
+        text: { type: string }
+        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+    - additionalProperties: false
+      required: [type, src, alt]
+      properties:
+        type: { const: image }
+        src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
+        alt: { type: string }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+    - additionalProperties: false
+      required: [type, markup, alt]
+      properties:
+        type: { const: svg }
+        markup: { type: string }
+        alt: { type: string }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+    - additionalProperties: false
+      required: [type, ref]
+      properties:
+        type: { const: composite }
+        ref:
+          x-telo-ref: { kind: Self.Composite, use: dependency }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+  $defs:
+    StyleName:
+      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    Style:
+      anyOf:
+        - $ref: "#/$defs/StyleName"
+        - type: array
+          items: { $ref: "#/$defs/StyleName" }
+---
+# What a renderer receives: the same structural nodes with every condition
+# decided and every composite replaced by what it provides. Carries no resource
+# name — a renderer needs nothing but this document.
+kind: Telo.JsonSchema
+metadata:
+  name: SpecNode
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type, children]
+      properties:
+        type: { enum: [box, stack, columns] }
+        children: { type: array, items: { $ref: "#" } }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, text]
+      properties:
+        type: { enum: [text, badge] }
+        text: { type: string }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, text, href]
+      properties:
+        type: { const: link }
+        text: { type: string }
+        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, src, alt]
+      properties:
+        type: { const: image }
+        src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
+        alt: { type: string }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, markup, alt]
+      properties:
+        type: { const: svg }
+        markup: { type: string }
+        alt: { type: string }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, schema, basePath, rowKey, pageSize, columns, delete]
+      properties:
+        type: { const: table }
+        schema: { type: object }
+        basePath: { type: string }
+        filters:
+          type: object
+          additionalProperties: { type: [string, number, boolean] }
+        rowKey: { type: string }
+        pageSize: { type: integer }
+        rowStyle: { $ref: "#/$defs/StyleRule" }
+        # Each a form node.
+        create: { $ref: "#" }
+        edit: { $ref: "#" }
+        delete: { type: boolean }
+        columns:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [header]
+            properties:
+              header: { type: string }
+              value: { $ref: "#/$defs/Binding" }
+              # Present when the column is sortable: the property sent as `sort`.
+              sort: { type: string }
+              # The model's own description of the value, which decides how a
+              # cell is shown.
+              present: { type: object }
+              style: { $ref: "#/$defs/StyleRule" }
+              # A component node, or the error node standing in for one.
+              cell: { $ref: "#" }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, schema, basePath, fields]
+      properties:
+        type: { const: form }
+        schema: { type: object }
+        basePath: { type: string }
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, label]
+            properties:
+              property: { type: string }
+              label: { type: string }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, fields, content]
+      properties:
+        type: { const: filters }
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, operator, label, schema]
+            properties:
+              property: { type: string }
+              operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+              label: { type: string }
+              schema: { type: object }
+        content: { $ref: "#" }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, module, export, external, stylesheets, props]
+      properties:
+        type: { const: component }
+        module: { $ref: "#/$defs/AssetRef" }
+        export: { type: string }
+        abi: { type: string }
+        external: { type: array, items: { type: string } }
+        stylesheets: { type: array, items: { $ref: "#/$defs/AssetRef" } }
+        props:
+          type: object
+          additionalProperties: { $ref: "#/$defs/Binding" }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, code, message]
+      properties:
+        type: { const: error }
+        code: { type: string }
+        message: { type: string }
+  $defs:
+    StyleName:
+      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    Style:
+      anyOf:
+        - $ref: "#/$defs/StyleName"
+        - type: array
+          items: { $ref: "#/$defs/StyleName" }
+    # A row-bound value: a path from a named root, or a fixed value.
+    Binding:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [root, path]
+          properties:
+            root: { type: string }
+            path: { type: array, items: { type: string } }
+        - type: object
+          additionalProperties: false
+          required: [value]
+          properties:
+            value: {}
+    StyleRule:
+      type: object
+      additionalProperties: false
+      required: [by, cases]
+      properties:
+        by: { $ref: "#/$defs/Binding" }
+        cases:
+          type: object
+          additionalProperties: { $ref: "#/$defs/Style" }
+        default: { $ref: "#/$defs/Style" }
+    AssetRef:
+      type: object
+      additionalProperties: false
+      required: [digest, name]
+      properties:
+        digest: { type: string }
+        name: { type: string }
+---
+kind: Telo.Abstract
+metadata:
+  name: Composite
+  description: >-
+    A reusable piece of interface that carries its own configuration and expands
+    into renderable nodes: a data grid, an input form, a filter bar, a custom
+    widget, or a group of them. Provides the node a renderer draws and the list
+    of files the browser must load for it, each addressed by its content digest.
+capability: Telo.Provider
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [assets]
+    properties:
+      # Absent when the composite has nothing to show: whoever placed it leaves
+      # it out, as it would a node whose `when:` is false.
+      node: { $ref: "telo://Self/SpecNode" }
+      assets:
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [digest, name, file, mediaType]
+          properties:
+            digest: { type: string, pattern: "^[0-9a-f]{64}$" }
+            name: { type: string }
+            file: { x-telo-type: Telo.HostPath }
+            mediaType: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: View
+  description: >-
+    A fragment of a page declared once and placed wherever it is needed: a
+    header, a summary panel, a section combining text, layout and data grids.
+    Holds one node tree and provides it resolved, so a library can ship ready
+    interface sections that an application drops into its own pages.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ViewController
+schema:
+  type: object
+  additionalProperties: false
+  required: [content]
+  properties:
+    content:
+      title: Content
+      description: The node this view stands for.
+      $ref: "telo://Self/Node"
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    A data grid over a REST collection: rows fetched page by page with a cursor,
+    one-click column sorting, a total count, per-row and per-cell conditional
+    styling, and optional create, edit and delete actions. Columns come from the
+    row model unless listed, so a property added to the model appears without an
+    edit and a renamed one is caught before deploy.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TableController
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, source]
+  properties:
+    model:
+      title: Model
+      description: The shape of one row.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    source:
+      title: Source
+      type: object
+      additionalProperties: false
+      required: [basePath]
+      properties:
+        basePath:
+          title: Base path
+          description: >-
+            App-relative URL of the collection: `/` followed by anything but
+            `/` or `\`, holding no control character.
+          type: string
+          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+        filters:
+          title: Filters
+          description: Equalities applied to every request, keyed by model property.
+          type: object
+          additionalProperties: { type: [string, number, boolean] }
+    rowKey:
+      title: Row key
+      description: The property identifying a row in item URLs.
+      type: string
+      default: id
+    columns:
+      title: Columns
+      description: >-
+        The columns, left to right. Omitted, there is one per model property in
+        declaration order.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          header: { title: Header, type: string }
+          value:
+            title: Value
+            description: The value shown, as a path into the row or a fixed value.
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-from-root: "model" }
+          cell:
+            title: Cell
+            description: A component drawn in place of a value.
+            x-telo-ref: { kind: Self.Component, use: dependency }
+          style:
+            title: Style rule
+            description: Styles chosen by a value of the row.
+            type: object
+            additionalProperties: false
+            required: [by, cases]
+            properties:
+              by:
+                title: By
+                x-telo-eval: accessor
+                x-telo-context:
+                  type: object
+                  properties:
+                    row: { x-telo-context-from-root: "model" }
+              cases:
+                title: Cases
+                description: Styles keyed by the plain text of the value.
+                type: object
+                additionalProperties: { $ref: "#/$defs/Style" }
+              default: { $ref: "#/$defs/Style" }
+        # Exactly one of the two.
+        oneOf:
+          - required: [value]
+          - required: [cell]
+    pageSize:
+      title: Page size
+      description: Rows per page, sent as `limit`.
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 25
+    rowStyle:
+      title: Style rule
+      description: Styles chosen by a value of the row.
+      type: object
+      additionalProperties: false
+      required: [by, cases]
+      properties:
+        by:
+          title: By
+          x-telo-eval: accessor
+          x-telo-context:
+            type: object
+            properties:
+              row: { x-telo-context-from-root: "model" }
+        cases:
+          title: Cases
+          description: Styles keyed by the plain text of the value.
+          type: object
+          additionalProperties: { $ref: "#/$defs/Style" }
+        default: { $ref: "#/$defs/Style" }
+    create:
+      title: Create form
+      description: The form opened to add a row.
+      x-telo-ref: { kind: Self.Form, use: dependency }
+    edit:
+      title: Edit form
+      description: The form opened to change a row, prefilled from it.
+      x-telo-ref: { kind: Self.Form, use: dependency }
+    delete:
+      title: Delete
+      description: Whether each row offers a confirmed delete.
+      type: boolean
+      default: false
+  $defs:
+    StyleName:
+      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    Style:
+      anyOf:
+        - $ref: "#/$defs/StyleName"
+        - type: array
+          items: { $ref: "#/$defs/StyleName" }
+  x-telo-resource-rules:
+    - resolve: [/model]
+      in: /source/filters
+      condition: !cel "key in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
+      message: >-
+        filters its source by a property the row model does not declare. Use a
+        property of `model`, or add this one to it.
+---
+kind: Telo.Definition
+metadata:
+  name: Form
+  description: >-
+    An input form generated from a data model: a labelled control per property,
+    chosen from its type — checkbox, select, number, date, text — with
+    validation in the browser against the model's own rules before anything is
+    sent, and the server's field errors shown beside the fields they name.
+    Creates a record, or edits one when a data grid opens it.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FormController
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, source]
+  properties:
+    model:
+      title: Model
+      description: The shape of the record the form edits.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    source:
+      title: Source
+      type: object
+      additionalProperties: false
+      required: [basePath]
+      properties:
+        basePath:
+          title: Base path
+          description: >-
+            App-relative URL of the collection written to: `/` followed by
+            anything but `/` or `\`, holding no control character.
+          type: string
+          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+    fields:
+      title: Fields
+      description: The fields, top to bottom. Omitted, every scalar model property.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [property]
+        properties:
+          property: { title: Property, type: string }
+  x-telo-resource-rules:
+    - resolve: [/model]
+      in: /fields
+      condition: !cel "this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      code: UI_FORM_FIELD_UNKNOWN_PROPERTY
+      message: >-
+        lists a field for a property the model does not declare. Use a property
+        of `model`, or add this one to it.
+---
+kind: Telo.Definition
+metadata:
+  name: Filters
+  description: >-
+    A filter bar over the data grids it contains: one control per chosen
+    property — equals, contains, greater or less than, one of several — with a
+    reset. Every grid inside narrows to the chosen values and returns to its
+    first page. Controls and default operators come from the data model.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FiltersController
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, content]
+  properties:
+    model:
+      title: Model
+      description: The shape of the rows being filtered.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    fields:
+      title: Fields
+      description: >-
+        The filters, in order. Omitted, one per scalar model property with the
+        operator its type defaults to.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [property]
+        properties:
+          property: { title: Property, type: string }
+          operator:
+            title: Operator
+            enum: [eq, contains, gt, gte, lt, lte, in]
+    content:
+      title: Content
+      description: The node the filters apply to.
+      $ref: "telo://Self/Node"
+  x-telo-resource-rules:
+    - resolve: [/model]
+      in: /fields
+      condition: !cel "this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      code: UI_FILTER_UNKNOWN_PROPERTY
+      message: >-
+        filters by a property the model does not declare. Use a property of
+        `model`, or add this one to it.
+    # `contains` reads text and the comparisons read an ordered value, so each
+    # is refused on a property whose declared type cannot carry it. Checked
+    # only where the property declares one plain type.
+    - resolve: [/model]
+      in: /fields
+      condition: !cel >-
+        !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+        || !has((has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type)
+        || type((has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type) != string
+        || ((!has(this.operator) || this.operator in ['eq', 'in'])
+            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer', 'boolean'])
+        || (has(this.operator) && this.operator == 'contains'
+            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type == 'string')
+        || (has(this.operator) && this.operator in ['gt', 'gte', 'lt', 'lte']
+            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer'])
+      code: UI_FILTER_OPERATOR_UNSUPPORTED
+      message: >-
+        uses an operator the property's type does not support: `contains` needs a
+        string, `gt` / `gte` / `lt` / `lte` a string or a number, and no operator
+        applies to an object or a list.
+---
+kind: Telo.Definition
+metadata:
+  name: Component
+  description: >-
+    Places a custom browser component on a page or in a data grid cell, with the
+    properties it is given: fixed values, or values read from the row it is
+    drawn for. The properties are checked against what the component declares,
+    so a missing or mistyped one is caught before the page is ever loaded.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentController
+schema:
+  type: object
+  additionalProperties: false
+  required: [component]
+  properties:
+    component:
+      title: Component
+      description: The component to draw.
+      x-telo-ref: { kind: Self.ComponentExport, use: dependency }
+    model:
+      title: Model
+      description: The shape of the row, for properties read from one.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    props:
+      title: Properties
+      description: What the component receives, by name.
+      type: object
+      x-telo-value-schema-from: "/component/props"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model" }
+      additionalProperties:
+        x-telo-eval: accessor
+---
+kind: Telo.Definition
+metadata:
+  name: ComponentExport
+  description: >-
+    Publishes one browser component a module ships, so pages anywhere can place
+    it: the module's browser entry, the name it is exported under, and the
+    properties it accepts. Declared beside the code, which lets every use be
+    checked against the declared properties.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentExportController
+schema:
+  type: object
+  additionalProperties: false
+  required: [entry, export, props]
+  properties:
+    entry:
+      title: Entry
+      description: The specifier of one of the declaring module's browser entries.
+      type: string
+    export:
+      title: Export
+      description: The name the component is exported under.
+      type: string
+      x-telo-browser-export: { entry: /entry }
+    props:
+      title: Properties
+      description: The properties the component accepts.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+---
+kind: Telo.Definition
+metadata:
+  name: Theme
+  description: >-
+    Design tokens for an interface: brand and status colours, corner radii,
+    spacing steps, shadows, font sizes, line heights and the typefaces for body
+    text, headings and code. A closed set of names, so a misspelled token is an
+    error rather than a style that silently does nothing.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ThemeController
+schema:
+  type: object
+  additionalProperties: false
+  required: [tokens]
+  properties:
+    tokens:
+      title: Tokens
+      description: Token values by name. Every value but a font is a CSS value.
+      type: object
+      additionalProperties: false
+      properties:
+        color.background: { type: string }
+        color.surface: { type: string }
+        color.text: { type: string }
+        color.muted: { type: string }
+        color.border: { type: string }
+        color.accent: { type: string }
+        color.accent-text: { type: string }
+        color.danger: { type: string }
+        color.warning: { type: string }
+        color.success: { type: string }
+        radius.sm: { type: string }
+        radius.md: { type: string }
+        radius.lg: { type: string }
+        space.xs: { type: string }
+        space.sm: { type: string }
+        space.md: { type: string }
+        space.lg: { type: string }
+        space.xl: { type: string }
+        shadow.sm: { type: string }
+        shadow.md: { type: string }
+        font.body:
+          x-telo-ref: { kind: Font.Family, use: dependency }
+        font.heading:
+          x-telo-ref: { kind: Font.Family, use: dependency }
+        font.mono:
+          x-telo-ref: { kind: Font.Family, use: dependency }
+        font-size.sm: { type: string }
+        font-size.md: { type: string }
+        font-size.lg: { type: string }
+        font-size.xl: { type: string }
+        line-height.body: { type: string }
+        line-height.heading: { type: string }

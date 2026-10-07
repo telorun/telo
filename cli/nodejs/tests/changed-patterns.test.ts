@@ -222,6 +222,33 @@ describe("telo changed — which matched files a diff affects", () => {
     ]);
   });
 
+  it("reaches a module's tests from a workspace package its browser entry inlines", () => {
+    const root = repo();
+    moduleAt(
+      root,
+      "modules/widgets",
+      {},
+      "exports:\n  browser:\n    - specifier: \"@x/badges\"\n      path: ./browser/badges.js\n" +
+        "      source: ./browser/src/badges.tsx\n",
+    );
+    write(root, "modules/widgets/browser/src/badges.tsx", "export const StatusPill = 1;\n");
+    write(
+      root,
+      "modules/widgets/browser/package.json",
+      JSON.stringify({ name: "@x/widgets-browser", dependencies: { "@x/ui": "workspace:*" } }),
+    );
+    write(root, "packages/ui/package.json", JSON.stringify({ name: "@x/ui" }));
+    moduleAt(root, "modules/sql");
+    testAt(root, "modules/widgets/tests/renders.yaml", { Widgets: "../" });
+    testAt(root, "modules/sql/tests/query.yaml", { Sql: "../" });
+
+    const scope = scopeOf(root);
+    const entries = scope.expand(["modules/*/tests/*.yaml"], root);
+    expect(entries.filter((entry) => scope.affects(entry, ["packages/ui/src/button.tsx"]))).toEqual([
+      "modules/widgets/tests/renders.yaml",
+    ]);
+  });
+
   it("resolves globs against the working directory, not the repository root", () => {
     const root = repo();
     moduleAt(root, "apps/hub");

@@ -32,6 +32,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertSidecarNamesFree, buildBrowserClaims } from "../bundle/browser-entries.js";
 import { MODULE_LICENSE_FILE, selectFiles } from "../bundle/select-files.js";
 import { expandDirectoryClaims } from "../bundle/module-path-claims.js";
 import { cliVersion } from "../distribution-versions.js";
@@ -291,11 +292,25 @@ async function stageLocalModules(options: {
     // Everything the manifest NAMES: embedded files, assets, controller and
     // library entry points, native files.
     const claims = expandDirectoryClaims(dir, collectModuleFileClaims(module.owner.text), []);
+    const assets = selectFiles(dir, readAssetPatterns(owner));
+    assertSidecarNamesFree(claims, [
+      ...claims.map((claim) => claim.path),
+      ...assets,
+      ...readNativeEntries(owner).entries.map((entry) => entry.path),
+    ]);
     for (const claim of claims) {
-      if (claim.role === "controller" || claim.role === "library") continue;
+      if (claim.role === "controller" || claim.role === "library" || claim.role === "browser") continue;
       copy(claim.path, claim.origin);
     }
-    for (const rel of selectFiles(dir, readAssetPatterns(owner))) copy(rel, "an assets: pattern");
+    // Browser entries are carried built, like every other code entry: with no
+    // source on disk the kernel serves the built files it finds at their paths.
+    for (const [rel, content] of (await buildBrowserClaims(dir, claims, cacheRoot)).files) {
+      const to = path.join(appRoot, relative(dir), rel);
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.writeFileSync(to, content);
+      copied.add(rel);
+    }
+    for (const rel of assets) copy(rel, "an assets: pattern");
     for (const entry of readNativeEntries(owner).entries) {
       if (!selectorMatches(entry.selector, platform)) continue;
       copy(entry.path, entry.origin);

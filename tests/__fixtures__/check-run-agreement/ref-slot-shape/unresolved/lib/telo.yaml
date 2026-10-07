@@ -1,0 +1,39 @@
+# A reference inside a named shape is checked like any other: a name that
+# resolves to nothing and a target of the wrong kind are each reported at the
+# concrete path, two containers deep in the shape's recursion.
+kind: Telo.Library
+metadata:
+  name: RefSlotShapeUnresolved
+  version: 1.0.0
+  description: >-
+    Fixture library whose resources name a missing resource and a resource of
+    the wrong kind at reference slots a named shape declares.
+imports:
+  Shape: ../../kinds
+exports:
+  resources: [missing, wrongKind]
+---
+kind: Shape.ViaSelfShape
+metadata:
+  name: missing
+tree:
+  label: root
+  children:
+    - label: middle
+      children:
+        - label: leaf
+          target: !ref nosuch
+---
+kind: Telo.JsonSchema
+metadata:
+  name: NotInvocable
+schema: { type: string }
+---
+kind: Shape.ViaAliasShape
+metadata:
+  name: wrongKind
+tree:
+  label: root
+  children:
+    - label: leaf
+      target: !ref NotInvocable

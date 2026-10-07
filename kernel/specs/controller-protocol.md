@@ -836,6 +836,18 @@ It is **synchronous and reentrant**: synchronous because a controller expands a
 value in order to act on it, and reentrant because the expression may reach a
 module function whose controller is at the blocked end (§6.7).
 
+**An accessor-mode field is not a compiled value.** A field its kind annotates
+`x-telo-eval: accessor` names a value for the controller's own consumer to
+resolve, and is never evaluated by either side. It therefore MUST NOT cross as a
+`$teloCompiled` node and MUST NOT be a target of `Value.Expand`. It crosses as an
+ordinary string-keyed **binding map** — `{ "root": "<binding>", "path": ["<member>", …] }`
+for a chain, `path` empty for the bare binding, and `{ "value": <literal> }` for a
+literal, including a literal that is itself shaped like a chain's map. A binding
+map carries no tag and adds nothing to the typed frame's vocabulary; a kernel
+MUST have refused, before the instance is created, any value at such a field that
+is neither a plain chain rooted at one of the field's declared bindings nor a
+literal holding no expression.
+
 ## 8. Channels
 
 A **channel** is a one-way, flow-controlled byte stream between the two ends,

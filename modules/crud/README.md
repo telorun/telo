@@ -1,103 +1,101 @@
 # CRUD
 
-A complete REST CRUD API over a SQL table as a single declarative resource. `Crud.Resource` is a `Telo.Mount`: give it a `Sql.Connection`, the resource's `singular`/`plural` names, and a `model`, mount it on an `Http.Server`, and you get list / read / create / update / delete routes — no handler wiring, no controller code.
+A complete REST API over a SQL table as a single declarative resource, and an admin screen over it as a second. `Crud.Resource` is a mount: give it a `Sql.Connection`, the resource's `singular` / `plural` names and a `model`, mount it on an `Http.Server`, and you get list / read / create / replace / delete routes with no handler wiring. `Crud.Ui` turns the same model into a filter bar, a data grid and a form.
 
 ## Why use this
 
-- **One resource, full REST surface** — `Crud.Resource` expands into the five standard routes; you declare a resource, not a route table.
-- **Named once, derived everywhere** — `singular`/`plural` default the table name and the `{…}` path parameter, and name the generated OpenAPI operations (`listTodos`, `getTodo`, …).
-- **Purely templated** — it builds parameterized [sql](../sql) statements and mounts them through an [http-server](../http-server) `Http.Api` via the `mount:` template dispatch. Nothing to build or deploy beyond the manifest.
-- **Mount it anywhere** — drop it into `Http.Server.mounts` at any path; the collection lives at the mount root and `{<idParam>}` items hang off it.
+- **One resource, full REST surface** — you declare a resource, not a route table.
+- **A list route that is a real collection** — cursor paging, sorting, filtering by equality, text, comparison and membership, and a total count, with a 400 that names the bad parameter.
+- **Values in the model's types** — a `boolean` property is `true` / `false` on every route and every engine.
+- **Named once, derived everywhere** — `singular` / `plural` default the table name and the `{…}` path parameter, and name the OpenAPI operations (`listTodos`, `getTodo`, …).
+- **The admin screen in one line** — `Crud.Ui` needs the model and the path, and whatever it produces can be written by hand when you need more.
+
+## Kinds
+
+| Kind | Purpose |
+| --- | --- |
+| [`Crud.Resource`](docs/resource.md) | The five routes over one table. |
+| [`Crud.Ui`](docs/ui.md) | A filter bar, table and form over a collection. |
+
+The list route's query, response and refusals are in [The list route](docs/list-route.md).
 
 ## Routes
 
-Mounted at `<prefix>`, against the table's `id` primary key. `<idParam>` is the configurable item path parameter (default `<singular>Id`, e.g. `todoId`):
+Mounted at `<prefix>`, against the table's `id` primary key. `<idParam>` is the item path parameter (default `<singular>Id`, e.g. `todoId`):
 
 | Method & path | Operation | operationId |
 | --- | --- | --- |
-| `GET <prefix>` | List all rows. | `list<Plural>` |
+| `GET <prefix>` | One page of rows: `{ rows, total, next }`. | `list<Plural>` |
 | `GET <prefix>/{<idParam>}` | Read one row (404 if absent). | `get<Singular>` |
 | `POST <prefix>` | Create a row from the JSON body. | `create<Singular>` |
-| `PUT <prefix>/{<idParam>}` | Update the columns present in the JSON body (404 if absent). | `update<Singular>` |
+| `PUT <prefix>/{<idParam>}` | Replace the row with the JSON body — a whole record; a property it leaves out is cleared (404 if absent). | `update<Singular>` |
 | `DELETE <prefix>/{<idParam>}` | Delete a row (204, or 404 if absent). | `delete<Singular>` |
-
-All five share the `<plural>` OpenAPI tag.
-
-## Schema
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `connection` | yes | `!ref` to a `Sql.Connection` (e.g. a `SQLite.Connection`). |
-| `singular` | yes | Singular noun for one item (e.g. `todo`). Defaults `idParam` to `<singular>Id` and names the per-item OpenAPI operations. |
-| `plural` | yes | Plural noun for the collection (e.g. `todos`). Defaults `table`; names the list operation and the OpenAPI tag. |
-| `model` | yes | A `Type.JsonSchema` (inline or `!ref`) describing the writable columns. Validates request bodies and feeds the OpenAPI document. |
-| `table` | no | Database table name. Defaults to `plural`. Its primary key must be the column `id`. |
-| `idParam` | no | Name of the `{…}` path parameter for one item. Defaults to `<singular>Id`. The PK column stays `id`; this only renames the URL parameter. |
-
-## Validation
-
-`model` is the data shape of the resource — a [`Type.JsonSchema`](../type) giving each writable column a JSON Schema. It drives request-body validation at the HTTP boundary:
-
-- **`POST`** validates the body against the full model — required fields must be present, and (with `additionalProperties: false`) unknown fields are rejected. A bad body returns `400` before any SQL runs.
-- **`PUT`** validates against a *partial* of the model — the same column types, but nothing required — so any subset of columns is accepted while still type-checking each one.
-
-## Column naming
-
-Model properties are the camelCase API names; the database column is each property's **snake_case** form — `dueDate` ↔ `due_date`. Writes translate the property names to columns; reads alias the columns back (`SELECT due_date AS dueDate`), so responses stay in the model's casing. Single-word lowercase names (`text`, `done`) are unchanged. The primary key is always the column `id`.
-
-Exclude `id` from the model: it is the auto-increment primary key, surfaced as the `{<idParam>}` path parameter, never part of a write body. Because `model` reuses `Type.JsonSchema`, it also composes with `extends` (inherit a shared base shape) — the resolved schema is threaded into the routes whole.
 
 ## Example
 
 ```yaml
 kind: Telo.Application
-metadata: { name: todo-api, version: 1.0.0 }
+metadata: { name: TodoApi, version: 1.0.0 }
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.19.1
-  Sql: oci://ghcr.io/telorun/sql@0.13.0
-  SQLite: oci://ghcr.io/telorun/sqlite@0.2.1
-  Type: oci://ghcr.io/telorun/type@0.8.0
-  Crud: oci://ghcr.io/telorun/crud@0.5.0
+  Http: oci://ghcr.io/telorun/http-server
+  SQLite: oci://ghcr.io/telorun/sqlite
+  Crud: oci://ghcr.io/telorun/crud
+  UiReact: oci://ghcr.io/telorun/ui-react
 targets:
-  - !ref Server
+  - !ref server
 ports:
   http: { env: PORT, default: 8077 }
+variables:
+  dbFile: { env: DB_FILE, type: string, x-telo-type: Telo.HostPath, default: ./todos.db }
 ---
 kind: SQLite.Connection
-metadata: { name: Db }
-file: ./todos.db
+metadata: { name: db }
+file: !cel "variables.dbFile"
 ---
-kind: Type.JsonSchema
-metadata: { name: TodoModel }
+kind: Telo.JsonSchema
+metadata: { name: Todo }
 schema:
   type: object
-  required: [ text ]
+  required: [text]
   additionalProperties: false
   properties:
     text: { type: string, minLength: 1 }
-    done: { type: integer, enum: [ 0, 1 ] }
+    isDone: { type: boolean }
 ---
 kind: Crud.Resource
-metadata: { name: Todos }
-connection: !ref Db
+metadata: { name: todos }
+connection: !ref db
 singular: todo
 plural: todos
-model: !ref TodoModel
+model: !ref Todo
+---
+kind: UiReact.App
+metadata: { name: admin }
+title: Todos
+pages:
+  - path: /
+    title: Todos
+    children:
+      - type: composite
+        ref: { kind: Crud.Ui, model: !ref Todo, basePath: /api/todos }
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 host: 127.0.0.1
 port: !cel "ports.http"
 mounts:
-  - path: /api/todos
-    mount: !ref Todos
+  - { path: /api/todos, mount: !ref todos }
+  - { path: /, mount: !ref admin }
 ```
 
-`POST /api/todos` with `{"text":"Buy milk"}` inserts a row; `GET /api/todos` lists them; `PUT /api/todos/1` with `{"done":1}` updates it; `DELETE /api/todos/1` removes it.
+`POST /api/todos` with `{"text":"Buy milk"}` inserts a row; `GET /api/todos?isDone=false&sort=-id&limit=10` lists a page of them; `PUT /api/todos/1` with `{"text":"Buy milk","isDone":true}` replaces one; `DELETE /api/todos/1` removes it. The same four happen from the screen at `/`.
 
 ## Conventions & limits
 
-- The primary key column is assumed to be named `id`, surfaced as the configurable `{<idParam>}` path parameter (default `<singular>Id`). `idParam` renames only the URL parameter, not the column.
-- Set `openapi:` on the `Http.Server` to emit the documented spec — operations are named from `singular`/`plural` (`listTodos`, `getTodo`, …) and tagged with `plural`. Response schemas are not yet named (the `model` excludes `id`, so the response shape differs from the write model).
-- Columns are the **snake_case** form of the model's camelCase properties (see *Column naming*). `Crud.Resource` does not create or migrate the table — declare it with your backend's `Table` / `Schema` kinds (or your own DDL), naming the columns in snake_case to match.
-- For bespoke queries (joins, computed columns, custom status logic) reach for an `Http.Api` with `Sql.Query` handlers directly; `Crud.Resource` covers the common single-table case.
+- The primary key column is `id`, surfaced as the `{<idParam>}` path parameter. `idParam` renames only the URL parameter.
+- Columns are the snake_case form of the model's camelCase properties. `Crud.Resource` does not create or migrate the table — declare it with your engine's `Table` / `Schema` kinds.
+- The two read routes and the update route run on SQLite and PostgreSQL. The create and delete routes build their statements with `?` placeholders, which is SQLite's spelling.
+- `POST` and `PUT` bodies are validated against the whole model; a refused one is a 400 naming the property.
+- A read returns a record valid against the model, so it can be sent back: a column holding `NULL` is `null` where the property admits it, left out where the property is optional, and the type's empty value (`""`, `0`, `false`) where it is required. See [What a read returns](docs/resource.md#what-a-read-returns).
+- Set `openapi:` on the `Http.Server` to emit the spec. The list response is documented as its envelope; a row's own properties are not yet named in it.
+- For joins, computed columns or custom status logic, write an `Http.Api` with `Sql.Query` handlers; `Crud.Resource` covers the single-table case.

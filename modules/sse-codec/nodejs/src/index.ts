@@ -4,6 +4,11 @@
  * emitting each one as it arrives rather than collecting to the end.
  */
 
+// The surface a dependent module's controller reaches through
+// `@telorun/sse-codec`: the frame and comment writers, for a transport that
+// writes its own event stream rather than encoding a handler's.
+export { sseComment, sseFrame } from "./sse-frame.js";
+
 // Controller entry points. Each kind's `controllers:` candidate selects one of
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.

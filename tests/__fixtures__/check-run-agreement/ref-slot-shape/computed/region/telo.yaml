@@ -1,0 +1,10 @@
+# Consumes the library next door. Its entry-scoped check is silent about the
+# library's resources, so the kernel's own refusal is what stops the boot.
+kind: Telo.Application
+metadata:
+  name: RefSlotRegionComputedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

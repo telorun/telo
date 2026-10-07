@@ -266,6 +266,25 @@ targets:
   - !ref valueSchemaFromInheritedShapeAtRuntime
   - !ref valueSchemaFromInheritedShapeAccepted
   - !ref valueSchemaFromInheritedShapeRefusedArgument
+  - !ref refSlotShapeRuns
+  - !ref refSlotShapeUnresolved
+  - !ref refSlotShapeUnresolvedAtRuntime
+  - !ref refSlotShapeComputed
+  - !ref refSlotShapeComputedAtRuntime
+  - !ref refSlotRuntimeComputed
+  - !ref refSlotRuntimeComputedAtRuntime
+  - !ref refSlotRegionComputed
+  - !ref refSlotRegionComputedAtRuntime
+  - !ref refSlotRegionComputedLone
+  - !ref refSlotRegionComputedLoneAtRuntime
+  - !ref accessorRuns
+  - !ref accessorNotPlainChain
+  - !ref accessorNotPlainChainAtRuntime
+  - !ref browserEntryRuns
+  - !ref browserEntryUnknown
+  - !ref browserEntryUnknownAtRuntime
+  - !ref browserExportUnknown
+  - !ref browserExportUnknownAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -2758,3 +2777,231 @@ expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "inputs at 'steps[0].inputs.context.turnId' do not satisfy caller's declared inputType: /context/turnId must be string"
+---
+# A reference slot a NAMED SHAPE declares — a `Telo.JsonSchema` a kind's schema
+# reaches by `$ref`, through `Self` and through an import alias, recursing into
+# itself — is a Phase-5 injection site at every depth, and inside a field the
+# kind evaluates per call: a `!ref` arrives live, an inline declaration is
+# extracted and runs, and the instance survives each call's expansion.
+kind: Assert.Manifest
+metadata:
+  name: refSlotShapeRuns
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A name that resolves to nothing and a target of the wrong kind at such a slot
+# are each reported at the concrete path, as at a slot the kind's own schema
+# declares…
+kind: Assert.Manifest
+metadata:
+  name: refSlotShapeUnresolved
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/unresolved/lib/telo.yaml
+expect:
+  errors:
+    - code: UNRESOLVED_REFERENCE
+      message: "Shape.ViaSelfShape/missing: reference at 'tree.children[0].children[0].target' → resource 'nosuch' not found"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Shape.ViaAliasShape/wrongKind: reference at 'tree.children[0].target' → 'Telo.JsonSchema' does not implement 'Telo.Invocable'"
+---
+# …and a consumer invoking the resource fails at run.
+kind: Assert.Manifest
+metadata:
+  name: refSlotShapeUnresolvedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/unresolved/telo.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nosuch' not found in module context"
+---
+# A computed value holding such a slot, in a field the kind evaluates at
+# creation, is the computed-reference rule reaching through the shape…
+kind: Assert.Manifest
+metadata:
+  name: refSlotShapeComputed
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/created/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ProviderViaShape/held: 'tree: !cel"
+---
+# …and the kernel refuses it before evaluating the field.
+kind: Assert.Manifest
+metadata:
+  name: refSlotShapeComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/created/telo.yaml
+expect:
+  errors: []
+  runFails: "RefSlotShape.ProviderViaShape/held: 'tree: !cel"
+---
+# THE THIRD POSITION OF THE SAME RULE. A field the kind evaluates PER CALL is a
+# legal eval site too, and the controller's own expansion would leave data at a
+# slot beneath it. A `!cel` above a slot and an `!interpolate` at one are each
+# reported; the computed label beside them is a leaf and is not…
+kind: Assert.Manifest
+metadata:
+  name: refSlotRuntimeComputed
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/per-call/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRuntimeShape/perCall: 'tree.target: !interpolate"
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRuntimeShape/perCall: 'tree.children: !cel"
+---
+# …and the kernel refuses the resource at creation, before any call.
+kind: Assert.Manifest
+metadata:
+  name: refSlotRuntimeComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/per-call/telo.yaml
+expect:
+  errors: []
+  runFails: "RefSlotShape.ViaRuntimeShape/perCall: 'tree.target: !interpolate"
+---
+# THE FOURTH POSITION. A field a REGION covers — `x-telo-context` and no
+# `x-telo-eval`, on a kind with no `invoke()` — is evaluated by its controller
+# as well. A `!cel` above a slot, an `!interpolate` at one, and an expression at
+# a slot whose own node carries the region are each reported; the computed
+# label beside them is not (`refSlotShapeRuns` runs one)…
+kind: Assert.Manifest
+metadata:
+  name: refSlotRegionComputed
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/region/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRegionShape/regional: 'handler: !cel"
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRegionShape/regional: 'tree.target: !interpolate"
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRegionShape/regional: 'tree.children: !cel"
+---
+# …and the kernel refuses the resource at creation.
+kind: Assert.Manifest
+metadata:
+  name: refSlotRegionComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/region/telo.yaml
+expect:
+  errors: []
+  runFails: "RefSlotShape.ViaRegionShape/regional: 'handler: !cel"
+---
+# The same refusal with NO concrete item at the shape: a computed list that is
+# the resource's only content, the shape reached one level below the field…
+kind: Assert.Manifest
+metadata:
+  name: refSlotRegionComputedLone
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/region-lone/lib/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "Shape.ViaRegionList/lone: 'trees: !cel"
+---
+# …and the kernel refuses that resource at creation.
+kind: Assert.Manifest
+metadata:
+  name: refSlotRegionComputedLoneAtRuntime
+source: ./__fixtures__/check-run-agreement/ref-slot-shape/computed/region-lone/telo.yaml
+expect:
+  errors: []
+  runFails: "RefSlotShape.ViaRegionList/lone: 'trees: !cel"
+---
+# An accessor field (`x-telo-eval: accessor`) is typed and never evaluated: a
+# plain chain reaches the controller as its root and member names, a literal
+# wrapped, with the row model given by `!ref` and given inline, from a resource
+# and from a template body alike.
+kind: Assert.Manifest
+metadata:
+  name: accessorRuns
+source: ./__fixtures__/check-run-agreement/accessor/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# Anything but a plain chain rooted at one of the field's bindings is refused,
+# and a chain that is plain is typed like any CEL leaf — against a model given
+# inline as against one given by `!ref`…
+kind: Assert.Manifest
+metadata:
+  name: accessorNotPlainChain
+source: ./__fixtures__/check-run-agreement/accessor/invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'columns[0].value: !cel \"row.text.upperAscii()\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'columns[1].value: !cel \"row.text + '!'\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'columns[2].value: !cel \"row.tags[0]\"' is not a plain chain"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'columns[3].value: !interpolate"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'columns[4].value.label: !cel \"row.text\"' is written beneath the accessor field 'columns[4].value'"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name: it starts at 'variables'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Acc.Table/mistyped: !cel: 'row.txt' is not defined (available: text, done, tags)"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Acc.Table/mistyped: !cel: unknown identifier 'rwo'"
+    - code: CEL_TYPE_ERROR
+      message: "Acc.Table/mistyped: CEL at 'rowStyle' reads 'row.done'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Acc.Table/mistypedInline: !cel: 'row.txt' is not defined (available: text)"
+---
+# …and the kernel refuses the resource at creation.
+kind: Assert.Manifest
+metadata:
+  name: accessorNotPlainChainAtRuntime
+source: ./__fixtures__/check-run-agreement/accessor/invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "AccessorKinds.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name"
+---
+# A browser entry is resolved by its specifier — the one a resource names
+# against the module that declared the resource, the controller's own against
+# the module declaring the kind — and built on first use in a checkout, with the
+# stylesheet and the shared chunk built beside it.
+kind: Assert.Manifest
+metadata:
+  name: browserEntryRuns
+source: ./__fixtures__/check-run-agreement/browser-entry/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A value annotated `x-telo-browser-export` names an export of a browser entry
+# its own module declares. An entry only another module ships is unknown…
+kind: Assert.Manifest
+metadata:
+  name: browserEntryUnknown
+source: ./__fixtures__/check-run-agreement/browser-entry/unknown-entry/lib/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_ENTRY_UNKNOWN
+      message: "Kinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
+---
+# …and the kernel refuses the resource at creation.
+kind: Assert.Manifest
+metadata:
+  name: browserEntryUnknownAtRuntime
+source: ./__fixtures__/check-run-agreement/browser-entry/unknown-entry/telo.yaml
+expect:
+  errors: []
+  runFails: "BrowserKinds.Widget/widget: 'entry: @fixture/shell' names no browser entry of the module declaring this resource"
+---
+# An export the named entry does not declare is refused the same two ways.
+kind: Assert.Manifest
+metadata:
+  name: browserExportUnknown
+source: ./__fixtures__/check-run-agreement/browser-entry/unknown-export/lib/telo.yaml
+expect:
+  errors:
+    - code: BROWSER_EXPORT_UNKNOWN
+      message: "Kinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"
+---
+kind: Assert.Manifest
+metadata:
+  name: browserExportUnknownAtRuntime
+source: ./__fixtures__/check-run-agreement/browser-entry/unknown-export/telo.yaml
+expect:
+  errors: []
+  runFails: "BrowserKinds.Widget/widget: 'export: Missing' is not an export the browser entry '@fixture/own' declares"

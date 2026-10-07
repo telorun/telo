@@ -52,6 +52,29 @@ already with the transport, so the failure never reaches the caller and the
 response still completes `200` — the encoder therefore also logs it at `error`,
 which is the only server-side report of a stream that died halfway.
 
+## Writing frames from another module's controller
+
+A transport that writes its own event stream — rather than encoding a
+handler's — formats frames with the same functions the encoder uses. The module
+declares them as a code entry, `@telorun/sse-codec`, which a module importing
+this one resolves from its controller:
+
+```ts
+import { sseComment, sseFrame } from "@telorun/sse-codec";
+
+response.write(sseFrame({ type: "hello", bundle }, "My.Mount 'admin'"));
+response.write(sseComment("keepalive", "My.Mount 'admin'"));
+```
+
+| Function | Returns |
+| --- | --- |
+| `sseFrame(item, owner)` | one frame for a record or a string, exactly as the encoder frames it |
+| `sseComment(text, owner)` | a comment line — what keeps an idle connection open, and dispatches nothing in a reader |
+
+`owner` names the writer in a refusal (`ERR_INVALID_INPUT`): an item that is
+neither an object nor a string, a `type` or `id` holding a line break, a
+comment holding one.
+
 ## Example
 
 ```yaml

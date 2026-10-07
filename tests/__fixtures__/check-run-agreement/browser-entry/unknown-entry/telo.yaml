@@ -1,0 +1,11 @@
+# Invokes the library's widget. Its entry-scoped check is silent about the
+# library's resources, so the kernel's refusal at creation is what stops it.
+kind: Telo.Application
+metadata:
+  name: BrowserEntryUnknownApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - name: probe
+    invoke: !ref Lib.widget

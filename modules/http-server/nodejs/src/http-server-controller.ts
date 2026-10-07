@@ -27,7 +27,6 @@ import {
   type ResourceInstance,
   type RuntimeResource,
 } from "@telorun/sdk";
-import addFormats from "ajv-formats";
 import Fastify, {
   FastifyInstance,
   LogController,
@@ -40,9 +39,8 @@ import { requestBag } from "./request-binding.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import {
-  requestValidationEnvelope,
-  type RequestLocation,
-  type RequestValidationDetail,
+  convertFastifyValidationError,
+  requestValidation,
 } from "./request-validation-envelope.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
@@ -223,10 +221,7 @@ class HttpServer implements ResourceInstance {
       // field name is the common case, and it is indistinguishable from success
       // until someone reads the row back. The declaration decides now: a schema
       // that closes the object refuses, an open one accepts as before.
-      ajv: {
-        customOptions: { useDefaults: true, removeAdditional: false },
-        plugins: [addFormats.default as any],
-      },
+      ...requestValidation,
     });
   }
 
@@ -944,65 +939,4 @@ function normalizeHeaders(headers: FastifyRequest["headers"]): Record<string, un
     normalized[key.toLowerCase()] = value;
   }
   return normalized;
-}
-
-/**
- * Converts Fastify validation errors to standardized Telo format
- * Returns null if the error is not a validation error
- */
-function convertFastifyValidationError(error: any): Record<string, any> | null {
-  // Check if this is a Fastify validation error
-  if (!error || typeof error !== "object" || error.code !== "FST_ERR_VALIDATION") {
-    return null;
-  }
-
-  const message = error.message || "";
-  const details: RequestValidationDetail[] = [];
-
-  // Parse Fastify validation error message to extract location and field
-  // Format examples:
-  // "querystring must have required property 'name'"
-  // "body must be object"
-  // "params.userId must be string"
-
-  let location: RequestLocation = "body"; // default
-  let fieldPath = "";
-  let validationMessage = "Validation failed";
-
-  // Try to extract location from message
-  if (message.includes("querystring")) {
-    location = "query";
-  } else if (message.includes("params")) {
-    location = "params";
-  } else if (message.includes("headers")) {
-    location = "headers";
-  } else if (message.includes("body")) {
-    location = "body";
-  }
-
-  // Extract field name from "must have required property 'fieldName'" pattern
-  const requiredMatch = message.match(/must have required property '([^']+)'/);
-  if (requiredMatch) {
-    fieldPath = requiredMatch[1];
-    validationMessage = `is a required property`;
-  } else {
-    // Extract field from "fieldName must be" pattern
-    const fieldMatch = message.match(/^(?:querystring|body|params|headers)\.?(\w+)\s/);
-    if (fieldMatch) {
-      fieldPath = fieldMatch[1];
-    }
-    validationMessage = message
-      .replace(/^(?:querystring|body|params|headers)\.?\w*\s/, "")
-      .replace(" must ", " ");
-  }
-
-  if (fieldPath || message) {
-    details.push({
-      location,
-      path: fieldPath,
-      message: validationMessage,
-    });
-  }
-
-  return requestValidationEnvelope(details);
 }

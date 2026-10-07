@@ -1,4 +1,5 @@
 import {
+  browserLayerFor,
   codeLayerFor,
   matchCodeLayers,
   selectorKey,
@@ -280,6 +281,18 @@ export class ModuleArtifact {
   }
 
   /**
+   * Materialize the `browser` layer carrying `selector` exactly, and nothing
+   * else: a browser entry is served, never imported here, and everything it
+   * loads is in its own layer.
+   *
+   * Returns `undefined` when the artifact ships no browser layer for this selector.
+   */
+  async materializeBrowser(selector: ArtifactSelector): Promise<MaterializedLayer | undefined> {
+    const layer = browserLayerFor(this.layers, selector);
+    return layer ? this.materialize(layer) : undefined;
+  }
+
+  /**
    * Materialize everything a module-relative file read could need: the `assets`
    * layer **and** the `common` layer.
    *
@@ -332,7 +345,9 @@ export class ModuleArtifact {
    * another platform.
    *
    * Only code this kernel opens is in either list: a `dylib` layer is the Rust
-   * kernel's, and no value of any axis would make a Node warm fetch it.
+   * kernel's, and no value of any axis would make a Node warm fetch it. Every
+   * `browser` layer is in the plan whatever the target: it is the same file on
+   * every platform, and its `abi` is the page's, never this process's.
    */
   warmPlan(target: PlatformTarget): {
     layers: ArtifactLayer[];
@@ -348,6 +363,7 @@ export class ModuleArtifact {
       ...this.layers.filter(
         (l) => l.role === "native" && l.selector !== undefined && selectorMatches(l.selector, target),
       ),
+      ...this.layers.filter((l) => l.role === "browser"),
       singletonLayer(this.layers, "assets"),
       singletonLayer(this.layers, "common"),
     ].filter((l): l is ArtifactLayer => l !== undefined);

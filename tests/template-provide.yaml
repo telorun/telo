@@ -1,0 +1,40 @@
+kind: Telo.Application
+metadata:
+  name: TemplateProvideTest
+  version: 1.0.0
+  description: |
+    A template's `provide:` reaches whatever its target offers: an invocable
+    entry is invoked, and an entry that is itself a provider is read through
+    its `provide()`, with `result:` applied to either. `inputs:` beside a
+    provider target is refused, since `provide()` takes no arguments.
+imports:
+  Lib: ./__fixtures__/template-provide
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verify
+  - !ref inputsBesideProvider
+---
+kind: Lib.Shouted
+metadata:
+  name: shouted
+who: ada
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: read
+    invoke: { kind: Lib.Read, source: !ref shouted }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected: { greeting: HELLO ADA }
+---
+kind: Assert.Manifest
+metadata:
+  name: inputsBesideProvider
+source: ./__fixtures__/template-provide/with-inputs/telo.yaml
+expect:
+  runFails: "is a Telo.Provider, not a Telo.Invocable, and 'inputs:' is passed to a Telo.Invocable target only"

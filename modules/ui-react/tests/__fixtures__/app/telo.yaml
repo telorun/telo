@@ -1,0 +1,262 @@
+# The fixture application: every node, composite and host capability on a page
+# of its own, over a collection held in memory. Start it with
+#   pnpm run telo ./modules/ui-react/tests/__fixtures__/app/telo.yaml
+# and open http://127.0.0.1:19310/admin/
+kind: Telo.Application
+metadata:
+  name: UiFixtureApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Font: ../../../../font
+  Ui: ../../../../ui
+  UiReact: ../../../
+  Widgets: ../components
+  Views: ../views
+  Api: ../collection-api
+ports:
+  http: { env: PORT, default: 19310 }
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  required: [text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task, minLength: 1, maxLength: 80 }
+    isDone: { type: boolean, title: Done }
+    priority: { type: integer, title: Priority, minimum: 1, maximum: 5 }
+    status: { title: Status, enum: [open, blocked, done] }
+    dueOn: { type: string, title: Due, format: date }
+    notes: { type: string, title: Notes, contentMediaType: text/plain }
+---
+kind: Api.Collection
+metadata:
+  name: todosApi
+required: [text]
+rows:
+  - { id: 1, text: Write the plan, isDone: true, priority: 2, status: done, dueOn: "2026-10-01", notes: "" }
+  - { id: 2, text: Review the plan, isDone: false, priority: 1, status: open, dueOn: "2026-10-07", notes: "" }
+  - { id: 3, text: Ship the renderer, isDone: false, priority: 3, status: blocked, dueOn: "2026-10-09", notes: "" }
+  - { id: 4, text: Write the docs, isDone: false, priority: 2, status: open, dueOn: "2026-10-12", notes: "" }
+  - { id: 5, text: Record the demo, isDone: false, priority: 5, status: open, dueOn: "2026-10-15", notes: "" }
+---
+kind: Api.Collection
+metadata:
+  name: notesApi
+rows:
+  - { id: 1, text: A note }
+---
+kind: Http.Static
+metadata:
+  name: files
+root: !module-path ./public
+---
+kind: Ui.Form
+metadata:
+  name: todoForm
+model: !ref Todo
+source: { basePath: /api/todos }
+fields:
+  - property: text
+  - property: isDone
+  - property: priority
+  - property: status
+  - property: dueOn
+  - property: notes
+---
+kind: Ui.Table
+metadata:
+  name: todos
+model: !ref Todo
+source: { basePath: /api/todos }
+pageSize: 2
+rowStyle:
+  by: !cel "row.isDone"
+  cases: { "true": muted }
+columns:
+  - value: !cel "row.text"
+  - value: !cel "row.priority"
+    style:
+      by: !cel "row.priority"
+      cases: { "1": danger, "2": warning }
+  - value: !cel "row.dueOn"
+  - header: State
+    cell:
+      kind: Ui.Component
+      component: !ref Widgets.statusPill
+      model: !ref Todo
+      props:
+        done: !cel "row.isDone"
+create: !ref todoForm
+edit: !ref todoForm
+delete: true
+---
+kind: Ui.Filters
+metadata:
+  name: todoFilters
+model: !ref Todo
+fields:
+  - property: text
+  - property: isDone
+  - property: status
+  - property: priority
+    operator: gte
+content:
+  type: composite
+  ref: !ref todos
+---
+# The whole row model, with nothing listed.
+kind: Ui.Table
+metadata:
+  name: allColumns
+model: !ref Todo
+source: { basePath: /api/todos }
+---
+# The same table, one column shorter.
+kind: Ui.Table
+metadata:
+  name: publicColumns
+model: !ref Todo
+source: { basePath: /api/todos }
+columns:
+  - value: !cel "row.text"
+  - value: !cel "row.dueOn"
+---
+kind: Ui.Table
+metadata:
+  name: internalColumns
+model: !ref Todo
+source: { basePath: /api/todos }
+columns:
+  - value: !cel "row.text"
+  - value: !cel "row.dueOn"
+  - value: !cel "row.priority"
+---
+kind: Font.Family
+metadata:
+  name: testSans
+family: Test Sans
+faces:
+  normal: !include-bytes ./fonts/TestSans-Regular.ttf
+---
+kind: Font.Family
+metadata:
+  name: systemMono
+family: Menlo
+---
+kind: Ui.Theme
+metadata:
+  name: redTheme
+tokens:
+  color.accent: "#c4341b"
+  font.body: !ref testSans
+  font.mono: !ref systemMono
+---
+kind: Ui.Theme
+metadata:
+  name: blueTheme
+tokens:
+  color.accent: "#1f8fff"
+  radius.md: 2px
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Fixture Admin
+lang: en
+theme:
+  - theme: !ref redTheme
+    when: !cel "'x-tenant' in request.headers && request.headers['x-tenant'] == 'red'"
+  - theme: !ref blueTheme
+stylesheets:
+  - !module-path ./ui.css
+pages:
+  - path: /
+    title: Todos
+    children:
+      - { type: composite, ref: !ref todoFilters }
+  - path: /done
+    title: Done
+    children:
+      - { type: text, text: Finished work, style: heading }
+      - type: composite
+        ref:
+          kind: Ui.Table
+          model: !ref Todo
+          source: { basePath: /api/todos, filters: { isDone: true } }
+          columns:
+            - value: !cel "row.text"
+            - value: !cel "row.dueOn"
+  - path: /all
+    title: All columns
+    children:
+      - { type: composite, ref: !ref allColumns }
+  - path: /variants
+    title: Variants
+    children:
+      - type: composite
+        ref: !ref internalColumns
+        when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
+      - type: composite
+        ref: !ref publicColumns
+        when: !cel "!('x-role' in request.headers && request.headers['x-role'] == 'staff')"
+  - path: /new
+    title: New todo
+    children:
+      - { type: composite, ref: !ref todoForm, style: strong }
+  - path: /components
+    title: Components
+    children:
+      - type: columns
+        children:
+          - type: composite
+            ref: { kind: Ui.Component, component: !ref Widgets.hostProbe, props: { basePath: /api/notes } }
+          - type: composite
+            ref: { kind: Ui.Component, component: !ref Widgets.counter, props: { step: 2 } }
+      - type: composite
+        ref: { kind: Ui.Component, component: !ref Widgets.future }
+      - type: composite
+        ref: { kind: Ui.Component, component: !ref Widgets.unsupplied }
+      - type: composite
+        ref:
+          kind: Ui.Table
+          model: !ref Todo
+          source: { basePath: /api/notes }
+          columns:
+            - value: !cel "row.text"
+  - path: /gallery
+    title: Gallery
+    children:
+      - type: composite
+        ref: { kind: Views.Banner, heading: From a library, caption: Placed as one section }
+      - type: stack
+        children:
+          - { type: text, text: A subheading, style: subheading }
+          - type: box
+            children:
+              - { type: badge, text: !cel "'from ' + request.ip", style: [accent, strong] }
+          - { type: link, text: Back to todos, href: / }
+          - { type: link, text: Telo, href: "https://telo.run" }
+          - { type: image, src: /files/logo.svg, alt: Logo }
+          - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='12'><rect width='40' height='12' fill='#1f8a4c'/></svg>", alt: A green bar }
+          - { type: link, text: !cel "'unsafe'", href: !cel "'x-next' in request.headers ? request.headers['x-next'] : '/'" }
+---
+kind: Http.Server
+metadata:
+  name: server
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /api/todos
+    mount: !ref todosApi
+  - path: /api/notes
+    mount: !ref notesApi
+  - path: /admin/files
+    mount: !ref files
+  - path: /admin
+    mount: !ref admin

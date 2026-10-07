@@ -420,6 +420,9 @@ function resolveOccurrence(occurrence: Occurrence): AjvErrorLike[] {
   // errors at all — nothing was rejected, so there is no branch to select.
   if (candidates.length === 0) return [occurrence.error];
 
+  const tagged = taggedReading(candidates, occurrence);
+  if (tagged) return tagged;
+
   const plausible = candidates.filter(
     (c) => c.nested || isPlausible(c.errors, occurrence.instancePath),
   );
@@ -438,6 +441,76 @@ function resolveOccurrence(occurrence: Occurrence): AjvErrorLike[] {
   });
   const winner = plausible[0];
   return winner.nested ? winner.errors : reduceSchemaErrors(winner.errors);
+}
+
+function discriminatorErrors(errors: AjvErrorLike[]): AjvErrorLike[] {
+  return errors.filter((e) => DISCRIMINATOR_KEYWORDS.has(e.keyword ?? ""));
+}
+
+/**
+ * A TAGGED union read by its tag: each branch pins a discriminator (`const`, or
+ * `enum` for several tags of one shape), so the discriminators alone say which
+ * branch a value is.
+ *
+ * - Every OTHER branch refused the value's tag and one did not: that branch IS
+ *   the reading, whatever it complains of — a stray key, a missing required
+ *   member — and its complaints are the report, with whatever failed further in
+ *   beneath it. Judging it by shape instead called a correctly tagged node with
+ *   one stray key a value that "matches no alternative".
+ * - EVERY branch refused the tag, at one place, and nothing failed further in:
+ *   the tag is what is wrong, so the report is one finding there listing what
+ *   it may be.
+ *
+ * Only where every complaint carries its branch: a branch written as a `$ref`
+ * is reported under its target's path, several of them indistinguishably, and
+ * reading a tag off errors that cannot be told apart would be a guess.
+ */
+function taggedReading(candidates: Branch[], occurrence: Occurrence): AjvErrorLike[] | undefined {
+  const branches = candidates.filter((c) => !c.nested);
+  if (branches.some((c) => c.index === Number.MAX_SAFE_INTEGER)) return undefined;
+  // A tag is a MEMBER of the value. A discriminator refusing the value itself
+  // (a scalar that is none of a branch's `enum`) says the value is not that
+  // scalar, which is a judgement of shape and no tag at all.
+  const tagErrors = (c: Branch) =>
+    discriminatorErrors(c.errors).filter((e) => isUnder(e.instancePath || "", occurrence.instancePath));
+  const refused = branches.filter((c) => tagErrors(c).length > 0);
+  if (refused.length === 0) return undefined;
+
+  const agreed = branches.filter((c) => discriminatorErrors(c.errors).length === 0);
+  if (agreed.length + refused.length !== branches.length) return undefined;
+  if (agreed.length === 1) {
+    const nested = candidates.filter((c) => c.nested).flatMap((c) => c.errors);
+    return [...reduceSchemaErrors(agreed[0]!.errors), ...nested];
+  }
+  // A failure further in was reached through a branch that raised nothing here,
+  // so some branch accepted the tag and the tag is not what is wrong.
+  if (agreed.length > 0 || refused.length < 2 || candidates.some((c) => c.nested)) return undefined;
+
+  // The one place every branch pins its tag, in the order the first states it.
+  const at = tagErrors(refused[0]!)
+    .map((e) => e.instancePath || "")
+    .find((path) =>
+      refused.every((c) => tagErrors(c).some((e) => (e.instancePath || "") === path)),
+    );
+  if (at === undefined) return undefined;
+  const allowed: unknown[] = [];
+  for (const branch of [...refused].sort((a, b) => a.index - b.index)) {
+    for (const e of tagErrors(branch)) {
+      if ((e.instancePath || "") !== at) continue;
+      const values =
+        e.keyword === "const" ? [e.params?.allowedValue] : ((e.params?.allowedValues as unknown[]) ?? []);
+      for (const value of values) if (!allowed.includes(value)) allowed.push(value);
+    }
+  }
+  return [
+    {
+      ...occurrence.error,
+      keyword: "enum",
+      instancePath: at,
+      params: { allowedValues: allowed },
+      message: "must be equal to one of the allowed values",
+    },
+  ];
 }
 
 function maxDepth(errors: AjvErrorLike[]): number {

@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: UiReactProbe
+  version: 1.0.0
+  description: >-
+    Test fixture: reads what a served page's import map and scripts actually
+    hold — addresses, headers, export names, bare imports — and lists the
+    diagnostics a manifest checks with.
+exports:
+  kinds: [ImportMap, Diagnostics]
+---
+kind: Telo.Definition
+metadata:
+  name: ImportMap
+  description: >-
+    Fetches a page, reads its import map, and reports for each entry how it is
+    addressed and served and which names it exports, and for the page's
+    renderer script the bare specifiers it and its chunks import.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#ImportMap
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [url]
+    properties:
+      url: { type: string }
+      # A further script to read the bare imports of, as a URL path.
+      alsoRead: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Diagnostics
+  description: Checks a manifest and returns the code of every diagnostic it produced.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Diagnostics
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { type: string }

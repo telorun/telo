@@ -1,0 +1,27 @@
+# A page whose path, and a link whose address, begin `//`: a browser reads
+# either as another host, not as a place in the application.
+kind: Telo.Application
+metadata:
+  name: UiReactInvalidAppRelativeApp
+  version: 1.0.0
+imports:
+  UiReact: ../../../../
+---
+kind: UiReact.App
+metadata:
+  name: offsitePath
+title: Off-site path
+pages:
+  - path: //reports
+    title: Reports
+    children: []
+---
+kind: UiReact.App
+metadata:
+  name: offsiteLink
+title: Off-site link
+pages:
+  - path: /
+    title: Home
+    children:
+      - { type: link, text: Elsewhere, href: //evil.example/x }

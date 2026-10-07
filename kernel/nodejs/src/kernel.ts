@@ -1,8 +1,12 @@
 import {
   AnalysisRegistry,
   authoredModuleMetadata,
+  browserExportProblems,
+  browserExportSites,
+  buildAccessorSites,
   buildEvalPaths,
-  celEvalModeAt,
+  evaluatedField,
+  extractCelRegionScopes,
   collectModuleDocuments,
   declarationSignature,
   diffManifests,
@@ -62,6 +66,7 @@ import {
   type ModuleContext as IModuleContext,
   type LoadOptions,
   type TraceSinkInstance,
+  type BrowserEntryFiles,
 } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
@@ -112,6 +117,8 @@ import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-se
 import { refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
 import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
+import { resolveBrowserEntryFiles } from "./browser-entry-resolution.js";
+import { refuseNonChainAccessors, withAccessorBindings } from "./accessor-bindings.js";
 import { refuseMistypedResults } from "./compiled-results.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
@@ -1792,6 +1799,7 @@ export class Kernel implements IKernel {
         native: owner.native,
         sources: owner.sources,
         assetPatterns: owner.assetPatterns,
+        browser: owner.browser,
       };
       for (const declaring of [file, ...module.partials]) {
         this.nativeFileModules.set(declaring.source, native);
@@ -1866,6 +1874,24 @@ export class Kernel implements IKernel {
       );
     }
     return resolveModuleFileUri(relative, module.source, this);
+  }
+
+  /**
+   * Resolve a browser entry by specifier against the module one of whose files
+   * resolved from `source` — the module that declared a resource.
+   */
+  resolveBrowserEntry(source: string | undefined, specifier: string, asked: string): Promise<BrowserEntryFiles> {
+    return resolveBrowserEntryFiles(specifier, this.getDeclaringModule(source), this, asked);
+  }
+
+  /** As {@link resolveBrowserEntry}, against the module that declared
+   *  `resolvedKind` — the module whose controller is asking. */
+  resolveControllerBrowserEntry(
+    resolvedKind: string | undefined,
+    specifier: string,
+    asked: string,
+  ): Promise<BrowserEntryFiles> {
+    return resolveBrowserEntryFiles(specifier, this.moduleDeclaringKind(resolvedKind), this, asked);
   }
 
   /** The module one of whose files resolved from `source`: its owner manifest's
@@ -2179,6 +2205,23 @@ export class Kernel implements IKernel {
     const implicitEval = implicitEvalSites(definition);
     const compile = [...parentEval.compile, ...ownEval.compile, ...implicitEval.compile];
     const runtime = [...parentEval.runtime, ...ownEval.runtime];
+    // Fields whose value is named, never evaluated: kept out of the compile
+    // expansion below and handed to the controller as bindings.
+    const accessor = [
+      ...(parentDef?.schema ? buildAccessorSites(parentDef.schema) : []),
+      ...(definition?.schema ? buildAccessorSites(definition.schema) : []),
+    ];
+    const unevaluated = [...runtime, ...accessor.map((site) => site.path)];
+    // Regions cover what a controller evaluates per call without `x-telo-eval`
+    // (a route's per-request fields). A structural kind's bodies are evaluated
+    // by rules of their own.
+    const regions =
+      definition?.capability === "Telo.Template"
+        ? []
+        : [
+            ...(parentDef?.schema ? extractCelRegionScopes(parentDef.schema) : []),
+            ...(definition?.schema ? extractCelRegionScopes(definition.schema) : []),
+          ];
 
     // A kind may describe a slot with a shape declared elsewhere, so the walks
     // below see THROUGH that reference; otherwise the value under it reads as
@@ -2255,40 +2298,43 @@ export class Kernel implements IKernel {
     // slot's holder expects an instance, and nothing downstream recovers the
     // reference. Compile-eval is a legal eval site — a `Telo.Provider`'s whole
     // root is one implicitly — which is why this had to be stated here rather
-    // than being caught by the CEL rules. Same reader as `REF_SLOT_COMPUTED`.
-    if (compile.length) {
+    // than being caught by the CEL rules; a runtime-eval field and a field a
+    // region covers are too, and the controller's own per-call expansion would
+    // leave the same data there. Same reader as `REF_SLOT_COMPUTED`.
+    if (compile.length || runtime.length || regions.length) {
       refuseComputedRefSlots(
         resourceLabel,
         this.registry.referencePositionsOf(resource),
-        { isEvaluated: (path) => celEvalModeAt({ compile, runtime, regions: [] }, path) === "compile" },
+        { isEvaluated: (path) => evaluatedField({ compile, runtime, regions, accessor }, path) },
       );
     }
+    const accessorFieldsHeld = refuseNonChainAccessors(resourceLabel, resource, accessor);
 
     // Expand compile-time CEL fields before passing to the controller.
-    const processedResource = compile.length
+    const expandedResource = compile.length
       ? (evalContext.expandPaths(
           resource as Record<string, unknown>,
           compile,
-          runtime,
+          unevaluated,
         ) as ResourceManifest)
       : resource;
     // Validation saw an expression's placeholder; its result is known only now.
     if (compile.length) {
       refuseRelativeHostPaths(
-        processedResource as Record<string, unknown>,
+        expandedResource as Record<string, unknown>,
         configSchema as Record<string, any>,
         resourceLabel,
         schemaForRef,
       );
       refuseMalformedFormats(
-        processedResource as Record<string, unknown>,
+        expandedResource as Record<string, unknown>,
         configSchema as Record<string, any>,
         resourceLabel,
         schemaForRef,
       );
       refuseMistypedResults(
         resource,
-        processedResource,
+        expandedResource,
         configSchema as Record<string, any>,
         this.sharedSchemaValidator,
         (path, problem) =>
@@ -2299,8 +2345,20 @@ export class Kernel implements IKernel {
         { external: schemaForRef },
       );
     }
+    // The checks above read each evaluated result against its slot; a binding
+    // is not a result, so it replaces the accessor field only now.
+    const processedResource = withAccessorBindings(expandedResource, accessorFieldsHeld);
 
     const moduleCtx = this.findModuleContext(evalContext);
+    // A value naming a browser entry's export names one the resource's own
+    // module declares. Same reader as `BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`.
+    const exportSites = browserExportSites(configSchema as Record<string, any>, processedResource);
+    if (exportSites.length > 0) {
+      const declared = this.getDeclaringModule(moduleCtx.source)?.browser ?? [];
+      for (const problem of browserExportProblems(exportSites, declared)) {
+        throw new RuntimeError(`ERR_${problem.code}`, `${resourceLabel}: ${problem.message}`);
+      }
+    }
     const ctx = this.createResourceContext(
       moduleCtx,
       processedResource,

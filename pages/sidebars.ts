@@ -85,6 +85,8 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/cel-functions", label: "CEL Functions" },
         { type: "doc", id: "docs/extend/manifest-migrations", label: "Manifest Migrations" },
         { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
+        { type: "doc", id: "docs/extend/accessor-fields", label: "Accessor Fields" },
+        { type: "doc", id: "docs/extend/browser-entries", label: "Browser Entries" },
         { type: "doc", id: "docs/extend/controller-protocol", label: "Controller Protocol" },
         {
           type: "doc",

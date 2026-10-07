@@ -2,7 +2,7 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
 import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths.js";
-import { computedRefSlots } from "./ref-slot-computed.js";
+import { computedRefSlots, evaluatedField } from "./ref-slot-computed.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isSchemaFromSite, schemaFromIsKindDecidable, schemaFromSites } from "./schema-from-sites.js";
 import {
@@ -414,7 +414,7 @@ export function validateReferences(
     return callableSlots;
   };
   /** The positions `REF_SLOT_COMPUTED` claims for a resource — an expression at
-   *  or above a reference slot in a field the kind evaluates at creation — read
+   *  or above a reference slot in a field the kind evaluates — read
    *  from the one reader that owns the rule, so this pass cannot report a
    *  second, shapeless verdict about the same line. Memoized per resource: the
    *  walk below visits every site of it. */
@@ -426,7 +426,7 @@ export function validateReferences(
     computedRefSlotPaths = new Set(
       computedRefSlots(
         registry.referencePositions(r, aliases, aliasesByModule),
-        (path) => celEvalModeAt(sites, path) === "compile",
+        (path) => evaluatedField(sites, path),
       ).map((slot) => slot.path),
     );
   };

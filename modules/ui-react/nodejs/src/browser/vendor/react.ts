@@ -1,0 +1,51 @@
+import Package from "react";
+
+// The page's one copy of React, under the specifier `react`. Every name is listed: the package is CommonJS, so
+// nothing but an explicit list gives the built module named exports.
+const namespace = Package as unknown as Record<string, any>;
+
+export default Package;
+export const {
+  Activity,
+  Children,
+  Component,
+  Fragment,
+  Profiler,
+  PureComponent,
+  StrictMode,
+  Suspense,
+  __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+  __COMPILER_RUNTIME,
+  cache,
+  cacheSignal,
+  cloneElement,
+  createContext,
+  createElement,
+  createRef,
+  forwardRef,
+  isValidElement,
+  lazy,
+  memo,
+  startTransition,
+  unstable_useCacheRefresh,
+  use,
+  useActionState,
+  useCallback,
+  useContext,
+  useDebugValue,
+  useDeferredValue,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useImperativeHandle,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useOptimistic,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  version,
+} = namespace;

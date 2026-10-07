@@ -45,6 +45,10 @@ function toResult(symbol: CelSymbol, replaceRange?: ReplaceRange): CompletionRes
  * functions, since a receiver-style call is rare next to a field access and
  * mixing them buries the fields. A root position offers the scope's names
  * first, then the global functions the environment declares.
+ *
+ * In an accessor field's value only a plain chain rooted at one of the field's
+ * bindings is accepted, so only those bindings and their members are offered:
+ * no function, no kernel global, no module call.
  */
 export function celCompletions(
   text: string,
@@ -61,6 +65,18 @@ export function celCompletions(
 
   const chain = celCursorChain(text, segment, offset);
   const prefix = chain?.prefix ?? [];
+
+  const bindings = scope.accessorBindings;
+  if (bindings) {
+    if (!chain?.member) {
+      return celRootSymbols(scope)
+        .filter((symbol) => bindings.includes(symbol.name))
+        .map((symbol) => toResult(symbol));
+    }
+    return bindings.includes(prefix[0]!)
+      ? celMemberSymbols(scope, prefix).map((symbol) => toResult(symbol))
+      : [];
+  }
 
   if (chain?.member) {
     // `<Module>.` offers the functions that module makes callable here — its own

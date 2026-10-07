@@ -1,0 +1,85 @@
+kind: Telo.Application
+metadata:
+  name: TemplateTypeForwardTest
+  version: 1.0.0
+  description: |
+    A template body forwarding a type slot — `inputType: !cel "self.model"` —
+    into the type slot of the entry it composes. The entry is bound to the
+    instance's type whether the instance wrote it inline or named it with
+    `!ref`: the declared default is filled and a call the type refuses is
+    refused, identically in both.
+imports:
+  Lib: ./__fixtures__/template-type-forward
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyForwardedType
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Greeting
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string }
+    lang: { type: string, default: en }
+---
+kind: Lib.Shaped
+metadata:
+  name: named
+model: !ref Greeting
+---
+kind: Lib.Shaped
+metadata:
+  name: inline
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [text]
+    additionalProperties: false
+    properties:
+      text: { type: string }
+      lang: { type: string, default: en }
+---
+kind: Run.Sequence
+metadata:
+  name: verifyForwardedType
+steps:
+  - name: named
+    invoke: !ref named
+    inputs: { text: hi }
+  - name: inline
+    invoke: !ref inline
+    inputs: { text: hi }
+  - name: namedRefused
+    try:
+      - name: call
+        invoke: !ref named
+        inputs: { text: 5 }
+    catch:
+      - name: namedCode
+        value: !cel "error.code"
+  - name: inlineRefused
+    try:
+      - name: call
+        invoke: !ref inline
+        inputs: { text: 5 }
+    catch:
+      - name: inlineCode
+        value: !cel "error.code"
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        named: !cel "steps.named.result"
+        inline: !cel "steps.inline.result"
+        namedRefused: !cel "steps.namedCode.result"
+        inlineRefused: !cel "steps.inlineCode.result"
+      expected:
+        named: { text: hi, lang: en }
+        inline: { text: hi, lang: en }
+        namedRefused: ERR_INPUT_INVALID
+        inlineRefused: ERR_INPUT_INVALID
