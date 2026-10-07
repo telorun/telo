@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.12.2 - 2026-09-17
 ### Fixed
 * The leftover controller source no longer imports the CEL engine or carries its unreachable rule evaluator, and the package no longer depends on @marcbachmann/cel-js. Type.JsonSchema is unchanged: it delegates to the built-in Telo.JsonSchema.

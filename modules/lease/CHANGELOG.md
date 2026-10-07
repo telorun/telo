@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.13.0 - 2026-08-20
 ### Added
 * Body slots that establish an execution zone now declare what the region guarantees about its contents, in the new closed zone-attribute vocabulary: Sql.Transaction.steps declares atomic and noSuspend, Idempotency.Once.invoke declares idempotent and noSuspend, and Lease.Critical.invoke declares noSuspend. Lease.Critical and Idempotency.Once become zone providers, opening their zone around the dispatched body. Each attribute's value is the author's reason, which whatever enforces it quotes verbatim.

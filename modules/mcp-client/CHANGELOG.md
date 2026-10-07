@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.15.2 - 2026-09-26
 ### Fixed
 * Mcp.HttpClient, Mcp.StdioClient, Mcp.ToolsCall and Mcp.ToolsList honour the invocation's cancellation: a cancelled request is aborted, the server is sent notifications/cancelled for it, and the call rejects with ERR_INVOKE_CANCELLED instead of running on.

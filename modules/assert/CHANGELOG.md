@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.20.1 - 2026-09-25
 ### Fixed
 * The actual input's description no longer quotes a `${{ }}` expression, which a plain string never is; it points at a `!cel` read of a step's result instead.

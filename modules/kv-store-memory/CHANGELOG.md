@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.7.0 - 2026-08-23
 ### Added
 * Drops the teardown that cleared the in-process Map. It undid nothing observable — the entries live in the store instance, so they go when it does — and keeping it would have meant declaring a runtime floor on a module that is otherwise loadable everywhere.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.2.0 - 2026-09-19
 ### Added
 * App.Instance is a Channel.Text, so a running child can be read from and written to as text. BREAKING: the stdin: field is removed. A fixed script handed over at start-up cannot answer a question that only appears once the previous one is answered; sending is a step now, and a boot-time script is the first steps of a sequence.

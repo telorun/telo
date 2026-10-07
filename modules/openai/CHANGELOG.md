@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.10.0 - 2026-10-03
 ### Added
 * ChatModel, ChatModelStream, ResponsesModel and ResponsesModelStream send the model contract's toolChoice as tool_choice, beside the tools they still declare: none tells the model to answer without calling a tool, which is what an agent's concluding call asks for. It is written after the merged options, so the call's own choice is what is sent.

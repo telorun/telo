@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.6.3 - 2026-10-05
 ### Fixed
 * A CEL duration and uint are read through the value domain's own predicates (isCelDuration, isCelUint) rather than by class, so a value built by any copy of the engine is recognised: identity is a string type key under Symbol.for("telo.cel.value"), not a constructor.

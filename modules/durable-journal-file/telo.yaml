@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: DurableJournalFile
-  version: 0.5.2
+  version: 0.6.0
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Reliability, Storage]

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.10.4 - 2026-10-03
 ### Fixed
 * The Match documentation states the contract every backend honours: the metadata filter is applied before the topK cut, so an entry it excludes never takes a match's place; results come best first and hold min(topK, matching) entries unless a backend on an approximate index reaches the scan bound it documents.

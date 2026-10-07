@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.14.0 - 2026-09-28
 ### Added
 * RequestScope and RequestTrace: the request scope an HTTP transport hands every mount as the third argument of register(app, prefix, requestScope), giving each request's span context and a way to report the error that decided the response.

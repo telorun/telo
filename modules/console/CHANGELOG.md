@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.18.1 - 2026-09-19
 ### Fixed
 * Console.ReadLine no longer hangs at end of input, and no longer loses piped lines. It resolved only from a prompt callback that never fires once input has ended, so an application reading a closed pipe waited forever and, holding nothing, exited silently having done none of its work. A reader was also opened per call and per resource, and each new one started after what the previous had buffered — so every line after the first was dropped, and a second reader over an already-ended input waited for a close that had been and gone. One reader per input now, shared by every call.

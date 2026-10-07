@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.16.0 - 2026-09-10
 ### Added
 * A template body now has ONE reference spelling: every `resources:` entry is named by a literal and every dispatch slot is a `!ref` to one. The `{ kind, name }` object form and the CEL-computed entry name it existed to reach are removed — each template instance owns its children in a child context of its own, so a per-instance suffix bought nothing, while a `!ref` is looked up verbatim and so could never name such an entry. `crud` and `sql-repository` are rewritten to it. `http-client` drops the raw-manifest fallback in `Http.Request`: a client is resolved through `ctx.resolveRef` like every other slot, so a reference that does not resolve says so instead of being explained as a rule about scopes. `assert` gains `Assert.Manifest.expect.runFails`, which runs the manifest as well and asserts it fails — pinning a static verdict to the runtime one in a single test.

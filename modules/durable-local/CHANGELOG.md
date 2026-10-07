@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.4.3 - 2026-10-05
 ### Fixed
 * A recorded value is written under codec version 2, whose timestamp payload is RFC 3339 with a trimmed nanosecond fraction. An entry written under version 1 is still read, under that version's own three-digit grammar, so a run parked before the change resumes rather than being refused.

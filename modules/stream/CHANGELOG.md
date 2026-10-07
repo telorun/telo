@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.13.0 - 2026-09-27
 ### Added
 * Stream.Concat joins the output streams of several sources into one, in order, invoking each source lazily only when the previous stream has ended, under the Concat's own invocation context; each source's inputs map reads the caller's context and is checked against the source's inputType. telo check also verifies that each source returns { output: <stream> } (REFERENCE_OUTPUT_MISMATCH at the slot) against its declared output contract, leaving ERR_INVALID_VALUE as the runtime refusal for a source that declares none. A source's failure ends the output with its error and no later source runs; the consumer stopping or the invocation being cancelled stops the current source and invokes no further one. It declares throws inherit, so a source's codes count in its throw union. The module now requires telo >=0.103.0.

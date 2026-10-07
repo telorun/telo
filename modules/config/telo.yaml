@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Config
-  version: "0.9.3"
+  version: "0.10.0"
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Configuration]

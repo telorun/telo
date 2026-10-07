@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.12.0 - 2026-10-03
 ### Added
 * New `GET /modules` lists every module the hub can describe with its latest version, paged by a stable sequence number, so sites can build complete sitemaps of the catalogue.

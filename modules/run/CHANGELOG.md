@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.27.1 - 2026-09-17
 ### Fixed
 * Run.Iteration's and Run.Projection's collection and Run.Loop's per-turn condition are journaled inside a durable run, so a resume walks the elements the run walked and stops at the turn it stopped at. Both are evaluated by the composer before the step engine sees a step list, so neither was recorded: a collection re-derived on a resume left index N naming a different element while the journal answered for the element that used to be there, with nothing to detect.

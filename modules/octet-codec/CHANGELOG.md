@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.11.0 - 2026-10-03
 ### Added
 * Breaking: `Octet.Decoder`'s output `bytes` is declared as bytes (`Telo.Bytes`) instead of `type: object`, so it fits every slot declared as bytes and no longer fits a slot declared as a JSON type.

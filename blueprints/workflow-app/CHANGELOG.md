@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.2.0 - 2026-09-22
 ### Added
 * WorkflowApp blueprint: one `WorkflowApp.App` declaration serves a list of workflows over HTTP, each at its own endpoint, with a generated OpenAPI document.

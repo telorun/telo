@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.6.0 - 2026-09-28
 ### Added
 * OTLP.TraceSink exports the runtime's finished trace spans to an OpenTelemetry collector's traces endpoint as OTLP/JSON, with OTLP.Sink's configuration (endpoint, headers, resourceAttributes, timeout, buffer, on_full, flush_interval). List it in the root Application's tracing.sinks, as a sink or as { sink, when } to attach it only under a startup condition. Both sinks now expose the sink contract on their instance and attach nothing themselves: the kernel attaches exactly the sinks logging.sinks / tracing.sinks name, so an OTLP.Sink declared but not listed receives no record. The module now requires telo >=0.104.0, the release that carries trace export and kernel-side sink attachment.

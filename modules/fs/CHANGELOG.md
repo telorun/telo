@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.12.0 - 2026-10-03
 ### Added
 * Bounded, paged and digest-reporting reads. Fs.File's output gains sha256 (hex digest of the file's bytes, the value a tree snapshot reports as hash) and its input gains maxBytes: a larger file fails with ERR_FILE_TOO_LARGE before its content is read. Fs.DirectoryListing gains limit and cursor inputs and a nextCursor output (absent when the listing is complete), and returns entries sorted by path; a call with limit lists and measures its page plus one look-ahead entry and nothing past it. Fs.TreeSnapshot's file entries gain size and its output gains missing, the requested paths at which nothing exists. Path order, for both kinds, is the whole path compared by Unicode code point (UTF-8 byte order). Breaking: Fs.TreeSnapshot's path input is replaced by paths, a list of file or directory roots (omitted still means cwd), so a call passing path is refused; a root that does not exist is reported in missing instead of failing the call; and every Fs.DirectoryListing, paged or not, now orders entries by whole path, so a recursive listing returns a.txt before a/1.txt.

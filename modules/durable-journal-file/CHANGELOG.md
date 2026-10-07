@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-10-07
+### Added
+* Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.
+
 ## 0.5.0 - 2026-09-22
 ### Added
 * Breaking: Journal `directory` is a Telo.HostPath: an absolute directory, usually read from a variable declared x-telo-type: Telo.HostPath. A relative literal is refused (HOST_PATH_RELATIVE). Requires telo >=0.98.0.
