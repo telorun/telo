@@ -4,12 +4,14 @@ version = "0.111.0"
 license = "MIT"
 edition = "2021"
 publish = false
-description = "The Telo SDK's value domain — CEL values, typed frames, plain encodings, value types, logging — without a controller backend."
+description = "The Telo SDK without a controller backend — the serde-facing CEL value types over telorun-cel-value's domain, typed frames, plain encodings, value types, logging."
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
+# The CEL value domain: the union, its scalars and their written text.
+telorun-cel-value = { path = "../../../cel/rust/value" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

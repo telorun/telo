@@ -39,10 +39,10 @@ fn carries_a_hosts_wider_duration_and_refuses_it_where_cel_would_use_it() {
     // What a host hands over from the wider range a transport carries: 200,000,000,000s.
     let wide = CelDuration::new(200_000_000_000, 0).expect("the carrier holds it");
     assert_eq!(format_duration(wide), "200000000000s");
-    let at_use = duration_out_of_range(wide).expect("CEL's range does not");
+    let at_use = duration_out_of_range(wide).expect_err("CEL's range does not hold it");
     assert_eq!((at_use.code.as_str(), at_use.message.as_str()), ("invalid_conversion", "duration out of range"));
     assert_eq!(cel_duration_from_nanos(duration_nanos(wide)), Err(at_use));
-    assert_eq!(duration_out_of_range(parse_duration("9223372036.854775807s").unwrap()), None);
+    assert_eq!(duration_out_of_range(parse_duration("9223372036.854775807s").unwrap()), Ok(()));
 }
 
 #[test]

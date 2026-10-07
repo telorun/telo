@@ -17,6 +17,8 @@
 //!   beneath; the engine's tree re-exports this one.
 //! - `CelRecord` and `CelHostValue` as types — Node holds a record as a plain object
 //!   and a host value as any object carrying the host's own key.
+//! - `ReservedTypeName` — on Node the refusal of a reserved type name is raised by
+//!   the engine's type registration; here the host value's constructor makes it.
 
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap};
@@ -24,6 +26,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::cel_map_value::map_key_identity;
+use crate::value_text::json_quote;
 
 /// The type keys the domain's own values carry. A host's named type may not reuse one.
 pub const CEL_VALUE_KEYS: [&str; 7] = [
@@ -389,6 +392,28 @@ impl fmt::Display for CelError {
 
 impl std::error::Error for CelError {}
 
+/// The refusal of a host type named as one of `CEL_VALUE_KEYS`. It is raised where a
+/// host declares a type, never during evaluation, so it is not a `CelError`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ReservedTypeName {
+    name: String,
+}
+
+impl ReservedTypeName {
+    /// The name that was refused.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl fmt::Display for ReservedTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} is a type key the CEL value domain's own values carry, so no host type may be named it", json_quote(&self.name))
+    }
+}
+
+impl std::error::Error for ReservedTypeName {}
+
 /// A value of no CEL type of the domain's own: a host's named type, or — with no name
 /// — a host object of no CEL type at all, such as a live handle. Two host values are
 /// one value only when they are the same object.
@@ -399,14 +424,17 @@ pub struct CelHostValue {
 }
 
 impl CelHostValue {
-    /// A value of the host's type `type_name`, or `None` when the name is one of
+    /// A value of the host's type `type_name`, refused when the name is one of
     /// `CEL_VALUE_KEYS`.
-    pub fn named(type_name: impl Into<String>, payload: Arc<dyn Any + Send + Sync>) -> Option<Self> {
+    pub fn named(
+        type_name: impl Into<String>,
+        payload: Arc<dyn Any + Send + Sync>,
+    ) -> Result<Self, ReservedTypeName> {
         let type_name = type_name.into();
         if CEL_VALUE_KEYS.contains(&type_name.as_str()) {
-            return None;
+            return Err(ReservedTypeName { name: type_name });
         }
-        Some(Self { type_name: Some(type_name), payload })
+        Ok(Self { type_name: Some(type_name), payload })
     }
 
     /// A host object of no CEL type.

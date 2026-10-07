@@ -184,7 +184,7 @@ fn writes_and_reads_the_fields_of_any_duration_the_carrier_holds() {
         assert_eq!(duration_nanos(held), *total);
         assert_eq!(format_duration(held), *canonical);
         assert_eq!(held.to_string(), *canonical);
-        assert_eq!(duration_out_of_range(held).map(refusal), at_use.as_ref().map(expected), "{canonical}");
+        assert_eq!(duration_out_of_range(held).map_err(refusal).err(), at_use.as_ref().map(expected), "{canonical}");
         let read = [
             DurationField::GetHours,
             DurationField::GetMinutes,

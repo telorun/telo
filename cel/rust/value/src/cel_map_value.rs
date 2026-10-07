@@ -17,8 +17,10 @@ use crate::value_text::json_quote;
 
 /// What identifies a key. The integer covers the numeric types together: `1`, `1u` and
 /// `1.0` are one key, so a lookup by any of the three finds the entry. A double that is
-/// not whole identifies nothing, since no entry can hold it; a whole double beyond the
-/// integer's width answers an identity no entry holds.
+/// not whole identifies nothing, since no entry can hold it.
+///
+/// The identity is exact for every key a map can hold. Any whole double beyond an
+/// `i128` answers ONE identity that no entry holds, so a lookup by it finds nothing.
 pub fn map_key_identity(key: &CelValue) -> Option<CelMapKey> {
     match key {
         CelValue::String(text) => Some(CelMapKey::String(text.clone())),

@@ -72,10 +72,10 @@ pub fn cel_duration_from_nanos(total: i128) -> Result<CelDuration, CelError> {
     Ok(CelDuration { total_nanos: total })
 }
 
-/// The error a duration this engine did not build is outside CEL's range. Checked
+/// Refuses a duration this engine did not build that is outside CEL's range. Asked
 /// where such a duration is used, not where it arrives.
-pub fn duration_out_of_range(value: CelDuration) -> Option<CelError> {
-    (!(MIN_DURATION_NANOS..=MAX_DURATION_NANOS).contains(&value.total_nanos)).then(out_of_range)
+pub fn duration_out_of_range(value: CelDuration) -> Result<(), CelError> {
+    cel_duration_from_nanos(value.total_nanos).map(|_| ())
 }
 
 /// The duration's total nanoseconds — what arithmetic and ordering compare.

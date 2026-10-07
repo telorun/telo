@@ -25,7 +25,7 @@ pub use cel_map_value::{cel_map_from_entries, cel_map_keys, map_key_identity};
 pub use cel_value::{
     cel_error, cel_none, cel_some, cel_type_name_of, cel_type_value, CelDuration, CelError,
     CelEvaluationCode, CelHostValue, CelMap, CelMapKey, CelOptional, CelRecord, CelTimestamp,
-    CelTypeValue, CelValue, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
+    CelTypeValue, CelValue, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
 };
 pub use duration_value::{
     cel_duration_from_nanos, duration_field, duration_nanos, duration_nanos_from_text,

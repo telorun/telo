@@ -17,7 +17,7 @@ Each file twins the `cel/nodejs/src` file of its name. A Node export that needs 
 
 | File | Twins | Public items | Node exports elsewhere |
 |---|---|---|---|
-| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
+| `cel_value.rs` | `cel-value.ts` | `CelValue`, `CelTimestamp`, `CelDuration`, `CelMap`, `CelMapKey`, `CelRecord`, `CelTypeValue`, `CelOptional`, `CelError`, `CelEvaluationCode`, `CelHostValue`, `ReservedTypeName`, `SourceRange`, `CEL_VALUE_KEYS`, `CEL_EVALUATION_CODES`, `cel_type_value`, `cel_none`, `cel_some`, `cel_error`, `cel_type_name_of` | Engine half: `literalValue`. No twin: the brand symbol and the `isCel*` predicates (the variant is the identity), `celUint` (it is `CelValue::Uint`), `isThenable` / `asyncValueRefused` (no Rust value can be awaited) |
 | `cel_map_value.rs` | `cel-map-value.ts` | `cel_map_from_entries`, `cel_map_keys`, `map_key_identity` | No twin: `celMapOf` (the empty map is `CelMap::default()`) |
 | `duration_value.rs` | `duration-value.ts` | `cel_duration_from_nanos`, `duration_out_of_range`, `duration_nanos`, `parse_duration`, `duration_nanos_from_text`, `format_duration`, `DurationField`, `duration_field`, `MAX_DURATION_NANOS`, `MIN_DURATION_NANOS`, and `CelDuration`'s carrier constructors | — |
 | `timestamp_value.rs` | `timestamp-value.ts` | `cel_timestamp`, `cel_timestamp_from_millis`, `timestamp_nanos`, `parse_timestamp`, `format_timestamp`, `MIN_TIMESTAMP_SECONDS`, `MAX_TIMESTAMP_SECONDS`, `CelTimestamp`'s carrier constructors, and the civil calendar: `CivilFields`, `utc_fields`, `seconds_from_fields`, `days_from_civil`, `civil_from_days`, `days_in_month`, `is_leap_year` | Engine half: `zonedFields`, `timestampField`, `TimestampField` — a getter reads a field in a zone, and the zone database is a dependency |
@@ -59,7 +59,7 @@ Every public item is exported at the crate root.
 
 A `CelHostValue` is an optional type name plus an opaque shared payload (`Arc<dyn Any + Send + Sync>`).
 
-- `CelHostValue::named(name, payload)` is a value of a host-registered type. It answers `None` when the name is one of `CEL_VALUE_KEYS`.
+- `CelHostValue::named(name, payload)` is a value of a host-registered type. A name that is one of `CEL_VALUE_KEYS` is refused with `ReservedTypeName`, which carries the name. It is the crate's only error that is not a `CelError`: it is raised where a host declares a type, never during evaluation.
 - `CelHostValue::unnamed(payload)` is a host object of no CEL type, such as a live handle.
 - Two host values are the same value only when they are the same object under the same name.
 
@@ -71,7 +71,7 @@ Node answers differently for a map with typed keys and for a plain object a host
 
 - It is built only by `cel_map_from_entries`, from key/value pairs in written order; `CelMap::default()` is the empty map.
 - A key's identity is a `CelMapKey`: a string or a bool is itself, and an int, a uint and a whole double are the one integer CEL equality makes them. So `1`, `1u` and `1.0` name one entry, while `"1"` and `"true"` are never `1` and `true`.
-- `map_key_identity` answers that identity for any value, or nothing for a value that names no entry (a double that is not whole, a list, a map, null …). A whole double too large for any int or uint answers an identity no entry holds.
+- `map_key_identity` answers that identity for any value, or nothing for a value that names no entry (a double that is not whole, a list, a map, null …). The identity is exact for every key a map can hold; any whole double beyond an `i128` answers one identity that no entry holds, so a lookup by it finds nothing rather than refusing the key.
 - A map is **built** with an int, uint, bool or string key only — a double is refused even when whole — and is still **looked up** by any numeric type.
 - The key is kept as it was written: `{1: …}` read through `1u` answers the entry whose key is the int `1`.
 - `cel_map_keys` lists the keys in insertion order.
@@ -95,7 +95,7 @@ Node answers differently for a map with typed keys and for a plain object a host
 - **CEL's range** — the total of nanoseconds fits an `i64`: `-9223372036.854775808s … 9223372036.854775807s`, about ±292 years. It belongs to CEL's constructor and to the check at use:
   - `cel_duration_from_nanos(total)` refuses a total outside it;
   - `parse_duration(text)` is the grammar plus that range;
-  - `duration_out_of_range(duration)` answers the same error for a carrier-built duration, asked where the engine uses one.
+  - `duration_out_of_range(duration)` refuses a carrier-built duration with the same error, asked where the engine uses one.
 
   All three refuse with `invalid_conversion` / `duration out of range`. So 200,000,000,000 s is a value the carrier holds and writes (`200000000000s`), and one CEL refuses to compute with.
 
@@ -127,7 +127,7 @@ The civil calendar is public for the engine's zoned getters to build on: `utc_fi
 
 ## The error value
 
-`CelError { code, message, range }` is one struct in two roles: a variant of the union (`From<CelError> for CelValue`), because `false && <error>` is `false` and an error must flow through evaluation as an operand; and a `std::error::Error`, so every constructor and parser here answers `Result<T, CelError>` and a caller uses `?`.
+`CelError { code, message, range }` is one struct in two roles: a variant of the union (`From<CelError> for CelValue`), because `false && <error>` is `false` and an error must flow through evaluation as an operand; and a `std::error::Error`, so every constructor, parser and check here answers `Result<T, CelError>` and a caller uses `?`. No public function answers an `Option` of an error.
 
 - `code` is a `CelEvaluationCode`: a closed enum of the sixteen codes every engine names, listed in one order by `CEL_EVALUATION_CODES` and written by `as_str()` (`no_such_key`, `invalid_conversion`, …). A code is never derived from a message. `async_value_unsupported` is in the set although no Rust value can raise it, because the set is one vocabulary across engines.
 - `message` is what `Display` writes, alone.

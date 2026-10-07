@@ -91,13 +91,22 @@ fn identifies_a_key_by_its_own_typed_value() {
     ] {
         assert_eq!(map_key_identity(&nothing), None, "{nothing:?}");
     }
-    // Node answers the exact integer of a whole double of any size, which no entry
-    // holds. Past 128 bits the identity here is the widest integer, which no entry
-    // holds either — so both engines answer a missing key, never an unusable one.
+}
+
+/// Node: `{1: 'x'}[?1e300]` and `[?-1e300]` are absent, `{1: 'x'}[1e300]` is
+/// `no_such_key`, and so is a map holding the largest int and the largest uint — never
+/// `unsupported_key_type`, which is what `[?3.1]` answers. Node's identity for such a
+/// double is its exact integer; here every whole double beyond an `i128` shares one
+/// identity, and the lookup answers the same.
+#[test]
+fn finds_nothing_under_a_whole_double_no_integer_holds() {
+    let widest = map([(Int(1), text("x")), (Int(i64::MAX), text("x")), (Int(i64::MIN), text("x")), (Uint(u64::MAX), text("y"))]);
     for beyond in [1e300, -1e300] {
-        let identity = map_key_identity(&Double(beyond)).expect("a whole double has an identity");
-        assert!(!map([(Int(i64::MAX), Int(1)), (Int(i64::MIN), Int(1)), (Uint(u64::MAX), Int(1))]).contains_key(&identity));
+        let identity = map_key_identity(&Double(beyond)).expect("a whole double names a key, held or not");
+        assert_eq!(widest.get(&identity), None, "{beyond}");
+        assert!(!widest.contains_key(&identity), "{beyond}");
     }
+    assert_eq!(map_key_identity(&Double(3.1)), None);
 }
 
 #[test]

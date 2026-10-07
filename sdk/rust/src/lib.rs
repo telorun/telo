@@ -32,9 +32,12 @@
 //! rather than to this dependency.
 //!
 //! Everything but the backends and the bridge macros lives in
-//! `telorun-sdk-core` (`sdk/rust/core`) — the `sdk` package's value domain,
-//! split out as a Rust packaging boundary so a runtime can hold it without a
-//! backend — and is re-exported here unchanged, at the same paths. This root,
+//! `telorun-sdk-core` (`sdk/rust/core`) — split out as a Rust packaging boundary
+//! so a runtime can hold it without a backend — and is re-exported here
+//! unchanged, at the same paths. That includes the CEL value domain, which
+//! `telorun-sdk-core` itself re-exports from `telorun-cel-value`
+//! (`cel/rust/value`): the SDK's `Timestamp` and `Duration` are serde-facing
+//! wrappers over that crate's types. This root,
 //! the bridge macros and `backend/*` have no Node twin: a Node controller runs
 //! in the kernel's own process and needs no FFI backend.
 

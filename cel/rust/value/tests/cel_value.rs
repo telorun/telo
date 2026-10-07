@@ -15,14 +15,15 @@ use std::sync::Arc;
 use telorun_cel_value::{
     cel_duration_from_nanos, cel_error, cel_map_from_entries, cel_none, cel_some, cel_timestamp,
     cel_type_name_of, cel_type_value, CelDuration, CelError, CelEvaluationCode, CelHostValue,
-    CelMap, CelRecord, CelTimestamp, CelValue, SourceRange, CEL_EVALUATION_CODES, CEL_VALUE_KEYS,
+    CelMap, CelRecord, CelTimestamp, CelValue, ReservedTypeName, SourceRange, CEL_EVALUATION_CODES,
+    CEL_VALUE_KEYS,
 };
 
 fn text(value: &str) -> CelValue {
     CelValue::String(value.into())
 }
 
-fn host(name: &str) -> Option<CelHostValue> {
+fn host(name: &str) -> Result<CelHostValue, ReservedTypeName> {
     CelHostValue::named(name, Arc::new(5i64))
 }
 
@@ -46,7 +47,13 @@ fn refuses_a_host_type_named_as_one_of_the_domains_own_keys() {
     ];
     assert_eq!(CEL_VALUE_KEYS, NODE_KEYS);
     for key in CEL_VALUE_KEYS {
-        assert!(host(key).is_none(), "{key}");
+        let refused = host(key).expect_err(key);
+        assert_eq!(refused.name(), key);
+        let raised: Box<dyn std::error::Error> = Box::new(refused);
+        assert_eq!(
+            raised.to_string(),
+            format!("\"{key}\" is a type key the CEL value domain's own values carry, so no host type may be named it")
+        );
     }
 }
 
