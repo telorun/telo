@@ -428,5 +428,5 @@ export interface Selection {
   /** CEL evaluation mode for the rendered form — overrides the capability-based
    *  default. An edge's `inputs` selection sets `"runtime"` so every input field
    *  offers a CEL-expression toggle. */
-  celEval?: "compile" | "runtime";
+  celEval?: "compile" | "runtime" | "accessor";
 }

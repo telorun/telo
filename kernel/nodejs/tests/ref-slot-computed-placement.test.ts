@@ -9,8 +9,8 @@ import { KernelRuntimeSeam } from "../src/runtime-seam.js";
 
 /**
  * EVERY PLACEMENT OF AN EXPRESSION RELATIVE TO A REFERENCE SLOT, checked by
- * `telo check` over a library's provider resource and refused by the kernel's
- * compile-eval expansion from a consumer whose own check is silent about it:
+ * `telo check` over a library's provider resource and refused by the kernel at
+ * creation, from a consumer whose own check is silent about it:
  * the positions `telo check` reports are exactly the positions the kernel
  * refuses (`REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED`, one reader —
  * `computedRefSlots`).
@@ -19,6 +19,9 @@ import { KernelRuntimeSeam } from "../src/runtime-seam.js";
  * every field here an eval site and is why this position went unreported until
  * the rule was stated: the expression was legal CEL in a legal place, and only
  * the slot beneath it made it wrong.
+ * A field the kind marks `x-telo-eval: runtime`, and one a region covers on a
+ * kind that is no provider, are the same position: the controller's per-call
+ * expansion would leave data at the slot.
  *
  * The negative placements are the point of the rule being keyed on PROVENANCE
  * rather than shape: a reference, an inline declaration, raw JSON Schema at a
@@ -41,6 +44,9 @@ interface Placement {
   schema: string;
   /** The resource's own fields, at the document root. */
   body: string;
+  /** The kind's capability; a provider, whose whole root is compile-eval,
+   *  where none is given. */
+  capability?: "Telo.Invocable";
   /** `[code, path]` `telo check` reports, at the expression it names. */
   expected: Array<[string, string]>;
 }
@@ -108,6 +114,71 @@ $defs:
     body: `node:
   next: !cel "{'handler': 'target'}"`,
     expected: [["REF_SLOT_COMPUTED", "node.next"]],
+  },
+  {
+    name: "at a slot the kind evaluates per call",
+    schema: `type: object
+properties:
+  handler: { x-telo-eval: runtime, ${HANDLER} }`,
+    body: `handler: !cel "'target'"`,
+    expected: [["REF_SLOT_COMPUTED", "handler"]],
+  },
+  {
+    name: "above a slot, in a field the kind evaluates per call",
+    schema: `type: object
+properties:
+  routes:
+    x-telo-eval: runtime
+    type: array
+    items:
+      type: object
+      properties:
+        handler: { ${HANDLER} }`,
+    body: `routes: !cel "[{'handler': 'target'}]"`,
+    expected: [["REF_SLOT_COMPUTED", "routes"]],
+  },
+  {
+    name: "at a slot whose own node declares a region",
+    capability: "Telo.Invocable",
+    schema: `type: object
+properties:
+  handler: { x-telo-context: { type: object }, ${HANDLER} }`,
+    body: `handler: !cel "'target'"`,
+    expected: [["REF_SLOT_COMPUTED", "handler"]],
+  },
+  {
+    name: "above a slot, in a field a region covers",
+    capability: "Telo.Invocable",
+    schema: `type: object
+properties:
+  routes:
+    x-telo-context: { type: object }
+    type: array
+    items:
+      type: object
+      properties:
+        handler: { ${HANDLER} }`,
+    body: `routes:
+  - !cel "{'handler': 'target'}"`,
+    expected: [["REF_SLOT_COMPUTED", "routes[0]"]],
+  },
+  {
+    name: "an expression beside a slot, in a field a region covers",
+    capability: "Telo.Invocable",
+    schema: `type: object
+properties:
+  routes:
+    x-telo-context: { type: object }
+    type: array
+    items:
+      type: object
+      properties:
+        handler: { ${HANDLER} }
+        label: { type: string }`,
+    body: `routes:
+  - handler: !ref target
+    label: !cel "'hello'"`,
+    expected: [],
   },
   {
     name: "a reference",
@@ -179,14 +250,14 @@ exports:
 kind: Telo.Definition
 metadata:
   name: Bus
-capability: Telo.Provider
+capability: ${placement.capability ?? "Telo.Provider"}
 schema:
 ${placement.schema.replace(/^/gm, "  ")}
 resources:
   - kind: Run.Value
     metadata: { name: reading }
     value: !cel "1"
-provide: !ref reading
+${placement.capability ? "invoke" : "provide"}: !ref reading
 ---
 kind: Self.Bus
 metadata:

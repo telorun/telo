@@ -1,0 +1,103 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiEjectTest
+  version: 1.0.0
+  description: |
+    The eject invariant: nothing `Crud.Ui` produces is reachable only through
+    it. One application serves a page holding `Crud.Ui`, another the filter
+    bar, table and form `docs/ui.md` lists as its expansion, and the two page
+    documents are the same — node for node, and by digest.
+imports:
+  Crud: ../
+  Ui: ../../ui
+  UiReact: ../../ui-react
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean, title: Done }
+    priority: { type: integer, title: Priority }
+    status: { title: Status, enum: [open, blocked, done] }
+    dueOn: { type: string, title: Due, format: date }
+---
+# The hand-written half — the listing in `docs/ui.md`, character for character.
+kind: Ui.Form
+metadata: { name: taskForm }
+model: !ref Task
+source: { basePath: /api/tasks }
+---
+kind: Ui.Table
+metadata: { name: taskTable }
+model: !ref Task
+source: { basePath: /api/tasks }
+rowKey: id
+create: !ref taskForm
+edit: !ref taskForm
+delete: true
+---
+kind: Ui.Filters
+metadata: { name: taskFilters }
+model: !ref Task
+content: { type: composite, ref: !ref taskTable }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 19314
+    mounts:
+      - path: /generated
+        mount:
+          kind: UiReact.App
+          title: Tasks
+          pages:
+            - path: /
+              title: Tasks
+              children:
+                - type: composite
+                  ref: { kind: Crud.Ui, model: !ref Task, basePath: /api/tasks }
+      - path: /written
+        mount:
+          kind: UiReact.App
+          title: Tasks
+          pages:
+            - path: /
+              title: Tasks
+              children:
+                - { type: composite, ref: !ref taskFilters }
+targets:
+  - !ref server
+steps:
+  - name: generated
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/" }
+  - name: written
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.generated.result.status"
+        children: !cel "steps.generated.result.body.children"
+        digest: !cel "steps.generated.result.body.digest"
+        # What was compared is the whole screen, not two empty pages.
+        shape: !cel "steps.generated.result.body.children.map(c, [c.type, c.content.type, c.content.create.type, c.content.edit.type])"
+        columns: !cel "steps.generated.result.body.children[0].content.columns.map(c, c.value.path[0])"
+      expected:
+        status: 200
+        children: !cel "steps.written.result.body.children"
+        digest: !cel "steps.written.result.body.digest"
+        shape: [[filters, table, form, form]]
+        columns: [text, isDone, priority, status, dueOn]

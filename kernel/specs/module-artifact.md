@@ -38,15 +38,16 @@ Every layer has exactly one **role**:
 | `controller` | zero or more | the entry-point files of the controller candidates sharing one selector, plus whatever their sibling declarations claim |
 | `library` | zero or more | the entry point this module's `exports.code:` entry of one selector names — what a *dependent module's* code resolves this module's declared specifier to |
 | `native` | zero or more | the files of every `native:` entry sharing one selector — platform-specific files the runtime does not import as code |
+| `browser` | zero or more | the built ES modules of every `exports.browser:` entry sharing one selector, with the files built beside each (§1.3) — code a page imports and no kernel does |
 | `assets` | zero or one | the files the author claimed via `assets:` |
 | `common` | zero or one | every remaining file `files:` selected |
 
 `telo.yaml` MUST be its own layer. Without that, reading a manifest would pull
 the whole artifact and selective fetch would be defeated at the first step.
 
-A `controller`, `library` or `native` layer MUST carry a selector (§2), and there
-is at most one layer of each such role per selector. `assets` and `common` are
-singletons and MUST NOT carry one.
+A `controller`, `library`, `native` or `browser` layer MUST carry a selector (§2),
+and there is at most one layer of each such role per selector. `assets` and
+`common` are singletons and MUST NOT carry one.
 
 ### 1.1 Why `library` is its own role
 
@@ -126,6 +127,75 @@ Both author declarations are OPTIONAL and only ever buy laziness. Omitting
 controllers instead of on demand; omitting a sibling declaration moves that file
 into `common`, where every controller-hosting runtime fetches it instead of only
 the platform that needs it.
+
+### 1.3 Browser entries
+
+A module ships code for a browser by declaring it on its module document:
+
+```yaml
+exports:
+  browser:
+    - specifier: "@acme/badges"
+      path: ./browser/badges.js
+      source: ./browser/src/badges.tsx
+      abi: ui-1
+      external: [react, react/jsx-runtime]
+      exports: [StatusPill]
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `specifier` | yes | the import-map key a page imports the entry by, and the name a resource refers to it by; unique within the block |
+| `path` | yes | module-relative path of the built ES module |
+| `source` | in a source checkout | module-relative path of the file `path` is built from |
+| `abi` | no | `<family>-<version>` — the host contract the entry is written against |
+| `external` | no | bare specifiers the HOST supplies; they MUST NOT be bundled |
+| `exports` | no | the export names a resource may name; the built entry MUST have each |
+
+A browser entry's selector is `format: esm` — implied, and MUST NOT be written —
+plus its `abi` when it states one. An entry MUST NOT state `os`, `arch` or `libc`:
+it is the same file on every platform. `abi` matches nothing a kernel reports; it
+is the page's to compare.
+
+**Entries are built, never read.** A publisher MUST build each entry from its
+`source` as an ES module for a browser, and the entries of one module declaring
+the identical `external` set MUST be one build with code splitting, so that code
+two of them share is a single file both import. Entries declaring different sets
+are separate builds.
+
+The `browser` layer of a selector holds, for each of its entries: the file at
+`path`; every file its build produced that the entry loads — shared chunks, and
+a stylesheet when its sources import one; and a **sibling list** at
+`<path>.siblings.json`. The sibling list is what lets a reader holding only the
+extracted layer answer which files an entry loads. A file two entries of
+different selectors share MUST be in the layer of each.
+
+The sibling list is a JSON object:
+
+```json
+{ "files": [ { "path": "browser/chunks/shared-4F2A.js" } ] }
+```
+
+- `files` lists every file the entry loads besides itself, each as an object
+  whose `path` is the file's module-relative POSIX path. A publisher MUST sort
+  the list by `path` and MUST serialize the document one way — the keys in the
+  order shown, no insignificant whitespace, one trailing newline — because the
+  file is inside its layer's `integrity`.
+- A reader MUST ignore a member it does not know, on the document and on each
+  `files` item, so the list can gain fields without a new layer role.
+- **Confinement.** Every `path` MUST name a regular file inside the layer the
+  sibling list is in. A reader MUST refuse an entry whose list names an absolute
+  path, a path leaving the layer (`..`, or a link leading outside it) or a path
+  naming no file, and MUST NOT read or serve that path.
+- A declared entry whose sibling list is absent or is not this shape MUST be
+  refused; it is never read as an entry that loads nothing.
+- **The name is reserved.** `<path>.siblings.json` beside a declared entry is
+  the build's. A publisher MUST refuse a module in which an `!include-*` or
+  `!module-path` tag, a `files:` / `assets:` pattern, a `native:` entry or a
+  code entry puts an author's file at that path.
+
+A `browser` layer is **not** a code layer in the sense of §1.1: no kernel imports
+it, and it is never materialized by controller resolution.
 
 ## 2. Selectors
 
@@ -252,8 +322,8 @@ Each entry has:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `role` | yes | one of `controller`, `library`, `native`, `assets`, `common` |
-| `selector` | on `controller`, `library` and `native` only | §2 |
+| `role` | yes | one of `controller`, `library`, `native`, `browser`, `assets`, `common` |
+| `selector` | on `controller`, `library`, `native` and `browser` only | §2 |
 | `blob` | yes | the layer's transport blob digest, `sha256:` + 64 lowercase hex |
 | `integrity` | yes | the layer's content digest, `sha256-` + 43 base64url characters |
 
@@ -475,6 +545,12 @@ nothing.
   anything is fetched, so a module shipping a layer per platform fetches one. A
   cache warm for a target materializes every native layer whose selector matches
   that target.
+- A **browser** layer is materialized when a browser entry whose selector is the
+  layer's is resolved by its specifier — that layer alone, with no `common`
+  layer. A cache warm materializes **every** browser layer of a module, whatever
+  platform or abi the warm is for: the layer is platform-neutral, and its `abi`
+  describes the page rather than the process doing the warming. A runtime that
+  serves no browser entry MAY skip browser layers entirely.
 - The **assets** layer and the **common** layer are materialized on the first
   module-relative file access. Assets alone is not sufficient — see §1.2.
 

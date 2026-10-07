@@ -1,0 +1,193 @@
+kind: Telo.Library
+metadata:
+  name: UiReact
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [UI]
+  description: >-
+    Serves a declarative user interface as a web application: pages with
+    navigation, data grids with sorting, paging and inline create, edit and
+    delete, validated forms, filter bars, theming with design tokens and custom
+    fonts, and custom React components. Mounted on an HTTP server, it turns
+    page descriptions into a working admin panel or internal tool with no
+    frontend build step.
+requires:
+  # 0.111.0 checks this file clean, but refuses an application's `theme:` on
+  # the application's own line (INVALID_REFERENCE at 'theme'), and its kernel
+  # has no `ctx.resolveControllerBrowserEntry`, which `UiReact.App` calls to
+  # find the renderer it serves. Verified by execution (`check` and `run` of an
+  # application declaring a `UiReact.App`) against 0.111.0.
+  telo: ">=0.112.0"
+imports:
+  Ui: ../ui
+  SseCodec: ../sse-codec
+exports:
+  kinds:
+    - App
+  # Six entries, two builds. The four React entries declare no `external`, so
+  # they are one build and the page holds one React. The renderer and the host
+  # module declare the same `external` list, so they are one build too and
+  # share the context `useHost` reads.
+  browser:
+    - specifier: react
+      path: ./browser/react.js
+      source: ./nodejs/src/browser/vendor/react.ts
+      abi: ui_react-1
+      exports:
+        [
+        Activity, Children, Component, Fragment, Profiler, PureComponent,
+        StrictMode, Suspense,
+        __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE,
+        __COMPILER_RUNTIME, cache, cacheSignal, cloneElement, createContext,
+        createElement, createRef, forwardRef, isValidElement, lazy, memo,
+        startTransition, unstable_useCacheRefresh, use, useActionState, useCallback,
+        useContext, useDebugValue, useDeferredValue, useEffect, useEffectEvent,
+        useId, useImperativeHandle, useInsertionEffect, useLayoutEffect, useMemo,
+        useOptimistic, useReducer, useRef, useState, useSyncExternalStore,
+        useTransition, version,
+        ]
+    - specifier: react/jsx-runtime
+      path: ./browser/react-jsx-runtime.js
+      source: ./nodejs/src/browser/vendor/react-jsx-runtime.ts
+      abi: ui_react-1
+      exports: [Fragment, jsx, jsxs]
+    - specifier: react-dom
+      path: ./browser/react-dom.js
+      source: ./nodejs/src/browser/vendor/react-dom.ts
+      abi: ui_react-1
+      exports:
+        [
+        __DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, createPortal,
+        flushSync, preconnect, prefetchDNS, preinit, preinitModule, preload,
+        preloadModule, requestFormReset, unstable_batchedUpdates, useFormState,
+        useFormStatus, version,
+        ]
+    - specifier: react-dom/client
+      path: ./browser/react-dom-client.js
+      source: ./nodejs/src/browser/vendor/react-dom-client.ts
+      abi: ui_react-1
+      exports: [createRoot, hydrateRoot, version]
+    - specifier: "@telorun/ui-react"
+      path: ./browser/host.js
+      source: ./nodejs/src/browser/host-entry.ts
+      abi: ui_react-1
+      external: [react, react/jsx-runtime, react-dom, react-dom/client]
+      exports: [useHost]
+    - specifier: "@telorun/ui-react-renderer"
+      path: ./browser/renderer.js
+      source: ./nodejs/src/browser/renderer.tsx
+      abi: ui_react-1
+      external: [react, react/jsx-runtime, react-dom, react-dom/client]
+      exports: [mount]
+---
+kind: Telo.Definition
+metadata:
+  name: App
+  description: >-
+    A web application assembled from pages: each page has a path, a title and a
+    tree of layout, text, data grids, forms and custom components, reached
+    through generated navigation. Serves the page shell, the page descriptions,
+    scripts, stylesheets and fonts under one mount, and can vary what a page
+    shows per request — by a header such as a role or a tenant.
+capability: Telo.Mount
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController
+schema:
+  type: object
+  additionalProperties: false
+  required: [title, pages]
+  properties:
+    title:
+      title: Title
+      description: The application's name, shown in its header and as the document title.
+      type: string
+      x-telo-eval: compile
+    lang:
+      title: Language
+      description: The language of the content, written as the document's `lang`. Absent, none is written.
+      type: string
+      x-telo-eval: compile
+    theme:
+      title: Theme
+      description: >-
+        One theme, or an ordered list of themes each with a condition: the first
+        entry whose `when` holds for the request is used.
+      anyOf:
+        - x-telo-ref: { kind: Ui.Theme, use: dependency }
+        - type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [theme]
+            properties:
+              theme:
+                x-telo-ref: { kind: Ui.Theme, use: dependency }
+              when:
+                type: boolean
+                default: true
+                x-telo-context:
+                  type: object
+                  properties:
+                    request:
+                      type: object
+                      properties:
+                        headers:
+                          type: object
+                          additionalProperties: { type: string }
+                        ip: { type: string }
+    defaultTheme:
+      title: Default theme
+      description: Whether the built-in theme's stylesheet is served.
+      type: boolean
+      default: true
+    stylesheets:
+      title: Stylesheets
+      description: Stylesheets of the application's own, applied after everything else.
+      type: array
+      items:
+        x-telo-type: Telo.HostPath
+    pages:
+      title: Pages
+      type: array
+      minItems: 1
+      items:
+        type: object
+        additionalProperties: false
+        required: [path, title, children]
+        properties:
+          path:
+            title: Path
+            description: >-
+              The page's address under the mount: `/` followed by anything but
+              `/` or `\`, holding no control character, and not under `/_telo`.
+            type: string
+            pattern: "^/(?!_telo(/|$))([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+          title:
+            title: Title
+            description: Shown above the page and in the navigation.
+            type: string
+          children:
+            title: Children
+            description: >-
+              The page's nodes, top to bottom. Each node's `when:` and text
+              values may read the request.
+            type: array
+            items: { $ref: "telo://Ui/Node" }
+            x-telo-context:
+              type: object
+              properties:
+                request:
+                  type: object
+                  properties:
+                    headers:
+                      type: object
+                      additionalProperties: { type: string }
+                    ip: { type: string }
+  x-telo-resource-rules:
+    - in: /pages
+      condition: !cel "self.pages.exists_one(p, p.path == this.path)"
+      code: UI_PAGE_PATH_DUPLICATE
+      message: >-
+        declares a path another page already has. Give each page a path of its
+        own.

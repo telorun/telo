@@ -1,0 +1,33 @@
+{
+  "parts": {
+    "shell": ["app", "header", "app-title", "nav", "nav-link", "main", "page", "page-title"],
+    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg"],
+    "table": [
+      "table", "table-toolbar", "table-create", "table-frame", "table-grid", "table-head", "table-body",
+      "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-edit", "row-delete",
+      "table-empty", "table-loading", "pager", "pager-status", "pager-prev", "pager-next"
+    ],
+    "form": [
+      "form", "field", "label", "input", "textarea", "select", "checkbox", "field-error",
+      "form-error", "form-actions", "submit", "cancel"
+    ],
+    "filters": ["filters", "filter", "filter-label", "filter-input", "filter-select", "filters-reset"],
+    "dialog": ["dialog-overlay", "dialog", "dialog-header", "dialog-title", "dialog-description", "dialog-close"],
+    "shared": ["icon", "select-content", "select-item", "tooltip"],
+    "status": ["component", "error", "error-code", "error-message", "loading"]
+  },
+  "states": {
+    "data-state": {
+      "values": ["idle", "loading", "error", "empty", "submitting"],
+      "on": ["page", "table", "form", "filters", "component"]
+    },
+    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox"] },
+    "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell"] },
+    "data-current": { "values": ["page"], "on": ["nav-link"] }
+  },
+  "primitiveStates": [
+    { "values": ["open", "closed"], "on": ["dialog", "dialog-overlay", "select", "filter-select", "select-content"] },
+    { "values": ["checked", "unchecked"], "on": ["checkbox", "select-item"] },
+    { "values": ["closed", "delayed-open", "instant-open"], "on": ["row-edit", "row-delete", "pager-prev", "pager-next", "tooltip"] }
+  ]
+}

@@ -14,8 +14,10 @@
  * - it stops at `x-telo-scope`, at `x-telo-schema-from` and at a step body —
  *   except that a step list whose `items` node is itself a reference slot
  *   (directly or through a local `$ref`) has its items walked as any slot is;
- * - a non-local `$ref` is never followed ({@link resolveLocalReference} is the
- *   one place that decides, so widening it is a resolver change);
+ * - a non-local `$ref` is a stop too: the id is recorded, and a consumer that
+ *   can resolve a NAMED SHAPE ({@link ShapeResolver}) walks the shape's own
+ *   reach there, against the shape's own document — so a shape recursing with
+ *   `$ref: "#"` records its back-edge in its own reach;
  * - a pattern keeps EVERY slot any branch declares there, and each slot keeps
  *   its non-reference alternatives there as value branches.
  *
@@ -39,7 +41,9 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { isRefSentinel } from "@telorun/templating";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { readRefSlot, type RefSlot } from "./ref-slot.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
 import type {
@@ -64,6 +68,8 @@ export interface ReachPath {
 export interface ReachStop {
   scopes: ScopeFieldEntry[];
   schemaFrom: SchemaFromFieldEntry[];
+  /** The ids of the non-local `$ref`s written here. */
+  shapes: string[];
 }
 
 /** One schema's reach, entered at `node` and resolving `$ref` against `document`. */
@@ -128,6 +134,14 @@ export type SchemaFromResolver = (
   schemaFrom: string,
   document: Record<string, any>,
 ) => ResolvedSchemaNode | undefined;
+
+/** Resolves a non-local `$ref` written in `document` to the schema of the named
+ *  shape it names, or undefined when it names none. A shape is its own
+ *  document. */
+export type ShapeResolver = (
+  ref: string,
+  document: Record<string, any>,
+) => Record<string, any> | undefined;
 
 /** The resource envelope: present on every resource document, and never
  *  configuration a kind's root `additionalProperties` describes. */
@@ -432,7 +446,7 @@ function pathAt(walk: Walk, path: string): ReachPath {
 
 function stopAt(walk: Walk, path: string): ReachStop {
   let entry = walk.reach.stops.get(path);
-  if (!entry) walk.reach.stops.set(path, (entry = { scopes: [], schemaFrom: [] }));
+  if (!entry) walk.reach.stops.set(path, (entry = { scopes: [], schemaFrom: [], shapes: [] }));
   return entry;
 }
 
@@ -480,8 +494,8 @@ function visitNode(node: unknown, path: string, loc: string, walk: Walk): void {
     visitVariants(schema, path, loc, walk);
     return;
   }
-  if (typeof schema.$ref === "string") {
-    followLocalRef(schema, path, walk);
+  if (typeof schema.$ref === "string" || isRefSentinel(schema)) {
+    followRef(schema, path, walk);
     return;
   }
   if (schema.type === "array" && schema.items) {
@@ -536,8 +550,8 @@ function visitVariants(schema: Record<string, any>, path: string, loc: string, w
  *  below it is walked, and a `$ref` branch is followed as a node of its own. */
 function visitVariant(variant: Record<string, any>, path: string, loc: string, walk: Walk): void {
   declare(walk, path, variant);
-  if (typeof variant.$ref === "string") {
-    followLocalRef(variant, path, walk);
+  if (typeof variant.$ref === "string" || isRefSentinel(variant)) {
+    followRef(variant, path, walk);
     return;
   }
   visitProperties(variant, path, loc, walk);
@@ -545,6 +559,25 @@ function visitVariant(variant: Record<string, any>, path: string, loc: string, w
     visitNode(variant.items, `${path}[]`, joinKey(loc, "items"), walk);
   }
   visitMapValue(variant, path, loc, walk);
+}
+
+/** A local `$ref` is followed; a non-local one is recorded as a stop, and so is
+ *  a `!ref <Shape>` still unresolved where a schema belongs — in the authoring
+ *  spelling `telo://<authority>/<Shape>` names the same shape by. */
+function followRef(node: Record<string, any>, path: string, walk: Walk): void {
+  const ref = isRefSentinel(node) ? shapeRefOfSentinel(node) : (node.$ref as string);
+  if (ref === undefined) return;
+  if (ref.startsWith("#")) {
+    followLocalRef(node, path, walk);
+    return;
+  }
+  const stop = stopAt(walk, path);
+  if (!stop.shapes.includes(ref)) stop.shapes.push(ref);
+}
+
+function shapeRefOfSentinel(sentinel: unknown): string | undefined {
+  const target = refSentinelTarget(sentinel);
+  return target ? `telo://${target.alias ?? "Self"}/${target.name}` : undefined;
 }
 
 /** A reference to a node already on the descent records a back-edge to the
@@ -584,6 +617,30 @@ function visitMapValue(owner: Record<string, any>, path: string, loc: string, wa
   visitNode(valueSchema, mapPath, joinKey(loc, "additionalProperties"), walk);
 }
 
+/** The reaches a stop hands off to: each static schema-from anchor, and each
+ *  named shape a non-local `$ref` there resolves to. */
+function expansionsAt(
+  stop: ReachStop,
+  reach: SchemaReach,
+  schemaFrom: SchemaFromResolver | undefined,
+  shapes: ShapeResolver | undefined,
+): { reach: SchemaReach; anchor: boolean }[] {
+  const out: { reach: SchemaReach; anchor: boolean }[] = [];
+  if (schemaFrom) {
+    for (const { schemaFrom: expression } of stop.schemaFrom) {
+      const anchor = schemaFrom(expression, reach.document);
+      if (anchor) out.push({ reach: reachOfNode(anchor.document, anchor.node), anchor: true });
+    }
+  }
+  if (shapes) {
+    for (const id of stop.shapes) {
+      const shape = shapes(id, reach.document);
+      if (shape) out.push({ reach: reachOfNode(shape, shape), anchor: false });
+    }
+  }
+  return out;
+}
+
 // --- the declared-slot view -------------------------------------------------
 
 /** A reference pattern a kind's schema declares, with every slot any branch
@@ -603,7 +660,8 @@ export interface DeclaredStop {
   path: string;
   scopes: ScopeFieldEntry[];
   schemaFrom: SchemaFromFieldEntry[];
-  /** True when a schema-from anchor's schema declares it, not the kind's own. */
+  /** True when a schema-from anchor's schema declares it, not the kind's own
+   *  or a named shape the kind's own reaches. */
   viaAnchor: boolean;
 }
 
@@ -615,18 +673,20 @@ export interface DeclaredReach {
 /**
  * The patterns a kind's schema declares. A recursive slot's pattern is its
  * outermost occurrence. With `schemaFrom`, a static schema-from stop also
- * contributes the patterns of its anchor, rooted at the stop's pattern; a chain
- * of anchors leading back to one already being expanded stops there.
+ * contributes the patterns of its anchor, rooted at the stop's pattern, and
+ * with `shapes` a named shape contributes its own the same way; a chain leading
+ * back to a reach already being expanded stops there.
  */
 export function declaredReach(
   schema: Record<string, any>,
   schemaFrom?: SchemaFromResolver,
+  shapes?: ShapeResolver,
 ): DeclaredReach {
   const references = new Map<string, DeclaredReference>();
   const stops: DeclaredStop[] = [];
   const expanding = new Set<SchemaReach>();
 
-  const collect = (reach: SchemaReach, base: string): void => {
+  const collect = (reach: SchemaReach, base: string, anchored: boolean): void => {
     expanding.add(reach);
     for (const [rel, at] of reach.paths) {
       if (at.refs.length === 0) continue;
@@ -645,18 +705,16 @@ export function declaredReach(
     }
     for (const [rel, stop] of reach.stops) {
       const path = joinPattern(base, rel);
-      stops.push({ path, scopes: stop.scopes, schemaFrom: stop.schemaFrom, viaAnchor: base !== "" });
-      if (!schemaFrom) continue;
-      for (const { schemaFrom: expression } of stop.schemaFrom) {
-        const anchor = schemaFrom(expression, reach.document);
-        if (!anchor) continue;
-        const anchored = reachOfNode(anchor.document, anchor.node);
-        if (!expanding.has(anchored)) collect(anchored, path);
+      if (stop.scopes.length > 0 || stop.schemaFrom.length > 0) {
+        stops.push({ path, scopes: stop.scopes, schemaFrom: stop.schemaFrom, viaAnchor: anchored });
+      }
+      for (const next of expansionsAt(stop, reach, schemaFrom, shapes)) {
+        if (!expanding.has(next.reach)) collect(next.reach, path, anchored || next.anchor);
       }
     }
     expanding.delete(reach);
   };
-  collect(reachOfSchema(schema), "");
+  collect(reachOfSchema(schema), "", false);
   return { references: [...references.values()], stops };
 }
 
@@ -857,15 +915,18 @@ export function siteRefEntry(site: ReachSite): RefFieldEntry {
  * `schemaFrom`, the anchor of a static schema-from stop is walked at each
  * concrete site of the stop, over the same data; an anchor re-entered with the
  * same value on the current descent is not walked again. With `withSchemaFrom`,
- * each concrete site of an `x-telo-schema-from` slot is a site too.
+ * each concrete site of an `x-telo-schema-from` slot is a site too. With
+ * `shapes`, a named shape is walked at each concrete site of the `$ref` naming
+ * it, the same way.
  */
 export function reachSites(
   schema: Record<string, any>,
   data: unknown,
   schemaFrom?: SchemaFromResolver,
   withSchemaFrom = false,
+  shapes?: ShapeResolver,
 ): ReachSite[] {
-  return enumerateSites(schema, data, { stops: true, schemaFrom, withSchemaFrom });
+  return enumerateSites(schema, data, { stops: true, schemaFrom, withSchemaFrom, shapes });
 }
 
 /** The sites through which a resource drives another — its step and reference
@@ -881,16 +942,17 @@ interface SiteOptions {
   /** Keep schema-from sites too. */
   withSchemaFrom?: boolean;
   schemaFrom?: SchemaFromResolver;
+  shapes?: ShapeResolver;
 }
 
 function enumerateSites(
   schema: Record<string, any>,
   data: unknown,
-  { stops: keepStops, withSchemaFrom, schemaFrom }: SiteOptions,
+  { stops: keepStops, withSchemaFrom, schemaFrom, shapes }: SiteOptions,
 ): ReachSite[] {
   if (data === undefined || data === null) return [];
   const root = reachOfSchema(schema);
-  const followsStops = keepStops || schemaFrom !== undefined;
+  const followsStops = keepStops || schemaFrom !== undefined || shapes !== undefined;
   if (!root.drives && !(followsStops && root.stops.size > 0)) return [];
   const sites = new Map<string, ReachSite & { from: Set<object> }>();
   const onData = new Set<unknown>([data]);
@@ -925,6 +987,7 @@ function enumerateSites(
     base: string,
     baseKeys: (string | number)[],
     patternBase: string,
+    anchored: boolean,
   ): void => {
     for (const [declaredPath, at] of reach.paths) {
       const rel = relativeFieldPath(declaredPath, prefix);
@@ -947,7 +1010,7 @@ function enumerateSites(
               fieldPath: joinPattern(patternBase, declaredPath),
               declaredIn: reach,
               declaredPath,
-              viaAnchor: reach !== root,
+              viaAnchor: anchored,
               node: entryDeclarations.get(entry)!.node,
               enclosing: enclosingDeclarations(reach, declaredPath, entry),
               alternatives: siteAlternatives(entry, reach, prefix, at0, found),
@@ -959,7 +1022,7 @@ function enumerateSites(
         if (at.recurse.length === 0) continue;
         if (!found.value || typeof found.value !== "object" || onData.has(found.value)) continue;
         onData.add(found.value);
-        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase);
+        for (const to of at.recurse) walk(reach, to, found, path, keys, patternBase, anchored);
         onData.delete(found.value);
       }
     }
@@ -984,26 +1047,30 @@ function enumerateSites(
               entry,
               fieldPath: joinPattern(patternBase, declaredPath),
               document: reach.document,
-              viaAnchor: reach !== root,
+              viaAnchor: anchored,
             });
           }
         }
-        if (!schemaFrom) continue;
-        for (const { schemaFrom: expression } of stop.schemaFrom) {
-          const anchor = schemaFrom(expression, reach.document);
-          if (!anchor) continue;
-          const anchored = reachOfNode(anchor.document, anchor.node);
+        for (const next of expansionsAt(stop, reach, schemaFrom, shapes)) {
           let entered = expanded.get(found.value);
           if (!entered) expanded.set(found.value, (entered = new Set()));
-          if (entered.has(anchored)) continue;
-          entered.add(anchored);
-          walk(anchored, "", found, path, keys, joinPattern(patternBase, declaredPath));
-          entered.delete(anchored);
+          if (entered.has(next.reach)) continue;
+          entered.add(next.reach);
+          walk(
+            next.reach,
+            "",
+            found,
+            path,
+            keys,
+            joinPattern(patternBase, declaredPath),
+            anchored || next.anchor,
+          );
+          entered.delete(next.reach);
         }
       }
     }
   };
-  walk(root, "", { value: data, path: "", keys: [] }, "", [], "");
+  walk(root, "", { value: data, path: "", keys: [] }, "", [], "", false);
 
   return [...sites.values()].map(({ from, ...site }) => site);
 }
@@ -1051,7 +1118,8 @@ export interface ReachPosition {
  * Every concrete position of a resource at or ABOVE one of its reference
  * slots — the slot itself, and each container on the way to it — recursion
  * unrolled as deep as the data goes (with the same ancestor-alias guard as
- * {@link reachSites}) and, with `schemaFrom`, static schema-from slots expanded.
+ * {@link reachSites}) and, with `schemaFrom` / `shapes`, static schema-from
+ * slots and named shapes expanded.
  * What a value written ABOVE a slot is asked about: an expression there leaves
  * no concrete site below it, yet it holds the slot's value.
  */
@@ -1059,6 +1127,7 @@ export function reachPositions(
   schema: Record<string, any>,
   data: unknown,
   schemaFrom?: SchemaFromResolver,
+  shapes?: ShapeResolver,
 ): ReachPosition[] {
   if (data === undefined || data === null) return [];
   const root = reachOfSchema(schema);
@@ -1098,23 +1167,27 @@ export function reachPositions(
         onData.delete(found.value);
       }
     }
-    if (!schemaFrom) return;
+    if (!schemaFrom && !shapes) return;
     for (const [declaredPath, stop] of reach.stops) {
       const rel = relativeFieldPath(declaredPath, prefix);
       if (rel === undefined) continue;
-      for (const { schemaFrom: expression } of stop.schemaFrom) {
-        const anchor = schemaFrom(expression, reach.document);
-        if (!anchor) continue;
-        const anchored = reachOfNode(anchor.document, anchor.node);
-        if (!anchored.drives) continue;
+      for (const { reach: anchored, anchor } of expansionsAt(stop, reach, schemaFrom, shapes)) {
+        if (!leadsToSlot(anchored, schemaFrom, shapes)) continue;
+        // A named shape is part of the schema that names it, so the position
+        // above it leads to the first slot the shape declares.
+        const firstSlot = anchor
+          ? undefined
+          : [...anchored.paths].find(([, at]) => at.refs.length > 0)?.[0];
+        const anchoredBase = joinPattern(patternBase, declaredPath);
+        // Emitted with or without a concrete site at the stop: a value computed
+        // above it leaves none, yet holds the slot's value.
+        emit(reach, prefix, at0, base, rel, joinPattern(anchoredBase, firstSlot ?? ""));
         for (const found of resolveSites(at0, rel, prefix, reach)) {
           let entered = expanded.get(found.value);
           if (!entered) expanded.set(found.value, (entered = new Set()));
           if (entered.has(anchored)) continue;
           entered.add(anchored);
           const path = joinPattern(base, found.path);
-          const anchoredBase = joinPattern(patternBase, declaredPath);
-          emit(reach, prefix, at0, base, rel, anchoredBase);
           walk(anchored, "", found, path, anchoredBase);
           entered.delete(anchored);
         }
@@ -1123,6 +1196,25 @@ export function reachPositions(
   };
   walk(root, "", { value: data, path: "", keys: [] }, "", "");
   return [...positions.values()];
+}
+
+/** True when `reach`, or a reach one of its stops hands off to, holds a step or
+ *  reference slot. */
+function leadsToSlot(
+  reach: SchemaReach,
+  schemaFrom: SchemaFromResolver | undefined,
+  shapes: ShapeResolver | undefined,
+  seen: Set<SchemaReach> = new Set(),
+): boolean {
+  if (reach.drives) return true;
+  if (seen.has(reach)) return false;
+  seen.add(reach);
+  for (const stop of reach.stops.values()) {
+    for (const next of expansionsAt(stop, reach, schemaFrom, shapes)) {
+      if (leadsToSlot(next.reach, schemaFrom, shapes, seen)) return true;
+    }
+  }
+  return false;
 }
 
 /** Every non-empty prefix of a relative pattern, one per step a walk takes:

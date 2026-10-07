@@ -42,8 +42,11 @@ This is the distinction that decides whether the rest of the page is relevant
 to you.
 
 - **Telo** produces a backend process. Something else calls it: a browser, a
-  mobile app, another service, an agent. There is no page-and-button builder —
-  if you want an admin screen, the frontend is yours to write.
+  mobile app, another service, an agent. It can also serve its own interface:
+  pages, data tables, forms and filters are declared in the same manifest as
+  the API they sit on, checked by `telo check`, and drawn by a prebuilt
+  renderer (the `ui` and `ui-react` modules). That is written as YAML, not
+  dragged onto a canvas — there is no page-and-button builder.
 - **Retool, Budibase, Appsmith, OutSystems, Mendix** produce a screen. The
   point of the tool is that a non-developer opens a browser and clicks a button
   you placed.
@@ -166,7 +169,10 @@ sits.
 
 ## Where Telo is weaker
 
-- **No end-user UI builder.** You build the service; the screens are yours.
+- **No end-user UI builder.** An admin screen over your API is a few
+  declarations, and a custom React component covers what the vocabulary does
+  not — but a non-developer cannot assemble a screen by clicking, and a
+  consumer-facing frontend is still yours to write.
 - **No hosted offering yet.** Telo Cloud — hosted runs and managed deploys — is
   planned. Today you deploy the container yourself.
 - **A small connector catalogue** next to any established automation platform.

@@ -1,0 +1,43 @@
+# A slot that takes ONE reference, or a list of entries each holding a reference
+# beside a predicate evaluated per call. The list is the slot's value branch.
+kind: Telo.Library
+metadata:
+  name: ValueBranchReference
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind selects, per call, one of several referenced
+    resources by a predicate written beside each reference.
+exports:
+  kinds: [Chosen]
+---
+kind: Telo.Definition
+metadata:
+  name: Chosen
+  description: Invokes the first listed target whose predicate holds for the call, and reports whether that target arrived as a live instance.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./chosen.mjs#Chosen
+schema:
+  type: object
+  additionalProperties: false
+  required: [target]
+  properties:
+    target:
+      anyOf:
+        - x-telo-ref: { kind: Telo.Invocable, use: call }
+        - type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [target]
+            properties:
+              target:
+                type: object
+                x-telo-ref: { kind: Telo.Invocable, use: call }
+              when:
+                type: boolean
+                x-telo-eval: runtime
+                x-telo-context:
+                  type: object
+                  properties:
+                    inputs: {}

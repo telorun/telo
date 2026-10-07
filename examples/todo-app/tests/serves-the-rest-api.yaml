@@ -3,10 +3,11 @@ metadata:
   name: TodoAppExampleTest
   version: 1.0.0
   description: >-
-    Runs `examples/todo-app` and walks its REST surface: create, list, update,
+    Runs `examples/todo-app` and walks its REST surface: create, list, replace,
     delete, and a create the model refuses. The model IS the request contract in
     this example, so the rejected create is what shows validation happening before
-    the database is touched.
+    the database is touched. It then asks the declared UI for its shell and its
+    first page, which is what shows the frontend is served from the same manifest.
 imports:
   App: ../../../modules/app
   Run: ../../../modules/run
@@ -41,6 +42,7 @@ steps:
     inputs:
       body:
         text: !cel "steps.subject.result.text"
+        isDone: false
   - name: verifyCreated
     invoke: { kind: Assert.Equals }
     inputs:
@@ -51,33 +53,36 @@ steps:
         status: 201
         text: !cel "steps.subject.result.text"
 
+  # The list is a page of a collection: `rows`, the `total` the filter matches,
+  # and a cursor for the next page. Filtering by the text finds exactly this row.
   - name: list
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:8077/api/todos
       method: GET
+    inputs:
+      url: http://127.0.0.1:8077/api/todos
+      query:
+        text: !cel "steps.subject.result.text"
   - name: verifyListed
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         status: !cel "steps.list.result.status"
-        found: !cel "size(steps.list.result.body.filter(row, row.text == steps.subject.result.text))"
+        total: !cel "steps.list.result.body.total"
+        found: !cel "size(steps.list.result.body.rows)"
       expected:
         status: 200
+        total: 1
         found: 1
 
   # The create route answers with the body it was given, so the id comes from the
   # listing — which is also what proves the row is really there.
   - name: created
     value:
-      id: !cel "steps.list.result.body.filter(row, row.text == steps.subject.result.text)[0].id"
+      id: !cel "steps.list.result.body.rows[0].id"
 
-  # `text` is required, so an empty one is refused before the database is
-  # touched. The model also closes the object, and a request carrying a property
-  # it does not declare is refused too — but only from the http-server release
-  # that stops silently stripping one; the example still pins the version that
-  # strips. `modules/http-server/tests/refuses-undeclared-properties.yaml` holds
-  # that assertion until this can be re-pinned.
+  # `text` is required and may not be empty, so an empty one is refused before the
+  # database is touched — and the refusal names the field.
   - name: emptyText
     invoke:
       kind: HttpClient.Request
@@ -86,12 +91,18 @@ steps:
     inputs:
       body:
         text: ""
+        isDone: false
   - name: verifyRefused
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.emptyText.result.status"
-      expected: 400
+      actual:
+        status: !cel "steps.emptyText.result.status"
+        field: !cel "steps.emptyText.result.body.details[0].path"
+      expected:
+        status: 400
+        field: text
 
+  # PUT replaces the todo, so the body is the whole record.
   - name: complete
     invoke:
       kind: HttpClient.Request
@@ -124,3 +135,32 @@ steps:
         completed: 200
         deleted: 204
         afterDelete: 404
+
+  # The frontend is declared, not written: the shell at `/` and the page document
+  # it renders both come from the UiReact.App in the same manifest.
+  - name: shell
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/
+      method: GET
+  - name: page
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+    inputs:
+      url: http://127.0.0.1:8077/_telo/ui/page
+      query:
+        path: /
+  - name: verifyUi
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        shell: !cel "steps.shell.result.status"
+        page: !cel "steps.page.result.status"
+        title: !cel "steps.page.result.body.title"
+        root: !cel "steps.page.result.body.children[0].type"
+      expected:
+        shell: 200
+        page: 200
+        title: Todos
+        root: filters

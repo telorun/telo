@@ -1,0 +1,25 @@
+# A widget naming a browser entry its own module does not declare. The entry
+# another module ships under that name does not count: a resource names code its
+# own module ships.
+kind: Telo.Library
+metadata:
+  name: BrowserEntryUnknownLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose widget names a browser entry the library does not
+    declare.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [widget]
+  browser:
+    - specifier: "@fixture/own"
+      path: ./browser/own.js
+      source: ./browser/src/own.js
+      exports: [Own]
+---
+kind: Kinds.Widget
+metadata:
+  name: widget
+entry: "@fixture/shell"
+export: mount

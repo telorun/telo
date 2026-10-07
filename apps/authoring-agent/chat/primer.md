@@ -155,7 +155,40 @@ under `exports.resources:`, and point the slot at it with
 library exports). References INSIDE that shape (`#/$defs/…`, or `#` for its
 own root) resolve against the shape's own document, so it can refer to itself
 and a container node can hold further nodes. The shape is checked at
-`telo check` and again at boot, exactly as an inline schema is.
+`telo check` and again at boot, exactly as an inline schema is. A reference
+slot (`x-telo-ref`) declared INSIDE such a shape is a slot of every kind that
+reaches it: a `!ref` written there, at any depth of the recursion, is checked,
+resolved to the live instance and may be an inline declaration, exactly as at a
+slot the kind's own schema declares.
+
+A FIELD THAT NAMES A VALUE instead of computing one — the column a table shows,
+the member a list sorts by — is annotated `x-telo-eval: accessor`, with an
+`x-telo-context` beside it declaring the bindings a chain may start at:
+
+    rowStyle:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-ref-from: "model/schema" }
+
+A resource writes a PLAIN CHAIN there (`rowStyle: !cel "row.status"`) or a
+literal (`rowStyle: muted`). The chain is type-checked against the binding
+(`CEL_UNKNOWN_FIELD`, `CEL_UNKNOWN_IDENTIFIER`, `CEL_TYPE_ERROR`) and NEVER
+evaluated, so a read through a nullable member needs no guard — and a call, an
+operator, an index, `!interpolate`, a tag beneath the field or a chain rooted
+outside the field's bindings (`variables.x`) is `ACCESSOR_NOT_PLAIN_CHAIN`. The
+controller receives a plain map: `{ root: "row", path: ["status"] }` for a
+chain, `{ value: "muted" }` for a literal. A kind that only FORWARDS such a
+field into a template body does not annotate its own field `accessor` — the
+entry that finally holds it does.
+
+A string field naming an EXPORT of a browser entry carries
+`x-telo-browser-export: { entry: /<sibling> }`, a JSON Pointer to the sibling
+string holding the entry's `specifier`. The specifier must be one the module
+declaring the RESOURCE lists under `exports.browser:` and the value one of that
+entry's `exports` (`BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`).
 
 A field in a definition's `schema:` that must hold a reference to another
 resource carries `x-telo-ref`, which states BOTH the accepted kind and what
@@ -1214,6 +1247,157 @@ straight in. `Multipart.Reader` is the same thing read incrementally — a strea
 of parts, each a stream of bytes — for an upload too large to hold; advancing
 past a part discards its remainder, so skipping one is safe.
 
+## User interfaces — the `ui` and `ui-react` modules
+
+An admin screen is declared in the manifest, not written as a frontend. `ui`
+is the vocabulary; `ui-react` serves it. Import both, plus `http-server`. Both
+need telo 0.112.0 or newer (each declares `requires: telo: ">=0.112.0"`).
+
+**Nodes** are plain data with a `type`: `box` / `stack` / `columns`
+(`children:`), `text` / `badge` (`text:`), `link` (`text:`, `href:`), `image`
+(`src:`, `alt:`), `svg` (`markup:`, `alt:`) and `composite` (`ref:` — a `!ref`
+or an inline declaration). Every node takes `style:` (one or a list of
+`heading`, `subheading`, `muted`, `strong`, `accent`, `danger`, `warning`,
+`success`) and `when:` (boolean). There are no layout fields and no button
+node.
+
+An address inside the application — a `link`'s `href`, an `image`'s `src`, a
+page's `path`, a `basePath` — is APP-RELATIVE: `/` followed by anything except
+`/` or `\`, with no control character. `/`, `/done`, `/a//b` are valid; `//host`
+and `/\host` are refused (a browser reads them as another host). `href` may
+instead start `https://`, `http://` or `mailto:`, and `src` `https://` or
+`http://`.
+
+**Composites** are resources placed through a `composite` node:
+
+- `Ui.Table` — `model:` (a `Telo.JsonSchema`, the row), `source: { basePath,
+  filters? }`, optional `columns:` (each `{ header?, value: !cel "row.x" }` or
+  `{ header?, cell: <Ui.Component> }`; omitted → one per model property),
+  `pageSize`, `rowStyle`, `create:` / `edit:` (a `Ui.Form`), `delete: true`.
+- `Ui.Form` — `model:`, `source: { basePath }`, optional `fields: [{ property }]`.
+- `Ui.Filters` — `model:`, optional `fields: [{ property, operator? }]`,
+  `content:` (one node; every table inside obeys the filters).
+- `Ui.Component` — `component: !ref <Alias>.<export>`, `props:`, `model:`.
+- `Ui.View` — `content:` (one node), for a reusable section.
+- `Ui.Theme` — `tokens:` (`color.accent`, `radius.md`, `font.body: !ref <Font.Family>`, …).
+
+`row.<property>` in a `value:`, a `props:` entry or a style rule's `by:` is an
+ACCESSOR: a plain chain only — no calls, operators or indexes. A style that
+depends on data is a rule, never an expression:
+`rowStyle: { by: !cel "row.status", cases: { overdue: danger }, default: muted }`.
+
+A `source.basePath` must speak the collection contract: `GET` with `limit`,
+`cursor`, `sort` and `<property>[.contains|.gt|.gte|.lt|.lte|.in]=` filters,
+answering `{ rows, total, next }`; `POST` to it, `PUT` / `DELETE` to
+`<basePath>/<rowKey>`. `PUT` REPLACES the row: its body is a whole record, and
+a property left out of it is cleared. An edit form therefore sends back what
+the row held, with each field's entered value over it and an emptied field left
+out. A row read is a record valid against the model: a property with no value
+is left out of it (`null` only where the model admits `null`), so it can be
+sent back. A write body holds only properties that have a value, in the model's JSON
+types: a `null`, or a value of another JSON type, at a typed property is a 400
+naming it. A refused body is a 400 whose `details[].path` is the property's
+name; the form marks that field.
+
+**The application** is a mount:
+
+```yaml
+kind: UiReact.App
+metadata: { name: admin }
+title: Todo Admin
+pages:
+  - path: /
+    title: Todos
+    children:
+      - { type: text, text: Open work, style: heading }
+      - { type: composite, ref: !ref todos }
+```
+
+List it under `Http.Server.mounts` (`- { path: /, mount: !ref admin }`), after
+the API mounts. Inside `pages[].children`, a node's `when:` and its text
+values may read `request.headers` (lower-case names; test with `in` first) and
+`request.ip`, per request. The tree's structure and every `ref:` stay literal —
+a computed `children:` or `ref:` is `REF_SLOT_COMPUTED`. `theme:` is one
+`Ui.Theme` or a list of `{ theme, when? }`.
+
+**Manifests wire no events.** There is no `onClick`, no action list. A table's
+buttons, a form's submit and a filter's change are built in. A custom React
+component (shipped by a library as a browser entry with `abi: ui_react-1`,
+published with `Ui.ComponentExport`) gets navigation, requests and refresh from
+the host — `useHost()` from `@telorun/ui-react` gives `location`, `navigate`,
+`href`, `fetch`, `notifyChanged`, `onChanged` — and receives only its declared
+`props`.
+
+## A REST API and its admin screen over a table — the `crud` module
+
+`Crud.Resource` mounts list / read / create / replace / delete over one table:
+`connection:` (a `Sql.Connection`), `singular:`, `plural:`, `model:` (a
+`Telo.JsonSchema` of the writable columns, WITHOUT `id`), optional `table:` and
+`idParam:`. Properties are camelCase, columns snake_case, the primary key is
+the integer column `id`. It does not create the table. The module needs telo
+0.112.0 or newer (`requires: telo: ">=0.112.0"`).
+
+**`PUT <prefix>/<id>` replaces the row.** Its body is a whole record validated
+against the model exactly as a `POST` body is — never a partial one. Every
+model column is written: the body's value, or NULL for a property it leaves
+out. So send the full record when changing one property
+(`{ text: "Buy milk", isDone: true }`, not `{ isDone: true }`); a body missing a
+required property is a 400 naming it. The body holds the properties that have a
+value: leave `id` out, and leave a property out to clear it — never send
+`null`, which is a 400 naming the property, as is a value of another JSON type
+(`"1"` for an integer). **A read returns a record valid against the model**,
+on read-one and in every list row, so what was read (less `id`) can be sent
+back: a column holding NULL is `null` where the property admits it
+(`type: [string, "null"]`, or no `type`), LEFT OUT where the property is
+optional — in step CEL over a fetched row test `has(row.dueOn)`, never
+`row.dueOn == null` — and the type's empty value (`""`, `0`, `false`, `[]`,
+`{}`) where it is required. A refused `POST` or `PUT` body is the
+request-validation envelope with `location: "body"`, `path` the property
+(`text`, `address.street`) and the validator's sentence as `message`
+(`is a required property`, `must NOT have more than 5 characters`).
+
+**The list route is a collection**, not a bare array:
+
+- `GET <prefix>?limit=<1–100, default 25>&cursor=<next>&sort=<property | -property>`
+  plus filters: `<property>=` (equals — the bare name only; `<property>.eq=` is
+  refused), `<property>.contains=` (strings, any case),
+  `<property>.gt|gte|lt|lte=`, `<property>.in=` repeated per value.
+  `id` filters and sorts like a model property. ONE sort property; `id` breaks
+  ties; rows with no value sort last.
+- It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
+  `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
+  last page, otherwise sent back as `cursor`.
+- A bad query is 400 with the request-validation envelope: `{ error:
+  "ValidationError", message: "Request validation failed", status: 400,
+  details: [{ location: "query", path: "<parameter>", message }] }` — for an
+  unknown property or operator, an operator the property's type does not take,
+  a value not of its type, a multi-property `sort`, or a cursor that is
+  malformed or from another `sort`. `limit`, `cursor` and `sort` are typed in
+  the request schema and judged first: a `limit` that is no integer or outside
+  1–100, or a repeated `sort` / `cursor`, is the only detail of its response
+  (`must be integer`, `must be >= 1`, `must be <= 100`, `must be string`).
+
+Values come back in the model's declared JSON types on every route: a
+`boolean` property is `true` / `false` (also on SQLite) and is written as one.
+
+**`Crud.Ui`** is the whole admin screen — filter bar, sortable paged table,
+create / edit form, confirmed delete — from two fields, both required:
+`model:` (the SAME model the `Crud.Resource` has) and `basePath:` (where the
+resource is mounted — an app-relative path, as above). It does not reference
+the resource. Place
+it on a `UiReact.App` page:
+
+```yaml
+- type: composite
+  ref: { kind: Crud.Ui, model: !ref Todo, basePath: /api/todos }
+```
+
+When the screen needs chosen columns, a custom cell or fewer filters, replace
+it with what it expands into and edit that: a `Ui.Form`, a `Ui.Table` with
+`rowKey: id`, `create:` and `edit:` both `!ref` that form and `delete: true`,
+and a `Ui.Filters` whose `content:` is the table — all three over the same
+`model` and `basePath`.
+
 ## Web pages — the `html` module
 
 Parse ONCE with `Html.JsonTree` (`html:` text, or `{ bytes, charset? }` for an
@@ -1577,6 +1761,10 @@ Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
   internal `resources:` and delegate one dispatch verb (`invoke:` / `provide:`
   / `run:` / `mount:`); `inputs:` / `result:` are top-level siblings. Each
   dispatch verb takes a `!ref` to a sibling entry (`invoke: !ref body`).
+  `provide:` reaches whatever its target offers — an invocable entry is invoked
+  (with `inputs:`, when written), an entry that is itself a provider is read
+  through its own `provide()` — and `result:` applies to either. Do not write
+  `inputs:` beside a provider target: it takes none, and the read is refused.
 
   EACH `resources:` ENTRY IS AN ORDINARY DECLARATION OF ITS OWN KIND. Write it
   exactly as you would at the top level, and every name that kind binds is in
@@ -1617,10 +1805,14 @@ Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
   CEL (`self.items.map(i, {'handler': i.handler})`): CEL values are data, so
   the reference is lost (`REF_SLOT_COMPUTED`, and `ERR_REF_SLOT_COMPUTED` at
   boot). Declare the field on your kind already shaped as the entry expects,
-  and forward it whole. The same rule holds OUTSIDE a body: an expression at or
-  above a reference slot of a resource whose kind evaluates its fields at
-  creation — a `Telo.Provider`, whose whole root is evaluated once — is refused
-  too. Write such a slot as `!ref`.
+  and forward it whole. The same rule holds OUTSIDE a body: an expression
+  (`!cel`, `!interpolate`) at or above a reference slot in any field the kind
+  evaluates — at creation (a `Telo.Provider`, whose whole root is evaluated
+  once, or a field marked `x-telo-eval: compile`), per call
+  (`x-telo-eval: runtime`), or per request in a field a CEL context covers (an
+  `Http.Api` route's `handler`, the list above a route's
+  `returns[].content.*.encoder`) — is refused too. Write such a slot as `!ref`;
+  a plain value beside or below the slot may still be computed.
 
   A FORWARDED VALUE IS CHECKED AS THE ENTRY'S OWN FIELD: what a user of your
   kind writes there is validated against the entry kind's schema, reference
@@ -1982,6 +2174,19 @@ to say.
   subpaths (`@telorun/kv-store/claim`) are not representable and are a build
   error. Nothing to declare on the consumer side: the dependency is already
   declared as an `imports:` entry.
+- `exports.browser:` (Library only) — OPTIONAL: the ES modules the module ships
+  for a BROWSER, which a controller serves and no kernel imports. A list of
+  entries: `- { specifier: "@acme/badges", path: ./browser/badges.js,
+  source: ./browser/src/badges.tsx, abi: ui-1, external: [react],
+  exports: [StatusPill] }`. `specifier` (required) is the import-map key and the
+  name a resource refers to the entry by; `path` (required) is the built file;
+  `source` (required in a source checkout) is what the kernel builds it from;
+  `abi` is `<family>-<version>`; `external` lists bare specifiers the HOST
+  supplies; `exports` lists the export names resources may name. NEVER write
+  `format`, `os`, `arch` or `libc` on one — a malformed entry or a repeated
+  specifier is `BROWSER_ENTRY_INVALID`. Entries declaring the SAME `external`
+  list are built together and share their common code, which is the only way
+  two entries share a dependency. Nothing needs a `files:` entry.
 - `requires:` — the runtime range this module is verified against, on either
   module kind. `telo:` is a semver range over the MANIFEST SURFACE GENERATION
   (`requires: {telo: ">=0.80.0"}`), one scale every kernel reports; host
@@ -2304,7 +2509,12 @@ resource's:
     body is UNTYPED until the route's `request.schema.body` declares it — an
     undeclared body is whatever the client sent, so nothing about it is
     checked; declare the schema and `request.body.*` is typed, a misspelled
-    field and a mistyped argument become check errors.
+    field and a mistyped argument become check errors. A declared body is
+    validated as the JSON it is, never converted: `"5"` at a `type: integer`
+    property, or a `null` at a typed one, is a 400 naming the property (write
+    `type: [string, "null"]` where `null` is meant). A query, path or header
+    value is text, so it IS read into its declared type — `?limit=5` against
+    `type: integer` arrives as `5`.
   - inside a Run.Sequence step's `inputs:`, `steps.*` and the sequence's own
     `inputs.*` are in scope.
 A resource defined on its own has NONE of these in scope — writing

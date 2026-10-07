@@ -1,0 +1,23 @@
+# A widget naming an export its browser entry does not declare.
+kind: Telo.Library
+metadata:
+  name: BrowserExportUnknownLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose widget names an export the browser entry it points at
+    does not declare.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [widget]
+  browser:
+    - specifier: "@fixture/own"
+      path: ./browser/own.js
+      source: ./browser/src/own.js
+      exports: [Own]
+---
+kind: Kinds.Widget
+metadata:
+  name: widget
+entry: "@fixture/own"
+export: Missing

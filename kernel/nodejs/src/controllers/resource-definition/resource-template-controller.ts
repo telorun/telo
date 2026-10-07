@@ -58,6 +58,8 @@ import { declaringContextOf } from "./declaring-context.js";
 function isDeferredPath(sites: CelEvalSites, path: string): boolean {
   return (
     sites.runtime.some((p) => evalPathCovers(p, path)) ||
+    // An accessor is never evaluated: the child's own creation delivers it.
+    (sites.accessor ?? []).some((site) => evalPathCovers(site.path, path)) ||
     sites.regions.some((scope) => pathMatchesScope(path, scope))
   );
 }
@@ -277,8 +279,8 @@ refPositions?: RefPositionHost): ControllerInstance {
         const actualCap = typeof targetDef?.capability === "string" ? targetDef.capability : "<unknown>";
         return new Error(
           `Template '${resource.metadata.name}': '${role}:' target '${targetKind}/${target}' ` +
-            `has capability '${actualCap}', not ${expected}. Update '${role}:' to a ${expected} kind, ` +
-            `or change the target's kind in 'resources:'.`,
+            `has capability '${actualCap}', not ${expected}. Update '${role}:' to name a ` +
+            `${expected} kind, or change the target's kind in 'resources:'.`,
         );
       };
 
@@ -521,12 +523,29 @@ refPositions?: RefPositionHost): ControllerInstance {
         ...(provideTarget && {
           provide: async () => {
             const entry = dispatchEntry(provideTarget, "provide");
-            if (!entry.instance?.invoke) {
-              throw capabilityError(entry, provideTarget, "provide", "Telo.Invocable");
+            const target = entry.instance as
+              | { invoke?: (inputs: unknown) => unknown; provide?: () => unknown }
+              | undefined;
+            let raw: unknown;
+            if (target?.invoke) {
+              const provideInputs: any =
+                definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()) }) : {};
+              raw = await target.invoke(provideInputs);
+            } else if (target?.provide) {
+              // `provide()` is parameterless, so there is nowhere for `inputs:` to go.
+              if (definition.inputs != null) {
+                throw new Error(
+                  `Template '${resource.metadata.name}': 'provide:' target ` +
+                    `'${entry?.resource?.kind ?? "<unknown-kind>"}/${provideTarget}' is a ` +
+                    `Telo.Provider, not a Telo.Invocable, and 'inputs:' is passed to a ` +
+                    `Telo.Invocable target only. Remove 'inputs:', or change the target's kind ` +
+                    `in 'resources:' to a Telo.Invocable one.`,
+                );
+              }
+              raw = await target.provide();
+            } else {
+              throw capabilityError(entry, provideTarget, "provide", "Telo.Invocable or Telo.Provider");
             }
-            const provideInputs: any =
-              definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()) }) : {};
-            const raw = await entry.instance.invoke(provideInputs);
             if (definition.result == null) return raw;
             return expand(definition.result, { self: celSelfView(getSelf()), result: raw });
           },

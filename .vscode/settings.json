@@ -3,5 +3,5 @@
   "testing.automaticallyOpenTestResults": "neverOpen",
   "cSpell.words": ["Telo"],
   "yaml.schemaStore.enable": false,
-  "telo.version": "0.106.0"
+  "telo.version": "auto"
 }

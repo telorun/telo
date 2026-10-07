@@ -1,0 +1,44 @@
+# A browser entry is resolved by specifier: the one a resource names against the
+# module that declared the resource, the controller's own against the module
+# declaring the kind. In a checkout each is built on first use — the entry, the
+# stylesheet its sources import, and the chunk it shares with the entry built
+# beside it.
+kind: Telo.Application
+metadata:
+  name: BrowserEntryApp
+  version: 1.0.0
+imports:
+  Widgets: ./widgets
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: pill
+    invoke: !ref Widgets.pill
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.pill.result"
+      expected:
+        named:
+          specifier: "@fixture/badges"
+          file: badges.js
+          siblings: [".css", ".js"]
+          digest: true
+          abi: ui-1
+          external: ["@fixture/host"]
+          exports: [StatusPill]
+        shell:
+          specifier: "@fixture/shell"
+          file: shell.js
+          siblings: []
+          digest: true
+          abi: null
+          external: []
+          exports: [mount]
+        sharesChunk: true

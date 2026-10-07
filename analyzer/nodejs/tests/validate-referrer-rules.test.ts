@@ -147,6 +147,28 @@ describe("referrer rules — evaluation", () => {
     expect(findings).toHaveLength(2);
   });
 
+  it("reads the member a comprehension's variable names, not the whole element", () => {
+    const schema = {
+      ...REFERENCE_SCHEMA,
+      "x-telo-referrer-rules": [
+        {
+          referrer: "HttpServer.Server",
+          condition: cel('referrer.mounts.all(m, m.prefix.startsWith("/"))'),
+          code: "MOUNT_PREFIX_RELATIVE",
+          message: "mounts something at a relative prefix",
+        },
+      ],
+    };
+    const expression = { __compiled: true, source: "variables.enabled" };
+    const findings = (mounts: unknown[]) =>
+      evaluateReferrerRules(reference(), schema, [referrer(server({ mounts }))], kindMatches);
+
+    expect(findings([{ prefix: "docs", when: expression }])).toMatchObject([{ kind: "violation" }]);
+    expect(findings([{ prefix: expression }])).toMatchObject([
+      { kind: "skipped", dynamic: { path: "referrer.mounts[0].prefix" } },
+    ]);
+  });
+
   it("reports the skip when a value the condition reads holds CEL", () => {
     const findings = evaluateReferrerRules(
       reference(),

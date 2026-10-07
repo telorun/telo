@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     End-to-end: a templated Crud.Resource mounted on an Http.Server exercises the
-    full REST lifecycle (create / list / read / update / delete / 404) against a
+    full REST lifecycle (create / list envelope / read / replace / delete / 404) against a
     SQLite table. Validates the persistent-target template controller, the
     `mount:` dispatch, and nested templated handlers resolving across imports.
 imports:
@@ -47,7 +47,7 @@ schema:
     text: { type: string, minLength: 1 }
     done: { type: integer, enum: [ 0, 1 ] }
     # camelCase property — the column is its snake_case form `due_date`.
-    dueDate: { type: string }
+    dueDate: { type: string, maxLength: 10 }
 ---
 kind: Crud.Resource
 metadata: { name: todos }
@@ -131,15 +131,35 @@ steps:
       url: http://127.0.0.1:8971/todos
       method: POST
       body: { done: 1 }
+  # A value the model refuses is named by its property, in the validator's own
+  # words — which is what lets a form mark the field it was typed into.
+  - name: tooLongCreate
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos
+      method: POST
+      body: { text: "Buy bread", dueDate: "2026-07-01T09:00" }
   - name: assertBadCreate
     inputs:
-      status: !cel "steps.badCreate.result.status"
+      actual:
+        missing:
+          status: !cel "steps.badCreate.result.status"
+          body: !cel "steps.badCreate.result.body"
+        tooLong: !cel "steps.tooLongCreate.result.body.details"
+      expected:
+        missing:
+          status: 400
+          body:
+            error: ValidationError
+            message: Request validation failed
+            status: 400
+            details:
+              - { location: body, path: text, message: is a required property }
+        tooLong:
+          - { location: body, path: dueDate, message: must NOT have more than 10 characters }
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 400 } }
-        required: [ status ]
+      kind: Assert.Equals
 
   - name: list
     inputs: {}
@@ -147,18 +167,22 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8971/todos
       method: GET
+  # The list answers with an envelope: one page of rows, the count of every
+  # match, and no cursor because nothing follows.
   - name: assertList
     inputs:
-      status: !cel "steps.list.result.status"
-      text: !cel "steps.list.result.body[0].text"
+      actual:
+        status: !cel "steps.list.result.status"
+        body: !cel "steps.list.result.body"
+      expected:
+        status: 200
+        body:
+          rows:
+            - { id: 1, text: "Buy milk", done: 0, dueDate: "2026-07-01" }
+          total: 1
+          next: null
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          status: { const: 200 }
-          text: { const: "Buy milk" }
-        required: [ status, text ]
+      kind: Assert.Equals
 
   - name: read
     inputs: {}
@@ -183,57 +207,105 @@ steps:
           dueDate: { const: "2026-07-01" }
         required: [ status, done, dueDate ]
 
+  # PUT replaces the row: the body is a whole record, and `dueDate`, which it
+  # leaves out, is cleared — an optional property, so the row read back has no
+  # such key.
   - name: update
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8971/todos/1
       method: PUT
-      body: { done: 1 }
-  - name: assertUpdated
-    inputs:
-      status: !cel "steps.update.result.status"
-    invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 200 } }
-        required: [ status ]
-
+      body: { text: "Buy milk", done: 1 }
   - name: readUpdated
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8971/todos/1
       method: GET
-  - name: assertUpdatedRow
+  - name: assertUpdated
     inputs:
-      done: !cel "steps.readUpdated.result.body.done"
+      actual:
+        status: !cel "steps.update.result.status"
+        echoed: !cel "steps.update.result.body"
+        row: !cel "steps.readUpdated.result.body"
+      expected:
+        status: 200
+        echoed: { text: "Buy milk", done: 1 }
+        row: { id: 1, text: "Buy milk", done: 1 }
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties: { done: { const: 1 } }
-        required: [ done ]
+      kind: Assert.Equals
 
-  # `done: 5` is outside the model's enum [0, 1] — the partial PUT schema still
-  # type-checks each supplied column, so this is rejected with 400.
+  # A body without the required `text` is no whole record: refused naming it,
+  # and the row is left as it was.
+  - name: partialUpdate
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PUT
+      body: { done: 0 }
+  # `done: 5` is outside the model's enum [0, 1].
   - name: badUpdate
     inputs: {}
     invoke:
       kind: HttpClient.Request
       url: http://127.0.0.1:8971/todos/1
       method: PUT
-      body: { done: 5 }
-  - name: assertBadUpdate
-    inputs:
-      status: !cel "steps.badUpdate.result.status"
+      body: { text: "Buy milk", done: 5 }
+  # A `null` is not a way to clear a property: the body is validated as the
+  # JSON it is, so it is refused naming the property. Leaving it out clears it.
+  - name: nullUpdate
+    inputs: {}
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 400 } }
-        required: [ status ]
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: PUT
+      body: { text: "Buy oat milk", done: 0, dueDate: null }
+  - name: readAfterRefusals
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/1
+      method: GET
+  - name: updateMissing
+    inputs: {}
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8971/todos/99
+      method: PUT
+      body: { text: "Nobody" }
+  - name: assertRefusedUpdates
+    inputs:
+      actual:
+        partial:
+          status: !cel "steps.partialUpdate.result.status"
+          details: !cel "steps.partialUpdate.result.body.details"
+        bad:
+          status: !cel "steps.badUpdate.result.status"
+          details: !cel "steps.badUpdate.result.body.details"
+        nulled:
+          status: !cel "steps.nullUpdate.result.status"
+          details: !cel "steps.nullUpdate.result.body.details"
+        row: !cel "steps.readAfterRefusals.result.body"
+        missing: !cel "steps.updateMissing.result.status"
+      expected:
+        partial:
+          status: 400
+          details:
+            - { location: body, path: text, message: is a required property }
+        bad:
+          status: 400
+          details:
+            - { location: body, path: done, message: must be equal to one of the allowed values }
+        nulled:
+          status: 400
+          details:
+            - { location: body, path: dueDate, message: must be string }
+        row: { id: 1, text: "Buy milk", done: 1 }
+        missing: 404
+    invoke:
+      kind: Assert.Equals
 
   - name: delete
     inputs: {}

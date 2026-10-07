@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: UiStaticRefusalsTest
+  version: 1.0.0
+  description: |
+    What the vocabulary refuses before anything runs, and what each composite
+    refuses itself when a manifest reaches it without that check: a source
+    filter, a form field or a filter naming a property the model does not
+    declare, and a filter operator the property's type cannot carry. A
+    misspelled node type lists the valid ones, a stray key is named, and a
+    component's properties are held to what its export declares.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref rules
+  - !ref sourceFilterAtRuntime
+  - !ref formFieldAtRuntime
+  - !ref filterPropertyAtRuntime
+  - !ref filterOperatorAtRuntime
+  - !ref shapes
+---
+kind: Assert.Manifest
+metadata:
+  name: rules
+source: ./__fixtures__/invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Table/sourceFilter at 'source.filters.done': filters its source by a property the row model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formField at 'fields[1]': lists a field for a property the model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterProperty at 'fields[0]': filters by a property the model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterOperator at 'fields[0]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata:
+  name: sourceFilterAtRuntime
+source: ./__fixtures__/invalid/source-filter/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Table 'sourceFilter': 'source.filters.done' filters its source by a property the row model does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: formFieldAtRuntime
+source: ./__fixtures__/invalid/form-field/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'formField': 'fields[1]' lists a field for a property the model does not declare ('title')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterPropertyAtRuntime
+source: ./__fixtures__/invalid/filter-property/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterProperty': 'fields[0]' filters by a property the model does not declare ('status')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorAtRuntime
+source: ./__fixtures__/invalid/filter-operator/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterOperator': 'fields[0]' uses an operator the property's type does not support ('contains' on 'isDone', declared boolean)"
+---
+kind: Assert.Manifest
+metadata:
+  name: shapes
+source: ./__fixtures__/invalid/shapes/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | image | svg | composite)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Component/pill: `props` does not satisfy the type declared at `/component/props`: / must NOT have additional properties ('colour' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/both: /columns/0 must match exactly one schema in oneOf"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Table/both: !cel: 'row.txt' is not defined (available: text, isDone)"

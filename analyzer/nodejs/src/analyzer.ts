@@ -197,7 +197,10 @@ import {
   NO_CEL_EVAL_SITES,
   type CelEvalSites,
 } from "./eval-paths.js";
-import { computedRefSlots, refSlotComputedReason } from "./ref-slot-computed.js";
+import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
+import { accessorFields, accessorProblems, type AccessorProblem } from "./accessor-binding.js";
+import { browserExportProblems, browserExportSites } from "./browser-export-slot.js";
+import { readBrowserEntries, type BrowserEntry } from "./module-browser.js";
 import {
   BINDINGS_ANNOTATION,
   bindingContextProperties,
@@ -1361,6 +1364,40 @@ export class StaticAnalyzer {
       defs.register(normalized);
     }
 
+    /** A named shape: a resource whose kind's capability is `Telo.Type`. */
+    const namedShapeOf = (
+      m: ResourceManifest,
+    ): { ownModule: string; typeName: string; scope: AliasResolver } | undefined => {
+      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+      if (!ownModule || !m.metadata?.name || typeof m.schema !== "object" || m.schema === null) {
+        return undefined;
+      }
+      const scope = declaringModuleScope(ownModule, aliases, { aliasesByModule, rootModules });
+      const canonicalKind = scope.resolveKind(m.kind as string) ?? (m.kind as string);
+      if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") return undefined;
+      return { ownModule, typeName: m.metadata.name as string, scope };
+    };
+
+    // A named shape is part of every kind schema that `$ref`s it, and the
+    // reference reach follows it — so the shapes are announced to the reach
+    // BEFORE the passes that read it (inline extraction, `!ref` resolution),
+    // with the reference slots they declare canonicalized in the declaring
+    // module's scope exactly as a definition's are. Registration proper stays
+    // Phase 2.6, which takes each schema once those passes resolved it.
+    for (const m of manifests) {
+      const shape = namedShapeOf(m);
+      if (!shape) continue;
+      const issues = resolveSchemaRefKinds(m, shape.scope);
+      if (rootModules.has(shape.ownModule)) {
+        refConstraintIssues.push(...issues);
+        refSlotIssues.push(...validateRefSlotDeclarations(m));
+      }
+      defs.announceNamedShape(
+        canonicalTypeSchemaId(shape.ownModule, shape.typeName),
+        m.schema as Record<string, any>,
+      );
+    }
+
     /**
      * What a peer rule's `peers:` pointer names in the kind its `referrer:`
      * filters to.
@@ -1686,17 +1723,9 @@ export class StaticAnalyzer {
     // refs to the canonical id so AJV resolves them at compile time. Register
     // and validate BEFORE the rewrite, while the authored authority is intact.
     for (const m of allManifests) {
-      const ownModule = (m.metadata as { module?: string } | undefined)?.module;
-      if (!ownModule || !m.metadata?.name || typeof m.schema !== "object" || m.schema === null) {
-        continue;
-      }
-      const scopeResolver = declaringModuleScope(ownModule, aliases, {
-        aliasesByModule,
-        rootModules,
-      });
-      const canonicalKind = scopeResolver.resolveKind(m.kind as string) ?? (m.kind as string);
-      if (defs.resolve(canonicalKind)?.capability !== "Telo.Type") continue;
-      const typeName = m.metadata.name as string;
+      const shape = namedShapeOf(m);
+      if (!shape) continue;
+      const { ownModule, typeName } = shape;
       const registered = defs.registerNamedTypeSchema(
         canonicalTypeSchemaId(ownModule, typeName),
         m.schema as Record<string, any>,
@@ -2859,6 +2888,28 @@ export class StaticAnalyzer {
     // startup, where observed state cannot exist yet. Both questions are
     // `celEvalModeAt`, which the editor asks of the same sites.
     let celSites: CelEvalSites = NO_CEL_EVAL_SITES;
+    /** The browser entries of the module that declared a resource — its module
+     *  doc's `exports.browser`. A resource with no module stamp is the entry's. */
+    const browserEntriesByModule = new Map<string | undefined, readonly BrowserEntry[]>();
+    const browserEntriesOf = (resource: ResourceManifest): readonly BrowserEntry[] => {
+      const module = (resource.metadata as { module?: string } | undefined)?.module;
+      let entries = browserEntriesByModule.get(module);
+      if (!entries) {
+        const doc = allManifests.find(
+          (candidate) =>
+            isModuleKind(candidate.kind) &&
+            (module === undefined
+              ? rootModules.has(candidate.metadata?.name as string)
+              : candidate.metadata?.name === module),
+        );
+        entries = doc ? readBrowserEntries(doc).entries : [];
+        browserEntriesByModule.set(module, entries);
+      }
+      return entries;
+    };
+    /** The current resource's accessor fields, by concrete path, each with why
+     *  its value cannot stay. */
+    let accessorsByPath = new Map<string, AccessorProblem[]>();
     // The bindings field this kind declares (if any), read by the CEL sites that
     // see the names it introduces.
     let celBindingSites: BindingSites | undefined;
@@ -3113,10 +3164,56 @@ export class StaticAnalyzer {
           // Entry-module-scoped: a dependency's declaration is not the
           // consumer's to fix.
           const computedOwnModule = (m.metadata as { module?: string } | undefined)?.module;
+          // AN ACCESSOR FIELD HOLDS A PLAIN CHAIN OR A LITERAL. A chain rooted
+          // at a name the field does not bind is left to `onCel`, where the
+          // expression's own verdict says whether the name exists at all.
+          accessorsByPath = new Map();
+          if (celRuleApplies) {
+            for (const field of accessorFields(m as Record<string, unknown>, celSites)) {
+              const problems = accessorProblems(field);
+              accessorsByPath.set(field.path, problems);
+              if (computedOwnModule && !rootModules.has(computedOwnModule)) continue;
+              for (const problem of problems) {
+                if (problem.unboundRoot !== undefined) continue;
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: "ACCESSOR_NOT_PLAIN_CHAIN",
+                  source: SOURCE,
+                  message: `${m.kind}/${m.metadata?.name as string}: ${problem.message}`,
+                  data: {
+                    resource: { kind: m.kind, name: m.metadata?.name as string },
+                    filePath: (m.metadata as { source?: string } | undefined)?.source,
+                    path: problem.path,
+                  },
+                });
+              }
+            }
+          }
+          // A value naming a browser entry's export is checked against the
+          // entries of the module that declared the resource.
+          if (e.definition && (!computedOwnModule || rootModules.has(computedOwnModule))) {
+            const kindSchema = defs.effectiveSchemaOf(e.definition) as Record<string, any> | undefined;
+            const sites = kindSchema ? browserExportSites(kindSchema, m) : [];
+            if (sites.length > 0) {
+              for (const problem of browserExportProblems(sites, browserEntriesOf(m))) {
+                diagnostics.push({
+                  severity: DiagnosticSeverity.Error,
+                  code: problem.code,
+                  source: SOURCE,
+                  message: `${m.kind}/${m.metadata?.name as string}: ${problem.message}`,
+                  data: {
+                    resource: { kind: m.kind, name: m.metadata?.name as string },
+                    filePath: (m.metadata as { source?: string } | undefined)?.source,
+                    path: problem.path,
+                  },
+                });
+              }
+            }
+          }
           if (celRuleApplies && (!computedOwnModule || rootModules.has(computedOwnModule))) {
             for (const slot of computedRefSlots(
               defs.referencePositions(m, aliases, aliasesByModule),
-              (path) => celEvalModeAt(celSites, path) === "compile",
+              (path) => evaluatedField(celSites, path),
             )) {
               diagnostics.push({
                 severity: DiagnosticSeverity.Error,
@@ -3143,6 +3240,16 @@ export class StaticAnalyzer {
           // entry's view unless this kind evaluates it at compile time.
           if (forwardViews?.defersCel(m, path)) return;
 
+          // An accessor field is typed like any CEL leaf and never evaluated.
+          // Only a plain chain written AS the field's value reaches the checker;
+          // anything else there is already reported for the resource.
+          const evalMode = celRuleApplies ? celEvalModeAt(celSites, path) : undefined;
+          const accessor = evalMode === "accessor";
+          const accessorVerdict = accessor ? accessorsByPath.get(path) : undefined;
+          if (accessor && (!accessorVerdict || accessorVerdict.some((p) => p.unboundRoot === undefined))) {
+            return;
+          }
+
           // A tag holding CEL (`!cel`, `!interpolate`, `!sql`) in a field with no
           // `x-telo-eval` / `x-telo-context` is never evaluated — the runtime
           // reads it as a literal (e.g. a `concurrency` `!cel` that silently
@@ -3150,10 +3257,9 @@ export class StaticAnalyzer {
           // pass as valid CEL. Inline resources (resource-wide invocation
           // context) carry CEL the kernel evaluates.
           if (
-            celRuleApplies &&
             expressions.length > 0 &&
             celScope.invocationContextSchema === undefined &&
-            celEvalModeAt(celSites, path) === null &&
+            evalMode === null &&
             !pathCrossesNestedResource(m, path)
           ) {
             diagnostics.push({
@@ -3192,7 +3298,7 @@ export class StaticAnalyzer {
                     : read.name,
               );
 
-              if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
+              if (evalMode === "compile") {
                 diagnostics.push({
                   severity: DiagnosticSeverity.Error,
                   code: "OBSERVED_STATE_IN_STARTUP_FIELD",
@@ -3376,7 +3482,7 @@ export class StaticAnalyzer {
           // intent (a boot timestamp, a run id), so it warns rather than
           // blocking. The engine reports which calls re-evaluate; the eval mode
           // is manifest policy and stays here.
-          if (celRuleApplies && celEvalModeAt(celSites, path) === "compile") {
+          if (evalMode === "compile") {
             // A module call is named by the chain to the leaf that makes it
             // volatile (`Self.stamp → now()`), so the author sees which call did.
             const volatile = [
@@ -3401,7 +3507,25 @@ export class StaticAnalyzer {
             }
           }
 
+          // A chain rooted outside the field's bindings names nothing its
+          // consumer can resolve. Where the name is not in scope at all the
+          // expression's own verdict says so; a kernel global is in scope, and
+          // only this rule refuses it.
+          const unbound = accessorVerdict?.find((p) => p.unboundRoot !== undefined);
+          if (unbound && !result.diagnostics.some((f) => f.code === "CEL_UNKNOWN_IDENTIFIER")) {
+            diagnostics.push({
+              severity: DiagnosticSeverity.Error,
+              code: "ACCESSOR_NOT_PLAIN_CHAIN",
+              source: SOURCE,
+              message: `${m.kind}/${resource.name}: ${unbound.message}`,
+              data: { resource, filePath, path },
+            });
+          }
+
           for (const f of result.diagnostics) {
+            // The consumer resolves an accessor by path, null-propagating, so
+            // an unguarded read through a nullable value is not a fault there.
+            if (accessor && f.code === "CEL_NULLABLE_ACCESS") continue;
             // An engine's fix is always a whole-scalar replacement — a tag with
             // holes re-anchors a hole's repair onto its text itself.
             const fix = f.fix;

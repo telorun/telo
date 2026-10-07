@@ -12,7 +12,9 @@
 //! specifier), `materializeNative` (`ctx.resolveNativeFile`) and `materializeAll`
 //! / `warmPlan` (`telo install`'s warm). Node's in-flight promise map and
 //! `transferred` progress flag become a completed-layer memo: this kernel is
-//! synchronous and reports no download progress.
+//! synchronous and reports no download progress. `materializeBrowser` is absent
+//! too: a `browser` layer is read off the index like any other and never
+//! materialized here, since nothing this kernel hosts serves one.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -621,6 +623,34 @@ mod tests {
 
     fn linux() -> ArtifactSelector {
         selector("dylib", &[(PlatformAxis::Os, "linux"), (PlatformAxis::Arch, "amd64")])
+    }
+
+    /// A `browser` layer is the page's code, which nothing this kernel hosts
+    /// serves: neither a controller resolution nor a module-file read fetches it.
+    #[test]
+    fn never_materializes_a_browser_layer() {
+        let dir = tempfile::tempdir().unwrap();
+        let controller_files = vec![file("rust/linux/controller.so", "controller")];
+        let browser_files = vec![file("browser/ui.js", "export {}")];
+        let common_files = vec![file("NOTICE", "notice")];
+        let controller = layer(LayerRole::Controller, '1', &controller_files, Some(linux()));
+        let browser = layer(LayerRole::Browser, '2', &browser_files, Some(selector("esm", &[])));
+        let common = layer(LayerRole::Common, '3', &common_files, None);
+        let expected = vec![controller.blob.clone(), common.blob.clone()];
+        let (artifact, fetcher) = artifact(
+            dir.path(),
+            vec![
+                (controller, controller_files),
+                (browser, browser_files),
+                (common, common_files),
+            ],
+        );
+
+        artifact.materialize_controller(&linux()).unwrap().unwrap();
+        artifact.materialize_module_files().unwrap();
+
+        assert_eq!(fetched(&fetcher), expected);
+        assert!(!dir.path().join("browser").exists());
     }
 
     /// By exact selector, both code roles plus `common`, and nothing else — not

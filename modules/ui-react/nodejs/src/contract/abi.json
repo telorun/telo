@@ -1,0 +1,4 @@
+{
+  "specifiers": ["react", "react/jsx-runtime", "react-dom", "@telorun/ui-react"],
+  "hostFields": ["location", "navigate", "href", "fetch", "notifyChanged", "onChanged"]
+}

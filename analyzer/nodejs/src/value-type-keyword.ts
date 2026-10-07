@@ -55,6 +55,7 @@ const codegen: CodegenTag = ajvExports._ ?? (AjvNS as any)._;
  */
 export const ANNOTATION_KEYWORDS = [
   "x-telo-bindings-from",
+  "x-telo-browser-export",
   "x-telo-catches-for",
   "x-telo-context",
   "x-telo-context-collection-from",

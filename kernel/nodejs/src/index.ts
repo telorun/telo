@@ -75,6 +75,14 @@ export {
   lastBuildInputs,
   type SiblingLibrary,
 } from "./controller-loaders/source-bundle-builder.js";
+export {
+  BROWSER_SIBLINGS_SUFFIX,
+  buildBrowserEntries,
+  readBrowserSiblings,
+  type BrowserBuildEntry,
+  type BrowserBuildGroup,
+  type BuiltBrowserGroup,
+} from "./controller-loaders/browser-bundle-builder.js";
 export type {
   PayloadLayer,
   PublishBundle,

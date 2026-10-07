@@ -163,6 +163,64 @@ describe("resource rules — evaluation", () => {
     expect(evaluateResourceRules(withReadCel, schema)).toMatchObject([{ kind: "skipped" }]);
   });
 
+  describe("a member read through a comprehension's variable", () => {
+    const schema = {
+      type: "object",
+      properties: { routes: { type: "array", items: { type: "object" } } },
+      "x-telo-resource-rules": [
+        {
+          condition: cel('self.routes.all(r, r.path.startsWith("/"))'),
+          code: "ROUTE_PATH_RELATIVE",
+          message: "a route's path does not start with '/'",
+        },
+      ],
+    };
+    const expression = { __compiled: true, source: "request.query.q" };
+
+    it("runs when an unrelated field of an element holds an expression", () => {
+      const findings = evaluateResourceRules(
+        resource({
+          routes: [
+            { path: "/ok", handler: expression },
+            { path: "relative", inputs: { q: expression } },
+          ],
+        }),
+        schema,
+      );
+      expect(findings.map((f) => f.kind)).toEqual(["violation"]);
+    });
+
+    it("is skipped, naming the member, when that member holds an expression", () => {
+      const findings = evaluateResourceRules(
+        resource({ routes: [{ path: "/ok" }, { path: expression }] }),
+        schema,
+      );
+      expect(findings).toMatchObject([
+        { kind: "skipped", dynamic: { path: "self.routes[1].path", what: "a CEL expression" } },
+      ]);
+    });
+
+    it("still reads every element whole where the variable is used bare", () => {
+      const bare = {
+        ...schema,
+        "x-telo-resource-rules": [
+          {
+            condition: cel("self.routes.all(r, size(r) > 0)"),
+            code: "ROUTE_EMPTY",
+            message: "a route declares nothing",
+          },
+        ],
+      };
+      const findings = evaluateResourceRules(
+        resource({ routes: [{ path: "/ok", handler: expression }] }),
+        bare,
+      );
+      expect(findings).toMatchObject([
+        { kind: "skipped", dynamic: { path: "self.routes[0].handler" } },
+      ]);
+    });
+  });
+
   it("reports a throwing rule as a defect in the rule, at no element's expense", () => {
     const findings = evaluateResourceRules(resource({ columns: { id: {} } }), {
       ...TABLE_SCHEMA,

@@ -63,7 +63,7 @@ pnpm run test --include modules/sql/tests/query.yaml --include 'modules/sqlite/t
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `include` | string[] | no | Glob patterns to discover test manifests. Resolved relative to this manifest's directory. Defaults to `["**/tests/*.yaml"]`. |
-| `exclude` | string[] | no | Glob patterns to exclude. Defaults to `["**/__fixtures__/**"]`. |
+| `exclude` | string[] | no | Glob patterns to exclude. Defaults to `["**/__fixtures__/**"]`. A pattern naming a directory's whole contents (`dir/**` or `dir/`) also stops discovery from descending into that directory, so a large excluded tree costs nothing to skip; `node_modules`, `.git` and `.telo` are never entered. |
 | `filter` | string | no | Substring filter applied to discovered paths. An empty string filters nothing. |
 | `concurrency` | integer | no | Maximum number of tests to run in parallel (minimum `1`). Defaults to `3` — small enough that Node's single JS thread isn't the bottleneck (which would inflate per-test wall-clock without meaningfully shortening the total), large enough to overlap I/O across a few tests. Each test still runs in its own isolated kernel. When more than one test is in the run, each test's stdout/stderr is buffered per-test and emitted only if the test fails (passing tests' output is dropped); single-test runs stream output live to the parent without buffering. |
 

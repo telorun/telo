@@ -26,15 +26,17 @@ pub enum LayerRole {
     Controller,
     Library,
     Native,
+    Browser,
     Assets,
     Common,
 }
 
 impl LayerRole {
-    pub const ALL: [LayerRole; 5] = [
+    pub const ALL: [LayerRole; 6] = [
         LayerRole::Controller,
         LayerRole::Library,
         LayerRole::Native,
+        LayerRole::Browser,
         LayerRole::Assets,
         LayerRole::Common,
     ];
@@ -44,6 +46,7 @@ impl LayerRole {
             LayerRole::Controller => "controller",
             LayerRole::Library => "library",
             LayerRole::Native => "native",
+            LayerRole::Browser => "browser",
             LayerRole::Assets => "assets",
             LayerRole::Common => "common",
         }
@@ -53,10 +56,16 @@ impl LayerRole {
         Self::ALL.into_iter().find(|role| role.name() == name)
     }
 
-    /// `controller`, `library` and `native` are keyed by a selector, one layer
-    /// per selector; `assets` and `common` are singletons.
+    /// `controller`, `library`, `native` and `browser` are keyed by a selector,
+    /// one layer per selector; `assets` and `common` are singletons. A `browser`
+    /// layer holds the ES modules of the module doc's `exports.browser:` entries
+    /// — served to a page, never imported by a kernel — under `format: esm` plus
+    /// the entry's `abi`.
     pub fn carries_selector(self) -> bool {
-        matches!(self, LayerRole::Controller | LayerRole::Library | LayerRole::Native)
+        matches!(
+            self,
+            LayerRole::Controller | LayerRole::Library | LayerRole::Native | LayerRole::Browser
+        )
     }
 }
 

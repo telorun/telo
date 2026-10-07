@@ -1,9 +1,9 @@
-import { selectByPatterns } from "@telorun/glob";
 import type { ResourceContext, RuntimeRun, Runnable, Stream } from "@telorun/sdk";
 import { Static, Type } from "@sinclair/typebox";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { discoverTests } from "./test-discovery.js";
 
 const DEFAULT_CONCURRENCY = 3;
 
@@ -42,48 +42,6 @@ function createColors(stream: NodeJS.WritableStream) {
     yellow: (t: string) => c("33", t),
     dim: (t: string) => c("2", t),
   };
-}
-
-function discoverTests(
-  baseDir: string,
-  include: string[],
-  exclude: string[],
-  filter?: string,
-): string[] {
-  const entries = fs.readdirSync(baseDir, { recursive: true, encoding: "utf8" });
-  const rels = entries.map((entry) => entry.replace(/\\/g, "/"));
-
-  // Match with the monorepo's single glob engine. `applyDefaultIgnore: false`
-  // skips only the soft tier; the hard tier still denies `node_modules` — the
-  // symlinked workspace dupes / vendored copies that must never run as
-  // workspace tests — so discovery only adds the user-facing `exclude`
-  // (defaults to __fixtures__).
-  const selected = selectByPatterns(rels, include, {
-    applyDefaultIgnore: false,
-    exclude,
-  });
-
-  // Dedupe by realpath: pnpm symlinks workspace packages into multiple
-  // node_modules locations, so the same test file can be reached via
-  // many paths. Without dedupe, recursive traversal yields the same yaml
-  // dozens of times under different prefixes.
-  const seen = new Set<string>();
-  const results: string[] = [];
-  for (const rel of selected) {
-    if (filter && !rel.includes(filter)) continue;
-    const abs = path.resolve(baseDir, rel);
-    let real: string;
-    try {
-      real = fs.realpathSync(abs);
-    } catch {
-      real = abs;
-    }
-    if (seen.has(real)) continue;
-    seen.add(real);
-    results.push(abs);
-  }
-  results.sort();
-  return results;
 }
 
 /** POSIX separators, matching how discovery already normalizes the paths it

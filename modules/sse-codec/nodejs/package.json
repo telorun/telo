@@ -1,9 +1,9 @@
 {
-  "name": "@telorun/sse-codec-build",
+  "name": "@telorun/sse-codec",
   "version": "0.12.0",
   "license": "MIT",
   "private": true,
-  "description": "Build-only package for the std/sse-codec module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
+  "description": "The std/sse-codec module's controller bundle and the surface a dependent module's controller reaches through `@telorun/sse-codec` (the module's `exports.code:` entry). Never published to npm — the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.lib.json"
@@ -13,5 +13,13 @@
     "@types/node": "^20.0.0",
     "esbuild": "catalog:",
     "typescript": "^5.0.0"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
   }
 }

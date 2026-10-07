@@ -1,0 +1,105 @@
+# A reference slot a NAMED SHAPE declares — reached through `Self` and through
+# an import alias, at depth 1 and depth 3 of the shape's recursion, and inside a
+# field the kind evaluates per call — marked `x-telo-eval: runtime`, or covered
+# by a region alone: a `!ref` there arrives at the controller as the live
+# instance, and an inline declaration there is extracted and runs.
+kind: Telo.Application
+metadata:
+  name: RefSlotShapeApp
+  version: 1.0.0
+imports:
+  Shape: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref regional
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: five
+value: 5
+---
+kind: Shape.ViaRuntimeShape
+metadata:
+  name: perCall
+tree:
+  label: !cel "inputs.prefix + '-root'"
+  target: !ref five
+  children:
+    - label: !cel "inputs.prefix + '-leaf'"
+      target: { kind: Run.Value, value: 8 }
+---
+kind: Shape.ViaRegionShape
+metadata:
+  name: regional
+prefix: r
+handler: !ref five
+tree:
+  label: !cel "request.prefix + '-root'"
+  target: !ref five
+  children:
+    - label: !cel "request.prefix + '-leaf'"
+      target: { kind: Run.Value, value: 9 }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: viaSelf
+    invoke:
+      kind: Shape.ViaSelfShape
+      tree:
+        label: root
+        target: !ref five
+        children:
+          - label: middle
+            children:
+              - label: leaf
+                target: { kind: Run.Value, value: 6 }
+  - name: viaAlias
+    invoke:
+      kind: Shape.ViaAliasShape
+      tree:
+        label: root
+        target: { kind: Run.Value, value: 7 }
+        children:
+          - label: middle
+            children:
+              - label: leaf
+                target: !ref five
+  - name: viaRuntime
+    invoke: !ref perCall
+    inputs: { prefix: a }
+  - name: viaRuntimeAgain
+    invoke: !ref perCall
+    inputs: { prefix: b }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {
+          'viaSelf': steps.viaSelf.result,
+          'viaAlias': steps.viaAlias.result,
+          'viaRuntime': steps.viaRuntime.result,
+          'viaRuntimeAgain': steps.viaRuntimeAgain.result,
+          'viaRegion': resources.regional.status.nodes,
+          'viaRegionHandler': resources.regional.status.handler
+        }
+      expected:
+        viaSelf:
+          - { label: root, injected: true, result: 5 }
+          - { label: leaf, injected: true, result: 6 }
+        viaAlias:
+          - { label: root, injected: true, result: 7 }
+          - { label: leaf, injected: true, result: 5 }
+        viaRuntime:
+          - { label: a-root, injected: true, result: 5 }
+          - { label: a-leaf, injected: true, result: 8 }
+        viaRuntimeAgain:
+          - { label: b-root, injected: true, result: 5 }
+          - { label: b-leaf, injected: true, result: 8 }
+        viaRegion:
+          - { label: r-root, injected: true, result: 5 }
+          - { label: r-leaf, injected: true, result: 9 }
+        viaRegionHandler: 5

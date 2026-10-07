@@ -24,12 +24,15 @@ export type FrameLabel = "create" | "init" | "run";
 interface Registration {
   readonly reason: string;
   readonly inverse: Inverse;
+  readonly frame: Frame;
   disposed: boolean;
 }
 
+/** Entries in registration order. A set, so a disposed one leaves in constant
+ *  time however many are live. */
 interface Frame {
   readonly label: FrameLabel;
-  readonly entries: Registration[];
+  readonly entries: Set<Registration>;
 }
 
 /** One inverse that refused, kept with the reason its author gave the effect. */
@@ -126,7 +129,14 @@ export class EffectScope {
   }
 
   openFrame(label: FrameLabel): void {
-    this.frames.push({ label, entries: [] });
+    this.frames.push({ label, entries: new Set() });
+  }
+
+  /** How many registered inverses the open frames still hold. */
+  get pending(): number {
+    let count = 0;
+    for (const frame of this.frames) count += frame.entries.size;
+    return count;
   }
 
   /** Start a chain. Nothing runs until it is executed. */
@@ -144,8 +154,7 @@ export class EffectScope {
    */
   register(reason: string, inverse: Inverse): () => Promise<void> {
     this.assertOpen(reason);
-    const entry: Registration = { reason, inverse, disposed: false };
-    this.current().entries.push(entry);
+    const entry = this.record(reason, inverse);
     return () => this.disposeEntries([entry]);
   }
 
@@ -160,9 +169,7 @@ export class EffectScope {
   async execute(steps: readonly Step[]): Promise<EffectResult<unknown>> {
     const registered: Registration[] = [];
     const push = (reason: string, inverse: Inverse): void => {
-      const entry: Registration = { reason, inverse, disposed: false };
-      this.current().entries.push(entry);
-      registered.push(entry);
+      registered.push(this.record(reason, inverse));
     };
 
     let value: unknown = undefined;
@@ -221,7 +228,7 @@ export class EffectScope {
   async unwindFrame(): Promise<RecoveryFailure[]> {
     const frame = this.frames.pop();
     if (!frame) return [];
-    return this.runInverses(frame.entries);
+    return this.runInverses([...frame.entries].reverse());
   }
 
   /**
@@ -241,13 +248,25 @@ export class EffectScope {
     return failures;
   }
 
-  private async runInverses(entries: Registration[]): Promise<RecoveryFailure[]> {
+  private record(reason: string, inverse: Inverse): Registration {
+    const frame = this.current();
+    const entry: Registration = { reason, inverse, frame, disposed: false };
+    frame.entries.add(entry);
+    return entry;
+  }
+
+  /** Run each inverse not yet run, in the order given, and take it off its
+   *  frame. `disposed` is set before the inverse runs, so an entry disposed
+   *  while an unwind is on its way to it is skipped there, and one the unwind
+   *  has reached is a no-op to dispose. */
+  private async runInverses(newestFirst: Registration[]): Promise<RecoveryFailure[]> {
     const wasUnwinding = this.unwinding;
     this.unwinding = true;
     const failures: RecoveryFailure[] = [];
-    for (const entry of [...entries].reverse()) {
+    for (const entry of newestFirst) {
       if (entry.disposed) continue;
       entry.disposed = true;
+      entry.frame.entries.delete(entry);
       try {
         await entry.inverse();
       } catch (error) {
@@ -259,7 +278,7 @@ export class EffectScope {
   }
 
   private async disposeEntries(entries: Registration[]): Promise<void> {
-    const failures = await this.runInverses(entries);
+    const failures = await this.runInverses([...entries].reverse());
     if (failures.length === 0) return;
     // An explicit dispose HAS a caller, unlike an unwind — so it throws rather
     // than being collected into someone else's aggregate. Every refusal travels,

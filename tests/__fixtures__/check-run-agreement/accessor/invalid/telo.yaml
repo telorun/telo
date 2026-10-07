@@ -1,0 +1,10 @@
+# Consumes the library next door. Its entry-scoped check is silent about the
+# library's resources, so the kernel's refusal at creation is what stops it.
+kind: Telo.Application
+metadata:
+  name: AccessorInvalidApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.probe

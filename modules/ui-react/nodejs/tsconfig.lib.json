@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": ["es2024", "dom", "dom.iterable"]
+  },
+  "exclude": ["node_modules", "tests", "dist"],
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

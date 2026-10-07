@@ -1,0 +1,32 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "strict": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "resolveJsonModule": true,
+    "lib": [
+      "es2024",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@telorun/ui-react": [
+        "./src/contract/ui-react.d.ts"
+      ]
+    }
+  },
+  "files": [],
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../tests/__fixtures__/components/nodejs/src/**/*.tsx",
+    "../tests/__fixtures__/components/nodejs/src/**/*.ts"
+  ]
+}

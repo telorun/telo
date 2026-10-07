@@ -178,3 +178,54 @@ describe("what the reference-form rule still guards", () => {
     expect(diags.find((d) => d.code === "INVALID_REFERENCE_FORM")).toBeDefined();
   });
 });
+
+describe("a value branch holding an expression", () => {
+  // A slot taking one reference, or a list of entries each holding a reference
+  // beside a predicate. The list is the slot's value branch, and an expression
+  // inside an entry is judged as its stand-in, as everywhere else.
+  const themedDef: ResourceManifest = {
+    kind: "Telo.Definition",
+    metadata: { name: "Themed", module: "pg" },
+    capability: "Telo.Invocable",
+    schema: {
+      type: "object",
+      properties: {
+        theme: {
+          anyOf: [
+            { "x-telo-ref": { kind: "pg.Enum", use: "dependency" } },
+            {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["theme"],
+                properties: {
+                  theme: { type: "object", "x-telo-ref": { kind: "pg.Enum", use: "dependency" } },
+                  when: { type: "boolean", "x-telo-eval": "runtime" },
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  } as unknown as ResourceManifest;
+  const themed = (theme: unknown): ResourceManifest =>
+    ({ kind: "pg.Themed", metadata: { name: "page" }, theme }) as unknown as ResourceManifest;
+  const errors = (theme: unknown) =>
+    analyze(themedDef, themed(theme)).filter(
+      (d) => d.severity === 1 && (d.data as { resource?: { name?: string } })?.resource?.name === "page",
+    );
+
+  it("is a value: the entry's own reference resolves and nothing is reported", () => {
+    expect(
+      errors([
+        { theme: makeTaggedSentinel("ref", "messageRole"), when: makeTaggedSentinel("cel", "1 < 2") },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("still refuses an entry of the wrong shape", () => {
+    expect(errors([{ theme: 5 }]).map((d) => d.code)).toEqual(["INVALID_REFERENCE"]);
+  });
+});

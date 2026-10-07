@@ -119,6 +119,65 @@ describe("revertible effects — the accumulator", () => {
     expect(order).toEqual(["~first", "~second"]);
   });
 
+  it("drops a disposed effect from its frame, through either door", async () => {
+    const scope = new EffectScope("test");
+    for (let i = 0; i < 1000; i++) {
+      const performed = await scope
+        .chain("stream", async () => ({ result: i, inverse: () => {} }))
+        .perform();
+      const release = scope.register("hold", () => {});
+      await performed.dispose();
+      await release();
+    }
+    expect(scope.pending).toBe(0);
+  });
+
+  it("unwinds exactly the undisposed effects after mixed disposal, newest first", async () => {
+    const order: string[] = [];
+    const scope = new EffectScope("test");
+    const handles = [];
+    for (const name of ["a", "b", "c", "d", "e"]) {
+      handles.push(
+        await scope
+          .chain(name, async () => ({ result: 0, inverse: () => order.push(`~${name}`) }))
+          .perform(),
+      );
+    }
+    await handles[3].dispose();
+    await handles[1].dispose();
+    expect(scope.pending).toBe(3);
+    order.length = 0;
+    expect(await scope.unwindFrame()).toEqual([]);
+    expect(order).toEqual(["~e", "~c", "~a"]);
+    // Disposing once the frame has unwound runs nothing.
+    await handles[0].dispose();
+    expect(order).toEqual(["~e", "~c", "~a"]);
+  });
+
+  it("runs each inverse once when an effect is disposed while its frame unwinds", async () => {
+    const order: string[] = [];
+    const scope = new EffectScope("test");
+    const first = await scope
+      .chain("first", async () => ({ result: 0, inverse: () => order.push("~first") }))
+      .perform();
+    await scope
+      .chain("second", async () => ({ result: 0, inverse: () => order.push("~second") }))
+      .perform();
+    // The newest inverse disposes an older neighbour and itself mid-unwind.
+    const third = await scope
+      .chain("third", async () => ({
+        result: 0,
+        inverse: async () => {
+          order.push("~third");
+          await first.dispose();
+          await third.dispose();
+        },
+      }))
+      .perform();
+    expect(await scope.unwindFrame()).toEqual([]);
+    expect(order).toEqual(["~third", "~first", "~second"]);
+  });
+
   it("refuses an effect against a scope that has unwound, before the body runs", async () => {
     let bodyRan = false;
     const scope = new EffectScope("test");

@@ -1,0 +1,53 @@
+# A node whose type is misspelled, a node carrying a key its type does not
+# take, a column giving both a value and a cell, and a component handed a
+# property its export does not declare.
+kind: Telo.Application
+metadata:
+  name: UiInvalidShapesApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+  Widgets: ../../widgets
+---
+kind: Ui.View
+metadata:
+  name: misspelled
+content:
+  type: stak
+  children: []
+---
+kind: Ui.View
+metadata:
+  name: strayKey
+content:
+  type: stack
+  children:
+    - { type: text, text: Title, gap: 3 }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+    isDone: { type: boolean }
+---
+kind: Ui.Component
+metadata:
+  name: pill
+component: !ref Widgets.statusPill
+model: !ref Todo
+props:
+  done: !cel "row.isDone"
+  colour: red
+---
+kind: Ui.Table
+metadata:
+  name: both
+model: !ref Todo
+source: { basePath: /api/todos }
+columns:
+  - value: !cel "row.text"
+    cell: !ref pill
+  - value: !cel "row.txt"

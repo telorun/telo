@@ -934,6 +934,31 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  modules/crud/nodejs:
+    dependencies:
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
   modules/durable-journal-file/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -2030,6 +2055,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/text-diff/nodejs:
     dependencies:
@@ -2083,6 +2111,97 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+
+  modules/ui-react/nodejs:
+    dependencies:
+      '@telorun/sse-codec':
+        specifier: workspace:*
+        version: link:../../sse-codec/nodejs
+      '@telorun/ui':
+        specifier: workspace:*
+        version: link:../../ui/nodejs
+      lucide-react:
+        specifier: ^1.8.0
+        version: 1.8.0(react@19.2.3)
+      radix-ui:
+        specifier: ^1.4.3
+        version: 1.4.3(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+    devDependencies:
+      '@telorun/http-dispatch':
+        specifier: workspace:*
+        version: link:../../http-dispatch/nodejs
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      '@types/react':
+        specifier: ^19
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.2.3(@types/react@19.2.14)
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      fastify:
+        specifier: ^5.12.1
+        version: 5.12.1
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  modules/ui-react/tests/__fixtures__/components/nodejs:
+    devDependencies:
+      '@types/react':
+        specifier: ^19
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19
+        version: 19.2.3(@types/react@19.2.14)
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      react-dom:
+        specifier: 19.2.3
+        version: 19.2.3(react@19.2.3)
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/ui/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/vector-store-memory/nodejs:
     dependencies:

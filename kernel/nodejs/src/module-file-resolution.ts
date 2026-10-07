@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import {
   PLATFORM_AXES,
   describeSelector,
+  type BrowserEntry,
   selectorMatches,
   pathsAtOrBeneath,
   stagedModuleFiles,
@@ -187,6 +188,8 @@ export interface NativeFileModule {
   readonly sources: ModuleSources;
   /** The `assets:` patterns, which say which staged entries are module files. */
   readonly assetPatterns: readonly string[];
+  /** The `exports.browser:` entries the module declares. */
+  readonly browser: readonly BrowserEntry[];
 }
 
 /**

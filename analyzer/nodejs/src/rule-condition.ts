@@ -15,7 +15,7 @@ import {
   celFunctionCatalog,
   buildCelEnvironment,
   celEngine,
-  extractAccessChains,
+  extractReadChains,
   interpolationShape,
   MODULE_CALL_DISPATCH_KEY,
   moduleCallNames,
@@ -169,7 +169,10 @@ export function compileRuleCondition(
           namespaceFunction: namespaceDispatchOf(table as ModuleCallDispatch | undefined),
         });
       },
-      chains: extractAccessChains(parsed.root),
+      // What the condition reads, a comprehension's iteration variable followed
+      // to the member it reads on each element — so an expression in a field of
+      // an element the condition never reads does not stop the rule running.
+      chains: extractReadChains(parsed.root),
     };
   }
   if (compiledRules.size >= RULE_CACHE_LIMIT) {

@@ -453,6 +453,11 @@ export interface CelScope {
   /** The site's names as a schema — the context, or the kernel globals where no
    *  context applied — for explaining a rejection the checker already made. */
   explainSchema: () => Record<string, any> | null;
+  /** Set where the site is an accessor field's value: the names a chain there
+   *  may start at. Such a value is named and never evaluated, so nothing else
+   *  the scope types — a function, a kernel global, a module call — may be
+   *  written there (`ACCESSOR_NOT_PLAIN_CHAIN`). */
+  accessorBindings?: readonly string[];
 }
 
 /** The analyzer state a scope is resolved against — everything a manifest set

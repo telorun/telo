@@ -51,5 +51,9 @@ function tagsAt(site: ValueTagSite, registry: AnalysisRegistry | undefined): Val
     return [REF_TAG];
   }
   const field = fieldSchemaAt(schema as Record<string, any>, site.yamlPath, site.isItem, schemaFrom);
-  return offeredValueTags(field, registry.celEvalModeAt(kind, site.concretePath));
+  return offeredValueTags(
+    field,
+    registry.celEvalModeAt(kind, site.concretePath),
+    registry.accessorFieldAt(kind, site.concretePath),
+  );
 }

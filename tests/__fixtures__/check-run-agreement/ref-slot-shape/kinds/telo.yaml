@@ -1,0 +1,183 @@
+# Kinds whose reference slots are declared inside a NAMED SHAPE — a
+# `Telo.JsonSchema` the kind's schema reaches by `$ref`, through `Self` and
+# through an import alias, recursing into itself. Each slot is a Phase-5
+# injection site exactly as one written in the kind's own schema is.
+kind: Telo.Library
+metadata:
+  name: RefSlotShape
+  version: 1.0.0
+  description: >-
+    Fixture library whose kinds hold references at slots a named shape declares,
+    reached through the library's own shape and an imported one.
+imports:
+  Shapes: ../shapes
+exports:
+  kinds:
+    - ViaSelfShape
+    - ViaAliasShape
+    - ViaRuntimeShape
+    - ViaRegionShape
+    - ViaRegionList
+    - ProviderViaShape
+  resources: [Node]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Node
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { type: string }
+    target:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+    children:
+      type: array
+      items: { $ref: "#" }
+---
+kind: Telo.Definition
+metadata:
+  name: ViaSelfShape
+  description: Reports, per node of its tree, whether the target the node holds arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Tree
+schema:
+  type: object
+  additionalProperties: false
+  required: [tree]
+  properties:
+    tree: { $ref: "telo://Self/Node" }
+---
+kind: Telo.Definition
+metadata:
+  name: ViaAliasShape
+  description: Reports, per node of a tree shaped by an imported library, whether the node's target arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Tree
+schema:
+  type: object
+  additionalProperties: false
+  required: [tree]
+  properties:
+    tree: { $ref: "telo://Shapes/Branch" }
+---
+# The tree is evaluated per call: its labels are computed from the call's
+# inputs, and the instances injected at its slots survive that expansion.
+kind: Telo.Definition
+metadata:
+  name: ViaRuntimeShape
+  description: Evaluates its tree on every call and reports, per node, the computed label and whether the node's target arrived live.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#RuntimeTree
+schema:
+  type: object
+  additionalProperties: false
+  required: [tree]
+  properties:
+    tree:
+      $ref: "telo://Self/Node"
+      x-telo-eval: runtime
+      x-telo-context:
+        type: object
+        properties:
+          inputs: {}
+---
+# The tree is covered by a REGION and carries no `x-telo-eval`: the controller
+# evaluates it against a request it builds itself, and the kind has no
+# `invoke()`. `handler` is a slot whose own node carries the region.
+kind: Telo.Definition
+metadata:
+  name: ViaRegionShape
+  description: Evaluates its tree against a request of its own when run, and reports, per node, the computed label and whether the node's target arrived live.
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#RegionTree
+schema:
+  type: object
+  additionalProperties: false
+  required: [tree, prefix]
+  properties:
+    prefix: { type: string }
+    tree:
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              prefix: { type: string }
+    handler:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              prefix: { type: string }
+status:
+  type: object
+  properties:
+    nodes:
+      type: array
+      items:
+        type: object
+        properties:
+          label: { type: string }
+          injected: { type: boolean }
+          result: { type: integer }
+    handler: { type: integer }
+---
+# A LIST of trees under a region: the shape is reached one level below the
+# field, so a computed list leaves no concrete tree for the reach to stand on.
+kind: Telo.Definition
+metadata:
+  name: ViaRegionList
+  description: Evaluates each of its trees against a request of its own when run, and reports, per node, the computed label and whether the node's target arrived live.
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#RegionForest
+schema:
+  type: object
+  additionalProperties: false
+  required: [trees]
+  properties:
+    trees:
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-context:
+        type: object
+        properties:
+          request:
+            type: object
+            properties:
+              prefix: { type: string }
+status:
+  type: object
+  properties:
+    nodes:
+      type: array
+      items:
+        type: object
+        properties:
+          label: { type: string }
+          injected: { type: boolean }
+          result: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: ProviderViaShape
+  description: Holds a tree whose fields are evaluated once, when the resource is created.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Held
+schema:
+  type: object
+  additionalProperties: false
+  required: [tree]
+  properties:
+    tree: { $ref: "telo://Self/Node" }

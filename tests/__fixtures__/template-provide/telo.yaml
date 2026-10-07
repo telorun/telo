@@ -1,0 +1,84 @@
+# A templated provider whose `provide:` names an entry that is itself a
+# provider — it has `provide()` and no `invoke()` — beside one whose target is
+# invocable. Each reads its target the way the target offers.
+kind: Telo.Library
+metadata:
+  name: TemplateProvide
+  version: 1.0.0
+  description: >-
+    Fixture library exporting value sources composed from other value sources
+    and from callable values.
+imports:
+  Run: ../../../modules/run
+exports:
+  kinds: [Greeting, Shouted, ShoutedWithInputs, Read]
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+  description: Provides a greeting for the name it is configured with.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [who]
+  properties:
+    who: { type: string }
+resources:
+  - kind: Run.Value
+    metadata: { name: text }
+    value:
+      greeting: !cel "'hello ' + self.who"
+provide: !ref text
+---
+kind: Telo.Definition
+metadata:
+  name: Shouted
+  description: Provides another greeting source's text in upper case.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [who]
+  properties:
+    who: { type: string }
+resources:
+  - kind: Self.Greeting
+    metadata: { name: inner }
+    who: !cel "self.who"
+provide: !ref inner
+result:
+  greeting: !cel "result.greeting.upperAscii()"
+---
+# `provide()` takes no arguments, so `inputs:` beside a target that offers
+# nothing else has nowhere to go.
+kind: Telo.Definition
+metadata:
+  name: ShoutedWithInputs
+  description: Passes arguments to a greeting source that accepts none.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [who]
+  properties:
+    who: { type: string }
+resources:
+  - kind: Self.Greeting
+    metadata: { name: inner }
+    who: !cel "self.who"
+provide: !ref inner
+inputs:
+  loud: true
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+  description: Returns what the value source it holds provides.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./read.mjs#Read
+schema:
+  type: object
+  required: [source]
+  additionalProperties: false
+  properties:
+    source:
+      x-telo-ref: { kind: Telo.Provider, use: call }

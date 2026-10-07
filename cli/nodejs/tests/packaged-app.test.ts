@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from "fs";
 import * as os from "os";
 import * as path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readTarGz } from "@telorun/kernel";
 import { PAYLOAD_INDEX, packPayload } from "../src/package/app-payload.js";
 import { encodeTrailer, payloadDigest } from "../src/package/app-trailer.js";
 import { buildAppPayload } from "../src/package/build-app-payload.js";
@@ -154,5 +155,75 @@ describe("the payload a packaging produces", () => {
     const first = await buildAppPayload({ manifestPath: app, platform, report });
     const second = await buildAppPayload({ manifestPath: app, platform, report });
     expect(payloadDigest(second.payload)).toBe(payloadDigest(first.payload));
+  });
+
+  it("carries a local library's browser entry built, and leaves its source behind", async () => {
+    const app = path.join(dir, "shop");
+    const file = (rel: string, content: string): void => {
+      mkdirSync(path.dirname(path.join(app, rel)), { recursive: true });
+      writeFileSync(path.join(app, rel), content);
+    };
+    file(
+      "telo.yaml",
+      [
+        "kind: Telo.Application",
+        "metadata:",
+        "  name: Shop",
+        "  version: 1.0.0",
+        "imports:",
+        "  Widgets: ./widgets",
+        "",
+      ].join("\n"),
+    );
+    file(
+      "widgets/telo.yaml",
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: Widgets",
+        "  version: 1.0.0",
+        "exports:",
+        "  browser:",
+        '    - specifier: "@shop/badges"',
+        "      path: ./browser/badges.js",
+        "      source: ./src/badges.js",
+        "      exports: [StatusPill]",
+        '    - specifier: "@shop/charts"',
+        "      path: ./browser/charts.js",
+        "      source: ./src/charts.js",
+        "      exports: [Bar]",
+        "",
+      ].join("\n"),
+    );
+    file("widgets/src/shared.js", "export const label = (x) => `label:${x}`;\n");
+    file(
+      "widgets/src/badges.js",
+      'import { label } from "./shared.js";\nexport const StatusPill = (p) => label(p.done);\n',
+    );
+    file(
+      "widgets/src/charts.js",
+      'import { label } from "./shared.js";\nexport const Bar = (p) => label(p.done);\n',
+    );
+
+    const built = await buildAppPayload({
+      manifestPath: app,
+      platform: { os: "linux", arch: "amd64", libc: "gnu", abi: "node-137" },
+      report: () => {},
+    });
+    const names = (await readTarGz(built.payload))
+      .map((entry) => entry.name)
+      .filter((name) => name.startsWith("app/widgets/"));
+    const chunk = names.find((name) => name.startsWith("app/widgets/browser/chunks/"))!;
+
+    expect(names.sort()).toEqual(
+      [
+        "app/widgets/browser/badges.js",
+        "app/widgets/browser/badges.js.siblings.json",
+        "app/widgets/browser/charts.js",
+        "app/widgets/browser/charts.js.siblings.json",
+        chunk,
+        "app/widgets/telo.yaml",
+      ].sort(),
+    );
   });
 });

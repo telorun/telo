@@ -419,6 +419,36 @@ describe("ModuleArtifact", () => {
     expect(fs.existsSync(path.join(dir, "native"))).toBe(false);
   });
 
+  it("warms every browser layer whatever the target, and fetches one only when asked", async () => {
+    const jsFiles = [file("nodejs/c.mjs", "x")];
+    const plainFiles = [file("browser/shell.js", "export {}")];
+    const abiFiles = [file("browser/badges.js", "export {}")];
+    const js = await layer("controller", "1", jsFiles, { format: "js" });
+    const plain = await layer("browser", "2", plainFiles, { format: "esm" });
+    const withAbi = await layer("browser", "3", abiFiles, { format: "esm", abi: "ui-1" });
+
+    const { transports, fetched } = fakeTransports({
+      [js.blob]: jsFiles,
+      [plain.blob]: plainFiles,
+      [withAbi.blob]: abiFiles,
+    });
+    const artifact = new ModuleArtifact({ pinnedRef: REF, layers: [js, plain, withAbi], dir, transports });
+
+    // A target naming another platform and no abi still warms both: a browser
+    // layer is the same file everywhere, and its abi is the page's.
+    const plan = artifact.warmPlan({ os: "darwin", arch: "arm64" });
+    expect(plan.layers.map((l) => l.blob)).toEqual([js.blob, plain.blob, withAbi.blob]);
+    expect(plan.undetermined).toEqual([]);
+
+    await artifact.materializeController({ format: "js" });
+    expect(fetched).toEqual([js.blob]);
+    await expect(artifact.materializeBrowser({ format: "esm", abi: "ui-1" })).resolves.toMatchObject({
+      files: ["browser/badges.js"],
+    });
+    expect(fetched).toEqual([js.blob, withAbi.blob]);
+    expect(await artifact.materializeBrowser({ format: "esm", abi: "ui-2" })).toBeUndefined();
+  });
+
   it("retries after a transient fetch failure rather than caching the rejection", async () => {
     const files = [file("nodejs/c.mjs", "x")];
     const js = await layer("controller", "1", files, { format: "js" });

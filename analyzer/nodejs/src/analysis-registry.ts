@@ -12,8 +12,13 @@ import {
 import { isInstantiableDefinition } from "./instantiable-kind.js";
 import { computeSuggestKind, computeValidUserFacingKinds } from "./kind-suggest.js";
 import { visitManifest as runVisitManifest, type ManifestVisitor } from "./manifest-visitor.js";
-import { celEvalModeAt, kindCelEvalSites } from "./eval-paths.js";
-import { inheritedCapability, type ContractDirection, type DefResolver } from "./extends-resolution.js";
+import {
+  accessorFieldAt,
+  celEvalModeAt,
+  governedCelEvalSites,
+  type CelEvalMode,
+} from "./eval-paths.js";
+import { type ContractDirection, type DefResolver } from "./extends-resolution.js";
 import { projectionModules, resolveContract, resolveNamedShape } from "./invocation-contract.js";
 import type { NamedContractShape } from "./validate-value-schema-location.js";
 import { createResolveCtx, resolveThrowsUnion } from "./resolve-throws-union.js";
@@ -282,22 +287,28 @@ export class AnalysisRegistry {
   }
 
   /**
-   * Whether the value at `path` of a resource of `kind` is evaluated, and when —
-   * null when it is read as a literal (a CEL tag there is `CEL_IN_NON_EVAL_FIELD`),
-   * undefined when no such rule governs the kind (no definition, or a structural
-   * `Telo.Template` kind whose CEL the kernel evaluates by other rules). The same
-   * sites and the same gate the analysis pass applies, so an editor offers an
-   * expression tag exactly where `telo check` accepts one.
+   * What the value at `path` of a resource of `kind` is to evaluation —
+   * evaluated at load or per invocation, `accessor` when it is an accessor
+   * field's value or part of one (named, never evaluated), null when it is read
+   * as a literal (a CEL tag there is `CEL_IN_NON_EVAL_FIELD`), undefined when no
+   * such rule governs the kind (no definition, or a structural `Telo.Template`
+   * kind whose CEL the kernel evaluates by other rules). The same sites and the
+   * same gate the analysis pass applies, so an editor offers an expression tag
+   * exactly where `telo check` accepts one.
    *
    * `path` is the concrete spelling with indices kept (`routes[0].returns[1].when`).
    */
-  celEvalModeAt(kind: string, path: string): "compile" | "runtime" | null | undefined {
-    const def = this.resolveDefinition(kind);
-    if (!def?.schema) return undefined;
-    const resolveDef = this.scopedDefResolver();
-    const capability = inheritedCapability(def, resolveDef);
-    if (capability === undefined || capability === "Telo.Template") return undefined;
-    return celEvalModeAt(kindCelEvalSites(def, resolveDef), path);
+  celEvalModeAt(kind: string, path: string): CelEvalMode | null | undefined {
+    const sites = governedCelEvalSites(this.resolveDefinition(kind), this.scopedDefResolver());
+    return sites ? celEvalModeAt(sites, path) : undefined;
+  }
+
+  /** Whether `path` of a resource of `kind` IS an accessor field, rather than a
+   *  place beneath one — the two take different tags
+   *  (`accessorTagEngines`). */
+  accessorFieldAt(kind: string, path: string): boolean {
+    const sites = governedCelEvalSites(this.resolveDefinition(kind), this.scopedDefResolver());
+    return sites !== undefined && accessorFieldAt(sites, path) !== undefined;
   }
 
   private contractForKind(

@@ -1,0 +1,14 @@
+# A list entry whose `target` is not a reference does not fit the list branch,
+# so the value is neither a list of entries nor a reference.
+kind: Telo.Application
+metadata:
+  name: ValueBranchWrongShape
+  version: 1.0.0
+imports:
+  Lib: ../
+---
+kind: Lib.Chosen
+metadata:
+  name: chooser
+target:
+  - target: 5

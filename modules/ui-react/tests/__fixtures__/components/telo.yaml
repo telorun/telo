@@ -1,0 +1,92 @@
+kind: Telo.Library
+metadata:
+  name: UiFixtureComponents
+  version: 1.0.0
+  description: >-
+    Test fixture: browser components written against the UI host — one using
+    every host capability, one holding state, a status pill, one built for a
+    newer host and one importing something the host does not supply.
+imports:
+  Ui: ../../../../ui
+exports:
+  resources: [hostProbe, counter, statusPill, future, unsupplied]
+  browser:
+    - specifier: "@fixture/components"
+      path: ./browser/components.js
+      source: ./nodejs/src/components.tsx
+      abi: ui_react-1
+      external: [react, react/jsx-runtime, react-dom, "@telorun/ui-react"]
+      exports: [HostProbe, Counter, StatusPill]
+    - specifier: "@fixture/future"
+      path: ./browser/future.js
+      source: ./nodejs/src/future.tsx
+      abi: ui_react-2
+      external: [react, react/jsx-runtime]
+      exports: [Future]
+    - specifier: "@fixture/unsupplied"
+      path: ./browser/unsupplied.js
+      source: ./nodejs/src/unsupplied.tsx
+      abi: ui_react-1
+      external: [react, react/jsx-runtime, react-dom/client]
+      exports: [Unsupplied]
+---
+kind: Ui.ComponentExport
+metadata:
+  name: hostProbe
+entry: "@fixture/components"
+export: HostProbe
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [basePath]
+    properties:
+      basePath: { type: string }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: counter
+entry: "@fixture/components"
+export: Counter
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [step]
+    properties:
+      step: { type: integer }
+      fail: { type: boolean }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: statusPill
+entry: "@fixture/components"
+export: StatusPill
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      done: { type: boolean }
+      label: { type: string }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: future
+entry: "@fixture/future"
+export: Future
+props:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false }
+---
+kind: Ui.ComponentExport
+metadata:
+  name: unsupplied
+entry: "@fixture/unsupplied"
+export: Unsupplied
+props:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false }

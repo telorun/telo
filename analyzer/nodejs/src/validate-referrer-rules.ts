@@ -40,12 +40,11 @@ import {
 } from "./peer-binding.js";
 import {
   celSourceOf,
-  findDynamicLeaf,
+  findDynamicRead,
   type DynamicLeaf,
   isTaggedCondition,
   pointerSegments,
   pointerToPath,
-  readNodes,
 } from "./resource-rule.js";
 import {
   RULE_BUDGET_MS,
@@ -371,11 +370,7 @@ export function evaluateReferrerRules(
       // resource-rule reasoning, and it bites harder here: the referrer is a
       // whole manifest, so scanning all of it would disable the rule for any
       // server carrying one unrelated expression.
-      let dynamic: DynamicLeaf | undefined;
-      for (const node of readNodes(chains, scope)) {
-        dynamic = findDynamicLeaf(node);
-        if (dynamic !== undefined) break;
-      }
+      const dynamic = findDynamicRead(chains, scope);
       if (dynamic !== undefined) {
         findings.push({ kind: "skipped", rule, referrer, dynamic });
         continue;

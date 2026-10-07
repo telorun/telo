@@ -42,13 +42,12 @@ import type { DiagnosticFix } from "./types.js";
 import {
   RESOURCE_RULES_ANNOTATION,
   celSourceOf,
-  findDynamicLeaf,
+  findDynamicRead,
   type DynamicLeaf,
   isTaggedCondition,
   pointerSegments,
   readRawResourceRules,
   readResourceRules,
-  readNodes,
   resolveRuleSubjects,
   type ResourceRule,
 } from "./resource-rule.js";
@@ -339,11 +338,7 @@ export function evaluateResourceRules(
       // Only the nodes this condition READS decide whether it can run — see
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.
-      let dynamic: DynamicLeaf | undefined;
-      for (const node of readNodes(chains, { self, this: subject.value })) {
-        dynamic = findDynamicLeaf(node);
-        if (dynamic !== undefined) break;
-      }
+      const dynamic = findDynamicRead(chains, { self, this: subject.value });
       if (dynamic !== undefined) {
         findings.push({ kind: "skipped", rule, path: subject.path, dynamic });
         continue;

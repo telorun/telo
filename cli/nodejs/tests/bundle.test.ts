@@ -198,6 +198,89 @@ describe("ModulePayloadBuilder — executable and link entries", () => {
   });
 });
 
+describe("ModulePayloadBuilder — browser entries", () => {
+  it("builds each entry into the browser layer of its selector, sidecar and chunks included", async () => {
+    write(
+      "telo.yaml",
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: Widgets",
+        "  version: 1.0.0",
+        "exports:",
+        "  browser:",
+        '    - specifier: "@demo/badges"',
+        "      path: ./browser/badges.js",
+        "      source: ./src/badges.js",
+        "      abi: ui-1",
+        "      exports: [StatusPill]",
+        '    - specifier: "@demo/charts"',
+        "      path: ./browser/charts.js",
+        "      source: ./src/charts.js",
+        "      abi: ui-1",
+        "      exports: [Bar]",
+        "",
+      ].join("\n"),
+    );
+    write("src/shared.js", "export const label = (x) => `label:${x}`;\n");
+    write("src/badges.js", 'import { label } from "./shared.js";\nexport const StatusPill = (p) => label(p.done);\n');
+    write("src/charts.js", 'import { label } from "./shared.js";\nexport const Bar = (p) => label(p.done);\n');
+
+    const payload = await new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") }).payload(
+      path.join(workdir, "telo.yaml"),
+      "oci://registry.example/test/widgets",
+    );
+
+    expect(payload.layers).toHaveLength(1);
+    const [layer] = payload.layers;
+    expect([layer!.role, layer!.selector]).toEqual(["browser", { format: "esm", abi: "ui-1" }]);
+    const names = layer!.files.map((f) => f.name);
+    const chunk = names.find((name) => name.startsWith("browser/chunks/"))!;
+    expect(names).toEqual(
+      [
+        "browser/badges.js",
+        "browser/badges.js.siblings.json",
+        "browser/charts.js",
+        "browser/charts.js.siblings.json",
+        chunk,
+      ].sort(),
+    );
+    // The published manifest indexes the layer, and the sources it was built
+    // from are the release edges.
+    expect(payload.manifest).toContain("role: browser");
+    expect(payload.buildInputs).toContain(path.join(workdir, "src/shared.js"));
+  });
+
+  it("refuses an author's file at the path an entry's sidecar is written to", async () => {
+    write(
+      "telo.yaml",
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: Widgets",
+        "  version: 1.0.0",
+        "files:",
+        '  - "browser/**"',
+        "exports:",
+        "  browser:",
+        '    - specifier: "@demo/badges"',
+        "      path: ./browser/badges.js",
+        "      source: ./src/badges.js",
+        "",
+      ].join("\n"),
+    );
+    write("src/badges.js", "export const StatusPill = 1;\n");
+    write("browser/badges.js.siblings.json", "[]");
+
+    await expect(
+      new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") }).payload(
+        path.join(workdir, "telo.yaml"),
+        "oci://registry.example/test/widgets",
+      ),
+    ).rejects.toThrow(/'browser\/badges\.js\.siblings\.json' is a reserved name/);
+  });
+});
+
 describe("ModulePayloadBuilder — the module's license", () => {
   const manifest = ["kind: Telo.Library", "metadata:", "  name: licensed", "  version: 1.0.0", ""].join("\n");
 

@@ -1,0 +1,67 @@
+kind: Telo.Application
+metadata:
+  name: CrudCountUnreadableTest
+  version: 1.0.0
+  description: |
+    A connection that answers the count statement with no row leaves the list
+    route without a `total`. The reader's declared output refuses it, so the
+    request fails as `ERR_OUTPUT_INVALID` rather than answering a page whose
+    total is not a number.
+imports:
+  Crud: ../
+  Countless: ./__fixtures__/countless-connection
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Crud.Resource
+metadata: { name: tasks }
+connection:
+  kind: Countless.Connection
+  rows:
+    - { id: 1, text: One }
+    - { id: 2, text: Two }
+singular: task
+plural: tasks
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      text: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 19317
+    mounts:
+      - path: /tasks
+        mount: !ref tasks
+    catches:
+      - when: !cel "error.code == 'ERR_OUTPUT_INVALID'"
+        status: 500
+        content:
+          application/json:
+            body:
+              code: !cel "error.code"
+targets:
+  - !ref server
+steps:
+  # One row asked for and two returned, so another page follows and the count runs.
+  - name: list
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/tasks?limit=1" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.list.result.status"
+        body: !cel "steps.list.result.body"
+      expected:
+        status: 500
+        body: { code: ERR_OUTPUT_INVALID }

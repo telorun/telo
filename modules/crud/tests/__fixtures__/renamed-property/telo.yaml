@@ -1,0 +1,39 @@
+# An application whose model property `text` was renamed `title`. `Crud.Ui`
+# names no property, so it follows the rename by itself; the two places the
+# application still spells the old name are what must be reported.
+kind: Telo.Application
+metadata:
+  name: CrudRenamedPropertyApp
+  version: 1.0.0
+imports:
+  Crud: ../../../
+  Ui: ../../../../ui
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    isDone: { type: boolean }
+---
+kind: Crud.Ui
+metadata: { name: tasks }
+model: !ref Task
+basePath: /api/tasks
+---
+kind: Ui.Table
+metadata: { name: summary }
+model: !ref Task
+source: { basePath: /api/tasks }
+columns:
+  - value: !cel "row.text"
+---
+kind: Ui.Filters
+metadata: { name: search }
+model: !ref Task
+fields:
+  - property: text
+content: { type: composite, ref: !ref tasks }

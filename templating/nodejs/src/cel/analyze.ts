@@ -167,6 +167,89 @@ function extractChain(node: CelNode, boundVars: ReadonlySet<string>): string[] |
   return null;
 }
 
+/** Chain segment for "each element of the collection reached so far": what a
+ *  comprehension's iteration variable stands for. */
+export const EACH_SEGMENT = "[]";
+
+/**
+ * What an expression READS of the values its roots name, as member chains —
+ * {@link extractAccessChains} with a comprehension's iteration variable followed
+ * instead of dropped.
+ *
+ * - A member read through the variable is a read of THAT member on each element
+ *   of the range: `xs.all(x, x.path != "")` reads `xs.[].path`.
+ * - A range that is only iterated is read as a range — its own node, none of
+ *   its elements: the chain ends in {@link EACH_SEGMENT}.
+ * - A bare use of the variable reads the element whole, so the range is read
+ *   whole, as it is by any other use of the collection.
+ *
+ * A variable whose range is not a plain chain (a call's result, another macro's
+ * output) names nothing a root holds, and a read through it contributes nothing.
+ */
+export function extractReadChains(node: CelNode): string[][] {
+  const chains: string[][] = [];
+  visitReads(node, chains, new Map());
+  return chains;
+}
+
+/** A bound name's range as a chain, or null where it has none. */
+type BoundRanges = ReadonlyMap<string, readonly string[] | null>;
+
+function readChainOf(node: CelNode, bound: BoundRanges): string[] | null {
+  if (node.kind === "ident") {
+    if (!node.absolute && bound.has(node.name)) {
+      const range = bound.get(node.name);
+      return range ? [...range, EACH_SEGMENT] : null;
+    }
+    return [node.name];
+  }
+  if (node.kind === "select") {
+    if (node.optional) return null;
+    const parent = readChainOf(node.operand, bound);
+    if (parent !== null) return [...parent, node.field];
+  }
+  if (node.kind === "index") {
+    if (node.optional) return null;
+    const parent = readChainOf(node.operand, bound);
+    if (parent !== null) return [...parent, INDEX_SEGMENT];
+  }
+  return null;
+}
+
+function visitReads(node: CelNode, chains: string[][], bound: BoundRanges): void {
+  const chain = readChainOf(node, bound);
+  if (chain !== null) {
+    // The variable itself, with no member read off it: the whole element.
+    chains.push(chain[chain.length - 1] === EACH_SEGMENT ? chain.slice(0, -1) : chain);
+    return;
+  }
+
+  const moduleCall = moduleCallOf(node);
+  if (moduleCall) {
+    for (const arg of moduleCall.args) visitReads(arg, chains, bound);
+    return;
+  }
+
+  const bind = bindCall(node);
+  if (bind) {
+    visitReads(bind.init, chains, bound);
+    visitReads(bind.body, chains, new Map(bound).set(bind.name, null));
+    return;
+  }
+
+  const macro = comprehension(node);
+  if (macro) {
+    const range = readChainOf(macro.receiver, bound);
+    if (range !== null) chains.push([...range, EACH_SEGMENT]);
+    else visitReads(macro.receiver, chains, bound);
+    const inner = new Map(bound).set(macro.bound, range);
+    for (const arg of macro.scoped) visitReads(arg, chains, inner);
+    return;
+  }
+
+  for (const child of childNodes(node)) visitReads(child, chains, bound);
+}
+
 /** A member access on a module call's result: the call, and the members read
  *  off it in order (`Billing.total(xs).amount` → `amount`). */
 export interface CallResultAccess {

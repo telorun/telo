@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiRenamedPropertyTest
+  version: 1.0.0
+  description: |
+    Renaming a model property is caught before deploy for an application that
+    uses `Crud.Ui`: the generated screen follows the model and reports
+    nothing, and every place the application itself still names the old
+    property — a hand-written column, a filter field — is an error.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref renamed
+---
+kind: Assert.Manifest
+metadata: { name: renamed }
+source: ./__fixtures__/renamed-property/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Table/summary: !cel: 'row.text' is not defined (available: title, isDone)"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/search at 'fields[0]': filters by a property the model does not declare"

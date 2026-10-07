@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: UiProbe
+  version: 1.0.0
+  description: >-
+    Test fixture exposing what a value source provides, so a test can compare a
+    composite's produced node with an expected literal.
+exports:
+  kinds: [Read]
+---
+kind: Telo.Definition
+metadata:
+  name: Read
+  description: Returns what the value source it holds provides.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Read
+schema:
+  type: object
+  required: [source]
+  additionalProperties: false
+  properties:
+    source:
+      x-telo-ref: { kind: Telo.Provider, use: call }

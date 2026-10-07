@@ -1,0 +1,25 @@
+# A named shape another library's kinds reach through an import alias. It holds
+# a reference slot and recurses into itself.
+kind: Telo.Library
+metadata:
+  name: RefSlotShapes
+  version: 1.0.0
+  description: >-
+    Fixture library declaring a recursive named shape that holds a reference
+    slot, for kinds of other libraries to use as a field's shape.
+exports:
+  resources: [Branch]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Branch
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { type: string }
+    target:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+    children:
+      type: array
+      items: { $ref: "#" }

@@ -90,7 +90,7 @@ describe("an expression at or above a resource's reference slot", () => {
     expect(codes(diags, "INVALID_REFERENCE")).toEqual([]);
   });
 
-  it("leaves a slot the kind does NOT evaluate at creation to the reference rule", () => {
+  it("reports an expression AT a slot the kind evaluates per call, and says only that", () => {
     const diags = analyze(
       {
         kind: "Telo.Definition",
@@ -108,6 +108,12 @@ describe("an expression at or above a resource's reference slot", () => {
       } as unknown as ResourceManifest,
       bus({ handler: cel("'target'") }),
     );
+    expect(codes(diags, "REF_SLOT_COMPUTED").map((d) => d.data?.path)).toEqual(["handler"]);
+    expect(codes(diags, "INVALID_REFERENCE")).toEqual([]);
+  });
+
+  it("leaves a slot the kind does NOT evaluate to the reference rule", () => {
+    const diags = analyze(busKind("Telo.Invocable"), bus({ handler: cel("'target'") }));
     expect(codes(diags, "REF_SLOT_COMPUTED")).toEqual([]);
     expect(codes(diags, "INVALID_REFERENCE")).toHaveLength(1);
   });

@@ -16,6 +16,14 @@ exports:
   kinds:
     - Decoder
     - Encoder
+  # The entry point a dependent module's controller bundle resolves
+  # `@telorun/sse-codec` to: the frame and comment writers, so a transport that
+  # writes its own event stream formats a frame exactly as the encoder does.
+  code:
+    - specifier: "@telorun/sse-codec"
+      format: js
+      path: ./nodejs/sse-codec.mjs
+      source: ./nodejs/src/index.ts
 ---
 # Encoder: `{type, ...rest}` records → SSE frame bytes. Bare strings frame as
 # `message` events. Mid-stream upstream errors emit a final

@@ -28,15 +28,16 @@
 
 import { AXIS_VALUE_FORMS, PLATFORM_AXES, type PlatformAxis } from "./artifact-axes.js";
 
-/** The role a layer plays in a module artifact. `controller`, `library` and
- *  `native` layers carry a selector; `assets` and `common` are singletons and
- *  carry none. */
-export type LayerRole = "controller" | "library" | "native" | "assets" | "common";
+/** The role a layer plays in a module artifact. `controller`, `library`,
+ *  `native` and `browser` layers carry a selector; `assets` and `common` are
+ *  singletons and carry none. */
+export type LayerRole = "controller" | "library" | "native" | "browser" | "assets" | "common";
 
 export const LAYER_ROLES: readonly LayerRole[] = [
   "controller",
   "library",
   "native",
+  "browser",
   "assets",
   "common",
 ];
@@ -54,8 +55,10 @@ export const CODE_LAYER_ROLES: readonly LayerRole[] = ["controller", "library"];
 
 /** Every role keyed by a selector, one layer per selector: the code roles, plus
  *  `native` — a platform-specific file the runtime does not import as code,
- *  declared in the module doc's `native:` block. */
-const SELECTOR_LAYER_ROLES: readonly LayerRole[] = [...CODE_LAYER_ROLES, "native"];
+ *  declared in the module doc's `native:` block — and `browser`, the ES modules
+ *  of the module doc's `exports.browser:` entries, which a kernel serves and
+ *  never imports. A browser selector is `format: esm` plus the entry's `abi`. */
+const SELECTOR_LAYER_ROLES: readonly LayerRole[] = [...CODE_LAYER_ROLES, "native", "browser"];
 
 export function roleCarriesSelector(role: LayerRole): boolean {
   return (SELECTOR_LAYER_ROLES as readonly string[]).includes(role);

@@ -1,6 +1,6 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { schemaWithTagsAsText } from "./schema-tag-text.js";
-import { canonicalTypeSchemaId } from "@telorun/sdk";
+import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { moduleAliasScope, type KindResolver } from "./module-alias-scope.js";
@@ -13,6 +13,7 @@ import {
   type ReachSite,
   type ResolvedSchemaNode,
   type SchemaFromResolver,
+  type ShapeResolver,
 } from "./reference-reach.js";
 import { createAjv, navigateJsonPointer } from "./schema-compat.js";
 import { SchemaNodeValidator } from "./schema-node-validator.js";
@@ -37,6 +38,7 @@ type CompiledValidator = ((data: unknown) => boolean) & { errors?: any[] | null 
 interface KindReach {
   schema: Record<string, any>;
   schemaFrom: SchemaFromResolver;
+  shapes: ShapeResolver;
   declared?: DeclaredReach;
 }
 
@@ -45,6 +47,21 @@ interface CachedSites {
   reach: KindReach;
   data: unknown;
   sites: ReachSite[];
+}
+
+/** The canonical id of the named shape a non-local `$ref` names: the id itself
+ *  once canonical, and the authored `telo://<authority>/<Type>` resolved in the
+ *  module that wrote it. Undefined for anything else. */
+function shapeId(
+  ref: string,
+  module: string | undefined,
+  scope: KindResolver | undefined,
+): string | undefined {
+  if (parseCanonicalTypeSchemaId(ref)) return ref;
+  const authored = parseTeloTypeRef(ref);
+  if (!authored) return undefined;
+  const owner = authored.authority === "Self" ? module : scope?.moduleForAlias?.(authored.authority);
+  return owner === undefined ? undefined : canonicalTypeSchemaId(owner, authored.typeName);
 }
 
 /** The owner-scope key when no alias table is in play. */
@@ -72,6 +89,9 @@ export class DefinitionRegistry {
    *  named `Telo.Type`s share one `telo://<module>/<Name>` id space, so this is
    *  what lets a colliding type name be reported instead of silently dropped. */
   private readonly definitionSchemaIds = new Set<string>();
+  /** Each named `Telo.Type`'s schema as its resource holds it, by canonical id —
+   *  the document the reference reach walks where a kind's schema `$ref`s it. */
+  private readonly namedShapes = new Map<string, Record<string, any>>();
 
   private readonly defs = new Map<string, ResourceDefinition>();
   /** Reverse inheritance index: parent kind → direct child kinds. */
@@ -180,7 +200,25 @@ export class DefinitionRegistry {
     if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return true;
     if (!this.tryAddSchema(schema, id)) return true;
     this.registeredSchemaIds.add(id);
+    // The registered document supersedes the one announced before the passes
+    // that resolve what it holds.
+    this.namedShapes.set(id, schema);
+    this.kindReaches.clear();
     return true;
+  }
+
+  /**
+   * Announces a named `Telo.Type`'s schema to the reference reach, ahead of its
+   * registration: a kind whose schema `$ref`s the shape reaches the slots it
+   * declares, and the passes that resolve and extract what a resource holds at
+   * those slots run before a shape can be registered — registration takes the
+   * schema with its own references already resolved, which those same passes
+   * produce. A shape already registered, and a kind's own id, are left alone.
+   */
+  announceNamedShape(id: string, schema: Record<string, any>): void {
+    if (this.definitionSchemaIds.has(id) || this.registeredSchemaIds.has(id)) return;
+    this.namedShapes.set(id, schema);
+    this.kindReaches.clear();
   }
 
   /**
@@ -463,6 +501,24 @@ export class DefinitionRegistry {
 
     const schema = (this.effectiveSchema(key) ?? {}) as Record<string, any>;
     const scopes = new WeakMap<object, KindResolver | undefined>([[schema, ownerScope]]);
+    // The module each document was declared in — what `telo://Self/<Type>`
+    // written there names.
+    const modules = new WeakMap<object, string | undefined>([
+      [schema, (def.metadata as { module?: string }).module],
+    ]);
+    const shapes: ShapeResolver = (ref, document) => {
+      const id = shapeId(ref, modules.get(document), scopes.get(document));
+      const shape = id === undefined ? undefined : this.namedShapes.get(id);
+      if (shape && !modules.has(shape)) {
+        const module = parseCanonicalTypeSchemaId(id)!.moduleName;
+        modules.set(shape, module);
+        scopes.set(
+          shape,
+          aliases ? moduleAliasScope({ module }, aliases, aliasesByModule) : undefined,
+        );
+      }
+      return shape;
+    };
     const anchors = new WeakMap<object, Map<string, ResolvedSchemaNode | null>>();
     const schemaFrom: SchemaFromResolver = (expression, document) => {
       let byExpression = anchors.get(document);
@@ -473,6 +529,7 @@ export class DefinitionRegistry {
       byExpression.set(expression, anchor ? { document: anchor.document, node: anchor.node } : null);
       if (!anchor) return undefined;
       if (!scopes.has(anchor.document)) {
+        modules.set(anchor.document, (anchor.definition.metadata as { module?: string }).module);
         scopes.set(
           anchor.document,
           aliases ? moduleAliasScope(anchor.definition.metadata, aliases, aliasesByModule) : undefined,
@@ -480,7 +537,7 @@ export class DefinitionRegistry {
       }
       return { document: anchor.document, node: anchor.node };
     };
-    const reach: KindReach = { schema, schemaFrom };
+    const reach: KindReach = { schema, schemaFrom, shapes };
     byScope.set(ownerScope ?? CANONICAL_SCOPE, reach);
     return reach;
   }
@@ -517,7 +574,7 @@ export class DefinitionRegistry {
     ) {
       return cached.sites;
     }
-    const sites = reachSites(reach.schema, data, reach.schemaFrom, true);
+    const sites = reachSites(reach.schema, data, reach.schemaFrom, true, reach.shapes);
     this.resourceSites.set(resource, { reach, data, sites });
     return sites;
   }
@@ -532,7 +589,7 @@ export class DefinitionRegistry {
     data: unknown = resource,
   ): ReachPosition[] {
     const reach = this.reachOf(resource, aliases, aliasesByModule);
-    return reach ? reachPositions(reach.schema, data, reach.schemaFrom) : [];
+    return reach ? reachPositions(reach.schema, data, reach.schemaFrom, reach.shapes) : [];
   }
 
   /** The patterns a resource's kind declares, schema-from slots expanded, or
@@ -544,7 +601,7 @@ export class DefinitionRegistry {
   ): DeclaredReach | undefined {
     const reach = this.reachOf(resource, aliases, aliasesByModule);
     if (!reach) return undefined;
-    return (reach.declared ??= declaredReach(reach.schema, reach.schemaFrom));
+    return (reach.declared ??= declaredReach(reach.schema, reach.schemaFrom, reach.shapes));
   }
 
   /**

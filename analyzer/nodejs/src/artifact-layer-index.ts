@@ -47,7 +47,8 @@ const CONTENT_DIGEST = /^sha256-[A-Za-z0-9_-]{43}$/;
 
 export interface ArtifactLayer {
   role: LayerRole;
-  /** Present on the selector-keyed roles (`controller`, `library`, `native`) only. */
+  /** Present on the selector-keyed roles (`controller`, `library`, `native`,
+   *  `browser`) only. */
   selector?: ArtifactSelector;
   /** OCI blob digest — addresses the layer and verifies the transfer. */
   blob: string;
@@ -160,7 +161,7 @@ export function parseLayerIndex(value: unknown, describe = "layers"): ArtifactLa
 /** The singleton layer for a role, or undefined when the artifact has none. */
 export function singletonLayer(
   layers: readonly ArtifactLayer[],
-  role: Exclude<LayerRole, "controller" | "library" | "native">,
+  role: Exclude<LayerRole, "controller" | "library" | "native" | "browser">,
 ): ArtifactLayer | undefined {
   return layers.find((l) => l.role === role);
 }
@@ -178,6 +179,17 @@ export function codeLayerFor(
   const key = selectorKey(selector);
   return layers.find(
     (l) => l.role === role && l.selector !== undefined && selectorKey(l.selector) === key,
+  );
+}
+
+/** The browser layer carrying exactly `selector`, or undefined. */
+export function browserLayerFor(
+  layers: readonly ArtifactLayer[],
+  selector: ArtifactSelector,
+): ArtifactLayer | undefined {
+  const key = selectorKey(selector);
+  return layers.find(
+    (l) => l.role === "browser" && l.selector !== undefined && selectorKey(l.selector) === key,
   );
 }
 

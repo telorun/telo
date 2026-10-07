@@ -19,6 +19,7 @@ import type { ModuleSource, SourceEntry } from "./source-entries.js";
 const CLAIM_LABEL: Record<ModuleFileClaim["role"], string> = {
   controller: "the controller candidate",
   library: "the exports.code entry",
+  browser: "the exports.browser entry",
   assets: "the embed",
 };
 

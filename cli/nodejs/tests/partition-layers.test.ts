@@ -31,6 +31,49 @@ const layerFor = (p: ReturnType<typeof partitionLayers>, key: string) =>
   p.layers.find((l) => (l.selector ? selectorKey(l.selector) : l.role) === key);
 
 describe("partitionLayers", () => {
+  it("gives each browser selector a layer holding its entries and what was built beside them", () => {
+    const claims = collectModuleFileClaims(
+      [
+        "kind: Telo.Library",
+        "metadata: { name: Demo, version: 1.0.0 }",
+        "exports:",
+        "  browser:",
+        '    - { specifier: "@demo/badges", path: ./browser/badges.js, source: ./src/badges.js, abi: ui-1 }',
+        '    - { specifier: "@demo/charts", path: ./browser/charts.js, source: ./src/charts.js, abi: ui-1 }',
+        '    - { specifier: "@demo/shell", path: ./browser/shell.js, source: ./src/shell.js }',
+        "",
+      ].join("\n"),
+    );
+    const p = partitionLayers(
+      claims,
+      ["README.md"],
+      [],
+      [],
+      new Map([
+        ["browser/badges.js", ["browser/badges.js.siblings.json", "browser/chunks/shared-A1.js", "browser/badges.css"]],
+        ["browser/charts.js", ["browser/charts.js.siblings.json", "browser/chunks/shared-A1.js"]],
+        ["browser/shell.js", ["browser/shell.js.siblings.json"]],
+      ]),
+    );
+
+    expect(p.layers.map((l) => [l.role, l.selector, l.files])).toEqual([
+      [
+        "browser",
+        { format: "esm", abi: "ui-1" },
+        [
+          "browser/badges.css",
+          "browser/badges.js",
+          "browser/badges.js.siblings.json",
+          "browser/charts.js",
+          "browser/charts.js.siblings.json",
+          "browser/chunks/shared-A1.js",
+        ],
+      ],
+      ["browser", { format: "esm" }, ["browser/shell.js", "browser/shell.js.siblings.json"]],
+      ["common", undefined, ["README.md"]],
+    ]);
+  });
+
   it("gives each controller selector its own layer, keyed by the PURL's platform qualifiers", () => {
     const p = partitionLayers(
       manifest(

@@ -1,0 +1,64 @@
+kind: Telo.Application
+metadata:
+  name: ValueBranchReferenceTest
+  version: 1.0.0
+  description: |
+    A reference slot that also takes a list of entries, each a reference beside
+    a predicate: an expression inside an entry leaves the list a value, the
+    reference in each entry arrives as the live instance, and an entry of the
+    wrong shape is refused.
+imports:
+  Lib: ./__fixtures__/value-branch-reference
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verify
+  - !ref wrongShape
+---
+kind: Run.Value
+metadata:
+  name: light
+value: 1
+---
+kind: Run.Value
+metadata:
+  name: dark
+value: 2
+---
+kind: Lib.Chosen
+metadata:
+  name: chooser
+target:
+  - target: !ref dark
+    when: !cel "inputs.dark"
+  - target: !ref light
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: dark
+    invoke: !ref chooser
+    inputs: { dark: true }
+  - name: light
+    invoke: !ref chooser
+    inputs: { dark: false }
+  - name: single
+    invoke: { kind: Lib.Chosen, target: !ref light }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.dark.result, steps.light.result, steps.single.result]"
+      expected:
+        - { injected: true, result: 2 }
+        - { injected: true, result: 1 }
+        - { injected: true, result: 1 }
+---
+kind: Assert.Manifest
+metadata:
+  name: wrongShape
+source: ./__fixtures__/value-branch-reference/wrong-shape/telo.yaml
+expect:
+  errors:
+    - code: INVALID_REFERENCE
+      message: "Lib.Chosen/chooser: reference at 'target' must have string 'kind' and 'name' fields"

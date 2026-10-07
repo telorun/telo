@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: TemplateProvideWithInputs
+  version: 1.0.0
+imports:
+  Lib: ..
+targets:
+  - name: read
+    invoke: !ref read
+---
+kind: Lib.ShoutedWithInputs
+metadata:
+  name: shouted
+who: ada
+---
+kind: Lib.Read
+metadata:
+  name: read
+source: !ref shouted

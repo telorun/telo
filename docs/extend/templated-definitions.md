@@ -114,7 +114,7 @@ result:
 
 ## Mount template
 
-A `Telo.Mount` template declares an internal mountable surface (typically an `Http.Api`) plus any handlers it needs, then names the surface with `mount:`. `modules/crud` is the canonical example — `Crud.Resource` builds four SQL handlers and one `Http.Api`, all from `self`:
+A `Telo.Mount` template declares an internal mountable surface (typically an `Http.Api`) plus any handlers it needs, then names the surface with `mount:`. `modules/crud` is the canonical example — `Crud.Resource` builds four SQL handlers and one `Http.Api`, all from `self`. Its list route answers with an envelope — one page of rows, the count of every match and the cursor of the next page — rather than a bare array:
 
 ```yaml
 kind: Telo.Definition
@@ -128,7 +128,7 @@ schema:
     connection: { x-telo-ref: Sql.Connection }
     table: { type: string }
 resources:
-  - kind: Self.Reader          # internal handler kinds, also templated
+  - kind: Self.Reader          # an internal handler kind of the same library
     metadata: { name: reader }
     connection: !cel "self.connection"
     table: !cel "self.table"
@@ -141,7 +141,7 @@ resources:
           - status: 200
             content:
               application/json:
-                body: !cel "result.rows"
+                body: !cel "result"   # { rows, total, next }
 mount: !ref api
 ```
 

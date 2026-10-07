@@ -31,6 +31,7 @@ import {
   type ZoneEntry,
   type EffectBody,
   type EffectChain,
+  type BrowserEntryFiles,
 } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
@@ -933,6 +934,20 @@ export class ResourceContextImpl implements ResourceContext {
    *  resource's kind — never the module that declared the resource. */
   resolveNativeFile(name: string): Promise<string> {
     return this.kernel.resolveNativeFile(this.#resolvedKind, name);
+  }
+
+  /** Resolve a browser entry against the module that declared this resource. */
+  resolveBrowserEntry(specifier: string): Promise<BrowserEntryFiles> {
+    return this.kernel.resolveBrowserEntry(this.moduleContext.source, specifier, this.#describeSelf());
+  }
+
+  /** Resolve a browser entry against the module that declared this resource's kind. */
+  resolveControllerBrowserEntry(specifier: string): Promise<BrowserEntryFiles> {
+    return this.kernel.resolveControllerBrowserEntry(this.#resolvedKind, specifier, this.#describeSelf());
+  }
+
+  #describeSelf(): string {
+    return `${this.#resolvedKind ?? "<unknown-kind>"}/${(this.metadata?.name as string | undefined) ?? "<unnamed>"}`;
   }
 
   on(event: string, handler: (payload?: any) => void | Promise<void>): void {

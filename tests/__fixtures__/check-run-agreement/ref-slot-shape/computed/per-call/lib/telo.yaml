@@ -1,0 +1,32 @@
+# A field the kind evaluates PER CALL holds reference slots too, and a value
+# computed at or above one is data the moment the controller expands it. A
+# list of children computed with `!cel` and a target written with
+# `!interpolate` are each reported as `REF_SLOT_COMPUTED`; the computed label
+# beside them is a leaf and stays legal.
+kind: Telo.Library
+metadata:
+  name: RefSlotRuntimeComputedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose resource computes, inside a field evaluated on every
+    call, values that hold reference slots.
+imports:
+  Shape: ../../../kinds
+  Run: ../../../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Shape.ViaRuntimeShape
+metadata:
+  name: perCall
+tree:
+  label: !cel "inputs.prefix"
+  target: !interpolate "${{ inputs.prefix }}"
+  children: !cel "[{'label': 'leaf', 'target': 'five'}]"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

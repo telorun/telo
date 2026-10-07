@@ -1,0 +1,158 @@
+kind: Telo.Application
+metadata:
+  name: UiReactPerRequestTest
+  version: 1.0.0
+  description: |
+    What a page and the application document hold depends on the request: two
+    tables under complementary conditions on a header give page documents one
+    column apart, two themes chosen by a header give different stylesheets,
+    and equal headers give equal digests. A theme's face is served as a font
+    and declared from the family. A section from a library with no controller
+    serves its nodes; a component the application cannot host is an error node
+    beside the ones it can; a value that is not a valid node once evaluated is
+    replaced by an error node — a link whose address is a script, and one a
+    browser would read as another host — with the nodes beside it intact; an
+    app-relative image is served from a mount beneath the application's.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/app/telo.yaml
+    ports:
+      http: 19312
+targets:
+  - !ref fixture
+steps:
+  - name: public
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/variants" }
+  - name: publicAgain
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/variants" }
+  - name: staff
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/variants" }
+    inputs:
+      headers: { x-role: staff }
+  - name: verifyVariants
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        public: !cel "steps.public.result.body.children.map(t, t.columns.map(c, c.header))"
+        staff: !cel "steps.staff.result.body.children.map(t, t.columns.map(c, c.header))"
+        digestsDiffer: !cel "steps.public.result.body.digest != steps.staff.result.body.digest"
+        equalHeadersEqualDigest: !cel "steps.public.result.body.digest == steps.publicAgain.result.body.digest"
+      expected:
+        public: [[Task, Due]]
+        staff: [[Task, Due, Priority]]
+        digestsDiffer: true
+        equalHeadersEqualDigest: true
+
+  - name: blue
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/app" }
+  - name: blueAgain
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/app" }
+  - name: red
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/app" }
+    inputs:
+      headers: { x-tenant: red }
+  - name: blueCss
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19312' + steps.blue.result.body.stylesheets[2]"
+  - name: redCss
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19312' + steps.red.result.body.stylesheets[2]"
+  - name: face
+    invoke: { kind: HttpClient.Request, responseType: bytes }
+    inputs:
+      url: !cel "'http://127.0.0.1:19312' + steps.redCss.result.body.substring(steps.redCss.result.body.indexOf('url(\"') + 5, steps.redCss.result.body.indexOf('\") format'))"
+  - name: verifyThemes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        digestsDiffer: !cel "steps.blue.result.body.digest != steps.red.result.body.digest"
+        stylesheetsDiffer: !cel "steps.blue.result.body.stylesheets[2] != steps.red.result.body.stylesheets[2]"
+        restShared: !cel "steps.blue.result.body.stylesheets[0] == steps.red.result.body.stylesheets[0] && steps.blue.result.body.stylesheets[3] == steps.red.result.body.stylesheets[3]"
+        equalHeadersEqualDigest: !cel "steps.blue.result.body.digest == steps.blueAgain.result.body.digest"
+        blueCss: !cel "steps.blueCss.result.body"
+        redTokens: !cel "steps.redCss.result.body.substring(steps.redCss.result.body.indexOf('@layer'))"
+        redFace: !cel "steps.redCss.result.body.startsWith('@font-face { font-family: \"Test Sans\"; src: url(\"/admin/_telo/ui/assets/') && steps.redCss.result.body.contains('/test-sans-normal.ttf\") format(\"truetype\"); font-weight: 400; font-style: normal;')"
+        oneFace: !cel "steps.redCss.result.body.lastIndexOf('@font-face') == 0"
+        face:
+          status: !cel "steps.face.result.status"
+          type: !cel "steps.face.result.headers['content-type']"
+          cache: !cel "steps.face.result.headers['cache-control']"
+      expected:
+        digestsDiffer: true
+        stylesheetsDiffer: true
+        restShared: true
+        equalHeadersEqualDigest: true
+        blueCss: "@layer telo.theme {\n  :root {\n    --telo-color-accent: #1f8fff;\n    --telo-radius-md: 2px;\n  }\n}\n"
+        redTokens: "@layer telo.theme {\n  :root {\n    --telo-color-accent: #c4341b;\n    --telo-font-body: \"Test Sans\";\n    --telo-font-mono: \"Menlo\";\n  }\n}\n"
+        redFace: true
+        oneFace: true
+        face:
+          status: 200
+          type: font/ttf
+          cache: public, max-age=31536000, immutable
+
+  - name: gallery
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
+  - name: redirected
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
+    inputs:
+      headers: { x-next: "javascript:alert(1)" }
+  - name: offsite
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
+    inputs:
+      headers: { x-next: "//evil.example" }
+  - name: components
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/components" }
+  - name: image
+    invoke: { kind: HttpClient.Request, responseType: text }
+    inputs:
+      url: !cel "'http://127.0.0.1:19312/admin' + steps.gallery.result.body.children[1].children[4].src"
+  - name: verifyNodes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        banner: !cel "steps.gallery.result.body.children[0]"
+        badge: !cel "steps.gallery.result.body.children[1].children[1].children[0]"
+        lastLink: !cel "steps.gallery.result.body.children[1].children[6]"
+        invalidLink: !cel "steps.redirected.result.body.children[1].children[6].code"
+        restIntact: !cel "steps.redirected.result.body.children[1].children[2]"
+        offsite:
+          status: !cel "steps.offsite.result.status"
+          link: !cel "steps.offsite.result.body.children[1].children[6].code"
+          rest: !cel "steps.offsite.result.body.children[1].children[2]"
+        components: !cel "steps.components.result.body.children.map(c, c.type == 'error' ? c.code : c.type)"
+        hosted: !cel "steps.components.result.body.children[0].children.map(c, c.export)"
+        image:
+          status: !cel "steps.image.result.status"
+          svg: !cel "steps.image.result.body.startsWith('<svg')"
+      expected:
+        banner:
+          type: stack
+          children:
+            - { type: text, text: From a library, style: heading }
+            - { type: text, text: Placed as one section, style: muted }
+        badge: { type: badge, text: from 127.0.0.1, style: [accent, strong] }
+        lastLink: { type: link, text: unsafe, href: / }
+        invalidLink: ERR_UI_NODE_INVALID
+        restIntact: { type: link, text: Back to todos, href: / }
+        offsite:
+          status: 200
+          link: ERR_UI_NODE_INVALID
+          rest: { type: link, text: Back to todos, href: / }
+        components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, table]
+        hosted: [HostProbe, Counter]
+        image: { status: 200, svg: true }

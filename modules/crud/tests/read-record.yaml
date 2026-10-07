@@ -1,0 +1,175 @@
+kind: Telo.Application
+metadata:
+  name: CrudReadRecordTest
+  version: 1.0.0
+  description: |
+    A read returns a record valid against the model, so a client can send back
+    what it read. A column holding NULL is `null` where the property admits it,
+    left out where the property is optional, and the type's empty value where
+    it is required — on read-one and on the list alike. The record read, less
+    its `id`, is accepted by PUT, and a `null` written to a nullable property
+    is stored as NULL.
+imports:
+  Crud: ../
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+migrations:
+  0001_notes:
+    statement: |
+      CREATE TABLE notes (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        title    TEXT,
+        pinned   INTEGER,
+        comment  TEXT,
+        due_date TEXT
+      )
+  # Rows written before the model required `title` and `pinned`.
+  0002_legacy:
+    statement: |
+      INSERT INTO notes (title, pinned, comment, due_date) VALUES (NULL, NULL, NULL, NULL)
+---
+kind: Telo.JsonSchema
+metadata: { name: Note }
+schema:
+  type: object
+  required: [title, pinned]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    pinned: { type: boolean }
+    comment: { type: [string, "null"] }
+    dueDate: { type: string }
+---
+kind: Crud.Resource
+metadata: { name: notes }
+connection: !ref db
+singular: note
+plural: notes
+model: !ref Note
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: Server }
+    host: 127.0.0.1
+    port: 8998
+    mounts:
+      - path: /notes
+        mount: !ref notes
+targets:
+  - !ref Server
+steps:
+  - name: readLegacy
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes/1
+      method: GET
+  - name: listLegacy
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes
+      method: GET
+  # Required: the type's empty value. Nullable: null. Optional: no key.
+  - name: assertRead
+    inputs:
+      actual:
+        one: !cel "steps.readLegacy.result.body"
+        list: !cel "steps.listLegacy.result.body"
+      expected:
+        one: { id: 1, title: "", pinned: false, comment: null }
+        list:
+          rows:
+            - { id: 1, title: "", pinned: false, comment: null }
+          total: 1
+          next: null
+    invoke:
+      kind: Assert.Equals
+
+  # The round trip: what was read, less `id`, is a body the model accepts.
+  - name: sendBack
+    inputs:
+      body:
+        title: !cel "steps.readLegacy.result.body.title"
+        pinned: !cel "steps.readLegacy.result.body.pinned"
+        comment: !cel "steps.readLegacy.result.body.comment"
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes/1
+      method: PUT
+  - name: readSentBack
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes/1
+      method: GET
+  - name: assertSentBack
+    inputs:
+      actual:
+        status: !cel "steps.sendBack.result.status"
+        row: !cel "steps.readSentBack.result.body"
+      expected:
+        status: 200
+        row: { id: 1, title: "", pinned: false, comment: null }
+    invoke:
+      kind: Assert.Equals
+
+  # A nullable property takes a `null` on create and on replace, and holds NULL.
+  - name: create
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes
+      method: POST
+      body: { title: "Call back", pinned: true, comment: null, dueDate: "2026-10-09" }
+  - name: fill
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes/1
+      method: PUT
+      body: { title: "Legacy", pinned: false, comment: "kept" }
+  - name: clear
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes/1
+      method: PUT
+      body: { title: "Legacy", pinned: false, comment: null }
+  - name: listWritten
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8998/notes
+      method: GET
+  - name: storedNulls
+    invoke:
+      kind: Sql.Query
+      connection: !ref db
+    inputs:
+      sql: "SELECT id FROM notes WHERE comment IS NULL ORDER BY id"
+  - name: assertWritten
+    inputs:
+      actual:
+        statuses: !cel "[steps.create.result.status, steps.fill.result.status, steps.clear.result.status]"
+        rows: !cel "steps.listWritten.result.body.rows"
+        storedNulls: !cel "steps.storedNulls.result.rows.map(r, r.id)"
+      expected:
+        statuses: [201, 200, 200]
+        rows:
+          - { id: 1, title: "Legacy", pinned: false, comment: null }
+          - { id: 2, title: "Call back", pinned: true, comment: null, dueDate: "2026-10-09" }
+        storedNulls: [1, 2]
+    invoke:
+      kind: Assert.Equals

@@ -21,6 +21,7 @@ import { ModuleFunctionIndex } from "./module-function-index.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
 import { CelScopeResolver, type CelScope } from "./cel-scope.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { accessorSiteAt, governedCelEvalSites } from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
@@ -178,9 +179,23 @@ export class CelScopeQuery {
       this.entered = resource;
     }
     const { contextSchema, matchedScope } = this.matchContext(resource, path);
-    const scope = this.resolver.scopeFor({ source: resource, path, contextSchema, matchedScope });
+    const typed = this.resolver.scopeFor({ source: resource, path, contextSchema, matchedScope });
+    const accessor = this.accessorSite(resource, path);
+    const scope = accessor ? { ...typed, accessorBindings: accessor.bindings } : typed;
     byPath.set(path, scope);
     return scope;
+  }
+
+  /** The accessor field `path` of `resource` is, or lies beneath — read off the
+   *  sites and the gate the analysis pass applies to the resource's kind. */
+  private accessorSite(resource: ResourceManifest, path: string) {
+    const { defs, aliases, aliasesByModule } = this.ctx;
+    const scope = moduleAliasScope(resource.metadata, aliases, aliasesByModule);
+    const sites = governedCelEvalSites(
+      this.definitionFor(resource),
+      (kind) => defs.resolve(scope.resolveKind(kind) ?? kind) ?? defs.resolve(kind),
+    );
+    return sites ? accessorSiteAt(sites, path) : undefined;
   }
 
   /**

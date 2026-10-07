@@ -13,6 +13,7 @@ import {
   selectorKey,
   type ArtifactSelector,
 } from "./artifact-selector.js";
+import { readBrowserEntries } from "./module-browser.js";
 import { readLibraryCandidates } from "./module-library.js";
 
 /**
@@ -79,6 +80,22 @@ export type ModuleFileClaim =
        *  `origin` would put PURL knowledge back into the consumer, which is
        *  exactly what this module exists to hold. */
       readonly localPath?: string;
+    })
+  | (ClaimBase & {
+      readonly role: "browser";
+      /** `format: esm` plus the entry's `abi`. */
+      readonly selector: ArtifactSelector;
+      /** The import-map key the entry is served under. */
+      readonly specifier: string;
+      /** The source `path` is built from. The files built beside the entry —
+       *  shared chunks, a stylesheet — are known only to the build, so the
+       *  caller that runs it adds them to this claim's layer. */
+      readonly localPath?: string;
+      /** Bare specifiers the host supplies; entries declaring the identical
+       *  set are one build. */
+      readonly external: readonly string[];
+      /** The export names the built entry must have. */
+      readonly exports: readonly string[];
     })
   | (ClaimBase & {
       readonly role: "assets";
@@ -158,6 +175,20 @@ function libraryClaims(json: unknown): ModuleFileClaim[] {
   }));
 }
 
+/** The browser entries one document's `exports.browser:` block names. */
+function browserClaims(json: unknown): ModuleFileClaim[] {
+  return readBrowserEntries(json).entries.map((entry) => ({
+    role: "browser",
+    path: entry.path,
+    selector: entry.selector,
+    specifier: entry.specifier,
+    ...(entry.localPath ? { localPath: entry.localPath } : {}),
+    external: entry.external,
+    exports: entry.exports,
+    origin: entry.origin,
+  }));
+}
+
 /** Claims contributed by tagged values, asked of the engine that owns each tag.
  *  The walk reaches every tagged scalar in the document, so an engine that
  *  embeds files is discovered wherever its tag was written.
@@ -188,8 +219,7 @@ function taggedClaims(json: unknown, registry: TemplatingEngineRegistry): Module
  *  their layers — dropping one would leave a platform's layer short a file it
  *  declared it needs. */
 function claimKey(claim: ModuleFileClaim): string {
-  const selector =
-    claim.role === "controller" || claim.role === "library" ? selectorKey(claim.selector) : "";
+  const selector = claim.role === "assets" ? "" : selectorKey(claim.selector);
   return `${claim.role}\0${selector}\0${claim.path}`;
 }
 
@@ -265,6 +295,7 @@ export function collectDocumentFileClaims(
   for (const json of docs) {
     for (const claim of [
       ...libraryClaims(json),
+      ...browserClaims(json),
       ...controllerClaims(json),
       ...taggedClaims(json, registry),
     ]) {

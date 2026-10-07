@@ -1,0 +1,113 @@
+# An accessor field arrives at the controller as a BINDING: a chain as its root
+# and the member names below it, a literal wrapped as `{ value }` — a literal
+# shaped like a chain included. The chain is typed against the row model the
+# table names, given by `!ref` and given inline, and a read through a nullable
+# member needs no guard, since nothing evaluates it. The provider's other
+# fields are still evaluated at creation, and a template body's accessor
+# reaches the entry it composes as written.
+kind: Telo.Application
+metadata:
+  name: AccessorApp
+  version: 1.0.0
+imports:
+  Acc: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  additionalProperties: false
+  required: [text, status]
+  properties:
+    text: { type: string }
+    status: { type: string }
+    owner:
+      type: [object, "null"]
+      additionalProperties: false
+      properties:
+        name: { type: string }
+---
+kind: Acc.Table
+metadata:
+  name: byRef
+model: !ref Todo
+title: !cel "'Todos ' + module.version"
+rowStyle: !cel "row.status"
+columns:
+  - header: Task
+    value: !cel "row.text"
+  - header: Whole row
+    value: !cel "row"
+  - header: Owner
+    value: !cel "row.owner.name"
+  - header: Fixed
+    value: fixed text
+  - header: Lookalike
+    value: { root: row, path: [text] }
+---
+kind: Acc.Table
+metadata:
+  name: byInline
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text, status]
+    properties:
+      text: { type: string }
+      status: { type: string }
+title: Inline
+rowStyle: !cel "row.status"
+columns:
+  - header: Task
+    value: !cel "row.text"
+---
+kind: Acc.Preset
+metadata:
+  name: preset
+model: !ref Todo
+label: todos
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: preset
+    invoke: { kind: Acc.Read, source: !ref preset }
+  - name: byRef
+    invoke: { kind: Acc.Read, source: !ref byRef }
+  - name: byInline
+    invoke: { kind: Acc.Read, source: !ref byInline }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        byRef: !cel "steps.byRef.result"
+        byInline: !cel "steps.byInline.result"
+        preset: !cel "steps.preset.result"
+      expected:
+        byRef:
+          title: Todos 1.0.0
+          rowStyle: { root: row, path: [status] }
+          values:
+            - { root: row, path: [text] }
+            - { root: row, path: [] }
+            - { root: row, path: [owner, name] }
+            - { value: fixed text }
+            - { value: { root: row, path: [text] } }
+        byInline:
+          title: Inline
+          rowStyle: { root: row, path: [status] }
+          values:
+            - { root: row, path: [text] }
+        preset:
+          title: Preset todos
+          rowStyle: { root: row, path: [status] }
+          values:
+            - { value: todos }

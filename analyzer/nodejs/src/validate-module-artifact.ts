@@ -8,6 +8,7 @@ import {
   selectorFromQualifiers,
   selectorKey,
 } from "./artifact-selector.js";
+import { readBrowserEntries } from "./module-browser.js";
 import { readLibraryCandidates, type LibraryCandidate } from "./module-library.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -44,6 +45,7 @@ export function validateModuleArtifact(manifests: ResourceManifest[]): AnalysisD
     validateLayerIndex(manifest, out);
     validateControllerSelectors(manifest, out);
     validateLibraryCandidates(manifest, out);
+    validateBrowserEntries(manifest, out);
   }
   return out;
 }
@@ -108,6 +110,47 @@ function validateLibraryCandidates(manifest: ResourceManifest, out: AnalysisDiag
       continue;
     }
     seen.set(key, candidate);
+  }
+}
+
+/**
+ * The `exports.browser:` block on a `Telo.Library` doc — every way an entry can
+ * fail to be one is `BROWSER_ENTRY_INVALID`, here rather than in the built-in
+ * schema so each is reported once and in the entry's own terms.
+ *
+ * A source checkout builds an entry from its `source`, so an entry there must
+ * name one; a published manifest (it carries the `layers:` index) ships the
+ * built file and need not.
+ */
+function validateBrowserEntries(manifest: ResourceManifest, out: AnalysisDiagnostic[]): void {
+  if (manifest.kind !== "Telo.Library") return;
+  const metadata = manifest.metadata as { name?: string; source?: string } | undefined;
+  const { entries, problems } = readBrowserEntries(manifest);
+  const published = (manifest as { layers?: unknown }).layers !== undefined;
+  const all = [
+    ...problems,
+    ...entries
+      .filter((entry) => !published && entry.localPath === undefined)
+      .map((entry) => ({
+        origin: entry.origin,
+        index: entry.index as number | undefined,
+        detail:
+          "'source' is required: a module read from a source checkout builds the entry from " +
+          "it. Name the file 'path' is built from.",
+      })),
+  ];
+  for (const problem of all) {
+    out.push({
+      severity: DiagnosticSeverity.Error,
+      code: "BROWSER_ENTRY_INVALID",
+      source: SOURCE,
+      message: `Telo.Library/${metadata?.name ?? "(unnamed)"}: ${problem.origin}: ${problem.detail}`,
+      data: {
+        resource: { kind: manifest.kind, name: metadata?.name },
+        filePath: metadata?.source,
+        path: problem.index === undefined ? "exports.browser" : `exports.browser[${problem.index}]`,
+      },
+    });
   }
 }
 
