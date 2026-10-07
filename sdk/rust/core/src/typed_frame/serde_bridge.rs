@@ -12,7 +12,8 @@
 //! refused.
 //!
 //! Writing tracks where it stands in the value, so every refusal the bridge raises
-//! names the JSON Pointer of the node it is about, in the frame writer's words.
+//! names the JSON Pointer of the node it is about, in the frame writer's words. A
+//! map key is judged where it arrives, and a refusal about one names the map.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -24,8 +25,8 @@ use serde::ser::{self, Serialize};
 use telorun_cel_value::{cel_map_from_entries, CelRecord};
 
 use super::{
-    decode_typed_frame, encode_typed_frame, key_segment, map_key_identity, unencodable, write_map_key, CelValue,
-    TypedFrameError,
+    decode_typed_frame, encode_typed_frame, key_segment, map_key_identity, unencodable, write_map_key,
+    CelValue, TypedFrameError,
 };
 use crate::cel_value_identity::{BYTES_TOKEN, DURATION_TOKEN, TIMESTAMP_TOKEN, UINT_TOKEN};
 use crate::plain_encoding::{base64url, cel_duration, rfc3339};
@@ -38,7 +39,7 @@ pub fn to_frame<T: Serialize + ?Sized>(value: &T) -> Result<String, TypedFrameEr
 
 /// A serde value as a CEL value.
 pub fn to_value<T: Serialize + ?Sized>(value: &T) -> Result<CelValue, TypedFrameError> {
-    value.serialize(ValueSerializer { path: &Path::default() })
+    value.serialize(ValueSerializer { path: &Path::default(), key: false })
 }
 
 /// A serde value read from frame text.
@@ -59,10 +60,20 @@ fn refuse(path: &Path, detail: impl fmt::Display) -> TypedFrameError {
     unencodable(&path.borrow(), detail)
 }
 
+/// A refusal about what is being written: the node at the path, or — while a map's
+/// key is being written — a key of the map at the path.
+fn refuse_node(path: &Path, key: bool, detail: impl fmt::Display) -> TypedFrameError {
+    if key {
+        refuse(path, format!("is a map with a key that {detail}"))
+    } else {
+        refuse(path, detail)
+    }
+}
+
 /// A member, element or variant payload, written one segment deeper.
 fn child<T: Serialize + ?Sized>(path: &Path, segment: String, value: &T) -> Result<CelValue, TypedFrameError> {
     path.borrow_mut().push(segment);
-    let written = value.serialize(ValueSerializer { path });
+    let written = value.serialize(ValueSerializer { path, key: false });
     path.borrow_mut().pop();
     written
 }
@@ -70,13 +81,28 @@ fn child<T: Serialize + ?Sized>(path: &Path, segment: String, value: &T) -> Resu
 #[derive(Clone, Copy)]
 struct ValueSerializer<'p> {
     path: &'p Path,
+    /// Writing a key of the map at `path`: an aggregate is refused where it arrives,
+    /// before anything beneath it is written, and every refusal is about the key.
+    key: bool,
 }
 
 impl ValueSerializer<'_> {
+    fn refuse(self, detail: impl fmt::Display) -> TypedFrameError {
+        refuse_node(self.path, self.key, detail)
+    }
+
     fn int_of<T: TryInto<i64> + fmt::Display + Copy>(self, value: T) -> Result<CelValue, TypedFrameError> {
         value.try_into().map(CelValue::Int).map_err(|_| {
-            refuse(self.path, format!("is the integer {value}, outside CEL's int64 range; a CEL uint is Uint64"))
+            self.refuse(format!("is the integer {value}, outside CEL's int64 range; a CEL uint is Uint64"))
         })
+    }
+
+    /// Refuses an aggregate arriving as a map key, in the frame writer's words.
+    fn not_a_key(self, what: &str) -> Result<(), TypedFrameError> {
+        if self.key {
+            return Err(self.refuse(format!("is {what}; a CEL map key is an int, uint, bool or string")));
+        }
+        Ok(())
     }
 }
 
@@ -158,11 +184,11 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
         let text = || -> Result<String, TypedFrameError> {
             match value.serialize(self)? {
                 CelValue::String(text) => Ok(text),
-                _ => Err(refuse(self.path, format!("is a {name} that serialized no text"))),
+                _ => Err(self.refuse(format!("is a {name} that serialized no text"))),
             }
         };
         let refused =
-            |text: &str| -> TypedFrameError { refuse(self.path, format!("is '{text}', which is not the plain text of {name}")) };
+            |text: &str| -> TypedFrameError { self.refuse(format!("is '{text}', which is not the plain text of {name}")) };
         match name {
             TIMESTAMP_TOKEN => {
                 let text = text()?;
@@ -176,14 +202,16 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
                 let text = text()?;
                 base64url::decode(&text).map(CelValue::Bytes).ok_or_else(|| refused(&text))
             }
-            UINT_TOKEN => value.serialize(UintCapture { path: self.path }),
+            UINT_TOKEN => value.serialize(UintCapture { path: self.path, key: self.key }),
             _ => value.serialize(self),
         }
     }
     fn serialize_newtype_variant<T: Serialize + ?Sized>(self, _name: &'static str, _index: u32, variant: &'static str, value: &T) -> Result<CelValue, TypedFrameError> {
+        self.not_a_key("a map")?;
         Ok(one_variant(variant, child(self.path, variant.to_string(), value)?))
     }
     fn serialize_seq(self, len: Option<usize>) -> Result<ListBuilder<'p>, TypedFrameError> {
+        self.not_a_key("a list")?;
         Ok(ListBuilder { path: self.path, items: Vec::with_capacity(len.unwrap_or(0)) })
     }
     fn serialize_tuple(self, len: usize) -> Result<ListBuilder<'p>, TypedFrameError> {
@@ -193,16 +221,19 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
         self.serialize_seq(Some(len))
     }
     fn serialize_tuple_variant(self, _name: &'static str, _index: u32, variant: &'static str, len: usize) -> Result<VariantBuilder<ListBuilder<'p>>, TypedFrameError> {
+        self.not_a_key("a map")?;
         self.path.borrow_mut().push(variant.to_string());
         Ok(VariantBuilder { variant, inner: self.serialize_seq(Some(len))? })
     }
     fn serialize_map(self, len: Option<usize>) -> Result<MapBuilder<'p>, TypedFrameError> {
+        self.not_a_key("a map")?;
         Ok(MapBuilder { path: self.path, entries: Vec::with_capacity(len.unwrap_or(0)), key: None })
     }
     fn serialize_struct(self, _name: &'static str, len: usize) -> Result<MapBuilder<'p>, TypedFrameError> {
         self.serialize_map(Some(len))
     }
     fn serialize_struct_variant(self, _name: &'static str, _index: u32, variant: &'static str, len: usize) -> Result<VariantBuilder<MapBuilder<'p>>, TypedFrameError> {
+        self.not_a_key("a map")?;
         self.path.borrow_mut().push(variant.to_string());
         Ok(VariantBuilder { variant, inner: self.serialize_map(Some(len))? })
     }
@@ -211,11 +242,12 @@ impl<'p> ser::Serializer for ValueSerializer<'p> {
 /// Reads the `u64` inside a `Uint64`, which a CEL `int` serializer would refuse.
 struct UintCapture<'p> {
     path: &'p Path,
+    key: bool,
 }
 
 impl UintCapture<'_> {
     fn not_uint(&self) -> TypedFrameError {
-        refuse(self.path, "is a Uint64 that serialized something other than a u64")
+        refuse_node(self.path, self.key, "is a Uint64 that serialized something other than a u64")
     }
 }
 
@@ -308,10 +340,10 @@ struct MapBuilder<'p> {
 }
 
 impl MapBuilder<'_> {
-    /// A record when every key is a string, a typed-key map otherwise. A key no map
-    /// is keyed by, and two keys that are one key, are refused here at the map's own
-    /// pointer, in the frame writer's words and by the frame's own key rule — so the
-    /// value domain's builder is handed nothing it refuses.
+    /// A record when every key is a string, a typed-key map otherwise. Each key was
+    /// judged when it arrived; two keys that are one key are refused here, at the
+    /// map's own pointer, in the frame writer's words and by the frame's own key rule
+    /// — so the value domain's builder is handed nothing it refuses.
     fn finish(self) -> Result<CelValue, TypedFrameError> {
         let mut seen = HashSet::new();
         for (key, _) in &self.entries {
@@ -322,14 +354,19 @@ impl MapBuilder<'_> {
             }
         }
         if !self.entries.iter().all(|(key, _)| matches!(key, CelValue::String(_))) {
-            return cel_map_from_entries(self.entries)
-                .map(CelValue::Map)
-                .map_err(|_| refuse(self.path, "is a map the CEL value domain does not hold"));
+            // Unreachable while the checks above hold; if it fires, the builder says why.
+            return cel_map_from_entries(self.entries).map(CelValue::Map).map_err(|error| {
+                refuse(self.path, format!("is a map the value domain refused after the bridge accepted its keys: {error}"))
+            });
         }
         let mut record = CelRecord::new();
         for (key, value) in self.entries {
             let CelValue::String(key) = key else {
-                return Err(refuse(self.path, "is a map with a key that is not a string"));
+                // Unreachable: this path is entered only when every key is a string.
+                return Err(refuse(
+                    self.path,
+                    format!("is a map taken for a record although it holds the key {key:?}"),
+                ));
             };
             record.insert(key, value);
         }
@@ -341,7 +378,11 @@ impl ser::SerializeMap for MapBuilder<'_> {
     type Ok = CelValue;
     type Error = TypedFrameError;
     fn serialize_key<T: Serialize + ?Sized>(&mut self, key: &T) -> Result<(), TypedFrameError> {
-        self.key = Some(key.serialize(ValueSerializer { path: self.path })?);
+        // Judged here, before its value is written: no pointer is derived from a
+        // key the frame refuses.
+        let key = key.serialize(ValueSerializer { path: self.path, key: true })?;
+        write_map_key(&key, &self.path.borrow())?;
+        self.key = Some(key);
         Ok(())
     }
     fn serialize_value<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<(), TypedFrameError> {

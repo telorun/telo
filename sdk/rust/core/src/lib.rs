@@ -44,8 +44,8 @@ pub mod value_type;
 pub use cel_value_identity::{Bytes, Duration, Timestamp, Uint64};
 // The CEL value domain, re-exported by name from `telorun-cel-value`.
 pub use cel_value_identity::{
-    cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_timestamp, cel_timestamp_from_millis,
-    duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
+    cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_none, cel_some, cel_timestamp,
+    cel_timestamp_from_millis, cel_type_value, duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
     parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelMap,
     CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, ReservedTypeName, SourceRange,
 };

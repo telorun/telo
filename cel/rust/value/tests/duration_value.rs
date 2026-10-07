@@ -149,42 +149,63 @@ fn answers_a_total_128_bits_cannot_hold_as_out_of_range() {
 }
 
 #[test]
-fn writes_and_reads_the_fields_of_any_duration_the_carrier_holds() {
-    // Seconds and nanos as a host would hand them over, then: the total, the canonical
-    // text, the refusal where CEL would use it, and the four getters.
-    const NODE_CARRIERS: &[(i64, i32, i128, &str, Option<Refusal>, [i64; 4])] = &[
-        (0, 0, 0, "0s", None, [0, 0, 0, 0]),
-        (1, 0, 1000000000, "1s", None, [0, 0, 1, 0]),
-        (-1, 0, -1000000000, "-1s", None, [0, 0, -1, 0]),
-        (0, 1, 1, "0.000000001s", None, [0, 0, 0, 0]),
-        (0, -1, -1, "-0.000000001s", None, [0, 0, 0, 0]),
-        (1, 500000000, 1500000000, "1.5s", None, [0, 0, 1, 500]),
-        (-1, -500000000, -1500000000, "-1.5s", None, [0, 0, -1, -500]),
-        (123, 321456789, 123321456789, "123.321456789s", None, [0, 2, 123, 321]),
-        (5400, 0, 5400000000000, "5400s", None, [1, 90, 5400, 0]),
-        (0, 250000000, 250000000, "0.25s", None, [0, 0, 0, 250]),
-        (0, 1000, 1000, "0.000001s", None, [0, 0, 0, 0]),
-        (0, 999999999, 999999999, "0.999999999s", None, [0, 0, 0, 999]),
-        (0, -999999999, -999999999, "-0.999999999s", None, [0, 0, 0, -999]),
-        (9223372036, 854775807, 9223372036854775807, "9223372036.854775807s", None, [2562047, 153722867, 9223372036, 854]),
-        (-9223372036, -854775808, -9223372036854775808, "-9223372036.854775808s", None, [-2562047, -153722867, -9223372036, -854]),
-        (9223372036, 854775808, 9223372036854775808, "9223372036.854775808s", Some(("invalid_conversion", "duration out of range")), [2562047, 153722867, 9223372036, 854]),
-        (-9223372036, -854775809, -9223372036854775809, "-9223372036.854775809s", Some(("invalid_conversion", "duration out of range")), [-2562047, -153722867, -9223372036, -854]),
-        (200000000000, 0, 200000000000000000000, "200000000000s", Some(("invalid_conversion", "duration out of range")), [55555555, 3333333333, 200000000000, 0]),
-        (-200000000000, 0, -200000000000000000000, "-200000000000s", Some(("invalid_conversion", "duration out of range")), [-55555555, -3333333333, -200000000000, 0]),
-        (315576000000, 0, 315576000000000000000, "315576000000s", Some(("invalid_conversion", "duration out of range")), [87660000, 5259600000, 315576000000, 0]),
-        (-315576000000, -999999999, -315576000000999999999, "-315576000000.999999999s", Some(("invalid_conversion", "duration out of range")), [-87660000, -5259600000, -315576000000, -999]),
-        (9223372036854775807, 999999999, 9223372036854775807999999999, "9223372036854775807.999999999s", Some(("invalid_conversion", "duration out of range")), [2562047788015215, 153722867280912930, 9223372036854775807, 999]),
-        (-9223372036854775808, -999999999, -9223372036854775808999999999, "-9223372036854775808.999999999s", Some(("invalid_conversion", "duration out of range")), [-2562047788015215, -153722867280912930, -9223372036854775808, -999]),
+fn writes_any_duration_the_carrier_holds() {
+    // Seconds and nanos as a host would hand them over, then the total and the
+    // canonical text.
+    const NODE_CARRIERS: &[(i64, i32, i128, &str)] = &[
+        (0, 0, 0, "0s"),
+        (1, 0, 1000000000, "1s"),
+        (-1, 0, -1000000000, "-1s"),
+        (0, 1, 1, "0.000000001s"),
+        (0, -1, -1, "-0.000000001s"),
+        (1, 500000000, 1500000000, "1.5s"),
+        (-1, -500000000, -1500000000, "-1.5s"),
+        (123, 321456789, 123321456789, "123.321456789s"),
+        (5400, 0, 5400000000000, "5400s"),
+        (0, 250000000, 250000000, "0.25s"),
+        (0, 1000, 1000, "0.000001s"),
+        (0, 999999999, 999999999, "0.999999999s"),
+        (0, -999999999, -999999999, "-0.999999999s"),
+        (9223372036, 854775807, 9223372036854775807, "9223372036.854775807s"),
+        (-9223372036, -854775808, -9223372036854775808, "-9223372036.854775808s"),
+        (9223372036, 854775808, 9223372036854775808, "9223372036.854775808s"),
+        (-9223372036, -854775809, -9223372036854775809, "-9223372036.854775809s"),
+        (200000000000, 0, 200000000000000000000, "200000000000s"),
+        (-200000000000, 0, -200000000000000000000, "-200000000000s"),
+        (315576000000, 0, 315576000000000000000, "315576000000s"),
+        (-315576000000, -999999999, -315576000000999999999, "-315576000000.999999999s"),
+        (9223372036854775807, 999999999, 9223372036854775807999999999, "9223372036854775807.999999999s"),
+        (-9223372036854775808, -999999999, -9223372036854775808999999999, "-9223372036854775808.999999999s"),
     ];
-    for (seconds, nanos, total, canonical, at_use, fields) in NODE_CARRIERS {
+    for (seconds, nanos, total, canonical) in NODE_CARRIERS {
         let held = CelDuration::new(*seconds, *nanos).expect("the carrier holds it");
         assert_eq!(CelDuration::from_total_nanos(*total), Some(held));
         assert_eq!((held.seconds(), held.nanos(), held.total_nanos()), (*seconds, *nanos, *total));
         assert_eq!(duration_nanos(held), *total);
         assert_eq!(format_duration(held), *canonical);
         assert_eq!(held.to_string(), *canonical);
-        assert_eq!(duration_out_of_range(held).map_err(refusal).err(), at_use.as_ref().map(expected), "{canonical}");
+    }
+}
+
+/// The check at use and the getters at the ends `tests/evaluate.rs` does not ask: the
+/// narrowest CEL duration, one nanosecond past each end of CEL's range, and durations
+/// only the carrier holds, whose getters still fit an int.
+#[test]
+fn checks_and_reads_the_fields_of_a_duration_at_the_ends_of_both_ranges() {
+    // Seconds and nanos, the refusal where CEL would use it, and the four getters.
+    const NODE_ENDS: &[(i64, i32, Option<Refusal>, [i64; 4])] = &[
+        (-9223372036, -854775808, None, [-2562047, -153722867, -9223372036, -854]),
+        (9223372036, 854775808, Some(("invalid_conversion", "duration out of range")), [2562047, 153722867, 9223372036, 854]),
+        (-9223372036, -854775809, Some(("invalid_conversion", "duration out of range")), [-2562047, -153722867, -9223372036, -854]),
+        (-200000000000, 0, Some(("invalid_conversion", "duration out of range")), [-55555555, -3333333333, -200000000000, 0]),
+        (315576000000, 0, Some(("invalid_conversion", "duration out of range")), [87660000, 5259600000, 315576000000, 0]),
+        (-315576000000, -999999999, Some(("invalid_conversion", "duration out of range")), [-87660000, -5259600000, -315576000000, -999]),
+        (9223372036854775807, 999999999, Some(("invalid_conversion", "duration out of range")), [2562047788015215, 153722867280912930, 9223372036854775807, 999]),
+        (-9223372036854775808, -999999999, Some(("invalid_conversion", "duration out of range")), [-2562047788015215, -153722867280912930, -9223372036854775808, -999]),
+    ];
+    for (seconds, nanos, at_use, fields) in NODE_ENDS {
+        let held = CelDuration::new(*seconds, *nanos).expect("the carrier holds it");
+        assert_eq!(duration_out_of_range(held).map_err(refusal).err(), at_use.as_ref().map(expected), "{held}");
         let read = [
             DurationField::GetHours,
             DurationField::GetMinutes,
@@ -192,7 +213,7 @@ fn writes_and_reads_the_fields_of_any_duration_the_carrier_holds() {
             DurationField::GetMilliseconds,
         ]
         .map(|field| duration_field(held, field));
-        assert_eq!(read, *fields, "{canonical}");
+        assert_eq!(read, *fields, "{held}");
     }
 }
 

@@ -748,6 +748,41 @@ mod tests {
     }
 
     #[test]
+    fn refuses_a_key_where_it_arrives_as_a_key_of_the_map_at_its_pointer() {
+        // A refusal raised while the key is written is about a key of the map.
+        let beyond_int64: std::collections::BTreeMap<u64, bool> = [(u64::MAX, true)].into();
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![beyond_int64] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                "Cannot write a typed frame: the value at '/rows/0' is a map with a key that is the integer 18446744073709551615, outside CEL's int64 range; a CEL uint is Uint64.".into()
+            )
+        );
+        // The key is refused before its value is written: no pointer is derived from
+        // it, and what is wrong beneath it does not hide it.
+        let list_key_over_a_bad_value: std::collections::BTreeMap<Vec<i64>, u64> = [(vec![1], u64::MAX)].into();
+        assert_eq!(
+            bridge_refusal(&list_key_over_a_bad_value),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                String::new(),
+                "Cannot write a typed frame: the value itself is a map with a key that is a list; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+        // A scalar no map is keyed by is judged the moment it has been written.
+        let null_key: std::collections::BTreeMap<Option<i64>, u64> = [(None, u64::MAX)].into();
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![null_key] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                "Cannot write a typed frame: the value at '/rows/0' is a map with a key that is null; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+    }
+
+    #[test]
     fn refuses_a_serde_map_whose_keys_collapse_into_one_at_the_maps_pointer() {
         /// A map writing the int `1` and the uint `1`, which CEL equality makes one key.
         struct Collapsing;

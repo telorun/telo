@@ -7,6 +7,7 @@
 //! - `CEL_VALUE_TYPE` and the `isCel*` predicates — the variant is the identity, so
 //!   there is no brand to read.
 //! - `celUint` / `CelUint` — a uint is `CelValue::Uint`.
+//! - `CelValueKey`, `CelMapValueEntry` — type aliases of a JavaScript representation; a key is a `&str` of `CEL_VALUE_KEYS` and an entry is a pair.
 //! - `isThenable`, `asyncValueRefused` — no Rust value can be awaited. The code stays
 //!   in `CelEvaluationCode`, which is one vocabulary across engines.
 //! - `literalValue` — reads the syntax tree's literal; it lives in the engine crate's

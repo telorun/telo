@@ -159,13 +159,9 @@ fn normalizes_seconds_and_nanoseconds_of_any_sign_into_the_range() {
 
 #[test]
 fn reads_epoch_milliseconds_keeping_the_sub_millisecond_part() {
-    // The reading, as the bits of its double.
+    // The reading, as the bits of its double. The readings `tests/evaluate.rs` asks
+    // are not repeated here.
     const NODE_MILLIS: &[(u64, Result<(i64, u32), Refusal>)] = &[
-        (0x4279bc08facc0000, /* 1768462200000 */ Ok((1768462200, 0))),
-        (0xc097700000000000, /* -1500 */ Ok((-2, 500000000))),
-        (0x3eb0c6f7a0b5ed8d, /* 0.000001 */ Ok((0, 1))),
-        (0x42eccefa43fb8000, /* 253402300800000 */ Err(("invalid_conversion", "timestamp out of range"))),
-        (0x7ff8000000000000, /* NaN */ Err(("invalid_conversion", "timestamp out of range"))),
         (0x7ff0000000000000, /* Infinity */ Err(("invalid_conversion", "timestamp out of range"))),
         (0xfff0000000000000, /* -Infinity */ Err(("invalid_conversion", "timestamp out of range"))),
         (0x0000000000000000, /* 0 */ Ok((0, 0))),

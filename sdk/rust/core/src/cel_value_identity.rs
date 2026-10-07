@@ -3,7 +3,10 @@
 //! The twin of `sdk/nodejs/src/cel-value-identity.ts`, which re-exports the engine's
 //! value domain. The domain here is `telorun-cel-value`'s, re-exported by name below:
 //! the union `CelValue`, every type a variant holds, and the functions that build,
-//! read and write a timestamp, a duration and a map. Every type a re-exported item's
+//! read and write a timestamp, a duration and a map. Every re-exported type is
+//! constructible through the list: a type with private fields has its constructor
+//! re-exported (`cel_type_value`, `cel_some` / `cel_none`, `cel_map_from_entries`, …),
+//! and a type whose fields are all public (`CelError`) is built by literal. Every type a re-exported item's
 //! signature names is re-exported with it — `ReservedTypeName` among them, the refusal
 //! of `CelHostValue::named`, which is a Rust-only name: Node throws that refusal from
 //! the engine's type registration.
@@ -30,8 +33,8 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub use telorun_cel_value::{
-    cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_timestamp, cel_timestamp_from_millis,
-    duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
+    cel_duration_from_nanos, cel_map_from_entries, cel_map_keys, cel_none, cel_some, cel_timestamp,
+    cel_timestamp_from_millis, cel_type_value, duration_nanos, duration_nanos_from_text, format_duration, format_timestamp, parse_duration,
     parse_timestamp, timestamp_nanos, CelDuration, CelError, CelEvaluationCode, CelHostValue, CelMap,
     CelMapKey, CelOptional, CelRecord, CelTimestamp, CelTypeValue, CelValue, ReservedTypeName, SourceRange,
 };
@@ -338,6 +341,42 @@ mod tests {
         took: Duration,
         raw: Bytes,
         count: Uint64,
+    }
+
+    /// Every variant of the union, built with nothing but names at this crate's root.
+    #[test]
+    fn builds_every_variant_of_the_union_through_the_re_exported_names() {
+        use crate::{
+            cel_duration_from_nanos, cel_map_from_entries, cel_none, cel_some, cel_timestamp, cel_type_value,
+            CelError, CelEvaluationCode, CelHostValue, CelRecord, CelValue, SourceRange,
+        };
+        let error = CelError {
+            code: CelEvaluationCode::NoSuchKey,
+            message: "missing".into(),
+            range: Some(SourceRange { start: 0, end: 1 }),
+        };
+        let built = [
+            CelValue::Null,
+            CelValue::Bool(true),
+            CelValue::Int(-1),
+            CelValue::Uint(1),
+            CelValue::Double(1.5),
+            CelValue::String("s".into()),
+            CelValue::Bytes(vec![1]),
+            CelValue::List(vec![CelValue::Null]),
+            CelValue::Map(cel_map_from_entries([(CelValue::Int(1), CelValue::Null)]).unwrap()),
+            CelValue::Record(CelRecord::from_iter([("a", CelValue::Null)])),
+            CelValue::Timestamp(cel_timestamp(0, 0).unwrap()),
+            CelValue::Duration(cel_duration_from_nanos(1).unwrap()),
+            CelValue::Type(cel_type_value("int")),
+            CelValue::Optional(cel_some(CelValue::Int(1))),
+            CelValue::Optional(cel_none()),
+            CelValue::Error(error),
+            CelValue::Host(CelHostValue::named("Money", std::sync::Arc::new(5i64)).unwrap()),
+            CelValue::Host(CelHostValue::unnamed(std::sync::Arc::new(()))),
+        ];
+        let variants: std::collections::HashSet<_> = built.iter().map(std::mem::discriminant).collect();
+        assert_eq!(variants.len(), 16);
     }
 
     #[test]
