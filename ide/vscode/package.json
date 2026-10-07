@@ -1,7 +1,7 @@
 {
   "name": "telo-vscode",
   "displayName": "Telo",
-  "version": "0.5.10",
+  "version": "0.5.11",
   "private": true,
   "description": "Diagnostics, completions and refactorings for Telo manifests, from the telo version each module is edited against",
   "keywords": [

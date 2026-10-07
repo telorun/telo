@@ -1,6 +1,6 @@
 {
   "name": "@telorun/language-host",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The editor-side half of telo's language tooling: chooses the telo version a module is edited against, fetches and verifies that version's language-server engine, and routes one LSP endpoint across engines.",
   "keywords": [
     "telo",

@@ -1,5 +1,11 @@
 # @telorun/glob
 
+## 0.3.1
+
+### Patch Changes
+
+- 587220a: `@telorun/glob` is released under the MIT License from this version: it declares `"license": "MIT"` and ships the MIT text. Versions already published keep the license they shipped with.
+
 ## 0.3.0
 
 ### Minor Changes
