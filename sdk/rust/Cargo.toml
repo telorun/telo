@@ -1,6 +1,7 @@
 [package]
 name = "telorun-sdk"
 version = "0.110.0"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "Pure-Rust traits and FFI backends for authoring Telo controllers in Rust."

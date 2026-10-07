@@ -3,7 +3,7 @@ metadata:
   name: TesseractModel
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: |
     Trained models for Tesseract OCR: declare a language recognition model or the

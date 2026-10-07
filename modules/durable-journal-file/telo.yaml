@@ -3,7 +3,7 @@ metadata:
   name: DurableJournalFile
   version: 0.5.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Reliability, Storage]
   description: |
     Records durable runs to a directory on disk: one append-only file per run, written

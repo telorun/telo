@@ -3,7 +3,7 @@ metadata:
   name: AiMcp
   version: 0.20.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI, Transport]
   description: >-
     Brings the tools a connected MCP server advertises into an AI agent, so a model

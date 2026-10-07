@@ -3,7 +3,7 @@ metadata:
   name: Codec
   version: 0.8.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     The shared contract for stream codecs: encoding turns a stream of records into a

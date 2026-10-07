@@ -3,7 +3,7 @@ metadata:
   name: OAuthClient
   version: 0.8.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Security]
   description: |
     Obtains and keeps delegated access on a user's behalf: drives someone through a

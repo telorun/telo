@@ -3,7 +3,7 @@ metadata:
   name: McpClient
   version: 0.15.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Transport, AI]
   description: |
     Talks to Model Context Protocol (MCP) servers: list the tools a server advertises

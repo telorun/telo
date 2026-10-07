@@ -3,7 +3,7 @@ metadata:
   name: OctetCodec
   version: 0.11.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Raw binary on the wire: bytes pass through untouched on the way out, and on the

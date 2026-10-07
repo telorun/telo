@@ -198,6 +198,33 @@ describe("ModulePayloadBuilder — executable and link entries", () => {
   });
 });
 
+describe("ModulePayloadBuilder — the module's license", () => {
+  const manifest = ["kind: Telo.Library", "metadata:", "  name: licensed", "  version: 1.0.0", ""].join("\n");
+
+  const build = () =>
+    new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") }).payload(
+      path.join(workdir, "telo.yaml"),
+      "oci://registry.example/test/licensed",
+    );
+
+  it("ships a root LICENSE in common with no files: entry", async () => {
+    write("telo.yaml", manifest);
+    write("LICENSE", "MIT License\n");
+    write("notes.txt", "not selected");
+
+    const payload = await build();
+    expect(payload.layers.map((l) => [l.role, l.files])).toEqual([
+      ["common", [{ name: "LICENSE", content: Buffer.from("MIT License\n") }]],
+    ]);
+  });
+
+  it("ships no layer for a module with no LICENSE and no payload", async () => {
+    write("telo.yaml", manifest);
+
+    expect((await build()).layers).toEqual([]);
+  });
+});
+
 describe("ModulePayloadBuilder — native entries", () => {
   const nativeBlock = [
     "native:",

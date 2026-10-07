@@ -3,7 +3,7 @@ metadata:
   name: App
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Compute]
   description: >-
     Runs another application as a resource of this one: supervise several applications

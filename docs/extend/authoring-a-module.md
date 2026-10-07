@@ -56,6 +56,8 @@ There is no `authors` or `maintainers` field, deliberately. Registration is open
 
 Publishing projects them into the destination's own metadata surface. An OCI publish maps them onto the standard `org.opencontainers.image.*` annotations (`repository` → `source`, `license` → `licenses`), which is what makes a published package show a description and link back to its source in registry UIs.
 
+`license` names the license; a `LICENSE` file beside `telo.yaml` is its text, and publishing carries that file in the artifact with no `files:` entry. Ship both — a license named without its text and copyright line cannot be honoured by whoever redistributes the module.
+
 Note the field is `repository`, not `source`: inside the `imports` map, `source:` already means "where to fetch a dependency from", and reusing the word for "where this module is developed" in the same file would be ambiguous.
 
 ### Categories

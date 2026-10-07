@@ -3,7 +3,7 @@ metadata:
   name: Timer
   version: 0.8.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Scheduling]
   description: |
     Waiting as a first-class step: pause for a duration before continuing, anywhere a

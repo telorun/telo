@@ -3,7 +3,7 @@ metadata:
   name: Graph
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, Data]
   description: >-
     A knowledge graph of typed entities and typed links between them: create,

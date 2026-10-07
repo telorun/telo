@@ -22,7 +22,7 @@ deliberately avoids connector counts and pricing, both of which change monthly.
 
 | | What you build | Where it runs | Source of truth | Extending it | License |
 | --- | --- | --- | --- | --- | --- |
-| **Telo** | A backend service — HTTP APIs, jobs, agents | Your own container, one process | YAML in your repo | A `Telo.Definition` + controller, in Node.js, Rust or Go | Fair-code (Sustainable Use) |
+| **Telo** | A backend service — HTTP APIs, jobs, agents | Your own container, one process | YAML in your repo | A `Telo.Definition` + controller, in Node.js, Rust or Go | MIT SDK and standard library; fair-code runtime (Sustainable Use) |
 | **n8n** | An automation between SaaS apps | n8n Cloud, or a self-hosted server | The n8n database; JSON export | A custom node in n8n's SDK | Fair-code (Sustainable Use) |
 | **Windmill** | Scripts and flows, developer-first | Windmill Cloud, or a self-hosted server + workers | Scripts in git, synced to the workspace | Ordinary code in TS/Python/Go | AGPL-3.0 (+ enterprise edition) |
 | **Node-RED** | A message flow, often at the edge | A Node-RED server you host | `flows.json` | A custom node package on npm | Apache-2.0 |

@@ -3,7 +3,7 @@ metadata:
   name: Font
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Visualization]
   description: |
     Declaring a typeface once and using it everywhere it is needed: the family name

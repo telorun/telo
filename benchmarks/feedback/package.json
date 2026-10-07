@@ -1,6 +1,7 @@
 {
   "name": "@telorun/bench-feedback",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Feedback collection REST API benchmark — compares the same SQLite-backed API implemented in native TypeScript (Fastify + better-sqlite3) and as a Telo manifest.",
   "type": "module",

@@ -1,6 +1,7 @@
 {
   "name": "@telorun/bench-score",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "Lead scoring API benchmark — designed to exercise as much CEL as possible per request, with a fastify mirror for native baseline comparison.",
   "type": "module",

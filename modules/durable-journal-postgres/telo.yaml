@@ -3,7 +3,7 @@ metadata:
   name: DurableJournalPostgres
   version: 0.7.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Reliability, Storage]
   description: |
     Records durable runs in two tables on a PostgreSQL database, so several machines can

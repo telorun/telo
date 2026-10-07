@@ -3,7 +3,7 @@ metadata:
   name: VectorStoreMemory
   version: 0.8.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, AI]
   description: |
     An in-process vector index ranked by cosine, dot-product or euclidean similarity,

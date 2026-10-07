@@ -1707,7 +1707,11 @@ or publishes by them (identity is the ref). A publish transport projects them
 into its backend's metadata — OCI onto the standard
 `org.opencontainers.image.*` annotations. Note it is `repository`, NOT
 `source`: `source:` already means "where to fetch a dependency from" inside
-the `imports` map.
+the `imports` map. `license` only NAMES a license: the text is a `LICENSE`
+file beside `telo.yaml`, which `telo publish` and `telo package` carry with no
+`files:` entry. Never invent a `license` value or a `LICENSE` file for a
+user's module or application — which license their work is under is theirs
+to say.
 
 - `imports:` — a NAME-KEYED MAP: PascalCase alias -> source. The ONLY two
   sources you may write are an OCI ref `oci://host/repo@VERSION` (the version

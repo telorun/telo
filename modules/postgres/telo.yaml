@@ -3,7 +3,7 @@ metadata:
   name: Postgres
   version: 0.6.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage]
   description: |
     Connects an application to a PostgreSQL database over a standard `postgres://`

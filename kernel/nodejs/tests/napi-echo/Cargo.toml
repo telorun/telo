@@ -1,6 +1,7 @@
 [package]
 name = "napi-echo"
 version = "0.0.0"
+license-file = "../../../../LICENSE"
 edition = "2021"
 publish = false
 description = "Kernel test fixture for NapiControllerLoader dispatch. Not a real controller."

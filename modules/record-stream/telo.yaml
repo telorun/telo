@@ -3,7 +3,7 @@ metadata:
   name: RecordStream
   version: 0.19.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Streaming, Observability, Storage]
   description: |
     Operations on streams of structured records, whatever the format: project a mixed

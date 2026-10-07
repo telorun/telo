@@ -3,7 +3,7 @@ metadata:
   name: Idempotency
   version: 0.10.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Reliability, Coordination]
   description: |
     At-most-once execution for work that touches the outside world — charging a card,

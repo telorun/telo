@@ -3,7 +3,7 @@ metadata:
   name: RecordStreamSql
   version: 0.6.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, Streaming]
   description: |
     Keeps resumable stream journals in two tables on a database you already run, so a

@@ -3,7 +3,7 @@ metadata:
   name: Console
   version: 0.18.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Observability]
   description: >-
     Terminal input and output: print lines with inline colour and style markup,

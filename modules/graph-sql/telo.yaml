@@ -3,7 +3,7 @@ metadata:
   name: GraphSql
   version: 0.2.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, Data]
   description: >-
     Stores a knowledge graph in ordinary relational tables: each entity type and

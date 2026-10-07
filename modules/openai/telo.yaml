@@ -3,7 +3,7 @@ metadata:
   name: OpenAI
   version: 0.10.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI]
   description: >-
     Language, image and embedding models for OpenAI and any OpenAI-compatible endpoint

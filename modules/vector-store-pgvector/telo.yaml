@@ -3,7 +3,7 @@ metadata:
   name: VectorStorePgvector
   version: 0.15.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, AI]
   description: |
     A durable vector index kept in PostgreSQL with pgvector, ranked by cosine,

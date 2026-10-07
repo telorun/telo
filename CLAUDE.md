@@ -381,6 +381,15 @@ Two release tracks, split by artifact:
 
 Why modules need their own release system, how bumps propagate, the ledger and the workspace marker: `analyzer/nodejs/src/release/CLAUDE.md`. Publishing: `cli/nodejs/CLAUDE.md`.
 
+## Licensing — MANDATORY
+
+Two licenses, split by directory, under one rule: **no MIT package depends on a Sustainable Use package.** MIT covers what an author links against and writes, and the first-party apps built purely from those; everything that loads, checks, edits or runs a manifest stays under the root Sustainable Use `LICENSE`.
+
+- **MIT directories**, each with its own `LICENSE`: `cel/`, `sdk/`, `templating/`, `packages/glob/`, `packages/editor-protocol/`, `modules/`, `blueprints/`, `starters/`, `examples/`, `docs/`, `benchmarks/`, `apps/hub`, `apps/hub-web`, `apps/plan-approval*`. Everything else is Sustainable Use — the analyzer, kernel, CLI, editor packages, runners, studio, authoring agent and `pages`. The telo version line is therefore mixed-license; membership is decided by binding to one generation, never by license.
+- **A new dependency from an MIT package on a restricted one is refused**, dev and peer dependencies and `teloInlines` included, as is a Cargo path dependency. Move the shared code down into an MIT package, or keep the consumer restricted — never relicense a package to make an import legal without asking.
+- **Every module root carries `license: MIT` and its own `LICENSE`** beside `telo.yaml` (a new module needs both; the Tesseract generator emits them). The directory-level file is outside the module, and `telo publish` / `telo package` carry only the one at the module root, in the `common` layer. The field states the license of the module's own files; a third-party file staged through `sources:` keeps its upstream license through that entry's `notices`. Test, fixture, starter and example manifests declare no license — a starter becomes its author's own application.
+- `pnpm run check:licenses` (CI) enforces all of it; the MIT directory list lives in that script and in the root `README.md`.
+
 ## Keep CLAUDE.md up to date
 
 Sync this file — and the nested `CLAUDE.md` of every package you changed — after any significant architectural change. Package-specific architecture and rationale belong in the nested guide; this file keeps only what applies across the repo.

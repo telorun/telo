@@ -1,6 +1,7 @@
 [package]
 name = "telo-templating"
 version = "0.110.0"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "Telo templating — YAML tag sentinels shared by the manifest loader and the future CEL engine."

@@ -1,6 +1,7 @@
 [package]
 name = "telorun-console"
 version = "0.18.1"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "Native Rust controllers for std/console."

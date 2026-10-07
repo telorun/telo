@@ -3,7 +3,7 @@ metadata:
   name: Gzip
   version: 0.8.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Gzip compression and decompression as a streaming codec: bytes in, compressed

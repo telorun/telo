@@ -3,7 +3,7 @@ metadata:
   name: VectorStore
   version: 0.10.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, AI]
   description: |
     Semantic search over an index of vectors: store embeddings with ids and metadata,

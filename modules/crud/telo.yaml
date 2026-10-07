@@ -3,7 +3,7 @@ metadata:
   name: CRUD
   version: 0.22.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, Data]
   description: |
     Serves a full REST API over a database table from one declaration: list, read one,

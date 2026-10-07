@@ -3,7 +3,7 @@ metadata:
   name: Html
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Read, query and transform web pages: parse HTML (text or bytes in any charset)

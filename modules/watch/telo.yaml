@@ -3,7 +3,7 @@ metadata:
   name: Watch
   version: 0.2.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Coordination]
   description: >-
     Wake-up signals for long polling: a caller waits until a topic's version moves

@@ -3,7 +3,7 @@ metadata:
   name: Tar
   version: 0.8.4
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Reading and writing tar archives as byte streams: build one from a list of paths

@@ -4,7 +4,7 @@
   "private": true,
   "description": "The plan-approval review UI: inbox, plan pages with revision diffs, comments and decisions, product settings and runners. Served by the PlanApproval server from UI_DIR.",
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",

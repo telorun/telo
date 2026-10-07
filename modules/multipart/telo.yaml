@@ -3,7 +3,7 @@ metadata:
   name: Multipart
   version: 0.2.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data, Transport]
   description: |
     Multipart bodies: combine several parts — a JSON document, a file, a form field —

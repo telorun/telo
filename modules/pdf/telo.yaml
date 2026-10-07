@@ -3,7 +3,7 @@ metadata:
   name: PDF
   version: 0.10.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Working with PDF documents: render a page to an image at a chosen scale, read the

@@ -1,6 +1,7 @@
 [package]
 name = "telo-cli"
 version = "0.110.0"
+license-file = "../../LICENSE"
 edition = "2021"
 publish = false
 description = "Command-line entry point for the Rust Telo kernel. Builds the `telo` binary: one command, whichever kernel is behind it."

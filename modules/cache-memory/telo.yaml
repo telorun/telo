@@ -3,7 +3,7 @@ metadata:
   name: CacheMemory
   version: 0.9.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Performance, Storage]
   description: |
     In-process cache storage: entries live in the running process's memory with the

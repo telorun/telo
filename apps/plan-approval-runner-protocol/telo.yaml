@@ -3,7 +3,7 @@ metadata:
   name: PlanApprovalRunnerProtocol
   version: 0.1.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Coordination]
   description: >-
     The wire shapes a plan-approval server and its per-machine runners exchange:

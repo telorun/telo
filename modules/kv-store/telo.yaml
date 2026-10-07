@@ -3,7 +3,7 @@ metadata:
   name: KeyValueStore
   version: 0.4.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage]
   description: |
     Durable key/value storage with atomic conditional writes: read a value with

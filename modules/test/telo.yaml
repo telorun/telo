@@ -3,7 +3,7 @@ metadata:
   name: Test
   version: 0.11.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Testing]
   description: >-
     Finds test manifests by glob pattern and runs each one in its own fresh runtime,

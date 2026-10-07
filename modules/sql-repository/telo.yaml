@@ -3,7 +3,7 @@ metadata:
   name: SqlRepository
   version: 0.16.2
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Storage, Data]
   description: >-
     Table-level create, read, update and delete handlers that generate their SQL from

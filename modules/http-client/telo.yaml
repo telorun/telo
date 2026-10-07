@@ -3,7 +3,7 @@ metadata:
   name: HttpClient
   version: 0.22.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Transport]
   description: >-
     Calls HTTP APIs: any method, with query parameters, headers and a JSON or string

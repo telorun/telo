@@ -3,7 +3,7 @@ metadata:
   name: PdfMake
   version: 0.3.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data]
   description: |
     Authoring PDF documents declaratively: pages, styled text, tables, columns,

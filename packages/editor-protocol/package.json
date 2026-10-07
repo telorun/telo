@@ -10,7 +10,7 @@
     "protocol"
   ],
   "author": "Bartosz Pasiński <bartosz.pasinski@codenet.pl>",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/telorun/telo.git",
@@ -40,9 +40,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.lib.json",
-    "test": "vitest run",
-    "prepack": "cp ../../LICENSE .",
-    "postpack": "rm -f LICENSE"
+    "test": "vitest run"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

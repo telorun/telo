@@ -3,7 +3,7 @@ metadata:
   name: Scheduler
   version: 0.9.1
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Scheduling]
   description: |
     Runs work on a recurring schedule: every fixed duration, or on a cron expression

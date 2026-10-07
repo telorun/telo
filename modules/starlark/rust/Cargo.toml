@@ -1,6 +1,7 @@
 [package]
 name = "telorun-starlark"
 version = "0.12.1"
+license = "MIT"
 edition = "2021"
 publish = false
 description = "Native Rust controller for std/starlark, loaded into the Node.js kernel via N-API."

@@ -3,7 +3,7 @@ metadata:
   name: SearXNG
   version: 0.2.0
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [Data, Transport]
   description: >-
     Web search through a self-hosted SearXNG metasearch instance: queries its JSON

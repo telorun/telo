@@ -3,7 +3,7 @@ metadata:
   name: Tesseract
   version: 0.2.3
   repository: https://github.com/telorun/telo
-  license: LicenseRef-SustainableUse
+  license: MIT
   categories: [AI, Data]
   description: |
     Offline optical character recognition (OCR): read printed text from PNG, JPEG, WebP,

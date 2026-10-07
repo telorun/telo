@@ -1,9 +1,9 @@
 [package]
 name = "telo-studio"
 version = "0.1.0"
+license-file = "../../../LICENSE"
 description = "Telo Studio"
 authors = ["bartosz.pasinski@codenet.pl"]
-license = ""
 repository = ""
 default-run = "telo-studio"
 edition = "2021"
