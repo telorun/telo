@@ -1,6 +1,6 @@
 {
   "name": "@telorun/editor-protocol",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Telo editor protocol: the contract between an editor host and a telo language-server engine — the telo/* requests, the telo/requirements notification and the protocol generation.",
   "keywords": [
     "telo",

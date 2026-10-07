@@ -1,5 +1,14 @@
 # telo-kernel
 
+## 0.5.11
+
+### Patch Changes
+
+- Updated dependencies [587220a]
+  - @telorun/editor-protocol@0.1.1
+  - @telorun/language-host@0.2.1
+  - @telorun/kernel@0.111.0
+
 ## 0.5.10
 
 ### Patch Changes

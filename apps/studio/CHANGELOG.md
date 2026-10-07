@@ -1,5 +1,20 @@
 # @telorun/studio
 
+## 0.26.1
+
+### Patch Changes
+
+- Updated dependencies [587220a]
+- Updated dependencies [587220a]
+- Updated dependencies [587220a]
+  - @telorun/editor-protocol@0.1.1
+  - @telorun/glob@0.3.1
+  - @telorun/sdk@0.111.0
+  - @telorun/templating@0.111.0
+  - @telorun/language-host@0.2.1
+  - @telorun/analyzer@0.111.0
+  - @telorun/ide-support@0.111.0
+
 ## 0.26.0
 
 ### Minor Changes
