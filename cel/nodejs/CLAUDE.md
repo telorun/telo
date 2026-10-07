@@ -201,8 +201,8 @@ plain-object copy per bag, which is also where header lowercasing already happen
 ## cel-spec is the specification; the vectors are evidence
 
 **Where the conformance vectors and cel-spec disagree, cel-spec decides.** The vectors are a
-*recording* of the engine being replaced — their README says the rows are "as the Node engine answers
-it" — and the format already carries cel-spec's own answer under `deviation.celSpec` wherever the two
+*recording* of the engine being replaced — their README says a `language.json` row's `expect` is "the
+replaced engine's answer" — and the format already carries cel-spec's own answer under `deviation.celSpec` wherever the two
 differ. So a row is evidence of what runs today, and a row's own `deviation.celSpec` is the authority
 for what this engine answers.
 
@@ -922,8 +922,8 @@ on the recording's failure.
 
 **Six rows are held to their recorded error TEXT, byte for byte, caret included**
 (`RECORDED_MESSAGE_ROWS`). A recorded error is normally the replaced engine speaking, but these six are the
-exception the format names: they are divergence rows, whose `expect.error` is the only `expect` in any file
-that is not that engine's — a fixed summary for the condition plus the usual highlight. So they are the one
+exception the format names: they are divergence rows, whose `expect.error` is the only `expect` in
+`language.json` that is not that engine's — a fixed summary for the condition plus the usual highlight. So they are the one
 place where comparing a message says something, and the engine reproduces all six.
 
 **A row the engine answers its own way is pinned, not excused** (`VALUE_PENDING_DECISIONS`): an entry lists
