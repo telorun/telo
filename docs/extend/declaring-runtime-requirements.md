@@ -99,7 +99,7 @@ future Go kernel alike. Writing bounds per kernel would restate one fact several
 and would ask you to assert things about kernels you have never run.
 
 **Telo's own packages and crates carry the generation as their version.** The runtime
-packages — `@telorun/sdk`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`,
+packages — `@telorun/sdk`, `@telorun/cel`, `@telorun/templating`, `@telorun/analyzer`, `@telorun/kernel`,
 `@telorun/cli`, `@telorun/ide-support` and `@telorun/language-server` — are released
 together at one version, and their Rust twins (`telo-kernel`, `telo-cli`,
 `telo-analyzer`, `telo-templating`, the CEL value domain's `telorun-cel-value`, and the
