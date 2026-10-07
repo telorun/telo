@@ -62,8 +62,8 @@ type Answer =
  *
  * A recorded error is normally the engine being replaced speaking, so comparing it would
  * compare that engine's wording. These six are the exception the format itself names: they
- * are divergence rows, whose `expect.error` is "the only `expect` in any file that is not
- * the Node engine's" — a fixed summary for the condition plus the usual highlight. So they
+ * are divergence rows, whose `expect.error` is "the only `expect` in `language.json` that is not
+ * the replaced engine's" — a fixed summary for the condition plus the usual highlight. So they
  * are the one place a message comparison says something, and after the duration range came
  * in they are all six exactly what this engine answers.
  */

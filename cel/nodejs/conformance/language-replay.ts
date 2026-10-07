@@ -103,8 +103,8 @@ export const DRIVEN_FILE = "language.json";
 /**
  * Where this engine's answer differs from the recorded one, and why.
  *
- * The vectors are a **recording of the engine being replaced** — their README says the
- * rows are "as the Node engine answers it" — and the format already carries cel-spec's
+ * The vectors are a **recording of the engine being replaced** — their README says a
+ * `language.json` row's `expect` is "the replaced engine's answer" — and the format already carries cel-spec's
  * own answer under `deviation.celSpec` wherever the two differ. So cel-spec is the
  * specification, the recording is evidence, and a row's own `deviation.celSpec` is the
  * authority for what this engine must answer. Each group below names that authority.
