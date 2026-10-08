@@ -5,9 +5,14 @@ metadata:
   description: |
     A table provides its node from the row model: one column per property when
     none are listed, each header from the property's title or name, sortable
-    exactly where the value is a scalar property, and shown as the property's
-    type and format say — the same for a column written by hand. A cell may be
-    a component given values of the row, whose files the table lists.
+    exactly where the collection lists the property — a scalar it does not
+    list is not — and shown as the property's type and format say — the same
+    for a column written by hand. A cell may be
+    a component given values of the row, whose files the table lists. An opener
+    carries its form with where and how it opens: a dialog with its defaults,
+    closing after a submit and asking before unsaved input is dropped, unless
+    the opener says otherwise — the same node whether the dialog is left out or
+    declared with nothing set.
 imports:
   Ui: ../
   Widgets: ./__fixtures__/widgets
@@ -33,10 +38,21 @@ schema:
       properties:
         name: { type: string }
 ---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: isDone, operator: eq }
+  sort:
+    - { property: text }
+    - { property: dueOn }
+---
 kind: Ui.Table
 metadata:
   name: derived
 model: !ref Todo
+collection: !ref todos
 source: { basePath: /api/todos }
 ---
 kind: Ui.Form
@@ -52,6 +68,7 @@ kind: Ui.Table
 metadata:
   name: written
 model: !ref Todo
+collection: !ref todos
 source:
   basePath: /api/todos
   filters: { isDone: false }
@@ -78,11 +95,13 @@ columns:
       props:
         done: !cel "row.isDone"
         label: Done
-create: !ref todoForm
+create: { form: !ref todoForm }
 edit:
-  kind: Ui.Form
-  model: !ref Todo
-  source: { basePath: /api/todos }
+  form:
+    kind: Ui.Form
+    model: !ref Todo
+    source: { basePath: /api/todos }
+  surface: { kind: Ui.Dialog }
 delete: true
 ---
 kind: Run.Sequence
@@ -108,10 +127,10 @@ steps:
             'assets': steps.derived.result.assets
           }
       expected:
+        # The model declares `id`, the row key, which names a row and is not shown.
         columns:
-          - { header: id, value: { root: row, path: [id] }, sort: id, present: { type: integer } }
           - { header: Task, value: { root: row, path: [text] }, sort: text, present: { type: string } }
-          - { header: isDone, value: { root: row, path: [isDone] }, sort: isDone, present: { type: boolean } }
+          - { header: isDone, value: { root: row, path: [isDone] }, present: { type: boolean } }
           - { header: dueOn, value: { root: row, path: [dueOn] }, sort: dueOn, present: { type: [string, "null"], format: date } }
           - { header: owner, value: { root: row, path: [owner] }, present: { type: object } }
         rest:
@@ -125,13 +144,15 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        dateColumnsAgree: !cel "steps.written.result.node.columns[0] == steps.derived.result.node.columns[3]"
+        dateColumnsAgree: !cel "steps.written.result.node.columns[0] == steps.derived.result.node.columns[2]"
         columns: !cel "steps.written.result.node.columns.map(c, has(c.cell) ? {'header': c.header, 'cell': {'type': c.cell.type, 'export': c.cell.export, 'abi': c.cell.abi, 'external': c.cell.external, 'props': c.cell.props, 'entry': c.cell.module.name, 'stylesheets': c.cell.stylesheets.map(s, s.name)}} : c)"
         filters: !cel "steps.written.result.node.filters"
         pageSize: !cel "steps.written.result.node.pageSize"
         rowStyle: !cel "steps.written.result.node.rowStyle"
-        create: !cel "steps.written.result.node.create.fields"
-        edit: !cel "steps.written.result.node.edit.fields"
+        create: !cel "steps.written.result.node.create.form.fields"
+        edit: !cel "steps.written.result.node.edit.form.fields"
+        createOpens: !cel "{'surface': steps.written.result.node.create.surface, 'afterSubmit': steps.written.result.node.create.afterSubmit, 'unsaved': steps.written.result.node.create.unsaved}"
+        declaredDialogIsTheSame: !cel "steps.written.result.node.edit.surface == steps.written.result.node.create.surface"
         delete: !cel "steps.written.result.node.delete"
         assets: !cel "steps.written.result.assets.map(a, {'name': a.name, 'mediaType': a.mediaType, 'sameDigest': a.digest == steps.written.result.node.columns[3].cell.module.digest})"
       expected:
@@ -170,6 +191,11 @@ steps:
           - { property: text, label: Task }
           - { property: isDone, label: isDone }
           - { property: dueOn, label: dueOn }
+        createOpens:
+          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          afterSubmit: close
+          unsaved: confirm
+        declaredDialogIsTheSame: true
         delete: true
         assets:
           - { name: badges.js, mediaType: text/javascript, sameDigest: true }

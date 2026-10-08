@@ -77,6 +77,7 @@ export function createCollection(seed, required = []) {
       }
       const index = rows.findIndex((row) => String(row.id) === key);
       if (index === -1) return { status: 404, body: { error: "NotFound", message: `No row '${key}'.`, status: 404 } };
+      if (method === "GET") return { status: 200, body: rows[index] };
       if (method === "PUT") {
         const absent = missing(body);
         if (absent) return invalid("body", absent, "is a required property");
@@ -110,7 +111,7 @@ export const Collection = {
           return answer.body === undefined ? reply.send() : reply.send(answer.body);
         };
         app.route({ method: ["GET", "POST"], url: base === "" ? "/" : base, handler: serve });
-        app.route({ method: ["PUT", "DELETE"], url: `${base}/:id`, handler: serve });
+        app.route({ method: ["GET", "PUT", "DELETE"], url: `${base}/:id`, handler: serve });
       },
     };
   },

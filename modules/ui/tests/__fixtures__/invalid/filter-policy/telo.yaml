@@ -1,0 +1,63 @@
+# A state that keeps nothing anywhere, written two ways; a filter overlay
+# given a surface that does not float; a placement whose compact replacement
+# does not fold; and a placement handed a key its kind does not take.
+kind: Telo.Application
+metadata:
+  name: UiInvalidFilterPolicyApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: text, operator: contains }
+  sort: []
+---
+kind: Ui.Filters
+metadata:
+  name: keepsNothing
+model: !ref Todo
+collection: !ref todos
+policy:
+  state: { key: todos }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: addressOff
+model: !ref Todo
+collection: !ref todos
+policy:
+  state: { key: todos, address: false }
+content: { type: text, text: Todos }
+---
+kind: Ui.OverlayPlacement
+metadata:
+  name: overlayInPanel
+surface: { kind: Ui.Panel }
+---
+kind: Ui.AsidePlacement
+metadata:
+  name: compactAbove
+compact: { kind: Ui.AbovePlacement }
+---
+kind: Ui.CollapsiblePlacement
+metadata:
+  name: collapsibleCompact
+compact: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Dialog } }
+---
+kind: Ui.LocalStore
+metadata:
+  name: storeKey
+key: todos

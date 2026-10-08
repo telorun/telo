@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Added
+body: "An edit form opens over the record read from GET <basePath>/<rowKey value>, not
+  over the row the table showed, so a list narrower than a record no longer clears the
+  properties it leaves out; while the record loads the dialog shows the loading part,
+  and a failed read shows an error node. BREAKING: a collection a table edits must
+  answer GET on an item."

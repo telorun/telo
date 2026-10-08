@@ -1,6 +1,7 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { moduleScopedDefResolver, type AliasResolver } from "./alias-resolver.js";
+import { resolveReferenceTarget } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   celEvalModeAt,
@@ -16,6 +17,7 @@ import {
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { referenceValueOf } from "./peer-binding.js";
 import { cloneForMutation, normalizeInlineResources } from "./normalize-inline-resources.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { templateBodies } from "./template-body.js";
@@ -127,6 +129,9 @@ function covers(prefix: string, path: string): boolean {
 interface ForwardLink {
   readonly at: string;
   readonly from: string;
+  /** The value came from a declaration `from` references, so everything in it
+   *  is reported at `from` itself. */
+  readonly exact?: boolean;
 }
 
 interface ForwardedEntry {
@@ -275,7 +280,7 @@ export class TemplateForwardViews {
         ...data,
         resource: { kind: root.kind, name: rootName },
         filePath: (root.metadata as { source?: string } | undefined)?.source ?? data.filePath,
-        path: link.from + path.slice(link.at.length),
+        path: link.exact ? link.from : link.from + path.slice(link.at.length),
       },
     } as AnalysisDiagnostic;
   }
@@ -324,6 +329,31 @@ export function buildTemplateForwardViews(
     if (typeof m.metadata?.name === "string") taken.add(m.metadata.name);
   }
 
+  const byName = new Map<string, ResourceManifest[]>();
+  for (const m of manifests) {
+    const name = m.metadata?.name;
+    if (typeof name !== "string") continue;
+    const list = byName.get(name);
+    if (list) list.push(m);
+    else byName.set(name, [m]);
+  }
+  const crossing: ReferenceCrossing = {
+    sitesOf: (holder) => {
+      const scope = moduleAliasScope(holder.metadata, aliases, scopes.aliasesByModule);
+      return new Set(
+        registry
+          .referenceSites(holder, scope, scopes.aliasesByModule)
+          .filter((site) => site.refs.length > 0)
+          .map((site) => site.path),
+      );
+    },
+    declarationOf: (ref, holder) => {
+      const from = moduleOf(holder);
+      const scope = moduleAliasScope(holder.metadata, aliases, scopes.aliasesByModule);
+      return resolveReferenceTarget(byName, ref, from, (alias) => scope?.moduleForAlias(alias));
+    },
+  };
+
   const queue: Holder[] = [];
   for (const m of manifests) {
     if (!isConsumer(m, scopes.rootModules)) continue;
@@ -340,7 +370,7 @@ export function buildTemplateForwardViews(
 
   for (let i = 0; i < queue.length; i++) {
     const holder = queue[i]!;
-    const entries = forwardedEntries(holder, registry, aliases, scopes, resolveDef);
+    const entries = forwardedEntries(holder, registry, aliases, scopes, resolveDef, crossing);
     if (entries.length === 0) continue;
     views.addHolder(holder.manifest, kindCelEvalSites(holder.definition, resolveDef));
     for (const entry of entries) {
@@ -406,6 +436,7 @@ function forwardedEntries(
   aliases: AliasResolver,
   scopes: { aliasesByModule: Map<string, AliasResolver>; rootModules: ReadonlySet<string> },
   resolveDef: DefResolver,
+  crossing: ReferenceCrossing,
 ): BuiltEntry[] {
   const definition = holder.definition;
   // An `extends` child with no body of its own runs its ancestor's, handed its
@@ -429,12 +460,16 @@ function forwardedEntries(
     for (const forward of templateForwardsOf(body.manifest)) {
       const source =
         base == null
-          ? fromSelf(holder.manifest, forward.self)
-          : throughBase(base, forward.self, holder.manifest);
+          ? fromSelf(holder.manifest, forward.self, crossing)
+          : throughBase(base, forward.self, holder.manifest, crossing);
       if (!source) continue;
       place(view, body.manifest, forward.at, source.value, canonicalInRunner);
       for (const link of source.links) {
-        links.push({ at: formatPath([...forward.at, ...link.at]), from: formatPath(link.from) });
+        links.push({
+          at: formatPath([...forward.at, ...link.at]),
+          from: formatPath(link.from),
+          ...(link.exact ? { exact: true } : {}),
+        });
       }
     }
     if (links.length === 0) continue;
@@ -458,14 +493,58 @@ function canonicalKindOf(definition: ResourceDefinition): string {
 /** A value the view holds, and which of its nodes came from where. */
 interface Sourced {
   readonly value: unknown;
-  readonly links: readonly { at: Segment[]; from: string[] }[];
+  readonly links: readonly { at: Segment[]; from: string[]; exact?: boolean }[];
 }
 
-/** `self` is the declaration's own configuration. */
-function fromSelf(manifest: ResourceManifest, self: readonly string[]): Sourced | undefined {
-  const value = navigate(manifest, self);
-  if (value === undefined) return undefined;
-  return { value: cloneForMutation(value), links: [{ at: [], from: [...self] }] };
+/** What decides where a declaration holds a reference, and what one names. */
+interface ReferenceCrossing {
+  /** The concrete reference sites of a declaration, as dotted paths. */
+  readonly sitesOf: (holder: ResourceManifest) => ReadonlySet<string>;
+  readonly declarationOf: (
+    ref: { name: string; alias?: string },
+    holder: ResourceManifest,
+  ) => ResourceManifest | undefined;
+}
+
+const moduleOf = (manifest: ResourceManifest): string | undefined => {
+  const module = (manifest.metadata as { module?: unknown } | undefined)?.module;
+  return typeof module === "string" ? module : undefined;
+};
+
+/**
+ * `self` is the declaration's own configuration. A path that continues past one
+ * of the declaration's reference sites continues in the declaration that site
+ * names, as the kernel reads it — only within the consumer's own module, since
+ * the view resolves every name it holds there. What is reported about such a
+ * value is reported at the reference the consumer wrote.
+ */
+function fromSelf(
+  manifest: ResourceManifest,
+  self: readonly string[],
+  crossing: ReferenceCrossing,
+): Sourced | undefined {
+  let holder = manifest;
+  let sites = crossing.sitesOf(holder);
+  let node: unknown = holder;
+  let within: string[] = [];
+  let crossedAt: string[] | undefined;
+  for (let i = 0; i < self.length; i++) {
+    if (!isPlainObject(node)) return undefined;
+    node = (node as Record<string, unknown>)[self[i]!];
+    within.push(self[i]!);
+    if (i === self.length - 1 || !sites.has(formatPath(within))) continue;
+    const reference = referenceValueOf(node);
+    if (!reference) continue;
+    const declaration = crossing.declarationOf(reference, holder);
+    if (!declaration || moduleOf(declaration) !== moduleOf(manifest)) return undefined;
+    crossedAt ??= self.slice(0, i + 1);
+    holder = declaration;
+    sites = crossing.sitesOf(holder);
+    node = holder;
+    within = [];
+  }
+  if (node === undefined) return undefined;
+  return { value: cloneForMutation(node), links: [{ at: [], from: crossedAt ?? [...self], exact: !!crossedAt }] };
 }
 
 /**
@@ -478,17 +557,18 @@ function throughBase(
   base: unknown,
   self: readonly string[],
   manifest: ResourceManifest,
+  crossing: ReferenceCrossing,
 ): Sourced | undefined {
   let node: unknown = base;
   for (let i = 0; i < self.length; i++) {
     const forwarded = selfForwardPath(node);
-    if (forwarded) return fromSelf(manifest, [...forwarded, ...self.slice(i)]);
+    if (forwarded) return fromSelf(manifest, [...forwarded, ...self.slice(i)], crossing);
     if (!isPlainObject(node)) return undefined;
     node = (node as Record<string, unknown>)[self[i]!];
     if (node === undefined) return undefined;
   }
   const forwarded = selfForwardPath(node);
-  if (forwarded) return fromSelf(manifest, forwarded);
+  if (forwarded) return fromSelf(manifest, forwarded, crossing);
   const links: { at: Segment[]; from: string[] }[] = [];
   const materialize = (value: unknown, at: Segment[]): unknown => {
     const path = selfForwardPath(value);
@@ -523,10 +603,11 @@ function composeLinks(
   const out: ForwardLink[] = [];
   for (const link of links) {
     for (const o of outer) {
+      const exact = link.exact || o.exact ? { exact: true } : {};
       if (covers(o.at, link.from)) {
-        out.push({ at: link.at, from: o.from + link.from.slice(o.at.length) });
+        out.push({ at: link.at, from: o.exact ? o.from : o.from + link.from.slice(o.at.length), ...exact });
       } else if (covers(link.from, o.at)) {
-        out.push({ at: link.at + o.at.slice(link.from.length), from: o.from });
+        out.push({ at: link.at + o.at.slice(link.from.length), from: o.from, ...exact });
       }
     }
   }

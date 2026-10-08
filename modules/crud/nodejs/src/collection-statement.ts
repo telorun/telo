@@ -1,6 +1,6 @@
 import type { SqlDialect } from "@telorun/sql";
 import type { CollectionQuery, Filter } from "./collection-query.js";
-import type { ModelProperty } from "./model-properties.js";
+import { KEY, type ModelProperty } from "./model-properties.js";
 
 export interface Statement {
   sql: string;
@@ -48,9 +48,9 @@ class Rendering {
   /** Rows strictly after the cursor's, in the order {@link order} gives. */
   after(query: CollectionQuery): string | undefined {
     if (!query.after) return undefined;
-    const id = this.column("id");
+    const id = this.column(KEY);
     const past = query.sort.descending ? "<" : ">";
-    if (query.sort.property.name === "id") return `${id} ${past} ${this.bind(query.after.id)}`;
+    if (query.sort.property.name === KEY) return `${id} ${past} ${this.bind(query.after.id)}`;
     const column = this.column(query.sort.property);
     if (query.after.value === null) return `(${column} IS NULL AND ${id} > ${this.bind(query.after.id)})`;
     return (
@@ -63,8 +63,8 @@ class Rendering {
   /** Nulls last in either direction, `id` ascending between equal values. */
   order(query: CollectionQuery): string {
     const direction = query.sort.descending ? "DESC" : "ASC";
-    const id = this.column("id");
-    if (query.sort.property.name === "id") return `${id} ${direction}`;
+    const id = this.column(KEY);
+    if (query.sort.property.name === KEY) return `${id} ${direction}`;
     const column = this.column(query.sort.property);
     return `(${column} IS NULL) ASC, ${column} ${direction}, ${id} ASC`;
   }
@@ -101,23 +101,54 @@ export function countStatement(dialect: SqlDialect, table: string, query: Collec
   return { sql: `SELECT COUNT(*) AS ${rendering.column("total")} FROM ${table}${where}`, params: rendering.params };
 }
 
+/** The written row, under its property names, in the shape `returning` gives. */
+function returningClause(rendering: Rendering, returning: Iterable<ModelProperty>): string {
+  const columns = [...returning].map((property) => `${rendering.column(property)} AS ${rendering.column(property.name)}`);
+  return ` RETURNING ${columns.join(", ")}`;
+}
+
 /**
- * Replaces the row `id` names with `record`: every column the model declares is
- * set, to the record's value or to NULL where it holds none. A model declaring
- * no column leaves the row as it is and still reports whether it exists.
+ * Inserts `record`: the columns are the properties the shape declares and the
+ * record holds, never a key the record merely carries.
+ */
+export function insertStatement(
+  dialect: SqlDialect,
+  table: string,
+  properties: Iterable<ModelProperty>,
+  record: Record<string, unknown>,
+  returning: Iterable<ModelProperty>,
+): Statement {
+  const rendering = new Rendering(dialect);
+  const written = [...properties].filter((property) => record[property.name] !== undefined);
+  const values =
+    written.length > 0
+      ? ` (${written.map((property) => rendering.column(property)).join(", ")}) VALUES (${written
+          .map((property) => rendering.bind(record[property.name]))
+          .join(", ")})`
+      : " DEFAULT VALUES";
+  return { sql: `INSERT INTO ${table}${values}${returningClause(rendering, returning)}`, params: rendering.params };
+}
+
+/**
+ * Replaces the row `id` names with `record`: every column the shape declares is
+ * set, to the record's value or to NULL where it holds none, and no other
+ * column is touched. A shape declaring no column leaves the row as it is and
+ * still reports whether it exists.
  */
 export function replaceStatement(
   dialect: SqlDialect,
   table: string,
   properties: Iterable<ModelProperty>,
-  id: number,
+  id: unknown,
   record: Record<string, unknown>,
+  returning: Iterable<ModelProperty>,
 ): Statement {
   const rendering = new Rendering(dialect);
-  const key = rendering.column("id");
+  const key = rendering.column(KEY);
   const assignments = [...properties]
-    .filter((property) => property.name !== "id")
+    .filter((property) => property.name !== KEY)
     .map((property) => `${rendering.column(property)} = ${rendering.bind(record[property.name] ?? null)}`);
   const set = assignments.length > 0 ? assignments.join(", ") : `${key} = ${key}`;
-  return { sql: `UPDATE ${table} SET ${set} WHERE ${key} = ${rendering.bind(id)}`, params: rendering.params };
+  const sql = `UPDATE ${table} SET ${set} WHERE ${key} = ${rendering.bind(id)}${returningClause(rendering, returning)}`;
+  return { sql, params: rendering.params };
 }

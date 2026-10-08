@@ -77,6 +77,20 @@ describe("a table", () => {
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 4");
   });
 
+  it("shows two filters on one property as one labelled range, and sends both ends", async () => {
+    rendered = await show([filtersNode(tableNode())]);
+    expect(rendered.parts("filter-label").map((label) => label.textContent)).toEqual(["Task", "Done", "Status", "Priority", "Due"]);
+    const range = rendered.part("filter-group");
+    expect(rendered.parts("filter-caption").map((caption) => caption.textContent)).toEqual(["from", "to"]);
+    const [from, to] = [...range.querySelectorAll("input")];
+    expect([from.type, from.getAttribute("aria-label"), to.getAttribute("aria-label")]).toEqual(["date", "Due from", "Due to"]);
+    await rendered.enter(from, "2026-10-05");
+    await rendered.commit(from, "enter");
+    await rendered.enter(to, "2026-10-12");
+    await rendered.commit(to, "blur");
+    expect(rendered.requests.at(-1)).toBe("GET /api/todos?limit=2&dueOn.gte=2026-10-05&dueOn.lte=2026-10-12");
+  });
+
   it("filters by a yes/no choice, and by none again when Any is chosen", async () => {
     rendered = await show([filtersNode(tableNode())]);
     const done = rendered.parts("filter-select")[0];
@@ -87,29 +101,13 @@ describe("a table", () => {
     expect(rendered.requests.at(-1)).toBe("GET /api/todos?limit=2");
   });
 
-  it("names a dialog by its title, and closes it on Escape or from its close button with nothing sent", async () => {
-    rendered = await show([tableNode()]);
-    await rendered.click(rendered.part("table-create"));
-    const dialog = rendered.part("dialog");
-    expect(dialog.getAttribute("role")).toBe("dialog");
-    expect(document.getElementById(dialog.getAttribute("aria-labelledby") as string)?.textContent).toBe("New");
-    expect(dialog.contains(document.activeElement)).toBe(true);
-    await rendered.escape();
-    expect(rendered.parts("dialog")).toEqual([]);
-    await rendered.click(rendered.parts("row-edit")[0]);
-    await rendered.click(rendered.part("dialog-close"));
-    expect(rendered.parts("dialog")).toEqual([]);
-    expect(rendered.requests.some((request) => request.startsWith("POST") || request.startsWith("PUT"))).toBe(false);
-  });
-
   it("creates through its form, then shows its first page", async () => {
     rendered = await show([tableNode()]);
     await rendered.click(rendered.part("pager-next"));
     await rendered.click(rendered.part("table-create"));
-    expect(rendered.part("dialog-title").textContent).toBe("New");
     await rendered.enter(rendered.part("input"), "A new task");
     await rendered.click(rendered.part("submit"));
-    expect(rendered.parts("dialog")).toEqual([]);
+    expect(rendered.parts("surface")).toEqual([]);
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 6");
     expect(cells(rendered, 0)).toEqual(["Write the plan", "Review the plan"]);
     expect(rendered.requests.filter((request) => request.startsWith("POST"))).toEqual(["POST /api/todos"]);
@@ -123,20 +121,21 @@ describe("a table", () => {
     expect(rendered.part("select").textContent).toBe("open");
     await rendered.enter(task, "Review it twice");
     await rendered.click(rendered.part("submit"));
-    expect(rendered.requests).toContain("PUT /api/todos/2");
+    // The record is read before it is edited; the row of the list is not what is sent back.
+    expect(rendered.requests.filter((request) => request.endsWith("/api/todos/2"))).toEqual(["GET /api/todos/2", "PUT /api/todos/2"]);
     expect(cells(rendered, 0)).toEqual(["Write the plan", "Review it twice"]);
   });
 
   it("deletes after a confirmation whose action is marked dangerous", async () => {
     rendered = await show([tableNode()]);
     await rendered.click(rendered.parts("row-delete")[0]);
-    const confirm = rendered.part("dialog").querySelector('[data-telo-part="submit"]') as HTMLElement;
+    const confirm = rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement;
     expect(confirm.getAttribute("data-style")).toBe("danger");
     expect(confirm.parentElement?.getAttribute("data-telo-part")).toBe("form-actions");
     await rendered.click(rendered.part("cancel"));
     expect(rendered.requests.some((request) => request.startsWith("DELETE"))).toBe(false);
     await rendered.click(rendered.parts("row-delete")[0]);
-    await rendered.click(rendered.part("dialog").querySelector('[data-telo-part="submit"]') as HTMLElement);
+    await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
     expect(rendered.requests).toContain("DELETE /api/todos/1");
     expect(rendered.part("pager-status").textContent).toBe("1–2 of 4");
   });
@@ -181,14 +180,14 @@ describe("a table", () => {
     rendered = await show([tableNode()]);
     rendered.answer("/api/todos/1", () => new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }));
     await rendered.click(rendered.parts("row-delete")[0]);
-    await rendered.click(rendered.part("dialog").querySelector('[data-telo-part="submit"]') as HTMLElement);
-    const dialog = rendered.part("dialog");
+    await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
+    const dialog = rendered.part("surface");
     expect(dialog.querySelector('[data-telo-part="error-code"]')?.textContent).toBe("ERR_UI_REQUEST_FAILED");
     expect(dialog.querySelector('[data-telo-part="error-message"]')?.textContent).toContain("It is referenced.");
     expect(rendered.part("table").getAttribute("data-state")).toBe("idle");
     expect(cells(rendered, 0)).toEqual(["Write the plan", "Review the plan"]);
     await rendered.click(rendered.part("cancel"));
-    expect(rendered.parts("dialog")).toEqual([]);
+    expect(rendered.parts("surface")).toEqual([]);
     expect(rendered.parts("error")).toEqual([]);
   });
 });

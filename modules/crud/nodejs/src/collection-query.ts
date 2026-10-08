@@ -7,6 +7,7 @@ import {
   readValue,
   type ModelProperty,
 } from "./model-properties.js";
+import { KEY } from "./model-properties.js";
 import { decodeCursor } from "./page-cursor.js";
 
 export const ERR_CRUD_QUERY_INVALID = "ERR_CRUD_QUERY_INVALID";
@@ -18,6 +19,12 @@ const COMPARISONS = ["gt", "gte", "lt", "lte"] as const;
 const OPERATORS = ["contains", ...COMPARISONS, "in"] as const;
 /** `eq` is the absence of an operator; no request spells it. */
 export type Operator = (typeof OPERATORS)[number] | "eq";
+
+/** What a collection declares its list request may filter and sort by. */
+export interface AcceptedQuery {
+  filters: { property: string; operator: string }[];
+  sort: { property: string }[];
+}
 
 /** What a caller asks for, before anything in it has been judged. */
 export interface QueryInputs {
@@ -39,13 +46,13 @@ export interface Sort {
   descending: boolean;
 }
 
-/** A request every part of which names a declared property and a typed value. */
+/** A request every part of which is a declared filter or sort with a typed value. */
 export interface CollectionQuery {
   filters: Filter[];
   sort: Sort;
   limit: number;
   /** The row the page starts after. */
-  after?: { value: unknown; id: number };
+  after?: { value: unknown; id: unknown };
 }
 
 /** One refused parameter: the name it was sent under, and why. */
@@ -62,19 +69,25 @@ const parameterOf = (property: string, operator?: string) => (operator === undef
 
 const typeText = (property: ModelProperty) => property.types.join(" or ");
 
+const NOT_ACCEPTED = "is not a filter this collection accepts";
+
 function readFilter(
   properties: Map<string, ModelProperty>,
+  accepted: AcceptedQuery,
   input: { property: string; operator?: string; value: unknown },
 ): Filter | string {
   const property = properties.get(input.property);
-  if (!property) return "names no property of this collection";
-  if (input.operator !== undefined && !(OPERATORS as readonly string[]).includes(input.operator)) {
-    return `uses an unknown operator; one of ${OPERATORS.join(", ")}, or none for equality`;
+  // A spelled `eq` is no parameter: equality is the bare property name.
+  if (!property || (input.operator !== undefined && !(OPERATORS as readonly string[]).includes(input.operator))) {
+    return NOT_ACCEPTED;
   }
   const operator = (input.operator ?? "eq") as Operator;
+  if (!accepted.filters.some((filter) => filter.property === property.name && filter.operator === operator)) {
+    return NOT_ACCEPTED;
+  }
   const comparison = (COMPARISONS as readonly string[]).includes(operator);
   const applies = operator === "contains" ? isText(property) : comparison ? isOrdered(property) : isScalar(property);
-  if (!applies) return `does not apply to a property of type ${typeText(property)}`;
+  if (!applies) return NOT_ACCEPTED;
   const given = Array.isArray(input.value) ? input.value : [input.value];
   if (given.length === 0) return "needs a value";
   if (operator !== "in" && given.length > 1) return `takes one value, and ${given.length} were sent`;
@@ -97,28 +110,35 @@ function readFilter(
 }
 
 /**
- * Judge a request against the model. Everything wrong with it is reported at
- * once, each under the parameter that carried it.
+ * Judge a request against what the collection accepts, with value types from
+ * the model. Everything wrong with it is reported at once, each under the
+ * parameter that carried it.
  */
-export function planQuery(properties: Map<string, ModelProperty>, inputs: QueryInputs): CollectionQuery {
+export function planQuery(
+  properties: Map<string, ModelProperty>,
+  accepted: AcceptedQuery,
+  inputs: QueryInputs,
+): CollectionQuery {
   const details: QueryDetail[] = [];
 
   const filters: Filter[] = [];
   for (const input of inputs.filters ?? []) {
-    const filter = readFilter(properties, input);
+    const filter = readFilter(properties, accepted, input);
     if (typeof filter === "string") details.push({ path: parameterOf(input.property, input.operator), message: filter });
     else filters.push(filter);
   }
 
-  let sort: Sort = { property: properties.get("id")!, descending: false };
+  const key = properties.get(KEY)!;
+  let sort: Sort = { property: key, descending: false };
   const keys = inputs.sort ?? [];
   if (keys.length > 1) {
     details.push({ path: "sort", message: "takes one property; `id` is always the tiebreaker" });
   } else if (keys.length === 1) {
     const property = properties.get(keys[0].property);
-    if (!property) details.push({ path: "sort", message: "names no property of this collection" });
-    else if (!isScalar(property)) details.push({ path: "sort", message: `cannot order by a property of type ${typeText(property)}` });
-    else sort = { property, descending: keys[0].direction === "desc" };
+    const listed = accepted.sort.some((entry) => entry.property === keys[0].property);
+    if (!property || !listed || !isScalar(property)) {
+      details.push({ path: "sort", message: "is not a property this collection sorts by" });
+    } else sort = { property, descending: keys[0].direction === "desc" };
   }
 
   const limit = inputs.limit === undefined || inputs.limit === null ? DEFAULT_LIMIT : integerInput(inputs.limit);
@@ -130,12 +150,13 @@ export function planQuery(properties: Map<string, ModelProperty>, inputs: QueryI
   if (inputs.cursor !== undefined && inputs.cursor !== null) {
     const cursor = typeof inputs.cursor === "string" ? decodeCursor(inputs.cursor) : undefined;
     const value = cursor && cursor.value !== null ? readValue(sort.property, cursor.value) : null;
-    if (!cursor || value === undefined) {
+    const id = cursor ? readValue(key, cursor.id) : undefined;
+    if (!cursor || value === undefined || id === undefined) {
       details.push({ path: "cursor", message: "is not a cursor this collection issued" });
     } else if (cursor.sort !== sortText(sort)) {
       details.push({ path: "cursor", message: "was issued for a different sort; start again without it" });
     } else {
-      after = { value, id: cursor.id };
+      after = { value, id };
     }
   }
 

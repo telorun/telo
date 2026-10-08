@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { controlFor } from "../src/browser/form.js";
 import { render, type Rendered } from "./harness.js";
-import { formNode, tableNode, todos } from "./spec-nodes.js";
+import { formNode, opener, tableNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -18,7 +18,7 @@ async function edit(row: Record<string, unknown>, fields?: string[]) {
     path: "/",
     required: ["text"],
     collections: { "/api/todos": [row] },
-    pages: { "/": { title: "Todos", children: [tableNode({ columns: [], edit: shown })] } },
+    pages: { "/": { title: "Todos", children: [tableNode({ columns: [], edit: opener({ form: shown }) })] } },
   });
   const bodies: unknown[] = [];
   const platform = globalThis.fetch;
@@ -31,6 +31,18 @@ async function edit(row: Record<string, unknown>, fields?: string[]) {
 }
 
 describe("a form", () => {
+  it("turns the browser's autocomplete off, on itself and on every control typed into", async () => {
+    rendered = await show();
+    const typed = [...rendered.part("form").querySelectorAll('[data-telo-part="input"], [data-telo-part="textarea"]')];
+    expect(typed.map((control) => [control.getAttribute("type") ?? control.tagName, control.getAttribute("autocomplete")])).toEqual([
+      ["text", "off"],
+      ["number", "off"],
+      ["date", "off"],
+      ["TEXTAREA", "off"],
+    ]);
+    expect(rendered.part("form").getAttribute("autocomplete")).toBe("off");
+  });
+
   it("derives each control from what the model says the property is", () => {
     expect(controlFor({ type: "boolean" })).toBe("checkbox");
     expect(controlFor({ enum: ["a", "b"] })).toBe("select");

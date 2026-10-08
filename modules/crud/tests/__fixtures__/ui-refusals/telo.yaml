@@ -1,0 +1,83 @@
+# An application that writes each of `Crud.Ui`'s three presentation keys wrongly,
+# one mistake per resource: a key none of them has, a value outside the set an
+# opener takes, and a resource at `surface` that is no surface.
+kind: Telo.Application
+metadata:
+  name: CrudUiRefusalsApp
+  version: 1.0.0
+imports:
+  Crud: ../../../
+  Ui: ../../../../ui
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: taskModel }
+schemas:
+  read: !ref TaskRecord
+  list: !ref TaskRecord
+  create: !ref Task
+  update: !ref Task
+query:
+  filters:
+    - { property: title, operator: contains }
+  sort: []
+---
+kind: Crud.Ui
+metadata: { name: filtersKey }
+model: !ref taskModel
+basePath: /api/tasks
+filters:
+  sumary: chips
+---
+kind: Crud.Ui
+metadata: { name: createKey }
+model: !ref taskModel
+basePath: /api/tasks
+create:
+  afterSubmitt: again
+---
+kind: Crud.Ui
+metadata: { name: editKey }
+model: !ref taskModel
+basePath: /api/tasks
+edit:
+  unsavd: confirm
+---
+kind: Crud.Ui
+metadata: { name: createAfter }
+model: !ref taskModel
+basePath: /api/tasks
+create:
+  afterSubmit: later
+---
+# `again` is a create's: an edit has no next record to start.
+kind: Crud.Ui
+metadata: { name: editAfter }
+model: !ref taskModel
+basePath: /api/tasks
+edit:
+  afterSubmit: again
+---
+kind: Crud.Ui
+metadata: { name: createSurface }
+model: !ref taskModel
+basePath: /api/tasks
+create:
+  surface: { kind: Ui.LocalStore }

@@ -4,7 +4,7 @@ export interface PageCursor {
   /** The sorted property, `-` before it for descending. */
   sort: string;
   value: unknown;
-  id: number;
+  id: string | number;
 }
 
 export function encodeCursor(cursor: PageCursor): string {
@@ -24,6 +24,6 @@ export function decodeCursor(text: string): PageCursor | undefined {
   }
   if (!Array.isArray(parsed) || parsed.length !== 3) return undefined;
   const [sort, value, id] = parsed;
-  if (typeof sort !== "string" || !Number.isSafeInteger(id)) return undefined;
+  if (typeof sort !== "string" || !(typeof id === "string" || Number.isSafeInteger(id))) return undefined;
   return { sort, value, id };
 }

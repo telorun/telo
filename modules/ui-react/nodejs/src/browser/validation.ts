@@ -1,5 +1,8 @@
 export type JsonSchema = Record<string, any>;
 
+/** The types a schema declares, `null` aside: a nullable boolean is a boolean. */
+export const plainTypes = (schema: JsonSchema): string[] => [schema.type ?? []].flat().filter((type: string) => type !== "null");
+
 export interface Finding {
   /** Member names from the value's root to what failed. */
   path: string[];

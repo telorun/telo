@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: UiInvalidPresetValueInvalidApp
+  version: 1.0.0
+imports:
+  Lib: ../lib
+  Probe: ../../probe
+targets:
+  - invoke: !ref read
+---
+kind: Probe.Read
+metadata:
+  name: read
+source: !ref Lib.presetValueInvalid

@@ -244,10 +244,8 @@ Run the architect's phases on the batch, with its confirmed entries as the task 
   before the first card, and keep the output in `00-validation/baseline.md`, so a failure that
   predates the batch is told apart from one the batch caused.
 - **Headless.** A tick is a print-mode process. Spawn every subagent in the foreground. When
-  `SendMessage` to the builder is unavailable, spawn a fresh builder with the earlier cards'
-  briefs, reports and `tree.diff` instead — the architect's fallback for a lost builder. Skip the
-  architect's builder-context watcher: it wakes you from the background, and a foreground builder
-  blocks until it returns.
+  `SendMessage` to a card's builder is unavailable, spawn a fresh builder with the card's `brief.md`
+  and `builder.md` instead — the architect's fallback for a lost builder.
 - **Resuming.** A crashed tick leaves `build` in *Phase*. The next tick resumes the batch's loop
   from its first card that is neither `done` nor `parked`.
 - **New findings go to `BACKLOG.md`**, appended as the architect appends them, never into the

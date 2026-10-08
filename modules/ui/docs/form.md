@@ -15,18 +15,21 @@ A field's label is the property's `title`, else its name.
 | Placed as | Request |
 | --- | --- |
 | a node on a page, or a table's `create` | `POST <basePath>` |
-| a table's `edit` | `PUT <basePath>/<rowKey value>`, prefilled from the row |
+| a table's `edit` | `PUT <basePath>/<rowKey value>`, prefilled from the record read at `GET <basePath>/<rowKey value>` |
 
 ## What it sends
 
 - **Creating**, the record holds each field that has a value. A field left
   empty is left out of it.
-- **Editing**, the record is the whole row, because `PUT` replaces the row
-  ([the collection contract](collection-contract.md#items)): every property of
-  the model the row held a value for — whether or not the form shows it — with
-  each field's entered value over it. A field left empty is left out, which
-  clears that property. A property the row held as `null` is left out, and so
-  is anything in the row the model does not declare.
+- **Editing**, the form first reads the record by its key, because a row of
+  the list may hold less than the record does. What it sends is every property
+  of the form's model the record held a value for — whether or not the form
+  shows it — with each field's entered value over it, because `PUT` replaces
+  ([the collection contract](collection-contract.md#items)). A field left
+  empty is left out, which clears that property. A property the record held as
+  `null` is left out, and so is anything in the record the model does not
+  declare — so a form over a narrower model than the record sends only what
+  that model names.
 - A checkbox always has a value: `true` or `false`.
 - A required field left empty is refused in the page, on the field, and
   nothing is sent.

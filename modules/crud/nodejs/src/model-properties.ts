@@ -11,7 +11,8 @@ export interface ModelProperty {
   name: string;
   column: string;
   types: string[];
-  /** Its `type` admits `null`, or it declares no `type`. */
+  /** The shape accepts `null` for it: its `type` admits it, or it declares no
+   *  `type` and no listed value that leaves `null` out. */
   nullable: boolean;
   /** Listed in the model's `required`. */
   required: boolean;
@@ -36,23 +37,26 @@ function declaredTypes(property: JsonSchema): string[] {
   return [...new Set(listed)];
 }
 
+function admitsNull(property: JsonSchema): boolean {
+  if (property.type !== undefined) return [property.type].flat().includes("null");
+  if (Array.isArray(property.enum)) return property.enum.includes(null);
+  return !("const" in property) || property.const === null;
+}
+
 /**
- * Every property a statement may name, by API name: `id` first, then the
- * model's own in declaration order. Nothing else ever becomes a column.
+ * Every property a shape declares, by API name, in declaration order. Nothing
+ * else ever becomes a column.
  */
 export function modelProperties(schema: JsonSchema): Map<string, ModelProperty> {
-  const properties = new Map<string, ModelProperty>([
-    ["id", { name: "id", column: "id", types: ["integer"], nullable: false, required: true }],
-  ]);
+  const properties = new Map<string, ModelProperty>();
   const required: unknown[] = Array.isArray(schema.required) ? schema.required : [];
   for (const [name, declared] of Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>)) {
-    if (name === "id") continue;
     const type = declared?.type;
     properties.set(name, {
       name,
       column: columnOf(name),
       types: declaredTypes(declared ?? {}),
-      nullable: type === undefined || [type].flat().includes("null"),
+      nullable: admitsNull(declared ?? {}),
       required: required.includes(name),
     });
   }
@@ -142,8 +146,11 @@ const EMPTY_VALUES: Record<string, () => unknown> = {
   object: () => ({}),
 };
 
+/** The property identifying a row. */
+export const KEY = "id";
+
 /**
- * A stored row as a record valid against the model. A column holding NULL is
+ * A stored row as a record valid against the shape. A column holding NULL is
  * `null` where the property admits it, left out where the property is
  * optional, and the empty value of its first declared type where it is
  * required — the type's, whatever further constraint the model puts on it.

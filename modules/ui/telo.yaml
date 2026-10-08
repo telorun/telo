@@ -24,16 +24,41 @@ imports:
 exports:
   kinds:
     - Composite
+    - Surface
+    - Overlay
+    - Dialog
+    - Drawer
+    - Popover
+    - InlineSurface
+    - Panel
+    - PageSurface
+    - FilterPlacement
+    - AbovePlacement
+    - AsidePlacement
+    - CollapsiblePlacement
+    - OverlayPlacement
+    - StateStore
+    - LocalStore
+    - SessionStore
     - View
     - Table
     - Form
     - Filters
+    - Collection
     - Component
     - ComponentExport
     - Theme
   resources:
     - Node
     - SpecNode
+    - OverlaySpec
+    - SurfaceSpec
+    - AfterCreate
+    - AfterEdit
+    - UnsavedInput
+    - FilterPolicy
+    - FilterPlacementSpec
+    - StateStoreSpec
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -163,9 +188,24 @@ schema:
         rowKey: { type: string }
         pageSize: { type: integer }
         rowStyle: { $ref: "#/$defs/StyleRule" }
-        # Each a form node.
-        create: { $ref: "#" }
-        edit: { $ref: "#" }
+        create:
+          type: object
+          additionalProperties: false
+          required: [form, surface, afterSubmit, unsaved]
+          properties:
+            form: { $ref: "#" }
+            surface: { $ref: "telo:Ui/SurfaceSpec" }
+            afterSubmit: { enum: [close, again, keep] }
+            unsaved: { enum: [confirm, discard] }
+        edit:
+          type: object
+          additionalProperties: false
+          required: [form, surface, afterSubmit, unsaved]
+          properties:
+            form: { $ref: "#" }
+            surface: { $ref: "telo:Ui/SurfaceSpec" }
+            afterSubmit: { enum: [close, keep] }
+            unsaved: { enum: [confirm, discard] }
         delete: { type: boolean }
         columns:
           type: array
@@ -202,7 +242,7 @@ schema:
               label: { type: string }
         style: { $ref: "#/$defs/Style" }
     - additionalProperties: false
-      required: [type, fields, content]
+      required: [type, fields, content, show, placement, controls, apply, summary, state, presets]
       properties:
         type: { const: filters }
         fields:
@@ -210,13 +250,53 @@ schema:
           items:
             type: object
             additionalProperties: false
-            required: [property, operator, label, schema]
+            required: [property, operator, label, schema, pinned, control]
             properties:
               property: { type: string }
               operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
               label: { type: string }
               schema: { type: object }
+              pinned: { type: boolean }
+              control: { enum: [auto, select, options, toggle, slider, tags, none] }
+              # What the filter holds until the user changes it: always a list.
+              default:
+                type: array
+                items: { type: [string, number, boolean] }
         content: { $ref: "#" }
+        show: { enum: [all, chosen] }
+        placement: { $ref: "telo:Ui/FilterPlacementSpec" }
+        controls: { enum: [direct, chips] }
+        apply: { enum: [commit, typing, button] }
+        summary: { enum: [none, chips] }
+        state:
+          type: object
+          additionalProperties: false
+          required: [address, store]
+          properties:
+            # Present exactly when the bar declares `state`.
+            key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+            address: { type: boolean }
+            store: { $ref: "telo:Ui/StateStoreSpec" }
+        presets:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, values]
+            properties:
+              label: { type: string }
+              values:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [property, operator, value]
+                  properties:
+                    property: { type: string }
+                    operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+                    value:
+                      type: array
+                      items: { type: [string, number, boolean] }
         style: { $ref: "#/$defs/Style" }
     - additionalProperties: false
       required: [type, module, export, external, stylesheets, props]
@@ -277,6 +357,273 @@ schema:
         digest: { type: string }
         name: { type: string }
 ---
+# Where a piece of interface floats over the page, as a renderer receives it.
+# Tagged on `type`, one branch per kind; every member a branch names is present,
+# so a renderer reads no default of its own.
+kind: Telo.JsonSchema
+metadata:
+  name: OverlaySpec
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type, size, modal, dismiss]
+      properties:
+        type: { const: dialog }
+        size: { enum: [small, medium, large, full] }
+        modal: { type: boolean }
+        dismiss: { $ref: "#/$defs/OverlayDismiss" }
+        address: { $ref: "#/$defs/Address" }
+        compact: { $ref: "#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, side, size, modal, dismiss]
+      properties:
+        type: { const: drawer }
+        side: { enum: [start, end, top, bottom] }
+        size: { enum: [small, medium, large, full] }
+        modal: { type: boolean }
+        dismiss: { $ref: "#/$defs/OverlayDismiss" }
+        address: { $ref: "#/$defs/Address" }
+        compact: { $ref: "#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, side, align, dismiss]
+      properties:
+        type: { const: popover }
+        side: { enum: [top, bottom, start, end] }
+        align: { enum: [start, center, end] }
+        dismiss:
+          type: object
+          additionalProperties: false
+          required: [escape, outside]
+          properties:
+            escape: { type: boolean }
+            outside: { type: boolean }
+        compact: { $ref: "#/$defs/Compact" }
+  $defs:
+    Address:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+    OverlayDismiss:
+      type: object
+      additionalProperties: false
+      required: [escape, outside, closeButton]
+      properties:
+        escape: { type: boolean }
+        outside: { type: boolean }
+        closeButton: { type: boolean }
+    # The surface used instead below the breakpoint: a dialog or a drawer, with
+    # no address and no compact surface of its own.
+    Compact:
+      type: object
+      oneOf:
+        - additionalProperties: false
+          required: [type, size, modal, dismiss]
+          properties:
+            type: { const: dialog }
+            size: { enum: [small, medium, large, full] }
+            modal: { type: boolean }
+            dismiss: { $ref: "#/$defs/OverlayDismiss" }
+        - additionalProperties: false
+          required: [type, side, size, modal, dismiss]
+          properties:
+            type: { const: drawer }
+            side: { enum: [start, end, top, bottom] }
+            size: { enum: [small, medium, large, full] }
+            modal: { type: boolean }
+            dismiss: { $ref: "#/$defs/OverlayDismiss" }
+---
+# Where a piece of interface appears, as a renderer receives it: an overlay, or
+# a place in the page itself.
+kind: Telo.JsonSchema
+metadata:
+  name: SurfaceSpec
+schema:
+  type: object
+  oneOf:
+    - $ref: "telo:Ui/OverlaySpec"
+    - additionalProperties: false
+      required: [type]
+      properties:
+        type: { const: inline }
+        compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, side, size, dismiss]
+      properties:
+        type: { const: panel }
+        side: { enum: [start, end] }
+        size: { enum: [small, medium, large] }
+        dismiss:
+          type: object
+          additionalProperties: false
+          required: [escape, closeButton]
+          properties:
+            escape: { type: boolean }
+            closeButton: { type: boolean }
+        address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
+        compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, address]
+      properties:
+        type: { const: page }
+        address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
+---
+# What a create form does once its record is saved.
+kind: Telo.JsonSchema
+metadata:
+  name: AfterCreate
+schema:
+  enum: [close, again, keep]
+  default: close
+---
+# What an edit form does once its record is saved.
+kind: Telo.JsonSchema
+metadata:
+  name: AfterEdit
+schema:
+  enum: [close, keep]
+  default: close
+---
+# What happens to input a form holds unsaved when something would close it.
+kind: Telo.JsonSchema
+metadata:
+  name: UnsavedInput
+schema:
+  enum: [confirm, discard]
+  default: confirm
+---
+# What a filter bar is told about itself beyond its fields: which filters are
+# on show, where its controls sit, how each is entered, when a change applies,
+# what summarises it and where its state is kept. A record: no member of it
+# decides which other members may be written.
+kind: Telo.JsonSchema
+metadata:
+  name: FilterPolicy
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    show:
+      title: Show
+      description: >-
+        Which filters are on show: `all` of them, or only the `chosen` — the
+        pinned ones, those added from the bar's list, and those holding a value.
+      enum: [all, chosen]
+      default: all
+    placement:
+      title: Placement
+      description: Where the controls sit relative to the content. Omitted, above it.
+      x-telo-ref: { kind: Self.FilterPlacement, use: dependency }
+    controls:
+      title: Controls
+      description: >-
+        How a filter is drawn: its control `direct`ly, or as `chips` — a chip
+        naming the filter and its value that opens the control.
+      enum: [direct, chips]
+      default: direct
+    apply:
+      title: Apply
+      description: >-
+        When a change takes effect: when it is `commit`ted — a choice at once,
+        typed text on Enter or on leaving the field — while `typing`, after a
+        pause, or only from an Apply `button`.
+      enum: [commit, typing, button]
+      default: commit
+    summary:
+      title: Summary
+      description: >-
+        What summarises the bar: `none`, or a row of removable `chips`, one per
+        filter holding a value.
+      enum: [none, chips]
+      default: none
+    state:
+      title: State
+      description: >-
+        Where the bar's state is kept between visits. Omitted, in memory only.
+        At least one of `address: true` and `store` is written.
+      type: object
+      additionalProperties: false
+      required: [key]
+      anyOf:
+        - required: [store]
+        - required: [address]
+          properties:
+            address: { const: true }
+      properties:
+        key:
+          title: Key
+          description: The name the state is kept under, letters and digits. Bars sharing a key share its state.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+        address:
+          title: Address
+          description: Whether the filter values are part of the page's address.
+          type: boolean
+          default: false
+        store:
+          title: Store
+          description: Where the state is stored between visits.
+          x-telo-ref: { kind: Self.StateStore, use: dependency }
+---
+# Where a filter bar's controls sit, as a renderer receives it. Tagged on
+# `type`, one branch per kind.
+kind: Telo.JsonSchema
+metadata:
+  name: FilterPlacementSpec
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type]
+      properties:
+        type: { const: above }
+        compact: { $ref: "#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, side]
+      properties:
+        type: { const: aside }
+        side: { enum: [start, end] }
+        compact: { $ref: "#/$defs/Compact" }
+    - additionalProperties: false
+      required: [type, open]
+      properties:
+        type: { const: collapsible }
+        open: { type: boolean }
+    - additionalProperties: false
+      required: [type, surface]
+      properties:
+        type: { const: overlay }
+        surface: { $ref: "telo:Ui/OverlaySpec" }
+  $defs:
+    # The placement used instead below the breakpoint: one that folds.
+    Compact:
+      type: object
+      oneOf:
+        - additionalProperties: false
+          required: [type, open]
+          properties:
+            type: { const: collapsible }
+            open: { type: boolean }
+        - additionalProperties: false
+          required: [type, surface]
+          properties:
+            type: { const: overlay }
+            surface: { $ref: "telo:Ui/OverlaySpec" }
+---
+# Where a piece of interface keeps its state, as a renderer receives it.
+# `memory` is what a bar with no store carries; no kind provides it.
+kind: Telo.JsonSchema
+metadata:
+  name: StateStoreSpec
+schema:
+  type: object
+  additionalProperties: false
+  required: [type]
+  properties:
+    type: { enum: [memory, local, session] }
+---
 kind: Telo.Abstract
 metadata:
   name: Composite
@@ -308,6 +655,559 @@ outputType:
             file: { x-telo-type: Telo.HostPath }
             mediaType: { type: string }
 ---
+# Where a piece of interface appears and how it is dismissed. Whoever opens a
+# form names one; each way of appearing is a kind of its own.
+kind: Telo.Abstract
+metadata:
+  name: Surface
+  description: >-
+    Where a piece of interface appears when it is opened and how it is
+    dismissed: floating over the page, in line with the content, in a side
+    panel beside it, or in place of the page. Provides the placement, size and
+    dismissal settings a renderer draws a create or edit form with.
+capability: Telo.Provider
+outputType: !ref SurfaceSpec
+---
+kind: Telo.Abstract
+metadata:
+  name: Overlay
+  description: >-
+    A surface floating over the page: a centred window, a sheet sliding in from
+    an edge, or a small card anchored to the control that opened it. Provides
+    its placement and dismissal settings, and suits any place that needs its
+    content on top of the page rather than inside it.
+capability: Telo.Provider
+extends: Self.Surface
+outputType: !ref OverlaySpec
+---
+kind: Telo.Definition
+metadata:
+  name: Dialog
+  description: >-
+    A centred window over the page for a create or edit form: a modal or
+    non-modal dialog in one of four sizes, closed by Escape, a click outside or
+    a close button, each of which can be switched off. Can be given an address
+    so an open form is linkable, and a replacement for narrow viewports.
+capability: Telo.Provider
+extends: Self.Overlay
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DialogController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    size:
+      title: Size
+      description: How much of the viewport it takes.
+      enum: [small, medium, large, full]
+      default: medium
+    modal:
+      title: Modal
+      description: Whether the page behind it is blocked while it is open.
+      type: boolean
+      default: true
+    dismiss:
+      title: Dismiss
+      description: The ways it can be closed besides the form's own buttons.
+      type: object
+      additionalProperties: false
+      properties:
+        escape: { title: Escape, description: The Escape key closes it., type: boolean, default: true }
+        outside: { title: Outside, description: A click outside it closes it., type: boolean, default: true }
+        closeButton: { title: Close button, description: It shows a close button., type: boolean, default: true }
+    address:
+      title: Address
+      description: >-
+        Makes the open surface part of the page's address, so it can be linked
+        to, reloaded and left with the browser's back button.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          title: Name
+          description: The name the open surface is addressed under, letters and digits.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+    compact:
+      title: Compact
+      description: >-
+        The surface used instead on a narrow viewport. It takes the address of
+        this one, and declares neither an address nor a compact surface itself.
+      x-telo-ref:
+        kind: [Self.Dialog, Self.Drawer]
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The address of a
+        compact surface is the one of the surface it stands in for: remove
+        `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+kind: Telo.Definition
+metadata:
+  name: Drawer
+  description: >-
+    A sheet sliding in from an edge of the viewport for a create or edit form:
+    a side drawer or a top or bottom sheet in one of four sizes, modal or not,
+    closed by Escape, a click outside or a close button. Can be given an
+    address so an open form is linkable, and a replacement for narrow
+    viewports.
+capability: Telo.Provider
+extends: Self.Overlay
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DrawerController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    side:
+      title: Side
+      description: The edge of the viewport it slides in from.
+      enum: [start, end, top, bottom]
+      default: end
+    size:
+      title: Size
+      description: How much of the viewport it takes.
+      enum: [small, medium, large, full]
+      default: medium
+    modal:
+      title: Modal
+      description: Whether the page behind it is blocked while it is open.
+      type: boolean
+      default: true
+    dismiss:
+      title: Dismiss
+      description: The ways it can be closed besides the form's own buttons.
+      type: object
+      additionalProperties: false
+      properties:
+        escape: { title: Escape, description: The Escape key closes it., type: boolean, default: true }
+        outside: { title: Outside, description: A click outside it closes it., type: boolean, default: true }
+        closeButton: { title: Close button, description: It shows a close button., type: boolean, default: true }
+    address:
+      title: Address
+      description: >-
+        Makes the open surface part of the page's address, so it can be linked
+        to, reloaded and left with the browser's back button.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          title: Name
+          description: The name the open surface is addressed under, letters and digits.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+    compact:
+      title: Compact
+      description: >-
+        The surface used instead on a narrow viewport. It takes the address of
+        this one, and declares neither an address nor a compact surface itself.
+      x-telo-ref:
+        kind: [Self.Dialog, Self.Drawer]
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The address of a
+        compact surface is the one of the surface it stands in for: remove
+        `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+kind: Telo.Definition
+metadata:
+  name: Popover
+  description: >-
+    A small card anchored to the button that opened it, for a short create or
+    edit form: a popover placed above, below or beside its trigger and aligned
+    to it, closed by Escape or a click outside. Can name a replacement for
+    narrow viewports, where an anchored card does not fit.
+capability: Telo.Provider
+extends: Self.Overlay
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PopoverController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    side:
+      title: Side
+      description: The side of the control it opens on.
+      enum: [top, bottom, start, end]
+      default: bottom
+    align:
+      title: Align
+      description: How it lines up with the control along that side.
+      enum: [start, center, end]
+      default: start
+    dismiss:
+      title: Dismiss
+      description: The ways it can be closed besides the form's own buttons.
+      type: object
+      additionalProperties: false
+      properties:
+        escape: { title: Escape, description: The Escape key closes it., type: boolean, default: true }
+        outside: { title: Outside, description: A click outside it closes it., type: boolean, default: true }
+    compact:
+      title: Compact
+      description: >-
+        The surface used instead on a narrow viewport. It takes the address of
+        this one, and declares neither an address nor a compact surface itself.
+      x-telo-ref:
+        kind: [Self.Dialog, Self.Drawer]
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The address of a
+        compact surface is the one of the surface it stands in for: remove
+        `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+kind: Telo.Definition
+metadata:
+  name: InlineSurface
+  description: >-
+    Opens a form in line with the content instead of over it: inline editing
+    in a data grid, with the create form drawn above the rows and the edit form
+    expanded under the row being changed. Can name a replacement for narrow
+    viewports.
+capability: Telo.Provider
+extends: Self.Surface
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InlineSurfaceController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    compact:
+      title: Compact
+      description: >-
+        The surface used instead on a narrow viewport. It takes the address of
+        this one, and declares neither an address nor a compact surface itself.
+      x-telo-ref:
+        kind: [Self.Dialog, Self.Drawer]
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The address of a
+        compact surface is the one of the surface it stands in for: remove
+        `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+kind: Telo.Definition
+metadata:
+  name: Panel
+  description: >-
+    A side panel beside the list for a create or edit form: master-detail
+    editing where the rows stay visible and usable while a record is open.
+    Sits at the start or end edge in one of three widths, closed by Escape or a
+    close button, with an optional address and a replacement for narrow
+    viewports.
+capability: Telo.Provider
+extends: Self.Surface
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PanelController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    side:
+      title: Side
+      description: The edge of the list it sits at.
+      enum: [start, end]
+      default: end
+    size:
+      title: Size
+      description: How wide it is.
+      enum: [small, medium, large]
+      default: medium
+    dismiss:
+      title: Dismiss
+      description: The ways it can be closed besides the form's own buttons.
+      type: object
+      additionalProperties: false
+      properties:
+        escape: { title: Escape, description: The Escape key closes it., type: boolean, default: true }
+        closeButton: { title: Close button, description: It shows a close button., type: boolean, default: true }
+    address:
+      title: Address
+      description: >-
+        Makes the open surface part of the page's address, so it can be linked
+        to, reloaded and left with the browser's back button.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          title: Name
+          description: The name the open surface is addressed under, letters and digits.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+    compact:
+      title: Compact
+      description: >-
+        The surface used instead on a narrow viewport. It takes the address of
+        this one, and declares neither an address nor a compact surface itself.
+      x-telo-ref:
+        kind: [Self.Dialog, Self.Drawer]
+        use: dependency
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The address of a
+        compact surface is the one of the surface it stands in for: remove
+        `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
+kind: Telo.Definition
+metadata:
+  name: PageSurface
+  description: >-
+    Opens a form as a page of its own: the create or edit form replaces the
+    page's content under its own address, so it can be linked to, reloaded and
+    left with the browser's back button, and the page returns when the form
+    closes.
+capability: Telo.Provider
+extends: Self.Surface
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageSurfaceController
+schema:
+  type: object
+  additionalProperties: false
+  required: [address]
+  properties:
+    address:
+      title: Address
+      description: >-
+        Makes the open surface part of the page's address, so it can be linked
+        to, reloaded and left with the browser's back button.
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          title: Name
+          description: The name the open surface is addressed under, letters and digits.
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9]*$"
+---
+# Where a filter bar's controls sit relative to what they filter. Each way of
+# sitting is a kind of its own.
+kind: Telo.Abstract
+metadata:
+  name: FilterPlacement
+  description: >-
+    Where the controls of a filter bar sit relative to the content they filter:
+    in a row above it, in a sidebar beside it, folded behind a toggle, or in an
+    overlay opened from a button. Provides the layout a renderer draws the
+    filters with, including what replaces it on a narrow viewport.
+capability: Telo.Provider
+outputType: !ref FilterPlacementSpec
+---
+kind: Telo.Definition
+metadata:
+  name: AbovePlacement
+  description: >-
+    Filter controls in a row above the content they filter: the classic
+    filter bar over a data grid, wrapping onto further lines as filters are
+    added. Can name a folding replacement for narrow viewports, where a row of
+    controls would push the content off the screen.
+capability: Telo.Provider
+extends: Self.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AbovePlacementController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    compact:
+      title: Compact
+      description: The placement used instead on a narrow viewport, one that folds the controls away.
+      x-telo-ref:
+        kind: [Self.CollapsiblePlacement, Self.OverlayPlacement]
+        use: dependency
+  x-telo-referrer-rules:
+    - referrer: Self.Filters
+      severity: warning
+      condition: !cel >-
+        has(self.compact)
+        || (has(referrer.policy) && has(referrer.policy.show) && referrer.policy.show == 'chosen')
+        || !has(referrer.fields)
+        || !referrer.fields.exists(f, 'pinned' in f && f.pinned)
+      code: UI_FILTER_PINNED_UNUSED
+      message: >-
+        pins a field, but nothing folds: every filter is on show whatever is
+        pinned. Give the placement a `compact`, use a placement that folds, show
+        only the `chosen` filters, or remove `pinned`.
+---
+kind: Telo.Definition
+metadata:
+  name: AsidePlacement
+  description: >-
+    Filter controls in a sidebar beside the content they filter: faceted
+    search with the filters stacked in a column at the start or end edge and
+    the results next to them. Can name a folding replacement for narrow
+    viewports, where there is no room for a second column.
+capability: Telo.Provider
+extends: Self.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AsidePlacementController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    side:
+      title: Side
+      description: The edge of the content the controls sit at.
+      enum: [start, end]
+      default: start
+    compact:
+      title: Compact
+      description: The placement used instead on a narrow viewport, one that folds the controls away.
+      x-telo-ref:
+        kind: [Self.CollapsiblePlacement, Self.OverlayPlacement]
+        use: dependency
+  x-telo-referrer-rules:
+    - referrer: Self.Filters
+      severity: warning
+      condition: !cel >-
+        has(self.compact)
+        || (has(referrer.policy) && has(referrer.policy.show) && referrer.policy.show == 'chosen')
+        || !has(referrer.fields)
+        || !referrer.fields.exists(f, 'pinned' in f && f.pinned)
+      code: UI_FILTER_PINNED_UNUSED
+      message: >-
+        pins a field, but nothing folds: every filter is on show whatever is
+        pinned. Give the placement a `compact`, use a placement that folds, show
+        only the `chosen` filters, or remove `pinned`.
+---
+kind: Telo.Definition
+metadata:
+  name: CollapsiblePlacement
+  description: >-
+    Filter controls folded behind a toggle that shows how many filters are
+    active: a collapsible filter section the viewer expands when needed, so
+    the content keeps the space. Opens folded or unfolded, and remembers what
+    the viewer last chose where the bar keeps its state.
+capability: Telo.Provider
+extends: Self.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollapsiblePlacementController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    open:
+      title: Open
+      description: Whether the controls are unfolded to begin with. A stored fold state overrides it.
+      type: boolean
+      default: false
+---
+kind: Telo.Definition
+metadata:
+  name: OverlayPlacement
+  description: >-
+    Filter controls in an overlay opened from a button that shows how many
+    filters are active: a filter dialog, a filter drawer sliding in from an
+    edge, or a popover under the button, closed with Done. Suits narrow
+    viewports and screens with many filters.
+capability: Telo.Provider
+extends: Self.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OverlayPlacementController
+schema:
+  type: object
+  additionalProperties: false
+  required: [surface]
+  properties:
+    surface:
+      title: Surface
+      description: The overlay the controls open in.
+      x-telo-ref: { kind: Self.Overlay, use: dependency }
+---
+# Where a piece of interface keeps its state between visits. A store is a
+# kind, so another place to keep it is another kind and nothing that names one
+# changes.
+kind: Telo.Abstract
+metadata:
+  name: StateStore
+  description: >-
+    Where a piece of interface keeps its state between visits, so a viewer
+    finds a screen as they left it: the filters they chose, the sections they
+    unfolded. Provides the place a renderer persists that state to.
+capability: Telo.Provider
+outputType: !ref StateStoreSpec
+---
+kind: Telo.Definition
+metadata:
+  name: LocalStore
+  description: >-
+    Keeps interface state in the browser's local storage: chosen filters and
+    unfolded sections survive closing the tab and the browser, and are shared
+    by every tab of the same application on that device. Nothing is sent to the
+    server.
+capability: Telo.Provider
+extends: Self.StateStore
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#LocalStoreController
+schema:
+  type: object
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: SessionStore
+  description: >-
+    Keeps interface state in the browser's session storage: chosen filters and
+    unfolded sections survive a reload, belong to one tab only, and are gone
+    when the tab is closed. Nothing is sent to the server.
+capability: Telo.Provider
+extends: Self.StateStore
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SessionStoreController
+schema:
+  type: object
+  additionalProperties: false
+---
 kind: Telo.Definition
 metadata:
   name: View
@@ -330,15 +1230,76 @@ schema:
       description: The node this view stands for.
       $ref: "telo://Self/Node"
 ---
+# What a list request may ask of a collection. A screen offers only what is
+# declared here, and whatever serves the collection accepts only the same — so
+# the two cannot drift apart. A kind serving a collection extends this one.
+kind: Telo.Definition
+metadata:
+  name: Collection
+  description: >-
+    Declares what a list request may ask of a collection of records: which
+    properties it can be filtered by and with which operator — equals, contains,
+    greater or less than, one of several — and which properties it can be sorted
+    by. Data grids and filter bars offer exactly these, so a screen never sends
+    a query its backend would refuse.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionController
+schema:
+  type: object
+  additionalProperties: false
+  required: [query]
+  examples:
+    - query:
+        filters:
+          - { property: text, operator: contains }
+          - { property: isDone, operator: eq }
+        sort:
+          - { property: dueOn }
+  properties:
+    query:
+      title: Query
+      description: What a list request may filter and sort by. Nothing else is accepted.
+      type: object
+      additionalProperties: false
+      required: [filters, sort]
+      properties:
+        filters:
+          title: Filters
+          description: The accepted filters, each one property with one operator.
+          type: array
+          uniqueItems: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, operator]
+            properties:
+              property: { title: Property, type: string }
+              operator:
+                title: Operator
+                enum: [eq, contains, gt, gte, lt, lte, in]
+        sort:
+          title: Sort
+          description: The properties a list may be ordered by.
+          type: array
+          uniqueItems: true
+          items:
+            type: object
+            additionalProperties: false
+            required: [property]
+            properties:
+              property: { title: Property, type: string }
+---
 kind: Telo.Definition
 metadata:
   name: Table
   description: >-
     A data grid over a REST collection: rows fetched page by page with a cursor,
-    one-click column sorting, a total count, per-row and per-cell conditional
-    styling, and optional create, edit and delete actions. Columns come from the
-    row model unless listed, so a property added to the model appears without an
-    edit and a renamed one is caught before deploy.
+    one-click sorting on the columns the collection can be ordered by, a total
+    count, per-row and per-cell conditional styling, and optional create, edit
+    and delete actions. Columns come from the row model unless listed, so a
+    property added to the model appears without an edit and a renamed one is
+    caught before deploy.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -346,12 +1307,18 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [model, source]
+  required: [model, collection, source]
   properties:
     model:
       title: Model
       description: The shape of one row.
       x-telo-ref: { kind: Telo.Type, use: schema }
+    collection:
+      title: Collection
+      description: >-
+        What the collection's list request accepts. A column sorts where its
+        value is a property this lists under `query.sort`.
+      x-telo-ref: { kind: Self.Collection, use: dependency }
     source:
       title: Source
       type: object
@@ -367,7 +1334,9 @@ schema:
           pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
         filters:
           title: Filters
-          description: Equalities applied to every request, keyed by model property.
+          description: >-
+            Equalities applied to every request, keyed by model property. Each
+            is a filter the collection accepts with `eq`.
           type: object
           additionalProperties: { type: [string, number, boolean] }
     rowKey:
@@ -378,8 +1347,8 @@ schema:
     columns:
       title: Columns
       description: >-
-        The columns, left to right. Omitted, there is one per model property in
-        declaration order.
+        The columns, left to right. Omitted, there is one per model property
+        but the row key, in declaration order.
       type: array
       items:
         type: object
@@ -450,13 +1419,59 @@ schema:
           additionalProperties: { $ref: "#/$defs/Style" }
         default: { $ref: "#/$defs/Style" }
     create:
-      title: Create form
-      description: The form opened to add a row.
-      x-telo-ref: { kind: Self.Form, use: dependency }
+      title: Create
+      description: The form that adds a row, and where and how it opens.
+      type: object
+      additionalProperties: false
+      required: [form]
+      properties:
+        form:
+          title: Form
+          description: The form opened.
+          x-telo-ref: { kind: Self.Form, use: dependency }
+        surface:
+          title: Surface
+          description: Where the form appears. Omitted, a dialog with its defaults.
+          x-telo-ref: { kind: Self.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: >-
+            What the form does once the record is saved: `close`, `again` — stay
+            open, emptied, for another record — or `keep` its values.
+          $ref: "telo://Self/AfterCreate"
+        unsaved:
+          title: Unsaved input
+          description: >-
+            Whether leaving the form with unsaved input asks first (`confirm`)
+            or drops it (`discard`).
+          $ref: "telo://Self/UnsavedInput"
     edit:
-      title: Edit form
-      description: The form opened to change a row, prefilled from it.
-      x-telo-ref: { kind: Self.Form, use: dependency }
+      title: Edit
+      description: The form that changes a row, prefilled from the record, and where and how it opens.
+      type: object
+      additionalProperties: false
+      required: [form]
+      properties:
+        form:
+          title: Form
+          description: The form opened.
+          x-telo-ref: { kind: Self.Form, use: dependency }
+        surface:
+          title: Surface
+          description: Where the form appears. Omitted, a dialog with its defaults.
+          x-telo-ref: { kind: Self.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: >-
+            What the form does once the record is saved: `close`, or `keep` it
+            open.
+          $ref: "telo://Self/AfterEdit"
+        unsaved:
+          title: Unsaved input
+          description: >-
+            Whether leaving the form with unsaved input asks first (`confirm`)
+            or drops it (`discard`).
+          $ref: "telo://Self/UnsavedInput"
     delete:
       title: Delete
       description: Whether each row offers a confirmed delete.
@@ -473,11 +1488,21 @@ schema:
   x-telo-resource-rules:
     - resolve: [/model]
       in: /source/filters
-      condition: !cel "key in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
       message: >-
         filters its source by a property the row model does not declare. Use a
         property of `model`, or add this one to it.
+    - resolve: [/collection]
+      in: /source/filters
+      condition: !cel >-
+        !has(self.collection.query) || !has(self.collection.query.filters)
+        || self.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
+      code: UI_SOURCE_FILTER_NOT_ACCEPTED
+      message: >-
+        filters its source by a property the collection does not accept an
+        equality on. Declare it with operator `eq` under the collection's
+        `query.filters`, or remove this filter.
 ---
 kind: Telo.Definition
 metadata:
@@ -527,7 +1552,7 @@ schema:
   x-telo-resource-rules:
     - resolve: [/model]
       in: /fields
-      condition: !cel "this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_FORM_FIELD_UNKNOWN_PROPERTY
       message: >-
         lists a field for a property the model does not declare. Use a property
@@ -537,10 +1562,11 @@ kind: Telo.Definition
 metadata:
   name: Filters
   description: >-
-    A filter bar over the data grids it contains: one control per chosen
-    property — equals, contains, greater or less than, one of several — with a
-    reset. Every grid inside narrows to the chosen values and returns to its
-    first page. Controls and default operators come from the data model.
+    A filter bar over the data grids it contains: one control per filter the
+    collection accepts, with named presets, summary chips for what is chosen,
+    and a reset. The controls can fold behind a button or open in an overlay.
+    Chosen values are kept between visits and shareable in the page address;
+    every grid inside narrows to them.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -548,27 +1574,95 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [model, content]
+  required: [model, collection, content]
   properties:
     model:
       title: Model
       description: The shape of the rows being filtered.
       x-telo-ref: { kind: Telo.Type, use: schema }
+    collection:
+      title: Collection
+      description: >-
+        What the collection's list request accepts. The bar offers only filters
+        this lists under `query.filters`.
+      x-telo-ref: { kind: Self.Collection, use: dependency }
     fields:
       title: Fields
       description: >-
-        The filters, in order. Omitted, one per scalar model property with the
-        operator its type defaults to.
+        The filters, in order. Omitted, one per filter the collection accepts,
+        in the order it declares them.
       type: array
       items:
         type: object
         additionalProperties: false
-        required: [property]
+        required: [property, operator]
         properties:
           property: { title: Property, type: string }
           operator:
             title: Operator
             enum: [eq, contains, gt, gte, lt, lte, in]
+          pinned:
+            title: Pinned
+            description: >-
+              Kept outside whatever the bar folds into, always on show, and
+              never removable.
+            type: boolean
+            default: false
+          control:
+            title: Control
+            description: >-
+              How the value is entered: derived from the property (`auto`), a
+              `select` list, `options` side by side, a `toggle`, a `slider`,
+              typed `tags`, or `none` — drawn nowhere, set by a preset or a
+              default only.
+            enum: [auto, select, options, toggle, slider, tags, none]
+            default: auto
+          default:
+            title: Default
+            description: >-
+              What the filter holds until the viewer changes it: one value, or a
+              list of them under `in`.
+            anyOf:
+              - type: [string, number, boolean]
+              - type: array
+                items: { type: [string, number, boolean] }
+    presets:
+      title: Presets
+      description: >-
+        Named sets of filter values, drawn as one exclusive choice. Choosing one
+        sets the filters the presets name between them and leaves the rest.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [label, values]
+        properties:
+          label: { title: Label, type: string }
+          values:
+            title: Values
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [property, operator, value]
+              properties:
+                property: { title: Property, type: string }
+                operator:
+                  title: Operator
+                  enum: [eq, contains, gt, gte, lt, lte, in]
+                value:
+                  title: Value
+                  anyOf:
+                    - type: [string, number, boolean]
+                    - type: array
+                      items: { type: [string, number, boolean] }
+    policy:
+      title: Policy
+      description: >-
+        Which filters are on show, where the controls sit, how they are drawn,
+        when a change applies, what summarises the bar and where its state is
+        kept.
+      $ref: "telo://Self/FilterPolicy"
     content:
       title: Content
       description: The node the filters apply to.
@@ -576,7 +1670,7 @@ schema:
   x-telo-resource-rules:
     - resolve: [/model]
       in: /fields
-      condition: !cel "this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_FILTER_UNKNOWN_PROPERTY
       message: >-
         filters by a property the model does not declare. Use a property of
@@ -587,20 +1681,158 @@ schema:
     - resolve: [/model]
       in: /fields
       condition: !cel >-
-        !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || !has((has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type)
+        !has((has(self.model.schema) ? self.model.schema : self.model).properties)
+        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+        || !('type' in (has(self.model.schema) ? self.model.schema : self.model).properties[this.property])
         || type((has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type) != string
-        || ((!has(this.operator) || this.operator in ['eq', 'in'])
+        || (this.operator in ['eq', 'in']
             && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer', 'boolean'])
-        || (has(this.operator) && this.operator == 'contains'
+        || (this.operator == 'contains'
             && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type == 'string')
-        || (has(this.operator) && this.operator in ['gt', 'gte', 'lt', 'lte']
+        || (this.operator in ['gt', 'gte', 'lt', 'lte']
             && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer'])
       code: UI_FILTER_OPERATOR_UNSUPPORTED
       message: >-
         uses an operator the property's type does not support: `contains` needs a
         string, `gt` / `gte` / `lt` / `lte` a string or a number, and no operator
         applies to an object or a list.
+    - resolve: [/collection]
+      in: /fields
+      condition: !cel >-
+        !has(self.collection.query) || !has(self.collection.query.filters)
+        || self.collection.query.filters.exists(f, f.property == this.property && f.operator == this.operator)
+      code: UI_FILTER_NOT_ACCEPTED
+      message: >-
+        filters by a property and operator the collection does not accept.
+        Declare the pair under the collection's `query.filters`, or remove this
+        field.
+    # With no `fields`, every filter the collection accepts becomes a control,
+    # drawn from the model's property of that name — so each is held to what a
+    # listed field is: a declared property, and an operator its type carries.
+    - resolve: [/model, /collection]
+      condition: !cel >-
+        has(self.fields) || !has(self.collection.query) || !has(self.collection.query.filters)
+        || self.collection.query.filters.all(f,
+             has((has(self.model.schema) ? self.model.schema : self.model).properties)
+             && f.property in (has(self.model.schema) ? self.model.schema : self.model).properties
+             && (!('type' in (has(self.model.schema) ? self.model.schema : self.model).properties[f.property])
+                 || type((has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type) != string
+                 || (f.operator in ['eq', 'in']
+                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type in ['string', 'number', 'integer', 'boolean'])
+                 || (f.operator == 'contains'
+                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type == 'string')
+                 || (f.operator in ['gt', 'gte', 'lt', 'lte']
+                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type in ['string', 'number', 'integer'])))
+      code: UI_FILTER_MODEL_INCOMPLETE
+      message: >-
+        shows every filter the collection accepts, and the model cannot answer
+        for one of them: it does not declare the property, or the operator does
+        not fit the property's type. Give the bar a model that can, or list the
+        filters to show under `fields`.
+    # State, defaults and presets are keyed by the pair, so it names one filter.
+    - in: /fields
+      condition: !cel "self.fields.exists_one(f, f.property == this.property && f.operator == this.operator)"
+      code: UI_FILTER_DUPLICATE
+      message: >-
+        lists a property and operator another field already has. A filter is
+        one property with one operator: remove one of the two.
+    - resolve: [/model]
+      in: /fields
+      condition: !cel >-
+        !('default' in this)
+        || ((!('control' in this) || this.control != 'toggle' || type(this.default) != bool || this.default != false)
+        && (!has((has(self.model.schema) ? self.model.schema : self.model).properties)
+        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+        || ((type(this.default) == list) == (this.operator == 'in')
+            && [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
+               (type(this.default) == list ? this.default : [this.default]).all(v,
+                 (!('enum' in p) || v in p.enum)
+                 && (!('type' in p) || type(p.type) != string
+                     || !(p.type in ['string', 'boolean', 'integer', 'number'])
+                     || (p.type == 'string' && type(v) == string)
+                     || (p.type == 'boolean' && type(v) == bool)
+                     || (p.type == 'integer' && (type(v) == int || (type(v) == double && double(int(v)) == v)))
+                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))
+      code: UI_FILTER_DEFAULT_INVALID
+      message: >-
+        declares a default its filter cannot hold: a value that is not of the
+        property's type or not one of its `enum`, a list without the `in`
+        operator, a single value with it, or `false` for a filter entered with
+        a `toggle`, which holds true or nothing.
+    # A control states what it needs of the property, so a type it cannot read
+    # is refused: the property's types are read with `null` set aside.
+    - resolve: [/model]
+      in: /fields
+      condition: !cel >-
+        !('control' in this) || this.control in ['auto', 'none']
+        || !has((has(self.model.schema) ? self.model.schema : self.model).properties)
+        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+        || [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
+             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
+               (this.control in ['select', 'options'] && ('enum' in p || types == ['boolean']))
+               || (this.control == 'toggle' && types == ['boolean'] && this.operator == 'eq')
+               || (this.control == 'slider' && types.size() > 0 && types.all(t, t in ['number', 'integer'])
+                   && 'minimum' in p && 'maximum' in p && this.operator in ['eq', 'gt', 'gte', 'lt', 'lte'])
+               || (this.control == 'tags' && this.operator == 'in')))
+      code: UI_FILTER_CONTROL_UNSUPPORTED
+      message: >-
+        asks for a control its filter cannot be entered with: `select` and
+        `options` need an `enum` or a boolean, `toggle` a boolean with `eq`,
+        `slider` a number or integer declaring `minimum` and `maximum` with
+        `eq` or a comparison, and `tags` the `in` operator.
+    - resolve: [/collection]
+      in: /presets
+      condition: !cel >-
+        this.values.all(v, has(self.fields)
+          ? self.fields.exists(f, f.property == v.property && f.operator == v.operator)
+          : (!has(self.collection.query) || !has(self.collection.query.filters)
+             || self.collection.query.filters.exists(f, f.property == v.property && f.operator == v.operator)))
+      code: UI_FILTER_PRESET_UNKNOWN_FILTER
+      message: >-
+        sets a property and operator the bar does not show. Name a pair listed
+        under `fields`, or one the collection accepts when `fields` is left out.
+    - resolve: [/model]
+      in: /presets
+      condition: !cel >-
+        this.values.all(e,
+          (!has(self.fields) || type(e.value) != bool || e.value != false
+           || !self.fields.exists(f, f.property == e.property && f.operator == e.operator && 'control' in f && f.control == 'toggle'))
+          && (!has((has(self.model.schema) ? self.model.schema : self.model).properties)
+          || !(e.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+          || ((type(e.value) == list) == (e.operator == 'in')
+              && [(has(self.model.schema) ? self.model.schema : self.model).properties[e.property]].all(p,
+                 (type(e.value) == list ? e.value : [e.value]).all(v,
+                 (!('enum' in p) || v in p.enum)
+                 && (!('type' in p) || type(p.type) != string
+                     || !(p.type in ['string', 'boolean', 'integer', 'number'])
+                     || (p.type == 'string' && type(v) == string)
+                     || (p.type == 'boolean' && type(v) == bool)
+                     || (p.type == 'integer' && (type(v) == int || (type(v) == double && double(int(v)) == v)))
+                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))
+      code: UI_FILTER_PRESET_VALUE_INVALID
+      message: >-
+        sets a value its filter cannot hold: one that is not of the property's
+        type or not one of its `enum`, a list without the `in` operator, a
+        single value with it, or `false` for a filter entered with a `toggle`,
+        which holds true or nothing.
+    - in: /presets
+      condition: !cel "self.presets.exists_one(p, p.label == this.label)"
+      code: UI_FILTER_PRESET_LABEL_DUPLICATE
+      message: >-
+        has the label of another preset. A preset is chosen by its label: give
+        each its own.
+    # With a placement written, the placement's own rule answers this.
+    - severity: warning
+      condition: !cel >-
+        (has(self.policy) && (has(self.policy.placement)
+          || (has(self.policy.show) && self.policy.show == 'chosen')))
+        || !has(self.fields)
+        || !self.fields.exists(f, 'pinned' in f && f.pinned)
+      code: UI_FILTER_PINNED_UNUSED
+      message: >-
+        pins a field, but nothing folds: every filter is on show whatever is
+        pinned. Use a placement that folds, show only the `chosen` filters, or
+        remove `pinned`.
 ---
 kind: Telo.Definition
 metadata:

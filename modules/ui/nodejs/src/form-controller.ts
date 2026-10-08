@@ -21,7 +21,7 @@ export function formFields(
       .map(([name, property]) => ({ property: name, label: labelOf(name, property) }));
   }
   return listed.map(({ property }, index) => {
-    if (!(property in properties)) {
+    if (!Object.hasOwn(properties, property)) {
       throw new RuntimeError(
         "ERR_UI_FORM_FIELD_UNKNOWN_PROPERTY",
         `${owner}: 'fields[${index}]' lists a field for a property the model does not declare ('${property}'). Use a property of 'model', or add this one to it.`,

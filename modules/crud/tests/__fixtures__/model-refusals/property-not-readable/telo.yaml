@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: CrudModelPropertyNotReadableApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

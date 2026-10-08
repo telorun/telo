@@ -1,0 +1,40 @@
+# A model whose `query` leaves `sort` out: an empty list is written, never implied.
+kind: Telo.Library
+metadata:
+  name: CrudModelSortMissing
+  version: 1.0.0
+  description: Test fixture exporting a data model refused as a schema violation.
+imports:
+  Crud: ../../../../../
+exports:
+  resources: [model]
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string }
+    isDone: { type: boolean }
+    tags: { type: array, items: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Record }
+extends: Draft
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: model }
+schemas:
+  read: !ref Record
+  list: !ref Record
+  create: !ref Draft
+  update: !ref Draft
+query:
+  filters: []

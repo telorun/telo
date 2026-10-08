@@ -1,0 +1,41 @@
+# A model its own shapes contradict. `telo check` reports it here; a consumer's
+# check sees nothing, so there the model refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: CrudModelKeyUndeclared
+  version: 1.0.0
+  description: Test fixture exporting a data model refused as CRUD_MODEL_KEY_UNDECLARED.
+imports:
+  Crud: ../../../../../
+exports:
+  resources: [model]
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Record }
+extends: Draft
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    note: { type: string }
+---
+kind: Crud.Model
+metadata: { name: model }
+schemas:
+  read: !ref Record
+  list: !ref Draft
+  create: !ref Draft
+  update: !ref Draft
+query:
+  filters: []
+  sort: []

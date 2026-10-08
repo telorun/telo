@@ -37,8 +37,10 @@ migrations:
         due_date TEXT
       )
 ---
+# What a client writes. The read shape below extends it, so a property is
+# declared once.
 kind: Telo.JsonSchema
-metadata: { name: TodoModel }
+metadata: { name: TodoDraft }
 schema:
   type: object
   required: [ text ]
@@ -49,12 +51,35 @@ schema:
     # camelCase property — the column is its snake_case form `due_date`.
     dueDate: { type: string, maxLength: 10 }
 ---
+# What is read back: the draft plus the key, with `done` always present — the
+# column is NOT NULL with a default, so it is optional to write and guaranteed
+# to read.
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+extends: TodoDraft
+schema:
+  type: object
+  required: [ id, done ]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: todoModel }
+schemas:
+  read: !ref Todo
+  list: !ref Todo
+  create: !ref TodoDraft
+  update: !ref TodoDraft
+query:
+  filters: []
+  sort: []
+---
 kind: Crud.Resource
 metadata: { name: todos }
 connection: !ref db
 singular: todo
 plural: todos
-model: !ref TodoModel
+model: !ref todoModel
 ---
 kind: Http.Reference
 metadata: { name: docs }
@@ -112,15 +137,18 @@ steps:
       url: http://127.0.0.1:8971/todos
       method: POST
       body: { text: "Buy milk", dueDate: "2026-07-01" }
+  # The answer is the record as stored: the key the table assigned, and `done`,
+  # which the body left to the column's default.
   - name: assertCreated
     inputs:
-      status: !cel "steps.create.result.status"
+      actual:
+        status: !cel "steps.create.result.status"
+        body: !cel "steps.create.result.body"
+      expected:
+        status: 201
+        body: { id: 1, text: "Buy milk", done: 0, dueDate: "2026-07-01" }
     invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 201 } }
-        required: [ status ]
+      kind: Assert.Equals
 
   # Body missing the required `text` is rejected by the model schema before the
   # handler runs — no row is created, so the List below still sees exactly one.
@@ -207,9 +235,9 @@ steps:
           dueDate: { const: "2026-07-01" }
         required: [ status, done, dueDate ]
 
-  # PUT replaces the row: the body is a whole record, and `dueDate`, which it
+  # PUT replaces what the update shape declares: `dueDate`, which the body
   # leaves out, is cleared — an optional property, so the row read back has no
-  # such key.
+  # such key. The answer is the record as stored.
   - name: update
     inputs: {}
     invoke:
@@ -231,7 +259,7 @@ steps:
         row: !cel "steps.readUpdated.result.body"
       expected:
         status: 200
-        echoed: { text: "Buy milk", done: 1 }
+        echoed: { id: 1, text: "Buy milk", done: 1 }
         row: { id: 1, text: "Buy milk", done: 1 }
     invoke:
       kind: Assert.Equals

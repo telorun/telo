@@ -8,7 +8,7 @@ import { decodeRow, modelProperties } from "../src/model-properties.js";
  */
 describe("a NULL column in a record read", () => {
   const read = (declared: Record<string, unknown>, required: boolean) =>
-    decodeRow(modelProperties({ properties: { value: declared }, required: required ? ["value"] : [] }), {
+    decodeRow(modelProperties({ properties: { id: { type: "integer" }, value: declared }, required: required ? ["value"] : [] }), {
       id: 1,
       value: null,
     });
@@ -28,7 +28,13 @@ describe("a NULL column in a record read", () => {
 
   it("of a property declaring no type is null, required or not", () => {
     expect(read({}, false)).toEqual({ id: 1, value: null });
-    expect(read({ enum: [0, 1] }, true)).toEqual({ id: 1, value: null });
+    expect(read({}, true)).toEqual({ id: 1, value: null });
+    expect(read({ enum: [0, 1, null] }, true)).toEqual({ id: 1, value: null });
+  });
+
+  it("of a property listing its values without null is read as a typed one is", () => {
+    expect(read({ enum: ["open", "done"] }, false)).toEqual({ id: 1 });
+    expect(read({ enum: [0, 1] }, true)).toEqual({ id: 1, value: 0 });
   });
 
   it("of a required property of several types is the empty value of the first listed", () => {

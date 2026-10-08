@@ -147,6 +147,14 @@ schema:
       type: array
       items:
         x-telo-type: Telo.HostPath
+    compactBelow:
+      title: Compact below
+      description: >-
+        The viewport width below which every surface's `compact` replacement
+        applies: a CSS length in `px`, `rem` or `em`.
+      type: string
+      pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem|em)$"
+      default: 40rem
     pages:
       title: Pages
       type: array

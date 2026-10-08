@@ -45,6 +45,17 @@ export const component = (name: string, props: Record<string, unknown> = {}): Sp
   props,
 });
 
+export const dialogSurface = { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } };
+
+/** How a table opens a form: a dialog with its defaults unless overridden. */
+export const opener = (overrides: Record<string, unknown> = {}) => ({
+  form: formNode(),
+  surface: dialogSurface,
+  afterSubmit: "close",
+  unsaved: "confirm",
+  ...overrides,
+});
+
 export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "table",
   schema: todoSchema,
@@ -52,8 +63,8 @@ export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => 
   rowKey: "id",
   pageSize: 2,
   delete: true,
-  create: formNode(),
-  edit: formNode(),
+  create: opener(),
+  edit: opener(),
   rowStyle: { by: row("isDone"), cases: { true: "muted" } },
   columns: [
     { header: "Task", value: row("text"), sort: "text", present: { type: "string" } },
@@ -64,13 +75,35 @@ export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => 
   ...overrides,
 });
 
-export const filtersNode = (content: SpecNode): SpecNode => ({
+/** One filter of a bar, over the test model: neither pinned nor given a control unless told. */
+export const filterField = (property: keyof typeof todoSchema.properties, operator: string, more: Record<string, unknown> = {}) => ({
+  property,
+  operator,
+  label: (todoSchema.properties[property] as { title?: string }).title ?? property,
+  schema: todoSchema.properties[property],
+  pinned: false,
+  control: "auto",
+  ...more,
+});
+
+/** A filter bar with the policy a bar that declares none carries. */
+export const filtersNode = (content: SpecNode, overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "filters",
   fields: [
-    { property: "text", operator: "contains", label: "Task", schema: todoSchema.properties.text },
-    { property: "isDone", operator: "eq", label: "Done", schema: todoSchema.properties.isDone },
-    { property: "status", operator: "in", label: "Status", schema: todoSchema.properties.status },
-    { property: "priority", operator: "gte", label: "Priority", schema: todoSchema.properties.priority },
+    filterField("text", "contains"),
+    filterField("isDone", "eq"),
+    filterField("status", "in"),
+    filterField("priority", "gte"),
+    filterField("dueOn", "gte"),
+    filterField("dueOn", "lte"),
   ],
   content,
+  show: "all",
+  placement: { type: "above" },
+  controls: "direct",
+  apply: "commit",
+  summary: "none",
+  state: { address: false, store: { type: "memory" } },
+  presets: [],
+  ...overrides,
 });

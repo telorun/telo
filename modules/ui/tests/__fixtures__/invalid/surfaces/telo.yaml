@@ -1,0 +1,97 @@
+# Every surface kind handed a key it does not take, a page surface with no
+# address, a surface slot and a compact slot naming the wrong kind, an edit
+# that asks for another record after its submit, and a form named where the
+# opener goes.
+kind: Telo.Application
+metadata:
+  name: UiInvalidSurfacesApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+---
+kind: Ui.Dialog
+metadata:
+  name: dialogSide
+side: end
+---
+kind: Ui.Drawer
+metadata:
+  name: drawerAlign
+align: start
+---
+kind: Ui.Popover
+metadata:
+  name: popoverAddress
+address: { name: todo }
+---
+kind: Ui.InlineSurface
+metadata:
+  name: inlineSize
+size: small
+---
+kind: Ui.Panel
+metadata:
+  name: panelModal
+modal: false
+---
+kind: Ui.PageSurface
+metadata:
+  name: pageCompact
+address: { name: todo }
+compact: { kind: Ui.Dialog }
+---
+kind: Ui.PageSurface
+metadata:
+  name: pageUnaddressed
+---
+kind: Ui.Panel
+metadata:
+  name: compactPopover
+compact: { kind: Ui.Popover }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query: { filters: [], sort: [] }
+---
+kind: Ui.Form
+metadata:
+  name: todoForm
+model: !ref Todo
+source: { basePath: /api/todos }
+---
+kind: Ui.Table
+metadata:
+  name: surfaceIsForm
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+create:
+  form: !ref todoForm
+  surface: !ref todoForm
+---
+kind: Ui.Table
+metadata:
+  name: editAgain
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+edit:
+  form: !ref todoForm
+  afterSubmit: again
+---
+kind: Ui.Table
+metadata:
+  name: bareCreate
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+create: !ref todoForm

@@ -1,14 +1,7 @@
-import { integerInput, type InvokeContext, type ResourceContext, type ResourceInstance, type RuntimeResource } from "@telorun/sdk";
-import { isSqlConnection, type SqlConnection } from "@telorun/sql";
+import { integerInput, type InvokeContext, type ResourceContext, type ResourceInstance } from "@telorun/sdk";
 import { replaceStatement } from "./collection-statement.js";
-import { modelProperties, type ModelProperty } from "./model-properties.js";
-import { modelSchema } from "./model-schema.js";
-
-type UpdaterResource = RuntimeResource & {
-  connection: unknown;
-  table: string;
-  model: unknown;
-};
+import { decodeRow } from "./model-properties.js";
+import { Writer, type WriterResource } from "./writer.js";
 
 interface ReplaceInputs {
   id: unknown;
@@ -16,39 +9,27 @@ interface ReplaceInputs {
 }
 
 /**
- * Replaces one row with a whole record. The statement names the model's
- * declared columns and no other, binds every value, and is rendered through the
- * connection's dialect.
+ * Replaces what its shape declares of one row. The statement names those
+ * columns and no other, binds every value, and answers with the row as it is
+ * now stored.
  */
-class Updater implements ResourceInstance {
-  private properties?: Map<string, ModelProperty>;
-
-  constructor(
-    private readonly resource: UpdaterResource,
-    private readonly ctx: ResourceContext,
-  ) {}
-
-  async invoke(inputs: ReplaceInputs, invokeCtx?: InvokeContext): Promise<{ rowCount: number }> {
-    const owner = `Crud.Updater '${this.resource.metadata.name}'`;
-    const connection: SqlConnection = this.ctx.resolveRef(
-      this.resource.connection,
-      isSqlConnection,
-      () => `'connection' of ${owner}`,
-      "Sql.Connection",
-    );
-    this.properties ??= modelProperties(modelSchema(this.resource.model, this.ctx, owner));
+class Updater extends Writer implements ResourceInstance {
+  async invoke(inputs: ReplaceInputs, invokeCtx?: InvokeContext): Promise<{ rowCount: number; row?: Record<string, unknown> }> {
+    const connection = this.connection();
     const statement = replaceStatement(
       connection.dialect,
       this.resource.table,
-      this.properties.values(),
-      integerInput(inputs.id) as number,
-      inputs.data,
+      this.writable.values(),
+      integerInput(inputs.id) ?? inputs.id,
+      inputs.data ?? {},
+      this.readable.values(),
     );
-    const result = await connection.execute(statement.sql, statement.params, undefined, invokeCtx);
-    return { rowCount: connection.toRowCount(result) };
+    const result = await connection.execute<Record<string, unknown>>(statement.sql, statement.params, undefined, invokeCtx);
+    const stored = result.rows[0];
+    return stored ? { rowCount: 1, row: decodeRow(this.readable, stored) } : { rowCount: 0 };
   }
 }
 
-export async function create(resource: UpdaterResource, ctx: ResourceContext): Promise<ResourceInstance> {
-  return new Updater(resource, ctx);
+export async function create(resource: WriterResource, ctx: ResourceContext): Promise<ResourceInstance> {
+  return new Updater(resource, ctx, `Crud.Updater '${resource.metadata.name}'`);
 }

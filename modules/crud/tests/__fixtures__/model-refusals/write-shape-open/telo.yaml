@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: CrudModelWriteShapeOpenApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

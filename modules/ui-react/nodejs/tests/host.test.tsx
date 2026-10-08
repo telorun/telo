@@ -113,7 +113,7 @@ describe("the host object", () => {
     await rendered.click(rendered.part("submit"));
     expect(rendered.fixture("changes").textContent).toBe("1");
     await rendered.click(rendered.parts("row-delete")[0]);
-    await rendered.click(rendered.part("dialog").querySelector('[data-telo-part="submit"]') as HTMLElement);
+    await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
     expect(rendered.fixture("changes").textContent).toBe("2");
     await rendered.click(rendered.fixture("stop"));
     await rendered.click(rendered.fixture("notify"));

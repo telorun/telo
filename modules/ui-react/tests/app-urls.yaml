@@ -7,8 +7,8 @@ metadata:
     address (404 for a path no page declares), its import map giving the page
     one React and the host module at content-addressed, immutable URLs that
     export what they declare, the application and page documents with their
-    digest as an ETag and a 304 for a holder, and JSON 404s under the reserved
-    prefix.
+    digest as an ETag and a 304 for a holder, the breakpoint an application
+    declares or the default one, and JSON 404s under the reserved prefix.
 imports:
   App: ../../app
   Probe: ./__fixtures__/probe
@@ -105,6 +105,8 @@ steps:
 
   - name: app
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/app" }
+  - name: plainApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/plain/_telo/ui/app" }
   - name: appAgain
     invoke: { kind: HttpClient.Request }
     inputs:
@@ -137,10 +139,12 @@ steps:
           specVersion: !cel "steps.app.result.body.specVersion"
           title: !cel "steps.app.result.body.title"
           lang: !cel "steps.app.result.body.lang"
+          compactBelow: !cel "steps.app.result.body.compactBelow"
           pages: !cel "steps.app.result.body.pages.map(p, p.path)"
           stylesheets: !cel "steps.app.result.body.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1))"
           bundleIsRenderer: !cel "steps.shell.result.body.contains('/_telo/ui/assets/' + steps.app.result.body.bundle + '/renderer.js')"
         appAgain: !cel "steps.appAgain.result.status"
+        defaultCompactBelow: !cel "steps.plainApp.result.body.compactBelow"
         page:
           status: !cel "steps.page.result.status"
           cache: !cel "steps.page.result.headers['cache-control']"
@@ -165,7 +169,8 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, digest, lang, pages, specVersion, stylesheets, title]
+          keys: [bundle, compactBelow, digest, lang, pages, specVersion, stylesheets, title]
+          compactBelow: 48rem
           specVersion: 1
           title: Fixture Admin
           lang: en
@@ -173,6 +178,7 @@ steps:
           stylesheets: [renderer.css, default-theme.css, theme.css, ui.css]
           bundleIsRenderer: true
         appAgain: 304
+        defaultCompactBelow: 40rem
         page:
           status: 200
           cache: private, no-cache

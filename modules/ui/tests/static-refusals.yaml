@@ -6,18 +6,53 @@ metadata:
     What the vocabulary refuses before anything runs, and what each composite
     refuses itself when a manifest reaches it without that check: a source
     filter, a form field or a filter naming a property the model does not
-    declare, and a filter operator the property's type cannot carry. A
+    declare, a filter operator the property's type cannot carry, a filter or a
+    source filter the collection does not accept, and a bar showing every
+    accepted filter over a model that lacks one of their properties, types it
+    so the operator does not fit, or declares no property at all. A
     misspelled node type lists the valid ones, a stray key is named, and a
-    component's properties are held to what its export declares.
+    component's properties are held to what its export declares. A surface
+    takes only its own kind's keys, a page surface needs its address, a surface
+    slot and a compact slot take only the kinds they name, an edit cannot ask
+    for another record, an opener is not a bare form, and a compact surface
+    declares neither an address nor a compact surface of its own. A filter bar
+    lists a pair once, declares only defaults and preset values its filters can
+    hold, asks only for controls they can be entered with — a switch only over
+    a property that says it is a boolean, and never to be off — presets only
+    what it shows and labels each preset once; a state keeps something somewhere, a
+    filter overlay floats, and a compact placement folds. Pinning a filter
+    where nothing folds is a warning, and nowhere else.
 imports:
   Assert: ../../assert
+  Probe: ./__fixtures__/probe
+  Run: ../../run
 targets:
   - !ref rules
   - !ref sourceFilterAtRuntime
   - !ref formFieldAtRuntime
   - !ref filterPropertyAtRuntime
   - !ref filterOperatorAtRuntime
+  - !ref sourceFilterNotAcceptedAtRuntime
+  - !ref filterNotAcceptedAtRuntime
+  - !ref filterModelIncompleteAtRuntime
+  - !ref filterModelMistypedAtRuntime
+  - !ref filterModelUntypedAtRuntime
   - !ref shapes
+  - !ref surfaces
+  - !ref compactAddressedAtRuntime
+  - !ref compactNestedAtRuntime
+  - !ref filterDuplicateAtRuntime
+  - !ref filterDefaultInvalidAtRuntime
+  - !ref filterControlUnsupportedAtRuntime
+  - !ref presetUnknownFilterAtRuntime
+  - !ref presetValueInvalidAtRuntime
+  - !ref presetLabelDuplicateAtRuntime
+  - !ref toggleOverTextAtRuntime
+  - !ref toggleUntypedAtRuntime
+  - !ref toggleDefaultOffAtRuntime
+  - !ref togglePresetOffAtRuntime
+  - !ref filterPolicy
+  - !ref pinned
 ---
 kind: Assert.Manifest
 metadata:
@@ -33,6 +68,40 @@ expect:
       message: "Ui.Filters/filterProperty at 'fields[0]': filters by a property the model does not declare"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/filterOperator at 'fields[0]': uses an operator the property's type does not support"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Table/sourceFilterNotAccepted at 'source.filters.isDone': filters its source by a property the collection does not accept an equality on"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterNotAccepted at 'fields[1]': filters by a property and operator the collection does not accept"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterModelIncomplete: shows every filter the collection accepts, and the model cannot answer for one of them"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterModelMistyped: shows every filter the collection accepts, and the model cannot answer for one of them"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterModelUntyped: shows every filter the collection accepts, and the model cannot answer for one of them"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Panel/compactAddressed: names a compact surface that declares an address"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Dialog/compactNested: names a compact surface that declares a compact surface of its own"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterDuplicate at 'fields[1]': lists a property and operator another field already has"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterDefaultInvalid at 'fields[0]': declares a default its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterControlUnsupported at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetUnknownFilter at 'presets[0]': sets a property and operator the bar does not show"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetValueInvalid at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetLabelDuplicate at 'presets[1]': has the label of another preset"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleOverText at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleUntyped at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleDefaultOff at 'fields[0]': declares a default its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/togglePresetOff at 'presets[0]': sets a value its filter cannot hold"
 ---
 kind: Assert.Manifest
 metadata:
@@ -68,6 +137,46 @@ expect:
 ---
 kind: Assert.Manifest
 metadata:
+  name: sourceFilterNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/source-filter-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Table 'sourceFilterNotAccepted': 'source.filters.isDone' filters its source by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/filter-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterNotAccepted': 'fields[1]' filters by a property and operator the collection does not accept ('eq' on 'text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterModelIncompleteAtRuntime
+source: ./__fixtures__/invalid/filter-model-incomplete/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterModelIncomplete': shows every filter the collection accepts, and the model cannot answer for one of them: it does not declare 'status'"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterModelMistypedAtRuntime
+source: ./__fixtures__/invalid/filter-model-mistyped/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterModelMistyped': shows every filter the collection accepts, and the model cannot answer for one of them: 'contains' does not fit 'count', declared integer"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterModelUntypedAtRuntime
+source: ./__fixtures__/invalid/filter-model-untyped/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterModelUntyped': shows every filter the collection accepts, and the model cannot answer for one of them: it does not declare 'text'"
+---
+kind: Assert.Manifest
+metadata:
   name: shapes
 source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
@@ -82,3 +191,167 @@ expect:
       message: "Ui.Table/both: /columns/0 must match exactly one schema in oneOf"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Table/both: !cel: 'row.txt' is not defined (available: text, isDone)"
+---
+kind: Assert.Manifest
+metadata:
+  name: surfaces
+source: ./__fixtures__/invalid/surfaces/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Dialog/dialogSide: / must NOT have additional properties ('side' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Drawer/drawerAlign: / must NOT have additional properties ('align' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Popover/popoverAddress: / must NOT have additional properties ('address' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.InlineSurface/inlineSize: / must NOT have additional properties ('size' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Panel/panelModal: / must NOT have additional properties ('modal' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.PageSurface/pageCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.PageSurface/pageUnaddressed: / is missing required property 'address'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Panel/compactPopover: reference at 'compact' → 'Ui.Popover' (resolved: 'Ui.Popover') does not match required 'Ui.Dialog'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Table/surfaceIsForm: reference at 'create.surface' → 'Ui.Form' does not implement 'Ui.Surface'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/editAgain: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/bareCreate: /create is missing required property 'form'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/bareCreate: /create must NOT have additional properties ('kind' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/bareCreate: /create must NOT have additional properties ('name' is not allowed)"
+---
+kind: Assert.Manifest
+metadata:
+  name: compactAddressedAtRuntime
+source: ./__fixtures__/invalid/compact-addressed/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Panel 'compactAddressed': names a compact surface that declares an address"
+---
+kind: Assert.Manifest
+metadata:
+  name: compactNestedAtRuntime
+source: ./__fixtures__/invalid/compact-nested/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Dialog 'compactNested': names a compact surface that declares a compact surface of its own"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterDuplicateAtRuntime
+source: ./__fixtures__/invalid/filter-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterDuplicate': 'fields[1]' lists a property and operator another field already has ('contains' on 'text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterDefaultInvalidAtRuntime
+source: ./__fixtures__/invalid/filter-default-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterDefaultInvalid': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterControlUnsupportedAtRuntime
+source: ./__fixtures__/invalid/filter-control-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterControlUnsupported': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'gte' on 'count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetUnknownFilterAtRuntime
+source: ./__fixtures__/invalid/preset-unknown-filter/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetUnknownFilter': 'presets[0]' sets a property and operator the bar does not show ('gte' on 'count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetValueInvalidAtRuntime
+source: ./__fixtures__/invalid/preset-value-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetValueInvalid': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetLabelDuplicateAtRuntime
+source: ./__fixtures__/invalid/preset-label-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetLabelDuplicate': 'presets[1]' has the label of another preset ('Done')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleOverTextAtRuntime
+source: ./__fixtures__/invalid/toggle-over-text/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleOverText': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'note')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleUntypedAtRuntime
+source: ./__fixtures__/invalid/toggle-untyped/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleUntyped': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'anything')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleDefaultOffAtRuntime
+source: ./__fixtures__/invalid/toggle-default-off/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleDefaultOff': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: togglePresetOffAtRuntime
+source: ./__fixtures__/invalid/toggle-preset-off/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'togglePresetOff': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterPolicy
+source: ./__fixtures__/invalid/filter-policy/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Filters/keepsNothing: /policy/state matches no alternative — expected one with 'store', or one with 'address'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Filters/addressOff: /policy/state is missing required property 'store'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.CollapsiblePlacement/collapsibleCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.LocalStore/storeKey: / must NOT have additional properties ('key' is not allowed)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.OverlayPlacement/overlayInPanel: reference at 'surface' → 'Ui.Panel' does not implement 'Ui.Overlay'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.AsidePlacement/compactAbove: reference at 'compact' → 'Ui.AbovePlacement' (resolved: 'Ui.AbovePlacement') does not match required 'Ui.CollapsiblePlacement'"
+---
+# Ten bars pin a filter under every placement; three are told it says nothing.
+kind: Run.Sequence
+metadata:
+  name: pinned
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/pinned/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result.reported.map(r, r.substring(0, r.indexOf(' pins a field')))"
+      expected:
+        - "RESOURCE_RULE_VIOLATED Ui.Filters/omitted:"
+        - "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"
+        - "REFERRER_RULE_VIOLATED Ui.Filters/aside at 'policy.placement': required by Ui.AsidePlacement —"

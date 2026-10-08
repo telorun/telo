@@ -46,9 +46,14 @@ force-push — for this change and this branch only. Merging is never yours.
 ## 3. Keep CI green
 
 - **Watch the PR's checks** with `gh pr checks <n>`. The first poll is **10 minutes** after the
-  push, then every **5 minutes**, until no check is pending. Use a background watch that wakes you,
-  never a foreground sleep.
-- **A failing check:** read its log with `gh run view --log-failed` and find the cause.
+  push, then every **minute**, until no check is pending. Use a background watch that wakes you,
+  never a foreground sleep. Run this in the background (`run_in_background`), with the PR's
+  number in place of `<n>`; it prints the final table of checks and exits, which is what wakes
+  you:
+
+  ```sh
+  sleep 600; while true; do out=$(gh pr checks <n> 2>&1); if echo "$out" | grep -qE "\bpending\b|\bqueued\b|in_progress"; then sleep 60; else echo "$out"; break; fi; done
+  ```- **A failing check:** read its log with `gh run view --log-failed` and find the cause.
   - **A fix inside this change:** make it, re-run the failing suite locally, then
     `git commit --amend --no-edit` (still no footer) and
     `git push --force-with-lease origin <branch>`. **Never add a new commit** to fix CI. Then

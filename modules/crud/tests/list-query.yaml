@@ -5,7 +5,7 @@ metadata:
   description: |
     The list route as a collection: pages walked by cursor stay exact while
     rows are inserted, an earlier cursor replays its page, nulls sort last in
-    both directions, each operator family returns the right rows, `total`
+    both directions, each declared operator family returns the right rows, `total`
     counts the filtered set, a boolean property is `true` / `false` through
     create, filter, list and read-one, and every bad query is the
     request-validation envelope naming the parameter that carried it.
@@ -61,12 +61,47 @@ schema:
     status: { enum: [open, blocked, done] }
     dueOn: { type: string, format: date }
 ---
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: taskModel }
+schemas:
+  read: !ref TaskRecord
+  list: !ref TaskRecord
+  create: !ref Task
+  update: !ref Task
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: id, operator: lt }
+    - { property: text, operator: contains }
+    - { property: text, operator: gt }
+    - { property: isDone, operator: eq }
+    - { property: priority, operator: eq }
+    - { property: priority, operator: gte }
+    - { property: status, operator: eq }
+    - { property: status, operator: in }
+    - { property: dueOn, operator: gt }
+    - { property: dueOn, operator: lte }
+  sort:
+    - { property: id }
+    - { property: text }
+    - { property: dueOn }
+---
 kind: Crud.Resource
 metadata: { name: tasks }
 connection: !ref db
 singular: task
 plural: tasks
-model: !ref Task
+model: !ref taskModel
 ---
 kind: Http.Reference
 metadata: { name: docs }
@@ -117,10 +152,10 @@ steps:
         filtered:
           rows:
             - { id: 1, text: Write the plan, isDone: true, priority: 2, status: done, dueOn: "2026-10-01" }
-            - { id: 6, text: Typed, isDone: true, status: null }
+            - { id: 6, text: Typed, isDone: true }
           total: 2
           next: null
-        readOne: { id: 6, text: Typed, isDone: true, status: null }
+        readOne: { id: 6, text: Typed, isDone: true }
         undone: { id: 1, text: Write the plan, isDone: false, priority: 2, status: done, dueOn: "2026-10-01" }
 
   # ── Paging: a row inserted mid-walk, sorting before the cursor, moves nothing ──
@@ -267,7 +302,7 @@ steps:
           status: !cel "steps.unknownProperty.result.status"
           body: !cel "steps.unknownProperty.result.body"
         multiKeySort: !cel "steps.multiKeySort.result.body.details"
-        unknownOperator: !cel "steps.unknownOperator.result.body.details.map(d, d.path)"
+        unknownOperator: !cel "steps.unknownOperator.result.body.details"
         operatorNotApplicable: !cel "steps.operatorNotApplicable.result.body.details"
         unparsableValue: !cel "steps.unparsableValue.result.body.details"
         spelledEquality: !cel "steps.spelledEquality.result.body.details.map(d, d.path)"
@@ -293,12 +328,13 @@ steps:
             message: Request validation failed
             status: 400
             details:
-              - { location: query, path: nope, message: names no property of this collection }
+              - { location: query, path: nope, message: is not a filter this collection accepts }
         multiKeySort:
           - { location: query, path: sort, message: "takes one property; `id` is always the tiebreaker" }
-        unknownOperator: [text.like]
+        unknownOperator:
+          - { location: query, path: text.like, message: is not a filter this collection accepts }
         operatorNotApplicable:
-          - { location: query, path: isDone.contains, message: does not apply to a property of type boolean }
+          - { location: query, path: isDone.contains, message: is not a filter this collection accepts }
         unparsableValue:
           - { location: query, path: priority, message: is not a value of type integer }
         spelledEquality: [text.eq]

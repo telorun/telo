@@ -1,0 +1,98 @@
+# One value per place a shape of the vocabulary holds another: a dialog whose
+# compact surface is addressed, a panel whose compact surface is a popover, a
+# table node whose create surface has a size no dialog takes, a filter overlay
+# in a panel, a placement whose compact placement does not fold, and a filters
+# node whose placement and whose store are no kind's.
+kind: Telo.Application
+metadata:
+  name: UiInvalidSpecShapesApp
+  version: 1.0.0
+imports:
+  Echo: ../../spec-echo
+---
+kind: Echo.TypedSurface
+metadata:
+  name: overlayCompact
+spec:
+  type: dialog
+  size: medium
+  modal: true
+  dismiss: { escape: true, outside: true, closeButton: true }
+  compact:
+    type: drawer
+    side: end
+    size: medium
+    modal: true
+    dismiss: { escape: true, outside: true, closeButton: true }
+    address: { name: todo }
+---
+kind: Echo.TypedSurface
+metadata:
+  name: panelCompact
+spec:
+  type: panel
+  side: end
+  size: medium
+  dismiss: { escape: true, closeButton: true }
+  compact: { type: popover, side: bottom, align: start, dismiss: { escape: true, outside: true } }
+---
+kind: Echo.TypedNode
+metadata:
+  name: tableSurface
+node:
+  type: table
+  schema: {}
+  basePath: /api/todos
+  rowKey: id
+  pageSize: 25
+  columns: []
+  delete: false
+  create:
+    form: { type: form, schema: {}, basePath: /api/todos, fields: [] }
+    surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+    afterSubmit: close
+    unsaved: confirm
+---
+kind: Echo.TypedPlacement
+metadata:
+  name: placementSurface
+spec:
+  type: overlay
+  surface: { type: panel, side: end, size: medium, dismiss: { escape: true, closeButton: true } }
+---
+kind: Echo.TypedPlacement
+metadata:
+  name: placementCompact
+spec:
+  type: above
+  compact: { type: aside, side: start }
+---
+kind: Echo.TypedNode
+metadata:
+  name: filtersPlacement
+node:
+  type: filters
+  fields: []
+  content: { type: text, text: Todos }
+  show: all
+  placement: { type: nowhere }
+  controls: direct
+  apply: commit
+  summary: none
+  state: { address: false, store: { type: memory } }
+  presets: []
+---
+kind: Echo.TypedNode
+metadata:
+  name: filtersStore
+node:
+  type: filters
+  fields: []
+  content: { type: text, text: Todos }
+  show: all
+  placement: { type: above }
+  controls: direct
+  apply: commit
+  summary: none
+  state: { address: false, store: { type: server } }
+  presets: []

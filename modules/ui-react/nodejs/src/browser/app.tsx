@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { HostContext, HostStore, type Host } from "./host.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { RendererContext, type RendererEnvironment } from "./renderer-context.js";
+import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
 import { errorSpec, networkError, responseError, type ErrorSpec } from "./ui-error.js";
 
 interface AppDocument {
@@ -13,6 +14,8 @@ interface AppDocument {
   lang?: string;
   pages: { path: string; title: string }[];
   stylesheets: string[];
+  /** The viewport width below which every compact surface applies, a CSS length. */
+  compactBelow: string;
 }
 
 interface PageDocument {
@@ -46,18 +49,29 @@ async function fetchDocument<T extends { digest: string }>(host: Host, url: stri
   return (await response.json()) as T;
 }
 
-/** Keep the page's stylesheet links equal to the list, in its order. */
-function applyStylesheets(urls: string[]): void {
+/** How long a stylesheet may hold the first drawing back before the page is
+ *  drawn without it. */
+const STYLESHEET_WAIT_MS = 5000;
+
+/** Keep the page's stylesheet links equal to the list, in its order. Settles
+ *  once every one it added has loaded, has failed, or has taken too long. */
+function applyStylesheets(urls: string[]): Promise<void> {
   const links = [...document.head.querySelectorAll<HTMLLinkElement>("link[data-telo-stylesheet]")];
-  if (links.map((link) => link.getAttribute("href")).join("\n") === urls.join("\n")) return;
+  if (links.map((link) => link.getAttribute("href")).join("\n") === urls.join("\n")) return Promise.resolve();
   for (const link of links) link.remove();
-  for (const url of urls) {
+  const settled = urls.map((url) => {
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = url;
     link.setAttribute("data-telo-stylesheet", "");
+    const done = new Promise<void>((resolve) => {
+      link.addEventListener("load", () => resolve(), { once: true });
+      link.addEventListener("error", () => resolve(), { once: true });
+    });
     document.head.append(link);
-  }
+    return done;
+  });
+  return Promise.race([Promise.all(settled).then(() => {}), new Promise<void>((resolve) => setTimeout(resolve, STYLESHEET_WAIT_MS))]);
 }
 
 /** The last boundary: whatever no node's own boundary caught is shown as the
@@ -93,11 +107,29 @@ export function App(props: AppProps) {
 function Application({ prefix, bundle, reload = () => window.location.reload(), loadModule }: AppProps) {
   const store = useMemo(() => new HostStore(prefix), [prefix]);
   const host = useSyncExternalStore(store.subscribe, store.snapshot);
-  const base = useEnvironment(loadModule, prefix);
+  const asking = useSyncExternalStore(store.subscribe, store.asking);
   const [app, setApp] = useState<AppDocument>();
+  const compact = useCompact(app?.compactBelow);
+  const base = useEnvironment(loadModule, prefix, compact);
+  // A surface drawn in place of the page's content is drawn here, by whoever opened it.
+  const [slotElement, setSlotElement] = useState<HTMLElement | null>(null);
+  const [claims, setClaims] = useState(0);
+  const slot = useMemo<PageSlot>(
+    () => ({
+      element: slotElement,
+      claim: () => {
+        setClaims((count) => count + 1);
+        return () => setClaims((count) => count - 1);
+      },
+    }),
+    [slotElement],
+  );
   const [page, setPage] = useState<PageDocument>();
   const [failure, setFailure] = useState<ErrorSpec>();
   const [refreshes, setRefreshes] = useState(0);
+  // Nothing is drawn before the first stylesheets are in: an unstyled page is
+  // worse than the shell's spinner, which shows while the root is empty.
+  const [styled, setStyled] = useState(false);
   const held = useRef<{ app?: AppDocument; page?: PageDocument }>({});
   const path = host.location.path;
   const declared = app?.pages.find((candidate) => candidate.path === path);
@@ -165,8 +197,12 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
 
   useEffect(() => {
     if (!app) return;
-    applyStylesheets(app.stylesheets);
+    let current = true;
+    void applyStylesheets(app.stylesheets).then(() => current && setStyled(true));
     document.title = declared ? `${declared.title} · ${app.title}` : app.title;
+    return () => {
+      current = false;
+    };
   }, [app, declared]);
 
   /** A plain click on an anchor into this application moves the page without
@@ -187,10 +223,12 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
 
   const shown = page?.path === path ? page : undefined;
   const state = failure ? "error" : !app ? "loading" : !declared ? "empty" : shown ? "idle" : "loading";
+  // A failure is drawn whatever the styles: it must never be a spinner forever.
+  if (!failure && !styled) return null;
   return (
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
-        <div data-telo-part="app" onClick={followAnchor}>
+        <div data-telo-part="app" data-compact={compact ? "true" : undefined} onClick={followAnchor}>
           <header data-telo-part="header">
             <span data-telo-part="app-title">{app?.title}</span>
             <nav data-telo-part="nav">
@@ -227,22 +265,49 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
               ) : (
                 <>
                   <h1 data-telo-part="page-title">{declared.title}</h1>
-                  {shown ? <Nodes nodes={shown.children} /> : <Loading />}
+                  <PageSlotContext.Provider value={slot}>
+                    <div ref={setSlotElement} style={{ display: "contents" }} />
+                    <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? <Nodes nodes={shown.children} /> : <Loading />}</div>
+                  </PageSlotContext.Provider>
                 </>
               )}
             </div>
           </main>
         </div>
+        {asking && (
+          <Confirmation
+            title="Discard unsaved changes?"
+            description="What you entered has not been saved."
+            confirm="Discard"
+            cancel="Keep editing"
+            onConfirm={() => store.answer(true)}
+            onClose={() => store.answer(false)}
+          />
+        )}
       </RendererContext.Provider>
     </HostContext.Provider>
   );
 }
 
-function useEnvironment(loadModule: AppProps["loadModule"], prefix: string): RendererEnvironment {
+function useEnvironment(loadModule: AppProps["loadModule"], prefix: string, compact: boolean): RendererEnvironment {
   return useMemo(
-    () => ({ prefix, loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)) }),
-    [prefix, loadModule],
+    () => ({ prefix, loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)), compact }),
+    [prefix, loadModule, compact],
   );
+}
+
+/** Whether the viewport is narrower than the application's breakpoint. */
+function useCompact(below: string | undefined): boolean {
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    if (below === undefined || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(`(width < ${below})`);
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, [below]);
+  return compact;
 }
 
 /** Render the application into the shell's root element, which says where it

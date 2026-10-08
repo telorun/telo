@@ -406,6 +406,7 @@ export class SchemaValidator {
         JSON.stringify({
           runtime: VALIDATOR_RUNTIME_TAG,
           schema: sanitized,
+          referenced: this.referencedSchemas(sanitized),
         }),
       )
       .digest("hex")
@@ -457,6 +458,31 @@ export class SchemaValidator {
     }
 
     return validator;
+  }
+
+  /** Every registered shape `schema` reaches by `$ref`, transitively, by name:
+   *  a compiled validator inlines them, so the cache key must cover their
+   *  content and not only the reference's text. */
+  private referencedSchemas(schema: object): [string, object][] {
+    const reached = new Map<string, object>();
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (!node || typeof node !== "object") return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "$ref" && typeof value === "string") {
+          const name = value.split("#")[0];
+          const target = name ? this.rawSchemas.get(name) : undefined;
+          if (target && !reached.has(name)) {
+            reached.set(name, target);
+            visit(target);
+          }
+        } else {
+          visit(value);
+        }
+      }
+    };
+    visit(schema);
+    return [...reached].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   /** `schema` as it is compiled and hashed: a bare property map widened to an

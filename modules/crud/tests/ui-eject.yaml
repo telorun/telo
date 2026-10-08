@@ -5,8 +5,11 @@ metadata:
   description: |
     The eject invariant: nothing `Crud.Ui` produces is reachable only through
     it. One application serves a page holding `Crud.Ui`, another the filter
-    bar, table and form `docs/ui.md` lists as its expansion, and the two page
-    documents are the same — node for node, and by digest.
+    bar, table and forms `docs/ui.md` lists as its expansion, and the two page
+    documents are the same — node for node, and by digest. The list shape is
+    narrower than the read shape, so the page also shows which is which: the
+    table's columns are the list's, and the bar filters by a property only a
+    record read declares.
 imports:
   Crud: ../
   Ui: ../../ui
@@ -31,25 +34,116 @@ schema:
     status: { title: Status, enum: [open, blocked, done] }
     dueOn: { type: string, title: Due, format: date }
 ---
-# The hand-written half — the listing in `docs/ui.md`, character for character.
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+# A row of the list: no priority and no status.
+kind: Telo.JsonSchema
+metadata: { name: TaskRow }
+schema:
+  type: object
+  required: [id, text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean, title: Done }
+    dueOn: { type: string, title: Due, format: date }
+---
+kind: Crud.Model
+metadata: { name: taskModel }
+schemas:
+  read: !ref TaskRecord
+  list: !ref TaskRow
+  create: !ref Task
+  update: !ref Task
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    - { property: status, operator: in }
+    - { property: dueOn, operator: gte }
+  sort:
+    - { property: text }
+    - { property: dueOn }
+---
+# The hand-written half for a `Crud.Ui` with none of the three keys — the
+# listing in `docs/ui.md` with `form` alone in each opener and no `policy`.
 kind: Ui.Form
-metadata: { name: taskForm }
+metadata: { name: plainCreateForm }
+model: !ref Task
+source: { basePath: /api/tasks }
+---
+kind: Ui.Form
+metadata: { name: plainEditForm }
+model: !ref Task
+source: { basePath: /api/tasks }
+---
+kind: Ui.Table
+metadata: { name: plainTable }
+model: !ref TaskRow
+collection: !ref taskModel
+source: { basePath: /api/tasks }
+rowKey: id
+create: { form: !ref plainCreateForm }
+edit: { form: !ref plainEditForm }
+delete: true
+---
+kind: Ui.Filters
+metadata: { name: plainFilters }
+model: !ref TaskRecord
+collection: !ref taskModel
+content: { type: composite, ref: !ref plainTable }
+---
+# The listing in `docs/ui.md`, character for character: what the `Crud.Ui`
+# under its Presentation heading expands into.
+kind: Ui.Form
+metadata: { name: taskCreateForm }
+model: !ref Task
+source: { basePath: /api/tasks }
+---
+kind: Ui.Form
+metadata: { name: taskEditForm }
 model: !ref Task
 source: { basePath: /api/tasks }
 ---
 kind: Ui.Table
 metadata: { name: taskTable }
-model: !ref Task
+model: !ref TaskRow
+collection: !ref taskModel
 source: { basePath: /api/tasks }
 rowKey: id
-create: !ref taskForm
-edit: !ref taskForm
+create:
+  form: !ref taskCreateForm
+  surface: { kind: Ui.Drawer, side: end }
+  afterSubmit: again
+edit:
+  form: !ref taskEditForm
+  surface: { kind: Ui.Panel, address: { name: task } }
+  unsaved: confirm
 delete: true
 ---
 kind: Ui.Filters
 metadata: { name: taskFilters }
-model: !ref Task
+model: !ref TaskRecord
+collection: !ref taskModel
+policy:
+  show: chosen
+  summary: chips
+  state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
 content: { type: composite, ref: !ref taskTable }
+---
+# One drawer for two openers: the generated create and the hand-written one.
+kind: Ui.Drawer
+metadata: { name: sharedDrawer }
+side: start
+size: large
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -68,7 +162,63 @@ with:
               title: Tasks
               children:
                 - type: composite
-                  ref: { kind: Crud.Ui, model: !ref Task, basePath: /api/tasks }
+                  ref: { kind: Crud.Ui, model: !ref taskModel, basePath: /api/tasks }
+            - path: /empty
+              title: Tasks
+              children:
+                - type: composite
+                  ref: { kind: Crud.Ui, model: !ref taskModel, basePath: /api/tasks, create: {} }
+            # The declaration under Presentation in `docs/ui.md`.
+            - path: /shown
+              title: Tasks
+              children:
+                - type: composite
+                  ref:
+                    kind: Crud.Ui
+                    model: !ref taskModel
+                    basePath: /api/tasks
+                    filters:
+                      show: chosen
+                      summary: chips
+                      state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                    create:
+                      surface: { kind: Ui.Drawer, side: end }
+                      afterSubmit: again
+                    edit:
+                      surface: { kind: Ui.Panel, address: { name: task } }
+                      unsaved: confirm
+            - path: /one
+              title: Tasks
+              children:
+                - type: composite
+                  ref:
+                    kind: Crud.Ui
+                    model: !ref taskModel
+                    basePath: /api/tasks
+                    create: { afterSubmit: again }
+            - path: /all
+              title: Tasks
+              children:
+                - type: composite
+                  ref:
+                    kind: Crud.Ui
+                    model: !ref taskModel
+                    basePath: /api/tasks
+                    filters:
+                      show: chosen
+                      placement: { kind: Ui.CollapsiblePlacement, open: true }
+                      controls: chips
+                      apply: button
+                      summary: chips
+                      state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                    create:
+                      surface: !ref sharedDrawer
+                      afterSubmit: again
+                      unsaved: discard
+                    edit:
+                      surface: { kind: Ui.Panel, side: start, address: { name: task } }
+                      afterSubmit: keep
+                      unsaved: discard
       - path: /written
         mount:
           kind: UiReact.App
@@ -77,7 +227,69 @@ with:
             - path: /
               title: Tasks
               children:
+                - { type: composite, ref: !ref plainFilters }
+            # An empty `create` expands into the same listing as none at all.
+            - path: /empty
+              title: Tasks
+              children:
+                - { type: composite, ref: !ref plainFilters }
+            - path: /shown
+              title: Tasks
+              children:
                 - { type: composite, ref: !ref taskFilters }
+            - path: /one
+              title: Tasks
+              children:
+                - type: composite
+                  ref:
+                    kind: Ui.Filters
+                    model: !ref TaskRecord
+                    collection: !ref taskModel
+                    content:
+                      type: composite
+                      ref:
+                        kind: Ui.Table
+                        model: !ref TaskRow
+                        collection: !ref taskModel
+                        source: { basePath: /api/tasks }
+                        rowKey: id
+                        create: { form: !ref plainCreateForm, afterSubmit: again }
+                        edit: { form: !ref plainEditForm }
+                        delete: true
+            - path: /all
+              title: Tasks
+              children:
+                - type: composite
+                  ref:
+                    kind: Ui.Filters
+                    model: !ref TaskRecord
+                    collection: !ref taskModel
+                    policy:
+                      show: chosen
+                      placement: { kind: Ui.CollapsiblePlacement, open: true }
+                      controls: chips
+                      apply: button
+                      summary: chips
+                      state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
+                    content:
+                      type: composite
+                      ref:
+                        kind: Ui.Table
+                        model: !ref TaskRow
+                        collection: !ref taskModel
+                        source: { basePath: /api/tasks }
+                        rowKey: id
+                        create:
+                          form: !ref plainCreateForm
+                          surface: !ref sharedDrawer
+                          afterSubmit: again
+                          unsaved: discard
+                        edit:
+                          form: !ref plainEditForm
+                          surface: { kind: Ui.Panel, side: start, address: { name: task } }
+                          afterSubmit: keep
+                          unsaved: discard
+                        delete: true
 targets:
   - !ref server
 steps:
@@ -85,6 +297,22 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/" }
   - name: written
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/" }
+  - name: generatedEmpty
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/empty" }
+  - name: writtenEmpty
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/empty" }
+  - name: generatedOne
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/one" }
+  - name: writtenOne
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/one" }
+  - name: generatedAll
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/all" }
+  - name: writtenAll
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/all" }
+  - name: generatedShown
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/generated/_telo/ui/page?path=/shown" }
+  - name: writtenShown
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19314/written/_telo/ui/page?path=/shown" }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -93,11 +321,95 @@ steps:
         children: !cel "steps.generated.result.body.children"
         digest: !cel "steps.generated.result.body.digest"
         # What was compared is the whole screen, not two empty pages.
-        shape: !cel "steps.generated.result.body.children.map(c, [c.type, c.content.type, c.content.create.type, c.content.edit.type])"
+        shape: !cel "steps.generated.result.body.children.map(c, [c.type, c.content.type, c.content.create.form.type, c.content.edit.form.type])"
         columns: !cel "steps.generated.result.body.children[0].content.columns.map(c, c.value.path[0])"
+        sortable: !cel "steps.generated.result.body.children[0].content.columns.filter(c, has(c.sort)).map(c, c.sort)"
+        filters: !cel "steps.generated.result.body.children[0].fields.map(f, [f.property, f.operator])"
+        # Drawn from the read shape: the list shape declares no `status`.
+        statusFilter: !cel "steps.generated.result.body.children[0].fields.filter(f, f.property == 'status').map(f, {'label': f.label, 'schema': f.schema})"
       expected:
         status: 200
         children: !cel "steps.written.result.body.children"
         digest: !cel "steps.written.result.body.digest"
         shape: [[filters, table, form, form]]
-        columns: [text, isDone, priority, status, dueOn]
+        # The list shape's properties, not the record's.
+        columns: [text, isDone, dueOn]
+        sortable: [text, dueOn]
+        filters: [[text, contains], [isDone, eq], [status, in], [dueOn, gte]]
+        statusFilter:
+          - { label: Status, schema: { title: Status, enum: [open, blocked, done] } }
+  # The other ways of writing the keys, the docs' own example among them: the
+  # same two documents each time.
+  - name: verifyWritten
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        empty: { children: !cel "steps.generatedEmpty.result.body.children", digest: !cel "steps.generatedEmpty.result.body.digest" }
+        one: { children: !cel "steps.generatedOne.result.body.children", digest: !cel "steps.generatedOne.result.body.digest" }
+        all: { children: !cel "steps.generatedAll.result.body.children", digest: !cel "steps.generatedAll.result.body.digest" }
+        shown: { children: !cel "steps.generatedShown.result.body.children", digest: !cel "steps.generatedShown.result.body.digest", surfaces: !cel "steps.generatedShown.result.body.children.map(c, [c.content.create.surface.type, c.content.edit.surface.type, c.show])" }
+      expected:
+        empty: { children: !cel "steps.writtenEmpty.result.body.children", digest: !cel "steps.writtenEmpty.result.body.digest" }
+        one: { children: !cel "steps.writtenOne.result.body.children", digest: !cel "steps.writtenOne.result.body.digest" }
+        all: { children: !cel "steps.writtenAll.result.body.children", digest: !cel "steps.writtenAll.result.body.digest" }
+        shown: { children: !cel "steps.writtenShown.result.body.children", digest: !cel "steps.writtenShown.result.body.digest", surfaces: [[drawer, panel, chosen]] }
+  # What each generated page carries on the wire, in the order nothing / empty /
+  # one / all. A member nobody wrote is there, holding the table's or the bar's
+  # default.
+  - name: verifyMembers
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.generated, steps.generatedEmpty, steps.generatedOne, steps.generatedAll].map(s, s.result.body.children.map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})[0])"
+      expected:
+        - &defaults
+          bar:
+            show: all
+            placement: { type: above }
+            controls: direct
+            apply: commit
+            summary: none
+            state: { address: false, store: { type: memory } }
+          create: &opener
+            surface: &dialog
+              type: dialog
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+            afterSubmit: close
+            unsaved: confirm
+          edit: *opener
+        - *defaults
+        - bar:
+            show: all
+            placement: { type: above }
+            controls: direct
+            apply: commit
+            summary: none
+            state: { address: false, store: { type: memory } }
+          create: { surface: *dialog, afterSubmit: again, unsaved: confirm }
+          edit: *opener
+        - bar:
+            show: chosen
+            placement: { type: collapsible, open: true }
+            controls: chips
+            apply: button
+            summary: chips
+            state: { key: tasks, address: true, store: { type: local } }
+          create:
+            surface:
+              type: drawer
+              side: start
+              size: large
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+            afterSubmit: again
+            unsaved: discard
+          edit:
+            surface:
+              type: panel
+              side: start
+              size: medium
+              dismiss: { escape: true, closeButton: true }
+              address: { name: task }
+            afterSubmit: keep
+            unsaved: discard

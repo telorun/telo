@@ -4,6 +4,7 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { effectiveAuthorSchema } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { readRefSlot } from "./ref-slot.js";
 import { checkSchemaCompatibility } from "./schema-compat.js";
 import { gatherPropertySchemas, resolveLocalRef } from "./schema-walk.js";
 import { templateBodies } from "./template-body.js";
@@ -121,6 +122,12 @@ function schemaAt(
     node = read.node;
     nodeRoot = read.root;
     if (!node) return undefined;
+    // Past a reference slot the path continues in the kind the slot names.
+    const referenced = referencedKindSchema(node, registry);
+    if (referenced) {
+      node = referenced;
+      nodeRoot = referenced;
+    }
     if (typeof segment === "number") {
       const items: unknown = node.items;
       const item = Array.isArray(items) ? items[segment] : items;
@@ -131,6 +138,16 @@ function schemaAt(
     if (!node) return undefined;
   }
   return materialize(node, nodeRoot, registry, scope, new Set());
+}
+
+/** The schema of the one kind a reference slot names. */
+function referencedKindSchema(
+  node: Record<string, any>,
+  registry: DefinitionRegistry,
+): Record<string, any> | undefined {
+  const slot = readRefSlot(node);
+  if (!slot || slot.kinds.length !== 1) return undefined;
+  return registry.effectiveSchemaOf(registry.resolve(slot.kinds[0]!)) as Record<string, any> | undefined;
 }
 
 /**

@@ -1,0 +1,22 @@
+modules:
+  modules/ui: Added
+body: "A filter bar declares how it behaves. Ui.Filters takes policy, a Ui.FilterPolicy
+  record: show (all or chosen), placement, controls (direct or chips), apply (commit,
+  typing or button), summary (none or chips) and state. A placement is a kind under the
+  new Ui.FilterPlacement abstract: Ui.AbovePlacement, Ui.AsidePlacement,
+  Ui.CollapsiblePlacement and Ui.OverlayPlacement, the first two with a compact
+  replacement for narrow viewports. State is { key, address, store }, where store is a
+  kind under the new Ui.StateStore abstract: Ui.LocalStore or Ui.SessionStore. A field
+  takes pinned, control (auto, select, options, toggle, slider, tags, none) and default,
+  and a bar takes presets. A control is judged against its property's types with null
+  set aside, so a nullable boolean takes a toggle and a nullable number a slider; a
+  toggle holds true or nothing, so false is refused as its default and as a preset value
+  for it. New shapes Ui.FilterPolicy, Ui.FilterPlacementSpec and Ui.StateStoreSpec. New
+  rules, each twinned by the bar's controller: UI_FILTER_DUPLICATE,
+  UI_FILTER_DEFAULT_INVALID, UI_FILTER_CONTROL_UNSUPPORTED,
+  UI_FILTER_PRESET_UNKNOWN_FILTER, UI_FILTER_PRESET_VALUE_INVALID,
+  UI_FILTER_PRESET_LABEL_DUPLICATE, and the warning UI_FILTER_PINNED_UNUSED. BREAKING
+  for a manifest: two fields of one bar sharing a property and an operator are refused.
+  BREAKING for a renderer: the filters node of Ui.SpecNode now requires show, placement,
+  controls, apply, summary, state and presets, and each of its fields requires pinned
+  and control."

@@ -7,17 +7,22 @@ metadata:
   categories: [Storage, Data]
   description: |
     Serves a full REST API over a database table from one declaration: a paginated
-    list with cursor paging, sorting, filtering and a total count, plus read one,
-    create, update and delete, with parameterized SQL and request bodies validated
-    against a model schema. A second declaration adds an admin screen over the same
-    model: a filter bar, a data grid and create, edit and delete forms.
+    list with cursor paging, a total count, and filtering and sorting limited to
+    the fields the data model allows, plus read one, create, update and delete,
+    with parameterized SQL. Each operation has its own record shape, so
+    server-set columns are read-only. A second declaration adds an admin screen
+    over the same model: a filter bar, a data grid and create, edit and delete forms.
 requires:
-  # 0.111.0 checks this file clean, and checks an application declaring a
-  # `Crud.Ui` clean, but its kernel refuses the kind when it is provided: the
-  # template's `provide:` target has no `invoke()` ("has capability
-  # '<unknown>', not Telo.Invocable"). Verified by execution (`run` of an
-  # application reading a `Crud.Ui`) against 0.111.0.
-  telo: ">=0.112.0"
+  # 0.112.0 refuses this file: `Crud.Model`'s rules over the `query` block it
+  # inherits are reported as `RESOURCE_RULE_INVALID` ("'in' points at
+  # '/query/filters', which this kind's schema does not declare"), because that
+  # analyzer judges a rule's pointer before a parent kind declared in another
+  # module is registered. Verified by execution (`telo release check` running
+  # 0.112.0 over this file). 0.111.0 additionally read a referenced shape as
+  # written, without its `extends:` parents, and its kernel could not hand a
+  # body entry a shape the model references (verified by execution against
+  # 0.111.0; not re-run against 0.112.0).
+  telo: ">=0.113.0"
 imports:
   Http: ../http-server
   Sql: ../sql
@@ -26,35 +31,237 @@ imports:
   UiKit: ../ui
 exports:
   kinds:
+    - Model
     - Resource
     - Ui
+---
+# The four shapes of one collection's records. A shape is a named `Telo.JsonSchema`
+# like any other, and shapes share properties through `extends:` — the write
+# shape declares what a client sets, the read shape extends it with the key and
+# whatever the table fills in. Nothing is derived: a shape an operation uses is a
+# shape the manifest names, so a screen or a client over it is typed by it.
+#
+# It is also the collection's declared query — what a list may be filtered and
+# sorted by — which is why it extends the UI vocabulary's collection kind: the
+# API accepts exactly what a screen over the same model offers.
+kind: Telo.Definition
+metadata:
+  name: Model
+  description: >-
+    The data model of a REST collection: one record shape per operation — create,
+    update, read one, list row — plus an allow-list of the filters and sort keys
+    a list request may use, each filter a property with one operator. Keeps
+    server-generated fields out of write bodies, lets a list omit heavy fields,
+    stops clients querying by unindexed columns, and gives an API and its
+    screens one shared contract.
+capability: Telo.Provider
+extends: UiKit.Collection
+controllers:
+  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ModelController
+schema:
+  type: object
+  required: [schemas]
+  examples:
+    - schemas:
+        read: !ref Todo
+        list: !ref Todo
+        create: !ref TodoDraft
+        update: !ref TodoDraft
+      query:
+        filters:
+          - { property: text, operator: contains }
+          - { property: isDone, operator: eq }
+        sort:
+          - { property: dueOn }
+  properties:
+    schemas:
+      title: Schemas
+      description: The record shape of each operation.
+      type: object
+      additionalProperties: false
+      required: [read, list, create, update]
+      properties:
+        read:
+          title: Read
+          description: >-
+            One record as it is read, `id` included. The widest shape: every
+            property of the other three is one of its own, and so is every
+            property `query` lets a list be filtered or sorted by.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+        list:
+          title: List
+          description: One row of the list, `id` included.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+        create:
+          title: Create
+          description: The body that creates a record, without `id`.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+        update:
+          title: Update
+          description: >-
+            The body that updates a record, without `id`. The properties it
+            declares are the ones an update replaces.
+          x-telo-ref: { kind: Telo.Type, use: schema }
+  x-telo-resource-rules:
+    - resolve: [/schemas/read, /schemas/list, /schemas/create, /schemas/update]
+      in: /schemas
+      condition: !cel >-
+        !(key in ['read', 'list'])
+        || (has(this.schema.properties) && 'id' in this.schema.properties
+            && has(this.schema.required) && 'id' in this.schema.required)
+      code: CRUD_MODEL_KEY_UNDECLARED
+      message: >-
+        does not declare a required `id`. Every row read carries its key: add
+        `id` to this shape's properties and to its `required`.
+    - resolve: [/schemas/read, /schemas/list, /schemas/create, /schemas/update]
+      in: /schemas
+      condition: !cel >-
+        !(key in ['create', 'update'])
+        || !has(this.schema.properties) || !('id' in this.schema.properties)
+      code: CRUD_MODEL_KEY_WRITABLE
+      message: >-
+        declares `id`. The key is assigned by the table and named by the URL:
+        remove it from this shape.
+    - resolve: [/schemas/read, /schemas/list, /schemas/create, /schemas/update]
+      in: /schemas
+      condition: !cel >-
+        !(key in ['create', 'update'])
+        || (has(this.schema.additionalProperties) && this.schema.additionalProperties == false)
+      code: CRUD_MODEL_WRITE_SHAPE_OPEN
+      message: >-
+        accepts properties it does not declare. A write body names columns: set
+        `additionalProperties: false` on this shape.
+    - resolve: [/schemas/read, /schemas/list, /schemas/create, /schemas/update]
+      in: /schemas
+      condition: !cel >-
+        key == 'read' || !has(this.schema.properties)
+        || (has(self.schemas.read.schema.properties)
+            ? this.schema.properties.all(p, p in self.schemas.read.schema.properties)
+            : size(this.schema.properties) == 0)
+      code: CRUD_MODEL_PROPERTY_NOT_READABLE
+      message: >-
+        declares a property `schemas.read` does not. Every property of a record
+        is one a read returns: add it to `schemas.read`, or remove it here.
+    # Compared with `null` aside, where both shapes declare a type.
+    - resolve: [/schemas/read, /schemas/list, /schemas/create, /schemas/update]
+      in: /schemas
+      condition: !cel >-
+        key == 'read' || !has(this.schema.properties) || !has(self.schemas.read.schema.properties)
+        || this.schema.properties.all(p,
+             !(p in self.schemas.read.schema.properties)
+             || !('type' in this.schema.properties[p])
+             || !('type' in self.schemas.read.schema.properties[p])
+             || (type(this.schema.properties[p].type) == string
+                   ? [this.schema.properties[p].type]
+                   : this.schema.properties[p].type).filter(t, t != 'null')
+                == (type(self.schemas.read.schema.properties[p].type) == string
+                      ? [self.schemas.read.schema.properties[p].type]
+                      : self.schemas.read.schema.properties[p].type).filter(t, t != 'null'))
+      code: CRUD_MODEL_PROPERTY_TYPE_DIFFERS
+      message: >-
+        types a property differently from `schemas.read`. One column has one
+        type: declare the same one in both shapes.
+    - resolve: [/schemas/read, /schemas/update]
+      condition: !cel >-
+        !has(self.schemas.update.schema.required) || !has(self.schemas.read.schema.properties)
+        || self.schemas.update.schema.required.all(r,
+             !(r in self.schemas.read.schema.properties)
+             || (has(self.schemas.read.schema.required) && r in self.schemas.read.schema.required))
+      code: CRUD_MODEL_UPDATE_REQUIRES_OPTIONAL
+      message: >-
+        requires in `schemas.update` a property `schemas.read` leaves optional,
+        so a record read without it could not be sent back. Require it in
+        `schemas.read` too, or make it optional in `schemas.update`.
+    - resolve: [/schemas/read]
+      in: /query/filters
+      condition: !cel >-
+        has(self.schemas.read.schema.properties) && this.property in self.schemas.read.schema.properties
+      code: CRUD_MODEL_FILTER_UNKNOWN_PROPERTY
+      message: >-
+        filters by a property `schemas.read` does not declare. Use a property of
+        `schemas.read`, or add this one to it.
+    # The property's plain types, `null` aside — those of its listed values
+    # where it declares only `enum`. A property declaring neither takes any
+    # operator. The reader judges a request the same way.
+    - resolve: [/schemas/read]
+      in: /query/filters
+      condition: !cel >-
+        !has(self.schemas.read.schema.properties) || !(this.property in self.schemas.read.schema.properties)
+        || cel.bind(types,
+           ('type' in self.schemas.read.schema.properties[this.property]
+             ? (type(self.schemas.read.schema.properties[this.property].type) == string
+                  ? [self.schemas.read.schema.properties[this.property].type]
+                  : self.schemas.read.schema.properties[this.property].type).filter(t, t != 'null')
+             : ('enum' in self.schemas.read.schema.properties[this.property]
+                  ? self.schemas.read.schema.properties[this.property].enum
+                      .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                      .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                  : [])),
+           size(types) == 0
+           || (this.operator in ['eq', 'in'] && types.exists(t, t in ['string', 'number', 'integer', 'boolean']))
+           || (this.operator == 'contains' && 'string' in types)
+           || (this.operator in ['gt', 'gte', 'lt', 'lte'] && types.exists(t, t in ['string', 'number', 'integer'])))
+      code: CRUD_MODEL_FILTER_OPERATOR_UNSUPPORTED
+      message: >-
+        uses an operator the property's type does not support: `contains` needs a
+        string, `gt` / `gte` / `lt` / `lte` a string or a number, and no operator
+        applies to an object or a list.
+    # A filter parameter is spelled as its property, so one named as a
+    # parameter the route owns would be read as that parameter.
+    - in: /query/filters
+      condition: !cel "!(this.property in ['limit', 'cursor', 'sort']) && !this.property.startsWith('_telo')"
+      code: CRUD_MODEL_FILTER_RESERVED_NAME
+      message: >-
+        filters by a property named as a query parameter the list route owns:
+        `limit`, `cursor`, `sort`, and every name beginning `_telo`. Rename the
+        property, or leave it out of `query.filters`.
+    - resolve: [/schemas/read]
+      in: /query/sort
+      condition: !cel >-
+        has(self.schemas.read.schema.properties) && this.property in self.schemas.read.schema.properties
+      code: CRUD_MODEL_SORT_UNKNOWN_PROPERTY
+      message: >-
+        sorts by a property `schemas.read` does not declare. Use a property of
+        `schemas.read`, or add this one to it.
+    - resolve: [/schemas/read]
+      in: /query/sort
+      condition: !cel >-
+        !has(self.schemas.read.schema.properties) || !(this.property in self.schemas.read.schema.properties)
+        || cel.bind(types,
+           ('type' in self.schemas.read.schema.properties[this.property]
+             ? (type(self.schemas.read.schema.properties[this.property].type) == string
+                  ? [self.schemas.read.schema.properties[this.property].type]
+                  : self.schemas.read.schema.properties[this.property].type).filter(t, t != 'null')
+             : ('enum' in self.schemas.read.schema.properties[this.property]
+                  ? self.schemas.read.schema.properties[this.property].enum
+                      .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                      .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                  : [])),
+           size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean']))
+      code: CRUD_MODEL_SORT_UNSUPPORTED
+      message: >-
+        sorts by a property that holds an object or a list. A list is ordered by
+        one plain value: sort by a string, number or boolean property.
 ---
 kind: Telo.Definition
 metadata:
   name: Resource
   description: >-
     Mounts a REST API over one database table. The list route pages with an opaque
-    cursor, sorts by one property, filters by equality, text search, comparison and
-    membership, and answers with the rows, a total count and the next cursor; a bad
-    query is a 400 naming the parameter. Read, create, update and delete routes
-    validate bodies against the model and return values in its declared types.
+    cursor and answers with the rows, a total count and the next cursor; it sorts
+    and filters — equality, text search, comparison, membership — only by the
+    paths the data model declares, and any other query is a 400 naming the
+    parameter. Create and update validate their bodies against their own shapes
+    and answer with the stored record; read and delete address one record by key.
 capability: Telo.Mount
 schema:
   type: object
   required: [connection, model, singular, plural]
   examples:
-    - connection: !ref Db
+    - connection: !ref db
       singular: todo
       plural: todos
-      model:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [text]
-          additionalProperties: false
-          properties:
-            text: { type: string }
-            done: { type: integer }
+      model: !ref todoModel
   properties:
     connection:
       title: Connection
@@ -90,40 +297,56 @@ schema:
     model:
       title: Model
       description: >-
-        The resource's data shape — a `Telo.JsonSchema` (inline or `!ref`)
-        describing the writable columns; exclude `id` (it is the auto-increment
-        primary key and the `{id}` path parameter). A create (POST) and an
-        update (PUT) body are both a whole record validated against it; an
-        update replaces the row, so a property its body leaves out is cleared.
-        Feeds the generated OpenAPI.
+        The shapes of the collection's records, one per operation: what a
+        create (POST) and an update (PUT) body must be, what one record reads
+        as, and what a list row holds — and the filters and sort keys the list
+        route accepts. Feeds the generated OpenAPI.
       x-telo-ref:
-        kind: Telo.Type
-        use: schema
+        kind: Self.Model
+        use: dependency
 mount: !ref api
 resources:
   # SQL handlers (crud-internal kinds below) over this resource's table (`table`,
   # defaulting to `plural`). API property names are camelCase; columns are their
-  # snake_case form. The reader serves both read routes, so a row has one
-  # encoding, and the updater sets every column the model declares. The creator
-  # and the deleter build their statement from the per-request map they are
-  # handed (data / filters).
+  # snake_case form. Each handler is given the shape of its own operation: the
+  # lister accepts the filters and sorts the model declares, typed by the read
+  # shape, and a list row holds the list shape; the by-id reader accepts the key
+  # alone, whatever the model declares; both writes answer with the record as
+  # read. The deleter builds its statement from the per-request map it is handed.
+  - kind: Self.Reader
+    metadata:
+      name: lister
+    connection: !cel "self.connection"
+    table: !cel "('table' in self) ? self.table : self.plural"
+    model: !cel "self.model.schemas.read"
+    row: !cel "self.model.schemas.list"
+    query: !cel "self.model.query"
   - kind: Self.Reader
     metadata:
       name: reader
     connection: !cel "self.connection"
     table: !cel "('table' in self) ? self.table : self.plural"
-    model: !cel "self.model"
+    model: !cel "self.model.schemas.read"
+    row: !cel "self.model.schemas.read"
+    query:
+      filters:
+        - property: id
+          operator: eq
+      sort: []
   - kind: Self.Creator
     metadata:
       name: creator
     connection: !cel "self.connection"
     table: !cel "('table' in self) ? self.table : self.plural"
+    model: !cel "self.model.schemas.create"
+    record: !cel "self.model.schemas.read"
   - kind: Self.Updater
     metadata:
       name: updater
     connection: !cel "self.connection"
     table: !cel "('table' in self) ? self.table : self.plural"
-    model: !cel "self.model"
+    model: !cel "self.model.schemas.update"
+    record: !cel "self.model.schemas.read"
   - kind: Self.Deleter
     metadata:
       name: deleter
@@ -153,8 +376,9 @@ resources:
               details: !cel "error.data.details.map(d, {'location': 'query', 'path': d.path, 'message': d.message})"
     routes:
       # List one page. Every query key but the three typed ones is a filter:
-      # `<property>` for equality, `<property>.<operator>` otherwise. Keys
-      # beginning `_telo` belong to whoever renders the collection.
+      # `<property>` for equality, `<property>.<operator>` otherwise, which the
+      # lister accepts only where the model declares the pair. Keys beginning
+      # `_telo` belong to whoever renders the collection.
       - operationId: !cel "'list' + self.plural.substring(0,1).upperAscii() + self.plural.substring(1)"
         summary: !cel "'List ' + self.plural"
         tags: !cel "[self.plural]"
@@ -177,8 +401,8 @@ resources:
                   description: The `next` of a previous response, passed back unchanged.
                 sort:
                   type: string
-                  description: One property to order by; `-` before it for descending. `id` when absent.
-        handler: !ref reader
+                  description: One property the collection sorts by; `-` before it for descending. `id` order when absent.
+        handler: !ref lister
         inputs:
           # A key with no `.` carries no operator, which is equality.
           filters: !cel >-
@@ -211,14 +435,7 @@ resources:
                     rows:
                       type: array
                       description: One page of rows.
-                      # Open beyond `id`: a row carries the model's properties,
-                      # and a column the model types as a string may hold null.
-                      items:
-                        type: object
-                        required: [id]
-                        additionalProperties: true
-                        properties:
-                          id: { type: integer }
+                      items: !cel "self.model.schemas.list.schema"
                     total:
                       type: integer
                       description: How many rows the filters match, whatever the page.
@@ -226,7 +443,7 @@ resources:
                       type: [string, "null"]
                       description: The cursor of the following page; null on the last one.
 
-      # Read one row by id, through the same reader.
+      # Read one row by id.
       - operationId: !cel "'get' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
         summary: !cel "'Get a ' + self.singular"
         tags: !cel "[self.plural]"
@@ -238,7 +455,7 @@ resources:
               type: object
               required:
                 - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
-              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.model.schemas.read.schema.properties.id}"
         handler: !ref reader
         inputs:
           filters:
@@ -251,12 +468,14 @@ resources:
             content:
               application/json:
                 body: !cel "result.rows[0]"
+                schema: !cel "self.model.schemas.read.schema"
           - status: 404
             content:
               application/json:
                 body: { error: not_found }
 
-      # Create a row from the JSON body, validated against the full model.
+      # Create a row from the JSON body, validated against the create shape, and
+      # answer with the record as stored.
       - operationId: !cel "'create' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
         summary: !cel "'Create a ' + self.singular"
         tags: !cel "[self.plural]"
@@ -264,7 +483,7 @@ resources:
           method: POST
           path: /
           schema:
-            body: !cel "self.model.schema"
+            body: !cel "self.model.schemas.create.schema"
         handler: !ref creator
         inputs:
           data: !cel "request.body"
@@ -272,10 +491,12 @@ resources:
           - status: 201
             content:
               application/json:
-                body: !cel "request.body"
+                body: !cel "result"
+                schema: !cel "self.model.schemas.read.schema"
 
-      # Replace the row with the JSON body: a whole record, validated against
-      # the full model as a create is. A property the body leaves out is cleared.
+      # Replace what the update shape declares of the row with the JSON body. A
+      # property of that shape the body leaves out is cleared; every other column
+      # keeps its value. Answers with the record as stored.
       - operationId: !cel "'update' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
         summary: !cel "'Replace a ' + self.singular"
         tags: !cel "[self.plural]"
@@ -287,8 +508,8 @@ resources:
               type: object
               required:
                 - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
-              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
-            body: !cel "self.model.schema"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.model.schemas.read.schema.properties.id}"
+            body: !cel "self.model.schemas.update.schema"
         handler: !ref updater
         inputs:
           id: !cel "values(request.params)[0]"
@@ -298,7 +519,8 @@ resources:
             when: !cel "result.rowCount > 0"
             content:
               application/json:
-                body: !cel "request.body"
+                body: !cel "result.row"
+                schema: !cel "self.model.schemas.read.schema"
           - status: 404
             content:
               application/json:
@@ -316,7 +538,7 @@ resources:
               type: object
               required:
                 - !cel "('idParam' in self) ? self.idParam : self.singular + 'Id'"
-              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): {'type': 'integer', 'description': 'Item id.'}}"
+              properties: !cel "{(('idParam' in self) ? self.idParam : self.singular + 'Id'): self.model.schemas.read.schema.properties.id}"
         handler: !ref deleter
         inputs:
           filters:
@@ -333,21 +555,21 @@ resources:
 # and never these. API property names are camelCase; the column is its snake_case
 # form (`dueDate` → `due_date`).
 #
-# The reader and the updater have a controller. Paging, ordering and filtering
-# are statements whose spelling differs by engine, and a replace names every
-# column the model declares whatever the body holds, so both render through the
-# connection's dialect instead of assembling text in CEL. The reader's contract
-# names properties and operators, never query-string keys, so it is the route's
-# `inputs:` that knows HTTP.
+# The reader, the creator and the updater have a controller. Paging, ordering
+# and filtering are statements whose spelling differs by engine, and a write
+# names the columns its shape declares whatever the body holds, so all three
+# render through the connection's dialect instead of assembling text in CEL. The
+# reader's contract names properties and operators, never query-string keys, so
+# it is the route's `inputs:` that knows HTTP.
 kind: Telo.Definition
 metadata:
   name: Reader
   description: >-
     Reads a database table as a collection, one page at a time: rows matching a
     list of property filters, ordered by one property with nulls last, starting
-    after an opaque cursor. Returns the rows in the model's declared types, the
-    count of every match and the cursor of the next page, or refuses a request
-    naming an unknown property, operator or value.
+    after an opaque cursor. Returns the rows in their declared shape and types,
+    the count of every match and the cursor of the next page, or refuses a
+    request using a filter or sort it was not configured to accept.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ReaderController
@@ -355,12 +577,12 @@ throws:
   codes:
     ERR_CRUD_QUERY_INVALID:
       description: >-
-        The request names something the model does not allow: an unknown
-        property or operator, an operator the property's type cannot carry, a
-        value that is not of the property's type, a limit outside 1–100, more
-        than one sort property, or a cursor that is malformed or was issued
-        for another sort. Carries `details`, one `{ path, message }` per
-        refused parameter.
+        The request asks for something the reader does not accept: a filter
+        whose property and operator are not a declared pair, a sort by a
+        property that is not declared, a value that is not of the property's
+        type, a limit outside 1–100, more than one sort property, or a cursor
+        that is malformed or was issued for another sort. Carries `details`,
+        one `{ path, message }` per refused parameter.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -376,7 +598,7 @@ inputType:
           properties:
             property: { type: string }
             # contains, gt, gte, lt, lte or in; absent for equality. Left open
-            # here so an unknown one is refused with the rest of the request.
+            # here so an undeclared one is refused with the rest of the request.
             operator: { type: string }
             # Of the property's type, or its text; a list for `in`.
             value: {}
@@ -405,7 +627,7 @@ outputType:
 schema:
   type: object
   additionalProperties: false
-  required: [connection, table, model]
+  required: [connection, table, model, row, query]
   properties:
     connection:
       x-telo-ref:
@@ -413,7 +635,36 @@ schema:
         use: dependency
     table:
       type: string
+    # The types of the values a request filters by.
     model:
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    # What a request may filter and sort by: nothing else is accepted.
+    query:
+      type: object
+      additionalProperties: false
+      required: [filters, sort]
+      properties:
+        filters:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, operator]
+            properties:
+              property: { type: string }
+              operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+        sort:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property]
+            properties:
+              property: { type: string }
+    # What a returned row holds.
+    row:
       x-telo-ref:
         kind: Telo.Type
         use: schema
@@ -422,12 +673,30 @@ kind: Telo.Definition
 metadata:
   name: Creator
   description: >-
-    Internal handler behind the create route: runs a parameterized INSERT of the
-    columns present in the validated request body.
+    Internal handler behind the create route: inserts one row from a validated
+    record, naming only the columns its shape declares, in one parameterized
+    INSERT. Returns the stored record, with its key and every value the table
+    filled in.
 capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CreatorController
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [data]
+    properties:
+      # The record, by property name.
+      data: { type: object }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
 schema:
   type: object
-  required: [connection, table]
+  additionalProperties: false
+  required: [connection, table, model, record]
   properties:
     connection:
       x-telo-ref:
@@ -435,25 +704,26 @@ schema:
         use: dependency
     table:
       type: string
-resources:
-  - kind: Sql.Command
-    metadata:
-      name: exec
-    connection: !cel "self.connection"
-invoke: !ref exec
-inputs:
-  sql: !cel "'INSERT INTO ' + self.table + ' (' + join(keys(inputs.data).map(k, lower(regexReplace(k, '([A-Z])', '_$1'))), ', ') + ') VALUES (' + join(keys(inputs.data).map(k, '?'), ', ') + ')'"
-  bindings: !cel "keys(inputs.data).map(k, inputs.data[k])"
+    # The columns a record may set.
+    model:
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    # What the stored record is answered as.
+    record:
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
 ---
 kind: Telo.Definition
 metadata:
   name: Updater
   description: >-
-    Internal handler behind the update route: replaces one row with a whole
-    record. Every column the model declares is set, to the value the record
-    holds or to NULL where it holds none, in one parameterized UPDATE filtered
-    by the item's id. Returns the number of rows replaced, zero when the id
-    names no row.
+    Internal handler behind the update route: replaces what its shape declares
+    of one row. Each of those columns is set, to the value the record holds or
+    to NULL where it holds none, in one parameterized UPDATE filtered by the
+    item's id; no other column is touched. Returns the stored record and the
+    number of rows replaced, zero when the id names no row.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#UpdaterController
@@ -464,8 +734,8 @@ inputType:
     additionalProperties: false
     required: [id, data]
     properties:
-      id: { type: integer }
-      # The whole record, by property name.
+      id: {}
+      # The record, by property name.
       data: { type: object }
 outputType:
   kind: Telo.JsonSchema
@@ -474,10 +744,12 @@ outputType:
     required: [rowCount]
     properties:
       rowCount: { type: integer }
+      # Absent when the id names no row.
+      row: { type: object }
 schema:
   type: object
   additionalProperties: false
-  required: [connection, table, model]
+  required: [connection, table, model, record]
   properties:
     connection:
       x-telo-ref:
@@ -485,7 +757,13 @@ schema:
         use: dependency
     table:
       type: string
+    # The columns a record replaces.
     model:
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+    # What the stored record is answered as.
+    record:
       x-telo-ref:
         kind: Telo.Type
         use: schema
@@ -517,18 +795,18 @@ inputs:
   sql: !cel "'DELETE FROM ' + self.table + ' WHERE ' + join(keys(inputs.filters).map(k, lower(regexReplace(k, '([A-Z])', '_$1')) + ' = ?'), ' AND ')"
   bindings: !cel "keys(inputs.filters).map(k, inputs.filters[k])"
 ---
-# The admin screen over a CRUD collection, as the three composites an author
-# would otherwise write by hand. It holds nothing they cannot: `docs/ui.md`
-# lists this body as a manifest, and a test proves the two render the same page.
+# The admin screen over a CRUD collection, as the composites an author would
+# otherwise write by hand. It holds nothing they cannot: `docs/ui.md` lists this
+# body as a manifest, and a test proves the two render the same page.
 kind: Telo.Definition
 metadata:
   name: Ui
   description: >-
     A ready admin screen over a REST collection from one declaration: a filter
-    bar, a sortable paged data grid, and one form used to create and to edit a
-    record, with a confirmed delete on every row. Filters, columns and fields
-    are derived from the data model, so a property added to it appears without
-    an edit.
+    bar, a sortable paged data grid, a form to create a record and one to edit
+    it, with a confirmed delete on every row. Filters, columns and fields are
+    derived from the data model, so a property added to it appears without an
+    edit.
 capability: Telo.Provider
 extends: UiKit.Composite
 schema:
@@ -536,17 +814,17 @@ schema:
   additionalProperties: false
   required: [model, basePath]
   examples:
-    - model: !ref TodoModel
+    - model: !ref todoModel
       basePath: /api/todos
   properties:
     model:
       title: Model
       description: >-
-        The shape of one record — the same model the collection's
-        `Crud.Resource` is given.
+        The shapes of the collection's records — the same model the
+        collection's `Crud.Resource` is given.
       x-telo-ref:
-        kind: Telo.Type
-        use: schema
+        kind: Self.Model
+        use: dependency
     basePath:
       title: Base path
       description: >-
@@ -554,27 +832,105 @@ schema:
         but `/` or `\`, holding no control character.
       type: string
       pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+    # The three keys below declare no default and no value set of their own:
+    # each is forwarded as written, and what an omitted one means is decided by
+    # the bar and the table it reaches.
+    filters:
+      title: Filters
+      description: >-
+        How the filter bar behaves: which filters are on show, where its
+        controls sit, how each is entered, when a change applies, what
+        summarises it and where its state is kept. Omitted, the bar's own
+        defaults.
+      $ref: "telo://UiKit/FilterPolicy"
+    create:
+      title: Create
+      description: >-
+        Where the form that adds a record opens, what it does once the record
+        is saved and what happens to unsaved input. Omitted, the table's own
+        defaults.
+      type: object
+      additionalProperties: false
+      properties:
+        surface:
+          title: Surface
+          description: Where the form appears. Omitted, the table's default.
+          x-telo-ref: { kind: UiKit.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: >-
+            What the form does once the record is saved: `close`, `again` — stay
+            open, emptied, for another record — or `keep` its values.
+          $ref: "telo://UiKit/AfterCreate"
+        unsaved:
+          title: Unsaved input
+          description: >-
+            Whether leaving the form with unsaved input asks first (`confirm`)
+            or drops it (`discard`).
+          $ref: "telo://UiKit/UnsavedInput"
+    edit:
+      title: Edit
+      description: >-
+        Where the form that changes a record opens, what it does once the
+        record is saved and what happens to unsaved input. Omitted, the table's
+        own defaults.
+      type: object
+      additionalProperties: false
+      properties:
+        surface:
+          title: Surface
+          description: Where the form appears. Omitted, the table's default.
+          x-telo-ref: { kind: UiKit.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: >-
+            What the form does once the record is saved: `close`, or `keep` it
+            open.
+          $ref: "telo://UiKit/AfterEdit"
+        unsaved:
+          title: Unsaved input
+          description: >-
+            Whether leaving the form with unsaved input asks first (`confirm`)
+            or drops it (`discard`).
+          $ref: "telo://UiKit/UnsavedInput"
 resources:
   - kind: UiKit.Form
     metadata:
-      name: form
-    model: !cel "self.model"
+      name: createForm
+    model: !cel "self.model.schemas.create"
+    source:
+      basePath: !cel "self.basePath"
+  - kind: UiKit.Form
+    metadata:
+      name: editForm
+    model: !cel "self.model.schemas.update"
     source:
       basePath: !cel "self.basePath"
   - kind: UiKit.Table
     metadata:
       name: table
-    model: !cel "self.model"
+    model: !cel "self.model.schemas.list"
+    collection: !cel "self.model"
     source:
       basePath: !cel "self.basePath"
     rowKey: id
-    create: !ref form
-    edit: !ref form
+    create:
+      form: !ref createForm
+      surface: !cel "self.create.surface"
+      afterSubmit: !cel "self.create.afterSubmit"
+      unsaved: !cel "self.create.unsaved"
+    edit:
+      form: !ref editForm
+      surface: !cel "self.edit.surface"
+      afterSubmit: !cel "self.edit.afterSubmit"
+      unsaved: !cel "self.edit.unsaved"
     delete: true
   - kind: UiKit.Filters
     metadata:
       name: filters
-    model: !cel "self.model"
+    model: !cel "self.model.schemas.read"
+    collection: !cel "self.model"
+    policy: !cel "self.filters"
     content:
       type: composite
       ref: !ref table

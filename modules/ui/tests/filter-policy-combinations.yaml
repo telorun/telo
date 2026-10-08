@@ -1,0 +1,151 @@
+kind: Telo.Application
+metadata:
+  name: UiFilterPolicyCombinationsTest
+  version: 1.0.0
+  description: |
+    No member of a filter bar's policy limits another: every way of showing
+    filters, of drawing their controls, of applying a change and of summarising
+    the bar is accepted with every placement kind, checked and provided.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: text, operator: contains }
+  sort: []
+---
+# show × controls × apply × summary, each under the four placement kinds.
+kind: Ui.View
+metadata:
+  name: every
+content:
+  type: stack
+  children:
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: direct, apply: button, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: all, controls: chips, apply: button, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: commit, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: typing, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: direct, apply: button, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: commit, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: typing, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: none, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: none, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: none, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: none, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: chips, placement: { kind: Ui.AbovePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: chips, placement: { kind: Ui.AsidePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: chips, placement: { kind: Ui.CollapsiblePlacement } } } }
+    - { type: composite, ref: { kind: Ui.Filters, model: !ref Todo, collection: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: read
+    invoke: { kind: Probe.Read, source: !ref every }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        bars: !cel "size(steps.read.result.node.children)"
+        distinct: !cel "size(steps.read.result.node.children.map(c, c.show + ' ' + c.controls + ' ' + c.apply + ' ' + c.summary + ' ' + c.placement.type).filter(k, steps.read.result.node.children.exists_one(c, c.show + ' ' + c.controls + ' ' + c.apply + ' ' + c.summary + ' ' + c.placement.type == k)))"
+      expected:
+        bars: 96
+        distinct: 96

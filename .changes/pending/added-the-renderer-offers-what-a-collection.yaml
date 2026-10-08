@@ -1,0 +1,8 @@
+modules:
+  modules/ui-react: Added
+body: "The renderer offers what a collection declares. Breaking for applications,
+  through the ui vocabulary it renders: every Ui.Table and Ui.Filters placed on a page
+  now names a Ui.Collection, a column carries a sort control only where that collection
+  lists its property, and a filter bar shows the collection's declared filters with
+  their declared operators. The renderer itself is unchanged: it already drew each
+  control from the operator and each sort control from the column it was handed."

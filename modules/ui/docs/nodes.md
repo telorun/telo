@@ -95,3 +95,20 @@ every composite replaced by the node it provides (`table`, `form`, `filters`,
 resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
 chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
+
+**A node carries every presentation member, declared or not.** A `table` node's
+`create` and `edit` are each `{ form, surface, afterSubmit, unsaved }`, all four
+present: `form` the form node, `surface` a [`Ui.SurfaceSpec`](surfaces.md#what-a-renderer-receives)
+with every member its kind has, `afterSubmit` and `unsaved` as declared or
+defaulted. The defaults are this module's, filled before the node is provided,
+so two renderers cannot disagree about them and none carries a table of its
+own.
+
+A `filters` node likewise carries its whole policy: `show`, `placement` (a
+[`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives)),
+`controls`, `apply`, `summary`, `state` (`{ address, store, key? }`, `store` a
+[`Ui.StateStoreSpec`](state-store.md#what-a-renderer-receives), `key` present
+exactly when the bar declared `state`) and `presets` — an empty list when
+there are none. Each of its `fields` carries `pinned` and `control`, and
+`default` only when one is declared. A default and a preset value are always a
+list, whatever was written: one value is a list of one.

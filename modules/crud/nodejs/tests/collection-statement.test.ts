@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SqlDialect } from "@telorun/sql";
 import { planQuery } from "../src/collection-query.js";
-import { countStatement, pageStatement, replaceStatement } from "../src/collection-statement.js";
+import { countStatement, insertStatement, pageStatement, replaceStatement } from "../src/collection-statement.js";
 import { modelProperties } from "../src/model-properties.js";
 import { encodeCursor } from "../src/page-cursor.js";
 
@@ -25,6 +25,7 @@ const numbered: SqlDialect = {
 
 const properties = modelProperties({
   properties: {
+    id: { type: "integer" },
     text: { type: "string" },
     isDone: { type: "boolean" },
     dueOn: { type: "string", format: "date" },
@@ -32,7 +33,16 @@ const properties = modelProperties({
   },
 });
 
-const query = planQuery(properties, {
+const accepted = {
+  filters: [
+    { property: "text", operator: "contains" },
+    { property: "status", operator: "in" },
+    { property: "isDone", operator: "eq" },
+  ],
+  sort: [{ property: "dueOn" }],
+};
+
+const query = planQuery(properties, accepted, {
   filters: [
     { property: "text", operator: "contains", value: "50%_!" },
     { property: "status", operator: "in", value: ["open", "done"] },
@@ -77,7 +87,7 @@ describe("the statements of one list request", () => {
   });
 
   it("continues among the rows with no value once the cursor is past the last one that has one", () => {
-    const amongNulls = planQuery(properties, {
+    const amongNulls = planQuery(properties, accepted, {
       sort: [{ property: "dueOn" }],
       cursor: encodeCursor({ sort: "dueOn", value: null, id: 9 }),
     });
@@ -87,27 +97,54 @@ describe("the statements of one list request", () => {
   });
 });
 
-describe("the statement that replaces a row", () => {
-  const record = { text: "Plan", isDone: false, unknown: "x" };
+/** What a write names: the record's properties, without its key. */
+const writable = modelProperties({
+  properties: {
+    text: { type: "string" },
+    isDone: { type: "boolean" },
+    dueOn: { type: "string", format: "date" },
+  },
+});
 
-  it("sets every declared column, NULL where the record holds no value, and no other", () => {
-    expect(replaceStatement(qmark, "tasks", properties.values(), 7, record)).toEqual({
-      sql: `UPDATE tasks SET "text" = ?, "is_done" = ?, "due_on" = ?, "status" = ? WHERE "id" = ?`,
-      params: ["Plan", false, null, null, 7],
+const stored = `RETURNING "id" AS "id", "text" AS "text", "is_done" AS "isDone", "due_on" AS "dueOn", "status" AS "status"`;
+
+describe("the statement that replaces a row", () => {
+  const record = { text: "Plan", isDone: false, status: "done", unknown: "x" };
+
+  it("sets every column its shape declares, NULL where the record holds no value, and no other", () => {
+    expect(replaceStatement(qmark, "tasks", writable.values(), 7, record, properties.values())).toEqual({
+      sql: `UPDATE tasks SET "text" = ?, "is_done" = ?, "due_on" = ? WHERE "id" = ? ${stored}`,
+      params: ["Plan", false, null, 7],
     });
   });
 
   it("numbers its placeholders where the dialect does", () => {
-    expect(replaceStatement(numbered, "tasks", properties.values(), 7, record).sql).toBe(
-      `UPDATE tasks SET "text" = $1, "is_done" = $2, "due_on" = $3, "status" = $4 WHERE "id" = $5`,
+    expect(replaceStatement(numbered, "tasks", writable.values(), 7, record, properties.values()).sql).toBe(
+      `UPDATE tasks SET "text" = $1, "is_done" = $2, "due_on" = $3 WHERE "id" = $4 ${stored}`,
     );
   });
 
-  it("is a whole statement over a model declaring no column", () => {
-    expect(replaceStatement(qmark, "tasks", modelProperties({}).values(), 7, {})).toEqual({
-      sql: `UPDATE tasks SET "id" = "id" WHERE "id" = ?`,
+  it("is a whole statement over a shape declaring no column", () => {
+    expect(replaceStatement(qmark, "tasks", modelProperties({}).values(), 7, {}, properties.values())).toEqual({
+      sql: `UPDATE tasks SET "id" = "id" WHERE "id" = ? ${stored}`,
       params: [7],
     });
   });
 });
 
+describe("the statement that creates a row", () => {
+  it("names the declared columns the record holds, never a key it merely carries", () => {
+    const record = { text: "Plan", isDone: false, "text) VALUES ('x'); --": "x" };
+    expect(insertStatement(qmark, "tasks", writable.values(), record, properties.values())).toEqual({
+      sql: `INSERT INTO tasks ("text", "is_done") VALUES (?, ?) ${stored}`,
+      params: ["Plan", false],
+    });
+  });
+
+  it("leaves every column to the table where the record holds none", () => {
+    expect(insertStatement(numbered, "tasks", writable.values(), {}, properties.values())).toEqual({
+      sql: `INSERT INTO tasks DEFAULT VALUES ${stored}`,
+      params: [],
+    });
+  });
+});
