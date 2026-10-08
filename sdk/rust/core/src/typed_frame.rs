@@ -14,6 +14,12 @@
 //! unpaired surrogate escape, the order members are visited in), and a
 //! general-purpose reader answers each of those differently.
 //!
+//! The value domain it is defined over is `telorun-cel-value`'s: [`CelValue`] here
+//! is that crate's union, re-exported. Four of its variants have no frame — a type
+//! value, an optional, an error and a host value are refused on write — and a map
+//! has two representations: an untagged object reads as a `CelRecord`, a tagged map
+//! as a `CelMap`.
+//!
 //! [`to_frame`] and [`from_frame`] carry any serde type through the frame
 //! (`typed_frame/serde_bridge.rs`).
 
@@ -24,7 +30,10 @@ use std::fmt;
 
 use serde::{de, ser};
 
-use crate::cel_value_identity::{Duration, Timestamp};
+use telorun_cel_value::{cel_map_from_entries, json_quote, CelDuration, CelMap, CelRecord, CelTimestamp};
+
+pub use telorun_cel_value::CelValue;
+
 use crate::plain_encoding::{base64url, cel_duration, rfc3339};
 use json_reader::{Json, JsonReader, JsonText};
 
@@ -47,47 +56,6 @@ pub const TYPED_FRAME_TAGS: &[&str] =
 
 pub const ERR_TYPED_FRAME_UNENCODABLE: &str = "ERR_TYPED_FRAME_UNENCODABLE";
 pub const ERR_TYPED_FRAME_UNDECODABLE: &str = "ERR_TYPED_FRAME_UNDECODABLE";
-
-/// A value in the CEL value domain.
-#[derive(Clone, Debug)]
-pub enum CelValue {
-    Null,
-    Bool(bool),
-    String(String),
-    Double(f64),
-    Int(i64),
-    Uint(u64),
-    Bytes(Vec<u8>),
-    Timestamp(Timestamp),
-    Duration(Duration),
-    List(Vec<CelValue>),
-    /// Entries in the order given. A key is an int, uint, bool or string.
-    Map(Vec<(CelValue, CelValue)>),
-}
-
-impl PartialEq for CelValue {
-    /// Equal when a frame reads back as the other: a double compares by its bits,
-    /// so a negative zero is not a zero and NaN is itself.
-    fn eq(&self, other: &Self) -> bool {
-        use CelValue::*;
-        match (self, other) {
-            (Null, Null) => true,
-            (Bool(a), Bool(b)) => a == b,
-            (String(a), String(b)) => a == b,
-            (Double(a), Double(b)) => (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits(),
-            (Int(a), Int(b)) => a == b,
-            (Uint(a), Uint(b)) => a == b,
-            (Bytes(a), Bytes(b)) => a == b,
-            (Timestamp(a), Timestamp(b)) => a == b,
-            (Duration(a), Duration(b)) => a == b,
-            (List(a), List(b)) => a == b,
-            (Map(a), Map(b)) => {
-                a.len() == b.len() && a.iter().all(|(key, value)| b.iter().any(|(k, v)| k == key && v == value))
-            }
-            _ => false,
-        }
-    }
-}
 
 /// A refusal to write or read a frame, naming the node it is about.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -158,23 +126,26 @@ fn write_value(value: &CelValue, path: &mut Vec<String>) -> Result<String, Typed
     Ok(match value {
         CelValue::Null => "null".into(),
         CelValue::Bool(b) => b.to_string(),
-        CelValue::String(s) => json_string(s),
+        CelValue::String(s) => json_quote(s),
         CelValue::Double(d) => {
             if d.is_finite() && !(*d == 0.0 && d.is_sign_negative()) {
                 es_number(*d)
             } else {
-                tagged(TAG_DOUBLE, &json_string(tagged_double_text(*d)))
+                tagged(TAG_DOUBLE, &json_quote(tagged_double_text(*d)))
             }
         }
         CelValue::Int(i) => tagged(TAG_INT, &format!("\"{i}\"")),
         CelValue::Uint(u) => tagged(TAG_UINT, &format!("\"{u}\"")),
         CelValue::Bytes(bytes) => tagged(TAG_BYTES, &format!("\"{}\"", base64url::encode(bytes))),
-        CelValue::Timestamp(t) => tagged(TAG_TIMESTAMP, &format!("\"{}\"", rfc3339::encode(t))),
+        CelValue::Timestamp(t) => tagged(TAG_TIMESTAMP, &format!("\"{}\"", rfc3339::encode(&(*t).into()))),
         CelValue::Duration(d) => {
             if d.seconds().unsigned_abs() > cel_duration::MAX_SECONDS {
-                return Err(unencodable(path, format!("is a Duration outside CEL's range of ±{}s", cel_duration::MAX_SECONDS)));
+                return Err(unencodable(
+                    path,
+                    format!("is a duration outside protobuf's range of ±{}s", cel_duration::MAX_SECONDS),
+                ));
             }
-            tagged(TAG_DURATION, &format!("\"{}\"", cel_duration::encode(d)))
+            tagged(TAG_DURATION, &format!("\"{}\"", cel_duration::encode(&(*d).into())))
         }
         CelValue::List(items) => {
             let mut parts = Vec::with_capacity(items.len());
@@ -185,7 +156,13 @@ fn write_value(value: &CelValue, path: &mut Vec<String>) -> Result<String, Typed
             }
             format!("[{}]", parts.join(","))
         }
-        CelValue::Map(entries) => write_map(entries, path)?,
+        CelValue::Map(map) => write_map(map, path)?,
+        CelValue::Record(record) => write_record(record, path)?,
+        // No frame carries these: each is refused, never approximated.
+        CelValue::Type(_) => return Err(unencodable(path, "is a type value")),
+        CelValue::Optional(_) => return Err(unencodable(path, "is an optional")),
+        CelValue::Error(_) => return Err(unencodable(path, "is an error value")),
+        CelValue::Host(_) => return Err(unencodable(path, "is a host value")),
     })
 }
 
@@ -201,23 +178,34 @@ fn tagged_double_text(value: f64) -> &'static str {
     }
 }
 
+struct Pair {
+    /// What the pair is ordered by: a string key's own text, else the key as written.
+    order: String,
+    key: String,
+    value: String,
+}
+
 /// A map with only string keys, none of them the tag key, is a plain object; any
-/// other map is a tagged list of pairs ordered by key text.
-fn write_map(entries: &[(CelValue, CelValue)], path: &mut Vec<String>) -> Result<String, TypedFrameError> {
-    struct Pair {
-        order: String,
-        key: String,
-        value: String,
+/// other map is a tagged list of pairs ordered by key text. The order is the
+/// writer's own, so neither representation's iteration order reaches the text.
+fn write_pairs(mut pairs: Vec<Pair>, plain: bool) -> String {
+    if plain {
+        pairs.sort_by(|a, b| compare_code_units(&a.order, &b.order));
+        let members: Vec<String> = pairs.iter().map(|p| format!("{}:{}", p.key, p.value)).collect();
+        return format!("{{{}}}", members.join(","));
     }
-    let mut pairs = Vec::with_capacity(entries.len());
-    let mut seen = std::collections::HashSet::new();
+    pairs.sort_by(|a, b| compare_code_units(&a.key, &b.key));
+    let members: Vec<String> = pairs.iter().map(|p| format!("[{},{}]", p.key, p.value)).collect();
+    tagged(TAG_MAP, &format!("[{}]", members.join(",")))
+}
+
+/// A `CelMap` holds no two keys that are one key, by construction, so the writer
+/// compares none.
+fn write_map(map: &CelMap, path: &mut Vec<String>) -> Result<String, TypedFrameError> {
+    let mut pairs = Vec::with_capacity(map.len());
     let mut plain = true;
-    for (key, value) in entries {
+    for (key, value) in map.iter() {
         let key_text = write_map_key(key, path)?;
-        let identity = map_key_identity(key).expect("a written key has an identity");
-        if !seen.insert(identity) {
-            return Err(unencodable(path, format!("is a map with two keys equal to {key_text}")));
-        }
         if !matches!(key, CelValue::String(s) if s != TYPED_FRAME_TAG) {
             plain = false;
         }
@@ -230,14 +218,22 @@ fn write_map(entries: &[(CelValue, CelValue)], path: &mut Vec<String>) -> Result
         };
         pairs.push(Pair { order, key: key_text, value: written });
     }
-    if plain {
-        pairs.sort_by(|a, b| compare_code_units(&a.order, &b.order));
-        let members: Vec<String> = pairs.iter().map(|p| format!("{}:{}", p.key, p.value)).collect();
-        return Ok(format!("{{{}}}", members.join(",")));
+    Ok(write_pairs(pairs, plain))
+}
+
+fn write_record(record: &CelRecord, path: &mut Vec<String>) -> Result<String, TypedFrameError> {
+    let mut pairs = Vec::with_capacity(record.len());
+    let mut plain = true;
+    for (key, value) in record.iter() {
+        if key == TYPED_FRAME_TAG {
+            plain = false;
+        }
+        path.push(key.to_string());
+        let written = write_value(value, path)?;
+        path.pop();
+        pairs.push(Pair { order: key.to_string(), key: json_quote(key), value: written });
     }
-    pairs.sort_by(|a, b| compare_code_units(&a.key, &b.key));
-    let members: Vec<String> = pairs.iter().map(|p| format!("[{},{}]", p.key, p.value)).collect();
-    Ok(tagged(TAG_MAP, &format!("[{}]", members.join(","))))
+    Ok(write_pairs(pairs, plain))
 }
 
 fn key_segment(key: &CelValue) -> String {
@@ -252,7 +248,7 @@ fn key_segment(key: &CelValue) -> String {
 
 fn write_map_key(key: &CelValue, path: &[String]) -> Result<String, TypedFrameError> {
     match key {
-        CelValue::String(s) => Ok(json_string(s)),
+        CelValue::String(s) => Ok(json_quote(s)),
         CelValue::Bool(b) => Ok(b.to_string()),
         CelValue::Int(i) => Ok(tagged(TAG_INT, &format!("\"{i}\""))),
         CelValue::Uint(u) => Ok(tagged(TAG_UINT, &format!("\"{u}\""))),
@@ -271,13 +267,20 @@ fn describe(value: &CelValue) -> String {
         CelValue::Timestamp(_) => "a timestamp".into(),
         CelValue::Duration(_) => "a duration".into(),
         CelValue::List(_) => "a list".into(),
-        CelValue::Map(_) => "a map".into(),
+        CelValue::Map(_) | CelValue::Record(_) => "a map".into(),
+        CelValue::Type(_) => "a type value".into(),
+        CelValue::Optional(_) => "an optional".into(),
+        CelValue::Error(_) => "an error value".into(),
+        CelValue::Host(_) => "a host value".into(),
         CelValue::Bool(_) | CelValue::String(_) | CelValue::Int(_) | CelValue::Uint(_) => "a key".into(),
     }
 }
 
-/// What makes two keys ONE key. An `int` and a `uint` of the same number compare
-/// equal in CEL, so a map carrying both is refused at both ends.
+/// What makes two keys ONE key in a payload being READ. An `int` and a `uint` of the
+/// same number compare equal in CEL, so a payload carrying both is refused. It is the
+/// frame's own rule on purpose, as in the Node half: the refusal names the path it
+/// was found at, which is the frame's wire contract, and a payload from another
+/// writer can carry anything.
 fn map_key_identity(key: &CelValue) -> Option<String> {
     match key {
         CelValue::String(s) => Some(format!("s{s}")),
@@ -293,109 +296,10 @@ fn compare_code_units(a: &str, b: &str) -> std::cmp::Ordering {
     a.encode_utf16().cmp(b.encode_utf16())
 }
 
-/// A string as `JSON.stringify` writes it.
-fn json_string(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
-    for c in value.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{08}' => out.push_str("\\b"),
-            '\u{0c}' => out.push_str("\\f"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
 /// A finite double as ECMAScript's `Number.prototype.toString` writes it — the
-/// number form RFC 8785 adopts.
+/// number form RFC 8785 adopts. The digits are the value domain's, written once.
 pub fn es_number(value: f64) -> String {
-    if value == 0.0 {
-        return "0".into();
-    }
-    let sign = if value < 0.0 { "-" } else { "" };
-    let (digits, exponent) = shortest_digits(value.abs());
-    let k = digits.len() as i32;
-    let n = exponent + 1;
-    let body = if k <= n && n <= 21 {
-        format!("{digits}{}", "0".repeat((n - k) as usize))
-    } else if 0 < n && n <= 21 {
-        format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
-    } else if -6 < n && n <= 0 {
-        format!("0.{}{digits}", "0".repeat((-n) as usize))
-    } else {
-        let e = n - 1;
-        let e_sign = if e < 0 { "-" } else { "+" };
-        if k == 1 {
-            format!("{digits}e{e_sign}{}", e.abs())
-        } else {
-            format!("{}.{}e{e_sign}{}", &digits[..1], &digits[1..], e.abs())
-        }
-    };
-    format!("{sign}{body}")
-}
-
-/// The significant digits and decimal exponent ECMAScript's `Number::toString`
-/// chooses for a finite positive double: the fewest digits that read back as it,
-/// and — where two candidates of that length read back and lie equally close to
-/// it — the one ending in an even digit. `{:e}` finds the fewest digits but
-/// settles that tie upward, so a tie is detected on the exact expansion and
-/// settled here.
-fn shortest_digits(magnitude: f64) -> (String, i32) {
-    let split = |text: &str| -> (Vec<u8>, i32) {
-        let (mantissa, exponent) = text.split_once('e').expect("scientific notation has an exponent");
-        (
-            mantissa.bytes().filter(|b| *b != b'.').collect(),
-            exponent.parse().expect("exponent is an integer"),
-        )
-    };
-    let (shortest, exponent) = split(&format!("{magnitude:e}"));
-    let as_string = |digits: &[u8]| String::from_utf8(digits.to_vec()).expect("decimal digits are ASCII");
-    // 767 significant digits hold the exact value of any double.
-    let (exact, exact_exponent) = split(&format!("{magnitude:.766e}"));
-    let k = shortest.len();
-    let tie = exact_exponent == exponent
-        && exact.len() > k
-        && exact[k] == b'5'
-        && exact[k + 1..].iter().all(|d| *d == b'0');
-    if !tie || shortest[k - 1] % 2 == 0 {
-        return (as_string(&shortest), exponent);
-    }
-    // The other candidate of the same length on the far side of the value.
-    let truncated = &exact[..k];
-    let other = if shortest.as_slice() == truncated {
-        let mut up = truncated.to_vec();
-        let mut at = k;
-        loop {
-            if at == 0 {
-                // A carry past the first digit leaves no candidate of this length.
-                return (as_string(&shortest), exponent);
-            }
-            at -= 1;
-            if up[at] == b'9' {
-                up[at] = b'0';
-            } else {
-                up[at] += 1;
-                break;
-            }
-        }
-        up
-    } else {
-        truncated.to_vec()
-    };
-    let text = format!("{}e{}", as_string(&other), exponent - (k as i32 - 1));
-    if text.parse::<f64>() == Ok(magnitude) {
-        (as_string(&other), exponent)
-    } else {
-        (as_string(&shortest), exponent)
-    }
+    telorun_cel_value::es_number(value)
 }
 
 // ---------------------------------------------------------------------------
@@ -444,14 +348,15 @@ fn read_value(node: &Json, path: &mut Vec<String>) -> Result<CelValue, TypedFram
             if members.iter().any(|(k, _)| k.is(TYPED_FRAME_TAG)) {
                 return read_tagged(members, path);
             }
-            let mut out = Vec::with_capacity(members.len());
+            // The reader has already refused a repeated member name.
+            let mut out = CelRecord::new();
             for (key, value) in members {
                 path.push(key.lossy());
                 let key = read_string(key, path)?;
-                out.push((CelValue::String(key), read_value(value, path)?));
+                out.insert(key, read_value(value, path)?);
                 path.pop();
             }
-            Ok(CelValue::Map(out))
+            Ok(CelValue::Record(out))
         }
     }
 }
@@ -528,11 +433,11 @@ fn read_scalar(tag: &str, text: &str, path: &[String]) -> Result<CelValue, Typed
             .ok_or_else(|| undecodable(path, format!("is '{text}', not base64url text without padding in its canonical written form"))),
         TAG_TIMESTAMP => rfc3339::decode(text)
             .filter(|t| rfc3339::encode(t) == text)
-            .map(CelValue::Timestamp)
+            .map(|t| CelValue::Timestamp(CelTimestamp::from(t)))
             .ok_or_else(|| undecodable(path, format!("is '{text}', not RFC 3339 text (2026-01-15T09:30:00Z) in its canonical written form"))),
         TAG_DURATION => cel_duration::decode(text)
             .filter(|d| cel_duration::encode(d) == text)
-            .map(CelValue::Duration)
+            .map(|d| CelValue::Duration(CelDuration::from(d)))
             .ok_or_else(|| {
                 undecodable(
                     path,
@@ -581,7 +486,8 @@ fn read_map(payload: &Json, path: &mut Vec<String>) -> Result<CelValue, TypedFra
             format!("is a map whose keys are all strings other than '{TYPED_FRAME_TAG}', which is written untagged"),
         ));
     }
-    Ok(CelValue::Map(out))
+    // The frame's own refusals above leave nothing for the builder to refuse.
+    cel_map_from_entries(out).map(CelValue::Map).map_err(|error| undecodable(path, format!("is not a map: {error}")))
 }
 
 #[cfg(test)]
@@ -611,15 +517,16 @@ mod tests {
             "bytes" => CelValue::Bytes(body.as_array().unwrap().iter().map(|b| b.as_u64().unwrap() as u8).collect()),
             "timestamp" => {
                 let seconds: i64 = decimal(&body["seconds"]).parse().unwrap();
-                CelValue::Timestamp(Timestamp::new(seconds, body["nanos"].as_u64().unwrap() as u32).unwrap())
+                CelValue::Timestamp(CelTimestamp::new(seconds, body["nanos"].as_u64().unwrap() as u32).unwrap())
             }
             "duration" => {
                 let seconds: i64 = decimal(&body["seconds"]).parse().unwrap();
-                CelValue::Duration(Duration::new(seconds, body["nanos"].as_i64().unwrap() as i32).unwrap())
+                CelValue::Duration(CelDuration::new(seconds, body["nanos"].as_i64().unwrap() as i32).unwrap())
             }
             "list" => CelValue::List(body.as_array().unwrap().iter().map(notation).collect()),
             "map" => CelValue::Map(
-                body.as_array().unwrap().iter().map(|pair| (notation(&pair[0]), notation(&pair[1]))).collect(),
+                cel_map_from_entries(body.as_array().unwrap().iter().map(|pair| (notation(&pair[0]), notation(&pair[1]))))
+                    .unwrap(),
             ),
             other => panic!("unknown notation '{other}'"),
         }
@@ -672,6 +579,289 @@ mod tests {
         }
     }
 
+    /// The twin of `sdk/nodejs/tests/typed-frame-map-key.test.ts`: the frame and the
+    /// value domain answer "are these two keys ONE key" the same way, for every pair
+    /// of its fifteen keys. The frame keeps its own rule on its read path, so either
+    /// side moving alone fails here. The key frames, the merged pairs and the counts
+    /// are what the Node SDK answers, executed; its second case is rows of this matrix.
+    #[test]
+    fn the_frame_and_the_domain_agree_on_which_two_keys_are_one_key() {
+        let text = |value: &str| CelValue::String(value.into());
+        let keys: [(&str, CelValue, &str); 15] = [
+            ("\"1\"", text("1"), r#""1""#),
+            ("\"2\"", text("2"), r#""2""#),
+            ("\"true\"", text("true"), r#""true""#),
+            ("\"n1\"", text("n1"), r#""n1""#),
+            ("\"s1\"", text("s1"), r#""s1""#),
+            ("\"b1\"", text("b1"), r#""b1""#),
+            ("\"__proto__\"", text("__proto__"), r#""__proto__""#),
+            ("\"\"", text(""), r#""""#),
+            ("1 (int)", CelValue::Int(1), r#"{"$telo":"int","value":"1"}"#),
+            ("2 (int)", CelValue::Int(2), r#"{"$telo":"int","value":"2"}"#),
+            ("0 (int)", CelValue::Int(0), r#"{"$telo":"int","value":"0"}"#),
+            ("1u (uint)", CelValue::Uint(1), r#"{"$telo":"uint","value":"1"}"#),
+            ("2u (uint)", CelValue::Uint(2), r#"{"$telo":"uint","value":"2"}"#),
+            ("true", CelValue::Bool(true), "true"),
+            ("false", CelValue::Bool(false), "false"),
+        ];
+        let (mut pairs, mut merged, mut untagged, mut read) = (0, Vec::new(), 0, 0);
+        for (i, (left_name, left, left_frame)) in keys.iter().enumerate() {
+            assert_eq!(encode_typed_frame(left).unwrap(), *left_frame, "{left_name}");
+            for (right_name, right, right_frame) in &keys[i + 1..] {
+                pairs += 1;
+                let domain = cel_map_from_entries([(left.clone(), text("a")), (right.clone(), text("b"))])
+                    .is_err_and(|error| error.code == telorun_cel_value::CelEvaluationCode::DuplicateMapKey);
+                let payload = format!(r#"{{"$telo":"map","value":[[{left_frame},"a"],[{right_frame},"b"]]}}"#);
+                let frame = match decode_typed_frame(&payload) {
+                    Ok(_) => {
+                        read += 1;
+                        false
+                    }
+                    Err(error) if error.message.contains("repeats a key already in the map") => true,
+                    // Refused for its SHAPE before any key is compared: two strings.
+                    Err(error) if error.message.contains("which is written untagged") => {
+                        untagged += 1;
+                        false
+                    }
+                    Err(error) => panic!("{left_name} vs {right_name}: {error}"),
+                };
+                assert_eq!(domain, frame, "{left_name} vs {right_name}");
+                if domain {
+                    merged.push((*left_name, *right_name));
+                }
+            }
+        }
+        assert_eq!(merged, [("1 (int)", "1u (uint)"), ("2 (int)", "2u (uint)")]);
+        assert_eq!((pairs, untagged, read), (105, 28, 75));
+    }
+
+    #[test]
+    fn refuses_to_write_a_value_no_frame_carries_at_its_path() {
+        let host = telorun_cel_value::CelHostValue::unnamed(std::sync::Arc::new(()));
+        let error = telorun_cel_value::cel_error(telorun_cel_value::CelEvaluationCode::NoSuchKey, "missing", None);
+        for (value, what) in [
+            (CelValue::Type(telorun_cel_value::cel_type_value("int")), "is a type value"),
+            (CelValue::Optional(telorun_cel_value::cel_none()), "is an optional"),
+            (CelValue::Error(error), "is an error value"),
+            (CelValue::Host(host), "is a host value"),
+        ] {
+            let alone = encode_typed_frame(&value).unwrap_err();
+            assert_eq!((alone.code, alone.path.as_str()), (ERR_TYPED_FRAME_UNENCODABLE, ""), "{what}");
+            assert_eq!(alone.message, format!("Cannot write a typed frame: the value itself {what}."));
+
+            let record = CelRecord::from_iter([("held", CelValue::List(vec![CelValue::Null, value.clone()]))]);
+            let nested = encode_typed_frame(&CelValue::Record(record)).unwrap_err();
+            assert_eq!((nested.code, nested.path.as_str()), (ERR_TYPED_FRAME_UNENCODABLE, "/held/1"), "{what}");
+            assert_eq!(nested.message, format!("Cannot write a typed frame: the value at '/held/1' {what}."));
+
+            let keyed = cel_map_from_entries([(CelValue::Int(7), CelValue::List(vec![value]))]).unwrap();
+            assert_eq!(encode_typed_frame(&CelValue::Map(keyed)).unwrap_err().path, "/7/0", "{what}");
+        }
+    }
+
+    #[test]
+    fn reads_an_untagged_object_as_a_record_and_a_tagged_map_as_a_typed_key_map() {
+        let CelValue::Record(record) = decode_typed_frame(r#"{"b":1,"10":2,"9":3}"#).unwrap() else {
+            panic!("an untagged object is a record");
+        };
+        assert_eq!(record.get("10"), Some(&CelValue::Double(2.0)));
+        // The writer orders the members itself, whatever order the record ranges in.
+        assert_eq!(record.keys().collect::<Vec<_>>(), ["9", "10", "b"]);
+        assert_eq!(encode_typed_frame(&CelValue::Record(record)).unwrap(), r#"{"10":2,"9":3,"b":1}"#);
+
+        let tagged = r#"{"$telo":"map","value":[["k",1],[true,2],[{"$telo":"int","value":"1"},3]]}"#;
+        let CelValue::Map(map) = decode_typed_frame(tagged).unwrap() else {
+            panic!("a tagged map is a typed-key map");
+        };
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get(&telorun_cel_value::CelMapKey::Integer(1)), Some(&CelValue::Double(3.0)));
+        assert_eq!(encode_typed_frame(&CelValue::Map(map)).unwrap(), tagged);
+
+        // A record holding the tag key cannot be written untagged, and reads back a map
+        // that is the same value.
+        let holding = CelValue::Record(CelRecord::from_iter([("$telo", CelValue::Null)]));
+        let frame = encode_typed_frame(&holding).unwrap();
+        assert_eq!(frame, r#"{"$telo":"map","value":[["$telo",null]]}"#);
+        assert!(matches!(decode_typed_frame(&frame).unwrap(), CelValue::Map(_)));
+        assert_eq!(decode_typed_frame(&frame).unwrap(), holding);
+    }
+
+    #[test]
+    fn carries_a_serde_struct_as_a_record_and_a_typed_key_map_as_a_map() {
+        #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+        struct Row {
+            name: String,
+            tags: std::collections::BTreeMap<String, i64>,
+            by_id: std::collections::BTreeMap<i64, bool>,
+        }
+        let row = Row { name: "a".into(), tags: [("x".to_string(), 1)].into(), by_id: [(7, true)].into() };
+        let CelValue::Record(record) = to_value(&row).unwrap() else {
+            panic!("a struct is a record");
+        };
+        assert!(matches!(record.get("tags"), Some(CelValue::Record(_))));
+        assert!(matches!(record.get("by_id"), Some(CelValue::Map(_))));
+        assert_eq!(from_value::<Row>(CelValue::Record(record)).unwrap(), row);
+        assert_eq!(from_frame::<Row>(&to_frame(&row).unwrap()).unwrap(), row);
+
+        for (value, what) in [
+            (CelValue::Type(telorun_cel_value::cel_type_value("int")), "a type value"),
+            (CelValue::Optional(telorun_cel_value::cel_some(CelValue::Int(1))), "an optional"),
+            (telorun_cel_value::cel_error(telorun_cel_value::CelEvaluationCode::NoSuchKey, "missing", None).into(), "an error value"),
+            (CelValue::Host(telorun_cel_value::CelHostValue::unnamed(std::sync::Arc::new(()))), "a host value"),
+        ] {
+            let refused = from_value::<serde_json::Value>(CelValue::List(vec![value])).unwrap_err();
+            assert_eq!(refused.code, ERR_TYPED_FRAME_UNDECODABLE, "{what}");
+            assert_eq!(refused.message, format!("Cannot read a typed frame: the value is {what}, which has no serde form."));
+        }
+    }
+
+    #[derive(serde::Serialize)]
+    struct Holder<T> {
+        rows: Vec<T>,
+    }
+
+    fn bridge_refusal<T: serde::Serialize>(value: &T) -> (&'static str, String, String) {
+        let refused = to_value(value).unwrap_err();
+        assert_eq!(to_frame(value).unwrap_err(), refused);
+        (refused.code, refused.path, refused.message)
+    }
+
+    #[test]
+    fn refuses_a_serde_map_with_a_key_no_map_is_keyed_by_at_the_maps_pointer() {
+        let keyed_by_a_list: std::collections::BTreeMap<Vec<i64>, bool> = [(vec![1], true)].into();
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![std::collections::BTreeMap::new(), keyed_by_a_list.clone()] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/1".into(),
+                "Cannot write a typed frame: the value at '/rows/1' is a map with a key that is a list; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+        assert_eq!(
+            bridge_refusal(&keyed_by_a_list),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                String::new(),
+                "Cannot write a typed frame: the value itself is a map with a key that is a list; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+    }
+
+    #[test]
+    fn refuses_a_key_where_it_arrives_as_a_key_of_the_map_at_its_pointer() {
+        // A refusal raised while the key is written is about a key of the map.
+        let beyond_int64: std::collections::BTreeMap<u64, bool> = [(u64::MAX, true)].into();
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![beyond_int64] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                "Cannot write a typed frame: the value at '/rows/0' is a map with a key that is the integer 18446744073709551615, outside CEL's int64 range; a CEL uint is Uint64.".into()
+            )
+        );
+        // The key is refused before its value is written: no pointer is derived from
+        // it, and what is wrong beneath it does not hide it.
+        let list_key_over_a_bad_value: std::collections::BTreeMap<Vec<i64>, u64> = [(vec![1], u64::MAX)].into();
+        assert_eq!(
+            bridge_refusal(&list_key_over_a_bad_value),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                String::new(),
+                "Cannot write a typed frame: the value itself is a map with a key that is a list; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+        // A scalar no map is keyed by is judged the moment it has been written.
+        let null_key: std::collections::BTreeMap<Option<i64>, u64> = [(None, u64::MAX)].into();
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![null_key] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                "Cannot write a typed frame: the value at '/rows/0' is a map with a key that is null; a CEL map key is an int, uint, bool or string.".into()
+            )
+        );
+    }
+
+    #[test]
+    fn refuses_a_serde_map_whose_keys_collapse_into_one_at_the_maps_pointer() {
+        /// A map writing the int `1` and the uint `1`, which CEL equality makes one key.
+        struct Collapsing;
+        impl serde::Serialize for Collapsing {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry(&1i64, "a")?;
+                map.serialize_entry(&crate::Uint64(1), "b")?;
+                map.end()
+            }
+        }
+        /// A map writing one string key twice, which a record cannot hold.
+        struct Repeating;
+        impl serde::Serialize for Repeating {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeMap;
+                let mut map = serializer.serialize_map(Some(2))?;
+                map.serialize_entry("k", &1i64)?;
+                map.serialize_entry("k", &2i64)?;
+                map.end()
+            }
+        }
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![Collapsing] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                r#"Cannot write a typed frame: the value at '/rows/0' is a map with two keys equal to {"$telo":"uint","value":"1"}."#.into()
+            )
+        );
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![Repeating] }),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                "/rows/0".into(),
+                r#"Cannot write a typed frame: the value at '/rows/0' is a map with two keys equal to "k"."#.into()
+            )
+        );
+    }
+
+    #[test]
+    fn refuses_what_the_bridge_cannot_carry_at_the_nodes_pointer() {
+        #[derive(serde::Serialize)]
+        enum Shape {
+            Sized { count: u64 },
+            Pair(i64, u64),
+        }
+        #[derive(serde::Serialize)]
+        struct Count {
+            count: u64,
+        }
+        let integer = |pointer: &str| {
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                pointer.to_string(),
+                format!("Cannot write a typed frame: the value at '{pointer}' is the integer 18446744073709551615, outside CEL's int64 range; a CEL uint is Uint64."),
+            )
+        };
+        assert_eq!(bridge_refusal(&Holder { rows: vec![Count { count: 1 }, Count { count: u64::MAX }] }), integer("/rows/1/count"));
+        assert_eq!(bridge_refusal(&Holder { rows: vec![Shape::Sized { count: u64::MAX }] }), integer("/rows/0/Sized/count"));
+        assert_eq!(bridge_refusal(&Holder { rows: vec![Shape::Pair(1, u64::MAX)] }), integer("/rows/0/Pair/1"));
+        let by_key: std::collections::BTreeMap<i64, u64> = [(7, u64::MAX)].into();
+        assert_eq!(bridge_refusal(&Holder { rows: vec![by_key] }), integer("/rows/0/7"));
+        assert_eq!(
+            bridge_refusal(&u64::MAX),
+            (
+                ERR_TYPED_FRAME_UNENCODABLE,
+                String::new(),
+                "Cannot write a typed frame: the value itself is the integer 18446744073709551615, outside CEL's int64 range; a CEL uint is Uint64.".into()
+            )
+        );
+        // A sibling written after a refused-free variant is still located correctly.
+        assert_eq!(
+            bridge_refusal(&Holder { rows: vec![Shape::Pair(1, 2), Shape::Sized { count: u64::MAX }] }),
+            integer("/rows/1/Sized/count")
+        );
+    }
+
     /// xorshift64*, so the property test needs no dependency and replays exactly.
     struct Random(u64);
 
@@ -710,17 +900,17 @@ mod tests {
             5 => CelValue::Uint(random.next()),
             6 => CelValue::Bytes((0..random.below(5)).map(|_| random.next() as u8).collect()),
             7 => CelValue::Timestamp(
-                Timestamp::from_unix_nanos(
+                CelTimestamp::from_unix_nanos(
                     // Two draws, because the nanosecond range is wider than a u64.
-                    Timestamp::MIN_UNIX_NANOS
+                    CelTimestamp::MIN_UNIX_NANOS
                         + (((random.next() as u128) << 64 | random.next() as u128)
-                            % (Timestamp::MAX_UNIX_NANOS - Timestamp::MIN_UNIX_NANOS) as u128)
+                            % (CelTimestamp::MAX_UNIX_NANOS - CelTimestamp::MIN_UNIX_NANOS) as u128)
                             as i128,
                 )
                 .unwrap(),
             ),
             8 => CelValue::Duration(
-                Duration::from_total_nanos(
+                CelDuration::from_total_nanos(
                     (random.next() as i128 % (cel_duration::MAX_SECONDS as i128 * 1_000_000_000))
                         * if random.below(2) == 0 { 1 } else { -1 },
                 )
@@ -741,7 +931,7 @@ mod tests {
                     }
                     entries.push((key, random_value(random, depth - 1)));
                 }
-                CelValue::Map(entries)
+                CelValue::Map(cel_map_from_entries(entries).unwrap())
             }
         }
     }

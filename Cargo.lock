@@ -1222,6 +1222,10 @@ name = "telorun-abi"
 version = "0.0.0"
 
 [[package]]
+name = "telorun-cel-value"
+version = "0.111.0"
+
+[[package]]
 name = "telorun-console"
 version = "0.19.0"
 dependencies = [
@@ -1250,6 +1254,7 @@ dependencies = [
  "jsonschema",
  "serde",
  "serde_json",
+ "telorun-cel-value",
  "thiserror",
 ]
 

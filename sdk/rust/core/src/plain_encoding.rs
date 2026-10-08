@@ -81,25 +81,49 @@ pub mod base64url {
 
 /// `rfc3339` — a timestamp as RFC 3339 text, written in UTC with its fraction
 /// trimmed to the nanosecond it holds.
+///
+/// The STRICT form of the value domain's lenient reading: the shape is checked
+/// here, and the calendar, the offset arithmetic and the range are
+/// `parse_timestamp`'s.
 pub mod rfc3339 {
+    use telorun_cel_value::{format_timestamp, parse_timestamp};
+
     use super::Timestamp;
 
-    const NANOS_PER_SECOND: i128 = 1_000_000_000;
-
-    fn digits(text: &[u8], at: usize, count: usize) -> Option<i64> {
-        let slice = text.get(at..at + count)?;
-        let mut value = 0i64;
-        for &c in slice {
-            if !c.is_ascii_digit() {
-                return None;
-            }
-            value = value * 10 + (c - b'0') as i64;
+    fn two_digits(text: &[u8]) -> Option<u8> {
+        match text {
+            [tens @ b'0'..=b'9', units @ b'0'..=b'9'] => Some((tens - b'0') * 10 + (units - b'0')),
+            _ => None,
         }
-        Some(value)
     }
 
-    fn expect(text: &[u8], at: usize, byte: u8) -> Option<()> {
-        (text.get(at) == Some(&byte)).then_some(())
+    /// What this form refuses of text the lenient reading accepts: a space between
+    /// the date and the time, a fraction past the nanosecond, and an offset beyond
+    /// ±23:59. Everything else about the shape is the lenient reading's to refuse.
+    fn is_strict(text: &str) -> bool {
+        let text = text.as_bytes();
+        if !matches!(text.get(10), Some(b'T' | b't')) {
+            return false;
+        }
+        let Some(mut rest) = text.get(19..) else {
+            return false;
+        };
+        if let Some(fraction) = rest.strip_prefix(b".") {
+            let digits = fraction.iter().take_while(|c| c.is_ascii_digit()).count();
+            if digits > 9 {
+                return false;
+            }
+            rest = &fraction[digits..];
+        }
+        match rest {
+            [b'+' | b'-', hours @ .., b':', minute_tens, minute_units] => {
+                match (two_digits(hours), two_digits(&[*minute_tens, *minute_units])) {
+                    (Some(hours), Some(minutes)) => hours <= 23 && minutes <= 59,
+                    _ => false,
+                }
+            }
+            _ => true,
+        }
     }
 
     /// The timestamp `text` encodes, or `None`. Any offset is read; a fraction
@@ -107,132 +131,35 @@ pub mod rfc3339 {
     /// fractional digit names a precision no timestamp carries, so it is refused
     /// rather than rounded away.
     pub fn decode(text: &str) -> Option<Timestamp> {
-        let t = text.as_bytes();
-        let year = digits(t, 0, 4)?;
-        expect(t, 4, b'-')?;
-        let month = digits(t, 5, 2)?;
-        expect(t, 7, b'-')?;
-        let day = digits(t, 8, 2)?;
-        if !matches!(t.get(10), Some(b'T') | Some(b't')) {
+        if !is_strict(text) {
             return None;
         }
-        let hour = digits(t, 11, 2)?;
-        expect(t, 13, b':')?;
-        let minute = digits(t, 14, 2)?;
-        expect(t, 16, b':')?;
-        let second = digits(t, 17, 2)?;
-        let mut at = 19;
-        let mut nanos = 0i128;
-        if t.get(at) == Some(&b'.') {
-            let start = at + 1;
-            let mut end = start;
-            while t.get(end).is_some_and(u8::is_ascii_digit) {
-                end += 1;
-            }
-            if end == start || end - start > 9 {
-                return None;
-            }
-            for i in 0..9 {
-                nanos = nanos * 10 + t.get(start + i).filter(|_| start + i < end).map_or(0, |c| (c - b'0') as i128);
-            }
-            at = end;
-        }
-        let zone_minutes = match t.get(at) {
-            Some(b'Z') | Some(b'z') if t.len() == at + 1 => 0,
-            Some(sign @ (b'+' | b'-')) if t.len() == at + 6 => {
-                let hours = digits(t, at + 1, 2)?;
-                expect(t, at + 3, b':')?;
-                let minutes = digits(t, at + 4, 2)?;
-                if hours > 23 || minutes > 59 {
-                    return None;
-                }
-                let magnitude = hours * 60 + minutes;
-                if *sign == b'-' { -magnitude } else { magnitude }
-            }
-            _ => return None,
-        };
-        if !(1..=12).contains(&month)
-            || day < 1
-            || day > days_in_month(year, month)
-            || hour > 23
-            || minute > 59
-            || second > 59
-        {
-            return None;
-        }
-        let seconds = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second
-            - zone_minutes * 60;
-        Timestamp::from_unix_nanos(seconds as i128 * NANOS_PER_SECOND + nanos)
+        parse_timestamp(text).ok().map(Timestamp::from)
     }
 
     /// The canonical text: `YYYY-MM-DDTHH:MM:SSZ` in UTC, with the fraction
     /// absent when the instant is a whole second and otherwise one to nine
     /// digits with no trailing zero — the rule a duration's text follows.
     pub fn encode(timestamp: &Timestamp) -> String {
-        let seconds = timestamp.seconds();
-        let days = seconds.div_euclid(86_400);
-        let of_day = seconds.rem_euclid(86_400);
-        let (year, month, day) = civil_from_days(days);
-        let nanos = timestamp.subsec_nanos();
-        let fraction = if nanos == 0 {
-            String::new()
-        } else {
-            format!(".{}", format!("{nanos:09}").trim_end_matches('0'))
-        };
-        format!(
-            "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}{fraction}Z",
-            of_day / 3_600,
-            of_day / 60 % 60,
-            of_day % 60
-        )
-    }
-
-    fn is_leap(year: i64) -> bool {
-        (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-    }
-
-    fn days_in_month(year: i64, month: i64) -> i64 {
-        match month {
-            2 if is_leap(year) => 29,
-            2 => 28,
-            4 | 6 | 9 | 11 => 30,
-            _ => 31,
-        }
-    }
-
-    /// Days since 1970-01-01 in the proleptic Gregorian calendar.
-    fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-        let y = if month <= 2 { year - 1 } else { year };
-        let era = y.div_euclid(400);
-        let yoe = y - era * 400;
-        let mp = (month + 9) % 12;
-        let doy = (153 * mp + 2) / 5 + day - 1;
-        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-        era * 146_097 + doe - 719_468
-    }
-
-    fn civil_from_days(days: i64) -> (i64, i64, i64) {
-        let z = days + 719_468;
-        let era = z.div_euclid(146_097);
-        let doe = z - era * 146_097;
-        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let day = doy - (153 * mp + 2) / 5 + 1;
-        let month = if mp < 10 { mp + 3 } else { mp - 9 };
-        let year = yoe + era * 400 + if month <= 2 { 1 } else { 0 };
-        (year, month, day)
+        format_timestamp((*timestamp).into())
     }
 }
 
-/// `cel-duration` — a duration as a CEL duration string. Any string CEL's own
-/// `duration()` reads is read; the canonical text is seconds (`5400s`).
+/// `cel-duration` — a duration as a CEL duration string; the canonical text is
+/// seconds (`5400s`).
+///
+/// `decode` reads with a grammar of its own, which is not yet the value domain's
+/// `duration_nanos_from_text`: moving to it changes what some text reads as, and
+/// awaits the user's confirmation.
 pub mod cel_duration {
+    use telorun_cel_value::format_duration;
+
     use super::Duration;
 
     const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
-    /// protobuf Duration's range, which CEL adopts, in whole seconds either side of zero.
+    /// protobuf Duration's range, in whole seconds either side of zero. CEL's own
+    /// range is narrower and is applied where a duration enters the engine.
     pub const MAX_SECONDS: u64 = 315_576_000_000;
 
     fn unit_nanos(unit: &str) -> i128 {
@@ -251,8 +178,7 @@ pub mod cel_duration {
         ["ns", "us", "µs", "ms", "s", "m", "h"].into_iter().find(|unit| rest.starts_with(unit))
     }
 
-    /// The duration `text` encodes, or `None` — the grammar of CEL's
-    /// `duration()`: an optional sign, then one or more decimal numbers, each
+    /// The duration `text` encodes, or `None`: an optional sign, then one or more decimal numbers, each
     /// with an optional fraction and a unit (`ns`, `us`, `µs`, `ms`, `s`, `m`,
     /// `h`). A fraction is read to 13 digits. A duration outside
     /// ±[`MAX_SECONDS`] is not one.
@@ -295,16 +221,7 @@ pub mod cel_duration {
     /// The canonical text: seconds with a trimmed fraction, as the protobuf JSON
     /// form writes a duration.
     pub fn encode(duration: &Duration) -> String {
-        let total = duration.total_nanos();
-        let sign = if total < 0 { "-" } else { "" };
-        let magnitude = total.unsigned_abs();
-        let nanos = magnitude % NANOS_PER_SECOND as u128;
-        let fraction = if nanos == 0 {
-            String::new()
-        } else {
-            format!(".{}", format!("{nanos:09}").trim_end_matches('0'))
-        };
-        format!("{sign}{}{fraction}s", magnitude / NANOS_PER_SECOND as u128)
+        format_duration((*duration).into())
     }
 }
 
@@ -333,6 +250,43 @@ mod tests {
         assert_eq!(read("9999-12-31T23:59:59.999999999Z").as_deref(), Some("9999-12-31T23:59:59.999999999Z"));
         assert_eq!(read("0001-01-01T00:00:00Z").as_deref(), Some("0001-01-01T00:00:00Z"));
         assert_eq!(read("0000-12-31T23:59:59Z"), None);
+    }
+
+    /// The "plain encodings" cases of `sdk/nodejs/tests/value-type.test.ts`, each answer
+    /// the Node SDK's, executed. Every case of that file is here: none is among the
+    /// duration texts the two grammars still read differently.
+    #[test]
+    fn answers_the_node_sdks_plain_encoding_cases() {
+        assert_eq!(base64url::encode(&[251, 255, 0]), "-_8A");
+        assert_eq!(base64url::decode("-_8A"), Some(vec![251, 255, 0]));
+        assert_eq!(base64url::decode("-_8A="), None);
+
+        let instant = |text: &str| rfc3339::decode(text).map(|t| (t.seconds(), t.subsec_nanos(), rfc3339::encode(&t)));
+        assert_eq!(instant("2026-01-15T09:30:00.25+02:00"), Some((1768462200, 250000000, "2026-01-15T07:30:00.25Z".into())));
+        assert_eq!(instant("2026-01-15T07:30:00.000Z"), Some((1768462200, 0, "2026-01-15T07:30:00Z".into())));
+        assert_eq!(instant("2026-01-15T07:30:00.000000001Z"), Some((1768462200, 1, "2026-01-15T07:30:00.000000001Z".into())));
+        assert_eq!(rfc3339::encode(&Timestamp::new(1768462200, 1).unwrap()), "2026-01-15T07:30:00.000000001Z");
+        // A year below 100 is that year.
+        assert_eq!(instant("0050-01-01T00:00:00Z"), Some((-60589296000, 0, "0050-01-01T00:00:00Z".into())));
+        for refused in [
+            "2026-02-30T00:00:00Z",
+            "2026-01-15T09:30:00+24:00",
+            "2026-01-15 09:30",
+            "2026-01-15T07:30:00.0000000001Z",
+            "10000-01-01T00:00:00Z",
+        ] {
+            assert_eq!(rfc3339::decode(refused), None, "{refused}");
+        }
+
+        let span = |text: &str| cel_duration::decode(text).map(|d| cel_duration::encode(&d));
+        assert_eq!(span("1h30m").as_deref(), Some("5400s"));
+        assert_eq!(cel_duration::encode(&Duration::from_total_nanos(-1_500_000_000).unwrap()), "-1.5s");
+        assert_eq!(span("90 minutes"), None);
+        // The range is protobuf's, wider than CEL's own: both bounds are pinned.
+        assert_eq!(span("-315576000000.999999999s").as_deref(), Some("-315576000000.999999999s"));
+        assert_eq!(span("20000000000s").as_deref(), Some("20000000000s"));
+        assert_eq!(span("315576000001s"), None);
+        assert_eq!(span(&format!("1{}h", "0".repeat(40))), None);
     }
 
     #[test]

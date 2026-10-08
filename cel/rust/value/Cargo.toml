@@ -1,0 +1,12 @@
+[package]
+name = "telorun-cel-value"
+version = "0.111.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "The CEL value domain: every value, its invariants and its written text. No dependency, no host vocabulary."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]

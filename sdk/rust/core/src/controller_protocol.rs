@@ -80,28 +80,16 @@ mod tests {
     /// §3.2: the meta is the typed frame of an object with exactly four members.
     fn read_envelope(meta: &str) -> Result<Envelope, String> {
         let value = decode_typed_frame(meta).map_err(|err| format!("a frame's meta is not a typed frame: {err}"))?;
-        let CelValue::Map(entries) = &value else {
+        let CelValue::Record(entries) = &value else {
             return Err("a frame's meta is not an envelope object".into());
         };
-        let members: BTreeSet<&str> = entries
-            .iter()
-            .filter_map(|(key, _)| match key {
-                CelValue::String(name) => Some(name.as_str()),
-                _ => None,
-            })
-            .collect();
+        let members: BTreeSet<&str> = entries.keys().collect();
         if members.iter().copied().collect::<Vec<_>>() != ["id", "payload", "session", "type"] {
             return Err(format!(
                 "an envelope carries exactly id, session, type and payload, not {members:?}"
             ));
         }
-        let member = |name: &str| {
-            entries
-                .iter()
-                .find(|(key, _)| matches!(key, CelValue::String(k) if k == name))
-                .map(|(_, value)| value)
-                .expect("the member")
-        };
+        let member = |name: &str| entries.get(name).expect("the member");
         let id = match member("id") {
             CelValue::Double(n) if n.fract() == 0.0 && *n >= 0.0 => *n as u64,
             _ => return Err("an envelope's id is an unsigned integer".into()),
