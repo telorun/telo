@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: "The primer covers a template body forwarding a path that continues past a
-  reference slot into the resource it names, and a rule's resolve: reading a referenced
-  Telo.JsonSchema with its extends: parents folded in."

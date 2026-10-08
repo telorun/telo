@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-10-08
+### Fixed
+* Test discovery no longer walks directories it will discard: a directory an exclude pattern rules out whole (dir/** or dir/), and every node_modules, .git and .telo directory, is skipped instead of being listed and then filtered. The selected tests are unchanged; a suite over a checkout holding other worktrees starts in milliseconds instead of a minute.
+
 ## 0.12.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

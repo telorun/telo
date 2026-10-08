@@ -1,7 +1,0 @@
-modules:
-  modules/test: Fixed
-body: "Test discovery no longer walks directories it will discard: a directory an
-  exclude pattern rules out whole (dir/** or dir/), and every node_modules, .git and
-  .telo directory, is skipped instead of being listed and then filtered. The selected
-  tests are unchanged; a suite over a checkout holding other worktrees starts in
-  milliseconds instead of a minute."
