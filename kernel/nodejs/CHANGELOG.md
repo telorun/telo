@@ -1,5 +1,22 @@
 # @telorun/kernel
 
+## 0.113.0
+
+### Minor Changes
+
+- 2aec2f7: **A template body's bare `self.<path>` may continue past a reference slot.** `model: !cel "self.model.schemas.list"`, where `model` references a resource whose own `schemas.list` is a reference, hands the entry what that resource was declared with there — the live instance for a reference, the value for plain data. The kernel continues in the referenced resource's declaration wherever its instance has no such member; before, the path yielded nothing and the entry failed creation as missing a required field. `telo check` builds the same view — the forwarded value is checked as the entry's own field and reported at the reference the consumer wrote — when the referenced resource is declared in the consumer's own module, and `TEMPLATE_FORWARD_INCOMPATIBLE` judges such a path against the schema of the kind the slot names.
+
+  **A rule's `resolve:` reads a named shape with its parents folded in.** In `x-telo-resource-rules` and `x-telo-referrer-rules`, a referenced `Telo.JsonSchema` declaring `extends:` binds with the inherited properties and `required` in its `schema`, as every other reader of a shape sees it. A rule such as `this.property in self.model.schema.properties` reported an inherited property as undeclared; it no longer does.
+
+### Patch Changes
+
+- 2aec2f7: The compiled-validator cache key covers every registered shape a schema reaches by `$ref`. A contract whose own text was unchanged while a named shape it references changed was served the validator compiled before the change, so a correct resource was refused with `ERR_OUTPUT_INVALID` (or a wrong one accepted) until `.telo/validators/` was cleared.
+- Updated dependencies [2aec2f7]
+- Updated dependencies [2aec2f7]
+  - @telorun/analyzer@0.113.0
+  - @telorun/cel@0.113.0
+  - @telorun/templating@0.113.0
+
 ## 0.112.0
 
 ### Minor Changes
