@@ -2,17 +2,18 @@
 //!
 //! One builder per node kind, each answering a shared node, with ranges last as
 //! `start, end` in UTF-16 code units. A table row of `reading(…)` is the Node build's
-//! whole answer for one source: the tree and the diagnostic.
+//! whole answer for one source: the tree and the diagnostic. A row of `resolved(…)` is
+//! its whole answer for one source read as an expression: the namespace set as well.
 
 #![allow(dead_code)]
 
 use std::sync::Arc;
 
 use telorun_cel::{
-    parse_syntax, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode,
+    parse_expression, parse_syntax, serialize_tree, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode,
     CelListElement, CelListNode, CelLiteral, CelLiteralNode, CelMapEntry, CelMapNode, CelNode, CelParseLimits,
     CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelSyntaxCode, CelSyntaxDiagnostic, CelUnaryNode,
-    CelUnaryOperator, CelUnparsedNode, ParseOptions, ParseResult, SourceRange,
+    CelUnaryOperator, CelUnparsedNode, ParseExpressionOptions, ParseOptions, ParseResult, QualifiedCall, SourceRange,
 };
 
 pub fn range(start: u32, end: u32) -> SourceRange {
@@ -270,5 +271,84 @@ pub fn assert_reads_as_node(readings: Vec<NodeReading>) {
         assert_eq!(&*parsed.source, expected.source);
         assert_eq!(parsed.diagnostic, expected.diagnostic, "the diagnostic of {:?}", expected.source);
         assert_eq!(parsed.root, expected.root, "the tree of {:?}", expected.source);
+    }
+}
+
+// --- a source read as an expression ------------------------------------------------
+
+pub fn expression_options(namespaces: &[&str], optional_syntax: bool) -> ParseExpressionOptions {
+    ParseExpressionOptions {
+        parse: ParseOptions { optional_syntax, ..ParseOptions::default() },
+        namespaces: namespaces.iter().map(|name| name.to_string()).collect(),
+    }
+}
+
+/// What the Node build's `parseExpression` answers for one source.
+pub struct NodeExpression {
+    pub source: &'static str,
+    pub namespaces: &'static [&'static str],
+    pub optional_syntax: bool,
+    /// The set the expression records, in canonical order.
+    pub recorded: &'static [&'static str],
+    pub root: Arc<CelNode>,
+    pub diagnostic: Option<CelSyntaxDiagnostic>,
+}
+
+pub fn resolved(
+    source: &'static str,
+    namespaces: &'static [&'static str],
+    optional_syntax: bool,
+    recorded: &'static [&'static str],
+    root: Arc<CelNode>,
+    diagnostic: Option<CelSyntaxDiagnostic>,
+) -> NodeExpression {
+    NodeExpression { source, namespaces, optional_syntax, recorded, root, diagnostic }
+}
+
+/// Reads each source as an expression and holds the recorded set, the tree and the
+/// diagnostic to the recorded answer.
+pub fn assert_resolves_as_node(rows: Vec<NodeExpression>) {
+    assert!(!rows.is_empty(), "the table holds no row");
+    for expected in rows {
+        let options = expression_options(expected.namespaces, expected.optional_syntax);
+        let expression = parse_expression(expected.source, &options).expect(expected.source);
+        assert_eq!(&*expression.source, expected.source);
+        assert_eq!(&*expression.namespaces, expected.recorded, "the set of {:?}", expected.source);
+        assert_eq!(expression.diagnostic, expected.diagnostic, "the diagnostic of {:?}", expected.source);
+        assert_eq!(expression.root, expected.root, "the tree of {:?}", expected.source);
+    }
+}
+
+// --- a tree against what the writer answers for it ------------------------------------
+
+/// Holds the writer to the recorded answer for each tree: its text, or the message of
+/// its refusal.
+pub fn assert_writes_as_node(rows: Vec<(Arc<CelNode>, Result<&str, &str>)>) {
+    assert!(!rows.is_empty(), "the table holds no row");
+    for (tree, expected) in rows {
+        let written = serialize_tree(&tree);
+        let answer = match &written {
+            Ok(text) => Ok(text.as_str()),
+            Err(refusal) => Err(refusal.message.as_str()),
+        };
+        assert_eq!(answer, expected, "{tree:?}");
+    }
+}
+
+pub fn qualified(
+    namespace: &str,
+    name: &str,
+    qualified_name: &str,
+    arity: usize,
+    call_range: (u32, u32),
+    name_range: (u32, u32),
+) -> QualifiedCall {
+    QualifiedCall {
+        namespace: namespace.to_string(),
+        name: name.to_string(),
+        qualified_name: qualified_name.to_string(),
+        arity,
+        range: range(call_range.0, call_range.1),
+        name_range: range(name_range.0, name_range.1),
     }
 }

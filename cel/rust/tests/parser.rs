@@ -7,16 +7,12 @@
 //! answered for that source — the tree with every range, and the diagnostic with its
 //! message.
 //!
-//! One assertion of the Node file is not here: "reads any word as a member name" also
-//! writes each tree back and re-reads it, which needs the serializer. That case asserts
-//! the clean read below, and the write-back joins it when the serializer lands.
-//!
 //! Past the twin: the mixed-width source at the end, which no Node case reads.
 
 mod support;
 
 use support::*;
-use telorun_cel::{trees_equal, CelSyntaxCode, CelSyntaxDiagnostic, DEFAULT_PARSE_LIMITS, RESERVED_WORDS};
+use telorun_cel::{serialize_tree, trees_equal, CelSyntaxCode, CelSyntaxDiagnostic, DEFAULT_PARSE_LIMITS, RESERVED_WORDS};
 
 // --- the expression grammar -----------------------------------------------------
 
@@ -233,7 +229,6 @@ fn reads_a_name_a_dot_opens_as_an_absolute_one() {
 
 #[test]
 fn reads_any_word_as_a_member_name() {
-    // The clean read of each. Node's case also writes each tree back and re-reads it.
     let rows = vec![
         reading("{'let': 1}.let", defaults(), select(map(vec![entry(literal_string("let", 1, 6), literal_int(1, 8, 9), false)], 0, 10), "let", (11, 14), false, false, 0, 14), None),
         reading("a.while()", defaults(), receiver_call(ident("a", false, 0, 1), "while", (2, 7), vec![], 0, 9), None),
@@ -246,6 +241,10 @@ fn reads_any_word_as_a_member_name() {
         reading("a.constructor", defaults(), select(ident("a", false, 0, 1), "constructor", (2, 13), false, false, 0, 13), None),
     ];
     assert!(rows.iter().all(|row| row.diagnostic.is_none()));
+    for row in &rows {
+        let written = serialize_tree(&row.root).expect(row.source);
+        assert!(trees_equal(&row.root, &read(&written).root), "{} → {written}", row.source);
+    }
     assert_reads_as_node(rows);
 }
 

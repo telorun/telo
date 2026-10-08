@@ -1,15 +1,21 @@
 //! Nothing recurses with its input: a tree of any depth is read, walked, compared,
-//! written, cloned and released on a stack of 256 KiB, in a debug build.
+//! formatted, written back as source, re-read, resolved, queried, cloned and released
+//! on a stack of 256 KiB, in a debug build.
 //!
 //! No Node test file is the twin of this one. What is Node's answer, executed
 //! (`@telorun/cel` 0.112.0 at `d265cc79`): the
 //! longest chain and the deepest nesting of each construct that reads, the diagnostic
-//! one past it, the root's range, and the node count of each deepest nesting.
+//! one past it, the root's range, the node count of each deepest nesting, and — on a
+//! chain and a hand-built nesting three links long, where Node still answers — the
+//! text written, whether the pass answers the root it was given, and what the two
+//! queries answer.
 //!
 //! What is this crate's own, because Node cannot answer it — its walkers throw
 //! `RangeError` on these trees, and its parser recurses where this one does not: that
 //! each tree is walked, compared and released at all; the node counts of the chains
-//! and of the hand-built trees; and every read under raised limits.
+//! and of the hand-built trees; every read under raised limits; and every answer of
+//! the writer, the pass and the queries on a tree of full length, which is the answer
+//! of the three-link row carried to that length.
 
 mod support;
 
@@ -17,7 +23,10 @@ use std::fmt::{self, Write};
 use std::sync::Arc;
 
 use support::*;
-use telorun_cel::{has_unparsed, parse_syntax, trees_equal, walk_tree, CelNode, CelSyntaxCode, CelSyntaxDiagnostic};
+use telorun_cel::{
+    has_unparsed, parse_syntax, qualified_calls, resolve_namespaces, root_references, serialize_tree, trees_equal,
+    walk_tree, CelNode, CelSyntaxCode, CelSyntaxDiagnostic,
+};
 
 /// The one stack size any test of this crate names.
 const STACK_BYTES: usize = 256 * 1024;
@@ -68,6 +77,77 @@ fn chain(label: &str, links: usize) -> (String, usize) {
     }
 }
 
+/// What the writer, the pass and the queries answer for a chain.
+struct ChainAnswers {
+    written: String,
+    /// Whether the pass under a set naming nothing in the chain answers the root it was given.
+    same_under_another_name: bool,
+    /// Whether the pass under a set naming the chain's own root does.
+    same_under_its_root: bool,
+    /// The qualified calls of the tree resolved under the chain's own root.
+    calls: usize,
+    roots: Vec<String>,
+    roots_resolved: Vec<String>,
+}
+
+fn chain_answers(tree: &Arc<CelNode>) -> ChainAnswers {
+    let written = serialize_tree(tree).expect("a tree that read whole is written");
+    let reread = read(&written);
+    assert_eq!(reread.diagnostic, None);
+    assert!(trees_equal(tree, &reread.root));
+    let resolved = resolve_namespaces(tree, &["a"]);
+    ChainAnswers {
+        written,
+        same_under_another_name: Arc::ptr_eq(&resolve_namespaces(tree, &["Billing"]), tree),
+        same_under_its_root: Arc::ptr_eq(&resolved, tree),
+        calls: qualified_calls(&resolved).len(),
+        roots: root_references(tree),
+        roots_resolved: root_references(&resolved),
+    }
+}
+
+/// The text Node writes for a chain: the source, with a space around each operator.
+fn chain_written(label: &str, links: usize) -> String {
+    match label {
+        "addition" => format!("1{}", " + 1".repeat(links)),
+        _ => chain(label, links).0,
+    }
+}
+
+#[test]
+fn writes_resolves_and_queries_a_chain_as_long_as_the_node_limit_allows() {
+    on_a_small_stack(|| {
+        /// `(chain, links, the text written, whether the pass answers the root it was
+        /// given under a name the chain does not hold and under its own root, the
+        /// qualified calls under its own root, the names read before and after that pass)`.
+        const NODE_SHORT: [(&str, usize, &str, bool, bool, usize, &[&str], &[&str]); 4] = [
+            ("addition", 3, "1 + 1 + 1 + 1", true, true, 0, &[], &[]),
+            ("member", 3, "a.b.b.b", true, true, 0, &["a"], &["a"]),
+            ("index", 3, "a[0][0][0]", true, true, 0, &["a"], &["a"]),
+            ("receiver call", 3, "a.f().f().f()", true, false, 1, &["a"], &[]),
+        ];
+        // `(chain, the most links Node reads)`, as the test below holds them.
+        let longest = [("addition", 49999), ("member", 99999), ("index", 49999), ("receiver call", 99999)];
+        for ((label, links, written, same, same_under_root, calls, roots, roots_resolved), (long_label, most)) in
+            NODE_SHORT.into_iter().zip(longest)
+        {
+            assert_eq!(label, long_label);
+            for length in [links, most] {
+                let answers = chain_answers(&read(&chain(label, length).0).root);
+                if length == links {
+                    assert_eq!(answers.written, written, "{label}");
+                }
+                assert!(answers.written == chain_written(label, length), "{label} of {length}");
+                assert_eq!(answers.same_under_another_name, same, "{label} of {length}");
+                assert_eq!(answers.same_under_its_root, same_under_root, "{label} of {length}");
+                assert_eq!(answers.calls, calls, "{label} of {length}");
+                assert_eq!(answers.roots, roots, "{label} of {length}");
+                assert_eq!(answers.roots_resolved, roots_resolved, "{label} of {length}");
+            }
+        }
+    });
+}
+
 #[test]
 fn reads_and_handles_a_chain_as_long_as_the_node_limit_allows() {
     on_a_small_stack(|| {
@@ -93,16 +173,16 @@ fn reads_and_handles_a_chain_as_long_as_the_node_limit_allows() {
 
 const MILLION: usize = 1_000_000;
 
-fn right_nested_addition() -> Arc<CelNode> {
-    (0..MILLION).fold(literal_int(1, 0, 1), |right, _| binary("+", literal_int(1, 0, 1), right, 0, 1))
+fn right_nested_addition(depth: usize) -> Arc<CelNode> {
+    (0..depth).fold(literal_int(1, 0, 1), |right, _| binary("+", literal_int(1, 0, 1), right, 0, 1))
 }
 
-fn nested_negation() -> Arc<CelNode> {
-    (0..MILLION).fold(ident("a", false, 0, 1), |operand, _| unary("!", operand, 0, 1))
+fn nested_negation(depth: usize) -> Arc<CelNode> {
+    (0..depth).fold(ident("a", false, 0, 1), |operand, _| unary("!", operand, 0, 1))
 }
 
-fn nested_conditional() -> Arc<CelNode> {
-    (0..MILLION).fold(literal_int(1, 0, 1), |when_false, _| {
+fn nested_conditional(depth: usize) -> Arc<CelNode> {
+    (0..depth).fold(literal_int(1, 0, 1), |when_false, _| {
         conditional(ident("a", false, 0, 1), literal_int(1, 0, 1), when_false, 0, 1)
     })
 }
@@ -110,9 +190,38 @@ fn nested_conditional() -> Arc<CelNode> {
 #[test]
 fn handles_a_hand_built_tree_a_million_deep() {
     on_a_small_stack(|| {
-        exercise("binary", right_nested_addition(), right_nested_addition(), 2 * MILLION + 1);
-        exercise("unary", nested_negation(), nested_negation(), MILLION + 1);
-        exercise("conditional", nested_conditional(), nested_conditional(), 3 * MILLION + 1);
+        exercise("binary", right_nested_addition(MILLION), right_nested_addition(MILLION), 2 * MILLION + 1);
+        exercise("unary", nested_negation(MILLION), nested_negation(MILLION), MILLION + 1);
+        exercise("conditional", nested_conditional(MILLION), nested_conditional(MILLION), 3 * MILLION + 1);
+    });
+}
+
+/// The text Node writes for a hand-built nesting: its three-deep answer, at any depth.
+fn nesting_written(label: &str, depth: usize) -> String {
+    match label {
+        "binary" => format!("{}1 + 1{}", "1 + (".repeat(depth - 1), ")".repeat(depth - 1)),
+        "unary" => format!("{}a", "!".repeat(depth)),
+        "conditional" => format!("{}1", "a ? 1 : ".repeat(depth)),
+        other => panic!("{other} is not a hand-built nesting"),
+    }
+}
+
+#[test]
+fn writes_a_hand_built_tree_a_million_deep() {
+    on_a_small_stack(|| {
+        /// `(nesting, depth, the text Node writes)`.
+        const NODE_SHORT: [(&str, usize, &str); 3] = [
+            ("binary", 3, "1 + (1 + (1 + 1))"),
+            ("unary", 3, "!!!a"),
+            ("conditional", 3, "a ? 1 : a ? 1 : a ? 1 : 1"),
+        ];
+        let builders: [fn(usize) -> Arc<CelNode>; 3] = [right_nested_addition, nested_negation, nested_conditional];
+        for ((label, depth, written), build) in NODE_SHORT.into_iter().zip(builders) {
+            assert_eq!(serialize_tree(&build(depth)).as_deref(), Ok(written), "{label}");
+            assert_eq!(nesting_written(label, depth), written, "{label}");
+            let deep = serialize_tree(&build(MILLION)).expect(label);
+            assert!(deep == nesting_written(label, MILLION), "{label}");
+        }
     });
 }
 

@@ -5,6 +5,11 @@
 //! Every row is the Node build's answer, executed: `@telorun/cel` 0.112.0 at
 //! `d265cc79`.
 //!
+//! Two of them are about the writer: an optional entry is written wherever a tree
+//! holds one, whether or not the reader that takes the text will accept it; and a
+//! literal word after a dot, and an empty quoted member, read clean and cannot be
+//! written back.
+//!
 //! One answer here is this crate's own and not Node's: the message of an escape
 //! before a character outside the basic plane, which Node writes with an unpaired
 //! surrogate that no `String` can hold. Its tree, code and range are Node's.
@@ -12,7 +17,7 @@
 mod support;
 
 use support::*;
-use telorun_cel::CelSyntaxCode;
+use telorun_cel::{parse_syntax, serialize_tree, trees_equal, CelSyntaxCode, CelSyntaxDiagnostic};
 
 #[test]
 fn interim_a_lexer_error_anywhere_beats_an_earlier_parser_error() {
@@ -108,6 +113,46 @@ fn interim_ranges_an_escape_by_its_nominal_width_past_the_end_of_the_source() {
         assert!(end as usize > row.source.encode_utf16().count(), "{}", row.source);
     }
     assert_reads_as_node(rows);
+}
+
+#[test]
+fn interim_writes_an_optional_entry_whatever_the_reader_of_the_text_accepts() {
+    // `(source, the text Node writes, whether it reads back equal with the optional
+    // syntax on, Node's diagnostic for that text with it off)`.
+    let node_written: [(&str, &str, bool, Option<CelSyntaxDiagnostic>); 4] = [
+        ("[?x]", "[?x]", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("{?k: v}", "{?k: v}", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("[?a, b]", "[?a, b]", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("{?'k': v, 'j': w}", "{?\"k\": v, \"j\": w}", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+    ];
+    for (source, written, equal_when_on, refusal_when_off) in node_written {
+        let parsed = parse_syntax(source, &optional_syntax());
+        assert_eq!(parsed.diagnostic, None, "{source}");
+        assert_eq!(serialize_tree(&parsed.root).as_deref(), Ok(written), "{source}");
+        let on = parse_syntax(written, &optional_syntax());
+        assert_eq!(on.diagnostic, None, "{written}");
+        assert_eq!(trees_equal(&parsed.root, &on.root), equal_when_on, "{written}");
+        assert!(refusal_when_off.is_some(), "{written}");
+        assert_eq!(read(written).diagnostic, refusal_when_off, "{written}");
+    }
+}
+
+#[test]
+fn interim_reads_clean_what_the_writer_then_refuses() {
+    /// `(a source Node reads with no diagnostic, Node's refusal to write its tree)`.
+    const NODE_UNWRITABLE: [(&str, &str); 7] = [
+        (".true", "\"true\" is not a name, so it cannot be written as a name"),
+        (".false", "\"false\" is not a name, so it cannot be written as a name"),
+        (".null", "\"null\" is not a name, so it cannot be written as a name"),
+        (".true.x", "\"true\" is not a name, so it cannot be written as a name"),
+        ("a.``", "\"\" cannot be written as a member name"),
+        ("a.``.b", "\"\" cannot be written as a member name"),
+        ("a.?``", "\"\" cannot be written as a member name"),
+    ];
+    for (source, message) in NODE_UNWRITABLE {
+        let refused = serialize_tree(&tree(source)).expect_err(source);
+        assert_eq!(refused.message, message, "{source}");
+    }
 }
 
 #[test]

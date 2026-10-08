@@ -1225,6 +1225,7 @@ version = "0.0.0"
 name = "telorun-cel"
 version = "0.112.0"
 dependencies = [
+ "serde_json",
  "telorun-cel-value",
 ]
 
