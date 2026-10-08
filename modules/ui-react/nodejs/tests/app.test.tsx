@@ -17,6 +17,14 @@ describe("the application shell", () => {
     expect(links).toEqual(["/admin/_telo/ui/assets/aa/base.css"]);
   });
 
+  it("draws nothing until its stylesheets have loaded, so the shell's spinner stays", async () => {
+    rendered = await render({ path: "/", pages, holdStylesheets: true });
+    expect(document.head.querySelectorAll("link[data-telo-stylesheet]")).toHaveLength(1);
+    expect(rendered.container.childElementCount).toBe(0);
+    await rendered.loadStylesheets();
+    expect(rendered.part("page-title").textContent).toBe("Home");
+  });
+
   it("re-fetches conditionally on a reconnect and re-renders only what changed", async () => {
     rendered = await render({ path: "/", pages });
     await rendered.hello();

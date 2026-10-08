@@ -32,6 +32,7 @@ export type AppResource = RuntimeResource & {
   theme?: unknown;
   defaultTheme?: boolean;
   stylesheets?: string[];
+  compactBelow?: string;
   pages: PageConfig[];
 };
 
@@ -265,6 +266,7 @@ export class UiReactApp {
       ...(this.resource.lang === undefined ? {} : { lang: this.resource.lang }),
       pages: this.resource.pages.map(({ path, title }) => ({ path, title })),
       stylesheets: [...started.leading, ...theme, ...started.trailing],
+      compactBelow: this.resource.compactBelow ?? "40rem",
     });
   }
 

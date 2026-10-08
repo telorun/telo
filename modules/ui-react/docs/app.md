@@ -10,6 +10,7 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | `theme` | | one [`Ui.Theme`](../../ui/docs/theme.md), or a list of `{ theme, when? }` |
 | `defaultTheme` | `true` | whether the built-in theme is served |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
+| `compactBelow` | `40rem` | the viewport width below which every surface's `compact` replacement applies: a CSS length in `px`, `rem` or `em` |
 | `pages` | required, at least one | `{ path, title, children }` each |
 
 ## Pages
@@ -101,12 +102,20 @@ is started again, under a new address.
 
 ## Tables and filter bars
 
-- A table's create and edit forms open in a dialog, and a delete asks first in
-  one. A dialog holds the keyboard focus and the page behind it does not
-  scroll; Escape, its close button or a click outside it closes a form's
-  dialog, and Escape or Cancel a confirmation.
-- A delete the API refuses stays in its confirmation dialog, which shows the
-  refusal as an `error` node; the table and its rows are left as they were.
+- A filter bar shows the filters on one property together: one label, and
+  each control captioned by its operator — `from` and `to` for a range
+  (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
+- A table's create and edit forms open in the [surface](../../ui/docs/surfaces.md)
+  their opener names — a dialog when it names none — and a delete asks first
+  in a confirmation. A modal dialog or drawer holds the keyboard focus and the
+  page behind it does not scroll. Escape, a close button and a click outside
+  close a surface where its `dismiss` leaves them on; Cancel always does, and
+  Escape or Cancel a confirmation. Nothing closes a surface while its form is
+  being sent.
+- A delete the API refuses stays in its confirmation, which shows the refusal
+  as an `error` node; the table and its rows are left as they were.
+- The browser's autocomplete is off on every control typed into, in a form —
+  and on the form itself — and in a filter bar.
 - A filter chosen from a list applies at once. A yes/no property and an
   enumerated one are chosen from a list whose first entry, Any, clears the
   filter; under the `in` operator the list stays open and any number of its
@@ -115,6 +124,29 @@ is started again, under a new address.
   for the value meant.
 - Edit, delete and the pager are icon buttons; each is named for a screen
   reader and shows that name on hover and on keyboard focus.
+
+## Surfaces
+
+- **Compact.** One breakpoint for the whole application: while the viewport is
+  narrower than `compactBelow`, a surface that declares `compact` is drawn as
+  that dialog or drawer instead, and the `app` part carries
+  `data-compact="true"`. The address is unchanged, so a link opens the same
+  form at any width. A surface open when the viewport crosses the breakpoint
+  is swapped in place: what was entered stays.
+- **Address.** A surface declared with `address` keeps what is open in the
+  page's query, under [the open key](urls.md#the-open-key).
+- **Unsaved input.** Under `unsaved: confirm`, a form that holds unsaved input
+  asks before anything closes it: its own close button, Escape, a click
+  outside or Cancel; the navigation, a link, or a component's `navigate` to
+  another page; and the browser's back and forward buttons, whose step is
+  undone while the question is open and replayed if the user leaves. Leaving
+  the document raises the browser's own prompt. The question is drawn as the
+  delete confirmation is.
+- **After a submit.** `close` closes the surface, `again` empties the form for
+  another record, `keep` leaves it open with its values; the list reloads in
+  each, and a create returns it to its first page.
+- A popover is anchored to the button that opened it. `start` and `end` follow
+  the document's direction.
 
 ## Event stream
 

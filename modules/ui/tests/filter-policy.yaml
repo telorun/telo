@@ -1,0 +1,258 @@
+kind: Telo.Application
+metadata:
+  name: UiFilterPolicyTest
+  version: 1.0.0
+  description: |
+    Each placement kind provides where a bar's controls sit, its own members
+    filled and its compact placement as the one it names; each store kind
+    provides where state is kept. A filter bar carries its whole policy to the
+    node it provides — what is declared as written, the rest defaulted, an
+    omitted placement the same as the above kind with nothing set, an absent
+    store as memory, and the state key only where state is declared — with each
+    field's pin, control and default, a default always a list, and its presets.
+    A property that may be null takes the control its type takes without it: a
+    switch over a nullable boolean, on by default or by a preset, and a slider
+    over a nullable integer.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Ui.AbovePlacement
+metadata:
+  name: above
+---
+kind: Ui.AsidePlacement
+metadata:
+  name: beside
+side: end
+compact: !ref folded
+---
+kind: Ui.CollapsiblePlacement
+metadata:
+  name: folded
+open: true
+---
+kind: Ui.OverlayPlacement
+metadata:
+  name: floating
+surface: { kind: Ui.Drawer, side: bottom, address: { name: filters } }
+---
+kind: Ui.SessionStore
+metadata:
+  name: tab
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string, title: Task }
+    isDone: { type: boolean }
+    priority: { type: integer, minimum: 1, maximum: 5 }
+    effort: { type: number, minimum: 0, maximum: 10 }
+    status: { enum: [open, blocked, done] }
+    archived: { type: [boolean, "null"] }
+    rank: { type: [integer, "null"], minimum: 1, maximum: 9 }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    - { property: priority, operator: gte }
+    - { property: effort, operator: lte }
+    - { property: status, operator: in }
+    - { property: status, operator: eq }
+    - { property: archived, operator: eq }
+    - { property: rank, operator: lte }
+  sort: []
+---
+kind: Ui.Filters
+metadata:
+  name: plain
+model: !ref Todo
+collection: !ref todos
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: declaredAbove
+model: !ref Todo
+collection: !ref todos
+policy:
+  placement: { kind: Ui.AbovePlacement }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: written
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+  - { property: isDone, operator: eq, control: toggle, default: true }
+  - { property: priority, operator: gte, control: slider, default: 2 }
+  - { property: effort, operator: lte, default: 7.5 }
+  - { property: status, operator: in, control: tags, default: [open, blocked] }
+  - { property: status, operator: eq, control: none }
+presets:
+  - label: Urgent
+    values:
+      - { property: priority, operator: gte, value: 4 }
+      - { property: status, operator: in, value: [open] }
+  - label: Finished
+    values:
+      - { property: status, operator: eq, value: done }
+policy:
+  show: chosen
+  placement: !ref floating
+  controls: chips
+  apply: button
+  summary: chips
+  state:
+    key: todos
+    address: true
+    store: !ref tab
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: stored
+model: !ref Todo
+collection: !ref todos
+policy:
+  state: { key: kept, store: { kind: Ui.LocalStore } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: nullable
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: archived, operator: eq, control: toggle, default: true }
+  - { property: rank, operator: lte, control: slider }
+presets:
+  - label: Archived
+    values:
+      - { property: archived, operator: eq, value: true }
+content: { type: text, text: Todos }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: above
+    invoke: { kind: Probe.Read, source: !ref above }
+  - name: beside
+    invoke: { kind: Probe.Read, source: !ref beside }
+  - name: floating
+    invoke: { kind: Probe.Read, source: !ref floating }
+  - name: tab
+    invoke: { kind: Probe.Read, source: !ref tab }
+  - name: plain
+    invoke: { kind: Probe.Read, source: !ref plain }
+  - name: declaredAbove
+    invoke: { kind: Probe.Read, source: !ref declaredAbove }
+  - name: written
+    invoke: { kind: Probe.Read, source: !ref written }
+  - name: stored
+    invoke: { kind: Probe.Read, source: !ref stored }
+  - name: nullable
+    invoke: { kind: Probe.Read, source: !ref nullable }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        above: !cel "steps.above.result"
+        beside: !cel "steps.beside.result"
+        floating: !cel "steps.floating.result"
+        tab: !cel "steps.tab.result"
+        plain: !cel >-
+          {
+            'show': steps.plain.result.node.show,
+            'placement': steps.plain.result.node.placement,
+            'controls': steps.plain.result.node.controls,
+            'apply': steps.plain.result.node.apply,
+            'summary': steps.plain.result.node.summary,
+            'state': steps.plain.result.node.state,
+            'presets': steps.plain.result.node.presets,
+            'firstField': steps.plain.result.node.fields[0]
+          }
+        declaredAboveIsTheSame: !cel "steps.declaredAbove.result.node == steps.plain.result.node"
+        written: !cel >-
+          {
+            'show': steps.written.result.node.show,
+            'placement': steps.written.result.node.placement.type,
+            'surface': steps.written.result.node.placement.surface.type,
+            'controls': steps.written.result.node.controls,
+            'apply': steps.written.result.node.apply,
+            'summary': steps.written.result.node.summary,
+            'state': steps.written.result.node.state,
+            'presets': steps.written.result.node.presets
+          }
+        fields: !cel "steps.written.result.node.fields.map(f, has(f.default) ? [f.property, f.operator, f.pinned, f.control, f.default] : [f.property, f.operator, f.pinned, f.control])"
+        stored: !cel "steps.stored.result.node.state"
+        nullable: !cel "steps.nullable.result.node.fields.map(f, has(f.default) ? [f.property, f.control, f.default] : [f.property, f.control])"
+        nullablePresets: !cel "steps.nullable.result.node.presets"
+      expected:
+        above: { type: above }
+        beside: { type: aside, side: end, compact: { type: collapsible, open: true } }
+        floating:
+          type: overlay
+          surface:
+            type: drawer
+            side: bottom
+            size: medium
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+            address: { name: filters }
+        tab: { type: session }
+        plain:
+          show: all
+          placement: { type: above }
+          controls: direct
+          apply: commit
+          summary: none
+          state: { address: false, store: { type: memory } }
+          presets: []
+          firstField: { property: text, operator: contains, label: Task, schema: { type: string, title: Task }, pinned: false, control: auto }
+        declaredAboveIsTheSame: true
+        written:
+          show: chosen
+          placement: overlay
+          surface: drawer
+          controls: chips
+          apply: button
+          summary: chips
+          state: { key: todos, address: true, store: { type: session } }
+          presets:
+            - label: Urgent
+              values:
+                - { property: priority, operator: gte, value: [4] }
+                - { property: status, operator: in, value: [open] }
+            - label: Finished
+              values:
+                - { property: status, operator: eq, value: [done] }
+        fields:
+          - [text, contains, true, auto]
+          - [isDone, eq, false, toggle, [true]]
+          - [priority, gte, false, slider, [2]]
+          - [effort, lte, false, auto, [7.5]]
+          - [status, in, false, tags, [open, blocked]]
+          - [status, eq, false, none]
+        stored: { key: kept, address: false, store: { type: local } }
+        nullable:
+          - [archived, toggle, [true]]
+          - [rank, slider]
+        nullablePresets:
+          - label: Archived
+            values:
+              - { property: archived, operator: eq, value: [true] }

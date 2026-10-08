@@ -1,0 +1,159 @@
+kind: Telo.Application
+metadata:
+  name: UiSurfacesTest
+  version: 1.0.0
+  description: |
+    Each surface kind provides where a form appears with every member it takes
+    filled: what is declared as written, the rest from the kind's defaults. An
+    address is carried as declared, and a compact surface — by reference or
+    declared in place — as the dialog or drawer it provides. A table hands its
+    openers' surfaces, and what each says about a submit and about unsaved
+    input, to the node it provides.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Ui.Dialog
+metadata:
+  name: wide
+size: large
+modal: false
+dismiss: { outside: false }
+address: { name: todo }
+compact: !ref sheet
+---
+kind: Ui.Drawer
+metadata:
+  name: sheet
+side: bottom
+size: full
+---
+kind: Ui.Popover
+metadata:
+  name: bubble
+side: top
+align: end
+dismiss: { escape: false }
+compact: { kind: Ui.Dialog, size: small }
+---
+kind: Ui.InlineSurface
+metadata:
+  name: inRow
+---
+kind: Ui.Panel
+metadata:
+  name: beside
+side: start
+size: small
+dismiss: { closeButton: false }
+address: { name: todo }
+---
+kind: Ui.PageSurface
+metadata:
+  name: ownPage
+address: { name: todo }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+---
+kind: Ui.Table
+metadata:
+  name: table
+model: !ref Todo
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
+source: { basePath: /api/todos }
+create:
+  form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+  surface: !ref beside
+  afterSubmit: again
+  unsaved: discard
+edit:
+  form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+  surface: { kind: Ui.Drawer, side: start }
+  afterSubmit: keep
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: wide
+    invoke: { kind: Probe.Read, source: !ref wide }
+  - name: bubble
+    invoke: { kind: Probe.Read, source: !ref bubble }
+  - name: inRow
+    invoke: { kind: Probe.Read, source: !ref inRow }
+  - name: beside
+    invoke: { kind: Probe.Read, source: !ref beside }
+  - name: ownPage
+    invoke: { kind: Probe.Read, source: !ref ownPage }
+  - name: table
+    invoke: { kind: Probe.Read, source: !ref table }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        wide: !cel "steps.wide.result"
+        bubble: !cel "steps.bubble.result"
+        inRow: !cel "steps.inRow.result"
+        beside: !cel "steps.beside.result"
+        ownPage: !cel "steps.ownPage.result"
+        create: !cel "{'surface': steps.table.result.node.create.surface, 'afterSubmit': steps.table.result.node.create.afterSubmit, 'unsaved': steps.table.result.node.create.unsaved}"
+        edit: !cel "{'surface': steps.table.result.node.edit.surface, 'afterSubmit': steps.table.result.node.edit.afterSubmit, 'unsaved': steps.table.result.node.edit.unsaved}"
+      expected:
+        wide:
+          type: dialog
+          size: large
+          modal: false
+          dismiss: { escape: true, outside: false, closeButton: true }
+          address: { name: todo }
+          compact:
+            type: drawer
+            side: bottom
+            size: full
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+        bubble:
+          type: popover
+          side: top
+          align: end
+          dismiss: { escape: false, outside: true }
+          compact:
+            type: dialog
+            size: small
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+        inRow: { type: inline }
+        beside:
+          type: panel
+          side: start
+          size: small
+          dismiss: { escape: true, closeButton: false }
+          address: { name: todo }
+        ownPage: { type: page, address: { name: todo } }
+        create:
+          surface:
+            type: panel
+            side: start
+            size: small
+            dismiss: { escape: true, closeButton: false }
+            address: { name: todo }
+          afterSubmit: again
+          unsaved: discard
+        edit:
+          surface:
+            type: drawer
+            side: start
+            size: medium
+            modal: true
+            dismiss: { escape: true, outside: true, closeButton: true }
+          afterSubmit: keep
+          unsaved: confirm

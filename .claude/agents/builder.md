@@ -62,6 +62,13 @@ Rules that do not bend:
 - **Never swallow an error.** If something fails in a way you cannot fix inside the task, that
   is your report's headline.
 
+**In an architect's loop**, the brief names the checks you run: the quick ones only. The architect
+runs the whole suite once after you, so do not run it yourself. A small choice you meet that stays
+inside the brief's public surface and its decisions is yours: pick, and list it under *Choices* in
+your report, one line each. What touches public surface, a data or schema shape, a boundary or a
+decision you report as a question instead of answering it. End the report with *For the next
+builder*: conventions you learnt, helpers to reuse, traps, and how to run each check quickly.
+
 Before reporting, run the task's checks — the ones it names, or otherwise the tests and type
 checks covering what you changed — and read the output. Then report: what you changed and why,
 the commands you ran with their real results, what you deliberately did not do, pre-existing

@@ -4,9 +4,10 @@ metadata:
   version: 1.0.0
   description: >-
     Test fixture exposing what a value source provides, so a test can compare a
-    composite's produced node with an expected literal.
+    composite's produced node with an expected literal, and what checking a
+    manifest reports.
 exports:
-  kinds: [Read]
+  kinds: [Read, Diagnostics]
 ---
 kind: Telo.Definition
 metadata:
@@ -22,3 +23,17 @@ schema:
   properties:
     source:
       x-telo-ref: { kind: Telo.Provider, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: Diagnostics
+  description: Checks a manifest and returns every error and warning it produced, as code and message.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Diagnostics
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { type: string }

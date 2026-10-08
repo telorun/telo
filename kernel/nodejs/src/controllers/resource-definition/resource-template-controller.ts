@@ -30,6 +30,7 @@ import {
   refuseComputedRefSlots,
   type RefPositionHost,
 } from "../../refuse-computed-ref-slots.js";
+import { declarationOfInstance } from "../../instance-declaration.js";
 import { declaringContextOf } from "./declaring-context.js";
 
 /**
@@ -88,6 +89,18 @@ function referencesBeyondSelf(value: CompiledValue): boolean {
     (value.calls?.length ?? 0) > 0 ||
     (value.refs ?? []).some((r) => r !== "self")
   );
+}
+
+/**
+ * One step of a forwarded `self.<path>`. A path that continues past a reference
+ * reads what the referenced resource was DECLARED with — its manifest, whose own
+ * reference slots hold live instances by now — wherever the instance itself has
+ * no such member, so a body can hand on a value a resource it references holds.
+ */
+function memberOf(holder: any, key: string): unknown {
+  const own = holder?.[key];
+  if (own !== undefined) return own;
+  return (declarationOfInstance(holder) as Record<string, unknown> | undefined)?.[key];
 }
 
 /** True when `schema` declares a `default:` anywhere {@link withSchemaDefaults}
@@ -359,7 +372,7 @@ refPositions?: RefPositionHost): ControllerInstance {
             typeof value.source === "string" ? value.source.trim().match(SELF_PATH) : null;
           if (selfPath) {
             let cur: any = getSelf();
-            for (const key of selfPath[1]!.split(".").slice(1)) cur = cur?.[key];
+            for (const key of selfPath[1]!.split(".").slice(1)) cur = memberOf(cur, key);
             return cur;
           }
           // CEL cannot read a member off a live instance, and a ref slot holds

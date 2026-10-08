@@ -1,0 +1,135 @@
+# A pinned filter on bars of every placement. Pinning says something only
+# where something folds.
+kind: Telo.Application
+metadata:
+  name: UiPinnedApp
+  version: 1.0.0
+imports:
+  Ui: ../../../
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: text, operator: contains }
+  sort: []
+---
+kind: Ui.Filters
+metadata:
+  name: omitted
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: above
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement: { kind: Ui.AbovePlacement }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: aside
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement: { kind: Ui.AsidePlacement, side: end }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: collapsible
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement: { kind: Ui.CollapsiblePlacement }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: overlay
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Drawer } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: aboveCompact
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement: { kind: Ui.AbovePlacement, compact: { kind: Ui.CollapsiblePlacement } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: asideCompact
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  placement:
+    kind: Ui.AsidePlacement
+    compact: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Dialog } }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: omittedChosen
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  show: chosen
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: aboveChosen
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains, pinned: true }
+policy:
+  show: chosen
+  placement: { kind: Ui.AbovePlacement }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: aboveUnpinned
+model: !ref Todo
+collection: !ref todos
+fields:
+  - { property: text, operator: contains }
+policy:
+  placement: { kind: Ui.AbovePlacement }
+content: { type: text, text: Todos }

@@ -1,0 +1,13 @@
+modules:
+  modules/ui: Added
+body: "Ui.Collection declares what a collection's list request accepts: query.filters,
+  each a property with one operator (eq, contains, gt, gte, lt, lte, in), and
+  query.sort, the properties it may be sorted by. Breaking: Ui.Table and Ui.Filters each
+  require a collection reference to one. A table column is sortable only where the
+  collection lists its property, no longer wherever the value is scalar, and a
+  source.filters key must be a property the collection declares with eq
+  (UI_SOURCE_FILTER_NOT_ACCEPTED). A filter bar with no fields shows the collection's
+  declared filters instead of one per scalar property (UI_FILTER_MODEL_INCOMPLETE when
+  its model lacks one of their properties); a listed field must write its operator,
+  which is no longer defaulted from the property's type, and must be a pair the
+  collection declares (UI_FILTER_NOT_ACCEPTED). Ui.Filters no longer takes rowKey."

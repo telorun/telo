@@ -8,7 +8,8 @@ interface IconButtonProps {
   label: string;
   icon: LucideIcon;
   disabled?: boolean;
-  onClick: () => void;
+  /** Given the button, for what opens anchored to it. */
+  onClick: (button: HTMLElement) => void;
 }
 
 /** A button that shows only an icon: its name is read out, and shown on hover or focus. */
@@ -16,7 +17,7 @@ export function IconButton({ part, label, icon, disabled, onClick }: IconButtonP
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <button data-telo-part={part} type="button" aria-label={label} disabled={disabled} onClick={onClick}>
+        <button data-telo-part={part} type="button" aria-label={label} disabled={disabled} onClick={(event) => onClick(event.currentTarget)}>
           <Icon of={icon} />
         </button>
       </Tooltip.Trigger>

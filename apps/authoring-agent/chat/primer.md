@@ -433,7 +433,9 @@ of them. A router or server entry sees `error` plus `request.path` / `method` /
 
 A resource rule reads what its reference slots NAME only when it opts in with
 `resolve: [/<slot>]`: inside the condition each listed slot is the declaration
-it references, one level deep. A pointer naming a field the resource left out
+it references, one level deep. A referenced `Telo.JsonSchema` is read as the
+shape it is — its `extends:` parents folded into its `schema` — so a rule over
+`self.<slot>.schema.properties` sees inherited properties too. A pointer naming a field the resource left out
 contributes nothing — the field stays ABSENT, so `self.?xs.orValue([])` is the
 empty list and not a non-collection. A slot whose reference names a kind it does
 not accept is already refused there (`REFERENCE_KIND_MISMATCH`), and the rule is
@@ -1270,13 +1272,61 @@ instead start `https://`, `http://` or `mailto:`, and `src` `https://` or
 
 **Composites** are resources placed through a `composite` node:
 
-- `Ui.Table` — `model:` (a `Telo.JsonSchema`, the row), `source: { basePath,
-  filters? }`, optional `columns:` (each `{ header?, value: !cel "row.x" }` or
+- `Ui.Collection` — `query: { filters: [{ property, operator }], sort:
+  [{ property }] }`, all three keys REQUIRED (`[]` for none): what a
+  collection's list accepts. `operator` is `eq | contains | gt | gte | lt | lte
+  | in`. Every table and filter bar names one as `collection:`.
+- `Ui.Table` — `model:` (a `Telo.JsonSchema`, the row), `collection:` (required),
+  `source: { basePath, filters? }` (each fixed filter a property the collection
+  declares with `eq`), optional `columns:` (each `{ header?, value: !cel "row.x" }` or
   `{ header?, cell: <Ui.Component> }`; omitted → one per model property),
-  `pageSize`, `rowStyle`, `create:` / `edit:` (a `Ui.Form`), `delete: true`.
+  `pageSize`, `rowStyle`, `create:` / `edit:`, `delete: true`.
+  A column sorts only where the collection's `query.sort` lists its property.
+  `create:` and `edit:` are OBJECTS — `{ form: <Ui.Form>, surface?, afterSubmit?,
+  unsaved? }` — never a bare form (`create: !ref f` is refused). `surface:` is
+  where the form opens, a KIND chosen by `kind:` (`!ref` or inline; omitted → a
+  `Ui.Dialog`): `Ui.Dialog` (`size`, `modal`, `dismiss`, `address`, `compact`),
+  `Ui.Drawer` (plus `side`), `Ui.Popover` (`side`, `align`, `dismiss`,
+  `compact`), `Ui.InlineSurface` (`compact`), `Ui.Panel` (`side`, `size`,
+  `dismiss`, `address`, `compact`), `Ui.PageSurface` (`address`, required). A
+  key a kind does not list is refused. `address: { name }` puts the open form
+  in the page's address — give `create` and `edit` the SAME name; `compact:` is
+  the `Ui.Dialog` / `Ui.Drawer` used on a narrow viewport, itself with no
+  `address` and no `compact`. `afterSubmit:` is `close` (default) | `keep`,
+  and on `create` also `again`; `unsaved:` is `confirm` (default) | `discard`.
 - `Ui.Form` — `model:`, `source: { basePath }`, optional `fields: [{ property }]`.
-- `Ui.Filters` — `model:`, optional `fields: [{ property, operator? }]`,
-  `content:` (one node; every table inside obeys the filters).
+- `Ui.Filters` — `model:`, `collection:` (required), optional `fields:
+  [{ property, operator }]` (both required, each a pair the collection declares;
+  omitted → one control per filter the collection declares), `content:` (one
+  node; every table inside obeys the filters). No operator is implied by a
+  property's type, and no two fields share a property AND an operator. A field
+  also takes `pinned: true` (stays outside whatever the bar folds into; only
+  meaningful when something folds or `show: chosen`), `control:` — `auto`
+  (default) | `select` | `options` (both need an `enum` or a boolean) | `toggle`
+  (a boolean with `eq`; it holds true or nothing) | `slider` (a number/integer
+  declaring `minimum` AND `maximum`, with `eq` or a comparison) | `tags`
+  (needs `in`) | `none` (drawn nowhere; set by its default or a preset) — a
+  nullable type (`[boolean, "null"]`) counts as its plain type here — and
+  `default:` (one value of the property's type, or a LIST under `in`; never
+  `false` for a filter entered with a `toggle`, which holds true or nothing —
+  the same for a preset value). `presets: [{ label, values:
+  [{ property, operator, value }] }]` are one exclusive choice over pairs the
+  bar shows, labels unique. `policy:` (all optional, any combination valid):
+  `show: all | chosen`, `controls: direct | chips`, `apply: commit | typing |
+  button`, `summary: none | chips`, `placement:` — a KIND chosen by `kind:`
+  (`!ref` or inline; omitted → `Ui.AbovePlacement`): `Ui.AbovePlacement`
+  (`compact`), `Ui.AsidePlacement` (`side: start | end`, `compact`),
+  `Ui.CollapsiblePlacement` (`open`), `Ui.OverlayPlacement` (`surface:`
+  REQUIRED — a `Ui.Dialog` / `Ui.Drawer` / `Ui.Popover` only); `compact:` is a
+  `Ui.CollapsiblePlacement` or `Ui.OverlayPlacement` — and `state: { key,
+  address?, store? }`: `key` letters and digits, and AT LEAST ONE of `address:
+  true` (filter values in the page's address) and `store:` (`{ kind:
+  Ui.LocalStore }` or `{ kind: Ui.SessionStore }`, no keys); omitted → kept in
+  memory only. Bars sharing a `key` share their state. Under `apply: button`
+  only what is typed or picked in a control waits for Apply; a preset, Reset
+  and a summary chip's removal act at once. Apply and Reset stay
+  outside whatever folds. A folding placement with no unpinned, drawn filter
+  has nothing to fold and draws no toggle.
 - `Ui.Component` — `component: !ref <Alias>.<export>`, `props:`, `model:`.
 - `Ui.View` — `content:` (one node), for a reusable section.
 - `Ui.Theme` — `tokens:` (`color.accent`, `radius.md`, `font.body: !ref <Font.Family>`, …).
@@ -1332,8 +1382,12 @@ the host — `useHost()` from `@telorun/ui-react` gives `location`, `navigate`,
 
 `Crud.Resource` mounts list / read / create / replace / delete over one table:
 `connection:` (a `Sql.Connection`), `singular:`, `plural:`, `model:` (a
-`Telo.JsonSchema` of the writable columns, WITHOUT `id`), optional `table:` and
-`idParam:`. Properties are camelCase, columns snake_case, the primary key is
+`Crud.Model`), optional `table:` and `idParam:`. A `Crud.Model` holds
+`schemas: { read, list, create, update }` — four `Telo.JsonSchema` shapes, all
+required; `read` and `list` declare a required `id`, `create` and `update` omit
+it and set `additionalProperties: false` — and `query: { filters: [{ property,
+operator }], sort: [{ property }] }`, all required (`[]` for none): the only
+filters and sorts the list accepts, each naming a property of `read`. Properties are camelCase, columns snake_case, the primary key is
 the integer column `id`. It does not create the table. The module needs telo
 0.112.0 or newer (`requires: telo: ">=0.112.0"`).
 
@@ -1362,16 +1416,17 @@ request-validation envelope with `location: "body"`, `path` the property
   plus filters: `<property>=` (equals — the bare name only; `<property>.eq=` is
   refused), `<property>.contains=` (strings, any case),
   `<property>.gt|gte|lt|lte=`, `<property>.in=` repeated per value.
-  `id` filters and sorts like a model property. ONE sort property; `id` breaks
-  ties; rows with no value sort last.
+  A filter is accepted ONLY where the model's `query.filters` lists that
+  property with that operator, and a `sort` only for a property under
+  `query.sort` — `id` included, which is never implied. ONE sort property; with
+  none the order is `id`; `id` breaks ties; rows with no value sort last.
 - It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
   `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
   last page, otherwise sent back as `cursor`.
 - A bad query is 400 with the request-validation envelope: `{ error:
   "ValidationError", message: "Request validation failed", status: 400,
-  details: [{ location: "query", path: "<parameter>", message }] }` — for an
-  unknown property or operator, an operator the property's type does not take,
-  a value not of its type, a multi-property `sort`, or a cursor that is
+  details: [{ location: "query", path: "<parameter>", message }] }` — for a
+  filter or sort the model does not declare, a value not of its type, a multi-property `sort`, or a cursor that is
   malformed or from another `sort`. `limit`, `cursor` and `sort` are typed in
   the request schema and judged first: a `limit` that is no integer or outside
   1–100, or a repeated `sort` / `cursor`, is the only detail of its response
@@ -1381,7 +1436,7 @@ Values come back in the model's declared JSON types on every route: a
 `boolean` property is `true` / `false` (also on SQLite) and is written as one.
 
 **`Crud.Ui`** is the whole admin screen — filter bar, sortable paged table,
-create / edit form, confirmed delete — from two fields, both required:
+create / edit form, confirmed delete — from two required fields:
 `model:` (the SAME model the `Crud.Resource` has) and `basePath:` (where the
 resource is mounted — an app-relative path, as above). It does not reference
 the resource. Place
@@ -1389,14 +1444,47 @@ it on a `UiReact.App` page:
 
 ```yaml
 - type: composite
-  ref: { kind: Crud.Ui, model: !ref Todo, basePath: /api/todos }
+  ref: { kind: Crud.Ui, model: !ref todoModel, basePath: /api/todos }
 ```
 
-When the screen needs chosen columns, a custom cell or fewer filters, replace
-it with what it expands into and edit that: a `Ui.Form`, a `Ui.Table` with
-`rowKey: id`, `create:` and `edit:` both `!ref` that form and `delete: true`,
-and a `Ui.Filters` whose `content:` is the table — all three over the same
-`model` and `basePath`.
+Three OPTIONAL keys say how the screen behaves; none needs an eject:
+
+- `filters:` — the bar's whole policy, exactly what `Ui.Filters.policy` takes
+  (`show`, `placement`, `controls`, `apply`, `summary`, `state`).
+- `create:` — `{ surface?, afterSubmit?, unsaved? }`: where the create form
+  opens, `close` | `again` | `keep` after a save, `confirm` | `discard` for
+  unsaved input.
+- `edit:` — the same three, `afterSubmit` being `close` | `keep` only.
+
+```yaml
+kind: Crud.Ui
+model: !ref todoModel
+basePath: /api/todos
+filters: { show: chosen, summary: chips, state: { key: todos, address: true } }
+create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
+edit: { surface: { kind: Ui.Panel, address: { name: todo } } }
+```
+
+Variants are KINDS: a surface, a placement and a store are `ui` resources
+chosen by `kind:` (inline or `!ref`) — import `ui` to name one — never a
+`type:` or a mode string. `Crud.Ui` has no `form:` key in `create` / `edit`
+(it generates the forms) and no default of its own: each key is passed on as
+written, so a key left out takes the TABLE's or the BAR's default (a dialog
+that closes after a save and confirms unsaved input; every filter on show
+above the table, state in memory), and `create: {}` equals no `create`.
+
+When the screen needs what `Crud.Ui` has no key for — chosen columns, a custom
+cell, a row style, fewer filters, a filter's `pinned` / `control` / `default`,
+`presets`, chosen form fields — replace
+it with what it expands into and edit that: two `Ui.Form`s — one over the
+model's `create` shape, one over its `update` shape — a `Ui.Table` over its
+`list` shape with `rowKey: id`, `create: { form: !ref <the create form>, …what
+create: held }`, `edit: { form: !ref <the edit form>, …what edit: held }` and
+`delete: true`, and a `Ui.Filters` over its
+`read` shape whose `content:` is the table and whose `policy:` is what
+`filters:` held (no `policy:` when it was not written). All four share the `basePath`, and
+the table and the bar take `collection: !ref <the Crud.Model>` (a `Crud.Model`
+is a `Ui.Collection`).
 
 ## Web pages — the `html` module
 
@@ -1805,7 +1893,13 @@ Two ways to author a `Telo.Definition` WITHOUT a controller — pick by intent:
   CEL (`self.items.map(i, {'handler': i.handler})`): CEL values are data, so
   the reference is lost (`REF_SLOT_COMPUTED`, and `ERR_REF_SLOT_COMPUTED` at
   boot). Declare the field on your kind already shaped as the entry expects,
-  and forward it whole. The same rule holds OUTSIDE a body: an expression
+  and forward it whole. A bare path may CONTINUE PAST a reference slot of your
+  kind into the resource it names (`model: !cel "self.model.schemas.list"`,
+  where `model` references a resource whose own `schemas.list` is a reference):
+  the entry receives what that resource was declared with there, references
+  intact, and `telo check` checks it as the entry's field when the referenced
+  resource is declared in the same module as the one using your kind. The same
+  rule holds OUTSIDE a body: an expression
   (`!cel`, `!interpolate`) at or above a reference slot in any field the kind
   evaluates — at creation (a `Telo.Provider`, whose whole root is evaluated
   once, or a field marked `x-telo-eval: compile`), per call

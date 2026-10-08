@@ -1,0 +1,33 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiRefusalsTest
+  version: 1.0.0
+  description: |
+    `Crud.Ui`'s three presentation keys are checked where the application
+    writes them: a key `filters`, `create` or `edit` does not have, an
+    `afterSubmit` outside what that opener takes — `again` on `edit` among
+    them — and a resource at `surface` that is no surface are each reported
+    against the application's own `Crud.Ui`, not against the bar or the table
+    the value is forwarded to.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/ui-refusals/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Ui/filtersKey: /filters must NOT have additional properties ('sumary' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Ui/createKey: /create must NOT have additional properties ('afterSubmitt' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Ui/editKey: /edit must NOT have additional properties ('unsavd' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Ui/createAfter: /create/afterSubmit must be equal to one of the allowed values (close | again | keep)"
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Ui/editAfter: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Crud.Ui/createSurface: reference at 'create.surface' → 'Ui.LocalStore' does not implement 'Ui.Surface'"

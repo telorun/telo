@@ -3,10 +3,10 @@ metadata:
   name: UiCompositesTest
   version: 1.0.0
   description: |
-    A filter bar provides one control per listed property with the operator
-    written or the one the property's type defaults to — and one per scalar
-    property when none are listed — around the node it filters, and nothing at
-    all when that node is switched off. A standalone
+    A filter bar provides one control per listed filter — and, when none are
+    listed, exactly the filters its collection declares, in that order and with
+    their operators — around the node it filters, and nothing at all when that
+    node is switched off. A standalone
     form lists every scalar property. A theme provides its tokens by name, its
     typefaces apart from its CSS values.
 imports:
@@ -30,31 +30,47 @@ schema:
     status: { enum: [open, blocked, done] }
     tags: { type: array, items: { type: string } }
 ---
+# What the collection's list accepts: not every scalar property, and not the
+# operator a type would suggest.
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: status, operator: in }
+    - { property: text, operator: contains }
+    - { property: priority, operator: gte }
+  sort: []
+---
 kind: Ui.Filters
 metadata:
   name: derived
 model: !ref Todo
+collection: !ref todos
 content: { type: text, text: Todos, when: false }
 ---
 kind: Ui.Filters
 metadata:
   name: shown
 model: !ref Todo
+collection: !ref todos
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
 metadata:
   name: written
 model: !ref Todo
+collection: !ref todos
 fields:
   - property: priority
     operator: gte
   - property: text
+    operator: contains
 content:
   type: stack
   children:
     - type: composite
-      ref: { kind: Ui.Table, model: !ref Todo, source: { basePath: /api/todos }, columns: [{ value: !cel "row.text" }] }
+      ref: { kind: Ui.Table, model: !ref Todo, collection: !ref todos, source: { basePath: /api/todos }, columns: [{ value: !cel "row.text" }] }
 ---
 kind: Ui.Form
 metadata:
@@ -101,14 +117,13 @@ steps:
         theme: !cel "{'tokens': steps.theme.result.tokens, 'body': steps.theme.result.fonts['font.body'].family}"
       expected:
         derived:
-          - { property: text, operator: contains, label: Task }
-          - { property: isDone, operator: eq, label: isDone }
-          - { property: priority, operator: eq, label: priority }
           - { property: status, operator: in, label: status }
+          - { property: text, operator: contains, label: Task }
+          - { property: priority, operator: gte, label: priority }
         derivedContent: false
         written:
-          - { property: priority, operator: gte, label: priority, schema: { type: integer } }
-          - { property: text, operator: contains, label: Task, schema: { type: string, title: Task } }
+          - { property: priority, operator: gte, label: priority, schema: { type: integer }, pinned: false, control: auto }
+          - { property: text, operator: contains, label: Task, schema: { type: string, title: Task }, pinned: false, control: auto }
         writtenContent: [table]
         form:
           - { property: text, label: Task }

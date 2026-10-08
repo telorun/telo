@@ -19,14 +19,37 @@ schema:
     title: { type: string }
     isDone: { type: boolean }
 ---
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: taskModel }
+schemas:
+  read: !ref TaskRecord
+  list: !ref TaskRecord
+  create: !ref Task
+  update: !ref Task
+query:
+  filters:
+    - { property: title, operator: contains }
+  sort: []
+---
 kind: Crud.Ui
 metadata: { name: tasks }
-model: !ref Task
+model: !ref taskModel
 basePath: /api/tasks
 ---
 kind: Ui.Table
 metadata: { name: summary }
 model: !ref Task
+collection: !ref taskModel
 source: { basePath: /api/tasks }
 columns:
   - value: !cel "row.text"
@@ -34,6 +57,8 @@ columns:
 kind: Ui.Filters
 metadata: { name: search }
 model: !ref Task
+collection: !ref taskModel
 fields:
   - property: text
+    operator: contains
 content: { type: composite, ref: !ref tasks }

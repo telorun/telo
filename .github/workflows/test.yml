@@ -726,8 +726,12 @@ jobs:
       # the run meaningless rather than merely red. Modules are included: the
       # three `pkg:npm` ones stage a dist/ their controller entry is resolved
       # from — see the note in the Linux unit job.
+      #
+      # The excluded packages are browser bundles and the docs site: nothing
+      # here reads their output, they have no Windows-specific path, and the
+      # Linux unit job builds them.
       - name: Build for Node.js
-        run: pnpm -r run build
+        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Run package unit tests
         run: pnpm -r --no-bail test
@@ -836,8 +840,12 @@ jobs:
       # the run meaningless rather than merely red. Modules are included: the
       # three `pkg:npm` ones stage a dist/ their controller entry is resolved
       # from — see the note in the Linux unit job.
+      #
+      # The excluded packages are browser bundles and the docs site: nothing
+      # here reads their output, they have no macOS-specific path, and the
+      # Linux unit job builds them.
       - name: Build for Node.js
-        run: pnpm -r run build
+        run: pnpm -r --filter "!@telorun/studio" --filter "!telo-vscode" --filter "!@telorun/pages" --filter "!@telorun/hub-web" run build
 
       - name: Run package unit tests
         run: pnpm -r --no-bail test

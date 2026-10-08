@@ -1,17 +1,41 @@
-# Four composites, each naming something its model cannot answer for. `telo
-# check` reports all four here; a consumer's own check sees none of them, so
-# there each is refused by the composite when it is first read.
+# Composites, surfaces and filter bars that each name something their model,
+# their collection or their own shape cannot answer for. `telo check` reports
+# every one here; a consumer's own check sees none of them, so there each is
+# refused when it is first read.
 kind: Telo.Library
 metadata:
   name: UiInvalid
   version: 1.0.0
   description: >-
-    Test fixture exporting a table, a form and two filter bars that each name a
-    property or an operator their data model does not support.
+    Test fixture exporting tables, a form and filter bars that each name a
+    property, an operator or a filter their data model or their collection
+    does not support, and surfaces whose compact surface is addressed or has a
+    compact surface of its own.
 imports:
   Ui: ../../../../
 exports:
-  resources: [sourceFilter, formField, filterProperty, filterOperator]
+  resources:
+    - sourceFilter
+    - sourceFilterNotAccepted
+    - formField
+    - filterProperty
+    - filterOperator
+    - filterNotAccepted
+    - filterModelIncomplete
+    - filterModelMistyped
+    - filterModelUntyped
+    - compactAddressed
+    - compactNested
+    - filterDuplicate
+    - filterDefaultInvalid
+    - filterControlUnsupported
+    - presetUnknownFilter
+    - presetValueInvalid
+    - presetLabelDuplicate
+    - toggleOverText
+    - toggleUntyped
+    - toggleDefaultOff
+    - togglePresetOff
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -21,14 +45,58 @@ schema:
   properties:
     text: { type: string }
     isDone: { type: boolean }
+    count: { type: integer }
+---
+# A shape declaring no property at all.
+kind: Telo.JsonSchema
+metadata:
+  name: Opaque
+schema:
+  type: object
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters:
+    - { property: text, operator: contains }
+  sort: []
+---
+# Accepts a filter by a property `Todo` does not declare.
+kind: Ui.Collection
+metadata:
+  name: wider
+query:
+  filters:
+    - { property: status, operator: eq }
+  sort: []
+---
+# Accepts a filter whose operator `Todo.count`, an integer, cannot carry.
+kind: Ui.Collection
+metadata:
+  name: counted
+query:
+  filters:
+    - { property: count, operator: contains }
+  sort: []
 ---
 kind: Ui.Table
 metadata:
   name: sourceFilter
 model: !ref Todo
+collection: !ref todos
 source:
   basePath: /api/todos
   filters: { done: true }
+---
+kind: Ui.Table
+metadata:
+  name: sourceFilterNotAccepted
+model: !ref Todo
+collection: !ref todos
+source:
+  basePath: /api/todos
+  filters: { isDone: true }
 ---
 kind: Ui.Form
 metadata:
@@ -43,15 +111,207 @@ kind: Ui.Filters
 metadata:
   name: filterProperty
 model: !ref Todo
+collection: !ref todos
 fields:
   - property: status
+    operator: eq
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
 metadata:
   name: filterOperator
 model: !ref Todo
+collection: !ref todos
 fields:
   - property: isDone
     operator: contains
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterNotAccepted
+model: !ref Todo
+collection: !ref todos
+fields:
+  - property: text
+    operator: contains
+  - property: text
+    operator: eq
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterModelIncomplete
+model: !ref Todo
+collection: !ref wider
+content: { type: text, text: Todos }
+---
+# No `fields`: the bar would draw the collection's `count` + `contains`, which a
+# listed field is refused for.
+kind: Ui.Filters
+metadata:
+  name: filterModelMistyped
+model: !ref Todo
+collection: !ref counted
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterModelUntyped
+model: !ref Opaque
+collection: !ref todos
+content: { type: text, text: Todos }
+---
+kind: Ui.Panel
+metadata:
+  name: compactAddressed
+compact:
+  kind: Ui.Dialog
+  address: { name: todo }
+---
+kind: Ui.Dialog
+metadata:
+  name: compactNested
+compact:
+  kind: Ui.Drawer
+  compact: { kind: Ui.Dialog }
+---
+# Accepts everything the six bars below ask for.
+kind: Ui.Collection
+metadata:
+  name: flags
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    - { property: count, operator: gte }
+  sort: []
+---
+kind: Ui.Filters
+metadata:
+  name: filterDuplicate
+model: !ref Todo
+collection: !ref flags
+fields:
+  - { property: text, operator: contains }
+  - { property: text, operator: contains }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterDefaultInvalid
+model: !ref Todo
+collection: !ref flags
+fields:
+  - { property: isDone, operator: eq, default: "yes" }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: filterControlUnsupported
+model: !ref Todo
+collection: !ref flags
+fields:
+  - { property: count, operator: gte, control: toggle }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: presetUnknownFilter
+model: !ref Todo
+collection: !ref flags
+fields:
+  - { property: isDone, operator: eq }
+presets:
+  - label: Big
+    values:
+      - { property: count, operator: gte, value: 3 }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: presetValueInvalid
+model: !ref Todo
+collection: !ref flags
+fields:
+  - { property: isDone, operator: eq }
+presets:
+  - label: Done
+    values:
+      - { property: isDone, operator: eq, value: [true] }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: presetLabelDuplicate
+model: !ref Todo
+collection: !ref flags
+presets:
+  - label: Done
+    values:
+      - { property: isDone, operator: eq, value: true }
+  - label: Done
+    values:
+      - { property: isDone, operator: eq, value: false }
+content: { type: text, text: Todos }
+---
+# A switch is on or holds nothing, over a property that says it is a boolean.
+kind: Telo.JsonSchema
+metadata:
+  name: Loose
+schema:
+  type: object
+  properties:
+    note: { type: [string, "null"] }
+    anything: {}
+    isDone: { type: [boolean, "null"] }
+---
+kind: Ui.Collection
+metadata:
+  name: loose
+query:
+  filters:
+    - { property: note, operator: eq }
+    - { property: anything, operator: eq }
+    - { property: isDone, operator: eq }
+  sort: []
+---
+kind: Ui.Filters
+metadata:
+  name: toggleOverText
+model: !ref Loose
+collection: !ref loose
+fields:
+  - { property: note, operator: eq, control: toggle }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: toggleUntyped
+model: !ref Loose
+collection: !ref loose
+fields:
+  - { property: anything, operator: eq, control: toggle }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: toggleDefaultOff
+model: !ref Loose
+collection: !ref loose
+fields:
+  - { property: isDone, operator: eq, control: toggle, default: false }
+content: { type: text, text: Todos }
+---
+kind: Ui.Filters
+metadata:
+  name: togglePresetOff
+model: !ref Loose
+collection: !ref loose
+fields:
+  - { property: isDone, operator: eq, control: toggle }
+presets:
+  - label: Open
+    values:
+      - { property: isDone, operator: eq, value: false }
 content: { type: text, text: Todos }

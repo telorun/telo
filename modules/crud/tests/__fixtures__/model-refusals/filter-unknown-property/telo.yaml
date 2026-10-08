@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: CrudModelFilterUnknownPropertyApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

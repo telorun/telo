@@ -43,11 +43,23 @@ Everything below applies to each question in the set.
 ## Domain lenses
 
 A lens is the rubric for one domain of decision — data modeling, naming, and so on — kept as one
-file per domain in `.claude/decider-lenses/`. The domains that exist are the files there; list
-them before deciding.
+file per domain in `.claude/decider-lenses/`. The index below names every lens and the questions
+that trigger it.
 
-- **Classify first.** Name each question's domain. A question may touch several; read every lens
-  that matches, and only those. When none matches, decide with the generic ranking alone.
+| Lens | Triggered by |
+|---|---|
+| `architecture.md` | where a responsibility lives, what may depend on what, how components talk at runtime — imports and call topology alike |
+| `data-modeling.md` | the shape of data that outlives a request, on any backend: keys, identity, ownership, evolution, deletion, paging |
+| `domain-driven-design.md` | what a boundary contains: which concepts, rules and consistency guarantees; contexts, aggregates, events |
+| `engineering-practices.md` | whether to add a practice around the code: load tests, scans, fuzzing, gates, environments, dashboards, alerts |
+| `kind-design.md` | the shape of the manifest surface: what becomes a kind, a field or a named shape; variants, discriminators (`type:` / `mode:`), exclusive keys, keys shared between variants |
+| `module-internals.md` | how one component is arranged inside: where rules, I/O, transports, transactions and wiring sit |
+| `reliability.md` | retries, delivery guarantees, idempotency, ordering, overload, dependency failure, health |
+
+- **Classify first.** Match each question against the index by what it decides, not by the
+  feature it arose in — a UI question about how a form's options are spelled is a kind-design
+  question. A question may touch several; read every lens that matches, and only those. When
+  none matches, decide with the generic ranking alone.
 - **A lens ranks, the goals veto.** The goals in step 2 of How to decide still disqualify. Among the
   options that pass them, the lens's principles and consequences decide.
 - **Settle a lens's distinguishing questions yourself**, from the question and the codebase. They

@@ -7,8 +7,11 @@ metadata:
     A complete app served as one unit, with no hand-written frontend: the REST
     todo API (one Crud.Resource over the `todos` table) and an admin UI declared
     in the same manifest (UiReact.App) — a filterable, sortable, paged table with
-    create, edit and delete — on a single port. The UI and the API share one
-    model, so renaming a property is a `telo check` error rather than a broken page.
+    create, edit and delete — on a single port. Its first page is one line that
+    also says how the filter bar behaves and where each form opens; its second
+    is the same screen written out, with presets and a pinned filter. The UI and the API share one
+    model, so renaming a property is a `telo check` error rather than a broken page,
+    and a column the database fills in is read by both and written by neither.
 # The UI modules are not published yet, so every import is the workspace's own
 # copy. They become pinned `oci://` refs, like every other example's, once they
 # are released.
@@ -34,20 +37,68 @@ variables:
     x-telo-type: Telo.HostPath
     default: todo.db
 ---
-# One shape for a todo. The API validates request bodies against it and the UI
-# derives its columns, filters and form fields from it.
+# What creates a todo: its title alone. A new todo is not done — the column's
+# default says so — and the create form has the one field.
 kind: Telo.JsonSchema
 metadata:
-  name: Todo
+  name: NewTodo
 schema:
   type: object
-  # Both are required: a todo is always either done or not, so a write that
-  # leaves `isDone` out is refused rather than storing an unknown state.
-  required: [ text, isDone ]
+  required: [ text ]
   additionalProperties: false
   properties:
     text: { type: string, title: Task, minLength: 1 }
+---
+# What an update replaces: the title, whether it is done, and the day it is
+# due. The first two are required, so an update that leaves `isDone` out is
+# refused rather than clearing it; `dueOn` is optional, and leaving it out
+# clears it.
+kind: Telo.JsonSchema
+metadata:
+  name: TodoEdit
+extends: NewTodo
+schema:
+  type: object
+  required: [ isDone ]
+  properties:
     isDone: { type: boolean, title: Done }
+    dueOn: { type: string, title: Due, format: date }
+---
+# What is read back: everything written, the key, and `createdAt`, which the
+# table fills in. It is in no write shape, so no request can set it.
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+extends: TodoEdit
+schema:
+  type: object
+  required: [ id ]
+  properties:
+    id: { type: integer }
+    createdAt: { type: string, title: Created }
+---
+# One model for the API and the UI: a record's shape for each operation, and
+# what the list may be filtered and sorted by. The API accepts nothing else, and
+# the UI offers exactly this.
+kind: Crud.Model
+metadata:
+  name: todoModel
+schemas:
+  read: !ref Todo
+  list: !ref Todo
+  create: !ref NewTodo
+  update: !ref TodoEdit
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+    # A date range is two filters on one property: from this day, to this day.
+    - { property: dueOn, operator: gte }
+    - { property: dueOn, operator: lte }
+  sort:
+    - { property: text }
+    - { property: dueOn }
+    - { property: createdAt }
 ---
 kind: SQLite.Connection
 metadata:
@@ -62,6 +113,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   text: { type: text, nullable: false }
   is_done: { type: integer, nullable: false, default: 0 }
+  due_on: { type: text }
   created_at: { type: text, defaultExpression: "datetime('now')" }
 ---
 kind: SQLite.Schema
@@ -78,10 +130,14 @@ tokens:
   color.accent: "#1f8fff"
   radius.md: 6px
 ---
-# The whole frontend. `/` is one line — table, filters, and the create / edit
-# form all come from the model. `/done` is the same thing written out by hand,
-# which is what you drop down to when a screen needs something of its own: here
-# a fixed filter, chosen columns and a row style.
+# The whole frontend. `/` is one `Crud.Ui` — table, filters, and the create and
+# edit forms all come from the model — given three keys that say how it behaves:
+# the bar shows only the filters chosen, summarises them as chips and keeps them
+# in the address and the browser; a new todo is entered in a drawer that stays
+# open for the next one; a todo is edited in a drawer too, with an
+# address of its own. `/status` is the same screen written out by hand, which is
+# what you drop down to for what `Crud.Ui` has no key for: here a filter that
+# stays outside the folded bar, and one set only by presets.
 kind: UiReact.App
 metadata:
   name: ui
@@ -93,23 +149,65 @@ pages:
     title: Todos
     children:
       - type: composite
-        ref: { kind: Crud.Ui, model: !ref Todo, basePath: /api/todos }
-  - path: /done
-    title: Done
+        ref:
+          kind: Crud.Ui
+          model: !ref todoModel
+          basePath: /api/todos
+          filters:
+            show: chosen
+            summary: chips
+            state: { key: todos, address: true, store: { kind: Ui.LocalStore } }
+          create:
+            # A drawer, and a full-size dialog on a narrow screen.
+            surface: { kind: Ui.Drawer, side: end, compact: { kind: Ui.Dialog, size: full } }
+            afterSubmit: again
+          edit:
+            surface: { kind: Ui.Drawer, side: end, address: { name: todo } }
+            unsaved: confirm
+  - path: /status
+    title: By status
     children:
-      - { type: text, text: Finished todos, style: heading }
+      - { type: text, text: Todos by status, style: heading }
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Filters
           model: !ref Todo
-          source: { basePath: /api/todos, filters: { isDone: true } }
-          rowStyle:
-            by: !cel "row.isDone"
-            cases: { "true": muted }
-          columns:
-            - header: Task
-              value: !cel "row.text"
-          delete: true
+          collection: !ref todoModel
+          policy:
+            # The bar folds behind a toggle.
+            placement: { kind: Ui.CollapsiblePlacement }
+          fields:
+            # Pinned: the search box stays outside the fold.
+            - { property: text, operator: contains, pinned: true }
+            # No control: the presets below are the only way to set it.
+            - { property: isDone, operator: eq, control: none }
+            # Behind the toggle: a range of due days, from one to another.
+            - { property: dueOn, operator: gte }
+            - { property: dueOn, operator: lte }
+          presets:
+            - label: All
+              values: []
+            - label: Open
+              values:
+                - { property: isDone, operator: eq, value: false }
+            - label: Done
+              values:
+                - { property: isDone, operator: eq, value: true }
+          content:
+            type: composite
+            ref:
+              kind: Ui.Table
+              model: !ref Todo
+              collection: !ref todoModel
+              source: { basePath: /api/todos }
+              rowKey: id
+              # An opener with nothing but its form opens as the table decides:
+              # a dialog that closes after a save.
+              create:
+                form: { kind: Ui.Form, model: !ref NewTodo, source: { basePath: /api/todos } }
+              edit:
+                form: { kind: Ui.Form, model: !ref TodoEdit, source: { basePath: /api/todos } }
+              delete: true
 ---
 kind: Http.Server
 metadata:
@@ -123,16 +221,18 @@ mounts:
   - path: /api/todos
     mount:
       # The entire REST API: CRUD over the `todos` table. Mounted at /api/todos, it
-      # serves GET / (a filterable, sortable, paged list), GET /{id}, POST /,
-      # PUT /{id} (replace) and DELETE /{id}.
+      # serves GET / (a paged list, filtered and sorted by what the model's
+      # `query` declares), GET /{id}, POST /,
+      # PUT /{id} (replace) and DELETE /{id}. Both writes answer with the stored todo.
       kind: Crud.Resource
       connection: !ref db
       plural: todos
       singular: todo
-      # The model is the request contract too: a POST without `text` or `isDone`,
-      # or with a property that isn't here, is rejected with a 400 before the
-      # database is touched. `isDone` reads and writes the snake_case column `is_done`.
-      model: !ref Todo
+      # The model is the request contract too: a POST without `text`, or with a
+      # property its create shape lacks, is rejected with a 400 before the
+      # database is touched. `isDone` reads and writes the snake_case column
+      # `is_done`.
+      model: !ref todoModel
 
   - path: /
     mount: !ref ui

@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: CrudModelKeyWritableApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

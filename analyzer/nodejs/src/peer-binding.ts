@@ -86,6 +86,7 @@ import {
   resolvePointer,
   type DynamicLeaf,
 } from "./resource-rule.js";
+import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
 import { isIterableSchema, schemaAtPointer } from "./validate-resource-rules.js";
 
 /**
@@ -696,6 +697,29 @@ export function analyzerPeerBinder(
   }
 
   /**
+   * A named shape is read as the shape it IS: its `extends` parents folded into
+   * its `schema`, as every other reader of a shape sees it. A rule reading the
+   * declaration as written would miss every inherited property.
+   */
+  const typeManifests = manifests as unknown as Record<string, any>[];
+  const folded = new WeakMap<ResourceManifest, ResourceManifest>();
+  const effective = (declaration: ResourceManifest | undefined): ResourceManifest | undefined => {
+    if (!declaration) return undefined;
+    const shape = declaration as unknown as { schema?: unknown; extends?: unknown };
+    if (!shape.extends || !isTypeKind(declaration.kind, typeManifests)) return declaration;
+    let view = folded.get(declaration);
+    if (!view) {
+      const schema = resolveTypeFieldToSchema(
+        { schema: shape.schema, extends: shape.extends },
+        typeManifests,
+      );
+      view = schema ? ({ ...declaration, schema } as ResourceManifest) : declaration;
+      folded.set(declaration, view);
+    }
+    return view;
+  };
+
+  /**
    * An alias RESOLVES OR NOTHING DOES. Resource names are module-scoped, so two
    * libraries each exporting a `users` share one bucket in `byName`; falling
    * back to it when the alias names a module this analysis cannot resolve would
@@ -706,9 +730,9 @@ export function analyzerPeerBinder(
   const declarationOf: DeclarationLookup = (ref) => {
     if (ref.alias && ref.alias !== "Self") {
       const module = aliases.moduleForAlias(ref.alias);
-      return module ? byModuleAndName.get(`${module}\0${ref.name}`) : undefined;
+      return module ? effective(byModuleAndName.get(`${module}\0${ref.name}`)) : undefined;
     }
-    return byName.get(ref.name);
+    return effective(byName.get(ref.name));
   };
 
   /**

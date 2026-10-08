@@ -27,11 +27,32 @@ connection:
 singular: task
 plural: tasks
 model:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      text: { type: string }
+  kind: Crud.Model
+  schemas:
+    read: !ref TaskRecord
+    list: !ref TaskRecord
+    create: !ref Task
+    update: !ref Task
+  query:
+    filters: []
+    sort: []
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    text: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
 ---
 kind: Run.Sequence
 metadata: { name: test }

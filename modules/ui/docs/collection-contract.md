@@ -17,6 +17,11 @@ filter bar to work over it. Any API that answers this way can be a source.
 
 Query keys beginning `_telo` are reserved to the renderer.
 
+A renderer sends only declared pairs: a filter parameter for a
+`{ property, operator }` the [`Ui.Collection`](collection.md) lists under
+`query.filters`, and a `sort` by a property under `query.sort`. A collection
+may refuse the rest with a 400.
+
 The response:
 
 ```json
@@ -39,7 +44,7 @@ A request the collection refuses answers with the request-validation envelope:
   "error": "ValidationError",
   "message": "Request validation failed",
   "status": 400,
-  "details": [ { "location": "query", "path": "sort", "message": "names no property" } ]
+  "details": [ { "location": "query", "path": "sort", "message": "is not a property this collection sorts by" } ]
 }
 ```
 
@@ -52,22 +57,27 @@ rest under the form.
 
 | Request | Does |
 | --- | --- |
+| `GET <basePath>/<rowKey value>` | answers with that one record |
 | `POST <basePath>` | creates a row from the JSON body |
 | `PUT <basePath>/<rowKey value>` | replaces that row with the JSON body |
 | `DELETE <basePath>/<rowKey value>` | deletes it |
 
-`PUT` replaces; it does not merge. Its body is a whole record, valid against
-the model exactly as a `POST` body is, and a property absent from it is
-cleared. A body missing a required property is a 400 naming it.
+A record read by its key may hold more than its row of the list does. An edit
+form reads it before it opens, so what it sends back is what the record held
+and not what the list happened to show.
+
+`PUT` replaces; it does not merge. Its body is a record valid against the
+model of the form that sends it, and a property of that model absent from it
+is cleared. A body missing a required property is a 400 naming it.
 
 A write body holds the properties that have a value, in the JSON types the
 model declares. The row key is left out, a property with no value is left out
 rather than sent as `null`, and a `null` or a value of another JSON type at a
 typed property is a 400 naming the property.
 
-So the renderer sends back what the row held: an edit form's body is the row's
-model properties with each field's entered value over them, and a field left
-empty is a property left out. A collection that merged instead would keep the
+So the renderer sends back what the record held: an edit form's body is the
+record's properties that the form's model declares, with each field's entered
+value over them, and a field left empty is a property left out. A collection that merged instead would keep the
 value the user just removed.
 
 A 401 or 403 from any of these is shown where it happened; requests carry the

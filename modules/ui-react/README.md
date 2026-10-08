@@ -16,6 +16,15 @@ in the browser by a React renderer this module ships prebuilt.
 - **Accessible controls.** Dialogs trap the focus and close on Escape, choice
   lists and checkboxes work from the keyboard, and icon buttons are named —
   in a light and a dark scheme that follow the viewer's system.
+- **Forms open where the manifest says.** Every [surface](../ui/docs/surfaces.md)
+  is drawn — dialog, drawer, popover, inline, panel, page — with an open form
+  in the address, a replacement below a breakpoint, and a question before
+  unsaved input is lost.
+- **Filter bars as declared.** Every [placement](../ui/docs/filter-placement.md)
+  and every control is drawn — a bar above or beside the list, folded behind
+  a toggle or in an overlay; chips, switches, sliders, tags, presets — and the
+  chosen filters are kept [in the address or the browser's
+  storage](docs/urls.md#filter-state) when the bar says so.
 - **An open seam.** A module ships its own React components, and they get
   navigation, requests and refresh from the host.
 
@@ -51,6 +60,14 @@ schema:
     text: { type: string, title: Task, minLength: 1 }
     isDone: { type: boolean, title: Done }
 ---
+# What the collection's list accepts: the table sorts only by what it lists.
+kind: Ui.Collection
+metadata: { name: todoCollection }
+query:
+  filters: []
+  sort:
+    - { property: text }
+---
 kind: UiReact.App
 metadata: { name: admin }
 title: Todo Admin
@@ -62,8 +79,10 @@ pages:
         ref:
           kind: Ui.Table
           model: !ref Todo
+          collection: !ref todoCollection
           source: { basePath: /api/todos }
-          create: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+          create:
+            form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
           delete: true
 ---
 kind: Http.Server

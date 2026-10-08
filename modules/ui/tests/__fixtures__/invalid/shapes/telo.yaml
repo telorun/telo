@@ -46,6 +46,7 @@ kind: Ui.Table
 metadata:
   name: both
 model: !ref Todo
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
 source: { basePath: /api/todos }
 columns:
   - value: !cel "row.text"

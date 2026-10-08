@@ -56,12 +56,33 @@ schema:
     comment: { type: [string, "null"] }
     dueDate: { type: string }
 ---
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: NoteRecord }
+extends: Note
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Model
+metadata: { name: noteModel }
+schemas:
+  read: !ref NoteRecord
+  list: !ref NoteRecord
+  create: !ref Note
+  update: !ref Note
+query:
+  filters: []
+  sort: []
+---
 kind: Crud.Resource
 metadata: { name: notes }
 connection: !ref db
 singular: note
 plural: notes
-model: !ref Note
+model: !ref noteModel
 ---
 kind: Run.Sequence
 metadata: { name: test }

@@ -234,10 +234,8 @@ Run the architect's phases on the slice, with these differences:
   sweep filtered to the slice's tests, and `node scripts/check-changeset-status.mjs`. The last
   card also runs the full sweep: no regressions.
 - **Headless.** A tick is a print-mode process. Spawn every subagent in the foreground. When
-  `SendMessage` to the builder is unavailable, spawn a fresh builder with the earlier cards'
-  briefs, reports and `tree.diff` instead — the architect's fallback for a lost builder. Skip
-  the architect's builder-context watcher: it wakes you from the background, and a foreground
-  builder blocks until it returns.
+  `SendMessage` to a card's builder is unavailable, spawn a fresh builder with the card's `brief.md`
+  and `builder.md` instead — the architect's fallback for a lost builder.
 - **Resuming.** A crashed tick leaves `build` in *Phase*. The next tick resumes the slice's
   loop from its first card that is neither `done` nor `parked`.
 - **One commit per card**, made once the card is `done`, plus one for the incidental-fix sweep

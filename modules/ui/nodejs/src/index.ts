@@ -15,6 +15,22 @@ export * as ViewController from "./view-controller.js";
 export * as TableController from "./table-controller.js";
 export * as FormController from "./form-controller.js";
 export * as FiltersController from "./filters-controller.js";
+export * as CollectionController from "./collection-controller.js";
 export * as ComponentController from "./component-controller.js";
 export * as ComponentExportController from "./component-export-controller.js";
 export * as ThemeController from "./theme-controller.js";
+export {
+  DialogController,
+  DrawerController,
+  InlineSurfaceController,
+  PageSurfaceController,
+  PanelController,
+  PopoverController,
+} from "./surface-controllers.js";
+export {
+  AbovePlacementController,
+  AsidePlacementController,
+  CollapsiblePlacementController,
+  OverlayPlacementController,
+} from "./filter-placement.js";
+export { LocalStoreController, SessionStoreController } from "./state-store.js";

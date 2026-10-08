@@ -1,0 +1,201 @@
+kind: Telo.Application
+metadata:
+  name: UiSpecShapesTest
+  version: 1.0.0
+  description: |
+    A shape of the vocabulary that holds another checks it: a surface spec's
+    compact surface, whether the surface floats or sits in the page, and the
+    surface of a table node's opener, a filter placement's overlay and its
+    compact placement, and the placement and the store of a filters node. A
+    wrong nested value is refused where it
+    is written, and refused again by the contract of whatever provides it when
+    a value reaches that unchecked.
+imports:
+  Echo: ./__fixtures__/spec-echo
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref written
+  - !ref provided
+---
+kind: Assert.Manifest
+metadata:
+  name: written
+source: ./__fixtures__/invalid/spec-shapes/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedSurface/overlayCompact: /spec/compact must NOT have additional properties ('address' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedSurface/panelCompact: /spec/compact/dismiss is missing required property 'closeButton'"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedNode/tableSurface: /node/create/surface must match exactly one schema in oneOf"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedPlacement/placementSurface: /spec/surface/dismiss is missing required property 'outside'"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedPlacement/placementCompact: /spec/compact must match exactly one schema in oneOf"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedNode/filtersPlacement: /node/placement/type must be equal to one of the allowed values (above | aside | collapsible | overlay)"
+    - code: SCHEMA_VIOLATION
+      message: "Echo.TypedNode/filtersStore: /node matches no alternative"
+---
+kind: Run.Sequence
+metadata:
+  name: provided
+steps:
+  - name: overlayCompact
+    try:
+      - name: overlayCompactRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnySurface
+            spec:
+              type: dialog
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+              compact:
+                type: drawer
+                side: end
+                size: medium
+                modal: true
+                dismiss: { escape: true, outside: true, closeButton: true }
+                address: { name: todo }
+      - name: overlayCompactAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: overlayCompactRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: panelCompact
+    try:
+      - name: panelCompactRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnySurface
+            spec:
+              type: panel
+              side: end
+              size: medium
+              dismiss: { escape: true, closeButton: true }
+              compact: { type: popover, side: bottom, align: start, dismiss: { escape: true, outside: true } }
+      - name: panelCompactAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: panelCompactRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: tableSurface
+    try:
+      - name: tableSurfaceRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnyNode
+            node:
+              type: table
+              schema: {}
+              basePath: /api/todos
+              rowKey: id
+              pageSize: 25
+              columns: []
+              delete: false
+              create:
+                form: { type: form, schema: {}, basePath: /api/todos, fields: [] }
+                surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+                afterSubmit: close
+                unsaved: confirm
+      - name: tableSurfaceAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: tableSurfaceRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: placementSurface
+    try:
+      - name: placementSurfaceRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnyPlacement
+            spec:
+              type: overlay
+              surface: { type: panel, side: end, size: medium, dismiss: { escape: true, closeButton: true } }
+      - name: placementSurfaceAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: placementSurfaceRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: placementCompact
+    try:
+      - name: placementCompactRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnyPlacement
+            spec:
+              type: above
+              compact: { type: aside, side: start }
+      - name: placementCompactAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: placementCompactRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: filtersPlacement
+    try:
+      - name: filtersPlacementRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnyNode
+            node:
+              type: filters
+              fields: []
+              content: { type: text, text: Todos }
+              show: all
+              placement: { type: nowhere }
+              controls: direct
+              apply: commit
+              summary: none
+              state: { address: false, store: { type: memory } }
+              presets: []
+      - name: filtersPlacementAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: filtersPlacementRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: filtersStore
+    try:
+      - name: filtersStoreRead
+        invoke:
+          kind: Probe.Read
+          source:
+            kind: Echo.AnyNode
+            node:
+              type: filters
+              fields: []
+              content: { type: text, text: Todos }
+              show: all
+              placement: { type: above }
+              controls: direct
+              apply: commit
+              summary: none
+              state: { address: false, store: { type: server } }
+              presets: []
+      - name: filtersStoreAccepted
+        throw: { code: ACCEPTED, message: the provider's contract accepted the value }
+    catch:
+      - name: filtersStoreRefusal
+        value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.tableSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
+      expected:
+        - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape"
+        - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'"
+        - "ERR_OUTPUT_INVALID Error: /node/create/surface must match exactly one schema in oneOf"
+        - "ERR_OUTPUT_INVALID Error: /surface matches no alternative — expected one with 'modal', or one with 'align'"
+        - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'open', or one with 'surface'"
+        - "ERR_OUTPUT_INVALID Error: /node/placement matches no alternative — expected one with 'side', or one with 'open', or one with 'surface'"
+        - "ERR_OUTPUT_INVALID Error: /node matches no alternative — expected one with 'children', or one with 'text', or one with 'src', or one with 'markup', or one with 'schema', or one with 'module', or one with 'code'"

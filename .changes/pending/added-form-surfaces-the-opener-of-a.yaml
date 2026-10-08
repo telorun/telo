@@ -1,0 +1,14 @@
+modules:
+  modules/ui: Added
+body: "Form surfaces: the opener of a form names where it appears, as a kind under the
+  new Ui.Surface abstract — Ui.Dialog, Ui.Drawer, Ui.Popover (the three under
+  Ui.Overlay), Ui.InlineSurface, Ui.Panel, Ui.PageSurface — each with only the keys that
+  apply to it, an optional address that puts the open form in the page address, and a
+  compact Ui.Dialog or Ui.Drawer for narrow viewports (rules
+  UI_SURFACE_COMPACT_ADDRESSED and UI_SURFACE_COMPACT_NESTED, twinned at provide). New
+  shapes Ui.SurfaceSpec, Ui.OverlaySpec, Ui.AfterCreate, Ui.AfterEdit and
+  Ui.UnsavedInput. BREAKING: a Ui.Table create and edit are objects { form, surface?,
+  afterSubmit?, unsaved? } and the bare form reference (create: !ref form) is refused;
+  write create: { form: !ref form }. BREAKING for renderers: a table node create and
+  edit are { form, surface, afterSubmit, unsaved } with every member present, where each
+  was the form node."

@@ -1295,19 +1295,10 @@ export class StaticAnalyzer {
           });
         }
         zoneSlotIssues.push(...validateZoneSlotDeclarations(m as unknown as ResourceManifest));
-        // Checked against the MERGED schema, so an `in:` pointer naming an
-        // inherited field resolves — which is what lets a rule shared by every
-        // backend be declared once on the abstract they extend.
-        resourceRuleIssues.push(
-          ...validateResourceRuleDeclarations(
-            m as unknown as ResourceManifest,
-            effectiveAuthorSchema(m as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
-            moduleCallNamesOf(moduleCallNames, m as unknown as ResourceManifest),
-          ),
-        );
-        // Deferred to after the registration loop: the `peers:` half is checked
-        // against the REFERRER kind's schema, and a rule may name a kind
-        // declared later in the same file.
+        // Both rule families are checked after the registration loop: a
+        // resource rule against the MERGED schema, whose parent may be declared
+        // later in the file or in an imported module, and a referrer rule's
+        // `peers:` against the REFERRER kind's schema.
         ownRuleDeclarers.push(m as unknown as ResourceManifest);
         for (const rule of readReferrerRules((m as Record<string, unknown>).schema)) {
           referrerRuleExercise.set(`${m.metadata?.module}.${m.metadata?.name}#${rule.code}`, {
@@ -1410,6 +1401,19 @@ export class StaticAnalyzer {
      * data — the two shapes where the rule would see no declaration at all.
      */
     const peersTarget = analyzerPeersTarget(defs);
+
+    // Checked against the MERGED schema, so an `in:` pointer naming an
+    // inherited field resolves — which is what lets a rule shared by every
+    // backend be declared once on the abstract they extend.
+    for (const declarer of ownRuleDeclarers) {
+      resourceRuleIssues.push(
+        ...validateResourceRuleDeclarations(
+          declarer,
+          effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),
+          moduleCallNamesOf(moduleCallNames, declarer),
+        ),
+      );
+    }
 
     if (!options?.skipValidation) {
       for (const declarer of ownRuleDeclarers) {

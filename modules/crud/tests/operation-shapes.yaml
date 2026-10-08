@@ -1,0 +1,232 @@
+kind: Telo.Application
+metadata:
+  name: CrudOperationShapesTest
+  version: 1.0.0
+  description: |
+    Each operation is governed by its own shape. A create answers with the
+    stored record — key, defaulted and server-set columns included — and
+    refuses a property only a read declares. A list row holds the list shape
+    alone, yet is filtered and sorted by any property a record reads as. An
+    update replaces what its shape declares and leaves every other column as it
+    was, and refuses a property only a create may set.
+imports:
+  Crud: ../
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+migrations:
+  0001_articles:
+    statement: |
+      CREATE TABLE articles (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        title      TEXT    NOT NULL,
+        body       TEXT,
+        author     TEXT    NOT NULL,
+        is_public  INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT    NOT NULL DEFAULT '2026-10-07'
+      )
+---
+# What an update may replace.
+kind: Telo.JsonSchema
+metadata: { name: ArticleEdit }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string, minLength: 1 }
+    body: { type: string }
+    isPublic: { type: boolean }
+---
+# A create also names the author, which no update changes.
+kind: Telo.JsonSchema
+metadata: { name: ArticleDraft }
+extends: ArticleEdit
+schema:
+  type: object
+  required: [author]
+  properties:
+    author: { type: string }
+---
+# A row of the list: no body.
+kind: Telo.JsonSchema
+metadata: { name: ArticleRow }
+schema:
+  type: object
+  required: [id, title, isPublic]
+  additionalProperties: false
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    isPublic: { type: boolean }
+---
+# One record: everything written, the key, and what the table fills in.
+kind: Telo.JsonSchema
+metadata: { name: Article }
+extends: ArticleDraft
+schema:
+  type: object
+  required: [id, isPublic, createdAt]
+  properties:
+    id: { type: integer }
+    createdAt: { type: string }
+---
+kind: Crud.Resource
+metadata: { name: articles }
+connection: !ref db
+singular: article
+plural: articles
+model:
+  kind: Crud.Model
+  schemas:
+    read: !ref Article
+    list: !ref ArticleRow
+    create: !ref ArticleDraft
+    update: !ref ArticleEdit
+  query:
+    filters:
+      - { property: body, operator: contains }
+    sort:
+      - { property: author }
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 19317
+    baseUrl: http://127.0.0.1:19317
+    openapi:
+      info: { title: Articles API, version: 1.0.0 }
+    mounts:
+      - { path: /articles, mount: !ref articles }
+      - { path: /reference, mount: !ref docs }
+targets:
+  - !ref server
+steps:
+  - name: create
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
+    inputs:
+      body: { title: First, body: The long text, author: ada }
+  - name: createSecond
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
+    inputs:
+      body: { title: Second, author: bob, isPublic: true }
+  # `createdAt` is a property of a record, not of a create.
+  - name: createServerSet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
+    inputs:
+      body: { title: Third, author: eve, createdAt: "1999-01-01" }
+  - name: verifyCreate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.create.result.status"
+        stored: !cel "steps.create.result.body"
+        serverSet:
+          status: !cel "steps.createServerSet.result.status"
+          details: !cel "steps.createServerSet.result.body.details"
+      expected:
+        status: 201
+        stored: { id: 1, title: First, body: The long text, author: ada, isPublic: false, createdAt: "2026-10-07" }
+        serverSet:
+          status: 400
+          details:
+            - { location: body, path: createdAt, message: must NOT have additional properties }
+
+  # A row holds the list shape; the filter and the sort name properties only a
+  # record shows.
+  - name: list
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles?sort=-author" }
+  - name: byBody
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles?body.contains=long" }
+  - name: readOne
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1" }
+  - name: verifyRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        list: !cel "steps.list.result.body"
+        byBody: !cel "steps.byBody.result.body.rows"
+        one: !cel "steps.readOne.result.body"
+      expected:
+        list:
+          rows:
+            - { id: 2, title: Second, isPublic: true }
+            - { id: 1, title: First, isPublic: false }
+          total: 2
+          next: null
+        byBody:
+          - { id: 1, title: First, isPublic: false }
+        one: { id: 1, title: First, body: The long text, author: ada, isPublic: false, createdAt: "2026-10-07" }
+
+  # The body leaves `body` out, which clears it; `author` and `createdAt` are
+  # not the update's to touch.
+  - name: update
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1", method: PUT }
+    inputs:
+      body: { title: First again, isPublic: true }
+  - name: updateAuthor
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1", method: PUT }
+    inputs:
+      body: { title: First again, author: mallory }
+  - name: readUpdated
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1" }
+  - name: verifyUpdate
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.update.result.status"
+        stored: !cel "steps.update.result.body"
+        author:
+          status: !cel "steps.updateAuthor.result.status"
+          details: !cel "steps.updateAuthor.result.body.details"
+        after: !cel "steps.readUpdated.result.body"
+      expected:
+        status: 200
+        stored: { id: 1, title: First again, author: ada, isPublic: true, createdAt: "2026-10-07" }
+        author:
+          status: 400
+          details:
+            - { location: body, path: author, message: must NOT have additional properties }
+        after: { id: 1, title: First again, author: ada, isPublic: true, createdAt: "2026-10-07" }
+
+  # The OpenAPI document states each operation's own shape.
+  - name: spec
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/reference/openapi.json" }
+  - name: verifySpec
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        create: !cel "keys(steps.spec.result.body.paths['/articles'].post.requestBody.content['application/json'].schema.properties)"
+        update: !cel "keys(steps.spec.result.body.paths['/articles/{articleId}'].put.requestBody.content['application/json'].schema.properties)"
+        row: !cel "keys(steps.spec.result.body.paths['/articles'].get.responses['200'].content['application/json'].schema.properties.rows.items.properties)"
+        record: !cel "keys(steps.spec.result.body.paths['/articles/{articleId}'].get.responses['200'].content['application/json'].schema.properties)"
+        created: !cel "keys(steps.spec.result.body.paths['/articles'].post.responses['201'].content['application/json'].schema.properties)"
+        id: !cel "steps.spec.result.body.paths['/articles/{articleId}'].get.parameters[0].schema.type"
+      expected:
+        create: [title, body, isPublic, author]
+        update: [title, body, isPublic]
+        row: [id, title, isPublic]
+        record: [title, body, isPublic, author, id, createdAt]
+        created: [title, body, isPublic, author, id, createdAt]
+        id: integer

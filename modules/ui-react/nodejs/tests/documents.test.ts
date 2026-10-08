@@ -29,6 +29,8 @@ describe("the shell", () => {
     expect(html).toContain("<title>A &#60;b&#62; &#38; co</title>");
     expect(html).toContain('<script type="importmap">{"imports":{"react":"/admin/\\u003c/script>.js"}}</script>');
     expect(html).toContain("<style>@layer telo.base, telo.theme, telo.component;</style>");
+    // A spinner for as long as the root holds nothing.
+    expect(html).toContain("#telo-root:empty::before{");
     expect(shellHtml({ ...shell, lang: "pl" })).toContain('<html lang="pl">');
   });
 });

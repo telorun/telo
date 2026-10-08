@@ -1,0 +1,65 @@
+kind: Telo.Library
+metadata:
+  name: ForwardAcrossReferenceLib
+  version: 1.0.0
+  description: >-
+    Test fixture: two kinds whose bodies forward a path that continues past a
+    reference slot into the resource it names — one reading plain data that
+    resource was declared with, one reading a reference it holds.
+exports:
+  kinds:
+    - Catalog
+    - Label
+    - Entry
+imports:
+  Run: ../../../../../../../modules/run
+---
+# Holds a label and a reference. Its instance has neither member.
+kind: Telo.Definition
+metadata:
+  name: Catalog
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    entries:
+      type: object
+      properties:
+        greeting:
+          x-telo-ref: { kind: Telo.Invocable, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: held }
+    value: catalog
+invoke: !ref held
+---
+kind: Telo.Definition
+metadata:
+  name: Label
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    catalog:
+      x-telo-ref: { kind: Self.Catalog, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    value: !cel "self.catalog.label"
+invoke: !ref read
+---
+kind: Telo.Definition
+metadata:
+  name: Entry
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    catalog:
+      x-telo-ref: { kind: Self.Catalog, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    value: !cel "self.catalog.entries.greeting"
+invoke: !ref read

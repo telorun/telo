@@ -1,0 +1,102 @@
+kind: Telo.Library
+metadata:
+  name: UiSpecEcho
+  version: 1.0.0
+  description: >-
+    Test fixture providing a surface spec, a placement spec or a node exactly as declared: typed
+    kinds whose declaration is checked against the shape, and untyped ones that
+    let a value the shape refuses reach the provider's own contract.
+imports:
+  Ui: ../../../
+exports:
+  kinds: [TypedSurface, AnySurface, TypedNode, AnyNode, TypedPlacement, AnyPlacement]
+---
+kind: Telo.Definition
+metadata:
+  name: TypedSurface
+  description: Provides the surface spec it is declared with, checked where it is written.
+capability: Telo.Provider
+extends: Ui.Surface
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Surface
+schema:
+  type: object
+  additionalProperties: false
+  required: [spec]
+  properties:
+    spec: { $ref: "telo://Ui/SurfaceSpec" }
+---
+kind: Telo.Definition
+metadata:
+  name: AnySurface
+  description: Provides whatever it is declared with as a surface spec.
+capability: Telo.Provider
+extends: Ui.Surface
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Surface
+schema:
+  type: object
+  additionalProperties: false
+  required: [spec]
+  properties:
+    spec: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: TypedNode
+  description: Provides the node it is declared with, checked where it is written.
+capability: Telo.Provider
+extends: Ui.Composite
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [node]
+  properties:
+    node: { $ref: "telo://Ui/SpecNode" }
+---
+kind: Telo.Definition
+metadata:
+  name: AnyNode
+  description: Provides whatever it is declared with as a node.
+capability: Telo.Provider
+extends: Ui.Composite
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [node]
+  properties:
+    node: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: TypedPlacement
+  description: Provides the placement spec it is declared with, checked where it is written.
+capability: Telo.Provider
+extends: Ui.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Surface
+schema:
+  type: object
+  additionalProperties: false
+  required: [spec]
+  properties:
+    spec: { $ref: "telo://Ui/FilterPlacementSpec" }
+---
+kind: Telo.Definition
+metadata:
+  name: AnyPlacement
+  description: Provides whatever it is declared with as a placement spec.
+capability: Telo.Provider
+extends: Ui.FilterPlacement
+controllers:
+  - pkg:telo/local/js?path=./echo.mjs#Surface
+schema:
+  type: object
+  additionalProperties: false
+  required: [spec]
+  properties:
+    spec: { type: object }

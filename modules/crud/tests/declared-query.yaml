@@ -1,0 +1,217 @@
+kind: Telo.Application
+metadata:
+  name: CrudDeclaredQueryTest
+  version: 1.0.0
+  description: |
+    The list route accepts only what the model declares. A filter is one
+    property with one operator: the declared pair answers, and the same
+    property under another operator, or another property a record reads as, is
+    a 400 naming the parameter. A sort is one of the listed properties: a
+    listed one pages to the end returning each row once, and an unlisted one —
+    the key included — is a 400 on `sort`. With no `sort` the order is the key.
+    One record is read by its key whatever the model declares.
+imports:
+  Crud: ../
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+migrations:
+  0001_tasks:
+    statement: |
+      CREATE TABLE tasks (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        text    TEXT    NOT NULL,
+        is_done INTEGER NOT NULL DEFAULT 0,
+        due_on  TEXT
+      )
+  0002_seed:
+    statement: |
+      INSERT INTO tasks (text, is_done, due_on) VALUES
+        ('Write the plan',  1, '2026-10-01'),
+        ('Review the plan', 0, '2026-10-07'),
+        ('Ship',            0, NULL),
+        ('Record the demo', 0, '2026-10-07'),
+        ('Archive',         0, '2026-10-12')
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string }
+    isDone: { type: boolean }
+    dueOn: { type: string, format: date }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 19321
+    mounts:
+      - path: /tasks
+        mount:
+          kind: Crud.Resource
+          connection: !ref db
+          singular: task
+          plural: tasks
+          model:
+            kind: Crud.Model
+            schemas:
+              read: !ref TaskRecord
+              list: !ref TaskRecord
+              create: !ref Task
+              update: !ref Task
+            query:
+              filters:
+                - { property: text, operator: contains }
+              sort:
+                - { property: dueOn }
+      # The same table behind a model that accepts no filter and no sort.
+      - path: /bare
+        mount:
+          kind: Crud.Resource
+          connection: !ref db
+          singular: task
+          plural: tasks
+          model:
+            kind: Crud.Model
+            schemas:
+              read: !ref TaskRecord
+              list: !ref TaskRecord
+              create: !ref Task
+              update: !ref Task
+            query:
+              filters: []
+              sort: []
+targets:
+  - !ref server
+steps:
+  # ── Filters: the declared pair, and nothing else ──
+  - name: declared
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?text.contains=plan" }
+  - name: otherOperator
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?text=Ship" }
+  - name: otherProperty
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?isDone=true" }
+  - name: byKey
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?id=1" }
+  - name: verifyFilters
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        declared:
+          status: !cel "steps.declared.result.status"
+          ids: !cel "steps.declared.result.body.rows.map(r, r.id)"
+        otherOperator:
+          status: !cel "steps.otherOperator.result.status"
+          details: !cel "steps.otherOperator.result.body.details"
+        otherProperty:
+          status: !cel "steps.otherProperty.result.status"
+          details: !cel "steps.otherProperty.result.body.details"
+        byKey:
+          status: !cel "steps.byKey.result.status"
+          details: !cel "steps.byKey.result.body.details"
+      expected:
+        declared: { status: 200, ids: [1, 2] }
+        otherOperator:
+          status: 400
+          details:
+            - { location: query, path: text, message: is not a filter this collection accepts }
+        otherProperty:
+          status: 400
+          details:
+            - { location: query, path: isDone, message: is not a filter this collection accepts }
+        byKey:
+          status: 400
+          details:
+            - { location: query, path: id, message: is not a filter this collection accepts }
+
+  # ── Sort: a listed property pages to the end, each row once ──
+  - name: page1
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?sort=-dueOn&limit=2" }
+  - name: page2
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19321/tasks?sort=-dueOn&limit=2&cursor=' + steps.page1.result.body.next"
+  - name: page3
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19321/tasks?sort=-dueOn&limit=2&cursor=' + steps.page2.result.body.next"
+  - name: unsorted
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks" }
+  - name: sortUnlisted
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?sort=text" }
+  - name: sortByKey
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/tasks?sort=id" }
+  - name: verifySort
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        walked: !cel "(steps.page1.result.body.rows + steps.page2.result.body.rows + steps.page3.result.body.rows).map(r, r.id)"
+        last: !cel "steps.page3.result.body.next"
+        unsorted: !cel "steps.unsorted.result.body.rows.map(r, r.id)"
+        sortUnlisted:
+          status: !cel "steps.sortUnlisted.result.status"
+          details: !cel "steps.sortUnlisted.result.body.details"
+        sortByKey:
+          status: !cel "steps.sortByKey.result.status"
+          details: !cel "steps.sortByKey.result.body.details"
+      expected:
+        # Latest first, the key between equal dates, the row with no date last.
+        walked: [5, 2, 4, 1, 3]
+        last: null
+        unsorted: [1, 2, 3, 4, 5]
+        sortUnlisted:
+          status: 400
+          details:
+            - { location: query, path: sort, message: is not a property this collection sorts by }
+        sortByKey:
+          status: 400
+          details:
+            - { location: query, path: sort, message: is not a property this collection sorts by }
+
+  # ── One record by its key, on a model that accepts no filter ──
+  - name: readOne
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/bare/3" }
+  - name: bareFilter
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/bare?text.contains=plan" }
+  - name: verifyBare
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        readOne:
+          status: !cel "steps.readOne.result.status"
+          body: !cel "steps.readOne.result.body"
+        bareFilter: !cel "steps.bareFilter.result.status"
+      expected:
+        readOne:
+          status: 200
+          body: { id: 3, text: Ship, isDone: false }
+        bareFilter: 400

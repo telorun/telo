@@ -5,7 +5,7 @@ disable-model-invocation: true
 argument-hint: a decision idea (`who retries`, `reliability`), or nothing / `give new idea` for suggestions
 ---
 
-The user supplies a decision idea as `$ARGUMENTS` — a domain ("reliability"), a single rule ("who retries"), or a worry ("our services call each other too much") — or asks you for one: `$ARGUMENTS` empty, or a request such as "give new idea" or "what next?". Your job is a conversation that ends in a lens file the `decider` agent reads. The decider picks up every file in `.claude/decider-lenses/` on its own; it needs no change when a lens is added.
+The user supplies a decision idea as `$ARGUMENTS` — a domain ("reliability"), a single rule ("who retries"), or a worry ("our services call each other too much") — or asks you for one: `$ARGUMENTS` empty, or a request such as "give new idea" or "what next?". Your job is a conversation that ends in a lens file the `decider` agent reads. The decider finds a lens through the index in its own prompt (`.claude/agents/decider.md`, under "Domain lenses"), so a lens missing from the index is never read and one whose row is stale is read for the wrong questions — the index is updated in the same write as the lens.
 
 Ask questions directly in chat, never through the AskUserQuestion tool. Write nothing until the user explicitly says to apply.
 
@@ -65,7 +65,15 @@ Propose these explicitly and get them approved. Never write them unseen.
 
 ## Step 5: Write
 
-Summarize what the file will hold. Ask "Apply this?" and write only on an explicit yes. A new lens goes to `.claude/decider-lenses/<domain>.md`, with a kebab-case domain name. Never add a README or any other non-lens file to that directory: the decider reads every file there as a lens.
+Summarize what the file will hold, and show the index row that goes with it. Ask "Apply this?" and write only on an explicit yes. A new lens goes to `.claude/decider-lenses/<domain>.md`, with a kebab-case domain name. Never add a README or any other non-lens file to that directory.
+
+**Keep the decider's index in step, in the same write.** The table under "Domain lenses" in `.claude/agents/decider.md` holds one row per lens: the filename and the questions that trigger it.
+
+- A new lens adds its row, in alphabetical order by filename.
+- An extension that changes what the lens applies to rewrites its row; one that does not leaves the row alone.
+- A renamed or removed lens has its row renamed or removed.
+
+A row is written for matching, not for reading: name the things a question in this domain actually mentions — the manifest keys, the concepts, the words a caller would use — because the decider matches a question against the row without opening the file. It is derived from the lens's **Applies to**, widened with those terms. Before writing, check that the table's rows and the files in the directory are the same set, and repair any difference you find.
 
 The file is written for the decider, not for the user. Keep a line only if it is one of these:
 
@@ -90,4 +98,4 @@ When the lens extends an existing one, edit only what changed, in the same form.
 
 ## Step 6: Report
 
-Say what was written or amended, including any other lens you touched. Flag any part of the file the user has not seen word for word.
+Say what was written or amended, including any other lens you touched and the index row you added or changed. Flag any part of the file the user has not seen word for word.

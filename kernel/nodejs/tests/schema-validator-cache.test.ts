@@ -16,6 +16,19 @@ afterEach(async () => {
 });
 
 describe("SchemaValidator disk cache", () => {
+  it("does not serve a validator cached before a shape it references changed", async () => {
+    const contract = { type: "object", properties: { node: { $ref: "telo:Probe/Node" } } };
+    const v1 = new SchemaValidator();
+    v1.setCacheDir(workdir);
+    v1.addSchema("telo:Probe/Node", { type: "object", properties: { n: { type: "string" } } });
+    expect(v1.compile(contract).isValid({ node: { n: 1 } })).toBe(false);
+
+    const v2 = new SchemaValidator();
+    v2.setCacheDir(workdir);
+    v2.addSchema("telo:Probe/Node", { type: "object", properties: { n: { type: "number" } } });
+    expect(v2.compile(contract).isValid({ node: { n: 1 } })).toBe(true);
+  });
+
   it("writes a standalone .cjs file per compiled schema", async () => {
     const v = new SchemaValidator();
     v.setCacheDir(workdir);

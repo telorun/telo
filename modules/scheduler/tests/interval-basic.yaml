@@ -83,8 +83,21 @@ steps:
   - name: readTicks
     invoke: !ref get
     inputs: { key: ticks }
-  # At 80ms over a 400ms window the body should have run several times; assert
-  # "at least twice" so the test isn't a timing race on a loaded machine.
+  # At 80ms over a 400ms window the body should have run several times, but a
+  # loaded machine may not have got to it yet: wait for the second tick itself,
+  # for up to five more seconds, rather than for a fixed time.
+  - name: untilFiredTwice
+    while: !cel "steps.readTicks.result.state == 'miss' || steps.readTicks.result.value < 2"
+    maxIterations: 100
+    do:
+      - name: pause
+        invoke: { kind: Timer.Delay }
+        inputs:
+          duration: "50ms"
+          value: {}
+      - name: readTicks
+        invoke: !ref get
+        inputs: { key: ticks }
   - name: verifyFired
     inputs:
       actual: !cel "steps.readTicks.result.state != 'miss' && steps.readTicks.result.value >= 2"

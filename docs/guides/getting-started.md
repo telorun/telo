@@ -27,7 +27,7 @@ On Windows:
 irm https://telo.sh/install.ps1 | iex
 ```
 
-The release page also carries `.deb`, `.rpm`, `.pkg` and `.msi` packages, and a
+The [releases page](https://github.com/telorun/telo/releases) also carries `.deb`, `.rpm`, `.pkg` and `.msi` packages, and a
 plain archive per platform.
 
 If you already have Node.js and would rather manage Telo with it, install the

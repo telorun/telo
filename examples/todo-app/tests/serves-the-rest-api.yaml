@@ -4,10 +4,12 @@ metadata:
   version: 1.0.0
   description: >-
     Runs `examples/todo-app` and walks its REST surface: create, list, replace,
-    delete, and a create the model refuses. The model IS the request contract in
+    delete, a create the model refuses and ones naming what a create may not set. The model IS the request contract in
     this example, so the rejected create is what shows validation happening before
     the database is touched. It then asks the declared UI for its shell and its
-    first page, which is what shows the frontend is served from the same manifest.
+    two pages, which is what shows the frontend is served from the same manifest
+    — and that the first page's filter policy and form surfaces, and the second
+    page's presets, pinned filter and plain openers, reach the browser as declared.
 imports:
   App: ../../../modules/app
   Run: ../../../modules/run
@@ -42,19 +44,27 @@ steps:
     inputs:
       body:
         text: !cel "steps.subject.result.text"
-        isDone: false
   - name: verifyCreated
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         status: !cel "steps.create.result.status"
         text: !cel "steps.create.result.body.text"
+        # The answer is the stored todo: not done, with the table's key and its
+        # timestamp.
+        isDone: !cel "steps.create.result.body.isDone"
+        keyed: !cel "steps.create.result.body.id > 0"
+        stamped: !cel "size(steps.create.result.body.createdAt) > 0"
       expected:
         status: 201
         text: !cel "steps.subject.result.text"
+        isDone: false
+        keyed: true
+        stamped: true
 
   # The list is a page of a collection: `rows`, the `total` the filter matches,
-  # and a cursor for the next page. Filtering by the text finds exactly this row.
+  # and a cursor for the next page. Filtering by the text — `contains`, the one
+  # filter the model declares for it — finds exactly this row.
   - name: list
     invoke:
       kind: HttpClient.Request
@@ -62,7 +72,7 @@ steps:
     inputs:
       url: http://127.0.0.1:8077/api/todos
       query:
-        text: !cel "steps.subject.result.text"
+        text.contains: !cel "steps.subject.result.text"
   - name: verifyListed
     invoke: { kind: Assert.Equals }
     inputs:
@@ -75,11 +85,49 @@ steps:
         total: 1
         found: 1
 
-  # The create route answers with the body it was given, so the id comes from the
-  # listing — which is also what proves the row is really there.
+  # The listing finds the row under the id the create answered with.
   - name: created
     value:
-      id: !cel "steps.list.result.body.rows[0].id"
+      id: !cel "steps.create.result.body.id"
+  - name: verifyListedRow
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.list.result.body.rows[0].id"
+      expected: !cel "steps.created.result.id"
+
+  # A create takes the title alone. `createdAt` is read, never written, and
+  # `isDone` is an update's to set: the create shape declares neither.
+  - name: backdated
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/api/todos
+      method: POST
+    inputs:
+      body:
+        text: !cel "steps.subject.result.text"
+        createdAt: "1999-01-01 00:00:00"
+  - name: bornDone
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8077/api/todos
+      method: POST
+    inputs:
+      body:
+        text: !cel "steps.subject.result.text"
+        isDone: true
+  - name: verifyCreateShape
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        backdated:
+          status: !cel "steps.backdated.result.status"
+          field: !cel "steps.backdated.result.body.details[0].path"
+        bornDone:
+          status: !cel "steps.bornDone.result.status"
+          field: !cel "steps.bornDone.result.body.details[0].path"
+      expected:
+        backdated: { status: 400, field: createdAt }
+        bornDone: { status: 400, field: isDone }
 
   # `text` is required and may not be empty, so an empty one is refused before the
   # database is touched — and the refusal names the field.
@@ -91,7 +139,6 @@ steps:
     inputs:
       body:
         text: ""
-        isDone: false
   - name: verifyRefused
     invoke: { kind: Assert.Equals }
     inputs:
@@ -102,7 +149,8 @@ steps:
         status: 400
         field: text
 
-  # PUT replaces the todo, so the body is the whole record.
+  # PUT replaces what a todo's update shape declares, so the body holds both
+  # of its properties.
   - name: complete
     invoke:
       kind: HttpClient.Request
@@ -112,6 +160,42 @@ steps:
       body:
         text: !cel "steps.subject.result.text"
         isDone: true
+        dueOn: "2026-10-15"
+
+  # A date range is two filters on `dueOn`: on or after one day, on or before
+  # another. Both ends are inclusive, and a range that ends before the day
+  # finds nothing.
+  - name: dueInRange
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+    inputs:
+      url: http://127.0.0.1:8077/api/todos
+      query:
+        text.contains: !cel "steps.subject.result.text"
+        dueOn.gte: "2026-10-15"
+        dueOn.lte: "2026-10-15"
+  - name: dueEarlier
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+    inputs:
+      url: http://127.0.0.1:8077/api/todos
+      query:
+        text.contains: !cel "steps.subject.result.text"
+        dueOn.gte: "2026-10-01"
+        dueOn.lte: "2026-10-14"
+  - name: verifyDateRange
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        due: !cel "steps.complete.result.body.dueOn"
+        inRange: !cel "steps.dueInRange.result.body.rows.map(r, r.id)"
+        earlier: !cel "steps.dueEarlier.result.body.total"
+      expected:
+        due: "2026-10-15"
+        inRange: [!cel "steps.created.result.id"]
+        earlier: 0
   - name: remove
     invoke:
       kind: HttpClient.Request
@@ -151,6 +235,14 @@ steps:
       url: http://127.0.0.1:8077/_telo/ui/page
       query:
         path: /
+  - name: statusPage
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+    inputs:
+      url: http://127.0.0.1:8077/_telo/ui/page
+      query:
+        path: /status
   - name: verifyUi
     invoke: { kind: Assert.Equals }
     inputs:
@@ -164,3 +256,89 @@ steps:
         page: 200
         title: Todos
         root: filters
+
+  # `/` is one `Crud.Ui`: what its three keys say is what the bar and the
+  # table's two openers carry, and what they leave out is the default.
+  - name: verifyGeneratedPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.page.result.body.children.map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state, 'presets': c.presets}, 'create': {'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+      expected:
+        - bar:
+            show: chosen
+            placement: { type: above }
+            controls: direct
+            apply: commit
+            summary: chips
+            state: { key: todos, address: true, store: { type: local } }
+            presets: []
+          create:
+            surface:
+              type: drawer
+              side: end
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+              compact:
+                type: dialog
+                size: full
+                modal: true
+                dismiss: { escape: true, outside: true, closeButton: true }
+            afterSubmit: again
+            unsaved: confirm
+          edit:
+            surface:
+              type: drawer
+              side: end
+              size: medium
+              modal: true
+              dismiss: { escape: true, outside: true, closeButton: true }
+              address: { name: todo }
+            afterSubmit: close
+            unsaved: confirm
+
+  # `/status` is written by hand: a bar folding a range of due days, a pinned
+  # search, a filter only the presets set, and openers
+  # that say nothing but their form.
+  - name: verifyWrittenPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        title: !cel "steps.statusPage.result.body.title"
+        nodes: !cel "steps.statusPage.result.body.children.map(c, c.type)"
+        screen: !cel "steps.statusPage.result.body.children.filter(c, c.type == 'filters').map(c, {'bar': {'show': c.show, 'placement': c.placement, 'controls': c.controls, 'apply': c.apply, 'summary': c.summary, 'state': c.state}, 'fields': c.fields.map(f, [f.property, f.operator, f.pinned, f.control]), 'presets': c.presets, 'create': {'fields': c.content.create.form.fields.map(f, f.property), 'surface': c.content.create.surface, 'afterSubmit': c.content.create.afterSubmit, 'unsaved': c.content.create.unsaved}, 'edit': {'fields': c.content.edit.form.fields.map(f, f.property), 'surface': c.content.edit.surface, 'afterSubmit': c.content.edit.afterSubmit, 'unsaved': c.content.edit.unsaved}})"
+      expected:
+        title: By status
+        nodes: [text, filters]
+        screen:
+          - bar:
+              show: all
+              placement: { type: collapsible, open: false }
+              controls: direct
+              apply: commit
+              summary: none
+              state: { address: false, store: { type: memory } }
+            fields:
+              - [text, contains, true, auto]
+              - [isDone, eq, false, none]
+              - [dueOn, gte, false, auto]
+              - [dueOn, lte, false, auto]
+            # A preset's value is a list on the wire, whatever was written.
+            presets:
+              - { label: All, values: [] }
+              - { label: Open, values: [{ property: isDone, operator: eq, value: [false] }] }
+              - { label: Done, values: [{ property: isDone, operator: eq, value: [true] }] }
+            create:
+              fields: [text]
+              surface: &dialog
+                type: dialog
+                size: medium
+                modal: true
+                dismiss: { escape: true, outside: true, closeButton: true }
+              afterSubmit: close
+              unsaved: confirm
+            edit:
+              fields: [text, isDone, dueOn]
+              surface: *dialog
+              afterSubmit: close
+              unsaved: confirm

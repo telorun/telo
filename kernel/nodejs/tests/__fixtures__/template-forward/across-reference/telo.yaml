@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: ForwardAcrossReferenceApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Run: ../../../../../../modules/run
+---
+kind: Run.Value
+metadata: { name: hello }
+value: hello
+---
+kind: Lib.Catalog
+metadata: { name: catalog }
+label: shelf
+entries:
+  greeting: !ref hello
+---
+kind: Lib.Label
+metadata: { name: label }
+catalog: !ref catalog
+---
+kind: Lib.Entry
+metadata: { name: entry }
+catalog: !ref catalog

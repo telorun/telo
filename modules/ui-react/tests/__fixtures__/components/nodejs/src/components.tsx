@@ -74,6 +74,7 @@ export function HostProbe({ basePath }: { basePath: string }) {
       <button type="button" data-fixture="query" onClick={() => host.navigate("?c=2")}>query</button>
       <button type="button" data-fixture="page" onClick={() => host.navigate("/done")}>page</button>
       <button type="button" data-fixture="replace" onClick={() => host.navigate("?c=3", { replace: true })}>replace</button>
+      <button type="button" data-fixture="replace-page" onClick={() => host.navigate("/done", { replace: true })}>replace page</button>
       <button type="button" data-fixture="external" onClick={external}>external</button>
       <span data-fixture="refused">{refused}</span>
       <a data-fixture="anchor" href={host.href("/done")}>done</a>

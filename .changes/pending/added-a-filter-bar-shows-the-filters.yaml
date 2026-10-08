@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react: Added
+body: "A filter bar shows the filters on one property together: one label, with each
+  control captioned by its operator - from and to for gte and lte, after and before for
+  gt and lt, is, contains and one of for the rest - so a date range reads as one field.
+  Three styling parts are new: filter-group, filter-bound and filter-caption. The filter
+  part now holds every filter of one property, where it held one filter."

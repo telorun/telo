@@ -1,0 +1,324 @@
+kind: Telo.Application
+metadata:
+  name: CrudModelRefusalsTest
+  version: 1.0.0
+  description: |
+    What a data model refuses about its own four shapes: a read or list shape
+    without the key, a write shape with it or left open, a property a read does
+    not return or types differently, and an update requiring what a read may
+    leave out. And about its declared query: a filter or a sort by a property a
+    read does not return, an operator the property's type cannot carry, a sort
+    by a list, a filter by a property named as a parameter the list route owns.
+    The operator is judged by the property's plain types — `null` aside, and
+    those of its listed values where it declares only `enum`. Each is reported
+    by `telo check` where the model is declared, and refused by the model
+    itself when a manifest reaches it without that check. A model leaving
+    `query`, or its `sort`, out is a schema violation naming it, and is refused
+    when it is created.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref keyUndeclared
+  - !ref keyUndeclaredAtRuntime
+  - !ref keyWritable
+  - !ref keyWritableAtRuntime
+  - !ref writeShapeOpen
+  - !ref writeShapeOpenAtRuntime
+  - !ref propertyNotReadable
+  - !ref propertyNotReadableAtRuntime
+  - !ref propertyTypeDiffers
+  - !ref propertyTypeDiffersAtRuntime
+  - !ref updateRequiresOptional
+  - !ref updateRequiresOptionalAtRuntime
+  - !ref filterUnknownProperty
+  - !ref filterUnknownPropertyAtRuntime
+  - !ref filterOperatorUnsupported
+  - !ref filterOperatorUnsupportedAtRuntime
+  - !ref sortUnknownProperty
+  - !ref sortUnknownPropertyAtRuntime
+  - !ref sortUnsupported
+  - !ref sortUnsupportedAtRuntime
+  - !ref filterOperatorNullableType
+  - !ref filterOperatorNullableTypeAtRuntime
+  - !ref filterOperatorListedValues
+  - !ref filterOperatorListedValuesAtRuntime
+  - !ref filterOperatorNullableList
+  - !ref filterOperatorNullableListAtRuntime
+  - !ref filterReservedName
+  - !ref filterReservedNameAtRuntime
+  - !ref queryMissing
+  - !ref queryMissingAtRuntime
+  - !ref sortMissing
+  - !ref sortMissingAtRuntime
+---
+kind: Assert.Manifest
+metadata:
+  name: keyUndeclared
+source: ./__fixtures__/model-refusals/key-undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'schemas.list': does not declare a required `id`"
+---
+kind: Assert.Manifest
+metadata:
+  name: keyUndeclaredAtRuntime
+source: ./__fixtures__/model-refusals/key-undeclared/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.list' does not declare a required 'id'"
+---
+kind: Assert.Manifest
+metadata:
+  name: keyWritable
+source: ./__fixtures__/model-refusals/key-writable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'schemas.create': declares `id`"
+---
+kind: Assert.Manifest
+metadata:
+  name: keyWritableAtRuntime
+source: ./__fixtures__/model-refusals/key-writable/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.create' declares 'id'"
+---
+kind: Assert.Manifest
+metadata:
+  name: writeShapeOpen
+source: ./__fixtures__/model-refusals/write-shape-open/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'schemas.create': accepts properties it does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: writeShapeOpenAtRuntime
+source: ./__fixtures__/model-refusals/write-shape-open/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.create' accepts properties it does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: propertyNotReadable
+source: ./__fixtures__/model-refusals/property-not-readable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'schemas.update': declares a property `schemas.read` does not"
+---
+kind: Assert.Manifest
+metadata:
+  name: propertyNotReadableAtRuntime
+source: ./__fixtures__/model-refusals/property-not-readable/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.update' declares 'secret', which 'schemas.read' does not"
+---
+kind: Assert.Manifest
+metadata:
+  name: propertyTypeDiffers
+source: ./__fixtures__/model-refusals/property-type-differs/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'schemas.update': types a property differently from `schemas.read`"
+---
+kind: Assert.Manifest
+metadata:
+  name: propertyTypeDiffersAtRuntime
+source: ./__fixtures__/model-refusals/property-type-differs/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.update' types 'text' as integer, and 'schemas.read' as string"
+---
+kind: Assert.Manifest
+metadata:
+  name: updateRequiresOptional
+source: ./__fixtures__/model-refusals/update-requires-optional/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model: requires in `schemas.update` a property `schemas.read` leaves optional"
+---
+kind: Assert.Manifest
+metadata:
+  name: updateRequiresOptionalAtRuntime
+source: ./__fixtures__/model-refusals/update-requires-optional/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'schemas.update' requires 'note', which 'schemas.read' leaves optional"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterUnknownProperty
+source: ./__fixtures__/model-refusals/filter-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[0]': filters by a property `schemas.read` does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterUnknownPropertyAtRuntime
+source: ./__fixtures__/model-refusals/filter-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[0]' filters by 'status', which 'schemas.read' does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorUnsupported
+source: ./__fixtures__/model-refusals/filter-operator-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[1]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorUnsupportedAtRuntime
+source: ./__fixtures__/model-refusals/filter-operator-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[1]' uses an operator the property's type does not support ('contains' on 'isDone', declared boolean)"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortUnknownProperty
+source: ./__fixtures__/model-refusals/sort-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.sort[0]': sorts by a property `schemas.read` does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortUnknownPropertyAtRuntime
+source: ./__fixtures__/model-refusals/sort-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.sort[0]' sorts by 'status', which 'schemas.read' does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortUnsupported
+source: ./__fixtures__/model-refusals/sort-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.sort[1]': sorts by a property that holds an object or a list"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortUnsupportedAtRuntime
+source: ./__fixtures__/model-refusals/sort-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.sort[1]' sorts by 'tags', which holds an object or a list"
+---
+kind: Assert.Manifest
+metadata:
+  name: queryMissing
+source: ./__fixtures__/model-refusals/query-missing/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Model/model: / is missing required property 'query'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortMissing
+source: ./__fixtures__/model-refusals/sort-missing/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Crud.Model/model: /query is missing required property 'sort'"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorNullableType
+source: ./__fixtures__/model-refusals/filter-operator-nullable-type/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[0]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorNullableTypeAtRuntime
+source: ./__fixtures__/model-refusals/filter-operator-nullable-type/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[0]' uses an operator the property's type does not support ('contains' on 'count', declared integer)"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorListedValues
+source: ./__fixtures__/model-refusals/filter-operator-listed-values/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[0]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorListedValuesAtRuntime
+source: ./__fixtures__/model-refusals/filter-operator-listed-values/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[0]' uses an operator the property's type does not support ('contains' on 'flag', declared boolean)"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorNullableList
+source: ./__fixtures__/model-refusals/filter-operator-nullable-list/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[0]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOperatorNullableListAtRuntime
+source: ./__fixtures__/model-refusals/filter-operator-nullable-list/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[0]' uses an operator the property's type does not support ('eq' on 'tags', declared array)"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterReservedName
+source: ./__fixtures__/model-refusals/filter-reserved-name/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Model/model at 'query.filters[1]': filters by a property named as a query parameter the list route owns"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterReservedNameAtRuntime
+source: ./__fixtures__/model-refusals/filter-reserved-name/telo.yaml
+expect:
+  errors: []
+  runFails: "Crud.Model 'model': 'query.filters[1]' filters by 'limit', named as a query parameter the list route owns"
+---
+kind: Assert.Manifest
+metadata:
+  name: queryMissingAtRuntime
+source: ./__fixtures__/model-refusals/query-missing/telo.yaml
+expect:
+  errors: []
+  runFails: "missing required property 'query'"
+---
+kind: Assert.Manifest
+metadata:
+  name: sortMissingAtRuntime
+source: ./__fixtures__/model-refusals/sort-missing/telo.yaml
+expect:
+  errors: []
+  runFails: "missing required property 'sort'"

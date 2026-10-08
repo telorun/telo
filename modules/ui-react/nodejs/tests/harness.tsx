@@ -41,6 +41,8 @@ type Responder = () => Response | Promise<Response>;
 
 export interface Rendered {
   container: HTMLElement;
+  /** Finish loading the stylesheets a render was asked to hold. */
+  loadStylesheets(): Promise<void>;
   /** Every request made, as `METHOD url`. */
   requests: string[];
   /** Replace a page's children, as a server would between two requests. */
@@ -65,6 +67,14 @@ export interface Rendered {
   choices(trigger: Element): Promise<string[]>;
   /** Press Escape where the focus is. */
   escape(): Promise<void>;
+  /** Press the pointer down on an element, as a click outside a surface begins. */
+  pointerDown(element: Element): Promise<void>;
+  /** Step through the browser's history, as its back and forward buttons do. */
+  traverse(delta: number): Promise<void>;
+  /** The media queries the application asked the viewport about. */
+  mediaQueries: string[];
+  /** Take the viewport across the application's breakpoint, or back. */
+  setNarrow(narrow: boolean): Promise<void>;
   /** Move the keyboard focus to an element. */
   focus(element: HTMLElement): Promise<void>;
   /** Commit what was typed into a field: by Enter, or by leaving it. */
@@ -77,6 +87,19 @@ export interface Rendered {
 const json = (body: unknown, status = 200) =>
   new Response(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+// A browser loads a stylesheet it is given and says so; this document does not.
+let holdStylesheets = false;
+const heldStylesheets: HTMLLinkElement[] = [];
+new MutationObserver((records) => {
+  for (const record of records) {
+    for (const added of record.addedNodes) {
+      if (!(added instanceof HTMLLinkElement)) continue;
+      if (holdStylesheets) heldStylesheets.push(added);
+      else queueMicrotask(() => added.dispatchEvent(new Event("load")));
+    }
+  }
+}).observe(document.head, { childList: true });
+
 /** Render the application against pages and collections held in the test. */
 export async function render(options: {
   path: string;
@@ -87,6 +110,10 @@ export async function render(options: {
   loadModule?: (url: string) => Promise<Record<string, unknown>>;
   /** Responses fixed before the first request, by URL prefix. */
   answers?: Record<string, Responder>;
+  /** Whether the viewport answers that it is below the application's breakpoint. */
+  narrow?: boolean;
+  /** Leave the application's stylesheets loading until `loadStylesheets`. */
+  holdStylesheets?: boolean;
 }): Promise<Rendered> {
   const prefix = options.prefix ?? "";
   const pages = { ...options.pages };
@@ -98,6 +125,9 @@ export async function render(options: {
   const requests: string[] = [];
   let bundle = BUNDLE;
   let reloads = 0;
+
+  holdStylesheets = options.holdStylesheets === true;
+  heldStylesheets.length = 0;
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -113,6 +143,7 @@ export async function render(options: {
         title: "Test App",
         pages: Object.entries(pages).map(([path, page]) => ({ path, title: page.title })),
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
+        compactBelow: "40rem",
       });
     }
     if (url.pathname === `${prefix}/_telo/ui/page`) {
@@ -133,6 +164,22 @@ export async function render(options: {
     }
     return json({ error: "NotFound", message: "nothing here", status: 404 }, 404);
   }) as typeof fetch;
+
+  const mediaQueries: string[] = [];
+  let narrow = options.narrow === true;
+  const viewportWatchers = new Set<() => void>();
+  // jsdom has no viewport to ask.
+  window.matchMedia = ((query: string) => {
+    mediaQueries.push(query);
+    return {
+      get matches() {
+        return narrow;
+      },
+      media: query,
+      addEventListener: (type: string, watcher: () => void) => viewportWatchers.add(watcher),
+      removeEventListener: (type: string, watcher: () => void) => viewportWatchers.delete(watcher),
+    };
+  }) as unknown as typeof window.matchMedia;
 
   window.history.replaceState(null, "", prefix + options.path);
   document.head.innerHTML = "";
@@ -165,8 +212,31 @@ export async function render(options: {
     await settle();
   };
   return {
+    async loadStylesheets() {
+      await act(async () => {
+        for (const link of heldStylesheets.splice(0)) link.dispatchEvent(new Event("load"));
+      });
+    },
     open,
     escape,
+    mediaQueries,
+    async setNarrow(next) {
+      narrow = next;
+      await act(async () => {
+        for (const watcher of [...viewportWatchers]) watcher();
+      });
+      await settle();
+    },
+    async pointerDown(element) {
+      await act(async () => {
+        element.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+      });
+      await settle();
+    },
+    async traverse(delta) {
+      await act(async () => window.history.go(delta));
+      await settle();
+    },
     async choose(trigger, label) {
       await open(trigger);
       const item = parts("select-item").find((candidate) => candidate.textContent === label);
