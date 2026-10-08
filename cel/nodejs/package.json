@@ -1,6 +1,6 @@
 {
   "name": "@telorun/cel",
-  "version": "0.111.0",
+  "version": "0.112.0",
   "description": "The Common Expression Language for Telo: read, type-check and evaluate an expression, hold it as a tree, write it back.",
   "keywords": [
     "telo",
