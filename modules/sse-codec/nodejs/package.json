@@ -1,6 +1,6 @@
 {
   "name": "@telorun/sse-codec",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "license": "MIT",
   "private": true,
   "description": "The std/sse-codec module's controller bundle and the surface a dependent module's controller reaches through `@telorun/sse-codec` (the module's `exports.code:` entry). Never published to npm — the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",

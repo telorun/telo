@@ -1,9 +1,0 @@
-modules:
-  modules/crud: Added
-body: "Crud.Ui takes three optional keys that say how the generated screen behaves:
-  `filters` is the filter bar's whole policy (what is on show, placement, controls, when
-  a change applies, the summary, where state is kept), and `create` / `edit` each hold
-  the `surface` their form opens in, `afterSubmit` and `unsaved`. Each is passed on as
-  written to the generated bar and table, so a key left out takes their default and
-  Crud.Ui declares none of its own; a wrong key, value or kind is reported at the
-  Crud.Ui that wrote it."

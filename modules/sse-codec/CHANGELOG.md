@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-10-08
+### Added
+* The frame and comment writers are importable by a dependent module's controller as @telorun/sse-codec (sseFrame, sseComment), so a transport writing its own event stream formats frames exactly as the encoder does.
+
 ## 0.12.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

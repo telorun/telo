@@ -1,7 +1,0 @@
-modules:
-  modules/crud: Added
-body: "Crud.Ui writes its table create and edit in the object form the ui module now
-  requires ({ form: ... }); the generated screen is unchanged. BREAKING for an ejected
-  screen: a hand-written Ui.Table copied from the expansion listing must change create:
-  !ref <form> and edit: !ref <form> to create: { form: !ref <form> } and edit: { form:
-  !ref <form> }."

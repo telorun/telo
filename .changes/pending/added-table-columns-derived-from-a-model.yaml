@@ -1,6 +1,0 @@
-modules:
-  modules/ui: Added
-body: "Table columns derived from a model leave the row key out; list it to show it. The
-  collection contract gains GET <basePath>/<rowKey value>, answering with one record: an
-  edit form is filled from it. BREAKING: a Ui.Table with no columns listed, over a model
-  declaring its row key, no longer shows a column for it."

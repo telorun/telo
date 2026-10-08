@@ -1,5 +1,0 @@
-modules:
-  modules/sse-codec: Added
-body: The frame and comment writers are importable by a dependent module's controller as
-  @telorun/sse-codec (sseFrame, sseComment), so a transport writing its own event stream
-  formats frames exactly as the encoder does.

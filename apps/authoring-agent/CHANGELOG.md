@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.0 - 2026-10-08
+### Added
+* The primer covers a template body forwarding a path that continues past a reference slot into the resource it names, and a rule's resolve: reading a referenced Telo.JsonSchema with its extends: parents folded in.
+
 ## 0.19.0 - 2026-10-07
 ### Added
 * The authoring primer says that a LICENSE file beside telo.yaml is the license text publish and package carry, and that the agent never chooses a license for a user's module or application.

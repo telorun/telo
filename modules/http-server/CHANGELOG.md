@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.36.0 - 2026-10-08
+### Added
+* BREAKING: a request body is validated as the value it is and no longer coerced to the type its schema declares. A value of another JSON type at a typed property ("5" for an integer, 1 for a boolean), and a null at a property typed string, integer, number or boolean, is now a 400 in the request-validation envelope naming the property (location: body), where it used to be converted ("5" to 5, null to "" / 0 / false) and accepted. A property that may be null declares it (type: [string, "null"]). Query, path-parameter and header values are text by transport and are still read into their declared types; defaults are still applied and undeclared properties are still kept or refused as the schema says.
+### Fixed
+* A request refused by its route's schema now names what was refused. Each entry of the 400 envelope's details[] is built from the validator's own finding: location is the validated part (body, query, params, headers); path names the refused field from that part's root, property names joined by a dot and a list position written in brackets against its list (note, address.street, items[0].name); message is the validator's own sentence (must NOT have more than 5 characters, must match format "date", must be integer). A missing required property and a property the schema does not declare are each named themselves, the parent's path plus the name. Before, every refusal but a missing required property arrived with an empty path and a message cut out of the validator's prose. The envelope's fields and status are unchanged; a client that matched the old message text must match the new.
+
 ## 0.35.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "description": "The std/ui module's controller bundle and the surface a dependent module's controller reaches through `@telorun/ui` (the module's `exports.code:` entry). Never published to npm — the code ships inside the module artifact; this package exists to declare the dependencies esbuild inlines and to TYPE-CHECK the source, which esbuild does not do.",

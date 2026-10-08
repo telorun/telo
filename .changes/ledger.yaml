@@ -3,10 +3,10 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.19.0
+    version: 0.20.0
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-ELlG4gtapk7Xy5nBUdk-O2KdPOQdaaaXgwIqXg5AGws
+      image: sha256-uVrMs2_0ohYavsCSpA6-iufMUQi79loCAffzQIgboOw
   apps/hub:
     version: 0.13.0
     registry: oci://ghcr.io/telorun
@@ -133,11 +133,12 @@ modules:
       controller/js: sha256-H5ImamXHPGvf5kv99wFTDgQUezUgDthcQG90yBTDJtQ
       manifest: sha256-vT5DEj3s9x2eJINJTthLDwiTAwE88dDqo48vE_hRbno
   modules/crud:
-    version: 0.23.0
+    version: 0.24.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      manifest: sha256-cgh_6AWlndlqvKxzEhLCTEfRONzfCC3y1fuxTcGS2og
+      controller/js: sha256-sweownW7O9HpHnirmImV9VN724aCvSeE-uJdxqleMJU
+      manifest: sha256-nqftDTag8U-Ra3zGdWnVmy9FfGInwMwue8v5sQcSZhc
   modules/durable:
     version: 0.3.0
     registry: oci://ghcr.io/telorun
@@ -241,13 +242,13 @@ modules:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-0p8VXy5iZInyuU_RwE9v8zdMETEbd6ttxAEeJISOEBI
   modules/http-server:
-    version: 0.35.0
+    version: 0.36.0
     registry: oci://ghcr.io/telorun
     layers:
       assets: sha256-LECze_d4UowiHyAsJ_3lUeplxtIJhICnX7JXJgOJiDU
       common: sha256-VXUwlTSyvLhtrxzK8M_Uv69jGcw2Y2xVE1jFjx7PXq0
-      controller/js: sha256-FhKA_VBLub3zqwJJSH0UYEE2QHTkPjSu90cg7_MDAfQ
-      manifest: sha256-7mPv1-MxMCWEUfb52pnR0368cCJ3kmd_S3HLjGMxdwk
+      controller/js: sha256-S7LNg4FLVoOZwdUBgybLsDOVmzZ3CfvmqIxYWDVGXQY
+      manifest: sha256-rckm8MNSLKgz7GES1f3aCQohbMaWjNw_RM7vgPh3Euc
   modules/idempotency:
     version: 0.11.0
     registry: oci://ghcr.io/telorun
@@ -511,12 +512,12 @@ modules:
       native/node+windows+arm64+node-137: sha256-NLeSjjbXPg4SdzmWzwgX4DiTUF_KKXlh5M1lcP4YjbI
       native/node+windows+arm64+node-141: sha256-47YlTxJrXh5KMrDl7zvkDCaxdUgfsvVFm3ujZPi_Shw
   modules/sse-codec:
-    version: 0.12.0
+    version: 0.13.0
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-Akfr0hvf1_YobJfvYEpP1eX_aDmZguiIN_CQwVOJXLs
-      manifest: sha256--R4dRPxOrPt6MGk9YAg9htxaEi8gxgthacEKQa5DM0M
+      library/js: sha256-nuA-YKBTGgxFDFY1ZZcmUZlngWNUbJdA-pHVaSmpgAk
+      manifest: sha256-_kGgNZBKLQrKWg7LhaqMDw--FdbBQaeaMiNoGrRqIGA
   modules/starlark:
     version: 0.13.0
     registry: oci://ghcr.io/telorun
@@ -1420,12 +1421,12 @@ modules:
       controller/js: sha256-UXT0RfWMfzGhrF27ABfjGcacHDhLQacZLjKZ2MWYT88
       manifest: sha256-JazXeoE873SaDSbyPKoAXMs2cdXr6gMUmCYw3aQI2ZE
   modules/test:
-    version: 0.12.0
+    version: 0.12.1
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-_LjyWsBjJFG8GrhQksS8HVPm9tFm-SUn45d5DdWNC1Q
-      manifest: sha256-4nJRmqh648kwASkg3YS8-WkzFg8KnuHdqUBipc_MiUg
+      controller/js: sha256-c1BN3b8huwRRzkY6vm3Hvpa1kvxPcF1Dew7xBecgPP4
+      manifest: sha256-DZkuDCrGDcNBplU3dVziZsxodiHD1s1MNjOaeD5ODIo
   modules/text-diff:
     version: 0.3.0
     registry: oci://ghcr.io/telorun
@@ -1446,6 +1447,21 @@ modules:
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
       manifest: sha256-Dc68bysdUusxVsYA-K5zqr5ZkAbROC6XwIXabeBaDOs
+  modules/ui:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      library/js: sha256-7FSHmHH6nYtnHYsZTr_IpiUsaankNiZprcnfJLhXz1U
+      manifest: sha256-5lx690SdZlvvOyksgjmKfUZheTEePV2KWwLQ-698XBY
+  modules/ui-react:
+    version: 0.2.0
+    registry: oci://ghcr.io/telorun
+    layers:
+      browser/esm+ui_react-1: sha256-re13OLjG3HbPn4uNfJLVxe8bD7qqNyilquyrDEoAzpU
+      common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
+      controller/js: sha256-rfDHL6NsdJbyZ6PhMJriCL_r67R7z2hQTBcK1AL-NY0
+      manifest: sha256-PKmobQnht1O-hYqjpHbWLRXrjqBwKNk5igvk-FwUb0c
   modules/vector-store:
     version: 0.11.0
     registry: oci://ghcr.io/telorun
