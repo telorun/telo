@@ -1,5 +1,15 @@
 # @telorun/ide-support
 
+## 0.113.0
+
+### Patch Changes
+
+- Updated dependencies [2aec2f7]
+- Updated dependencies [2aec2f7]
+  - @telorun/analyzer@0.113.0
+  - @telorun/cel@0.113.0
+  - @telorun/templating@0.113.0
+
 ## 0.112.0
 
 ### Minor Changes
