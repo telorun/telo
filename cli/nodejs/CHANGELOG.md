@@ -1,5 +1,45 @@
 # @telorun/cli
 
+## 0.112.0
+
+### Minor Changes
+
+- 220c7bf: `telo upgrade --pin-local` rewrites a relative import of a released workspace module to its published pin once the published artifact matches the working copy, and keeps it relative — printing the release plan's reason — while a change to that module is unreleased. `telo upgrade -o json` now also lists each upgrade, repin and kept-local import with the manifest that holds it.
+- 71da112: Five manifest primitives, each checked by `telo check` and enforced by the kernel.
+
+  **A reference slot inside a named shape is a slot of the kind.** A `!ref` written at an `x-telo-ref` slot a `Telo.JsonSchema` declares — reached from a kind's schema by `$ref: "telo://Self/<Shape>"` or `telo://<Alias>/<Shape>`, at any depth of a shape recursing with `$ref: "#"` — is now checked (`UNRESOLVED_REFERENCE`, `REFERENCE_KIND_MISMATCH`), resolved to the live instance, and may be an inline declaration. Before, such a slot was read as plain data: a missing target passed `telo check` and the controller received a name. A stdlib or third-party kind whose schema reaches a shape holding reference slots now has those references validated; one that named a missing or wrong-kind target is newly refused.
+
+  **A computed value at or above a reference slot is refused in a runtime-eval field too.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` used to cover only fields evaluated at creation; a `!cel`, `!interpolate` or `!sql` at or above a slot inside an `x-telo-eval: runtime` field is now refused at check and when the resource is created. Values beside or below a slot stay computable. This is a break for a manifest that computed such a value: write the slot as `!ref`.
+
+  **`x-telo-eval: accessor`.** A third value of the annotation: the field holds a plain `!cel` chain rooted at one of its `x-telo-context` bindings, or a literal. The chain is type-checked and never evaluated, with no `CEL_NULLABLE_ACCESS`; the controller receives `{ root, path }` for a chain and `{ value }` for a literal. Anything else is `ACCESSOR_NOT_PLAIN_CHAIN` / `ERR_ACCESSOR_NOT_PLAIN_CHAIN`. Editors agree with the checker there: tag completion offers `!cel` alone at an accessor field and no tag beneath it, in VS Code and in studio's form, and CEL completion inside the expression offers only the field's bindings and their members. For a caller of the analyzer, `celEvalModeAt` (and `AnalysisRegistry.celEvalModeAt`) now answers `"accessor"` at or beneath such a field, where a field that is not evaluated otherwise answers `null`; `offeredValueTags` takes that mode and a third argument saying whether the position is the field itself.
+
+  **A template's `provide:` reaches a provider.** The target is read through `invoke()` when it has one and through its own `provide()` otherwise, with `result:` applied to either; before, a provide-only target failed with a capability error. `inputs:` beside a provide-only target is refused at dispatch.
+
+  **Browser entries.** A `Telo.Library` declares the ES modules it ships for a browser under `exports.browser:` (`specifier`, `path`, `source`, optional `abi`, `external`, `exports`); a malformed entry, a repeated specifier or a platform axis on one is `BROWSER_ENTRY_INVALID`. The kernel builds them — into `<cache-root>/browser-src/` on first use in a checkout, into a new `browser` artifact layer at `telo publish` / `telo release` — with entries declaring the same `external` list built together so they share chunks; a failed build is `ERR_BROWSER_BUILD_FAILED`. Controllers reach one through the new `ctx.resolveBrowserEntry(specifier)` and `ctx.resolveControllerBrowserEntry(specifier)`, which return the built file, its sibling files, a content digest, `abi`, `external` and `exports`. The sibling files are the ones the entry's build recorded beside it in `<path>.siblings.json` (`{ "files": [ { "path": … } ] }`); a list that is missing, malformed or names a file outside the layer or build directory is `ERR_BROWSER_ENTRY_UNAVAILABLE`, and `telo publish` / `telo package` refuse a module declaring a file of its own at that reserved name. A string field annotated `x-telo-browser-export: { entry: <pointer> }` must name an export of a browser entry its own module declares (`BROWSER_ENTRY_UNKNOWN` / `BROWSER_EXPORT_UNKNOWN`, `ERR_`-prefixed at creation). `telo install` and `telo package` always include browser layers; the Rust kernel reads the role and skips it.
+
+  **The computed-reference refusal covers every evaluated field.** `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` also apply where a CEL region covers a field that carries no `x-telo-eval` (`x-telo-context`, `x-telo-error-context`, a step context): an `Http.Api` route's `handler: !cel …` is now that one diagnostic instead of `INVALID_REFERENCE`, and a computed container above a route's `returns[].content.*.encoder` is newly refused at check and at creation. A computed leaf beside a slot stays legal.
+
+  **An expression inside a reference slot's value branch no longer breaks the branch.** Where a slot takes a reference or a list of entries (each a reference beside other fields), an entry holding `when: !cel …` was reported as `INVALID_REFERENCE` at the slot; the list is now judged with the expression standing in, and an entry of the wrong shape is still refused.
+
+  **A rule skips only for what it reads through a comprehension.** In `x-telo-resource-rules` and `x-telo-referrer-rules`, a condition such as `self.routes.all(r, r.path != "")` reads each element's `path` alone, so an expression in another field of an element no longer makes the rule `RESOURCE_RULE_SKIPPED` / `REFERRER_RULE_SKIPPED`; a rule skipped before may now report a violation. The skip message names the value by the chain that reads it (`self.routes[1].path`). `@telorun/templating` exports `extractReadChains` and `EACH_SEGMENT`.
+
+  **A tagged union's failure is read by its tag.** Where a union's branches each pin a discriminator member with `const` / `enum`, a correctly tagged value's own problem is reported as that branch's — `must NOT have additional properties ('<key>' is not allowed)`, `is missing required property '<key>'` — instead of `matches no alternative`, and a value whose tag no branch accepts is reported once, at the tag, listing every allowed value. The message text of such `SCHEMA_VIOLATION` / `ERR_*_INVALID` failures changes accordingly.
+
+  **A disposed effect leaves its frame.** `dispose()` on a `.perform()` result, and the release a synchronous registration returns, now remove the effect from its resource's frame as the specification says, in constant time; before, the entry stayed for the life of the resource with everything its inverse closed over, so a resource performing one effect per connection grew without bound.
+
+  **The computed-reference refusal no longer depends on a concrete item.** A computed value above a slot reached through a named shape — `children: !cel "[]"` where each child is a shape holding a reference slot — is `REF_SLOT_COMPUTED` / `ERR_REF_SLOT_COMPUTED` even when the resource writes no item of that shape anywhere; before, it was refused only when some list in the resource held one.
+
+  **A browser entry's files stay inside its module.** An `exports.browser` entry whose `path` or `source` is absolute or points above the module root is `BROWSER_ENTRY_INVALID`, and the entry does not exist for a resource or controller naming its specifier.
+
+### Patch Changes
+
+- Updated dependencies [71da112]
+  - @telorun/analyzer@0.112.0
+  - @telorun/kernel@0.112.0
+  - @telorun/sdk@0.112.0
+  - @telorun/ide-support@0.112.0
+  - @telorun/templating@0.112.0
+
 ## 0.111.0
 
 ### Minor Changes
