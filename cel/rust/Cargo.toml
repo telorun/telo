@@ -1,0 +1,13 @@
+[package]
+name = "telorun-cel"
+version = "0.112.0"
+license = "MIT"
+edition = "2021"
+publish = false
+description = "The CEL language for Rust: reads an expression into the ranged syntax tree. One path dependency, no host vocabulary."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+telorun-cel-value = { path = "value" }

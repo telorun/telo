@@ -1222,6 +1222,13 @@ name = "telorun-abi"
 version = "0.0.0"
 
 [[package]]
+name = "telorun-cel"
+version = "0.112.0"
+dependencies = [
+ "telorun-cel-value",
+]
+
+[[package]]
 name = "telorun-cel-value"
 version = "0.114.0"
 
