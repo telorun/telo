@@ -77,6 +77,16 @@ fn chain(label: &str, links: usize) -> (String, usize) {
     }
 }
 
+/// `(chain, the most links Node reads, the root's range, Node's refusal of one more)`.
+fn node_chain_boundaries() -> [(&'static str, usize, (u32, u32), Option<CelSyntaxDiagnostic>); 4] {
+    [
+        ("addition", 49999, (0, 99999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 100001))),
+        ("member", 99999, (0, 199999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 200001))),
+        ("index", 49999, (0, 149998), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 150001))),
+        ("receiver call", 99999, (0, 399997), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 400001))),
+    ]
+}
+
 /// What the writer, the pass and the queries answer for a chain.
 struct ChainAnswers {
     written: String,
@@ -126,10 +136,8 @@ fn writes_resolves_and_queries_a_chain_as_long_as_the_node_limit_allows() {
             ("index", 3, "a[0][0][0]", true, true, 0, &["a"], &["a"]),
             ("receiver call", 3, "a.f().f().f()", true, false, 1, &["a"], &[]),
         ];
-        // `(chain, the most links Node reads)`, as the test below holds them.
-        let longest = [("addition", 49999), ("member", 99999), ("index", 49999), ("receiver call", 99999)];
-        for ((label, links, written, same, same_under_root, calls, roots, roots_resolved), (long_label, most)) in
-            NODE_SHORT.into_iter().zip(longest)
+        for ((label, links, written, same, same_under_root, calls, roots, roots_resolved), (long_label, most, ..)) in
+            NODE_SHORT.into_iter().zip(node_chain_boundaries())
         {
             assert_eq!(label, long_label);
             for length in [links, most] {
@@ -151,14 +159,7 @@ fn writes_resolves_and_queries_a_chain_as_long_as_the_node_limit_allows() {
 #[test]
 fn reads_and_handles_a_chain_as_long_as_the_node_limit_allows() {
     on_a_small_stack(|| {
-        // `(chain, the most links Node reads, the root's range, Node's refusal of one more)`.
-        let node_boundaries: [(&str, usize, (u32, u32), Option<CelSyntaxDiagnostic>); 4] = [
-            ("addition", 49999, (0, 99999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 100001))),
-            ("member", 99999, (0, 199999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 200001))),
-            ("index", 49999, (0, 149998), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 150001))),
-            ("receiver call", 99999, (0, 399997), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 400001))),
-        ];
-        for (label, links, (start, end), refusal) in node_boundaries {
+        for (label, links, (start, end), refusal) in node_chain_boundaries() {
             let (source, nodes) = chain(label, links);
             let parsed = read(&source);
             assert_eq!(parsed.diagnostic, None, "{label}");
@@ -222,6 +223,57 @@ fn writes_a_hand_built_tree_a_million_deep() {
             let deep = serialize_tree(&build(MILLION)).expect(label);
             assert!(deep == nesting_written(label, MILLION), "{label}");
         }
+    });
+}
+
+// --- release ---------------------------------------------------------------------------
+
+#[test]
+fn releases_around_a_hole_that_is_a_child_and_leaves_it_as_it_was() {
+    on_a_small_stack(|| {
+        // The hole is a real child here, held by a second owner that outlives the tree.
+        let hole = unparsed(3, 7);
+        let deep = (0..MILLION).fold(Arc::clone(&hole), |operand, _| unary("-", operand, 0, 1));
+        let shallow = select(Arc::clone(&hole), "b", (2, 3), false, false, 0, 3);
+        assert_eq!(walk_tree(&deep).count(), MILLION + 1);
+        drop(deep);
+        assert!(shallow == select(unparsed(3, 7), "b", (2, 3), false, false, 0, 3));
+        drop(shallow);
+        assert_eq!(Arc::strong_count(&hole), 1);
+        assert!(hole == unparsed(3, 7));
+    });
+}
+
+#[test]
+fn releases_a_deep_subtree_two_trees_share_from_two_threads() {
+    for _ in 0..8 {
+        let shared = nested_negation(100_000);
+        let trees = [(); 2].map(|_| binary("+", ident("a", false, 0, 1), Arc::clone(&shared), 0, 1));
+        drop(shared);
+        let start = Arc::new(std::sync::Barrier::new(2));
+        let releases = trees.map(|tree| {
+            let start = Arc::clone(&start);
+            let release = move || {
+                start.wait();
+                drop(tree);
+            };
+            std::thread::Builder::new().stack_size(STACK_BYTES).spawn(release).expect("the thread starts")
+        });
+        for release in releases {
+            release.join().expect("the tree was released");
+        }
+    }
+}
+
+#[test]
+fn releases_a_list_of_many_deep_chains() {
+    on_a_small_stack(|| {
+        const CHAINS: usize = 200;
+        const DEPTH: usize = 10_000;
+        let chains = (0..CHAINS).map(|_| element(nested_conditional(DEPTH), false)).collect();
+        let tree = list(chains, 0, 1);
+        assert_eq!(walk_tree(&tree).count(), CHAINS * (3 * DEPTH + 1) + 1);
+        drop(tree);
     });
 }
 

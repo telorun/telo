@@ -24,7 +24,7 @@
 //! - `as_str` on the two operator types, which Node holds as the strings themselves.
 
 use std::fmt;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 pub use telorun_cel_value::SourceRange;
 
@@ -319,8 +319,9 @@ impl<'a> From<&'a CelNode> for NodeRef<'a> {
 
 // --- traversal ---------------------------------------------------------------
 
-/// The single reader of a node's shape for traversal: every child, in source order.
-fn each_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a CelNode)) {
+/// The single reader of a node's shape for traversal: every child, in source order,
+/// as the tree holds it.
+pub(crate) fn each_shared_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a Arc<CelNode>)) {
     match node {
         CelNode::Literal(_) | CelNode::Ident(_) | CelNode::Unparsed(_) => {}
         CelNode::List(node) => node.elements.iter().for_each(|element| visit(&element.value)),
@@ -333,12 +334,12 @@ fn each_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a CelNode)) {
             visit(&node.operand);
             visit(&node.index);
         }
-        CelNode::Call(node) => node.args.iter().for_each(|argument| visit(argument)),
+        CelNode::Call(node) => node.args.iter().for_each(visit),
         CelNode::ReceiverCall(node) => {
             visit(&node.receiver);
-            node.args.iter().for_each(|argument| visit(argument));
+            node.args.iter().for_each(visit);
         }
-        CelNode::QualifiedCall(node) => node.args.iter().for_each(|argument| visit(argument)),
+        CelNode::QualifiedCall(node) => node.args.iter().for_each(visit),
         CelNode::Unary(node) => visit(&node.operand),
         CelNode::Binary(node) => {
             visit(&node.left);
@@ -350,6 +351,10 @@ fn each_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a CelNode)) {
             visit(&node.when_false);
         }
     }
+}
+
+fn each_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a CelNode)) {
+    each_shared_child(node, |child| visit(child));
 }
 
 /// Every child node, in source order.
@@ -776,20 +781,27 @@ kind_struct! {
 
 // --- release -----------------------------------------------------------------
 
-/// The node an unlinked child is replaced by, shared by every tree.
-fn unlinked() -> &'static Arc<CelNode> {
-    static UNLINKED: OnceLock<Arc<CelNode>> = OnceLock::new();
-    UNLINKED.get_or_init(|| Arc::new(CelNode::Unparsed(CelUnparsedNode { range: SourceRange { start: 0, end: 0 } })))
+/// The leaf a release puts where it took a child out: made the first time one release
+/// needs it, cloned for every further swap of that release, and gone with it.
+type Placeholder = Option<Arc<CelNode>>;
+
+fn is_leaf(node: &CelNode) -> bool {
+    matches!(node, CelNode::Literal(_) | CelNode::Ident(_) | CelNode::Unparsed(_))
 }
 
-fn unlink(child: &mut Arc<CelNode>, pending: &mut Vec<Arc<CelNode>>) {
-    let unlinked = unlinked();
-    if !Arc::ptr_eq(child, unlinked) {
-        pending.push(std::mem::replace(child, Arc::clone(unlinked)));
+/// Takes a child out of its field onto the list. A leaf stays where it is: releasing
+/// one costs no depth.
+fn unlink(child: &mut Arc<CelNode>, pending: &mut Vec<Arc<CelNode>>, placeholder: &mut Placeholder) {
+    if is_leaf(child) {
+        return;
     }
+    let leaf = placeholder.get_or_insert_with(|| {
+        Arc::new(CelNode::Unparsed(CelUnparsedNode { range: SourceRange { start: 0, end: 0 } }))
+    });
+    pending.push(std::mem::replace(child, Arc::clone(leaf)));
 }
 
-fn unlink_children(node: &mut CelNode, pending: &mut Vec<Arc<CelNode>>) {
+fn unlink_children(node: &mut CelNode, pending: &mut Vec<Arc<CelNode>>, placeholder: &mut Placeholder) {
     match node {
         CelNode::Literal(_) | CelNode::Ident(_) | CelNode::Unparsed(_) => {}
         CelNode::List(node) => pending.extend(std::mem::take(&mut node.elements).into_iter().map(|element| element.value)),
@@ -799,39 +811,42 @@ fn unlink_children(node: &mut CelNode, pending: &mut Vec<Arc<CelNode>>) {
                 pending.push(entry.value);
             }
         }
-        CelNode::Select(node) => unlink(&mut node.operand, pending),
+        CelNode::Select(node) => unlink(&mut node.operand, pending, placeholder),
         CelNode::Index(node) => {
-            unlink(&mut node.operand, pending);
-            unlink(&mut node.index, pending);
+            unlink(&mut node.operand, pending, placeholder);
+            unlink(&mut node.index, pending, placeholder);
         }
         CelNode::Call(node) => pending.append(&mut node.args),
         CelNode::ReceiverCall(node) => {
-            unlink(&mut node.receiver, pending);
+            unlink(&mut node.receiver, pending, placeholder);
             pending.append(&mut node.args);
         }
         CelNode::QualifiedCall(node) => pending.append(&mut node.args),
-        CelNode::Unary(node) => unlink(&mut node.operand, pending),
+        CelNode::Unary(node) => unlink(&mut node.operand, pending, placeholder),
         CelNode::Binary(node) => {
-            unlink(&mut node.left, pending);
-            unlink(&mut node.right, pending);
+            unlink(&mut node.left, pending, placeholder);
+            unlink(&mut node.right, pending, placeholder);
         }
         CelNode::Conditional(node) => {
-            unlink(&mut node.condition, pending);
-            unlink(&mut node.when_true, pending);
-            unlink(&mut node.when_false, pending);
+            unlink(&mut node.condition, pending, placeholder);
+            unlink(&mut node.when_true, pending, placeholder);
+            unlink(&mut node.when_false, pending, placeholder);
         }
     }
 }
 
 impl Drop for CelNode {
     /// Unlinks every descendant this node alone owns onto a list, so releasing a deep
-    /// tree costs no stack.
+    /// tree costs no stack. A node taken off the list holds only leaves and empty
+    /// lists by the time it is released itself, so its own release does nothing more.
+    /// The release shares nothing with any other: at most one allocation, its own.
     fn drop(&mut self) {
         let mut pending = Vec::new();
-        unlink_children(self, &mut pending);
+        let mut placeholder = None;
+        unlink_children(self, &mut pending, &mut placeholder);
         while let Some(child) = pending.pop() {
             if let Some(mut node) = Arc::into_inner(child) {
-                unlink_children(&mut node, &mut pending);
+                unlink_children(&mut node, &mut pending, &mut placeholder);
             }
         }
     }

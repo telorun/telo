@@ -5,6 +5,10 @@
 //! and a qualified call writes back as the `Alias.fn(x)` it was read from. That is what
 //! makes a tree, rather than the author's text, something a tool may hold and hand back.
 //!
+//! One shape breaks it, as it does on Node: a negation of a member, index or call chain
+//! that starts at a non-negative number literal is written without the parentheses that
+//! keep it one, so `-(1).a` is written `-1.a`, which reads back as a member of `-1`.
+//!
 //! "Under the options the tree was read with" is the whole of it: an optional entry
 //! (`[?x]`, `{?k: v}`) is written wherever the tree holds one, and reads back only
 //! where the optional syntax is on; a qualified call reads back as one only under its

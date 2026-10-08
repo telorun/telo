@@ -13,26 +13,29 @@
 //! refusal; the text of every literal form; every name, member and field spelling;
 //! where parentheses are placed; more sources read, written and re-read; and which
 //! fault is reported for a tree with several.
+//!
+//! Every source here round-trips. The ones that read clean and do not — because the
+//! text is refused, or re-reads as another expression — are named in
+//! `interim_readings.rs`.
 
 mod support;
 
 use support::*;
-use telorun_cel::{parse_expression, parse_syntax, serialize_tree, trees_equal, CelSyntaxDiagnostic, ParseOptions};
+use telorun_cel::{parse_expression, parse_syntax, serialize_tree, trees_equal, ParseOptions};
 
-/// `(source, the text Node writes for its tree, the diagnostic of re-reading that
-/// text, whether Node holds the two trees equal)`.
-type RoundTrip = (&'static str, &'static str, Option<CelSyntaxDiagnostic>, bool);
+/// `(source, the text Node writes for its tree)`. Node re-reads each text with no
+/// diagnostic, to an equal tree.
+type RoundTrip = (&'static str, &'static str);
 
-fn assert_round_trips_as_node(options: &ParseOptions, rows: Vec<RoundTrip>) {
+fn assert_round_trips_as_node(options: &ParseOptions, rows: &[RoundTrip]) {
     assert!(!rows.is_empty(), "the table holds no row");
-    for (source, written, reread_diagnostic, equal) in rows {
+    for (source, written) in rows {
         let parsed = parse_syntax(source, options);
         assert_eq!(parsed.diagnostic, None, "{source}");
-        assert_eq!(serialize_tree(&parsed.root).as_deref(), Ok(written), "{source}");
+        assert_eq!(serialize_tree(&parsed.root).as_deref(), Ok(*written), "{source}");
         let reread = parse_syntax(written, options);
-        assert_eq!(reread.diagnostic, reread_diagnostic, "{written}");
-        assert_eq!(trees_equal(&parsed.root, &reread.root), equal, "{source} → {written}");
-        assert!(reread.diagnostic.is_none() && equal, "{source} → {written}");
+        assert_eq!(reread.diagnostic, None, "{written}");
+        assert!(trees_equal(&parsed.root, &reread.root), "{source} → {written}");
     }
 }
 
@@ -40,53 +43,53 @@ fn assert_round_trips_as_node(options: &ParseOptions, rows: Vec<RoundTrip>) {
 fn writes_each_expression_back_to_an_equal_tree() {
     assert_round_trips_as_node(
         &defaults(),
-        vec![
-            ("0", "0", None, true),
-            ("-9223372036854775808", "-9223372036854775808", None, true),
-            ("9223372036854775807", "9223372036854775807", None, true),
-            ("18446744073709551615u", "18446744073709551615u", None, true),
-            ("1.0", "1.0", None, true),
-            ("-0.0", "-0.0", None, true),
-            ("1e-7", "1e-7", None, true),
-            ("1e999", "1e999", None, true),
-            ("''", "\"\"", None, true),
-            ("'a\\nb'", "\"a\\nb\"", None, true),
-            ("\"\\x00\\u270c\"", "\"\\x00\u{270c}\"", None, true),
-            ("b'\\000\\xff'", "b\"\\x00\\xff\"", None, true),
-            ("true", "true", None, true),
-            ("null", "null", None, true),
-            ("[]", "[]", None, true),
-            ("[1, 'a', [2]]", "[1, \"a\", [2]]", None, true),
-            ("{}", "{}", None, true),
-            ("{'a': 1, 2: b}", "{\"a\": 1, 2: b}", None, true),
-            ("a.b.c", "a.b.c", None, true),
-            ("a.?b", "a.?b", None, true),
-            ("a[0]", "a[0]", None, true),
-            ("a[?'k']", "a[?\"k\"]", None, true),
-            ("size(a)", "size(a)", None, true),
-            ("a.startsWith('x')", "a.startsWith(\"x\")", None, true),
-            ("xs.map(i, i + 1)", "xs.map(i, i + 1)", None, true),
-            ("has(a.b)", "has(a.b)", None, true),
-            ("cel.bind(x, 1, x + 1)", "cel.bind(x, 1, x + 1)", None, true),
-            ("optional.of(1)", "optional.of(1)", None, true),
-            ("!a", "!a", None, true),
-            ("-a", "-a", None, true),
-            ("-(1)", "-(1)", None, true),
-            ("a + b * (c - d)", "a + b * (c - d)", None, true),
-            ("a - (b - c)", "a - (b - c)", None, true),
-            ("(a || b) && c", "(a || b) && c", None, true),
-            ("a in [1, 2]", "a in [1, 2]", None, true),
-            ("a == b ? c : d", "a == b ? c : d", None, true),
-            ("(a ? b : c) ? d : e", "(a ? b : c) ? d : e", None, true),
-            ("a > 1 && b <= 2 || !c", "a > 1 && b <= 2 || !c", None, true),
-            (".99", "0.99", None, true),
-            ("br'\\n'", "b\"\\\\n\"", None, true),
-            ("headers.`content-type`", "headers.`content-type`", None, true),
-            ("m.`foo.txt`.`a-b`", "m.`foo.txt`.`a-b`", None, true),
-            ("m.?`a-b`", "m.?`a-b`", None, true),
-            (".y", ".y", None, true),
-            (".y.z", ".y.z", None, true),
-            ("[1].map(y, .y)", "[1].map(y, .y)", None, true),
+        &[
+            ("0", "0"),
+            ("-9223372036854775808", "-9223372036854775808"),
+            ("9223372036854775807", "9223372036854775807"),
+            ("18446744073709551615u", "18446744073709551615u"),
+            ("1.0", "1.0"),
+            ("-0.0", "-0.0"),
+            ("1e-7", "1e-7"),
+            ("1e999", "1e999"),
+            ("''", "\"\""),
+            ("'a\\nb'", "\"a\\nb\""),
+            ("\"\\x00\\u270c\"", "\"\\x00\u{270c}\""),
+            ("b'\\000\\xff'", "b\"\\x00\\xff\""),
+            ("true", "true"),
+            ("null", "null"),
+            ("[]", "[]"),
+            ("[1, 'a', [2]]", "[1, \"a\", [2]]"),
+            ("{}", "{}"),
+            ("{'a': 1, 2: b}", "{\"a\": 1, 2: b}"),
+            ("a.b.c", "a.b.c"),
+            ("a.?b", "a.?b"),
+            ("a[0]", "a[0]"),
+            ("a[?'k']", "a[?\"k\"]"),
+            ("size(a)", "size(a)"),
+            ("a.startsWith('x')", "a.startsWith(\"x\")"),
+            ("xs.map(i, i + 1)", "xs.map(i, i + 1)"),
+            ("has(a.b)", "has(a.b)"),
+            ("cel.bind(x, 1, x + 1)", "cel.bind(x, 1, x + 1)"),
+            ("optional.of(1)", "optional.of(1)"),
+            ("!a", "!a"),
+            ("-a", "-a"),
+            ("-(1)", "-(1)"),
+            ("a + b * (c - d)", "a + b * (c - d)"),
+            ("a - (b - c)", "a - (b - c)"),
+            ("(a || b) && c", "(a || b) && c"),
+            ("a in [1, 2]", "a in [1, 2]"),
+            ("a == b ? c : d", "a == b ? c : d"),
+            ("(a ? b : c) ? d : e", "(a ? b : c) ? d : e"),
+            ("a > 1 && b <= 2 || !c", "a > 1 && b <= 2 || !c"),
+            (".99", "0.99"),
+            ("br'\\n'", "b\"\\\\n\""),
+            ("headers.`content-type`", "headers.`content-type`"),
+            ("m.`foo.txt`.`a-b`", "m.`foo.txt`.`a-b`"),
+            ("m.?`a-b`", "m.?`a-b`"),
+            (".y", ".y"),
+            (".y.z", ".y.z"),
+            ("[1].map(y, .y)", "[1].map(y, .y)"),
         ],
     );
 }
@@ -95,11 +98,11 @@ fn writes_each_expression_back_to_an_equal_tree() {
 fn writes_each_optional_entry_back_to_an_equal_tree() {
     assert_round_trips_as_node(
         &optional_syntax(),
-        vec![
-            ("[?a]", "[?a]", None, true),
-            ("[?a, b]", "[?a, b]", None, true),
-            ("{?'k': v}", "{?\"k\": v}", None, true),
-            ("{?'k': v, 'j': w}", "{?\"k\": v, \"j\": w}", None, true),
+        &[
+            ("[?a]", "[?a]"),
+            ("[?a, b]", "[?a, b]"),
+            ("{?'k': v}", "{?\"k\": v}"),
+            ("{?'k': v, 'j': w}", "{?\"k\": v, \"j\": w}"),
         ],
     );
 }
@@ -161,44 +164,44 @@ fn writes_a_hand_built_negation_of_a_literal_without_folding_it_away() {
 fn writes_more_sources_back_to_an_equal_tree() {
     assert_round_trips_as_node(
         &defaults(),
-        vec![
-            ("1e21", "1e+21", None, true),
-            ("123456789012345680000.0", "123456789012345680000.0", None, true),
-            ("1e-6", "0.000001", None, true),
-            ("0.000001234", "0.000001234", None, true),
-            ("5e-324", "5e-324", None, true),
-            ("1.7976931348623157e308", "1.7976931348623157e+308", None, true),
-            ("-1e999", "-1e999", None, true),
-            ("- 1", "-1", None, true),
-            ("--1", "--1", None, true),
-            ("-(-1)", "--1", None, true),
-            ("-(1.5)", "-(1.5)", None, true),
-            ("-1u", "-1u", None, true),
-            ("!-a", "!-a", None, true),
-            ("(-1).x", "(-1).x", None, true),
-            ("(-a).b", "(-a).b", None, true),
-            ("a.b(1)", "a.b(1)", None, true),
-            ("'\\x7f\\x1f\\\\\\\"\\'\\r\\t'", "\"\\x7f\\x1f\\\\\\\"'\\r\\t\"", None, true),
-            ("'\u{e9}\u{1f600}'", "\"\u{e9}\u{1f600}\"", None, true),
-            ("b'\\\\\\\"~ \\x7f\\x80'", "b\"\\\\\\\"~ \\x7f\\x80\"", None, true),
-            ("b'\u{e9}'", "b\"\\xc3\\xa9\"", None, true),
-            ("a ? b : c ? d : e", "a ? b : c ? d : e", None, true),
-            ("a ? (b ? c : d) : e", "a ? b ? c : d : e", None, true),
-            ("(a ? b : c) + 1", "(a ? b : c) + 1", None, true),
-            ("[a ? b : c, d]", "[a ? b : c, d]", None, true),
-            ("f(a ? b : c)", "f(a ? b : c)", None, true),
-            ("{a ? b : c: d ? e : f}", "{a ? b : c: d ? e : f}", None, true),
-            ("a[b ? c : d]", "a[b ? c : d]", None, true),
-            ("a == (b == c)", "a == (b == c)", None, true),
-            ("a == b == c", "a == b == c", None, true),
-            ("(a + b).c", "(a + b).c", None, true),
-            ("(a + b)[0]", "(a + b)[0]", None, true),
-            ("(a + b).f()", "(a + b).f()", None, true),
-            ("a.b[c].d(e)[f]", "a.b[c].d(e)[f]", None, true),
-            ("a.in + a.true.null", "a.in + a.true.null", None, true),
-            ("a.`in`", "a.`in`", None, true),
-            ("a.`x y`.z", "a.`x y`.z", None, true),
-            ("1 // c\n + 2", "1 + 2", None, true),
+        &[
+            ("1e21", "1e+21"),
+            ("123456789012345680000.0", "123456789012345680000.0"),
+            ("1e-6", "0.000001"),
+            ("0.000001234", "0.000001234"),
+            ("5e-324", "5e-324"),
+            ("1.7976931348623157e308", "1.7976931348623157e+308"),
+            ("-1e999", "-1e999"),
+            ("- 1", "-1"),
+            ("--1", "--1"),
+            ("-(-1)", "--1"),
+            ("-(1.5)", "-(1.5)"),
+            ("-1u", "-1u"),
+            ("!-a", "!-a"),
+            ("(-1).x", "(-1).x"),
+            ("(-a).b", "(-a).b"),
+            ("a.b(1)", "a.b(1)"),
+            ("'\\x7f\\x1f\\\\\\\"\\'\\r\\t'", "\"\\x7f\\x1f\\\\\\\"'\\r\\t\""),
+            ("'\u{e9}\u{1f600}'", "\"\u{e9}\u{1f600}\""),
+            ("b'\\\\\\\"~ \\x7f\\x80'", "b\"\\\\\\\"~ \\x7f\\x80\""),
+            ("b'\u{e9}'", "b\"\\xc3\\xa9\""),
+            ("a ? b : c ? d : e", "a ? b : c ? d : e"),
+            ("a ? (b ? c : d) : e", "a ? b ? c : d : e"),
+            ("(a ? b : c) + 1", "(a ? b : c) + 1"),
+            ("[a ? b : c, d]", "[a ? b : c, d]"),
+            ("f(a ? b : c)", "f(a ? b : c)"),
+            ("{a ? b : c: d ? e : f}", "{a ? b : c: d ? e : f}"),
+            ("a[b ? c : d]", "a[b ? c : d]"),
+            ("a == (b == c)", "a == (b == c)"),
+            ("a == b == c", "a == b == c"),
+            ("(a + b).c", "(a + b).c"),
+            ("(a + b)[0]", "(a + b)[0]"),
+            ("(a + b).f()", "(a + b).f()"),
+            ("a.b[c].d(e)[f]", "a.b[c].d(e)[f]"),
+            ("a.in + a.true.null", "a.in + a.true.null"),
+            ("a.`in`", "a.`in`"),
+            ("a.`x y`.z", "a.`x y`.z"),
+            ("1 // c\n + 2", "1 + 2"),
         ],
     );
 }

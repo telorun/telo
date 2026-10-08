@@ -29,6 +29,7 @@ use telorun_cel_value::json_quote;
 
 use crate::reserved_words::{is_identifier_spelling, is_reserved_word};
 use crate::syntax_tree::{
+    each_shared_child,
     CelBinaryNode, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListElement, CelListNode,
     CelMapEntry, CelMapNode, CelNode, CelQualifiedCallNode, CelReceiverCallNode, CelSelectNode, CelUnaryNode,
 };
@@ -122,55 +123,22 @@ fn resolve(root: &Arc<CelNode>, namespaces: &[&str]) -> Arc<CelNode> {
             Step::Enter(node) => {
                 let from = pending.len();
                 pending.push(Step::Leave(node));
-                each_child(node, |child| pending.push(Step::Enter(child)));
+                each_shared_child(node, |child| pending.push(Step::Enter(child)));
                 // Children resolve in source order, so the last one pushed runs first.
                 pending[from + 1..].reverse();
             }
             Step::Leave(node) => {
                 let mut count = 0;
-                each_child(node, |_| count += 1);
+                each_shared_child(node, |_| count += 1);
                 let children = done.split_off(done.len() - count);
                 let mut resolved = children.iter();
                 let mut moved = false;
-                each_child(node, |child| moved |= !resolved.next().is_some_and(|now| Arc::ptr_eq(now, child)));
+                each_shared_child(node, |child| moved |= !resolved.next().is_some_and(|now| Arc::ptr_eq(now, child)));
                 done.push(rebuilt(node, children, moved, namespaces));
             }
         }
     }
     done.pop().expect("the root is resolved")
-}
-
-/// Every child, in source order, as the tree holds it.
-fn each_child<'a>(node: &'a CelNode, mut visit: impl FnMut(&'a Arc<CelNode>)) {
-    match node {
-        CelNode::Literal(_) | CelNode::Ident(_) | CelNode::Unparsed(_) => {}
-        CelNode::List(node) => node.elements.iter().for_each(|element| visit(&element.value)),
-        CelNode::Map(node) => node.entries.iter().for_each(|entry| {
-            visit(&entry.key);
-            visit(&entry.value);
-        }),
-        CelNode::Select(node) => visit(&node.operand),
-        CelNode::Index(node) => {
-            visit(&node.operand);
-            visit(&node.index);
-        }
-        CelNode::Call(node) => node.args.iter().for_each(visit),
-        CelNode::ReceiverCall(node) => {
-            visit(&node.receiver);
-            node.args.iter().for_each(visit);
-        }
-        CelNode::QualifiedCall(node) => node.args.iter().for_each(visit),
-        CelNode::Unary(node) => visit(&node.operand),
-        CelNode::Binary(node) => {
-            visit(&node.left);
-            visit(&node.right);
-        }
-        CelNode::Conditional(node) => {
-            visit(&node.condition);
-            visit(&node.when_true);
-            visit(&node.when_false);
-        }
-    }
 }
 
 /// The namespace a receiver call is written on, when its receiver names one.

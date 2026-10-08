@@ -34,7 +34,7 @@ It stands on `telorun-cel-value` (`cel/rust/value`), the value domain, and takes
 
 **Supported: writing a tree back.** `serialize_tree(root: &CelNode) -> Result<String, CelSerializeError>` answers Node's text for every tree Node writes.
 
-- **The contract is a round trip under the options the tree was read with.** The text written for a tree that read with no diagnostic reads back to an equal tree (`trees_equal`) when it is read with the same options: an optional entry (`[?x]`, `{?k: v}`) is written wherever the tree holds one and reads back only with `optional_syntax` on, and a qualified call is written as `Alias.fn(x)` and reads back as one only under its namespace. The writer takes no options, so it cannot know either.
+- **The contract is a round trip under the options the tree was read with.** The text written for a tree that read with no diagnostic reads back to an equal tree (`trees_equal`) when it is read with the same options: an optional entry (`[?x]`, `{?k: v}`) is written wherever the tree holds one and reads back only with `optional_syntax` on, and a qualified call is written as `Alias.fn(x)` and reads back as one only under its namespace. The one exception is the negated chain on a number named under *Interim readings*. The writer takes no options, so it cannot know either.
 - Parentheses come from precedence alone, a string is always between double quotes, a bytes literal is always `b"…"`, a member name that is not spelled as an identifier is between backticks, and a double is written as ECMAScript writes a number — `1e+21`, `0.000001`, `100.0` — with `1e999` and `-1e999` for the infinities.
 - It refuses what has no source: an `Unparsed` hole, a double that is not a number, a name, function name or namespace that is not a name, and a member name holding a backtick or a line feed, or empty. A tree with several such faults reports the first in the order the text is written, as Node does.
 
@@ -94,10 +94,11 @@ Both compare a double as itself: NaN equals NaN, and `-0.0` is not `0.0`.
 
 ## Depth
 
-Stack use is constant. The parser holds its pending grammar positions on the heap rather than in call frames, and walking, the hole test, both equalities, the namespace pass, the writer, both queries, `Debug`, `Clone` and `Drop` each run on a heap work list. So:
+Stack use is constant. The parser holds its pending grammar positions on the heap rather than in call frames, and walking, the hole test, both equalities, the namespace pass, the writer, both queries, `Debug` and `Drop` each run on a heap work list. So:
 
 - `max_depth` bounds **heap, not stack**. It is still Node's limit, counted as Node counts it and refused with the same diagnostic at the same place; raising it costs memory only.
 - A chain is not nesting. `1+1+…` and `a.b.c…` read up to the node limit as left-deep trees fifty or a hundred thousand deep, and a hand-built tree has no bound at all. Each is walked, compared, resolved, written back, queried and released like any other — where Node's own walkers, its pass, its writer and its queries throw `RangeError`.
+- Release is iterative and shares nothing. Dropping a tree unlinks the descendants it alone owns onto a heap list; beyond that list it makes at most one allocation per release — a placeholder leaf, only when a nested single child has to be taken out of its field — and touches no state another release can see, so trees released on many threads do not contend.
 
 ## Positions
 
@@ -128,6 +129,7 @@ Node reads some sources in ways its own documentation does not intend. This crat
 - An empty quoted member (``a.`` ``) reads clean, as a select with an empty field and `quoted: true`.
 - Both of those read clean and cannot be written back: the writer refuses the name `true`, and a member name that is empty.
 - An optional entry is written wherever a tree holds one, so the text of a tree read with the optional syntax on does not read with it off.
+- A negation of a member, index or call chain that starts at a non-negative number literal is written without the parentheses that keep it one: `-(1).a` is written `-1.a`, which reads back as a member of `-1`.
 - A raw single-line literal continues across a backslash followed by a line feed, and a backslash that ends the source is content.
 - A single-line literal holds a raw carriage return.
 - A character outside the basic plane where no token can stand is reported as its leading surrogate over one code unit.

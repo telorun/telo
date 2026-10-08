@@ -8,7 +8,8 @@
 //! Two of them are about the writer: an optional entry is written wherever a tree
 //! holds one, whether or not the reader that takes the text will accept it; and a
 //! literal word after a dot, and an empty quoted member, read clean and cannot be
-//! written back.
+//! written back; and a negation of a chain that starts at a number is written as text
+//! that reads back as another expression.
 //!
 //! One answer here is this crate's own and not Node's: the message of an escape
 //! before a character outside the basic plane, which Node writes with an unpaired
@@ -134,6 +135,28 @@ fn interim_writes_an_optional_entry_whatever_the_reader_of_the_text_accepts() {
         assert_eq!(trees_equal(&parsed.root, &on.root), equal_when_on, "{written}");
         assert!(refusal_when_off.is_some(), "{written}");
         assert_eq!(read(written).diagnostic, refusal_when_off, "{written}");
+    }
+}
+
+#[test]
+fn interim_writes_a_negated_chain_on_a_number_as_a_chain_on_the_negative_number() {
+    // `-(1).a` negates a member of 1; its text `-1.a` is a member of -1.
+    // `(source, the text Node writes, the tree Node re-reads)`; Node re-reads each with
+    // no diagnostic and holds the two trees unequal.
+    let node_written = [
+        ("-(1).a", "-1.a", select(literal_int(-1, 0, 2), "a", (3, 4), false, false, 0, 4)),
+        ("-(1)[0]", "-1[0]", index(literal_int(-1, 0, 2), literal_int(0, 3, 4), false, 0, 5)),
+        ("-(1).f()", "-1.f()", receiver_call(literal_int(-1, 0, 2), "f", (3, 4), vec![], 0, 6)),
+        ("-(1.5).a", "-1.5.a", select(literal_double(0xbff8000000000000, 0, 4), "a", (5, 6), false, false, 0, 6)),
+        ("-(0).a", "-0.a", select(literal_int(0, 0, 2), "a", (3, 4), false, false, 0, 4)),
+    ];
+    for (source, written, reread_tree) in node_written {
+        let first = tree(source);
+        assert_eq!(serialize_tree(&first).as_deref(), Ok(written), "{source}");
+        let reread = read(written);
+        assert_eq!(reread.diagnostic, None, "{written}");
+        assert_eq!(reread.root, reread_tree, "{written}");
+        assert!(!trees_equal(&first, &reread.root), "{source} → {written}");
     }
 }
 
