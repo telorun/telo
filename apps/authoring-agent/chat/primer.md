@@ -180,7 +180,12 @@ evaluated, so a read through a nullable member needs no guard — and a call, an
 operator, an index, `!interpolate`, a tag beneath the field or a chain rooted
 outside the field's bindings (`variables.x`) is `ACCESSOR_NOT_PLAIN_CHAIN`. The
 controller receives a plain map: `{ root: "row", path: ["status"] }` for a
-chain, `{ value: "muted" }` for a literal. A kind that only FORWARDS such a
+chain, `{ value: "muted" }` for a literal. A binding that is ONE ELEMENT of a
+list another accessor of the same entry names is typed with
+`x-telo-context-element-from-item: "<field>"` — `row: {
+x-telo-context-element-from-item: rows }` types `row` as an element of the
+array the entry's own `rows` chain points at; a chain that resolves to no
+array leaves the binding untyped. A kind that only FORWARDS such a
 field into a template body does not annotate its own field `accessor` — the
 entry that finally holds it does.
 
@@ -1261,7 +1266,7 @@ need telo 0.112.0 or newer (each declares `requires: telo: ">=0.112.0"`).
 or an inline declaration). Every node takes `style:` (one or a list of
 `heading`, `subheading`, `muted`, `strong`, `accent`, `danger`, `warning`,
 `success`) and `when:` (boolean). There are no layout fields and no button
-node.
+node: a button that does something is a `Ui.Action` composite.
 
 An address inside the application — a `link`'s `href`, an `image`'s `src`, a
 page's `path`, a `basePath` — is APP-RELATIVE: `/` followed by anything except
@@ -1294,7 +1299,50 @@ instead start `https://`, `http://` or `mailto:`, and `src` `https://` or
   the `Ui.Dialog` / `Ui.Drawer` used on a narrow viewport, itself with no
   `address` and no `compact`. `afterSubmit:` is `close` (default) | `keep`,
   and on `create` also `again`; `unsaved:` is `confirm` (default) | `discard`.
-- `Ui.Form` — `model:`, `source: { basePath }`, optional `fields: [{ property }]`.
+  `rowActions: [{ action: <Ui.Action>, inputs, confirm? }]` puts a button per
+  entry on every row, before edit and delete, showing the action's `label`.
+  `inputs:` (REQUIRED, at least one) is the record sent, by input property: a
+  `!cel "row.<property>"` chain or a fixed value — it must bind EVERY property
+  the action's `inputModel` requires, with matching types (`CONTRACT_INPUTS_MISMATCH`
+  for an unknown key, a missing required input or a mistyped literal;
+  `CEL_TYPE_ERROR` for a chain of the wrong type). `confirm:` is a question
+  asked first; omitted, a press runs at once. An action used in a row must
+  declare NO `lists` (`UI_ROW_ACTION_DRAWS_LISTS`); on success the tables over
+  the same `basePath` reload.
+- `Ui.Form` — `model:`, `source: { basePath }`, optional `fields: [{ property }]`
+  (omitted → one per ENTERABLE property: a scalar, or a list of scalars). A
+  list property (`type: array`) whose `items` declare `enum` is entered as a
+  multi-choice group; any other scalar `items` as typed tags, each item sent
+  in the items' type. There is no `control:` key on a form field — the model
+  decides. An object or a list of objects gets no field, and listing one in
+  `fields` is refused (`UI_FORM_FIELD_UNSUPPORTED`).
+- `Ui.Action` — a button that runs an operation, with a form for what it takes
+  and tables for what it answers: `inputModel:` (REQUIRED, a `Telo.JsonSchema`;
+  one with no properties is a bare button), `outputModel:`, `source: { path }`
+  (REQUIRED, app-relative URL — NOT a `!ref` to a handler, and there is no
+  `method:`), `label:` (REQUIRED), optional `fields: [{ property }]` (as a
+  form's; every REQUIRED input must be enterable and listed —
+  `UI_ACTION_REQUIRED_INPUT_NOT_ENTERED`), optional `lists:`. The URL must
+  answer `POST` with a JSON body: any 2xx whose body is a JSON object valid
+  against `outputModel` (read only when `lists` is declared), a 400 with the
+  request-validation envelope (`details[].path` marks the field), 401 / 403,
+  or a failure. Declare the route over the SAME two shapes the action names;
+  an `Http.Api` route's `request.schema.body` takes the JSON Schema INLINE (a
+  `!ref` to a `Telo.JsonSchema` there checks clean and fails at boot), so the
+  shape is written out there and must be kept equal to `inputModel`.
+  Each `lists` entry is one table drawn from the answer: `{ heading?, rows:
+  !cel "result.<list>", columns: [{ header?, value }] }`, where `value` is
+  `!cel "row.<member>"`, `!cel "result.<member>"` or a fixed value — plain
+  chains only. `result` is typed from `outputModel` (with none, any
+  `result.x` is `CEL_UNKNOWN_FIELD`); `row` is one element of THAT entry's
+  `rows`, and `telo check` types it only where the list's `items` are inline
+  in the answer model or one `!ref` away. A header defaults to the member's
+  `title`, else its name, and a `format: uri` / `uri-reference` member is a
+  link; both follow the member through any reference (`!ref`, `$ref:
+  "#/$defs/X"`, a shape reached through a shape), as does a `Ui.Table`
+  column over a nested member (`row.owner.site`). A reference there that
+  names nothing passes `telo check` and fails when the page is first read
+  (`ERR_REF_UNRESOLVED`).
 - `Ui.Filters` — `model:`, `collection:` (required), optional `fields:
   [{ property, operator }]` (both required, each a pair the collection declares;
   omitted → one control per filter the collection declares), `content:` (one
@@ -1332,7 +1380,15 @@ instead start `https://`, `http://` or `mailto:`, and `src` `https://` or
 - `Ui.Theme` — `tokens:` (`color.accent`, `radius.md`, `font.body: !ref <Font.Family>`, …).
 
 `row.<property>` in a `value:`, a `props:` entry or a style rule's `by:` is an
-ACCESSOR: a plain chain only — no calls, operators or indexes. A style that
+ACCESSOR: a plain chain only — no calls, operators or indexes. A string whose
+model property declares `format: uri` or `uri-reference` is drawn as a LINK in
+a table cell and in an action's list — give a download URL that format; the
+value must be app-relative (`/files/a.pdf`, resolved under the application's
+mount) or start `https://`, `http://` or `mailto:`, else it shows as text. A
+link is followed INSIDE the application only when its path is a declared
+page; any other app-relative address is loaded by the browser, so serve a
+downloadable file from a mount beneath the application's (`Http.Static` at
+`/admin/files` for an application at `/admin`) and link it as `/files/<name>`. A style that
 depends on data is a rule, never an expression:
 `rowStyle: { by: !cel "row.status", cases: { overdue: danger }, default: muted }`.
 
@@ -1370,8 +1426,10 @@ values may read `request.headers` (lower-case names; test with `in` first) and
 a computed `children:` or `ref:` is `REF_SLOT_COMPUTED`. `theme:` is one
 `Ui.Theme` or a list of `{ theme, when? }`.
 
-**Manifests wire no events.** There is no `onClick`, no action list. A table's
-buttons, a form's submit and a filter's change are built in. A custom React
+**Manifests wire no events.** There is no `onClick` and no handler list. A
+table's buttons, a form's submit and a filter's change are built in, and an
+operation is run by declaring a `Ui.Action` (on a page, or in a table's
+`rowActions`). A custom React
 component (shipped by a library as a browser entry with `abi: ui_react-1`,
 published with `Ui.ComponentExport`) gets navigation, requests and refresh from
 the host — `useHost()` from `@telorun/ui-react` gives `location`, `navigate`,

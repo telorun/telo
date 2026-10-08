@@ -2,6 +2,7 @@ import { Tooltip } from "radix-ui";
 import { Component, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { HostContext, HostStore, type Host } from "./host.js";
+import { applicationPath } from "./link-address.js";
 import { ErrorNode, Loading, Nodes, type SpecNode } from "./nodes.js";
 import { RendererContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
@@ -110,7 +111,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const asking = useSyncExternalStore(store.subscribe, store.asking);
   const [app, setApp] = useState<AppDocument>();
   const compact = useCompact(app?.compactBelow);
-  const base = useEnvironment(loadModule, prefix, compact);
+  const base = useEnvironment(loadModule, prefix, compact, app?.pages);
   // A surface drawn in place of the page's content is drawn here, by whoever opened it.
   const [slotElement, setSlotElement] = useState<HTMLElement | null>(null);
   const [claims, setClaims] = useState(0);
@@ -205,18 +206,16 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     };
   }, [app, declared]);
 
-  /** A plain click on an anchor into this application moves the page without
-   *  leaving it. Anything else is the browser's. */
+  /** A plain click on an anchor to a page this application declares moves the
+   *  page without leaving it. Anything else is the browser's. */
   const followAnchor = (event: MouseEvent) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const anchor = (event.target as Element).closest?.("a");
     const href = anchor?.getAttribute("href");
     if (!anchor || href == null || anchor.getAttribute("target") || anchor.hasAttribute("download")) return;
+    const target = applicationPath(prefix, href);
+    if (target === undefined || !app?.pages.some((page) => page.path === target)) return;
     const url = new URL(href, window.location.href);
-    if (url.origin !== window.location.origin) return;
-    if (prefix !== "" && url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) return;
-    const target = url.pathname.slice(prefix.length) || "/";
-    if (target === "/_telo" || target.startsWith("/_telo/")) return;
     event.preventDefault();
     host.navigate(target + url.search + url.hash);
   };
@@ -289,10 +288,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   );
 }
 
-function useEnvironment(loadModule: AppProps["loadModule"], prefix: string, compact: boolean): RendererEnvironment {
+function useEnvironment(loadModule: AppProps["loadModule"], prefix: string, compact: boolean, declared: AppDocument["pages"] | undefined): RendererEnvironment {
   return useMemo(
-    () => ({ prefix, loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)), compact }),
-    [prefix, loadModule, compact],
+    () => ({ prefix, loadModule: loadModule ?? ((url: string) => import(/* @vite-ignore */ url)), compact, pages: (declared ?? []).map((page) => page.path) }),
+    [prefix, loadModule, compact, declared],
   );
 }
 

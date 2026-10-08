@@ -1,8 +1,7 @@
-import { X } from "lucide-react";
 import { Slider, Switch, ToggleGroup } from "radix-ui";
 import { useEffect, useState } from "react";
 import type { FilterField } from "./filter-state.js";
-import { Icon } from "./icon.js";
+import { OptionGroup, Tags, separated } from "./list-controls.js";
 import { MultiSelect, Select, type Option } from "./select.js";
 import { plainTypes, type JsonSchema } from "./validation.js";
 
@@ -34,12 +33,6 @@ function optionsOf(schema: JsonSchema): Option[] | undefined {
   }));
 }
 
-const separated = (text: string): string[] =>
-  text
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value !== "");
-
 /** One filter's control, as its field says it is entered. */
 export function FilterControl({ field, id, name, values, onChange, onCommit }: FilterControlProps) {
   const options = optionsOf(field.schema);
@@ -48,13 +41,7 @@ export function FilterControl({ field, id, name, values, onChange, onCommit }: F
   switch (field.control) {
     case "options":
       return many ? (
-        <ToggleGroup.Root data-telo-part="filter-options" id={id} type="multiple" aria-label={name} value={values} onValueChange={choose}>
-          {options?.map((option) => (
-            <ToggleGroup.Item key={option.value} data-telo-part="filter-option" value={option.value}>
-              {option.label}
-            </ToggleGroup.Item>
-          ))}
-        </ToggleGroup.Root>
+        <OptionGroup parts={{ group: "filter-options", option: "filter-option" }} id={id} name={name} options={options ?? []} values={values} onChange={choose} />
       ) : (
         <ToggleGroup.Root
           data-telo-part="filter-options"
@@ -105,7 +92,15 @@ export function FilterControl({ field, id, name, values, onChange, onCommit }: F
       );
     }
     case "tags":
-      return <Tags id={id} name={name} values={values} onChange={choose} />;
+      return (
+        <Tags
+          parts={{ tags: "filter-tags", tag: "filter-tag", remove: "filter-tag-remove", input: "filter-input" }}
+          id={id}
+          name={name}
+          values={values}
+          onChange={choose}
+        />
+      );
     default:
       if (options && many) return <MultiSelect part="filter-select" id={id} options={options} values={values} placeholder="Any" onChange={choose} />;
       if (options) {
@@ -152,51 +147,5 @@ function Typed({ field, id, name, values, onChange, onCommit }: FilterControlPro
         if (event.key === "Enter") onCommit();
       }}
     />
-  );
-}
-
-/** Values typed one at a time: Enter or a comma adds what was typed, and each
- *  value is removed on its own. */
-function Tags({ id, name, values, onChange }: { id: string; name?: string; values: string[]; onChange: (values: string[]) => void }) {
-  const [text, setText] = useState("");
-  const add = () => {
-    const added = separated(text).filter((value) => !values.includes(value));
-    setText("");
-    if (added.length > 0) onChange([...values, ...added]);
-  };
-  return (
-    <div data-telo-part="filter-tags">
-      {values.map((value) => (
-        <span key={value} data-telo-part="filter-tag">
-          {value}
-          <button
-            data-telo-part="filter-tag-remove"
-            type="button"
-            aria-label={`Remove ${value}`}
-            onClick={() => onChange(values.filter((other) => other !== value))}
-          >
-            <Icon of={X} />
-          </button>
-        </span>
-      ))}
-      <input
-        data-telo-part="filter-input"
-        id={id}
-        aria-label={name}
-        autoComplete="off"
-        type="text"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onBlur={add}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === ",") {
-            event.preventDefault();
-            add();
-          } else if (event.key === "Backspace" && text === "" && values.length > 0) {
-            onChange(values.slice(0, -1));
-          }
-        }}
-      />
-    </div>
   );
 }

@@ -27,7 +27,7 @@ schema:
 kind: Telo.Definition
 metadata:
   name: Diagnostics
-  description: Checks a manifest and returns every error and warning it produced, as code and message.
+  description: Checks a manifest and returns what it produced as code and message — every error and warning, and apart from them every note.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./probe.mjs#Diagnostics

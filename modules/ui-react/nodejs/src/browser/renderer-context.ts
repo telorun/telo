@@ -9,12 +9,15 @@ export interface RendererEnvironment {
   loadModule: (url: string) => Promise<Record<string, unknown>>;
   /** Whether the viewport is below the application's breakpoint. */
   compact: boolean;
+  /** The paths of the pages the application declares. */
+  pages: string[];
 }
 
 export const RendererContext = createContext<RendererEnvironment>({
   prefix: "",
   loadModule: (url) => import(/* @vite-ignore */ url),
   compact: false,
+  pages: [],
 });
 
 /** The row a table cell is drawn for; absent everywhere else. */

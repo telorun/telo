@@ -1,0 +1,163 @@
+# An application whose page runs an operation and whose table offers one on
+# every row, over routes that name the same shapes. Start it with
+#   pnpm run telo ./modules/ui-react/tests/__fixtures__/action/telo.yaml
+# and open http://127.0.0.1:19330/admin/
+kind: Telo.Application
+metadata:
+  name: UiActionFixtureApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../../ui
+  UiReact: ../../../
+  Api: ../collection-api
+  Operations: ../operation-api
+ports:
+  http: { env: PORT, default: 19330 }
+targets:
+  - !ref server
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ReportRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [month]
+  properties:
+    month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" }
+    copies: { type: integer, title: Copies, minimum: 1 }
+    formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+    recipients: { type: array, title: Recipients, items: { type: string, minLength: 3 } }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ReportAnswer
+schema:
+  type: object
+  required: [files]
+  properties:
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string, title: File }
+          url: { type: string, title: Download, format: uri-reference }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ArchiveRequest
+schema:
+  type: object
+  additionalProperties: false
+  required: [id]
+  properties:
+    id: { type: integer }
+    status: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  required: [text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ArchiveAnswer
+schema:
+  type: object
+  required: [archived]
+  properties:
+    archived: { type: boolean }
+---
+# Each operation validates against the shape its action sends, by name.
+kind: Operations.Operation
+metadata:
+  name: reportsApi
+input: !ref ReportRequest
+output: !ref ReportAnswer
+answer:
+  files:
+    - { name: 2026-09.pdf, url: /files/2026-09.pdf }
+    - { name: 2026-09.csv, url: /files/2026-09.csv }
+---
+kind: Operations.Operation
+metadata:
+  name: archiveApi
+input: !ref ArchiveRequest
+output: !ref ArchiveAnswer
+answer: { archived: true }
+---
+kind: Api.Collection
+metadata:
+  name: todosApi
+rows:
+  - { id: 1, text: Write the plan }
+  - { id: 2, text: Review the plan }
+---
+kind: Ui.Action
+metadata:
+  name: generate
+inputModel: !ref ReportRequest
+outputModel: !ref ReportAnswer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - heading: Files
+    rows: !cel "result.files"
+    columns:
+      - value: !cel "row.name"
+      - value: !cel "row.url"
+---
+kind: Ui.Action
+metadata:
+  name: archive
+inputModel: !ref ArchiveRequest
+source: { path: /api/archive }
+label: Archive
+---
+kind: Ui.Table
+metadata:
+  name: todos
+model: !ref Todo
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
+source: { basePath: /api/todos }
+columns:
+  - value: !cel "row.text"
+rowActions:
+  - action: !ref archive
+    inputs:
+      id: !cel "row.id"
+      status: archived
+    confirm: Archive this task?
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Reports
+pages:
+  - path: /
+    title: Reports
+    children:
+      - { type: composite, ref: !ref generate }
+      - { type: composite, ref: !ref todos }
+---
+kind: Http.Server
+metadata:
+  name: server
+host: 127.0.0.1
+port: !cel "ports.http"
+mounts:
+  - path: /api/todos
+    mount: !ref todosApi
+  - path: /api/reports
+    mount: !ref reportsApi
+  - path: /api/archive
+    mount: !ref archiveApi
+  - path: /admin
+    mount: !ref admin

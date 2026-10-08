@@ -25,8 +25,8 @@ Each `type` is a closed shape: a key it does not take is an error naming the
 key, and a `type` outside the list is an error listing the valid ones.
 
 There is no layout field — no gap, alignment, width or image size — and no
-button. How nodes are arranged is the renderer's styling contract; an action
-belongs to a composite.
+button. How nodes are arranged is the renderer's styling contract; a button is
+a composite — a [`Ui.Action`](action.md), or what a table offers on its rows.
 
 ## Addresses
 
@@ -43,7 +43,8 @@ belongs to a composite.
   | `//host/x`, `/\host/x` | refused: a browser reads it as another host |
   | `/` followed by a tab, then `/x` | refused: a browser drops the tab and reads `//x` |
 
-  The same rule holds for a table's and a form's `source.basePath`. A literal
+  The same rule holds for a table's and a form's `source.basePath` and an
+  action's `source.path`. A literal
   one is refused by `telo check`; a computed `href` or `src` that breaks it is
   replaced by an `error` node for that request.
 - An app-relative path is the application's own: a renderer mounted under a
@@ -90,8 +91,8 @@ null value takes `default`; a value no case names takes `default` too.
 ## What a renderer receives
 
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided,
-every composite replaced by the node it provides (`table`, `form`, `filters`,
-`component`), and `error` for a node that could not be produced. It carries no
+every composite replaced by the node it provides (`table`, `form`, `action`,
+`filters`, `component`), and `error` for a node that could not be produced. It carries no
 resource name. Row-bound values in it are **bindings** — `{ root, path }` for a
 chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
@@ -103,6 +104,19 @@ with every member its kind has, `afterSubmit` and `unsaved` as declared or
 defaulted. The defaults are this module's, filled before the node is provided,
 so two renderers cannot disagree about them and none carries a table of its
 own.
+
+A `table` node always carries `rowActions`, an empty list when the table
+declares none. An entry is `{ path, label, inputs, confirm? }`: `path` and
+`label` are the action's, `inputs` maps each input property to a binding, and
+`confirm` is present exactly when the entry asks a question.
+
+An `action` node is `{ schema, path, label, fields, lists }`, all five present:
+the input model, where the record is sent, the button's text, one
+`{ property, label }` per field, and one `{ rows, columns, heading? }` per list
+— an empty list when the action draws nothing. `rows` is a binding rooted at
+`result`; each column is `{ header, value, present? }`, its `value` a binding
+rooted at `row` or `result` and its `header` always filled. See
+[what an action provides](action.md#what-a-renderer-receives).
 
 A `filters` node likewise carries its whole policy: `show`, `placement` (a
 [`Ui.FilterPlacementSpec`](filter-placement.md#what-a-renderer-receives)),

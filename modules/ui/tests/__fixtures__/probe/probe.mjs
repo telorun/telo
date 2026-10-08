@@ -12,11 +12,12 @@ export const Diagnostics = {
     return {
       async invoke() {
         const checked = await ctx.runtime.check(await ctx.resolveModuleFile(resource.source), { desugarImports: true });
+        const lines = (keep) =>
+          checked.diagnostics.filter(keep).map((diagnostic) => `${diagnostic.code} ${diagnostic.message}`);
         return {
           loadError: checked.loadError ?? null,
-          reported: checked.diagnostics
-            .filter((diagnostic) => diagnostic.severity !== "information")
-            .map((diagnostic) => `${diagnostic.code} ${diagnostic.message}`),
+          reported: lines((diagnostic) => diagnostic.severity !== "information"),
+          noted: lines((diagnostic) => diagnostic.severity === "info" || diagnostic.severity === "hint"),
         };
       },
     };

@@ -43,6 +43,7 @@ exports:
     - View
     - Table
     - Form
+    - Action
     - Filters
     - Collection
     - Component
@@ -177,7 +178,7 @@ schema:
         alt: { type: string }
         style: { $ref: "#/$defs/Style" }
     - additionalProperties: false
-      required: [type, schema, basePath, rowKey, pageSize, columns, delete]
+      required: [type, schema, basePath, rowKey, pageSize, columns, rowActions, delete]
       properties:
         type: { const: table }
         schema: { type: object }
@@ -207,6 +208,22 @@ schema:
             afterSubmit: { enum: [close, keep] }
             unsaved: { enum: [confirm, discard] }
         delete: { type: boolean }
+        # What each row offers beyond edit and delete, in order: an operation
+        # run with values of the row.
+        rowActions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, label, inputs]
+            properties:
+              path: { type: string }
+              label: { type: string }
+              inputs:
+                type: object
+                additionalProperties: { $ref: "#/$defs/Binding" }
+              # Present when the press asks first.
+              confirm: { type: string }
         columns:
           type: array
           items:
@@ -240,6 +257,44 @@ schema:
             properties:
               property: { type: string }
               label: { type: string }
+        style: { $ref: "#/$defs/Style" }
+    - additionalProperties: false
+      required: [type, schema, path, label, fields, lists]
+      properties:
+        type: { const: action }
+        schema: { type: object }
+        path: { type: string }
+        label: { type: string }
+        fields:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, label]
+            properties:
+              property: { type: string }
+              label: { type: string }
+        # What is drawn from the answer, in order. Empty when nothing is.
+        lists:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [rows, columns]
+            properties:
+              heading: { type: string }
+              rows: { $ref: "#/$defs/Binding" }
+              columns:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [header, value]
+                  properties:
+                    header: { type: string }
+                    value: { $ref: "#/$defs/Binding" }
+                    # The answer model's own description of the value.
+                    present: { type: object }
         style: { $ref: "#/$defs/Style" }
     - additionalProperties: false
       required: [type, fields, content, show, placement, controls, apply, summary, state, presets]
@@ -1477,6 +1532,40 @@ schema:
       description: Whether each row offers a confirmed delete.
       type: boolean
       default: false
+    rowActions:
+      title: Row actions
+      description: >-
+        Operations each row offers, in order, drawn before edit and delete.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [action, inputs]
+        properties:
+          action:
+            title: Action
+            description: >-
+              The operation run. Its path, input model and label are used; its
+              fields are not, since a row supplies every input.
+            x-telo-ref: { kind: Self.Action, use: dependency, inputs: /inputs }
+          inputs:
+            title: Inputs
+            description: >-
+              What the operation receives, by input property: a path into the
+              row or a fixed value. Every input the action requires is bound.
+            type: object
+            minProperties: 1
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-from-root: "model" }
+            additionalProperties:
+              x-telo-eval: accessor
+          confirm:
+            title: Confirm
+            description: A question asked before the operation runs. Omitted, a press runs it at once.
+            type: string
+            minLength: 1
   $defs:
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]
@@ -1503,16 +1592,24 @@ schema:
         filters its source by a property the collection does not accept an
         equality on. Declare it with operator `eq` under the collection's
         `query.filters`, or remove this filter.
+    - resolve: [/rowActions]
+      in: /rowActions
+      condition: !cel "!has(this.action.lists) || size(this.action.lists) == 0"
+      code: UI_ROW_ACTION_DRAWS_LISTS
+      message: >-
+        offers in a row an action that draws lists from its answer, and a row
+        has nowhere to draw them. Declare an action without `lists` for the row.
 ---
 kind: Telo.Definition
 metadata:
   name: Form
   description: >-
     An input form generated from a data model: a labelled control per property,
-    chosen from its type — checkbox, select, number, date, text — with
-    validation in the browser against the model's own rules before anything is
-    sent, and the server's field errors shown beside the fields they name.
-    Creates a record, or edits one when a data grid opens it.
+    chosen from its type — checkbox, select, number, date, text, and a
+    multi-choice or tag list for a list of values — validated in the browser
+    against the model's own rules before anything is sent, with the server's
+    field errors shown beside the fields they name. Creates a record, or edits
+    one when a data grid opens it.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -1541,7 +1638,9 @@ schema:
           pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
     fields:
       title: Fields
-      description: The fields, top to bottom. Omitted, every scalar model property.
+      description: >-
+        The fields, top to bottom. Omitted, every model property a control can
+        enter: a scalar, or a list of scalars.
       type: array
       items:
         type: object
@@ -1557,6 +1656,220 @@ schema:
       message: >-
         lists a field for a property the model does not declare. Use a property
         of `model`, or add this one to it.
+    # The predicate `UI_ACTION_FIELD_UNSUPPORTED` holds an action's fields to.
+    - resolve: [/model]
+      in: /fields
+      condition: !cel >-
+        !has((has(self.model.schema) ? self.model.schema : self.model).properties) || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+        || [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
+             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
+               (types.size() == 0
+                 ? ('enum' in p && type(p.enum) == list)
+                 : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
+               || (types == ['array'] && 'items' in p && type(p.items) == map
+                   && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
+                        itemTypes.size() == 0
+                          ? ('enum' in p.items && type(p.items.enum) == list)
+                          : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))
+      code: UI_FORM_FIELD_UNSUPPORTED
+      message: >-
+        lists a field for a property no control can enter. A field enters a
+        string, a number, a boolean, one of an `enum`, or a list of those:
+        remove this field, or give `model` a property of such a type.
+---
+kind: Telo.Definition
+metadata:
+  name: Action
+  description: >-
+    A button that runs a server operation from a page, with an optional input
+    form generated from the request's data model and validated before anything
+    is sent. Results come back as lists drawn under the form: generated files,
+    report links, search hits. A data grid can offer one on every row, for
+    commands such as archive, approve or export.
+capability: Telo.Provider
+extends: Self.Composite
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ActionController
+# What a call site naming an action hands it: a record of its input model.
+inputType:
+  type: object
+  x-telo-value-schema-from: inputModel
+schema:
+  type: object
+  additionalProperties: false
+  required: [inputModel, source, label]
+  examples:
+    - inputModel:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [month]
+          properties:
+            month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" }
+            formats:
+              type: array
+              title: Formats
+              items: { enum: [pdf, csv] }
+      outputModel:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [files]
+          properties:
+            files:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string, title: File }
+                  url: { type: string, title: Download, format: uri-reference }
+      source: { path: /api/reports }
+      label: Generate
+      lists:
+        - heading: Files
+          rows: !cel "result.files"
+          columns:
+            - value: !cel "row.name"
+            - value: !cel "row.url"
+  properties:
+    inputModel:
+      title: Input model
+      description: The shape of the record sent as the request body.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    outputModel:
+      title: Output model
+      description: The shape of the answer. Lists are drawn from it.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    source:
+      title: Source
+      type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          title: Path
+          description: >-
+            App-relative URL of the operation: `/` followed by anything but
+            `/` or `\`, holding no control character.
+          type: string
+          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+    label:
+      title: Label
+      description: The text of the button that runs the operation.
+      type: string
+    fields:
+      title: Fields
+      description: >-
+        The fields, top to bottom. Omitted, every input model property a
+        control can enter: a scalar, or a list of scalars.
+      type: array
+      uniqueItems: true
+      items:
+        type: object
+        additionalProperties: false
+        required: [property]
+        properties:
+          property: { title: Property, type: string }
+    lists:
+      title: Lists
+      description: The lists drawn from the answer, top to bottom.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [rows, columns]
+        properties:
+          heading: { title: Heading, type: string }
+          rows:
+            title: Rows
+            description: The list in the answer, as a path into it.
+            type: array
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                result:
+                  x-telo-context-from-root: "outputModel"
+                  type: object
+                  properties: {}
+                  additionalProperties: false
+          columns:
+            title: Columns
+            description: The columns, left to right.
+            type: array
+            minItems: 1
+            x-telo-context:
+              type: object
+              properties:
+                result:
+                  x-telo-context-from-root: "outputModel"
+                  type: object
+                  properties: {}
+                  additionalProperties: false
+                row: { x-telo-context-element-from-item: "rows" }
+            items:
+              type: object
+              additionalProperties: false
+              required: [value]
+              properties:
+                header: { title: Header, type: string }
+                value:
+                  title: Value
+                  description: The value shown, as a path into the row or the answer, or a fixed value.
+                  x-telo-eval: accessor
+  x-telo-resource-rules:
+    - resolve: [/inputModel]
+      in: /fields
+      condition: !cel "has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && this.property in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties"
+      code: UI_ACTION_FIELD_UNKNOWN_PROPERTY
+      message: >-
+        lists a field for a property the input model does not declare. Use a
+        property of `inputModel`, or add this one to it.
+    # A control enters one plain value or a list of them: a property typed
+    # `string`, `number`, `integer` or `boolean` (`null` aside) or declaring an
+    # `enum`, or an `array` whose `items` is one.
+    - resolve: [/inputModel]
+      in: /fields
+      condition: !cel >-
+        !has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) || !(this.property in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties)
+        || [(has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties[this.property]].all(p,
+             [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
+               (types.size() == 0
+                 ? ('enum' in p && type(p.enum) == list)
+                 : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
+               || (types == ['array'] && 'items' in p && type(p.items) == map
+                   && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
+                        itemTypes.size() == 0
+                          ? ('enum' in p.items && type(p.items.enum) == list)
+                          : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))
+      code: UI_ACTION_FIELD_UNSUPPORTED
+      message: >-
+        lists a field for a property no control can enter. A field enters a
+        string, a number, a boolean, one of an `enum`, or a list of those:
+        remove this field, or give the operation a property of such a type.
+    - resolve: [/inputModel]
+      condition: !cel >-
+        !has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).required)
+        || (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).required.all(r,
+             has(self.fields)
+               ? self.fields.exists(f, f.property == r)
+               : (has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && r in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties
+                  && [(has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties[r]].all(p,
+                       [!('type' in p) ? [] : (type(p.type) == list ? p.type : [p.type]).filter(t, t != 'null')].all(types,
+                         (types.size() == 0
+                           ? ('enum' in p && type(p.enum) == list)
+                           : types.all(t, t in ['string', 'number', 'integer', 'boolean']))
+                         || (types == ['array'] && 'items' in p && type(p.items) == map
+                             && [!('type' in p.items) ? [] : (type(p.items.type) == list ? p.items.type : [p.items.type]).filter(t, t != 'null')].all(itemTypes,
+                                  itemTypes.size() == 0
+                                    ? ('enum' in p.items && type(p.items.enum) == list)
+                                    : itemTypes.all(t, t in ['string', 'number', 'integer', 'boolean'])))))))
+      code: UI_ACTION_REQUIRED_INPUT_NOT_ENTERED
+      message: >-
+        leaves a property the input model requires with no field, so the
+        operation could never be sent a valid record. List a field for every
+        required property, or leave `fields` out where each one is a scalar or
+        a list of scalars.
 ---
 kind: Telo.Definition
 metadata:

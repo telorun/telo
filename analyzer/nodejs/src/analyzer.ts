@@ -193,12 +193,14 @@ import {
 } from "./validate-cel-context.js";
 import {
   celEvalModeAt,
+  governedCelEvalSites,
   kindCelEvalSites,
   NO_CEL_EVAL_SITES,
   type CelEvalSites,
 } from "./eval-paths.js";
 import { computedRefSlots, evaluatedField, refSlotComputedReason } from "./ref-slot-computed.js";
 import { accessorFields, accessorProblems, type AccessorProblem } from "./accessor-binding.js";
+import { RuleDeclarationViews } from "./rule-declaration-view.js";
 import { browserExportProblems, browserExportSites } from "./browser-export-slot.js";
 import { readBrowserEntries, type BrowserEntry } from "./module-browser.js";
 import {
@@ -665,7 +667,9 @@ export interface CelValueSlot {
  *  on the way down — a document-local one against the root of the document the
  *  walk is in, a named shape through `external`, which makes that shape the
  *  document — and each slot's schema is returned as the shape it names, read
- *  against that same root (`referenced-shape.ts`). */
+ *  against that same root (`referenced-shape.ts`). A member or item is read
+ *  from every `allOf` conjunct that declares it, so a leaf several declare is
+ *  returned once per declaration and must fit each. */
 function collectCelValueSlots(
   data: unknown,
   schema: Record<string, any>,
@@ -687,6 +691,33 @@ interface DeclaredCelSlot extends CelValueSlot {
 
 const namedSlotShape = (slot: DeclaredCelSlot, external: ExternalSchemaResolver) =>
   slot.root ? shapeNamedBy(slot.schema, slot.root, external) : slot.schema;
+
+/** A schema node with the root of the document it sits in. */
+interface DeclaringNode {
+  readonly schema: Record<string, any>;
+  readonly root: Record<string, any>;
+}
+
+/** The node and every `allOf` conjunct beneath it, each read as the shape it
+ *  names in the document that declares it. A value satisfies all of them, so
+ *  what any one declares for a member holds for that member. */
+function conjunctsOf(
+  node: DeclaringNode,
+  external: ExternalSchemaResolver,
+  seen = new Set<object>(),
+): DeclaringNode[] {
+  if (seen.has(node.schema)) return [];
+  seen.add(node.schema);
+  const out = [node];
+  for (const member of Array.isArray(node.schema.allOf) ? node.schema.allOf : []) {
+    if (member === null || typeof member !== "object" || Array.isArray(member)) continue;
+    out.push(...conjunctsOf(resolveRefIn(member, node.root, external), external, seen));
+  }
+  return out;
+}
+
+const isSchemaNode = (value: unknown): value is Record<string, any> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
 
 function declaredCelSlots(
   data: unknown,
@@ -738,27 +769,55 @@ function declaredCelSlots(
   }
   const selected = selectUnionBranch(schema, data, root, external);
   const entered = selected === schema ? { schema, root } : resolveRefIn(selected, root, external);
-  const node = entered.schema;
+  const conjuncts = conjunctsOf(entered, external);
+  // What each conjunct declares for one child; where none declares it, the
+  // `undeclared` reading, in the document that reading was written in.
+  const childSlots = (
+    child: unknown,
+    childPath: string,
+    declaredBy: (conjunct: DeclaringNode) => unknown,
+    undeclared: DeclaringNode,
+  ): DeclaredCelSlot[] => {
+    const declaring = conjuncts.filter((conjunct) => isSchemaNode(declaredBy(conjunct)));
+    if (declaring.length === 0) {
+      return declaredCelSlots(child, undeclared.schema, childPath, undeclared.root, external);
+    }
+    return declaring.flatMap((conjunct) =>
+      declaredCelSlots(
+        child,
+        declaredBy(conjunct) as Record<string, any>,
+        childPath,
+        conjunct.root,
+        external,
+      ),
+    );
+  };
 
   if (Array.isArray(data)) {
-    const itemSchema = (node.items ?? {}) as Record<string, any>;
     for (let i = 0; i < data.length; i++) {
-      slots.push(...declaredCelSlots(data[i], itemSchema, `${path}[${i}]`, entered.root, external));
+      slots.push(
+        ...childSlots(data[i], `${path}[${i}]`, (conjunct) => conjunct.schema.items, {
+          schema: {},
+          root: entered.root,
+        }),
+      );
     }
   } else if (data !== null && typeof data === "object") {
-    const props = (node.properties ?? {}) as Record<string, any>;
-    const mapValueSchema =
-      node.additionalProperties && typeof node.additionalProperties === "object"
-        ? (node.additionalProperties as Record<string, any>)
-        : {};
+    // An undeclared member is a map value, typed by the first conjunct that
+    // says what one is and read in that conjunct's own document.
+    const mapConjunct = conjuncts.find((conjunct) =>
+      isSchemaNode(conjunct.schema.additionalProperties),
+    );
+    const mapValue: DeclaringNode = mapConjunct
+      ? { schema: mapConjunct.schema.additionalProperties, root: mapConjunct.root }
+      : { schema: {}, root: entered.root };
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       slots.push(
-        ...declaredCelSlots(
+        ...childSlots(
           v,
-          (props[k] ?? mapValueSchema) as Record<string, any>,
           path ? `${path}.${k}` : k,
-          entered.root,
-          external,
+          (conjunct) => (conjunct.schema.properties as Record<string, unknown> | undefined)?.[k],
+          mapValue,
         ),
       );
     }
@@ -1873,6 +1932,43 @@ export class StaticAnalyzer {
     // ONE binder for the whole run, built beside the binding it serves: it caches
     // each referrer's resolved collection, which is what keeps a rule over an
     // n-entry collection from re-resolving that collection once per entry.
+    // A rule reads an accessor field as its binding: each bound declaration
+    // through its own kind's sites, in its declaring module's scope.
+    const ruleDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+    const ruleSites = new WeakMap<object, CelEvalSites | undefined>();
+    // A template body's entry, with the module of the definition that wrote it:
+    // its kind is spelled through that module's aliases, and an expression there
+    // reading only `self` is resolved before the entry is created.
+    let bodyEntryModules: WeakMap<object, { module: unknown }> | undefined;
+    const bodyEntryOf = (declaration: object) => {
+      if (!bodyEntryModules) {
+        bodyEntryModules = new WeakMap();
+        for (const m of allManifests as ResourceManifest[]) {
+          const entries = (m as Record<string, unknown>).resources;
+          if (m.kind !== "Telo.Definition" || !Array.isArray(entries)) continue;
+          const holder = { module: (m.metadata as { module?: unknown } | undefined)?.module };
+          for (const entry of entries) {
+            if (entry && typeof entry === "object") bodyEntryModules.set(entry, holder);
+          }
+        }
+      }
+      return bodyEntryModules.get(declaration);
+    };
+    const ruleViews = new RuleDeclarationViews((declaration, module) => {
+      const bodyEntry = bodyEntryOf(declaration);
+      const definition = definitionInScope(
+        defs,
+        declaration.kind,
+        { module: bodyEntry ? bodyEntry.module : module },
+        aliases,
+        aliasesByModule,
+      ) as unknown as ResourceDefinition | undefined;
+      if (!definition) return bodyEntry && { bodyEntry: true };
+      if (!ruleSites.has(definition)) {
+        ruleSites.set(definition, governedCelEvalSites(definition, ruleDef));
+      }
+      return { sites: ruleSites.get(definition), bodyEntry: bodyEntry !== undefined };
+    });
     const referrerRuleContext: ReferrerRuleContext = {
       peerBinder: analyzerPeerBinder(
         defs,
@@ -1885,6 +1981,7 @@ export class StaticAnalyzer {
         // author for the manifest author's mistake.
         (slotKinds, declarationKind) =>
           slotKinds.some((target) => kindSatisfies(declarationKind, target, defs)),
+        (declaration) => ruleViews.of(declaration),
       ),
     };
 
@@ -2144,10 +2241,11 @@ export class StaticAnalyzer {
     ) => {
       let seen = callSiteSlots.get(manifest);
       if (!seen) callSiteSlots.set(manifest, (seen = new Map()));
+      const enumerated = new Set(seen.keys());
       for (const slot of collectCelValueSlots(site.values, site.schema, site.path, namedShape)) {
-        if (seen.has(slot.path)) continue;
+        if (enumerated.has(slot.path)) continue;
         const joined = { manifest, resource, filePath, ...slot, callTarget: site.targetLabel };
-        seen.set(slot.path, joined);
+        if (!seen.has(slot.path)) seen.set(slot.path, joined);
         celReturnSlots.push(joined);
       }
     };
@@ -3753,11 +3851,21 @@ export class StaticAnalyzer {
     // `inputs: !cel`) is held to both declarations and reported once: the
     // call-site judgment when it fails, the own-field one only when it passes.
     const callSiteVerdicts = new Map<JoinSlot, AnalysisDiagnostic | undefined>();
+    // A leaf several conjuncts declare is a slot per declaration, reported for
+    // the first it does not fit.
+    const misfits = new Map<ResourceManifest, Set<string>>();
+    const report = (slot: JoinSlot, verdict: AnalysisDiagnostic | undefined) => {
+      if (!verdict) return;
+      let paths = misfits.get(slot.manifest);
+      if (!paths) misfits.set(slot.manifest, (paths = new Set()));
+      if (paths.has(slot.path)) return;
+      paths.add(slot.path);
+      diagnostics.push(verdict);
+    };
     for (const slot of celReturnSlots) {
       if (slot.callTarget !== undefined) {
         if (!callSiteVerdicts.has(slot)) callSiteVerdicts.set(slot, judgeSlot(slot));
-        const verdict = callSiteVerdicts.get(slot);
-        if (verdict) diagnostics.push(verdict);
+        report(slot, callSiteVerdicts.get(slot));
         continue;
       }
       const twin = callSiteSlots.get(slot.manifest)?.get(slot.path);
@@ -3765,8 +3873,7 @@ export class StaticAnalyzer {
         if (!callSiteVerdicts.has(twin)) callSiteVerdicts.set(twin, judgeSlot(twin));
         if (callSiteVerdicts.get(twin)) continue;
       }
-      const verdict = judgeSlot(slot);
-      if (verdict) diagnostics.push(verdict);
+      report(slot, judgeSlot(slot));
     }
 
     // Validate resource references (Phase 3)

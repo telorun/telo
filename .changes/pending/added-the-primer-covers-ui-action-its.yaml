@@ -1,0 +1,6 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer covers Ui.Action — its input and output models, its URL contract and
+  the lists it draws from the answer — a table's rowActions and how their inputs are
+  checked, list properties in forms, link-formatted values, and the
+  x-telo-context-element-from-item annotation.

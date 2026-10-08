@@ -7,7 +7,10 @@
   [data-telo-part="page"],
   [data-telo-part="stack"],
   [data-telo-part="table"],
-  [data-telo-part="form"] { display: flex; flex-direction: column; }
+  [data-telo-part="form"],
+  [data-telo-part="action"],
+  [data-telo-part="action-result"],
+  [data-telo-part="list"] { display: flex; flex-direction: column; }
   [data-telo-part="box"] { display: block; }
   [data-telo-part="columns"] { display: flex; flex-wrap: wrap; align-items: flex-start; }
   [data-telo-part="column"] { flex: 1 1 0; min-width: 0; }
@@ -56,14 +59,20 @@
   [data-telo-part="filters-bar"] { display: flex; flex-wrap: wrap; align-items: flex-end; min-width: 0; }
   [data-telo-part="filters-bar"][data-state="closed"] { display: none; }
   [data-telo-part="filters-presets"],
-  [data-telo-part="filter-options"] { display: inline-flex; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="filter-options"],
+  [data-telo-part="options"] { display: inline-flex; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="options"] { align-self: flex-start; }
   [data-telo-part="filters-presets"] { align-self: flex-start; }
   [data-telo-part="filters-summary"],
-  [data-telo-part="filter-tags"] { display: flex; flex-wrap: wrap; align-items: center; }
+  [data-telo-part="filter-tags"],
+  [data-telo-part="tags"] { display: flex; flex-wrap: wrap; align-items: center; }
   [data-telo-part="filters-count"],
   [data-telo-part="summary-chip"],
-  [data-telo-part="filter-tag"] { display: inline-flex; align-items: center; white-space: nowrap; }
+  [data-telo-part="filter-tag"],
+  [data-telo-part="tag"] { display: inline-flex; align-items: center; white-space: nowrap; }
   [data-telo-part="filter-tags"] > [data-telo-part="filter-input"] { flex: 1 1 4rem; }
+  [data-telo-part="tags"] { box-sizing: border-box; }
+  [data-telo-part="tags"] > [data-telo-part="input"] { flex: 1 1 4rem; width: auto; }
   /* A removable filter: its label above, its control and the button side by side. */
   [data-telo-part="filter"]:has(> [data-telo-part="filter-remove"]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   [data-telo-part="filter"]:has(> [data-telo-part="filter-remove"]) > [data-telo-part="filter-label"] { grid-column: 1 / -1; }

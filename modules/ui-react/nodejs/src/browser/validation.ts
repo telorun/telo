@@ -21,7 +21,8 @@ const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b
  * Check a value against a JSON Schema, interpreting the schema as data — no
  * code is generated. Reads `type`, `required`, `enum`, `const`, the string
  * lengths and `pattern`, the numeric bounds and `multipleOf`, through
- * `properties`. Every other keyword is left to the API.
+ * `properties` and, for a list, on each of its items through `items`. Every
+ * other keyword is left to the API.
  */
 export function validate(schema: JsonSchema, value: unknown, path: string[] = []): Finding[] {
   const findings: Finding[] = [];
@@ -48,6 +49,9 @@ export function validate(schema: JsonSchema, value: unknown, path: string[] = []
     if (schema.multipleOf !== undefined && Math.abs(value / schema.multipleOf - Math.round(value / schema.multipleOf)) > 1e-9) {
       fail(`Must be a multiple of ${schema.multipleOf}`);
     }
+  }
+  if (Array.isArray(value) && schema.items !== null && typeof schema.items === "object" && !Array.isArray(schema.items)) {
+    value.forEach((item, index) => findings.push(...validate(schema.items, item, [...path, String(index)])));
   }
   if (value !== null && typeof value === "object" && !Array.isArray(value)) {
     const members = value as Record<string, unknown>;

@@ -1,0 +1,33 @@
+modules:
+  modules/ui: Added
+body: "Ui.Action: a button that runs an operation from a page. It takes inputModel
+  (required), outputModel, source.path (one POST with a JSON body, under the new action
+  contract), label (required), fields and lists. Each list names its rows as a path into
+  result, typed from outputModel, and its columns as paths into row — one element of
+  that list — or result; a column's header and presentation come from the member it
+  names, followed through any reference at any depth (a named shape, a pointer into the
+  model's own definitions, a shape reached through a shape), a keyword written beside a
+  reference winning over the shape it names. It provides the new action node of
+  Ui.SpecNode: schema, path, label, fields and lists, all present. New rules, each
+  twinned by the action's controller: UI_ACTION_FIELD_UNKNOWN_PROPERTY,
+  UI_ACTION_FIELD_UNSUPPORTED, UI_ACTION_REQUIRED_INPUT_NOT_ENTERED. Ui.Table takes
+  rowActions, each { action, inputs, confirm }: the inputs are paths into the row or
+  fixed values, checked as a record of that action's input model, and the table refuses
+  inputs that make no such record when it is first read
+  (ERR_UI_ROW_ACTION_INPUTS_INVALID). An action that declares a list is refused in a row
+  by the new rule UI_ROW_ACTION_DRAWS_LISTS, twinned by the table as
+  ERR_UI_ROW_ACTION_DRAWS_LISTS. A form enters lists: a property typed array whose items
+  are a scalar is enterable beside the scalars, in Ui.Form and Ui.Action alike. BREAKING
+  for a manifest: a Ui.Form with no fields now shows a field for every list-of-scalars
+  property of its model, and a Ui.Form listing a field for a property no control can
+  enter — an object, or a list of anything but scalars — is refused by the new rule
+  UI_FORM_FIELD_UNSUPPORTED, twinned by the form as ERR_UI_FORM_FIELD_UNSUPPORTED; it
+  was accepted and drew nothing. BREAKING for a manifest: a Ui.Table column, written or
+  derived, over any member reached through a reference — a top-level property that is
+  itself a reference, or a member nested beneath one — now takes its header from that
+  member's title and its presentation from its type and format, where it showed the
+  member's name and plain text; and a reference on the way to such a member, or to an
+  action's list, that names nothing or leads back to itself is refused when the table or
+  action is first read (ERR_REF_UNRESOLVED), where it was ignored. BREAKING for a
+  renderer: the table node of Ui.SpecNode now requires rowActions, an empty list when
+  the table declares none."

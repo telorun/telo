@@ -275,6 +275,119 @@ describe("x-telo-value-schema-from inside a contract", () => {
   });
 });
 
+describe("an expression at an argument a reached type declares", () => {
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+  const declares = (properties: Record<string, unknown>) => ({
+    kind: "Telo.JsonSchema",
+    schema: { type: "object", properties },
+  });
+  const typeErrors = (diagnostics: AnalysisDiagnostic[]) =>
+    diagnostics.filter((d) => d.code === "CEL_TYPE_ERROR").map((d) => d.data?.path);
+
+  it("is held to that type", () => {
+    const typed = app("typed", "Fx.Typed", { contextType: declares({ turnId: { type: "string" } }) });
+    const target = { kind: "Fx.Typed", name: "typed" };
+    const calling = (turnId: unknown) => analyze([typed, call(target, { context: { turnId } })]);
+
+    expect(typeErrors(calling(cel("1 + 1")))).toEqual(["inputs.context.turnId"]);
+    expect(typeErrors(calling(cel("'a' + 'b'")))).toEqual([]);
+  });
+
+  it("is reported once where several reached types declare it and one refuses it", () => {
+    const readers = [
+      app("texts", "Fx.Reader", { contextType: declares({ id: { type: "string" } }) }),
+      app("counts", "Fx.Reader", { contextType: declares({ id: { type: "integer" } }) }),
+    ];
+    const caller = app("caller", "Fx.Caller", {
+      readers: readers.map((r) => ({ kind: "Fx.Reader", name: r.metadata.name })),
+    });
+    const found = analyze([
+      ...readers,
+      caller,
+      call({ kind: "Fx.Caller", name: "caller" }, { context: { id: cel("1 + 1") } }),
+    ]);
+    expect(typeErrors(found)).toEqual(["inputs.context.id"]);
+  });
+
+  it("judges an accessor chain by the schema of what it reads", () => {
+    // The whole input is a record of the type the target names.
+    const operation = {
+      kind: "Telo.Definition",
+      metadata: { name: "Operation", module: "test-fx" },
+      capability: "Telo.Provider",
+      schema: { type: "object", properties: { inputModel: TYPE_FIELD } },
+      inputType: { type: "object", "x-telo-value-schema-from": "inputModel" },
+    } as unknown as ResourceDefinition;
+    const grid = {
+      kind: "Telo.Definition",
+      metadata: { name: "Grid", module: "test-fx" },
+      capability: "Telo.Provider",
+      schema: {
+        type: "object",
+        properties: {
+          model: TYPE_FIELD,
+          operation: { "x-telo-ref": { kind: "test-fx.Operation", use: "dependency", inputs: "/inputs" } },
+          inputs: {
+            type: "object",
+            "x-telo-context": {
+              type: "object",
+              properties: { row: { "x-telo-context-from-root": "model" } },
+            },
+            additionalProperties: { "x-telo-eval": "accessor" },
+          },
+        },
+      },
+    } as unknown as ResourceDefinition;
+    const archive = app("archive", "Fx.Operation", { inputModel: declares({ id: { type: "integer" } }) });
+    const over = (id: unknown) =>
+      analyze(
+        [
+          archive,
+          app("grid", "Fx.Grid", {
+            model: declares({ id: { type: "integer" }, name: { type: "string" } }),
+            operation: { kind: "Fx.Operation", name: "archive" },
+            inputs: { id },
+          }),
+        ],
+        [operation, grid],
+      );
+
+    expect(typeErrors(over(cel("row.name")))).toEqual(["inputs.id"]);
+    expect(typeErrors(over(cel("row.id")))).toEqual([]);
+  });
+});
+
+describe("an expression at a member only a conjunct's map value declares", () => {
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+
+  it("is typed in the document of the shape that declares the map value", () => {
+    const plain = {
+      kind: "Telo.Definition",
+      metadata: { name: "Plain", module: "test-fx" },
+      capability: "Telo.Invocable",
+      schema: { type: "object", properties: { inputType: TYPE_FIELD } },
+    } as unknown as ResourceDefinition;
+    // The value of every member is a definition of the shape's own.
+    const bag = app("Bag", "Telo.JsonSchema", {
+      schema: {
+        type: "object",
+        $defs: { Id: { type: "string" } },
+        additionalProperties: { $ref: "#/$defs/Id" },
+      },
+    });
+    const target = app("plain", "Fx.Plain", {
+      inputType: { type: "object", allOf: [{ $ref: "telo:app/Bag" }] },
+    });
+    const calling = (id: unknown) =>
+      analyze([bag, target, call({ kind: "Fx.Plain", name: "plain" }, { id })], [plain, HOST])
+        .filter((d) => d.code === "CEL_TYPE_ERROR")
+        .map((d) => d.data?.path);
+
+    expect(calling(cel("1 + 1"))).toEqual(["inputs.id"]);
+    expect(calling(cel("'a' + 'b'"))).toEqual([]);
+  });
+});
+
 describe("a contract typed by the declaration it is bound to", () => {
   const host: ValueSchemaHost = {
     scope: {

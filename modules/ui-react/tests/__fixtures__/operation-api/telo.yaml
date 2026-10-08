@@ -1,0 +1,54 @@
+# A library with no controller: its kind is a template over one route, so the
+# shapes a route validates against are named, not written out a second time.
+kind: Telo.Library
+metadata:
+  name: UiFixtureOperation
+  version: 1.0.0
+  description: >-
+    Test fixture: an operation served at one URL that validates the posted
+    record against a named input shape and answers with a fixed record
+    declared against a named output shape.
+imports:
+  Http: ../../../../http-server
+  Run: ../../../../run
+exports:
+  kinds: [Operation]
+---
+kind: Telo.Definition
+metadata:
+  name: Operation
+  description: >-
+    Serves POST at its mount path: a body the input shape refuses is answered
+    with the request-validation envelope, any other with the fixed answer.
+capability: Telo.Mount
+schema:
+  type: object
+  additionalProperties: false
+  required: [input, output, answer]
+  properties:
+    input:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    output:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    answer:
+      type: object
+mount: !ref api
+resources:
+  - kind: Run.Value
+    metadata: { name: answered }
+    value: !cel "self.answer"
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - request:
+          method: POST
+          path: /
+          schema:
+            body: !cel "self.input.schema"
+        handler: !ref answered
+        returns:
+          - status: 200
+            content:
+              application/json:
+                body: !cel "result"
+                schema: !cel "self.output.schema"

@@ -82,6 +82,10 @@ A fault in one node never takes the page with it.
   reaches it some other way: such a link is not drawn as a link, the `error`
   node `ERR_UI_NODE_INVALID` stands in its place, and a page whose `path` does
   so is shown the same way in the navigation.
+- A click on a link is taken as a move within the application only when it
+  leads to a page the application declares. A `link` node to anything else
+  under the mount — a file an `Http.Static` serves beneath it — is an
+  ordinary browser load.
 - Every node is drawn inside a boundary of its own — a page's children, a
   container's children, a filter bar's content, a table's cell. A node that
   fails while it is drawn is replaced by the `error` node; its siblings and
@@ -124,6 +128,89 @@ is started again, under a new address.
   for the value meant.
 - Edit, delete and the pager are icon buttons; each is named for a screen
   reader and shows that name on hover and on keyboard focus.
+- A value whose model property declares `format: uri` or `uri-reference` is
+  drawn as a link showing the value, in a table's cell and in an action's
+  list. The value must be an address [a `link` node may
+  hold](../../ui/docs/nodes.md#addresses): an app-relative path, which leads
+  under the application's mount as a `link` node's does, or one starting
+  `https://`, `http://` or `mailto:`. Anything else — `//host/x`,
+  `javascript:…`, a path with a tab in it — is shown as plain text. A link
+  to a page of the application moves within it. Any other — a file served
+  under the mount (`/files/report.pdf`), another site, a mail address —
+  carries `target="_blank"` and `rel="noopener"`, so it opens beside the
+  application and what the page holds stays.
+
+### Row actions
+
+A table's [`rowActions`](../../ui/docs/table.md#row-actions) are text buttons
+in each row, showing each action's label in the order declared, before edit
+and delete.
+
+- A press sends the row's bound record at once — `POST`, as JSON, to the
+  action's path.
+- A table sends one row write at a time. Until the operation answers, every
+  row action and every delete button of that table is disabled, in every row,
+  and a press on one sends nothing; while a delete is being sent, every row
+  action is. Edit, the create button, sorting and paging stay usable.
+- An entry with `confirm` asks first, in the confirmation a delete uses: the
+  question is its title and its button carries the action's label. Cancel or
+  Escape sends nothing.
+- Once the operation succeeds its answer is not read, the confirmation closes,
+  and every table on the page over the same `source.basePath` reloads the page
+  of rows it was showing.
+- An operation that fails reloads nothing. The refusal is shown as an `error`
+  node in the confirmation, which opens for it when no question was asked,
+  titled with the action's label: its button sends the record again, and
+  Cancel dismisses it. A 401 is `ERR_UI_UNAUTHORIZED`, a 403
+  `ERR_UI_FORBIDDEN`, and anything else `ERR_UI_REQUEST_FAILED` — a 400 with
+  every detail of its envelope in the message.
+
+## Forms
+
+- A list property is entered whole. One whose `items` declare `enum` is a
+  group of options, any number of them chosen, and the list sent holds the
+  chosen values in the order the model lists them. Any other list of scalars
+  is typed one item at a time — Enter, a comma or leaving the box adds what
+  was typed, each item has a button that removes it, and Backspace in the
+  empty box removes the last — and each item is sent as the type `items`
+  declares: a number for `number` / `integer`, in a number box.
+- A list with nothing in it is left out of the record, and an edit form opens
+  with the record's list in the control.
+- In the page, a list is checked as a list and each item against the scalar
+  keywords of `items`; the first item refused marks the field, and its
+  control (`data-invalid="true"` on the group of options or the box of tags). `minItems`,
+  `maxItems` and `uniqueItems` are left to the API. An item typed twice is
+  kept once.
+
+## Actions
+
+An [`action` node](../../ui/docs/action.md) is a form with one button, and
+below it what the operation answered.
+
+- The fields are a form's: the same controls, derived the same way, and the
+  same check in the page before anything is sent. The button shows the
+  action's `label`.
+- A press sends the entered record — `POST`, `content-type: application/json`
+  — to the action's `path`, which is the origin's own address and is not
+  moved under the application's mount. A field holding nothing is left out; a
+  checkbox is always `true` or `false`.
+- Every press clears the last answer and the last failure, and the button is
+  disabled until the operation answers. The fields keep what was entered,
+  whatever the answer.
+- A success draws each declared list in order: its heading when it has one,
+  a header per column, and a row per element of the list its `rows` names in
+  the answer. A cell shows its value as a table's cell does. A list with no
+  elements, and a `rows` that names something other than a list, show `No
+  rows.`.
+- A 400 is shown on the form: each detail naming a shown field on that field,
+  every other detail — or the envelope's `message` when it has none — under
+  the fields.
+- Any other failure is an `error` node under the form, where the lists would
+  be: `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403,
+  `ERR_UI_REQUEST_FAILED` for any other status and for no answer at all.
+- An action that declares lists needs a JSON object to draw them from: a
+  success with any other body is `ERR_UI_RESPONSE_INVALID`. One that declares
+  none never reads the body.
 
 ## Surfaces
 
@@ -188,6 +275,6 @@ The application adds none. The renderer sends the page's same-origin
 credentials with every request; put a guard on the mount or on the API to
 require them. A 401 or 403 is shown as an `error` node where it happened —
 `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN` — for the page when a document was
-refused, for the one table or form when a collection was. Any other failed
-request is `ERR_UI_REQUEST_FAILED`, with the HTTP status in its message; a
-form's 400 is shown on its fields instead.
+refused, for the one table, form or action when a collection or an operation
+was. Any other failed request is `ERR_UI_REQUEST_FAILED`, with the HTTP status
+in its message; a form's or an action's 400 is shown on its fields instead.

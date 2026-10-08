@@ -1,0 +1,146 @@
+kind: Telo.Application
+metadata:
+  name: UiReferencedMembersTest
+  version: 1.0.0
+  description: |
+    A column's header and presentation come from the member it names however
+    that member is reached: written in place, through a named shape, through a
+    pointer into the model's own definitions, or through a shape a shape names
+    — for a list of an action's answer and for a nested member of a table's
+    row alike, and for a table's derived column over a member that is itself
+    a reference. What is written beside a reference wins over the shape it
+    names. A reference that names nothing passes the check and is refused when
+    the action is first read.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+  - !ref danglingReference
+---
+kind: Telo.JsonSchema
+metadata:
+  name: File
+schema:
+  type: object
+  properties:
+    url: { type: string, title: Download, format: uri-reference }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Batch
+schema:
+  type: object
+  properties:
+    files: { type: array, items: !ref File }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Answer
+schema:
+  type: object
+  $defs:
+    File:
+      type: object
+      properties:
+        url: { $ref: "#/$defs/Address", title: Download }
+    Address: { type: string, title: Address, format: uri-reference }
+  properties:
+    inline:
+      type: array
+      items:
+        type: object
+        properties:
+          url: { type: string, title: Download, format: uri-reference }
+    named: { type: array, items: !ref File }
+    local: { type: array, items: { $ref: "#/$defs/File" } }
+    batch: !ref Batch
+---
+kind: Ui.Action
+metadata:
+  name: generate
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: {} }
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "result.inline"
+    columns: [{ value: !cel "row.url" }]
+  - rows: !cel "result.named"
+    columns: [{ value: !cel "row.url" }]
+  - rows: !cel "result.local"
+    columns: [{ value: !cel "row.url" }]
+  - rows: !cel "result.batch.files"
+    columns: [{ value: !cel "row.url" }]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Report
+schema:
+  type: object
+  $defs:
+    File:
+      type: object
+      properties:
+        url: { type: string, title: Download, format: uri-reference }
+    Site: { type: string, title: Website, format: uri }
+  properties:
+    id: { type: integer }
+    latest: { $ref: "#/$defs/File" }
+    site: { $ref: "#/$defs/Site" }
+---
+kind: Ui.Table
+metadata:
+  name: reports
+model: !ref Report
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
+source: { basePath: /api/reports }
+columns:
+  - value: !cel "row.latest.url"
+---
+kind: Ui.Table
+metadata:
+  name: derived
+model: !ref Report
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
+source: { basePath: /api/reports }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: generate
+    invoke: { kind: Probe.Read, source: !ref generate }
+  - name: reports
+    invoke: { kind: Probe.Read, source: !ref reports }
+  - name: derived
+    invoke: { kind: Probe.Read, source: !ref derived }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        lists: !cel "steps.generate.result.node.lists.map(l, l.columns)"
+        table: !cel "steps.reports.result.node.columns"
+        derived: !cel "steps.derived.result.node.columns.filter(c, c.value.path == ['site'])"
+      expected:
+        lists:
+          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
+          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
+          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
+          - [{ header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }]
+        table:
+          - { header: Download, value: { root: row, path: [latest, url] }, present: { type: string, format: uri-reference } }
+        derived:
+          - { header: Website, value: { root: row, path: [site] }, present: { type: string, format: uri } }
+---
+kind: Assert.Manifest
+metadata:
+  name: danglingReference
+source: ./__fixtures__/invalid/dangling-reference/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'danglingReference': 'outputModel.files.items' holds a reference ('#/$defs/File') that does not name a data shape. Declare that shape, or correct the reference."

@@ -164,6 +164,15 @@ A rule is skipped when a value it reads holds a `!cel` or an `!include-*` embed 
 the comparison would run against a placeholder — and the skip names the tag it
 found and the value that holds it (`self.routes[1].path`).
 
+An [accessor field](./accessor-fields.md) is not such a value: it is never
+evaluated, so a rule reads it as the binding the controller receives —
+`{ root: "row", path: ["id"] }` for `!cel "row.id"`, `{ value: 5 }` for a
+literal `5` — on the resource itself, on every declaration `resolve:` binds and
+on an inline declaration beneath either. A condition tells the two apart with
+`has(this.sort.root)`. An accessor field holding anything but a plain chain or a
+literal is already `ACCESSOR_NOT_PLAIN_CHAIN`; it reads as `{ value: … }` with
+the expression still inside, so a rule reading that value is skipped.
+
 What a condition reads follows a comprehension's variable. In
 `self.routes.all(r, r.path.startsWith("/"))` the rule reads each route's `path`
 and nothing else of a route, so a route whose `handler:` or `inputs:` holds an

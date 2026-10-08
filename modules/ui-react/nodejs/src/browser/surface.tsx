@@ -298,9 +298,11 @@ function PageSurface({ spec, title, children }: { spec: SurfaceSpec; title: stri
 
 interface ConfirmationProps {
   title: string;
-  description: string;
+  description?: string;
   /** What the confirming button says. */
   confirm: string;
+  /** Whether confirming destroys something: its button is styled `danger`. */
+  danger?: boolean;
   /** What the button that backs out says. */
   cancel?: string;
   busy?: boolean;
@@ -312,20 +314,28 @@ interface ConfirmationProps {
 
 /** A question that interrupts: only Escape or one of its two buttons answers
  *  it, and confirming leaves it open for whoever asked to close. */
-export function Confirmation({ title, description, confirm, cancel = "Cancel", busy = false, failure, onConfirm, onClose }: ConfirmationProps) {
+export function Confirmation({ title, description, confirm, danger = true, cancel = "Cancel", busy = false, failure, onConfirm, onClose }: ConfirmationProps) {
+  const heading = <AlertDialog.Title data-telo-part="surface-title">{title}</AlertDialog.Title>;
   return (
     <AlertDialog.Root open onOpenChange={(open) => !open && onClose()}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay data-telo-part="surface-overlay" />
         <AlertDialog.Content data-telo-part="surface" data-surface="confirmation">
-          <div data-telo-part="surface-header">
-            <AlertDialog.Title data-telo-part="surface-title">{title}</AlertDialog.Title>
-            <AlertDialog.Description data-telo-part="surface-description">{description}</AlertDialog.Description>
-          </div>
+          {description === undefined ? (
+            // A question with nothing under it is its own description.
+            <AlertDialog.Description asChild>
+              <div data-telo-part="surface-header">{heading}</div>
+            </AlertDialog.Description>
+          ) : (
+            <div data-telo-part="surface-header">
+              {heading}
+              <AlertDialog.Description data-telo-part="surface-description">{description}</AlertDialog.Description>
+            </div>
+          )}
           {failure && <ErrorNode error={failure} />}
           <div data-telo-part="form-actions">
             <AlertDialog.Cancel data-telo-part="cancel">{cancel}</AlertDialog.Cancel>
-            <button data-telo-part="submit" data-style="danger" type="button" disabled={busy} onClick={onConfirm}>
+            <button data-telo-part="submit" data-style={danger ? "danger" : undefined} type="button" disabled={busy} onClick={onConfirm}>
               {confirm}
             </button>
           </div>

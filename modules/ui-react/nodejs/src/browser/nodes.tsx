@@ -1,11 +1,13 @@
 import { CircleAlert, LoaderCircle } from "lucide-react";
 import { Component, useContext, type ReactNode } from "react";
 import { styleAttribute, type Style } from "./bindings.js";
+import { Action } from "./action.js";
 import { ComponentNode } from "./component.js";
 import { Filters } from "./filters.js";
 import { Form } from "./form.js";
 import { useHostStore } from "./host.js";
 import { Icon } from "./icon.js";
+import { linkAddress } from "./link-address.js";
 import { RendererContext } from "./renderer-context.js";
 import { Table } from "./table.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
@@ -111,7 +113,7 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
     case "link": {
       // A reference into the application lives under the mount; one that leaves
       // it once resolved (`//host`, `/\host`) is not a link this page draws.
-      const href = node.href.startsWith("/") ? store.localHref(node.href) : (node.href as string);
+      const href = linkAddress(store, node.href);
       if (href === undefined) {
         return (
           <ErrorNode
@@ -145,6 +147,8 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       return <Table node={node} />;
     case "form":
       return <Form node={node} target={{ method: "POST", url: node.basePath }} />;
+    case "action":
+      return <Action node={node} />;
     case "filters":
       return <Filters node={node} />;
     case "component":

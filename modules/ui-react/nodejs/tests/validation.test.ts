@@ -19,6 +19,7 @@ describe("the schema interpreter", () => {
     [{ multipleOf: 0.1 }, 0.25, ": Must be a multiple of 0.1"],
     [{ required: ["a"] }, {}, "a: Is required"],
     [{ properties: { a: { properties: { b: { type: "string" } } } } }, { a: { b: 1 } }, "a.b: Must be string"],
+    [{ type: "array", items: { type: "string", minLength: 2 } }, ["ab", "c"], "1: Must be at least 2 characters"],
   ])("judges %j against %j", (schema, value, expected) => {
     expect(messages(schema, value)).toEqual([expected]);
   });

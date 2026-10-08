@@ -109,6 +109,7 @@ ones that must contrast with it too — or decline the built-in theme with
 | `table-sort` | the button sorting by a column |
 | `table-cell` | one cell |
 | `row-actions` | the cell holding a row's buttons |
+| `row-action` | one operation a row offers, a button showing its label; before edit and delete |
 | `row-edit` | a row's edit button, an icon |
 | `row-delete` | a row's delete button, an icon |
 | `table-detail` | the cell under a row that holds its edit form, opened in line |
@@ -130,11 +131,42 @@ ones that must contrast with it too — or decline the built-in theme with
 | `textarea` | a multi-line control |
 | `select` | a choice control: the button showing what is chosen, which opens the list |
 | `checkbox` | a boolean control, drawn before its label |
+| `options` | a list chosen from its listed values, side by side |
+| `option` | one of them |
+| `tags` | a list typed one item at a time: the items so far and the `input` the next is typed into |
+| `tag` | one typed item |
+| `tag-remove` | the button in it that removes that item, an icon |
 | `field-error` | what is wrong with a field |
 | `form-error` | what is wrong that no field names |
 | `form-actions` | the row of buttons under a form or in a confirmation |
-| `submit` | the button that commits |
+| `submit` | the button that commits: `Save` on a form, an action's own label on an action, a confirmation's answer |
 | `cancel` | the button that backs out |
+
+### Action
+
+| Part | Is |
+| --- | --- |
+| `action` | an action, with everything belonging to it: its form, then what its operation answered |
+| `action-result` | the lists drawn from the answer; absent until the operation has answered, and while it runs again |
+| `list` | one list of the answer: its heading, then its grid |
+| `list-heading` | a list's heading, an `h3`; absent when the list declares none |
+
+Inside `action`, in this order: one `form` holding a `field` per field, a
+`form-error` when there is one, and a `form-actions` with the `submit`; an
+`error` when the operation failed; `action-result`. The `form` of an action
+carries no `data-state` and no `data-dirty` — the `action` carries the state.
+
+A `list` draws its rows with the table's own grid parts — `table-frame`,
+`table-grid`, `table-head`, `table-body`, `table-row`, `table-header-cell`,
+`table-cell`, and `table-empty` when it has no rows — so select a list's grid
+as a descendant of `list`, and a table's as a descendant of `table`.
+
+A value the model calls an address (`format: uri` / `uri-reference`) is drawn
+in a `table-cell` as a `link`, in a table and in a list alike; one that leads
+anywhere but a page of the application carries `target="_blank"`.
+
+A refused list marks its `options` group or its `tags` box, never an `option`,
+a `tag` or the `input` inside the box, so one ring is drawn.
 
 ### Filters
 
@@ -213,8 +245,8 @@ says which.
 | `surface-overlay` | what covers the page behind a modal dialog or drawer, and behind a confirmation |
 | `surface` | the surface itself: a dialog, a drawer, a popover, an inline form, a panel, a form in place of the page, or a confirmation |
 | `surface-header` | its title, and a confirmation's description |
-| `surface-title` | its title: `New` or `Edit` for a form, `Filters` for a filter bar's overlay, the question for a confirmation |
-| `surface-description` | what a confirmation says under its title |
+| `surface-title` | its title: `New` or `Edit` for a form, `Filters` for a filter bar's overlay, the question for a confirmation — or the label of a row's operation that was refused without one |
+| `surface-description` | what a confirmation says under its title; absent from a row operation's confirmation |
 | `surface-body` | what holds the form; it scrolls while the header and the form's actions stay. What it holds is drawn inside two wrapper elements with `display: contents`, so select a form in it as a descendant, not as a child |
 | `surface-close` | the button closing a form's surface, an icon |
 
@@ -260,8 +292,8 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `table`, `form`, `filters`, `component` |
-| `data-invalid="…"` | `true` | `field`, `input`, `textarea`, `select`, `checkbox` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `table`, `form`, `filters`, `component`, `action`, `row-action` |
+| `data-invalid="…"` | `true` | `field`, `input`, `textarea`, `select`, `checkbox`, `options`, `tags` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
@@ -285,7 +317,7 @@ idle tooltip trigger alike.
 | Values | On |
 | --- | --- |
 | `open`, `closed` | `surface`, `surface-overlay`, `select`, `filter-select`, `select-content`, `filters-bar`, `filter-chip`, `menu` |
-| `on`, `off` | `filters-preset`, `filter-option` |
+| `on`, `off` | `filters-preset`, `filter-option`, `option` |
 | `checked`, `unchecked` | `checkbox`, `select-item`, `filter-toggle` |
 | `closed`, `delayed-open`, `instant-open` | `row-edit`, `row-delete`, `pager-prev`, `pager-next`, `tooltip` |
 
@@ -294,9 +326,17 @@ and the `select-item` or `menu-item` under the pointer or the keyboard carries
 `data-highlighted`. `filters-bar` carries `open` / `closed` only in a
 collapsible bar, and `filters-add` carries no state: its list's is on `menu`.
 
+An `action` is `idle`, `submitting` while its operation runs, and `error` once
+its record or the operation was refused. A `row-action` carries `data-state`
+only while its own operation runs — `submitting`. A table sends one row write
+at a time, so for as long every `row-action` and `row-delete` of that table
+is `disabled`, the pressed one alone carrying the state; every `row-action`
+is disabled while a row is being deleted, too.
+
 `data-style` is a space-separated list, so match one name with `~=`. A table
 row carries its `rowStyle`, a cell its column's `style`, and a confirmation's
-`submit` — deleting a row, discarding unsaved input — carries `danger`.
+`submit` — deleting a row, discarding unsaved input — carries `danger`; the
+`submit` of a row operation's confirmation carries none.
 
 A surface carries only the attributes its kind has: `data-side` on a drawer, a
 popover and a panel, `data-size` on a dialog, a drawer and a panel,

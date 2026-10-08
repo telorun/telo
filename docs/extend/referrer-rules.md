@@ -204,7 +204,10 @@ completion or hover — so the strict half reports it while the rule keeps worki
 
 - **A value the condition reads holds a `!cel`, or an `!include-*` embed.** The
   verdict would be about a placeholder, so the referrer is skipped and the skip
-  is reported (`REFERRER_RULE_SKIPPED`), naming the tag it found. Only the nodes
+  is reported (`REFERRER_RULE_SKIPPED`), naming the tag it found. An
+  [accessor field](./accessor-fields.md) is not one: it is never evaluated, so
+  `self`, `referrer`, `entry` and every peer read it as its binding
+  (`{ root, path }` for a chain, `{ value }` for a literal). Only the nodes
   the condition actually reads count: a server carrying
   `port: !cel "ports.http"` does not disable a rule about its `openapi:` block.
   A member read through a comprehension's variable is a read of that member on

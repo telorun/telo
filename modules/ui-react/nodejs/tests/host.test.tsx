@@ -34,8 +34,8 @@ describe("the host object", () => {
   });
 
   it("renders the other page on a navigation to it, and the not-found shell for no page", async () => {
-    rendered = await show([probe, { type: "link", text: "Nowhere", href: "/nowhere" }]);
-    await rendered.click(rendered.part("link"));
+    rendered = await show([probe]);
+    await rendered.click(rendered.fixture("nowhere"));
     expect(rendered.part("page").getAttribute("data-state")).toBe("empty");
     expect(rendered.part("page-title").textContent).toBe("Not found");
     rendered.unmount();
@@ -66,6 +66,18 @@ describe("the host object", () => {
     expect(rendered.fixture("href").textContent).toBe("/admin/done?x=1");
     expect(rendered.fixture("location").textContent).toBe("/");
     expect(rendered.part("nav-link").getAttribute("href")).toBe("/admin/");
+  });
+
+  it("follows a link only to a page the application declares, and leaves any other address under the mount to the browser", async () => {
+    rendered = await show([{ type: "link", text: "A file", href: "/files/a.pdf" }, { type: "link", text: "Done", href: "/done" }], "/admin");
+    const [file, done] = rendered.parts("link");
+    expect([file.getAttribute("href"), file.getAttribute("target"), done.getAttribute("target")]).toEqual(["/admin/files/a.pdf", null, null]);
+    expect(await rendered.click(file)).toBe(false);
+    expect(window.location.pathname).toBe("/admin/");
+    expect(rendered.part("page-title").textContent).toBe("Home");
+    expect(await rendered.click(done)).toBe(true);
+    expect(window.location.pathname).toBe("/admin/done");
+    expect(rendered.part("text").textContent).toBe("The done page");
   });
 
   it("follows a plain click on its own anchors and leaves the rest to the browser", async () => {

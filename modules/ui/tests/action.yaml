@@ -1,0 +1,256 @@
+kind: Telo.Application
+metadata:
+  name: UiActionTest
+  version: 1.0.0
+  description: |
+    An action provides its node from its two models: the input model whole, a
+    field per property a control can enter — a scalar or a list of scalars,
+    never an object or a list of objects — unless fields are listed, and each
+    list of the answer with its rows, its heading only when one is declared,
+    and a header and a presentation per column taken from the member the
+    column names, in the row or in the answer. An action that draws nothing
+    carries an empty list of lists, and one over a model with no properties is
+    a bare button. A form over the same model enters the same properties. An
+    action placed on a page is the page's node. A table carries each row
+    action as the action's path and label with the row's inputs, and its
+    question only when one is asked.
+imports:
+  Ui: ../
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ReportRequest
+schema:
+  type: object
+  required: [month]
+  properties:
+    month: { type: string, title: Month }
+    copies: { type: integer }
+    formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+    recipients: { type: [array, "null"], items: { type: string } }
+    options:
+      type: object
+      properties:
+        compact: { type: boolean }
+    pages: { type: array, items: { type: object } }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: ReportAnswer
+schema:
+  type: object
+  properties:
+    summary:
+      type: object
+      properties:
+        total: { type: integer, title: Total }
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string, title: File }
+          url: { type: string, format: uri-reference }
+---
+kind: Ui.Action
+metadata:
+  name: generate
+inputModel: !ref ReportRequest
+outputModel: !ref ReportAnswer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - heading: Files
+    rows: !cel "result.files"
+    columns:
+      - value: !cel "row.name"
+      - header: Link
+        value: !cel "row.url"
+      - value: !cel "result.summary.total"
+      - header: Kind
+        value: report
+  - rows: !cel "result.files"
+    columns:
+      - value: !cel "row.url"
+---
+kind: Ui.Action
+metadata:
+  name: chosen
+inputModel: !ref ReportRequest
+source: { path: /api/reports }
+label: Send
+fields:
+  - property: formats
+  - property: month
+---
+kind: Ui.Action
+metadata:
+  name: refresh
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: {} }
+source: { path: /api/refresh }
+label: Refresh
+---
+kind: Ui.Form
+metadata:
+  name: requestForm
+model: !ref ReportRequest
+source: { basePath: /api/requests }
+---
+kind: Ui.View
+metadata:
+  name: page
+content:
+  type: stack
+  children:
+    - { type: composite, ref: !ref generate, style: strong }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    id: { type: integer }
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Archive
+schema:
+  type: object
+  additionalProperties: false
+  required: [id]
+  properties:
+    id: { type: integer }
+    status: { type: string }
+---
+kind: Ui.Action
+metadata:
+  name: archive
+inputModel: !ref Archive
+source: { path: /api/todos/archive }
+label: Archive
+---
+kind: Ui.Table
+metadata:
+  name: todos
+model: !ref Todo
+collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref archive
+    inputs:
+      id: !cel "row.id"
+      status: archived
+  - action:
+      kind: Ui.Action
+      inputModel:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string }
+      source: { path: /api/todos/rename }
+      label: Rename
+    inputs:
+      name: !cel "row.name"
+    confirm: Rename it?
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: generate
+    invoke: { kind: Probe.Read, source: !ref generate }
+  - name: chosen
+    invoke: { kind: Probe.Read, source: !ref chosen }
+  - name: refresh
+    invoke: { kind: Probe.Read, source: !ref refresh }
+  - name: form
+    invoke: { kind: Probe.Read, source: !ref requestForm }
+  - name: page
+    invoke: { kind: Probe.Read, source: !ref page }
+  - name: todos
+    invoke: { kind: Probe.Read, source: !ref todos }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        generate: !cel "steps.generate.result"
+        chosen: !cel "steps.chosen.result.node.fields"
+        refresh: !cel "steps.refresh.result.node"
+        form: !cel "steps.form.result.node.fields"
+        onPage: !cel "steps.page.result.node.children.map(c, {'type': c.type, 'label': c.label, 'style': c.style})"
+        rowActions: !cel "steps.todos.result.node.rowActions"
+      expected:
+        generate:
+          assets: []
+          node:
+            type: action
+            schema:
+              type: object
+              required: [month]
+              properties:
+                month: { type: string, title: Month }
+                copies: { type: integer }
+                formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+                recipients: { type: [array, "null"], items: { type: string } }
+                options:
+                  type: object
+                  properties:
+                    compact: { type: boolean }
+                pages: { type: array, items: { type: object } }
+            path: /api/reports
+            label: Generate
+            fields:
+              - { property: month, label: Month }
+              - { property: copies, label: copies }
+              - { property: formats, label: Formats }
+              - { property: recipients, label: recipients }
+            lists:
+              - heading: Files
+                rows: { root: result, path: [files] }
+                columns:
+                  - { header: File, value: { root: row, path: [name] }, present: { type: string } }
+                  - { header: Link, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+                  - { header: Total, value: { root: result, path: [summary, total] }, present: { type: integer } }
+                  - { header: Kind, value: { value: report } }
+              - rows: { root: result, path: [files] }
+                columns:
+                  - { header: url, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+        chosen:
+          - { property: formats, label: Formats }
+          - { property: month, label: Month }
+        refresh:
+          type: action
+          schema: { type: object, properties: {} }
+          path: /api/refresh
+          label: Refresh
+          fields: []
+          lists: []
+        form:
+          - { property: month, label: Month }
+          - { property: copies, label: copies }
+          - { property: formats, label: Formats }
+          - { property: recipients, label: recipients }
+        onPage:
+          - { type: action, label: Generate, style: strong }
+        rowActions:
+          - path: /api/todos/archive
+            label: Archive
+            inputs:
+              id: { root: row, path: [id] }
+              status: { value: archived }
+          - path: /api/todos/rename
+            label: Rename
+            inputs:
+              name: { root: row, path: [name] }
+            confirm: Rename it?

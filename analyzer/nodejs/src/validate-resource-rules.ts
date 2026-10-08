@@ -394,7 +394,7 @@ function resolvedView(
   binder: PeerBinder | undefined,
   kind: string,
 ): { ok: true; self: Record<string, unknown> } | { ok: false; failure: PeerBindingFailure } {
-  let self = manifest as unknown as Record<string, unknown>;
+  let self = (binder?.view(manifest) ?? manifest) as unknown as Record<string, unknown>;
   for (const pointer of rule.resolve ?? []) {
     if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: pointer } };
     const resolved = binder.resolveReferences(manifest, kind, pointer);

@@ -122,6 +122,64 @@ The same seven lines work in a browser, which is the point: a controller can put
 the binding in a document it serves, and the page resolves it against each row
 with no expression engine on the client.
 
+## What a rule reads
+
+A [resource rule](./resource-rules.md) or a [referrer rule](./referrer-rules.md)
+reads an accessor field as the same binding, in every declaration it binds — so
+a rule over a resource that fills such a field evaluates rather than being
+skipped for holding an expression, and may state a relation over what the field
+names (`this.value.root == 'row'`). A field holding something other than a
+plain chain or a literal reads as `{ value: … }` with the expression still
+inside it, and a rule reading that value is skipped. In a
+[template body](./templated-definitions.md)'s entry, an expression reading only
+`self` is read the same way — a literal whose value is not yet known.
+
+## Typing a binding from a list the resource names
+
+A kind that shows several lists lets each entry name its own rows with an
+accessor, and wants the columns beneath it typed by one row of *that* list.
+`x-telo-context-element-from-item: "<field>"` types a binding as the element of
+the collection the enclosing entry's `<field>` points at:
+
+```yaml
+lists:
+  type: array
+  items:
+    type: object
+    properties:
+      rows:
+        type: array
+        x-telo-eval: accessor
+        x-telo-context:
+          type: object
+          properties:
+            result: { x-telo-context-from-root: "outputModel" }
+      columns:
+        type: array
+        x-telo-context:
+          type: object
+          properties:
+            result: { x-telo-context-from-root: "outputModel" }
+            row: { x-telo-context-element-from-item: "rows" }
+        items:
+          type: object
+          properties:
+            value: { x-telo-eval: accessor }
+```
+
+The context sits on the `columns` list, so the entry it reads is the `lists`
+item holding those columns. With `rows: !cel "result.files"`, `row` is one
+element of `files` as `outputModel` declares it, and `value: !cel "row.pth"` is
+`CEL_UNKNOWN_FIELD` when a file has no `pth`.
+
+`<field>` must hold a plain chain rooted at another binding of the same context
+(or at `inputs`, read against the resource's `inputType`). The element is an
+array's `items`, or what an iterable value type declares as its element. When
+the chain cannot be followed to a collection — the field is a literal or
+absent, the root binding is untyped, the chain passes through an open object or
+ends on something that is not a collection — the binding is untyped and nothing
+is reported.
+
 ## Inside a template
 
 A templated kind composing a kind with accessor fields writes the chain in its
