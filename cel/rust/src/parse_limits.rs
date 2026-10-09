@@ -6,7 +6,8 @@
 //!
 //! Reading uses a constant amount of stack whatever the limits are: the parser holds
 //! its pending grammar positions on the heap, and nothing that walks a tree recurses.
-//! `max_depth` therefore bounds heap, not stack, and raising it costs memory only.
+//! `max_depth` is still Node's limit, counted as Node counts it, because a tree is
+//! handed to walkers that do recurse; raising it here costs memory only.
 //!
 //! Node exports with no twin in this file:
 //! - `resolveParseLimits` — the limits are one struct whose `Default` is Node's
@@ -17,7 +18,9 @@
 pub struct CelParseLimits {
     /// Nodes in the tree.
     pub max_nodes: usize,
-    /// Nesting depth of the expression grammar.
+    /// Nesting: how deep the grammar descends, and how tall the tree is — a node with no
+    /// child is 1 high, any other one more than its tallest child. So a chain
+    /// (`1 + 1 + …`, `a.b.b…`) counts as its bracketed form does.
     pub max_depth: usize,
     /// Elements in one list literal.
     pub max_list_elements: usize,

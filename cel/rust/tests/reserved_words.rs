@@ -4,7 +4,7 @@
 //! list of its own, as `tests/parser.rs` does here.
 //!
 //! Every word and every verdict is the Node build's answer, executed: `@telorun/cel`
-//! 0.112.0 at `d265cc79`.
+//! 0.112.0, this branch's build.
 
 use telorun_cel::{is_identifier_spelling, is_reserved_word, LITERAL_WORDS, OPERATOR_WORDS, RESERVED_WORDS};
 

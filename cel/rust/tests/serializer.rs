@@ -2,7 +2,7 @@
 //! case for case.
 //!
 //! Every row and every literal is the Node build's answer, executed: `@telorun/cel`
-//! 0.112.0 at `d265cc79`. Where a Node case asserts only that a tree reads back equal,
+//! 0.112.0, this branch's build. Where a Node case asserts only that a tree reads back equal,
 //! the row here also holds the text Node wrote for it.
 //!
 //! One assertion of the Node file has no twin: the refusal of a hand-built int literal
@@ -14,14 +14,14 @@
 //! where parentheses are placed; more sources read, written and re-read; and which
 //! fault is reported for a tree with several.
 //!
-//! Every source here round-trips. The ones that read clean and do not — because the
-//! text is refused, or re-reads as another expression — are named in
-//! `interim_readings.rs`.
+//! Every source here that reads clean round-trips under the options it was read with.
 
 mod support;
 
 use support::*;
-use telorun_cel::{parse_expression, parse_syntax, serialize_tree, trees_equal, ParseOptions};
+use telorun_cel::{
+    parse_expression, parse_syntax, serialize_tree, trees_equal, CelSyntaxCode, CelSyntaxDiagnostic, ParseOptions,
+};
 
 /// `(source, the text Node writes for its tree)`. Node re-reads each text with no
 /// diagnostic, to an equal tree.
@@ -155,6 +155,57 @@ fn writes_a_hand_built_negation_of_a_literal_without_folding_it_away() {
         assert_eq!(serialize_tree(&negated).as_deref(), Ok(written));
         assert_eq!(trees_equal(&read(written).root, &negated), equal);
         assert!(equal);
+    }
+}
+
+#[test]
+fn parenthesizes_the_number_a_negated_chain_begins_with_which_would_read_back_folded() {
+    // The minus reaches only what the operand's text begins with; a uint and a negative
+    // number are never folded, so neither is parenthesized for it.
+    assert_round_trips_as_node(
+        &defaults(),
+        &[
+            ("-(1).a", "-(1).a"),
+            ("-(1)[0]", "-(1)[0]"),
+            ("-(1).f()", "-(1).f()"),
+            ("-(1.5).a", "-(1.5).a"),
+            ("-(0).a", "-(0).a"),
+            ("-(0.0).a", "-(0.0).a"),
+            ("-(1e999).a", "-(1e999).a"),
+            ("-(1).a[0].f().b", "-(1).a[0].f().b"),
+            ("-(-1).a", "-(-1).a"),
+            ("-(-0.0).a", "-(-0.0).a"),
+            ("-1u.a", "-1u.a"),
+            ("-a[1].b(2)", "-a[1].b(2)"),
+            ("-[1].a", "-[1].a"),
+            ("-(1 + 2).a", "-(1 + 2).a"),
+            ("-!1", "-!1"),
+            ("!1.a", "!1.a"),
+        ],
+    );
+}
+
+#[test]
+fn writes_an_optional_entry_wherever_the_tree_holds_one() {
+    // The round trip holds under the options the tree was read with, and the writer
+    // takes none. `(source, the text Node writes, whether it reads back equal with the
+    // optional syntax on, Node's diagnostic for that text with it off)`.
+    let node_written: [(&str, &str, bool, Option<CelSyntaxDiagnostic>); 4] = [
+        ("[?x]", "[?x]", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("{?k: v}", "{?k: v}", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("[?a, b]", "[?a, b]", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+        ("{?'k': v, 'j': w}", "{?\"k\": v, \"j\": w}", true, Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"?\" cannot stand here", 1, 2))),
+    ];
+    for (source, written, equal_when_on, refusal_when_off) in node_written {
+        let parsed = parse_syntax(source, &optional_syntax());
+        assert_eq!(parsed.diagnostic, None, "{source}");
+        assert_eq!(serialize_tree(&parsed.root).as_deref(), Ok(written), "{source}");
+        let on = parse_syntax(written, &optional_syntax());
+        assert_eq!(on.diagnostic, None, "{written}");
+        assert_eq!(trees_equal(&parsed.root, &on.root), equal_when_on, "{written}");
+        assert!(equal_when_on, "{written}");
+        assert!(refusal_when_off.is_some(), "{written}");
+        assert_eq!(read(written).diagnostic, refusal_when_off, "{written}");
     }
 }
 

@@ -185,6 +185,18 @@ pub fn unparsed(start: u32, end: u32) -> Arc<CelNode> {
     Arc::new(CelNode::Unparsed(CelUnparsedNode { range: range(start, end) }))
 }
 
+/// A tree's height as the depth limit counts it: a node with no child is 1 high, any
+/// other one more than its tallest child.
+pub fn tree_height(root: &CelNode) -> usize {
+    let mut tallest = 0;
+    let mut pending = vec![(root, 1)];
+    while let Some((node, height)) = pending.pop() {
+        tallest = tallest.max(height);
+        pending.extend(telorun_cel::child_nodes(node).into_iter().map(|child| (child, height + 1)));
+    }
+    tallest
+}
+
 /// The kind as Node names it.
 pub fn kind_name(node: &CelNode) -> &'static str {
     match node {

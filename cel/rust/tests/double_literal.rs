@@ -4,8 +4,8 @@
 //! correct rounding past twenty significant digits; the rule both engines keep is the
 //! correctly rounded one, and these are the cases that tell the two apart.
 //!
-//! Every bit pattern is the Node build's answer, executed: `@telorun/cel` 0.112.0 at
-//! `d265cc79`.
+//! Every bit pattern is the Node build's answer, executed: `@telorun/cel` 0.112.0,
+//! this branch's build.
 
 mod support;
 

@@ -17,7 +17,7 @@
 //! expression.
 //!
 //! **What is Node's answer, executed** on the same selection under the same options
-//! (`@telorun/cel` 0.112.0 at `d265cc79`): each file's row, selected and excluded
+//! (`@telorun/cel` 0.112.0, this branch's build): each file's row, selected and excluded
 //! counts, every id that does not read with its syntax code, and — for `language.json`
 //! — the number Node's own replay of that file reports as written back and re-read.
 //! Everything not listed as refused must round-trip.

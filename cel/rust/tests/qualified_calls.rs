@@ -1,8 +1,8 @@
 //! The qualified-call query — the twin of `cel/nodejs/tests/qualified-calls.test.ts`,
 //! case for case.
 //!
-//! Every row is the Node build's answer, executed: `@telorun/cel` 0.112.0 at
-//! `d265cc79`. Where a Node case asserts only the qualified names, the row here holds
+//! Every row is the Node build's answer, executed: `@telorun/cel` 0.112.0,
+//! this branch's build. Where a Node case asserts only the qualified names, the row here holds
 //! every field of every call Node answered.
 //!
 //! Past the twin: calls in every position of a larger expression, and ranges in a

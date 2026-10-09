@@ -1,9 +1,11 @@
 //! CEL's grammar, read into the canonical tree — `parser.ts`.
 //!
 //! **Error recovery is the point.** Reading never fails and never discards what it
-//! read: the first thing it cannot read becomes one ranged diagnostic, the reader stops
-//! there, and the tree holds what it understood with an `Unparsed` node where the rest
-//! would have been. A member left unnamed (`request.`) is a select with an empty field
+//! read: the first thing it cannot read, in source order, becomes one ranged
+//! diagnostic, the reader stops there, and the tree holds what it understood with an
+//! `Unparsed` node where the rest would have been. Text the lexer cannot read ends the
+//! token stream where it begins, so the tree is the tree of the source cut there. A
+//! member left unnamed (`request.`, and ``request.`` ``) is a select with an empty field
 //! name; an aggregate or a call left open keeps the elements it read.
 //!
 //! **Nothing is expanded.** A macro call is an ordinary call node, and a qualified call
@@ -11,14 +13,21 @@
 //!
 //! **A unary minus directly on a numeric literal folds into the literal.** That is how
 //! the int64 minimum is written, and it keeps `-0.0` a value rather than a negation.
+//! The fold is on tokens, so whitespace and comments between the minus and the number
+//! change nothing: `- 1` is the literal `-1`, ranged from the minus. A minus before a
+//! parenthesis never folds.
+//!
+//! **`max_depth` bounds the tree as well as the grammar.** The reader counts its own
+//! nesting, and every node built is measured: a node with no child is 1 high, any other
+//! one more than its tallest child. A chain (`1 + 1 + …`, `a.b.b…`) nests no grammar
+//! and still builds a tree as tall as it is long, so it is refused here.
 //!
 //! **Why this file is not shaped like `parser.ts`.** Node reads by recursive descent,
 //! one function per grammar position, and its call stack is what remembers where it
 //! was. A stack overflow aborts a Rust process, so here the same grammar positions are
 //! held as data: each place Node's reader waits for a sub-expression is a `Frame` on a
 //! heap stack, entering a rule pushes one, and a finished sub-expression resumes the
-//! frame on top. Stack use is constant whatever the nesting, and `max_depth` bounds
-//! heap. The answers are identical — the same tree, the same diagnostic, the same
+//! frame on top. Stack use is constant whatever the nesting. The answers are identical — the same tree, the same diagnostic, the same
 //! node and depth counts in the same order — because every frame resumes exactly
 //! where the Node function continues after its call.
 //!
@@ -28,15 +37,17 @@
 //! - `ParseResult::source` — the text is copied once, when it is read, into an
 //!   `Arc<str>` that every later holder shares.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use telorun_cel_value::json_quote;
 
 use crate::lexer::{tokenize, Decoded, Token, TokenKind};
 use crate::parse_limits::CelParseLimits;
-use crate::syntax_diagnostic::{CelSyntaxCode, CelSyntaxDiagnostic, FirstSyntaxDiagnostic};
+use crate::reserved_words::{word_reading, WordReading};
+use crate::syntax_diagnostic::{first_in_source_order, CelSyntaxCode, CelSyntaxDiagnostic, FirstSyntaxDiagnostic};
 use crate::syntax_tree::{
-    CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListElement,
+    each_shared_child, CelBinaryNode, CelBinaryOperator, CelCallNode, CelConditionalNode, CelIdentNode, CelIndexNode, CelListElement,
     CelListNode, CelLiteral, CelLiteralNode, CelMapEntry, CelMapNode, CelNode, CelReceiverCallNode, CelSelectNode,
     CelUnaryNode, CelUnaryOperator, CelUnparsedNode, SourceRange,
 };
@@ -128,6 +139,10 @@ struct Parser<'s> {
     depth: usize,
     stopped: bool,
     frames: Vec<Frame>,
+    /// The height of every node built that has a child, by the node's address; a node
+    /// absent from it is 1 high. Every node built is held by the tree being read, so no
+    /// address is reused.
+    heights: HashMap<*const CelNode, usize>,
 }
 
 impl<'s> Parser<'s> {
@@ -235,14 +250,25 @@ impl<'s> Parser<'s> {
         self.stopped = true;
     }
 
-    /// Counts a node against the node budget.
+    /// Counts a node against the node budget and measures it against the depth limit.
     fn keep(&mut self, node: CelNode) -> Arc<CelNode> {
         self.nodes += 1;
+        let range = node.range();
         if self.nodes > self.limits.max_nodes && !self.stopped {
-            let range = node.range();
             self.limit("nodes", self.limits.max_nodes, range.start, range.end);
         }
-        Arc::new(node)
+        let mut tallest = 0;
+        each_shared_child(&node, |child| {
+            tallest = tallest.max(self.heights.get(&Arc::as_ptr(child)).copied().unwrap_or(1));
+        });
+        let node = Arc::new(node);
+        if tallest > 0 {
+            self.heights.insert(Arc::as_ptr(&node), tallest + 1);
+            if tallest + 1 > self.limits.max_depth && !self.stopped {
+                self.limit("nesting", self.limits.max_depth, range.start, range.end);
+            }
+        }
+        node
     }
 
     fn enter(&mut self, start: u32) -> bool {
@@ -285,8 +311,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Continues the loop of `level` with `left` in hand, then hands what it answers to
-    /// each level beneath, down to `lowest`. One loop per level, each left-associative,
-    /// so a long chain costs no depth.
+    /// each level beneath, down to `lowest`. One loop per level, each left-associative.
     fn binary_chain(&mut self, lowest: u8, mut level: u8, left: Arc<CelNode>) -> Step {
         loop {
             if !self.stopped {
@@ -434,16 +459,22 @@ impl<'s> Parser<'s> {
     /// elsewhere, and by a name between backticks. A member names a value's entry, not
     /// a name in the expression's scope.
     fn expect_member_name(&mut self, token: usize) -> bool {
-        matches!(
-            self.kind(token),
-            TokenKind::Ident | TokenKind::Reserved | TokenKind::Keyword | TokenKind::QuotedIdent
-        ) || self.expect_identifier(token)
+        match self.kind(token) {
+            TokenKind::Ident | TokenKind::Reserved | TokenKind::Keyword => true,
+            TokenKind::QuotedIdent if self.text(token).is_empty() => {
+                self.unexpected(token, Some("a name between the backticks"));
+                false
+            }
+            TokenKind::QuotedIdent => true,
+            _ => self.expect_identifier(token),
+        }
     }
 
+    /// A name: no reserved word is one, the three read as literals elsewhere included.
     fn expect_identifier(&mut self, token: usize) -> bool {
         match self.kind(token) {
-            TokenKind::Ident => true,
-            TokenKind::Reserved => {
+            TokenKind::Ident if word_reading(self.text(token)) != WordReading::Literal => true,
+            TokenKind::Ident | TokenKind::Reserved => {
                 let (start, end) = self.span(token);
                 self.diagnostics.report(
                     CelSyntaxCode::ReservedIdentifier,
@@ -781,22 +812,24 @@ impl<'s> Parser<'s> {
 }
 
 /// Reads one CEL expression. Always answers a tree; `diagnostic` holds the first thing
-/// that could not be read, exactly when the whole source could not be.
+/// that could not be read, in source order, exactly when the whole source could not be.
 pub fn parse_syntax(source: &str, options: &ParseOptions) -> ParseResult {
-    let (tokens, diagnostics) = tokenize(source);
-    let stopped = diagnostics.reported();
+    let (tokens, lexed) = tokenize(source);
+    let cut = tokens.last().expect("the token stream ends with its end token").start;
     let parser = Parser {
         source,
         tokens,
-        diagnostics,
+        diagnostics: FirstSyntaxDiagnostic::default(),
         limits: options.limits,
         optional_syntax: options.optional_syntax,
         at: 0,
         nodes: 0,
         depth: 0,
-        stopped,
+        stopped: false,
         frames: Vec::new(),
+        heights: HashMap::new(),
     };
-    let (root, diagnostics) = parser.parse();
-    ParseResult { source: Arc::from(source), root, diagnostic: diagnostics.first() }
+    let (root, parsed) = parser.parse();
+    let diagnostic = first_in_source_order(lexed.first(), parsed.first(), cut);
+    ParseResult { source: Arc::from(source), root, diagnostic }
 }

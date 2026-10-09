@@ -1,22 +1,21 @@
 //! The tree back to CEL source — `serializer.ts`.
 //!
-//! The contract is round-trip: the text written for a tree the reader produced reads
-//! back, under the options the tree was read with, to an equal tree (`tree_equality.rs`),
-//! and a qualified call writes back as the `Alias.fn(x)` it was read from. That is what
-//! makes a tree, rather than the author's text, something a tool may hold and hand back.
+//! The contract is round-trip: the text written for a tree read with no diagnostic
+//! reads back, under the options the tree was read with, to an equal tree
+//! (`tree_equality.rs`). That is what makes a tree, rather than the author's text,
+//! something a tool may hold and hand back.
 //!
-//! One shape breaks it, as it does on Node: a negation of a member, index or call chain
-//! that starts at a non-negative number literal is written without the parentheses that
-//! keep it one, so `-(1).a` is written `-1.a`, which reads back as a member of `-1`.
-//!
-//! "Under the options the tree was read with" is the whole of it: an optional entry
-//! (`[?x]`, `{?k: v}`) is written wherever the tree holds one, and reads back only
-//! where the optional syntax is on; a qualified call reads back as one only under its
-//! namespace.
+//! The options are the whole of the condition: an optional entry (`[?x]`, `{?k: v}`) is
+//! written wherever the tree holds one and reads back where the optional syntax is on,
+//! and a qualified call writes back as the `Alias.fn(x)` it was read from and reads
+//! back as one under its namespace. The writer takes no options.
 //!
 //! Parentheses are placed from precedence alone, never kept from the source, and a
 //! string is always written between double quotes: the tree records structure and
-//! values, and the source's own formatting is neither.
+//! values, and the source's own formatting is neither. The one pair precedence does not
+//! place stands around the non-negative int or double the operand of a unary minus
+//! begins with — the operand itself, or the start of its member, index and method
+//! chain — because the reader would fold that number into the minus.
 //!
 //! It refuses rather than guesses. A tree that cannot be written as CEL — an unparsed
 //! hole, a double that is not a number, a name that is not a name — is an error,
@@ -230,8 +229,9 @@ fn write_literal(out: &mut String, literal: &CelLiteral) -> Result<(), CelSerial
 /// not before, so the first fault met is the first in the text.
 enum Piece<'a> {
     Text(&'static str),
-    /// A node for a slot that binds at least as tightly as the number.
-    Node(&'a CelNode, u8),
+    /// A node for a slot that binds at least as tightly as the number. The flag says
+    /// the node's text begins the operand of a unary minus.
+    Node(&'a CelNode, u8, bool),
     Name(&'a str, &'static str),
     MemberName(&'a str, &'static str),
     FieldName(&'a str, bool),
@@ -258,11 +258,25 @@ fn optional_mark(optional: bool) -> Piece<'static> {
 
 fn push_arguments<'a>(pending: &mut Vec<Piece<'a>>, args: &'a [Arc<CelNode>]) {
     pending.push(Piece::Text(")"));
-    push_separated(pending, args, |pending, argument| pending.push(Piece::Node(argument, precedence::CONDITIONAL)));
+    push_separated(pending, args, |pending, argument| {
+        pending.push(Piece::Node(argument, precedence::CONDITIONAL, false));
+    });
     pending.push(Piece::Text("("));
 }
 
-fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), CelSerializeError> {
+/// A node whose text does not begin the operand of a unary minus.
+fn plain<'a>(node: &'a CelNode, needs: u8) -> Piece<'a> {
+    Piece::Node(node, needs, false)
+}
+
+/// The literals the reader folds a preceding minus into. A uint is never folded.
+fn is_folded_under_minus(literal: &CelLiteral) -> bool {
+    matches!(literal, CelLiteral::Int(_) | CelLiteral::Double(_)) && !is_negative_number(literal)
+}
+
+/// `under_minus` reaches only what the node's own text begins with: its operand or
+/// receiver.
+fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode, under_minus: bool) -> Result<(), CelSerializeError> {
     use Piece::{FieldName, MemberName, Name, Node, Text};
     match node {
         CelNode::Literal(node) => pending.push(Piece::Literal(&node.literal)),
@@ -272,7 +286,7 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
         CelNode::List(node) => {
             pending.push(Text("]"));
             push_separated(pending, &node.elements, |pending, element| {
-                push_pieces(pending, [optional_mark(element.optional), Node(&element.value, precedence::CONDITIONAL)]);
+                push_pieces(pending, [optional_mark(element.optional), plain(&element.value, precedence::CONDITIONAL)]);
             });
             pending.push(Text("["));
         }
@@ -283,9 +297,9 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
                     pending,
                     [
                         optional_mark(entry.optional),
-                        Node(&entry.key, precedence::CONDITIONAL),
+                        plain(&entry.key, precedence::CONDITIONAL),
                         Text(": "),
-                        Node(&entry.value, precedence::CONDITIONAL),
+                        plain(&entry.value, precedence::CONDITIONAL),
                     ],
                 );
             });
@@ -294,7 +308,7 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
         CelNode::Select(node) => push_pieces(
             pending,
             [
-                Node(&node.operand, precedence::POSTFIX),
+                Node(&node.operand, precedence::POSTFIX, under_minus),
                 Text("."),
                 optional_mark(node.optional),
                 FieldName(&node.field, node.quoted),
@@ -303,10 +317,10 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
         CelNode::Index(node) => push_pieces(
             pending,
             [
-                Node(&node.operand, precedence::POSTFIX),
+                Node(&node.operand, precedence::POSTFIX, under_minus),
                 Text("["),
                 optional_mark(node.optional),
-                Node(&node.index, precedence::CONDITIONAL),
+                plain(&node.index, precedence::CONDITIONAL),
                 Text("]"),
             ],
         ),
@@ -318,42 +332,39 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
             push_arguments(pending, &node.args);
             push_pieces(
                 pending,
-                [Node(&node.receiver, precedence::POSTFIX), Text("."), MemberName(&node.name, "function name")],
+                [
+                    Node(&node.receiver, precedence::POSTFIX, under_minus),
+                    Text("."),
+                    MemberName(&node.name, "function name"),
+                ],
             );
         }
         CelNode::QualifiedCall(node) => {
             push_arguments(pending, &node.args);
             push_pieces(pending, [Name(&node.namespace, "namespace"), Text("."), MemberName(&node.name, "function name")]);
         }
-        CelNode::Unary(node) => {
-            // A minus directly on a non-negative numeric literal would read back as part
-            // of the literal, so it is parenthesized: `-(1)` stays a negation of one.
-            match &*node.operand {
-                CelNode::Literal(operand)
-                    if node.operator == CelUnaryOperator::Negate
-                        && matches!(operand.literal, CelLiteral::Int(_) | CelLiteral::Double(_))
-                        && !is_negative_number(&operand.literal) =>
-                {
-                    push_pieces(pending, [Text("-("), Piece::Literal(&operand.literal), Text(")")]);
-                }
-                operand => push_pieces(pending, [Text(node.operator.as_str()), Node(operand, precedence::UNARY)]),
-            }
-        }
+        CelNode::Unary(node) => push_pieces(
+            pending,
+            [
+                Text(node.operator.as_str()),
+                Node(&node.operand, precedence::UNARY, node.operator == CelUnaryOperator::Negate),
+            ],
+        ),
         CelNode::Binary(node) => {
             let level = binary_precedence(node.operator);
             push_pieces(
                 pending,
-                [Node(&node.left, level), Text(" "), Text(node.operator.as_str()), Text(" "), Node(&node.right, level + 1)],
+                [plain(&node.left, level), Text(" "), Text(node.operator.as_str()), Text(" "), plain(&node.right, level + 1)],
             );
         }
         CelNode::Conditional(node) => push_pieces(
             pending,
             [
-                Node(&node.condition, precedence::OR),
+                plain(&node.condition, precedence::OR),
                 Text(" ? "),
-                Node(&node.when_true, precedence::CONDITIONAL),
+                plain(&node.when_true, precedence::CONDITIONAL),
                 Text(" : "),
-                Node(&node.when_false, precedence::CONDITIONAL),
+                plain(&node.when_false, precedence::CONDITIONAL),
             ],
         ),
         CelNode::Unparsed(_) => return Err(refusal(UNPARSED)),
@@ -364,7 +375,7 @@ fn push_node<'a>(pending: &mut Vec<Piece<'a>>, node: &'a CelNode) -> Result<(), 
 /// The CEL source of a tree, or why it has none.
 pub fn serialize_tree(root: &CelNode) -> Result<String, CelSerializeError> {
     let mut out = String::new();
-    let mut pending = vec![Piece::Node(root, precedence::CONDITIONAL)];
+    let mut pending = vec![plain(root, precedence::CONDITIONAL)];
     while let Some(piece) = pending.pop() {
         match piece {
             Piece::Text(text) => out.push_str(text),
@@ -372,12 +383,16 @@ pub fn serialize_tree(root: &CelNode) -> Result<String, CelSerializeError> {
             Piece::MemberName(text, what) => out.push_str(member_name(text, what)?),
             Piece::FieldName(text, quoted) => write_field_name(&mut out, text, quoted)?,
             Piece::Literal(literal) => write_literal(&mut out, literal)?,
-            Piece::Node(node, needs) => {
+            Piece::Node(CelNode::Literal(node), _, true) if is_folded_under_minus(&node.literal) => {
+                // A non-negative number here would read back folded into the minus.
+                push_pieces(&mut pending, [Piece::Text("("), Piece::Literal(&node.literal), Piece::Text(")")]);
+            }
+            Piece::Node(node, needs, under_minus) => {
                 if precedence_of(node)? < needs {
                     out.push('(');
                     pending.push(Piece::Text(")"));
                 }
-                push_node(&mut pending, node)?;
+                push_node(&mut pending, node, under_minus)?;
             }
         }
     }

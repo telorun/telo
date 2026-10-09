@@ -3,9 +3,10 @@
 //! A syntax diagnostic is data, never a panic and never a sentence a consumer
 //! re-derives: a code from the closed set below, the range of the offending text and a
 //! message for a reader. Reading reports at most one — the first thing it could not
-//! read.
+//! read, in source order. Every range lies within the source and splits no character.
 //!
-//! Private, as on Node's entry: the first-diagnostic holder.
+//! Private, as on Node's entry: the first-diagnostic holder and the rule that decides
+//! between the lexer's and the parser's.
 
 use std::fmt;
 
@@ -85,8 +86,8 @@ pub struct CelSyntaxDiagnostic {
     pub range: SourceRange,
 }
 
-/// Holds the first diagnostic and ignores every later one, so the lexer and the parser
-/// cannot disagree about where reading stopped.
+/// Holds the first diagnostic reported to it and ignores every later one. The lexer and
+/// the parser each hold one, and `first_in_source_order` decides between the two.
 #[derive(Default)]
 pub(crate) struct FirstSyntaxDiagnostic {
     held: Option<CelSyntaxDiagnostic>,
@@ -99,12 +100,22 @@ impl FirstSyntaxDiagnostic {
         }
     }
 
-    pub(crate) fn reported(&self) -> bool {
-        self.held.is_some()
-    }
-
     /// The diagnostic held, where Node answers a list of at most one.
     pub(crate) fn first(self) -> Option<CelSyntaxDiagnostic> {
         self.held
+    }
+}
+
+/// The one diagnostic of a read whose lexer stopped at `cut`, the offset where the text
+/// it could not read begins. The parser read the source cut there, so what it reports
+/// before the cut came first; from the cut on, the unreadable text is the cause.
+pub(crate) fn first_in_source_order(
+    lexed: Option<CelSyntaxDiagnostic>,
+    parsed: Option<CelSyntaxDiagnostic>,
+    cut: u32,
+) -> Option<CelSyntaxDiagnostic> {
+    match (lexed, parsed) {
+        (Some(lexed), Some(parsed)) => Some(if parsed.range.start < cut { parsed } else { lexed }),
+        (lexed, parsed) => lexed.or(parsed),
     }
 }

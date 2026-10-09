@@ -2,7 +2,7 @@
 //! `cel/nodejs/tests/parser.test.ts`, case for case.
 //!
 //! Every row and every literal is the Node build's answer, executed: `@telorun/cel`
-//! 0.112.0 at `d265cc79`. Where a Node case
+//! 0.112.0, this branch's build. Where a Node case
 //! asserts part of a tree or only a code, the row here holds the whole of what Node
 //! answered for that source — the tree with every range, and the diagnostic with its
 //! message.
@@ -12,7 +12,10 @@
 mod support;
 
 use support::*;
-use telorun_cel::{serialize_tree, trees_equal, CelSyntaxCode, CelSyntaxDiagnostic, DEFAULT_PARSE_LIMITS, RESERVED_WORDS};
+use telorun_cel::{
+    parse_syntax, qualified_calls, resolve_namespaces, root_references, serialize_tree, trees_equal, CelSyntaxCode,
+    CelSyntaxDiagnostic, DEFAULT_PARSE_LIMITS, RESERVED_WORDS,
+};
 
 // --- the expression grammar -----------------------------------------------------
 
@@ -199,7 +202,7 @@ fn reads_a_member_name_between_backticks_and_only_where_a_member_is_read() {
         reading("`a`", defaults(), unparsed(0, 3), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"`a`\" cannot stand here, expected \"a member read, as in a.`b`\"", 0, 3))),
         reading("a + `b`", defaults(), binary("+", ident("a", false, 0, 1), unparsed(4, 7), 0, 7), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"`b`\" cannot stand here, expected \"a member read, as in a.`b`\"", 4, 7))),
         reading("a.`b`(1)", defaults(), select(ident("a", false, 0, 1), "b", (2, 5), false, true, 0, 5), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"(\" cannot stand here, expected \"a member read \u{2014} a quoted name is a field, not a call\"", 5, 6))),
-        reading("a.`b", defaults(), ident("a", false, 0, 1), Some(diagnostic(CelSyntaxCode::UnterminatedString, "a quoted member name ends at its closing backtick", 2, 4))),
+        reading("a.`b", defaults(), select(ident("a", false, 0, 1), "", (2, 2), false, false, 0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "a quoted member name ends at its closing backtick", 2, 4))),
     ]);
 }
 
@@ -225,6 +228,34 @@ fn reads_a_name_a_dot_opens_as_an_absolute_one() {
         reading(".if", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"if\" is a reserved word and cannot be used as a name", 1, 3))),
         reading(".`a-b`", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"`a-b`\" cannot stand here, expected \"a name\"", 1, 6))),
     ]);
+}
+
+#[test]
+fn refuses_a_word_read_as_a_literal_where_a_dot_opens_a_name() {
+    let rows = vec![
+        reading(".true", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"true\" is a reserved word and cannot be used as a name", 1, 5))),
+        reading(".false", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"false\" is a reserved word and cannot be used as a name", 1, 6))),
+        reading(".null", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"null\" is a reserved word and cannot be used as a name", 1, 5))),
+        reading(".true.x", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"true\" is a reserved word and cannot be used as a name", 1, 5))),
+        reading(".null(1)", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::ReservedIdentifier, "\"null\" is a reserved word and cannot be used as a name", 1, 5))),
+    ];
+    for row in &rows {
+        assert_eq!(row.diagnostic.as_ref().map(|diagnostic| diagnostic.code), Some(CelSyntaxCode::ReservedIdentifier));
+    }
+    assert_reads_as_node(rows);
+}
+
+#[test]
+fn folds_a_minus_into_the_number_after_it_whatever_stands_between_the_two_tokens() {
+    // A minus before a parenthesis never folds: the last row.
+    let rows = vec![
+        reading("- 1", defaults(), literal_int(-1, 0, 3), None),
+        reading("- // the minimum\n 9223372036854775808", defaults(), literal_int(i64::MIN, 0, 37), None),
+        reading("- 1.5", defaults(), literal_double(0xbff8000000000000, 0, 5), None),
+        reading("-(1)", defaults(), unary("-", literal_int(1, 2, 3), 0, 3), None),
+    ];
+    assert!(rows.iter().all(|row| row.diagnostic.is_none()));
+    assert_reads_as_node(rows);
 }
 
 #[test]
@@ -276,6 +307,62 @@ fn reports_one_diagnostic_for_the_first_thing_it_could_not_read() {
     assert_reads_as_node(rows);
 }
 
+/// Holds each row to Node and to the tree of the source cut where the lexer stopped.
+/// `(reading, the offset Node's token stream ends at)`; every source is ASCII, so the
+/// offset is a byte offset too.
+fn assert_reads_as_its_cut_source(rows: Vec<(NodeReading, usize)>) -> Vec<NodeReading> {
+    assert!(!rows.is_empty(), "the table holds no row");
+    for (row, cut) in &rows {
+        assert!(row.source.is_ascii(), "{}", row.source);
+        assert!(row.root == read(&row.source[..*cut]).root, "{}", row.source);
+    }
+    let readings: Vec<NodeReading> = rows.into_iter().map(|(row, _)| row).collect();
+    readings
+}
+
+#[test]
+fn reads_every_token_before_text_the_lexer_cannot_read_as_it_reads_the_source_cut_there() {
+    let rows = assert_reads_as_its_cut_source(vec![
+        (reading("1 + 2 + 'abc", defaults(), binary("+", binary("+", literal_int(1, 0, 1), literal_int(2, 4, 5), 0, 5), unparsed(8, 8), 0, 8), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 8, 12))), 8),
+        (reading("f(1, 'abc", defaults(), call("f", (0, 1), vec![literal_int(1, 2, 3), unparsed(5, 5)], 0, 5), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 5, 9))), 5),
+        (reading("[1, 'abc", defaults(), list(vec![element(literal_int(1, 1, 2), false), element(unparsed(4, 4), false)], 0, 4), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 4, 8))), 4),
+        (reading("{1: 2, 'abc", defaults(), map(vec![entry(literal_int(1, 1, 2), literal_int(2, 4, 5), false), entry(unparsed(7, 7), unparsed(7, 7), false)], 0, 7), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 7, 11))), 7),
+        (reading("a.b #", defaults(), select(ident("a", false, 0, 1), "b", (2, 3), false, false, 0, 3), Some(diagnostic(CelSyntaxCode::UnexpectedCharacter, "unexpected character \"#\"", 4, 5))), 4),
+        (reading("-1 + 'abc", defaults(), binary("+", literal_int(-1, 0, 2), unparsed(5, 5), 0, 5), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 5, 9))), 5),
+        (reading("- 'abc", defaults(), unary("-", unparsed(2, 2), 0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 2, 6))), 2),
+        (reading("!x 'abc", defaults(), unary("!", ident("x", false, 1, 2), 0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 3, 7))), 3),
+        (reading("(((a 'abc", defaults(), ident("a", false, 3, 4), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 5, 9))), 5),
+        (reading(".y 'abc", defaults(), ident("y", true, 0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 3, 7))), 3),
+        (reading(". 'abc", defaults(), unparsed(0, 2), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 2, 6))), 2),
+        (reading("true #", defaults(), literal_bool(true, 0, 4), Some(diagnostic(CelSyntaxCode::UnexpectedCharacter, "unexpected character \"#\"", 5, 6))), 5),
+        (reading("'abc", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 0, 4))), 0),
+        (reading("r'abc", defaults(), unparsed(0, 0), Some(diagnostic(CelSyntaxCode::UnterminatedString, "unterminated string", 1, 5))), 0),
+    ]);
+    // Each diagnostic is the lexer's: it starts at the cut or past it.
+    assert_reads_as_node(rows);
+}
+
+#[test]
+fn reports_the_diagnostic_that_starts_first_the_lexers_on_a_tie() {
+    let rows = assert_reads_as_its_cut_source(vec![
+        (reading(") + 'abc", defaults(), unparsed(0, 1), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\")\" cannot stand here", 0, 1))), 4),
+        (reading("9223372036854775808 #", defaults(), unparsed(0, 19), Some(diagnostic(CelSyntaxCode::InvalidInteger, "9223372036854775808 is outside the range of a 64-bit integer", 0, 19))), 20),
+    ]);
+    for row in &rows {
+        assert_eq!(row.diagnostic.as_ref().map(|diagnostic| diagnostic.range.start), Some(0), "{}", row.source);
+    }
+    assert_reads_as_node(rows);
+}
+
+#[test]
+fn leaves_an_empty_quoted_member_as_a_member_with_no_name() {
+    assert_reads_as_node(vec![
+        reading("a.``", defaults(), select(ident("a", false, 0, 1), "", (2, 2), false, false, 0, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"``\" cannot stand here, expected \"a name between the backticks\"", 2, 4))),
+        reading("a.?``", defaults(), select(ident("a", false, 0, 1), "", (3, 3), true, false, 0, 3), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"``\" cannot stand here, expected \"a name between the backticks\"", 3, 5))),
+        reading("a.``.b", defaults(), select(ident("a", false, 0, 1), "", (2, 2), false, false, 0, 2), Some(diagnostic(CelSyntaxCode::UnexpectedToken, "\"``\" cannot stand here, expected \"a name between the backticks\"", 2, 4))),
+    ]);
+}
+
 // --- the input limits ---------------------------------------------------------------
 
 fn ones(count: usize) -> String {
@@ -312,7 +399,7 @@ fn refuses_more_nodes_depth_elements_entries_or_arguments_than_the_limit_allows(
         ("call arguments", Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more call arguments than the limit of 32", 1, 67))),
     ];
     for ((source, options), (limit, refusal)) in sources.iter().zip(node_refusals) {
-        assert_eq!(telorun_cel::parse_syntax(source, options).diagnostic, refusal, "{limit}");
+        assert_eq!(parse_syntax(source, options).diagnostic, refusal, "{limit}");
     }
 }
 
@@ -333,6 +420,69 @@ fn reads_an_expression_at_every_limit() {
     for (source, (limit, answer)) in sources.iter().zip(node_answers) {
         assert_eq!(read(source).diagnostic, answer, "{limit}");
     }
+}
+
+#[test]
+fn counts_a_chain_as_nesting_a_tree_is_at_most_the_depth_limit_high() {
+    // `(what is repeated, how often, the limits, the height of the tree Node reads,
+    // Node's diagnostic)`. The node past the limit is kept, so a refused tree is one
+    // higher than the limit; and on one node the node count is judged first.
+    let node_answers: [(&str, usize, telorun_cel::ParseOptions, usize, Option<CelSyntaxDiagnostic>); 7] = [
+        ("sum", 250, defaults(), 250, None),
+        ("sum", 251, defaults(), 251, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 501))),
+        ("members", 249, defaults(), 250, None),
+        ("members", 250, defaults(), 251, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 501))),
+        ("sum", 251, limits(100000, 251, 1000, 1000, 32), 251, None),
+        ("open parentheses", 250, defaults(), 1, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 250, 250))),
+        ("sum", 3, limits(4, 2, 1000, 1000, 32), 3, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 4", 0, 5))),
+    ];
+    for (label, count, options, height, answer) in node_answers {
+        let source = match label {
+            "sum" => vec!["1"; count].join("+"),
+            "members" => format!("a{}", ".b".repeat(count)),
+            "open parentheses" => format!("{}1", "(".repeat(count)),
+            other => panic!("{other} is not a source of this table"),
+        };
+        let parsed = parse_syntax(&source, &options);
+        assert_eq!(parsed.diagnostic, answer, "{label} of {count}");
+        assert_eq!(tree_height(&parsed.root), height, "{label} of {count}");
+    }
+}
+
+#[test]
+fn bounds_a_tree_read_with_a_diagnostic_which_every_walker_finishes() {
+    // Every open grammar level closes around the node that was refused: a bracket and
+    // the five binary levels before it. `(one level, how many, the links of the chain
+    // inside the last, the height of the tree Node reads, Node's diagnostic, whether
+    // Node writes the source with each bracket closed, whether the pass answers the root
+    // it was given, the names read, the qualified calls, whether two reads are equal)`.
+    let (level, levels, links, height, refusal, written_closed, same_root, roots, calls, equal): (
+        &str,
+        usize,
+        usize,
+        usize,
+        Option<CelSyntaxDiagnostic>,
+        bool,
+        bool,
+        &[&str],
+        usize,
+        bool,
+    ) =
+        ("a || b && c == d + e * [", 249, 250, 1750, Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 5999, 6500)), true, true, &["a", "b", "c", "d", "e"], 0, true)
+        ;
+    assert_eq!(links, DEFAULT_PARSE_LIMITS.max_depth);
+    let source = format!("{}a || b && c == d + e * a{}", level.repeat(levels), ".b".repeat(links));
+    let parsed = read(&source);
+    assert!(refusal.is_some());
+    assert_eq!(parsed.diagnostic, refusal);
+    assert_eq!(tree_height(&parsed.root), height);
+    assert_eq!(height, 7 * DEFAULT_PARSE_LIMITS.max_depth);
+    assert_eq!(std::sync::Arc::ptr_eq(&resolve_namespaces(&parsed.root, &["a"]), &parsed.root), same_root);
+    let written = serialize_tree(&parsed.root).expect("no node of it is a hole");
+    assert_eq!(written == format!("{source}{}", "]".repeat(levels)), written_closed);
+    assert_eq!(root_references(&parsed.root), roots);
+    assert_eq!(qualified_calls(&parsed.root).len(), calls);
+    assert_eq!(trees_equal(&parsed.root, &read(&source).root), equal);
 }
 
 // --- past the twin ------------------------------------------------------------------

@@ -1,8 +1,8 @@
 //! The root-reference query — the twin of `cel/nodejs/tests/root-references.test.ts`,
 //! case for case — and the table of binding forms it reads.
 //!
-//! Every row is the Node build's answer, executed: `@telorun/cel` 0.112.0 at
-//! `d265cc79`.
+//! Every row is the Node build's answer, executed: `@telorun/cel` 0.112.0,
+//! this branch's build.
 //!
 //! Past the twin, each beyond what the Node file asserts: the forms that bind nothing
 //! (an arity the table does not list, a bound argument that is not a name), nested and

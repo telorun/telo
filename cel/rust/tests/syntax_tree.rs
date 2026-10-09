@@ -4,7 +4,7 @@
 //! parser's cases.
 //!
 //! Every order, child list and `trees_equal` verdict is the Node build's answer,
-//! executed: `@telorun/cel` 0.112.0 at `d265cc79`. `PartialEq` on a node has no Node counterpart —
+//! executed: `@telorun/cel` 0.112.0, this branch's build. `PartialEq` on a node has no Node counterpart —
 //! it is this crate's identity of a tree as data — so its verdicts are this crate's
 //! own.
 

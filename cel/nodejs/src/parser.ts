@@ -2,13 +2,15 @@
  * CEL's grammar, read by recursive descent into the canonical tree.
  *
  * **Error recovery is the point.** Parsing never throws and never discards what it
- * read: the first thing it cannot read becomes one ranged diagnostic, the reader
- * stops there, and the tree holds the longest prefix it understood with an
- * `unparsed` node where the rest would have been. That is what lets completion and
- * hover work on an expression mid-token, and nothing downstream has to re-parse a
- * shortened prefix to get an answer. A member left unnamed (`request.`) is a select
- * with an **empty field name**, which is the shape completion after a dot reads; an
- * aggregate or a call left open keeps the elements it read. Neither can be
+ * read: the first thing it cannot read, in source order, becomes one ranged
+ * diagnostic, the reader stops there, and the tree holds the longest prefix it
+ * understood with an `unparsed` node where the rest would have been. Text the lexer
+ * cannot read ends the token stream where it begins, so the tree is the tree of the
+ * source cut there. That is what lets completion and hover work on an expression
+ * mid-token, and nothing downstream has to re-parse a shortened prefix to get an
+ * answer. A member left unnamed (`request.`, and a pair of backticks holding nothing)
+ * is a select with an **empty field name**, which is the shape completion after a dot
+ * reads; an aggregate or a call left open keeps the elements it read. Neither can be
  * serialized, and the diagnostic is what says the tree is incomplete.
  *
  * **Nothing is expanded.** A macro call (`has(x)`, `xs.map(i, i)`, `cel.bind(…)`) is
@@ -19,14 +21,24 @@
  *
  * **A unary minus directly on a numeric literal folds into the literal.** That is
  * how the int64 minimum is written at all, and it keeps `-0.0` a value rather than
- * a negation of zero. A minus on a parenthesized literal does not fold, so the
- * serializer can write a hand-built negation back without changing its shape.
+ * a negation of zero. The fold is on tokens, so whitespace and comments between the
+ * minus and the number change nothing: `- 1` is the literal `-1`, ranged from the
+ * minus. A minus on a parenthesized literal does not fold, so the serializer can
+ * write a hand-built negation back without changing its shape.
+ *
+ * **`maxDepth` bounds the tree as well as the grammar.** The descent counts its own
+ * nesting, and every node built is measured: a node with no child is 1 high, any
+ * other one more than its tallest child. A chain (`1 + 1 + …`, `a.b.b…`) nests no
+ * grammar and still builds a tree as tall as it is long, which every walker
+ * downstream recurses over — so it is refused here, once, with a diagnostic.
  */
 
 import { type Token, tokenize } from "./lexer.js";
 import { type CelParseLimits, resolveParseLimits } from "./parse-limits.js";
 import type { CelSyntaxDiagnostic } from "./syntax-diagnostic.js";
-import { FirstSyntaxDiagnostic } from "./syntax-diagnostic.js";
+import { FirstSyntaxDiagnostic, firstInSourceOrder } from "./syntax-diagnostic.js";
+import { wordReading } from "./reserved-words.js";
+import { childNodes } from "./syntax-tree.js";
 import type {
   CelBinaryOperator,
   CelListElement,
@@ -62,6 +74,8 @@ class Parser {
   private nodes = 0;
   private depth = 0;
   private stopped = false;
+  /** The height of every node built that has a child; a node absent from it is 1 high. */
+  private readonly heights = new Map<CelNode, number>();
 
   constructor(
     private readonly source: string,
@@ -69,9 +83,7 @@ class Parser {
     private readonly diagnostics: FirstSyntaxDiagnostic,
     private readonly limits: CelParseLimits,
     private readonly optionalSyntax: boolean,
-  ) {
-    if (diagnostics.reported) this.stopped = true;
-  }
+  ) {}
 
   parse(): CelNode {
     const root = this.conditional();
@@ -140,11 +152,18 @@ class Parser {
     this.stopped = true;
   }
 
-  /** Counts a node against the node budget. */
+  /** Counts a node against the node budget and measures it against the depth limit. */
   private keep<T extends CelNode>(node: T): T {
     this.nodes += 1;
     if (this.nodes > this.limits.maxNodes && !this.stopped) {
       this.limit("nodes", this.limits.maxNodes, node.range[0], node.range[1]);
+    }
+    let tallest = 0;
+    for (const child of childNodes(node)) tallest = Math.max(tallest, this.heights.get(child) ?? 1);
+    if (tallest === 0) return node;
+    this.heights.set(node, tallest + 1);
+    if (tallest + 1 > this.limits.maxDepth && !this.stopped) {
+      this.limit("nesting", this.limits.maxDepth, node.range[0], node.range[1]);
     }
     return node;
   }
@@ -196,7 +215,7 @@ class Parser {
 
   /**
    * The binary levels, lowest first: `||`, `&&`, the relations, `+ -`, `* / %`.
-   * One loop per level, each left-associative, so a long chain costs no depth.
+   * One loop per level, each left-associative.
    */
   private binary(level: number): CelNode {
     if (level >= 5) return this.unary();
@@ -340,13 +359,19 @@ class Parser {
   private expectMemberName(token: Token): boolean {
     if (token.type === "ident" || token.type === "reserved" || token.type === "keyword") return true;
     // A name between backticks, which is how a member not spelled as an identifier is read.
-    if (token.type === "quotedIdent") return true;
+    if (token.type === "quotedIdent") {
+      if (token.text !== "") return true;
+      this.unexpected(token, "a name between the backticks");
+      return false;
+    }
     return this.expectIdentifier(token);
   }
 
+  /** A name: no reserved word is one, the three read as literals elsewhere included. */
   private expectIdentifier(token: Token): boolean {
-    if (token.type === "ident") return true;
-    if (token.type === "reserved") {
+    const literalWord = token.type === "ident" && wordReading(token.text) === "literal";
+    if (token.type === "ident" && !literalWord) return true;
+    if (token.type === "reserved" || literalWord) {
       this.diagnostics.report(
         "reserved_identifier",
         `${JSON.stringify(token.text)} is a reserved word and cannot be used as a name`,
@@ -548,7 +573,9 @@ class Parser {
  */
 export function parseSyntax(source: string, options?: ParseOptions): ParseResult {
   const limits = resolveParseLimits(options?.limits);
-  const { tokens, diagnostics } = tokenize(source);
-  const root = new Parser(source, tokens, diagnostics, limits, options?.optionalSyntax ?? false).parse();
-  return { source, root, diagnostics: diagnostics.list() };
+  const lexed = tokenize(source);
+  const diagnostics = new FirstSyntaxDiagnostic();
+  const root = new Parser(source, lexed.tokens, diagnostics, limits, options?.optionalSyntax ?? false).parse();
+  const cut = lexed.tokens.at(-1)!.start;
+  return { source, root, diagnostics: firstInSourceOrder(lexed.diagnostics.first, diagnostics.first, cut) };
 }

@@ -1,11 +1,14 @@
 /**
  * The tree back to CEL source.
  *
- * The contract is round-trip: serializing any tree the parser produced yields text
- * that parses to an **equal** tree (`tree-equality.ts`), and a `qcall` writes back
- * as the `Alias.fn(x)` it was read from. That is what makes a tree, rather than the
- * author's text, something a tool may hold and hand back — a rewrite, a quick fix,
- * a stored expression.
+ * The contract is round-trip: serializing any tree read with no diagnostic yields
+ * text that reads, **under the options the tree was read with**, to an **equal** tree
+ * (`tree-equality.ts`). That is what makes a tree, rather than the author's text,
+ * something a tool may hold and hand back — a rewrite, a quick fix, a stored
+ * expression. The options are the whole of the condition: an optional entry (`[?x]`,
+ * `{?k: v}`) is written wherever the tree holds one and reads back where the optional
+ * syntax is on, and a `qcall` writes back as the `Alias.fn(x)` it was read from and
+ * reads back as one under its namespace. The writer takes no options.
  *
  * Parentheses are placed from precedence alone, never kept from the source: the
  * tree records structure, and the source's own parentheses are not structure.
@@ -195,13 +198,26 @@ function writeLiteral(literal: CelLiteral): string {
   }
 }
 
-/** Writes `node` for a slot that binds at least as tightly as `needs`. */
-function write(node: CelNode, needs: number): string {
-  const text = writeNode(node);
+/**
+ * Writes `node` for a slot that binds at least as tightly as `needs`. `underMinus` says
+ * the node's text begins the operand of a unary minus, where a non-negative number
+ * would read back folded into the minus — so there it is parenthesized.
+ */
+function write(node: CelNode, needs: number, underMinus = false): string {
+  if (underMinus && node.kind === "literal" && isFoldedUnderMinus(node.literal)) {
+    return `(${writeLiteral(node.literal)})`;
+  }
+  const text = writeNode(node, underMinus);
   return precedenceOf(node) < needs ? `(${text})` : text;
 }
 
-function writeNode(node: CelNode): string {
+/** The literals the reader folds a preceding minus into. A uint is never folded. */
+function isFoldedUnderMinus(literal: CelLiteral): boolean {
+  return (literal.type === "int" || literal.type === "double") && !isNegativeNumber(literal);
+}
+
+/** `underMinus` reaches only what the node's own text begins with: its operand or receiver. */
+function writeNode(node: CelNode, underMinus: boolean): string {
   switch (node.kind) {
     case "literal":
       return writeLiteral(node.literal);
@@ -219,17 +235,17 @@ function writeNode(node: CelNode): string {
         )
         .join(", ")}}`;
     case "select":
-      return `${write(node.operand, PRECEDENCE.postfix)}.${node.optional ? "?" : ""}${fieldName(node.field, node.quoted)}`;
+      return `${write(node.operand, PRECEDENCE.postfix, underMinus)}.${node.optional ? "?" : ""}${fieldName(node.field, node.quoted)}`;
     case "index":
-      return `${write(node.operand, PRECEDENCE.postfix)}[${node.optional ? "?" : ""}${write(node.index, PRECEDENCE.conditional)}]`;
+      return `${write(node.operand, PRECEDENCE.postfix, underMinus)}[${node.optional ? "?" : ""}${write(node.index, PRECEDENCE.conditional)}]`;
     case "call":
       return `${name(node.name, "function name")}(${writeArguments(node.args)})`;
     case "receiverCall":
-      return `${write(node.receiver, PRECEDENCE.postfix)}.${memberName(node.name, "function name")}(${writeArguments(node.args)})`;
+      return `${write(node.receiver, PRECEDENCE.postfix, underMinus)}.${memberName(node.name, "function name")}(${writeArguments(node.args)})`;
     case "qcall":
       return `${name(node.namespace, "namespace")}.${memberName(node.name, "function name")}(${writeArguments(node.args)})`;
     case "unary":
-      return `${node.operator}${writeUnaryOperand(node.operator, node.operand)}`;
+      return `${node.operator}${write(node.operand, PRECEDENCE.unary, node.operator === "-")}`;
     case "binary":
       return `${write(node.left, BINARY_PRECEDENCE[node.operator]!)} ${node.operator} ${write(node.right, BINARY_PRECEDENCE[node.operator]! + 1)}`;
     case "conditional":
@@ -237,19 +253,6 @@ function writeNode(node: CelNode): string {
     case "unparsed":
       throw new CelSerializeError("an unparsed expression has no source to write");
   }
-}
-
-/**
- * A minus directly on a non-negative numeric literal would read back as part of the
- * literal, so it is parenthesized: `-(1)` stays a negation of one.
- */
-function writeUnaryOperand(operator: string, operand: CelNode): string {
-  if (operator === "-" && operand.kind === "literal" && !isNegativeNumber(operand.literal)) {
-    if (operand.literal.type === "int" || operand.literal.type === "double") {
-      return `(${writeLiteral(operand.literal)})`;
-    }
-  }
-  return write(operand, PRECEDENCE.unary);
 }
 
 function writeArguments(args: readonly CelNode[]): string {

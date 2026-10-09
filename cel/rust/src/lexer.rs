@@ -3,18 +3,23 @@
 //! The lexer decodes literals as it reads them: a string token carries its text with
 //! every escape resolved, a bytes token its bytes, an integer its magnitude. It stops
 //! at the first thing it cannot read, reporting one diagnostic and ending the token
-//! stream there.
+//! stream where that text begins, so the parser reads every token before it exactly as
+//! it would read the source cut there.
+//!
+//! The readings that are deliberate are Node's, stated in `lexer.ts`: the bytes marker
+//! comes first (`br` is raw bytes, `rb` a name beside a string); a raw literal lets a
+//! backslash take the next character with it, except a line feed in a single-line
+//! literal, which ends it; a bytes literal holds the UTF-8 of its text; a double may
+//! begin with its point. One is recorded as interim: a carriage return is content in a
+//! single-line literal and in a quoted member name.
 //!
 //! **Positions.** One cursor advances a byte offset and a UTF-16 code-unit offset
-//! together; there is no position table and no rescan. Every range is Node's
-//! arithmetic on unit offsets, unclamped: a range may end past the source (`"\x` is
-//! `[1, 5)` in a source of three units) or inside a surrogate pair.
+//! together; there is no position table and no rescan. Every range lies within the
+//! source and splits no character: a character outside the basic plane is reported
+//! over its two code units, and an escape is ranged as it is written — the backslash,
+//! its marker and the digits actually there.
 //!
-//! **Where this file answers differently from Node**, each because a `&str` cannot hold
-//! half a character:
-//! - An escape before a character outside the basic plane (`"\😀"`) names the whole
-//!   character in its message, where Node's message holds an unpaired surrogate. The
-//!   range is Node's. It is the one message of the front end that differs.
+//! **Where this file answers differently from Node:**
 //! - A source of more than `MAX_SOURCE_UNITS` (4,294,967,285) UTF-16 code units is
 //!   refused whole — `limit_exceeded`, range `[0, 0)` — so that every offset fits the
 //!   `u32` a range holds. Node cannot hold such a source.
@@ -40,12 +45,11 @@ const OCTAL_ESCAPE_UNITS: u32 = 4;
 const SHORT_UNICODE_ESCAPE_UNITS: u32 = 6;
 const LONG_UNICODE_ESCAPE_UNITS: u32 = 10;
 
-/// The width of the widest escape, `\U` and eight digits: how far past the end of the
-/// source a range can reach.
+/// The width of the widest escape, `\U` and eight digits.
 const WIDEST_ESCAPE_UNITS: u32 = LONG_UNICODE_ESCAPE_UNITS;
 
-/// The longest source read, in UTF-16 code units. No offset the front end computes
-/// exceeds the source's length plus the widest escape, so each fits a `u32`.
+/// The longest source read, in UTF-16 code units: `u32::MAX` less the widest escape.
+/// No offset the front end computes exceeds the source's length, so each fits a `u32`.
 const MAX_SOURCE_UNITS: u32 = 4_294_967_285;
 
 const _: () = {
@@ -243,11 +247,13 @@ impl<'s> Lexer<'s> {
         let mut tokens = Vec::new();
         loop {
             self.skip_ignored();
-            let read = if self.at.byte < self.bytes.len() { self.next() } else { None };
+            let start = self.at;
+            let read = if start.byte < self.bytes.len() { self.next() } else { None };
             match read {
                 Some(read) => tokens.push(read),
                 None => {
-                    tokens.push(token(TokenKind::Eof, self.at, self.at));
+                    // The stream ends where the unreadable text begins, as the cut source would.
+                    tokens.push(token(TokenKind::Eof, start, start));
                     return (tokens, self.diagnostics);
                 }
             }
@@ -306,19 +312,12 @@ impl<'s> Lexer<'s> {
             self.at = start.ahead(text.len() as u32);
             return Some(token(TokenKind::Punct(text), start, self.at));
         }
-        let (_, character) = self.past_character(start);
-        // The message names one code unit, as Node's does: for a character outside the
-        // basic plane that is its leading surrogate, which only an escape can write.
-        let quoted = if character.len_utf16() == 1 {
-            json_quote(character.encode_utf8(&mut [0; 4]))
-        } else {
-            format!("\"\\u{:04x}\"", character.encode_utf16(&mut [0; 2])[0])
-        };
+        let (past, character) = self.past_character(start);
         self.diagnostics.report(
             CelSyntaxCode::UnexpectedCharacter,
-            format!("unexpected character {quoted}"),
+            format!("unexpected character {}", json_quote(character.encode_utf8(&mut [0; 4]))),
             start.unit,
-            start.unit + 1,
+            past.unit,
         );
         None
     }
@@ -505,7 +504,7 @@ impl<'s> Lexer<'s> {
 
     /// Decodes a literal's content, answering where the literal ends. A raw literal
     /// reads no escape: a backslash takes the next character with it, both kept as
-    /// written.
+    /// written — except a line feed in a single-line literal, which ends it.
     fn scan_literal(
         &mut self,
         quote_at: Cursor,
@@ -527,7 +526,7 @@ impl<'s> Lexer<'s> {
                 at = self.literal_character(at, content);
             } else if !raw {
                 at = self.read_escape(at, content)?;
-            } else if at.byte + 1 < self.bytes.len() {
+            } else if self.byte_at(at.byte + 1).is_some_and(|next| triple || next != b'\n') {
                 content.push_named(0x5c);
                 at = self.literal_character(at.ahead(1), content);
             } else {
@@ -580,12 +579,12 @@ impl<'s> Lexer<'s> {
             }
             byte if is_octal_digit(byte) => self.read_octal_escape(at, content),
             _ => {
-                let (_, character) = self.past_character(at.ahead(1));
+                let (past, character) = self.past_character(at.ahead(1));
                 self.diagnostics.report(
                     CelSyntaxCode::InvalidEscapeSequence,
                     format!("\\{character} is not an escape sequence"),
                     at.unit,
-                    at.unit + 2,
+                    past.unit,
                 );
                 None
             }
@@ -599,14 +598,23 @@ impl<'s> Lexer<'s> {
         digits.iter().all(|byte| admits(*byte)).then(|| &self.source[from..from + count])
     }
 
+    /// Where an escape that is short of its digits ends as written: past the run
+    /// `admits` takes after its `opening` units.
+    fn written_end(&self, at: Cursor, opening: u32, admits: fn(u8) -> bool) -> u32 {
+        let mut end = at.ahead(opening);
+        while self.byte_at(end.byte).is_some_and(admits) {
+            end = end.ahead(1);
+        }
+        end.unit
+    }
+
     fn read_hex_escape(&mut self, at: Cursor, content: &mut LiteralContent) -> Option<Cursor> {
-        let end = at.unit + HEX_ESCAPE_UNITS;
         let Some(digits) = self.escape_digits(at.byte + 2, 2, is_hex_digit) else {
             self.diagnostics.report(
                 CelSyntaxCode::InvalidHexEscape,
                 "a \\x escape takes two hexadecimal digits",
                 at.unit,
-                end,
+                self.written_end(at, 2, is_hex_digit),
             );
             return None;
         };
@@ -621,7 +629,7 @@ impl<'s> Lexer<'s> {
                 CelSyntaxCode::InvalidOctalEscape,
                 "an octal escape takes three octal digits",
                 at.unit,
-                end,
+                self.written_end(at, 1, is_octal_digit),
             );
             return None;
         };
@@ -641,7 +649,6 @@ impl<'s> Lexer<'s> {
 
     /// `width` is the whole escape's: the backslash, the letter and its digits.
     fn read_unicode_escape(&mut self, at: Cursor, width: u32, content: &mut LiteralContent) -> Option<Cursor> {
-        let end = at.ahead(width);
         let count = width as usize - 2;
         let Some(digits) = self.escape_digits(at.byte + 2, count, is_hex_digit) else {
             let letter = if width == SHORT_UNICODE_ESCAPE_UNITS { 'u' } else { 'U' };
@@ -649,10 +656,11 @@ impl<'s> Lexer<'s> {
                 CelSyntaxCode::InvalidUnicodeEscape,
                 format!("a \\{letter} escape takes {count} hexadecimal digits"),
                 at.unit,
-                end.unit,
+                self.written_end(at, 2, is_hex_digit),
             );
             return None;
         };
+        let end = at.ahead(width);
         let point = u32::from_str_radix(digits, 16).expect("eight hexadecimal digits fit 32 bits");
         if point > 0x10ffff {
             self.diagnostics.report(
@@ -737,28 +745,28 @@ mod tests {
     //!
     //! The refusal and its number are this crate's own answer; Node cannot hold such a
     //! source. Each tail's range is the Node build's executed answer for the tail read
-    //! alone (`@telorun/cel` 0.112.0 at `d265cc79`, by the procedure the README's Tests
-    //! section states), moved by where the tail starts.
+    //! alone (`@telorun/cel` 0.112.0, this branch's build, by the procedure the README's
+    //! Tests section states), moved by where the tail starts.
 
     use super::*;
 
     /// `(tail, the range Node answers for the tail as a whole source)`.
     const NODE_TAILS: [(&str, [u32; 2]); 4] = [
-        ("\"\\x", [1, 5]),
-        ("\"\\0", [1, 5]),
-        ("\"\\u", [1, 7]),
-        ("\"\\U", [1, 11]),
+        ("\"\\x", [1, 3]),
+        ("\"\\0", [1, 3]),
+        ("\"\\u", [1, 3]),
+        ("\"\\U", [1, 3]),
     ];
 
     #[test]
-    fn reads_a_tail_ending_in_each_escape_form_at_the_end_of_the_longest_source() {
+    fn ranges_a_tail_ending_in_each_escape_form_within_the_longest_source() {
         for (tail, [start, end]) in NODE_TAILS {
             let offset = MAX_SOURCE_UNITS - tail.len() as u32;
             let (tokens, diagnostics) = Lexer::new(tail, Cursor { byte: 0, unit: offset }).tokenize();
             assert_eq!(tokens.len(), 1, "{tail}");
             let diagnostic = diagnostics.first().expect(tail);
             assert_eq!([diagnostic.range.start, diagnostic.range.end], [offset + start, offset + end], "{tail}");
-            assert!(diagnostic.range.end > MAX_SOURCE_UNITS, "{tail}");
+            assert_eq!(diagnostic.range.end, MAX_SOURCE_UNITS, "{tail}");
         }
     }
 

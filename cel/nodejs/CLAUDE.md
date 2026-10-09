@@ -52,23 +52,65 @@ time would make the serializer unable to write the source back, which is the one
 tool hold a tree instead of text. Lowering belongs to the checker and the backends.
 
 **Error recovery is a product feature, not a convenience.** Reading never throws and never discards
-what it read: the first unreadable thing is one ranged diagnostic (`FirstSyntaxDiagnostic` holds the
-first and drops the rest, so the lexer and the parser cannot disagree about where reading stopped),
-and the tree keeps the longest prefix. A member with no name is a select with an **empty field name**
-— the shape completion after a dot reads — and an open aggregate or call keeps the elements it read.
-Neither serializes; the diagnostic is what says the tree is incomplete.
+what it read: the first unreadable thing **in source order** is one ranged diagnostic, and the tree
+keeps the longest prefix. The lexer ends its token stream where the text it cannot read begins, the
+parser reads every token before that, and the tree is therefore exactly the tree of the source cut
+there — `1 + 2 + 'abc` is `(1 + 2) + <unparsed>`, not nothing. The lexer and the parser each hold
+their first diagnostic (`FirstSyntaxDiagnostic`) and `firstInSourceOrder` picks one: the parser's when
+it starts before the cut, otherwise the lexer's, so a tie goes to the lexer. `) + 'abc` reports the
+parenthesis, since the source is already unreadable there. A member with no name — `a.`, and ``a.`` ``
+with nothing between its backticks — is a select with an **empty field name**, `quoted: false`, the
+one shape completion after a dot reads; an open aggregate or call keeps the elements it read. Neither
+serializes; the diagnostic is what says the tree is incomplete.
+
+**Every range lies within the source and splits no character.** A character outside the basic plane
+is named whole and ranged over its two code units, where no token can stand and after a backslash
+alike; an escape is ranged as it is **written** — the backslash, its marker and the run of digits of
+its radix actually there — never by the width it should have had. A consumer that maps a range onto a
+string slice in another language depends on it. The exception is a lone surrogate written raw, which
+is not a character and is reported as the one unit it is.
 
 **The serializer refuses rather than guesses.** A tree with no source — an `unparsed` hole, a `NaN`
 double, an integer outside its type, a name that is not a name — throws `CelSerializeError`, because
 text that does not read back would make every later answer about it wrong. Parentheses come from
 precedence; the source's own parentheses are not structure and are not remembered.
 
+**The round trip holds under the options the tree was read with, and has no exception.** Every source
+that reads with no diagnostic writes, and its text reads back to an equal tree — with the optional
+syntax on for a tree holding `[?x]` or `{?k: v}`, and under the same namespace set for a qualified
+call. The writer takes no options: an optional entry is written wherever the tree holds one, because
+such a tree exists only if a reader with the syntax on produced it or a host built it.
+
 **A unary minus on a numeric literal folds into the literal.** It is the only way the int64 minimum is
-written, and it keeps `-0.0` a value rather than a negation. The serializer therefore writes a
-hand-built negation of a literal as `-(1)`, so a round-trip cannot change its shape.
+written, and it keeps `-0.0` a value rather than a negation. The fold is on **tokens**, so whitespace
+and comments between the minus and an int or double literal change nothing — `- 1` is the literal
+`-1`, ranged from the minus — and a minus before a parenthesis never folds. A fold that depended on
+spacing would make the int64 minimum's readability depend on formatting.
+
+**So the writer parenthesizes the number the reader would fold.** Writing a unary minus, it finds what
+the operand's text begins with — the operand itself, or what is reached by descending through the
+operand of a member read, the operand of an index and the receiver of a method call — and when that is
+an int or double literal that is not below zero and not negative zero, it writes that literal in
+parentheses: `-(1)`, `-(1).a`, `-(1)[0]`, `-(1).f()`. A uint is never folded and gets none; a negative
+literal is already parenthesized by precedence. The checker's fixes are written by rewriting the tree
+and serializing it, so without this a fix touching such an expression would change its meaning.
 
 **Limits are diagnostics.** Hostile input is in scope, and the five limits are reported like any other
 unreadable input so an editor keeps its prefix.
+
+**`maxDepth` bounds the height of the tree as well as the nesting of the grammar.** A node with no
+child is 1 high, any other one more than its tallest child, and the reader refuses the node whose
+height exceeds the limit — `limit_exceeded`, the same "more nesting" message, ranged over that node,
+which it keeps, as it keeps the node past `maxNodes` (on one node the node count is judged first). The
+grammar's own count is where it always was, zero-width at the token that would descend too far. So a
+chain is nesting: `1+1+…` reads with 250 operands and is refused at 251, `a.b.b…` with 249 members and
+at 250. The reason is every walker downstream — the checker, both backends, the emitter's output that
+the host must parse, the tag engines, an editor — recurses over the tree, and a bound at the one
+reader protects them all with a diagnostic pointing at the expression. **A tree read with no
+diagnostic is at most `maxDepth` high; one read with a diagnostic is at most seven times that**, since
+each open grammar level closes around the refused node with one bracket and five binary levels
+(measured: 1750 under the default 250, pinned in `tests/parser.test.ts`). A tree taller than the stack
+is reachable only by a hand-built tree or a host that raised `maxDepth`, as was always true of nesting.
 
 ## The grammar is cel-spec's, including the corners
 
@@ -118,6 +160,18 @@ name the expression bound takes precedence, exactly as for a bare name — unles
 a quoted or absolute name as a namespaced call; and container-dependent resolution of a **bare** name,
 which would mean inventing a container Telo never declares.
 
+**A single-line literal never holds a line feed, in any form.** A raw literal lets a backslash take the
+next character with it, both kept as written (`r'\''` is a backslash and a quote) — except a line feed
+in a single-line literal: there the backslash is content and the line feed ends the literal
+unterminated. A triple-quoted raw literal takes the line feed like any other character, and a
+backslash that ends the source is content.
+
+**One reading is recorded as interim, not intended: a carriage return.** It is content in a
+single-line string, a bytes literal and a quoted member name, and only a line feed ends one, where
+cel-spec's single-line literal excludes a carriage return too. It stays because a conformance row pins
+`'a<CR>b'` reading clean, and the vectors do not change in this loop. The writer accordingly still
+writes a member name holding one.
+
 **Two cel-go libraries ship and the rest do not.** The **optional** library enters whole under
 `enableOptionalTypes` — **whole including its presence reading**: cel-go answers "not found" for a
 receiver that is neither a mapper, a lister nor an indexer whenever the read is a presence test, and
@@ -141,7 +195,9 @@ that library — they are its own compatibility members, each saying so in its d
 by being read as something else: `true`, `false` and `null` are literals, `in` is the membership
 operator. Accepting one as a name would be a spec violation and would falsify the premise every
 consumer of the set is written against — static analysis refuses all 21 as a declared name on exactly
-the grounds that CEL cannot read one. The split between "refused" and "read as something else" is the
+the grounds that CEL cannot read one. That includes the name a leading dot opens: `.true`, `.false` and
+`.null` are `reserved_identifier`, exactly as `.while` is, since a tree holding one is a tree the writer
+refuses. The split between "refused" and "read as something else" is the
 lexer's whole policy about words, so it is declared once in `src/reserved-words.ts` (`wordReading`) and
 the lexer holds no list of its own. A bare `in` where an expression must begin is an ordinary ranged
 syntax error, as a misplaced operator is.

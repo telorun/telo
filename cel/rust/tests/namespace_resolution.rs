@@ -2,7 +2,7 @@
 //! `cel/nodejs/tests/namespace-resolution.test.ts`, case for case.
 //!
 //! Every row and every literal is the Node build's answer, executed: `@telorun/cel`
-//! 0.112.0 at `d265cc79`. Where a Node case asserts a kind or a list of names, the row
+//! 0.112.0, this branch's build. Where a Node case asserts a kind or a list of names, the row
 //! here holds the whole of what Node answered — the recorded set, the tree with every
 //! range, and the diagnostic.
 //!

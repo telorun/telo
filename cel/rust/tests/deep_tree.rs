@@ -3,19 +3,20 @@
 //! on a stack of 256 KiB, in a debug build.
 //!
 //! No Node test file is the twin of this one. What is Node's answer, executed
-//! (`@telorun/cel` 0.112.0 at `d265cc79`): the
-//! longest chain and the deepest nesting of each construct that reads, the diagnostic
-//! one past it, the root's range, the node count of each deepest nesting, and — on a
-//! chain and a hand-built nesting three links long, where Node still answers — the
-//! text written, whether the pass answers the root it was given, and what the two
-//! queries answer.
+//! (`@telorun/cel` 0.112.0, this branch's build): the
+//! longest chain and the deepest nesting of each construct that reads under the default
+//! limits, the longest chain that reads with the depth limit raised out of its way, the
+//! diagnostic one past each, the root's range, the node count of each deepest nesting,
+//! and — on a chain and a hand-built nesting three links long, where Node still
+//! answers — the text written, whether the pass answers the root it was given, and
+//! what the two queries answer.
 //!
 //! What is this crate's own, because Node cannot answer it — its walkers throw
 //! `RangeError` on these trees, and its parser recurses where this one does not: that
 //! each tree is walked, compared and released at all; the node counts of the chains
-//! and of the hand-built trees; every read under raised limits; and every answer of
-//! the writer, the pass and the queries on a tree of full length, which is the answer
-//! of the three-link row carried to that length.
+//! and of the hand-built trees; every nesting read under raised limits; and every
+//! answer of the writer, the pass and the queries on a tree of full length, which is
+//! the answer of the three-link row carried to that length.
 
 mod support;
 
@@ -25,7 +26,7 @@ use std::sync::Arc;
 use support::*;
 use telorun_cel::{
     has_unparsed, parse_syntax, qualified_calls, resolve_namespaces, root_references, serialize_tree, trees_equal,
-    walk_tree, CelNode, CelSyntaxCode, CelSyntaxDiagnostic,
+    walk_tree, CelNode, CelSyntaxCode, CelSyntaxDiagnostic, ParseOptions,
 };
 
 /// The one stack size any test of this crate names.
@@ -64,7 +65,7 @@ fn exercise(label: &str, tree: Arc<CelNode>, twin: Arc<CelNode>, nodes: usize) {
     drop(twin);
 }
 
-// --- chains at the node limit ------------------------------------------------------
+// --- chains ------------------------------------------------------------------------
 
 /// `(what is chained, one link, the nodes of a chain of `links`)`.
 fn chain(label: &str, links: usize) -> (String, usize) {
@@ -77,13 +78,31 @@ fn chain(label: &str, links: usize) -> (String, usize) {
     }
 }
 
-/// `(chain, the most links Node reads, the root's range, Node's refusal of one more)`.
-fn node_chain_boundaries() -> [(&'static str, usize, (u32, u32), Option<CelSyntaxDiagnostic>); 4] {
+type ChainBoundary = (&'static str, usize, (u32, u32), Option<CelSyntaxDiagnostic>);
+
+/// The limits a chain reads to the node limit under: the depth limit is out of its way.
+fn chain_limits() -> ParseOptions {
+    limits(100000, 1000000, 1000, 1000, 32)
+}
+
+/// `(chain, the most links Node reads under `chain_limits`, the root's range, Node's
+/// refusal of one more)`.
+fn node_chain_boundaries() -> [ChainBoundary; 4] {
     [
         ("addition", 49999, (0, 99999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 100001))),
         ("member", 99999, (0, 199999), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 200001))),
         ("index", 49999, (0, 149998), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 150001))),
         ("receiver call", 99999, (0, 399997), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nodes than the limit of 100000", 0, 400001))),
+    ]
+}
+
+/// The same under the default limits, where a chain is nesting.
+fn node_chain_depth_boundaries() -> [ChainBoundary; 4] {
+    [
+        ("addition", 249, (0, 499), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 501))),
+        ("member", 249, (0, 499), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 501))),
+        ("index", 249, (0, 748), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 751))),
+        ("receiver call", 249, (0, 997), Some(diagnostic(CelSyntaxCode::LimitExceeded, "the expression has more nesting than the limit of 250", 0, 1001))),
     ]
 }
 
@@ -102,7 +121,7 @@ struct ChainAnswers {
 
 fn chain_answers(tree: &Arc<CelNode>) -> ChainAnswers {
     let written = serialize_tree(tree).expect("a tree that read whole is written");
-    let reread = read(&written);
+    let reread = parse_syntax(&written, &chain_limits());
     assert_eq!(reread.diagnostic, None);
     assert!(trees_equal(tree, &reread.root));
     let resolved = resolve_namespaces(tree, &["a"]);
@@ -141,7 +160,9 @@ fn writes_resolves_and_queries_a_chain_as_long_as_the_node_limit_allows() {
         {
             assert_eq!(label, long_label);
             for length in [links, most] {
-                let answers = chain_answers(&read(&chain(label, length).0).root);
+                let parsed = parse_syntax(&chain(label, length).0, &chain_limits());
+                assert_eq!(parsed.diagnostic, None, "{label} of {length}");
+                let answers = chain_answers(&parsed.root);
                 if length == links {
                     assert_eq!(answers.written, written, "{label}");
                 }
@@ -156,17 +177,33 @@ fn writes_resolves_and_queries_a_chain_as_long_as_the_node_limit_allows() {
     });
 }
 
+/// Reads each chain at its boundary, holds one link more to Node's refusal, and
+/// exercises the tree.
+fn assert_chain_boundaries(boundaries: [ChainBoundary; 4], options: ParseOptions) {
+    for (label, links, (start, end), refusal) in boundaries {
+        let (source, nodes) = chain(label, links);
+        let parsed = parse_syntax(&source, &options);
+        assert_eq!(parsed.diagnostic, None, "{label}");
+        assert_eq!(parsed.root.range(), range(start, end), "{label}");
+        assert!(refusal.is_some(), "{label}");
+        assert_eq!(parse_syntax(&chain(label, links + 1).0, &options).diagnostic, refusal, "{label}");
+        exercise(label, parsed.root, parse_syntax(&source, &options).root, nodes);
+    }
+}
+
 #[test]
 fn reads_and_handles_a_chain_as_long_as_the_node_limit_allows() {
+    on_a_small_stack(|| assert_chain_boundaries(node_chain_boundaries(), chain_limits()));
+}
+
+#[test]
+fn reads_a_chain_as_tall_as_the_depth_limit_and_refuses_one_link_more() {
     on_a_small_stack(|| {
-        for (label, links, (start, end), refusal) in node_chain_boundaries() {
-            let (source, nodes) = chain(label, links);
-            let parsed = read(&source);
-            assert_eq!(parsed.diagnostic, None, "{label}");
-            assert_eq!(parsed.root.range(), range(start, end), "{label}");
-            assert_eq!(read(&chain(label, links + 1).0).diagnostic, refusal, "{label}");
-            exercise(label, parsed.root, read(&source).root, nodes);
+        let boundaries = node_chain_depth_boundaries();
+        for (label, links, ..) in &boundaries {
+            assert_eq!(tree_height(&read(&chain(label, *links).0).root), defaults().limits.max_depth, "{label}");
         }
+        assert_chain_boundaries(boundaries, defaults());
     });
 }
 
