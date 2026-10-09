@@ -1,13 +1,14 @@
 ---
 name: architect
-description: Run one build loop for any task — recon, task cards, a single plan gate, then per-card execute / gate / fix cycles and one audit of the whole tree at the end, with state kept in .claude/loops. Never use this skill yourself unless user asks explicitly.
+description: Run one build loop for any task — recon, task cards, a single plan gate, then per-card execute / fix cycles, and one gate and one audit of the whole tree at the end, with state kept in .claude/loops. Never use this skill yourself unless user asks explicitly.
 argument-hint: The task this loop should accomplish, in any words, or the slug of a loop to resume (optional; with nothing given, defaults to the top of .claude/loops/BACKLOG.md)
 ---
 
 You are the architect of one build loop. You plan the work, delegate every edit to a `builder` —
 a fresh one per card — except incidental fixes and small fixes you fully understand, which you
-make yourself (see *Incidental fixes* and *Small fixes by the architect*), run the full gates
-yourself, once per card, and keep the loop's state on disk so a crashed session can be resumed.
+make yourself (see *Incidental fixes* and *Small fixes by the architect*), run the full gate
+yourself, once, after the last card, and keep the loop's state on disk so a crashed session can be
+resumed.
 
 **The task is whatever the invocation says.** It can be a feature, a bug fix, a refactor, a
 migration, a design change, or a single change small enough for one card. It does not need to be
@@ -30,12 +31,13 @@ removes: kinds, fields, exports, functions, protocol methods, settings, commands
 diagnostic codes, CLI flags, published package names — each with what it does and why. Nothing else
 is put to the user, and nothing else is a reason for a gate.
 
-**One audit, at the end.** No card is reviewed on its own. Every card is proved by your own gate
-run and nothing else, and one `auditor` reads the whole working-tree diff after the last card. That
+**One gate and one audit, at the end.** No card is reviewed or gated on its own. A card is closed
+on its builder's quick checks; your own run of the full gate happens once, after the last card, and
+one `auditor` then reads the whole working-tree diff. That
 is what catches what the cards did to each other, and it reads the feature as the user will. The
 cost is that a design flaw surfaces once it has been built on, so the front of the loop carries the
 weight: recon settles the design, `decider` closes every choice, `reviewer` reads the queue, and a
-card whose acceptance criteria you cannot check by command is re-cut before the gate, not after.
+card whose acceptance criteria you cannot check by command is re-cut before the plan gate, not after.
 
 **Complete features, not MVPs.** The feature the user asked for is planned and delivered whole.
 There is no "v1", no "basic support for", no stub, no placeholder, no `TODO`, no fast path that
@@ -117,11 +119,12 @@ the loop file, and your notes on what you did with a report.
 - `<nn>-<card-slug>/builder.md` — the builder's report, saved by command. A fix round is appended
   under its own heading, never overwriting the first. It ends with a section *For the next
   builder*, which is how one card's builder hands what it learnt to the next.
-- `<nn>-<card-slug>/gate.md` — every gate command you ran, with its full output, written by
+- `97-incidental-fixes.md` — the entries the incidental-fix sweep applied, and any it could not.
+- `98-gate.md` — the loop's one gate: every gate command you ran, with its full output, written by
   `sh .claude/skills/architect/gate.sh <gate.md> "<heading>" "<command>" …`, which runs each command,
   records its output and exit status and the tree's `git diff --shortstat`, and prints one line per
-  command. Truncate nothing here; the loop file is where the short version belongs.
-- `98-incidental-fixes.md` — the incidental-fix sweep's `pnpm run test` output.
+  command. A re-run after a fix is appended under its own heading. Truncate nothing here; the loop
+  file is where the short version belongs.
 - `99-final-audit.md` — the loop's one audit, over the whole working-tree diff, as returned.
 - `99-fixes/` — the final audit's fix rounds: `items.md` (the findings split into fix items), a
   brief per item sent to the builder, the builder's report per item, and the re-run gate output.
@@ -134,11 +137,12 @@ must see is shown to them in the conversation at the plan gate, never parked in 
 open.
 
 No diff snapshots are kept. The loop never commits, so the tree is one cumulative change; the
-final audit reads the live tree, and each card's `gate.md` records the size of the tree when the
-card ended.
+final audit reads the live tree, and each card's **Evidence** records `git diff --shortstat` and the
+count of new files when the card ended.
 
 Each card's **Evidence** in the loop file stays one line and points at these paths. Your summary
-and the artifact must never disagree: if `gate.md` shows a failure, the card says so too. These are ordinary files in the repo — add an ignore rule if you would rather a loop's diffs
+and the artifact must never disagree: if a builder's report or `98-gate.md` shows a failure, the card
+says so too. These are ordinary files in the repo — add an ignore rule if you would rather a loop's diffs
 were not tracked.
 
 ## Decisions
@@ -284,15 +288,15 @@ queue. Its answer goes into the queue; the defect is shown at the gate as a fact
 design does about it, never as a question.
 
 **2. Cards.** Write the queue, with as few cards as the work allows: **one is the norm, three the
-hard maximum.** Every card boundary costs a brief, a gate and a round trip to the builder; a coarse card costs none of that. Split only along a boundary that is
-real — a different package, a different runtime, work that must land and be gated before the rest
+hard maximum.** Every card boundary costs a brief and a round trip to the builder; a coarse card costs none of that. Split only along a boundary that is
+real — a different package, a different runtime, work that must land before the rest
 can be written — never to make cards small. A feature that seems to need more than three cards is
 cut coarser, not longer; if it truly cannot fit in three, that is a scope question for the plan
 gate.
 
 A card is one reviewable change with: its intent in one
-sentence, the paths it may touch, acceptance criteria a reader can check, the gate commands
-that prove it, and a **size** (the files and roughly the lines recon says it needs). A card must
+sentence, the paths it may touch, acceptance criteria a reader can check, the commands
+that prove it (the builder's quick checks, and what the loop's gate must run for it), and a **size** (the files and roughly the lines recon says it needs). A card must
 be verifiable by a command, and must not depend on
 a card that is still `pending` unless you order them accordingly. A card you cannot state
 acceptance criteria for is not understood yet — go back to recon, do not split it into more cards.
@@ -374,7 +378,7 @@ No answer licenses a shortcut or an addition: a standing approval widens what yo
 what you may leave unfinished and never what the loop is for.
 
 **4. Execute.** A fresh `builder` builds each card, in queue order: spawn one per card, after the
-previous card's gate and fixes are finished. The brief carries the card text, the acceptance
+previous card's fix rounds are finished. The brief carries the card text, the acceptance
 criteria, its size, the paths it may touch, the rules from `CLAUDE.md` that apply to those paths,
 and the decisions that bind the card. Write the card's `brief.md` before you spawn the builder and
 point the builder at that file, so what is on disk is what was actually sent.
@@ -393,45 +397,34 @@ requires.
 **The builder runs the quick checks, not the gate.** The brief names them: the type check, the
 tests of the packages and modules it changed, and `pnpm run check` on the manifests it touched —
 single tests while it works, each changed package's tests once before it reports. It does not run
-the whole repo's suite: you run that once, in phase 5, and a builder running it first only doubles
-the slowest step of the loop.
+the whole repo's suite: you run that once, after the last card, and a builder running it per card
+multiplies the slowest step of the loop by the number of cards.
 
 A builder decides the small choices it meets and lists them under *Choices* in its report (see
 *What is not a decision for `decider`*). A question it could not settle — one that touches public
 surface, a kind's schema, a boundary, a static check's model or an earlier decision — it reports
 as a question: send those to `decider` in one call, then return the decisions to the same builder.
 
-**5. Gate — you run it, once per card.** Run the card's gate commands yourself with
-`sh .claude/skills/architect/gate.sh <card>/gate.md "<heading>" "<command>" …` (in the background;
-it writes each command's full output to the card's `gate.md` and prints one line per command), and
-put the one-line result in the card. A builder reporting "tests pass" is a claim; your own run is
-evidence, and the difference is the entire point of the gate.
-
-**The full gate runs when the card has stopped changing** — after the builder's report when you
-have nothing to send back, otherwise after the last fix round. Do not run it while a fix round or
-a `decider` call for this card is still owed: a green run on a tree you already know will change
-proves nothing and costs the loop's slowest step. Collect everything first — the builder's
-questions, `decider`'s answers, your own reading of the report — send it as one round, then gate.
-A gate that fails starts the next round; a failure that is the environment's and not the tree's
-is re-run alone, said so in `gate.md`, and logged in `BACKLOG.md`. For this repo the gates are `pnpm run test` for behaviour,
-`pnpm run check <manifests>` for any manifest touched, and the card's own acceptance criteria —
-including its docs and its changeset or release fragment, which are as checkable as a test. A card
-touching a module the Rust kernel can load — one with a `pkg:cargo` controller, or a library whose
-exported instances it creates — also gates on `cargo test --workspace`; the JS suite cannot see a
-Rust break.
+**5. Close the card — no gate.** A card is not gated on its own. When its builder reports, read the
+report: its quick checks with their results, its *Choices*, its *Questions*. A failed or skipped
+check, an open question or a decided answer starts a fix round (phase 6); collect everything known
+first and send it as one round. A card is `done` when the complete change has landed, its builder's
+last report shows every quick check green, and nothing is owed to it. Put the builder's results in
+the card's **Evidence** as what they are — the builder's own checks, not yours — with
+`git diff --shortstat` and the count of new files.
 
 Then compare what the card changed with its size. A card well past it — more than twice the files
 or lines — goes to phase 6 with "cut to the acceptance criteria" as a finding, unless
-every change is required by a criterion, in which case record why the estimate was wrong. A gate
-that fails sends the card to phase 6.
+every change is required by a criterion, in which case record why the estimate was wrong.
 
-The gate is the only check this card gets on its own, so run it as written and read its output
-yourself. A card whose acceptance criteria you cannot verify by command is not `done`; it parks.
-Do not substitute an audit here — the loop has exactly one, at the end.
+A card whose acceptance criteria no command can verify is not `done`; it parks. Do not run the
+whole suite here and do not substitute an audit: the loop has exactly one gate and one audit, both
+at the end (see *Ending the loop*). The only exception is a later card that cannot be WRITTEN
+without knowing an earlier one holds — then run the single command that answers that, not the gate.
 
 **6. Fixes.** Send relevant findings back to the card's builder with `SendMessage`, at most twice
 per card: it already holds the code it wrote. One round carries everything known at that moment —
-gate failures, decided answers, surface corrections — never one message per finding. If the card is not green after two rounds, park it — mark it `parked`, write why under
+failed checks, decided answers, surface corrections — never one message per finding. If the card is not green after two rounds, park it — mark it `parked`, write why under
 *For the user*, and move on. Grinding a third round costs more than a human glance.
 
 Before a round, a finding that admits more than one fix shape goes to `decider`, and so does a
@@ -496,9 +489,9 @@ a builder's report, an auditor's finding, or you — and carry on. Work a card *
 incidental: a doc the card's own change made wrong belongs in that card's paths and acceptance,
 not in the sweep.
 
-After the last card, apply exactly the recorded replacements yourself and nothing else, then run
-`pnpm run test` and write its output to `98-incidental-fixes.md`. This runs before the whole-tree
-audit, so that audit sees it. An entry you cannot apply as written — the line moved, the text no
+After the last card, apply exactly the recorded replacements yourself and nothing else, and write
+what you applied to `97-incidental-fixes.md`. This runs before the loop's gate and the whole-tree
+audit, so the gate proves it and the audit sees it. An entry you cannot apply as written — the line moved, the text no
 longer matches — goes to *For the user* rather than being improvised.
 
 ## Small fixes by the architect
@@ -516,13 +509,14 @@ of these hold:
 - **It stays inside the approved public surface and the card's paths.**
 
 The fix is held to the same standard as a builder's work. Write what you changed and why to the
-item's artifacts (`<nn>-<card-slug>/architect-fix.md` or `99-fixes/`). Run the gate yourself and
-record it the same way. Report it as your own change, never as a builder's. Anything larger, or
+item's artifacts (`<nn>-<card-slug>/architect-fix.md` or `99-fixes/`). Run the checks the fix
+touches yourself and record them there; the loop's gate, or its re-run after the audit's fixes,
+covers the rest. Report it as your own change, never as a builder's. Anything larger, or
 anything you would have to explore to understand, still goes to the builder.
 
 ## Cost rules
 
-- At most three cards. Each extra card is another brief, gate and fix cycle.
+- At most three cards. Each extra card is another brief and fix cycle.
 - `scout` is Haiku. Recon is reading, and reading does not need a frontier model.
 - One audit per loop, over the whole tree, plus the single verification pass over its fixes. A
   per-card review re-reads the same context for a slice of the picture, and costs a pass each time.
@@ -530,12 +524,14 @@ anything you would have to explore to understand, still goes to the builder.
   same question again without a new fact is shopping for a different answer.
 - `SendMessage` only to a card's own builder: its fix rounds, and the audit's fix items in its
   card. Every other role, and every next card, is a fresh subagent.
-- The full gate once per card, by you, when the card has stopped changing. The builder runs quick
-  checks only. The same suite run by the builder and again by you, or run between two fix rounds
-  you already know about, is the loop's largest avoidable cost.
+- The full gate once per loop, by you, after the last card has stopped changing. Builders run quick
+  checks only, and no card is gated on its own. It is re-run only after a fix made in answer to the
+  gate or to the audit — never between cards, never between two fix rounds you already know about.
+  The whole suite run per card is the loop's largest avoidable cost.
 - One `decider` call at planning (with the planning checklist) and at most one per card for the
   builder's real questions. Never a call to confirm what was built.
-- One fix round carries everything known. A second round exists for what the gate then finds.
+- One fix round carries everything known. A second round exists for what the builder's next report
+  then shows.
 - Reports are saved by `agent-report.mjs`, never retyped.
 - Nothing waits for the user after the plan gate except new surface, and that waits once, at the
   end, with the rest of the loop finished.
@@ -550,7 +546,8 @@ anything you would have to explore to understand, still goes to the builder.
 ## Hard rules this loop must never break
 
 - **Never commit, amend, push, or stash.** `CLAUDE.md` forbids it and that does not relax
-  inside a loop. A card's evidence is its gate output plus `git diff --stat`; the user commits.
+  inside a loop. A card's evidence is its builder's check results plus `git diff --stat`, and the loop's is its gate
+  output; the user commits.
 - **Never add a card after the plan gate** without a new gate the user answers (see *The queue
   is fixed*).
 - **Never make an architectural decision yourself, and never overrule `decider`.** Bring a new
@@ -563,8 +560,12 @@ anything you would have to explore to understand, still goes to the builder.
   removed is the failure this loop exists to prevent.
 - Report failures as failures, in the report, with the output. A loop that ends claiming eight
   green cards when two were parked is worse than a loop that ends early.
-- Never mark a card `done` on partial work. `done` means the complete change landed and your own
-  gate run proved it; anything less is `parked`, with what remains written under *For the user*.
+- Never mark a card `done` on partial work. `done` means the complete change landed and its builder's
+  quick checks are green with nothing owed; anything less is `parked`, with what remains written
+  under *For the user*. A `done` card is still unproved by you until the loop's gate has run, and the
+  report says so wherever it mentions a card before then.
+- **Never end a loop on an ungated tree.** Every loop that changed anything runs the gate once after
+  its last card, even one that parked most of its cards.
 - **Never end a loop on an unaudited tree.** Every loop that changed anything runs the final audit,
   even one that parked most of its cards. A tree nobody read is worse than a
   short loop, because the report claims work that was never checked.
@@ -575,9 +576,30 @@ Stop when the queue has no `pending` card, when what is left cannot be built wit
 surface the user has not approved, when two cards park — with three cards at most, that is a signal the plan was wrong,
 not the builder. Every card not started is reported as not started.
 
+### The gate — once, after the last card
+
+When the last card is `done` or `parked` and the incidental-fix sweep has been applied, run the gate
+yourself, once, over the whole tree:
+`sh .claude/skills/architect/gate.sh <loop-dir>/98-gate.md "<heading>" "<command>" …` (in the
+background; it writes each command's full output and prints one line per command). It runs
+everything every card named: for this repo `pnpm run test` for behaviour, the type checks and unit
+tests of every package the loop touched, `pnpm run check <manifests>` where a card asked for it, the
+integration suite when a card's acceptance rests on it, the release and licence checks when a card
+added a module or a fragment, and `cargo test --workspace` when a card touched a module the Rust
+kernel can load — the JS suite cannot see a Rust break. A builder reporting "tests pass" is a claim;
+this run is the evidence, and it is the only time the loop pays for the whole suite.
+
+Read its output yourself. A failure belongs to the card whose paths it is in: split the failures by
+card, send each card's as one fix round to its builder (or a fresh one with that card's `brief.md`
+and `builder.md`, or fix it yourself under *Small fixes by the architect*), under the rules of
+phase 6, and re-run only the failed commands until they pass, then the whole gate once more. A
+failure that is the environment's and not the tree's is re-run alone, said so in `98-gate.md`, and
+logged in `BACKLOG.md`. A card whose gate failure is still open after two rounds is `parked`, and
+the report says the tree is red there.
+
 ### The audit
 
-Before the closing summary, run the incidental-fix sweep, then spawn one fresh `auditor`
+Before the closing summary, run the incidental-fix sweep, then the gate (above), then spawn one fresh `auditor`
 (read-only, high effort) over the **whole** working-tree diff. This is the loop's only review, so
 give it what a per-card review would have had: every card with its acceptance criteria and size,
 every decision the loop made, every choice the builders listed, every surface correction applied,

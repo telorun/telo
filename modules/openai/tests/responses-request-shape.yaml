@@ -13,9 +13,11 @@ metadata:
       - a tool call is keyed on `call_id`, which is also what `function_call_output`
         answers — the item's own `id` is a different value, and keying on it
         produces a request the endpoint ACCEPTS and answers wrongly;
-      - `providerState` is spliced immediately BEFORE the function call it reasoned
-        about, because the endpoint requires that order and the contract hands the
-        state over out-of-band, so the position has to be reconstructed.
+      - `providerState` is spliced immediately BEFORE the output of the newest
+        assistant message, because the endpoint requires that order and the contract
+        hands the state over out-of-band, so the position has to be reconstructed.
+        It is never the last item: reasoning left at the end is continued from, and
+        the model answers the previous turn again.
 
     Offline: a local server answers every call with the request it received,
     encoded as the model's own answer text.
@@ -145,11 +147,11 @@ steps:
         input:
           - role: user
             content: [{ type: input_text, text: weather in Paris? }]
+          # Spliced here — before the output it reasoned its way to, not appended.
+          - { id: rs_1, type: reasoning, encrypted_content: OPAQUE, summary: [] }
           # An assistant turn's text goes back as `output_text`, not `input_text`.
           - role: assistant
             content: [{ type: output_text, text: Let me check. }]
-          # Spliced here — before the call it reasoned about, not appended.
-          - { id: rs_1, type: reasoning, encrypted_content: OPAQUE, summary: [] }
           - type: function_call
             call_id: call_abc
             name: get_weather
@@ -222,6 +224,122 @@ steps:
               city: { type: string }
             required: [ city ]
             additionalProperties: false
+    invoke:
+      kind: Assert.Equals
+
+  # The previous run ended in plain text and the user has answered since: its
+  # reasoning precedes that text, never the messages that came after it.
+  - name: textOnlyTurn
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: build a todo app }]
+        - role: assistant
+          content: [{ type: text, text: Which store? }]
+        - role: user
+          content: [{ type: text, text: SQLite }]
+      providerState:
+        api: responses
+        model: gpt-test
+        resource: OpenaiResponsesRequestShape.model
+        items:
+          - { id: rs_2, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+    invoke: !ref model
+
+  - name: assertTextOnlyTurn
+    inputs:
+      actual: !cel "parseJson(steps.textOnlyTurn.result.text).input"
+      expected:
+        - role: user
+          content: [{ type: input_text, text: build a todo app }]
+        - { id: rs_2, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+        - role: assistant
+          content: [{ type: output_text, text: Which store? }]
+        - role: user
+          content: [{ type: input_text, text: SQLite }]
+    invoke:
+      kind: Assert.Equals
+
+  # The state belongs to the NEWEST assistant message, not to an older one that
+  # happened to call a tool.
+  - name: textAfterToolCall
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: weather in Paris? }]
+        - role: assistant
+          content: [{ type: text, text: Let me check. }]
+          toolCalls:
+            - id: call_abc
+              name: get_weather
+              arguments: { city: Paris }
+        - role: tool
+          toolCallId: call_abc
+          content: [{ type: text, text: "18C" }]
+        - role: assistant
+          content: [{ type: text, text: It is 18C. }]
+        - role: user
+          content: [{ type: text, text: and tomorrow? }]
+      tools:
+        - name: get_weather
+          description: Get the weather for a city.
+          parameters:
+            type: object
+            properties:
+              city: { type: string }
+            required: [ city ]
+      providerState:
+        api: responses
+        model: gpt-test
+        resource: OpenaiResponsesRequestShape.model
+        items:
+          - { id: rs_3, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+    invoke: !ref model
+
+  - name: assertTextAfterToolCall
+    inputs:
+      actual: !cel "parseJson(steps.textAfterToolCall.result.text).input"
+      expected:
+        - role: user
+          content: [{ type: input_text, text: weather in Paris? }]
+        - role: assistant
+          content: [{ type: output_text, text: Let me check. }]
+        - type: function_call
+          call_id: call_abc
+          name: get_weather
+          arguments: '{"city":"Paris"}'
+        - type: function_call_output
+          call_id: call_abc
+          output: "18C"
+        - { id: rs_3, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+        - role: assistant
+          content: [{ type: output_text, text: It is 18C. }]
+        - role: user
+          content: [{ type: input_text, text: and tomorrow? }]
+    invoke:
+      kind: Assert.Equals
+
+  # With no assistant output to precede, the state is dropped rather than left
+  # as the last item.
+  - name: stateWithoutAssistant
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: hello }]
+      providerState:
+        api: responses
+        model: gpt-test
+        resource: OpenaiResponsesRequestShape.model
+        items:
+          - { id: rs_4, type: reasoning, encrypted_content: OPAQUE, summary: [] }
+    invoke: !ref model
+
+  - name: assertStateWithoutAssistantDropped
+    inputs:
+      actual: !cel "parseJson(steps.stateWithoutAssistant.result.text).input"
+      expected:
+        - role: user
+          content: [{ type: input_text, text: hello }]
     invoke:
       kind: Assert.Equals
 

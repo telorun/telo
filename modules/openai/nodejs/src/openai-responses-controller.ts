@@ -265,10 +265,13 @@ interface TranslatedInput {
  * Messages → `input` items, with the system turns hoisted to `instructions`.
  *
  * `providerState` is spliced in at the position it was produced: immediately
- * before the function calls of the most recent assistant turn. The endpoint
- * requires a reasoning item to precede the call it reasoned about, and the
- * contract hands the state over out-of-band, so the position has to be
- * reconstructed here — appending it would be accepted and answered wrongly.
+ * before the output of the most recent assistant message — its text, then its
+ * function calls. The endpoint requires a reasoning item to precede what it
+ * reasoned its way to, and the contract hands the state over out-of-band, so
+ * the position has to be reconstructed here. It is never appended: reasoning
+ * left as the last item is continued from, so the model answers the previous
+ * turn again instead of the messages that followed it. With no assistant
+ * output to precede, the state is dropped.
  */
 function translateMessages(
   messages: Message[],
@@ -279,9 +282,9 @@ function translateMessages(
 ): TranslatedInput {
   const input: InputItem[] = [];
   const instructions: string[] = [];
-  // Where the newest assistant turn's function calls begin — the slot the
+  // Where the newest assistant message's output begins — the slot the
   // reasoning items belong in.
-  let toolCallStart = -1;
+  let assistantStart = -1;
 
   for (const m of messages) {
     if (m.role === "system") {
@@ -298,9 +301,9 @@ function translateMessages(
     }
     if (m.role === "assistant") {
       const text = contentToText(m.content);
+      const start = input.length;
       if (text) input.push({ role: "assistant", content: [{ type: "output_text", text }] });
       if (m.toolCalls && m.toolCalls.length > 0) {
-        toolCallStart = input.length;
         for (const call of m.toolCalls) {
           input.push({
             type: "function_call",
@@ -313,14 +316,14 @@ function translateMessages(
           });
         }
       }
+      if (input.length > start) assistantStart = start;
       continue;
     }
     input.push({ role: m.role, content: translateContent(m.content, label) });
   }
 
-  if (isOwnState(providerState, model, resourceId)) {
-    const at = toolCallStart === -1 ? input.length : toolCallStart;
-    input.splice(at, 0, ...(providerState.items as unknown as InputItem[]));
+  if (assistantStart !== -1 && isOwnState(providerState, model, resourceId)) {
+    input.splice(assistantStart, 0, ...(providerState.items as unknown as InputItem[]));
   }
 
   return {

@@ -316,9 +316,15 @@ describe("a filter bar", () => {
   it("applies typed text after a pause under `apply: typing`, pending until then", async () => {
     rendered = await show({ apply: "typing" });
     const before = lists(rendered);
+    // The pause is held and ended by the test: left to the clock, it runs out
+    // while a slow machine is still typing, and the bar is no longer pending.
+    const pauses: Array<() => void> = [];
+    const realSetTimeout = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void, ms?: number) =>
+      ms === 300 ? -pauses.push(run) : realSetTimeout(run, ms)) as typeof setTimeout);
     for (const typed of ["t", "th", "the"]) await rendered.enter(rendered.part("filter-input"), typed);
-    expect([lists(rendered), rendered.part("filters").getAttribute("data-pending")]).toEqual([before, "true"]);
-    await act(async () => await new Promise((resolve) => setTimeout(resolve, 350)));
+    expect([lists(rendered), rendered.part("filters").getAttribute("data-pending"), pauses.length]).toEqual([before, "true", 3]);
+    await act(async () => pauses[pauses.length - 1]());
     await rendered.settle();
     expect([lists(rendered), asked(rendered), rendered.part("filters").getAttribute("data-pending")]).toEqual([before + 1, "text.contains=the", null]);
   });

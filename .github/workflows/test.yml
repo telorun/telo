@@ -338,6 +338,11 @@ jobs:
     services:
       postgres:
         image: pgvector/pgvector:pg18
+        # Pulled as the project's account: anonymous pulls are limited per IP,
+        # and a hosted runner shares its IP with everyone else's jobs.
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -557,6 +562,7 @@ jobs:
 
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     steps:
       - name: Checkout code
@@ -597,6 +603,16 @@ jobs:
       - name: Build module controllers
         run: pnpm --filter "{./modules/**}..." run build
 
+      # Anonymous pulls are limited per IP, and a hosted runner shares its IP
+      # with everyone else's jobs. A fork's pull request holds no secrets and
+      # pulls anonymously, as before.
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build docker image
         run: docker build -f cli/nodejs/Dockerfile -t telo:ci .
 
@@ -620,6 +636,9 @@ jobs:
   package-integration:
     name: "Linux: package integration tests (Docker)"
     runs-on: ubuntu-latest
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
     steps:
       - name: Checkout code
@@ -659,6 +678,16 @@ jobs:
       # image, but this one needs the workspace built first.
       - name: Build for Node.js
         run: pnpm -r run build
+
+      # Anonymous pulls are limited per IP, and a hosted runner shares its IP
+      # with everyone else's jobs. A fork's pull request holds no secrets and
+      # pulls anonymously, as before.
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run package integration tests
         run: pnpm -r test:integration

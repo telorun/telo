@@ -100,12 +100,12 @@ The translation from the provider-neutral contract:
 | `tools` | flat — `{type: function, name, description, parameters}` |
 | `toolChoice` | `tool_choice` (`auto` \| `none`), sent only beside `tools`; `none` keeps the tools declared and forbids a new call |
 | `responseFormat` | `text.format`, and the VALUE is reshaped too — see below |
-| `providerState` | the reasoning items, spliced in **before** the function calls they reasoned about |
+| `providerState` | the reasoning items, spliced in **before** the output of the newest assistant message |
 
 Two details are load-bearing:
 
 - **A tool call carries `call_id` AND `id`, and they are different values.** The contract's `ToolCall.id` is the `call_id` — the value a `function_call_output` answers. Keying on the item's own `id` produces a request the endpoint accepts and answers wrongly.
-- **The reasoning items' position matters.** The endpoint requires a reasoning item to precede the call it reasoned about, and the contract hands state over out-of-band, so the position is reconstructed rather than appended.
+- **The reasoning items' position matters.** The endpoint requires a reasoning item to precede what it reasoned its way to, and the contract hands state over out-of-band, so the position is reconstructed: immediately before the newest assistant message's output — its text, then its function calls. That holds inside a tool loop and across runs alike, so a run that ended in plain text replays as reasoning, then that text, then whatever the user said next. The state is never appended: a reasoning item left as the last input is continued from, and the model answers the previous turn again instead of the messages after it. A state with no assistant output to precede is dropped.
 
 **`responseFormat` differs in shape, not only in key.** A `json_schema` format is flat
 here — `{type, name, schema, strict}` — and nested on the chat kinds —
