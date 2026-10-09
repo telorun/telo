@@ -2,7 +2,7 @@ import { DirectoryNotFoundError } from "../loader/adapters/directory-not-found";
 import { FileNotFoundError, segmentsOf, type ByteStore } from "./byte-store";
 
 /** The folder under the app's data directory every working copy lives in, one
- *  subdirectory per workspace id. */
+ *  subdirectory per project id. */
 const DATA_FOLDER = "cloud";
 
 /**

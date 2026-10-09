@@ -13,27 +13,30 @@ import {
   CloudApi,
   CloudApiError,
   type CloudRepository,
-  type CloudWorkspace,
+  type CloudProject,
   type Publication,
-  type WorkspaceRole,
+  type ProjectRole,
 } from "./api";
 import { cloudBackend } from "./backend";
 import { repositoryRefusalMessage } from "./refusal-messages";
 import type { CloudSessionState } from "./session";
 import { readSnapshotTar } from "./snapshot-tar";
 import { CommitLimitError, type PathChange, type PreparedUpdate } from "./working-copy";
-import { cloudWorkspaceIdOf, cloudWorkspaceRoot } from "./working-copy-adapter";
+import { cloudProjectIdOf, cloudWorkspaceRoot } from "./working-copy-adapter";
 import {
   findWorkingCopy,
+  forgetOrphanedWorkingCopy,
   forgetWorkingCopy,
+  loadOrphanedWorkingCopies,
   loadWorkingCopyIndex,
   putWorkingCopy,
   updateWorkingCopy,
+  type OrphanedWorkingCopy,
   type WorkingCopyEntry,
 } from "./working-copy-index";
 import { onWorkingCopyWrite, workingCopyOf } from "./working-copy-store";
 
-/** How often the branch head is read while a Cloud workspace is open. */
+/** How often the branch head is read while a Cloud project is open. */
 const HEAD_POLL_MS = 30_000;
 const PUBLICATION_POLL_MS = 2_000;
 const CHANGES_DEBOUNCE_MS = 600;
@@ -51,11 +54,11 @@ export interface CloudHost {
 
 export type CloudOperation = "committing" | "updating" | "discarding" | "switching";
 
-/** The Cloud workspace open in the editor. */
-export interface ActiveCloudWorkspace {
-  workspaceId: string;
+/** The Cloud project open in the editor. */
+export interface ActiveCloudProject {
+  projectId: string;
   name: string;
-  role: WorkspaceRole;
+  role: ProjectRole;
   branch: string;
   baseCommit: string | null;
   /** Null until first computed. */
@@ -86,13 +89,18 @@ interface CloudContextValue {
   foreignCopies: WorkingCopyEntry[] | null;
   removeForeignCopies(): Promise<void>;
   declineForeignCopies(): void;
+  /** Working copies whose id names no project Cloud still has. */
+  orphanedCopies: OrphanedWorkingCopy[] | null;
+  removeOrphanedCopies(): Promise<void>;
+  /** Leaves them on the device until Studio is next loaded. */
+  keepOrphanedCopies(): void;
 
   registerHost(host: CloudHost | null): void;
   setActiveRoot(rootDir: string | null): void;
-  openWorkspace(workspace: CloudWorkspace): Promise<CloudActionResult>;
+  openProject(project: CloudProject): Promise<CloudActionResult>;
 
-  active: ActiveCloudWorkspace | null;
-  /** Why the open Cloud workspace cannot be edited right now, if it cannot. */
+  active: ActiveCloudProject | null;
+  /** Why the open Cloud project cannot be edited right now, if it cannot. */
   editingLock: "viewer" | "updating" | null;
   /** Bumps when the working tree was rewritten beneath the editor. */
   filesEpoch: number;
@@ -128,10 +136,10 @@ async function sha256Text(text: string): Promise<string> {
   return out;
 }
 
-function activeFrom(entry: WorkingCopyEntry): ActiveCloudWorkspace {
+function activeFrom(entry: WorkingCopyEntry): ActiveCloudProject {
   return {
-    workspaceId: entry.workspaceId,
-    name: entry.workspaceName,
+    projectId: entry.projectId,
+    name: entry.projectName,
     role: entry.role,
     branch: entry.branch,
     baseCommit: entry.baseCommit,
@@ -146,10 +154,14 @@ function activeFrom(entry: WorkingCopyEntry): ActiveCloudWorkspace {
 export function CloudProvider({ children }: { children: ReactNode }) {
   const backend = useMemo(() => cloudBackend(), []);
   const [session, setSession] = useState<CloudContextValue["session"]>({ status: "loading" });
-  const [active, setActive] = useState<ActiveCloudWorkspace | null>(null);
+  const [active, setActive] = useState<ActiveCloudProject | null>(null);
   const [filesEpoch, setFilesEpoch] = useState(0);
   const [signOutPrompt, setSignOutPrompt] = useState<CloudContextValue["signOutPrompt"]>(null);
   const [foreignCopies, setForeignCopies] = useState<WorkingCopyEntry[] | null>(null);
+  const [orphanedCopies, setOrphanedCopies] = useState<OrphanedWorkingCopy[] | null>(() => {
+    const orphaned = loadOrphanedWorkingCopies();
+    return orphaned.length > 0 ? orphaned : null;
+  });
 
   const hostRef = useRef<CloudHost | null>(null);
   const activeRef = useRef(active);
@@ -168,9 +180,9 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     return next;
   }, []);
 
-  const patchActive = useCallback((workspaceId: string, patch: Partial<ActiveCloudWorkspace>) => {
+  const patchActive = useCallback((projectId: string, patch: Partial<ActiveCloudProject>) => {
     setActive((current) =>
-      current && current.workspaceId === workspaceId ? { ...current, ...patch } : current,
+      current && current.projectId === projectId ? { ...current, ...patch } : current,
     );
   }, []);
 
@@ -225,9 +237,9 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const removeCopies = useCallback(
     async (entries: WorkingCopyEntry[]) => {
       for (const entry of entries) {
-        hostRef.current?.close(cloudWorkspaceRoot(entry.workspaceId));
-        await serialized(() => workingCopyOf(entry.workspaceId).remove());
-        forgetWorkingCopy(entry.workspaceId);
+        hostRef.current?.close(cloudWorkspaceRoot(entry.projectId));
+        await serialized(() => workingCopyOf(entry.projectId).remove());
+        forgetWorkingCopy(entry.projectId);
       }
     },
     [serialized],
@@ -251,8 +263,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const dirty: string[] = [];
       for (const entry of entries) {
-        const changes = await serialized(() => workingCopyOf(entry.workspaceId).changes());
-        if (changes.length > 0) dirty.push(entry.workspaceName);
+        const changes = await serialized(() => workingCopyOf(entry.projectId).changes());
+        if (changes.length > 0) dirty.push(entry.projectName);
       }
       setSignOutPrompt({ total: entries.length, dirty });
     })().catch((err: unknown) => toast.error(err instanceof Error ? err.message : String(err)));
@@ -281,41 +293,59 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     }
   }, [foreignCopies, removeCopies]);
 
+  const removeOrphanedCopies = useCallback(async () => {
+    const copies = orphanedCopies ?? [];
+    setOrphanedCopies(null);
+    try {
+      for (const copy of copies) {
+        hostRef.current?.close(cloudWorkspaceRoot(copy.id));
+        await serialized(() => workingCopyOf(copy.id).remove());
+        forgetOrphanedWorkingCopy(copy.id);
+      }
+    } catch (err) {
+      toast.error(
+        `The working copies could not be removed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, [orphanedCopies, serialized]);
+
+  const keepOrphanedCopies = useCallback(() => setOrphanedCopies(null), []);
+
   const declineForeignCopies = useCallback(() => {
     setForeignCopies(null);
     void signOutNow();
   }, [signOutNow]);
 
   // ---------------------------------------------------------------------------
-  // The open workspace
+  // The open project
   // ---------------------------------------------------------------------------
 
   const setActiveRoot = useCallback((rootDir: string | null) => {
-    const workspaceId = cloudWorkspaceIdOf(rootDir);
-    const entry = workspaceId ? findWorkingCopy(workspaceId) : null;
+    const projectId = cloudProjectIdOf(rootDir);
+    const entry = projectId ? findWorkingCopy(projectId) : null;
     setActive((current) => {
       if (!entry) return null;
-      return current?.workspaceId === entry.workspaceId ? current : activeFrom(entry);
+      return current?.projectId === entry.projectId ? current : activeFrom(entry);
     });
   }, []);
 
   const scanChanges = useCallback(
-    async (workspaceId: string) => {
-      const changes = await serialized(() => workingCopyOf(workspaceId).changes());
-      patchActive(workspaceId, { changes });
+    async (projectId: string) => {
+      const changes = await serialized(() => workingCopyOf(projectId).changes());
+      patchActive(projectId, { changes });
       return changes;
     },
     [patchActive, serialized],
   );
 
-  const activeId = active?.workspaceId ?? null;
+  const activeId = active?.projectId ?? null;
   const changesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshChanges = useCallback(() => {
-    const workspaceId = activeRef.current?.workspaceId;
-    if (!workspaceId) return;
+    const projectId = activeRef.current?.projectId;
+    if (!projectId) return;
     if (changesTimerRef.current) clearTimeout(changesTimerRef.current);
     changesTimerRef.current = setTimeout(() => {
-      scanChanges(workspaceId).catch((err: unknown) =>
+      scanChanges(projectId).catch((err: unknown) =>
         toast.error(
           `The working copy could not be read: ${err instanceof Error ? err.message : String(err)}`,
         ),
@@ -326,62 +356,62 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!activeId) return;
     refreshChanges();
-    return onWorkingCopyWrite((workspaceId) => {
-      if (workspaceId === activeId) refreshChanges();
+    return onWorkingCopyWrite((projectId) => {
+      if (projectId === activeId) refreshChanges();
     });
   }, [activeId, refreshChanges]);
 
   const repositoryOf = useCallback(
-    async (workspaceId: string) => {
-      const known = repositoryRef.current.get(workspaceId);
+    async (projectId: string) => {
+      const known = repositoryRef.current.get(projectId);
       if (known) return known;
-      const repository = await api.getRepository(workspaceId);
-      repositoryRef.current.set(workspaceId, repository);
+      const repository = await api.getRepository(projectId);
+      repositoryRef.current.set(projectId, repository);
       return repository;
     },
     [api],
   );
 
   const snapshotAt = useCallback(
-    async (workspaceId: string, commit: string | null) =>
-      commit ? readSnapshotTar(await api.downloadSnapshot(workspaceId, commit)) : [],
+    async (projectId: string, commit: string | null) =>
+      commit ? readSnapshotTar(await api.downloadSnapshot(projectId, commit)) : [],
     [api],
   );
 
-  const openWorkspace = useCallback(
-    async (workspace: CloudWorkspace): Promise<CloudActionResult> => {
+  const openProject = useCallback(
+    async (project: CloudProject): Promise<CloudActionResult> => {
       const current = sessionRef.current;
       const host = hostRef.current;
       if (current.status !== "signedIn" || !host) {
         return { ok: false, message: "Sign in to Telo Cloud first." };
       }
       try {
-        const existing = findWorkingCopy(workspace.id);
-        if (existing && (await workingCopyOf(workspace.id).exists())) {
-          // One working copy per workspace on a device: reopening reuses it.
+        const existing = findWorkingCopy(project.id);
+        if (existing && (await workingCopyOf(project.id).exists())) {
+          // One working copy per project on a device: reopening reuses it.
           putWorkingCopy({
             ...existing,
-            workspaceName: workspace.name,
-            role: workspace.effectiveRole,
+            projectName: project.name,
+            role: project.effectiveRole,
           });
         } else {
-          const repository = await repositoryOf(workspace.id);
-          const head = (await api.getHead(workspace.id, repository.defaultBranch))!.head;
-          const snapshot = await snapshotAt(workspace.id, head.commit);
+          const repository = await repositoryOf(project.id);
+          const head = (await api.getHead(project.id, repository.defaultBranch))!.head;
+          const snapshot = await snapshotAt(project.id, head.commit);
           await serialized(() =>
-            workingCopyOf(workspace.id).seed(repository.defaultBranch, head.commit, snapshot),
+            workingCopyOf(project.id).seed(repository.defaultBranch, head.commit, snapshot),
           );
           putWorkingCopy({
             userId: current.identity.user.id,
             orgId: current.identity.org.id,
-            workspaceId: workspace.id,
-            workspaceName: workspace.name,
-            role: workspace.effectiveRole,
+            projectId: project.id,
+            projectName: project.name,
+            role: project.effectiveRole,
             branch: repository.defaultBranch,
             baseCommit: head.commit,
           });
         }
-        await host.open(cloudWorkspaceRoot(workspace.id));
+        await host.open(cloudWorkspaceRoot(project.id));
         return { ok: true };
       } catch (err) {
         return { ok: false, message: repositoryRefusalMessage(err) };
@@ -395,57 +425,57 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------------------
 
   const applyUpdate = useCallback(
-    async (workspaceId: string, prepared: PreparedUpdate, theirs: ReadonlySet<string>) => {
-      await serialized(() => workingCopyOf(workspaceId).applyUpdate(prepared, theirs));
-      updateWorkingCopy(workspaceId, (entry) => ({
+    async (projectId: string, prepared: PreparedUpdate, theirs: ReadonlySet<string>) => {
+      await serialized(() => workingCopyOf(projectId).applyUpdate(prepared, theirs));
+      updateWorkingCopy(projectId, (entry) => ({
         ...entry,
         baseCommit: prepared.headCommit,
         pendingCommit: undefined,
       }));
-      patchActive(workspaceId, {
+      patchActive(projectId, {
         baseCommit: prepared.headCommit,
         behind: false,
         conflict: null,
       });
       setFilesEpoch((epoch) => epoch + 1);
       await hostRef.current?.reload();
-      await scanChanges(workspaceId);
+      await scanChanges(projectId);
     },
     [patchActive, scanChanges, serialized],
   );
 
   /** Downloads the head and merges it in, stopping at conflicts for the user. */
   const updateTo = useCallback(
-    async (workspaceId: string, headCommit: string | null): Promise<"updated" | "conflicts"> => {
-      const snapshot = await snapshotAt(workspaceId, headCommit);
+    async (projectId: string, headCommit: string | null): Promise<"updated" | "conflicts"> => {
+      const snapshot = await snapshotAt(projectId, headCommit);
       const prepared = await serialized(() =>
-        workingCopyOf(workspaceId).prepareUpdate(headCommit, snapshot),
+        workingCopyOf(projectId).prepareUpdate(headCommit, snapshot),
       );
       if (prepared.plan.conflicts.length > 0) {
-        patchActive(workspaceId, { conflict: prepared, behind: true });
+        patchActive(projectId, { conflict: prepared, behind: true });
         return "conflicts";
       }
-      await applyUpdate(workspaceId, prepared, new Set());
+      await applyUpdate(projectId, prepared, new Set());
       return "updated";
     },
     [applyUpdate, patchActive, serialized, snapshotAt],
   );
 
-  /** Runs one operation on the open workspace, marking it busy meanwhile. */
+  /** Runs one operation on the open project, marking it busy meanwhile. */
   const operate = useCallback(
     async (
       operation: CloudOperation,
-      work: (current: ActiveCloudWorkspace) => Promise<CloudActionResult>,
+      work: (current: ActiveCloudProject) => Promise<CloudActionResult>,
     ): Promise<CloudActionResult> => {
       const current = activeRef.current;
-      if (!current) return { ok: false, message: "No Telo Cloud workspace is open." };
+      if (!current) return { ok: false, message: "No Telo Cloud project is open." };
       if (current.operation || current.conflict) {
-        return { ok: false, message: "Another operation on this workspace is in progress." };
+        return { ok: false, message: "Another operation on this project is in progress." };
       }
       if (sessionRef.current.status !== "signedIn") {
         return { ok: false, message: "Sign in to Telo Cloud first." };
       }
-      patchActive(current.workspaceId, { operation });
+      patchActive(current.projectId, { operation });
       try {
         return await work(current);
       } catch (err) {
@@ -454,7 +484,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
           message: err instanceof CommitLimitError ? err.message : repositoryRefusalMessage(err),
         };
       } finally {
-        patchActive(current.workspaceId, { operation: null });
+        patchActive(current.projectId, { operation: null });
       }
     },
     [patchActive],
@@ -469,12 +499,12 @@ export function CloudProvider({ children }: { children: ReactNode }) {
             message: "Wait for the running agent turn or run sync to finish, then update.",
           };
         }
-        const head = (await api.getHead(current.workspaceId, current.branch))!.head;
+        const head = (await api.getHead(current.projectId, current.branch))!.head;
         if (head.commit === current.baseCommit) {
-          patchActive(current.workspaceId, { behind: false });
+          patchActive(current.projectId, { behind: false });
           return { ok: true };
         }
-        await updateTo(current.workspaceId, head.commit);
+        await updateTo(current.projectId, head.commit);
         return { ok: true };
       }),
     [api, operate, patchActive, updateTo],
@@ -484,14 +514,14 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     async (theirs: ReadonlySet<string>): Promise<CloudActionResult> => {
       const current = activeRef.current;
       if (!current?.conflict) return { ok: false, message: "There is no conflict to settle." };
-      patchActive(current.workspaceId, { operation: "updating" });
+      patchActive(current.projectId, { operation: "updating" });
       try {
-        await applyUpdate(current.workspaceId, current.conflict, theirs);
+        await applyUpdate(current.projectId, current.conflict, theirs);
         return { ok: true };
       } catch (err) {
         return { ok: false, message: repositoryRefusalMessage(err) };
       } finally {
-        patchActive(current.workspaceId, { operation: null });
+        patchActive(current.projectId, { operation: null });
       }
     },
     [applyUpdate, patchActive],
@@ -499,7 +529,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
 
   const cancelConflicts = useCallback(() => {
     const current = activeRef.current;
-    if (current) patchActive(current.workspaceId, { conflict: null });
+    if (current) patchActive(current.projectId, { conflict: null });
   }, [patchActive]);
 
   // The branch head: read when the window gains focus and every 30 seconds.
@@ -555,22 +585,22 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   }, [activeBranch, activeId, api, patchActive, scanChanges, signedIn, updateTo]);
 
   // The caller's role can change while a working copy sits on the device, and
-  // it decides whether the workspace may be edited: read it again per session.
+  // it decides whether the project may be edited: read it again per session.
   useEffect(() => {
     if (!activeId || !signedIn) return;
     let stopped = false;
-    api.listWorkspaces().then(
-      (workspaces) => {
-        const workspace = workspaces.find((w) => w.id === activeId);
-        if (stopped || !workspace) return;
+    api.listProjects().then(
+      (projects) => {
+        const project = projects.find((w) => w.id === activeId);
+        if (stopped || !project) return;
         updateWorkingCopy(activeId, (entry) => ({
           ...entry,
-          workspaceName: workspace.name,
-          role: workspace.effectiveRole,
+          projectName: project.name,
+          role: project.effectiveRole,
         }));
-        patchActive(activeId, { name: workspace.name, role: workspace.effectiveRole });
+        patchActive(activeId, { name: project.name, role: project.effectiveRole });
       },
-      (err: unknown) => console.warn("Telo Cloud workspaces could not be listed:", err),
+      (err: unknown) => console.warn("Telo Cloud projects could not be listed:", err),
     );
     return () => {
       stopped = true;
@@ -582,16 +612,16 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   // ---------------------------------------------------------------------------
 
   const commitOn = useCallback(
-    async (current: ActiveCloudWorkspace, branch: string, message: string): Promise<CloudActionResult> => {
-      const { workspaceId } = current;
-      const copy = workingCopyOf(workspaceId);
+    async (current: ActiveCloudProject, branch: string, message: string): Promise<CloudActionResult> => {
+      const { projectId } = current;
+      const copy = workingCopyOf(projectId);
       const baseCommit = await copy.baseCommit();
 
       // Before every commit: a branch that moved is merged first, so the
       // commit is of a tree the user has seen.
-      const head = (await api.getHead(workspaceId, branch))!.head;
+      const head = (await api.getHead(projectId, branch))!.head;
       if (head.commit !== baseCommit && head.commit !== null) {
-        const outcome = await updateTo(workspaceId, head.commit);
+        const outcome = await updateTo(projectId, head.commit);
         return {
           ok: false,
           message:
@@ -601,7 +631,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         };
       }
 
-      const repository = await repositoryOf(workspaceId);
+      const repository = await repositoryOf(projectId);
       const prepared = await serialized(() => copy.prepareCommit(repository.limits));
       if (prepared.changes.length === 0) {
         return { ok: false, message: "There is nothing to commit." };
@@ -610,37 +640,37 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       // A retry of the same commit — after a reload too — reuses its key, so
       // however many attempts reach Cloud, one commit comes of them.
       const fingerprint = await sha256Text(JSON.stringify(request));
-      const pending = findWorkingCopy(workspaceId)?.pendingCommit;
+      const pending = findWorkingCopy(projectId)?.pendingCommit;
       const key = pending?.fingerprint === fingerprint ? pending.key : crypto.randomUUID();
-      updateWorkingCopy(workspaceId, (entry) => ({ ...entry, pendingCommit: { key, fingerprint } }));
+      updateWorkingCopy(projectId, (entry) => ({ ...entry, pendingCommit: { key, fingerprint } }));
 
       try {
-        const result = await api.commit(workspaceId, request, key);
+        const result = await api.commit(projectId, request, key);
         await serialized(() => copy.recordCommit(result.commit, prepared));
-        updateWorkingCopy(workspaceId, (entry) => ({
+        updateWorkingCopy(projectId, (entry) => ({
           ...entry,
           branch,
           baseCommit: result.commit,
           pendingCommit: undefined,
         }));
-        patchActive(workspaceId, {
+        patchActive(projectId, {
           branch,
           baseCommit: result.commit,
           behind: false,
           pushRejected: false,
         });
-        await scanChanges(workspaceId);
+        await scanChanges(projectId);
         return { ok: true };
       } catch (err) {
         if (!(err instanceof CloudApiError)) throw err;
         // A refusal is an answer: the same key must not be sent again for it.
         if (err.status < 500) {
-          updateWorkingCopy(workspaceId, (entry) => ({ ...entry, pendingCommit: undefined }));
+          updateWorkingCopy(projectId, (entry) => ({ ...entry, pendingCommit: undefined }));
         }
         if (err.code === "branch_moved") {
           const headCommit =
             typeof err.problem.headCommit === "string" ? err.problem.headCommit : null;
-          const outcome = await updateTo(workspaceId, headCommit);
+          const outcome = await updateTo(projectId, headCommit);
           return {
             ok: false,
             message:
@@ -650,7 +680,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
           };
         }
         if (err.code === "push_rejected") {
-          patchActive(workspaceId, { pushRejected: true });
+          patchActive(projectId, { pushRejected: true });
           return {
             ok: false,
             message: `The git host refused the push to ${branch} — the branch is protected. Commit to a new branch instead.`,
@@ -674,10 +704,10 @@ export function CloudProvider({ children }: { children: ReactNode }) {
         if (current.baseCommit === null) {
           return { ok: false, message: "There is no commit to create the branch from." };
         }
-        await api.createBranch(current.workspaceId, name, current.baseCommit);
-        await serialized(() => workingCopyOf(current.workspaceId).setBranch(name));
-        updateWorkingCopy(current.workspaceId, (entry) => ({ ...entry, branch: name }));
-        patchActive(current.workspaceId, { branch: name, pushRejected: false });
+        await api.createBranch(current.projectId, name, current.baseCommit);
+        await serialized(() => workingCopyOf(current.projectId).setBranch(name));
+        updateWorkingCopy(current.projectId, (entry) => ({ ...entry, branch: name }));
+        patchActive(current.projectId, { branch: name, pushRejected: false });
         return commitOn(current, name, message);
       }),
     [api, commitOn, operate, patchActive, serialized],
@@ -685,16 +715,16 @@ export function CloudProvider({ children }: { children: ReactNode }) {
 
   const dismissPushRejected = useCallback(() => {
     const current = activeRef.current;
-    if (current) patchActive(current.workspaceId, { pushRejected: false });
+    if (current) patchActive(current.projectId, { pushRejected: false });
   }, [patchActive]);
 
   const discard = useCallback(
     () =>
       operate("discarding", async (current) => {
-        await serialized(() => workingCopyOf(current.workspaceId).discard());
+        await serialized(() => workingCopyOf(current.projectId).discard());
         setFilesEpoch((epoch) => epoch + 1);
         await hostRef.current?.reload();
-        await scanChanges(current.workspaceId);
+        await scanChanges(current.projectId);
         return { ok: true };
       }),
     [operate, scanChanges, serialized],
@@ -703,28 +733,28 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   const switchBranch = useCallback(
     (branch: string) =>
       operate("switching", async (current) => {
-        const changes = await scanChanges(current.workspaceId);
+        const changes = await scanChanges(current.projectId);
         if (changes.length > 0) {
           return {
             ok: false,
             message: "Commit or discard your changes before switching branches.",
           };
         }
-        const head = (await api.getHead(current.workspaceId, branch))!.head;
-        const snapshot = await snapshotAt(current.workspaceId, head.commit);
+        const head = (await api.getHead(current.projectId, branch))!.head;
+        const snapshot = await snapshotAt(current.projectId, head.commit);
         await serialized(() =>
-          workingCopyOf(current.workspaceId).seed(branch, head.commit, snapshot),
+          workingCopyOf(current.projectId).seed(branch, head.commit, snapshot),
         );
-        updateWorkingCopy(current.workspaceId, (entry) => ({
+        updateWorkingCopy(current.projectId, (entry) => ({
           ...entry,
           branch,
           baseCommit: head.commit,
           pendingCommit: undefined,
         }));
-        patchActive(current.workspaceId, { branch, baseCommit: head.commit, behind: false });
+        patchActive(current.projectId, { branch, baseCommit: head.commit, behind: false });
         setFilesEpoch((epoch) => epoch + 1);
         await hostRef.current?.reload();
-        await scanChanges(current.workspaceId);
+        await scanChanges(current.projectId);
         return { ok: true };
       }),
     [api, operate, patchActive, scanChanges, serialized, snapshotAt],
@@ -742,14 +772,14 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       }
       try {
         let publication = await api.createPublication(
-          current.workspaceId,
+          current.projectId,
           { modulePath, commit: current.baseCommit },
           crypto.randomUUID(),
         );
         onProgress(publication);
         while (publication.status === "queued" || publication.status === "running") {
           await new Promise((resolve) => setTimeout(resolve, PUBLICATION_POLL_MS));
-          publication = await api.getPublication(current.workspaceId, publication.id);
+          publication = await api.getPublication(current.projectId, publication.id);
           onProgress(publication);
         }
         return { ok: true, publication };
@@ -785,9 +815,12 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     foreignCopies,
     removeForeignCopies,
     declineForeignCopies,
+    orphanedCopies,
+    removeOrphanedCopies,
+    keepOrphanedCopies,
     registerHost,
     setActiveRoot,
-    openWorkspace,
+    openProject,
     active,
     editingLock,
     filesEpoch,

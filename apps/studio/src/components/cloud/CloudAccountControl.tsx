@@ -93,7 +93,7 @@ export function CloudAccountControl() {
               Signing out removes the {cloud.signOutPrompt?.total ?? 0} Telo Cloud working{" "}
               {cloud.signOutPrompt?.total === 1 ? "copy" : "copies"} from this device.
               {cloud.signOutPrompt && cloud.signOutPrompt.dirty.length > 0
-                ? " These workspaces have changes that were never committed and will be lost:"
+                ? " These projects have changes that were never committed and will be lost:"
                 : " Everything in them is committed."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -131,8 +131,8 @@ export function CloudAccountControl() {
           </AlertDialogHeader>
           <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm">
             {(cloud.foreignCopies ?? []).map((entry) => (
-              <li key={entry.workspaceId} className="truncate">
-                {entry.workspaceName}
+              <li key={entry.projectId} className="truncate">
+                {entry.projectName}
               </li>
             ))}
           </ul>
@@ -140,6 +140,35 @@ export function CloudAccountControl() {
             <AlertDialogCancel onClick={cloud.declineForeignCopies}>Sign out</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={() => void cloud.removeForeignCopies()}>
               Remove and continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cloud.orphanedCopies !== null}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Working copies without a project</AlertDialogTitle>
+            <AlertDialogDescription>
+              This device holds Telo Cloud working copies that no longer match a project in Telo
+              Cloud, so they cannot be updated, committed or published. Removing them also removes
+              any changes that were never committed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-sm">
+            {(cloud.orphanedCopies ?? []).map((copy) => (
+              <li key={copy.id} className="truncate">
+                {copy.name}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cloud.keepOrphanedCopies}>Not now</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void cloud.removeOrphanedCopies()}
+            >
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

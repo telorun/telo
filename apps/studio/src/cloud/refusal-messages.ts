@@ -12,7 +12,7 @@ export function repositoryRefusalMessage(err: unknown): string {
     case "session_required":
       return "You are signed out. Sign in to Telo Cloud and try again — your changes are kept.";
     case "repository_credentials_invalid":
-      return "Telo Cloud can no longer access this workspace's repository. A workspace admin must reconnect it in the Telo Cloud console.";
+      return "Telo Cloud can no longer access this project's repository. A project admin must reconnect it in the Telo Cloud console.";
     case "commit_too_large":
       return "This commit is too large. Commit fewer files at a time.";
     case "invalid_change": {
@@ -24,9 +24,9 @@ export function repositoryRefusalMessage(err: unknown): string {
     case "repository_too_large":
       return "The repository would exceed its size limit with this commit.";
     case "repository_quota_exceeded":
-      return "This workspace's repository quota is used up.";
+      return "This project's repository quota is used up.";
     case "repository_unreachable":
-      return "The workspace's git host could not be reached. Try again in a moment.";
+      return "The project's git host could not be reached. Try again in a moment.";
     case "overloaded":
       return "Telo Cloud is busy. Try again in a moment.";
     case "branch_exists":
@@ -34,7 +34,7 @@ export function repositoryRefusalMessage(err: unknown): string {
     case "commit_not_found":
       return "That commit is no longer in the repository.";
     case "insufficient_permission":
-      return "Your role in this workspace does not allow that.";
+      return "Your role in this project does not allow that.";
     default:
       return err.message;
   }
@@ -53,7 +53,7 @@ export function publicationFailureMessage(error: NonNullable<Publication["error"
     case "version_content_mismatch":
       return `Version ${named("version") ?? "of this module"} is already published with different content. Change metadata.version and commit before publishing again.`;
     case "sibling_not_published":
-      return "This module imports modules of this workspace that are not published yet. Publish those first.";
+      return "This module imports modules of this project that are not published yet. Publish those first.";
     case "import_unpinned":
       return `The import ${importOf()} carries no integrity pin. Pin it, commit, and publish again.`;
     case "import_pin_mismatch":
@@ -73,9 +73,9 @@ export function publicationFailureMessage(error: NonNullable<Publication["error"
     case "artifact_too_large":
       return "The published module would exceed the size limit.";
     case "repository_unreachable":
-      return "The workspace's git host could not be reached.";
+      return "The project's git host could not be reached.";
     case "repository_credentials_invalid":
-      return "Telo Cloud can no longer access this workspace's repository. A workspace admin must reconnect it in the Telo Cloud console.";
+      return "Telo Cloud can no longer access this project's repository. A project admin must reconnect it in the Telo Cloud console.";
     case "registry_unavailable":
       return "The Telo Cloud registry is unavailable. Try again later.";
     case "publish_timeout":

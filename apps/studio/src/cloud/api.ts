@@ -1,12 +1,12 @@
 import { CloudUnreachableError, type CloudRequest, type CloudTransport } from "./transport";
 
-export type WorkspaceRole = "admin" | "deployer" | "viewer";
+export type ProjectRole = "admin" | "deployer" | "viewer";
 
-export interface CloudWorkspace {
+export interface CloudProject {
   id: string;
   name: string;
   slug: string;
-  effectiveRole: WorkspaceRole;
+  effectiveRole: ProjectRole;
 }
 
 export interface RepositoryLimits {
@@ -142,23 +142,23 @@ export class CloudApi {
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   }
 
-  listWorkspaces(): Promise<CloudWorkspace[]> {
-    return this.listAll<CloudWorkspace>("/v1/workspaces");
+  listProjects(): Promise<CloudProject[]> {
+    return this.listAll<CloudProject>("/v1/projects");
   }
 
-  getRepository(workspaceId: string): Promise<CloudRepository> {
-    return this.json({ method: "GET", path: `${repo(workspaceId)}` });
+  getRepository(projectId: string): Promise<CloudRepository> {
+    return this.json({ method: "GET", path: `${repo(projectId)}` });
   }
 
   /** The branch head, or `null` when it has not moved since `etag`. */
   async getHead(
-    workspaceId: string,
+    projectId: string,
     branch: string,
     etag?: string,
   ): Promise<{ head: BranchHead; etag: string | null } | null> {
     const response = await this.send({
       method: "GET",
-      path: `${repo(workspaceId)}/head?branch=${encodeURIComponent(branch)}`,
+      path: `${repo(projectId)}/head?branch=${encodeURIComponent(branch)}`,
       headers: etag ? { "if-none-match": etag } : undefined,
     });
     if (response.status === 304) return null;
@@ -166,37 +166,37 @@ export class CloudApi {
   }
 
   /** The whole tree at a commit, as the bytes of a tar. */
-  async downloadSnapshot(workspaceId: string, commit: string): Promise<Uint8Array> {
+  async downloadSnapshot(projectId: string, commit: string): Promise<Uint8Array> {
     const response = await this.send({
       method: "GET",
-      path: `${repo(workspaceId)}/snapshot?commit=${encodeURIComponent(commit)}`,
+      path: `${repo(projectId)}/snapshot?commit=${encodeURIComponent(commit)}`,
       headers: { accept: "application/x-tar, application/problem+json" },
     });
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async listBranches(workspaceId: string): Promise<string[]> {
-    const branches = await this.listAll<{ name: string }>(`${repo(workspaceId)}/branches`);
+  async listBranches(projectId: string): Promise<string[]> {
+    const branches = await this.listAll<{ name: string }>(`${repo(projectId)}/branches`);
     return branches.map((b) => b.name);
   }
 
-  async createBranch(workspaceId: string, name: string, fromCommit: string): Promise<void> {
+  async createBranch(projectId: string, name: string, fromCommit: string): Promise<void> {
     await this.send({
       method: "POST",
-      path: `${repo(workspaceId)}/branches`,
+      path: `${repo(projectId)}/branches`,
       body: JSON.stringify({ name, fromCommit }),
     });
   }
 
   commit(
-    workspaceId: string,
+    projectId: string,
     request: CommitRequest,
     idempotencyKey: string,
   ): Promise<CommitResult> {
     return this.retrying(() =>
       this.json<CommitResult>({
         method: "POST",
-        path: `${repo(workspaceId)}/commits`,
+        path: `${repo(projectId)}/commits`,
         headers: { "idempotency-key": idempotencyKey },
         body: JSON.stringify(request),
       }),
@@ -204,43 +204,43 @@ export class CloudApi {
   }
 
   createPublication(
-    workspaceId: string,
+    projectId: string,
     request: { modulePath: string; commit: string },
     idempotencyKey: string,
   ): Promise<Publication> {
     return this.retrying(() =>
       this.json<Publication>({
         method: "POST",
-        path: `/v1/workspaces/${workspaceId}/publications`,
+        path: `/v1/projects/${projectId}/publications`,
         headers: { "idempotency-key": idempotencyKey },
         body: JSON.stringify(request),
       }),
     );
   }
 
-  getPublication(workspaceId: string, publicationId: string): Promise<Publication> {
+  getPublication(projectId: string, publicationId: string): Promise<Publication> {
     return this.json({
       method: "GET",
-      path: `/v1/workspaces/${workspaceId}/publications/${publicationId}`,
+      path: `/v1/projects/${projectId}/publications/${publicationId}`,
     });
   }
 
-  listModules(workspaceId: string): Promise<PublishedModule[]> {
-    return this.listAll(`/v1/workspaces/${workspaceId}/modules`);
+  listModules(projectId: string): Promise<PublishedModule[]> {
+    return this.listAll(`/v1/projects/${projectId}/modules`);
   }
 
-  listModuleVersions(workspaceId: string, moduleId: string): Promise<PublishedModuleVersion[]> {
-    return this.listAll(`/v1/workspaces/${workspaceId}/modules/${moduleId}/versions`);
+  listModuleVersions(projectId: string, moduleId: string): Promise<PublishedModuleVersion[]> {
+    return this.listAll(`/v1/projects/${projectId}/modules/${moduleId}/versions`);
   }
 
   setModuleVisibility(
-    workspaceId: string,
+    projectId: string,
     module: Pick<PublishedModule, "id" | "version">,
     visibility: "private" | "public",
   ): Promise<PublishedModule> {
     return this.json({
       method: "PATCH",
-      path: `/v1/workspaces/${workspaceId}/modules/${module.id}`,
+      path: `/v1/projects/${projectId}/modules/${module.id}`,
       headers: { "if-match": `"${module.version}"` },
       body: JSON.stringify({ visibility }),
     });
@@ -299,6 +299,6 @@ export class CloudApi {
   }
 }
 
-function repo(workspaceId: string): string {
-  return `/v1/workspaces/${workspaceId}/repository`;
+function repo(projectId: string): string {
+  return `/v1/projects/${projectId}/repository`;
 }

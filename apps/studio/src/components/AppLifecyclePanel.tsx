@@ -1,7 +1,7 @@
 import { Cloud } from "lucide-react";
 import { useState } from "react";
 import { useCloud } from "../cloud/context";
-import { OpenCloudWorkspaceDialog } from "./cloud/OpenCloudWorkspaceDialog";
+import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { Button } from "./ui/button";
 
 interface AppLifecyclePanelProps {
@@ -69,7 +69,7 @@ export function AppLifecyclePanel({
           </button>
         )}
       </div>
-      <OpenCloudWorkspaceDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
+      <OpenCloudProjectDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
     </div>
   );
 }

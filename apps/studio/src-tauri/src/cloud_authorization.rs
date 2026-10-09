@@ -16,7 +16,7 @@ use url::Url;
 use crate::cloud_error::CloudError;
 
 pub const CLIENT_ID: &str = "telo-studio-desktop";
-const SCOPE: &str = "openid profile email offline_access cloud:access cloud:workspaces.admin";
+const SCOPE: &str = "openid profile email offline_access cloud:access cloud:projects.admin";
 const CALLBACK_PATH: &str = "/callback";
 const AUTHORIZATION_WINDOW: Duration = Duration::from_secs(5 * 60);
 const REQUEST_HEAD_LIMIT: usize = 16 * 1024;

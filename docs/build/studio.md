@@ -29,31 +29,31 @@ A workspace is any directory containing one or more `Telo.Application` or `Telo.
 
 Module documentation (schema descriptions) is rendered inline next to each field, so authors don't need to context-switch to a docs site to know what a property does.
 
-## Telo Cloud workspaces
+## Telo Cloud projects
 
 Signing in is optional: everything above works without an account. Where Studio
 is served by Telo Cloud, and in the desktop build, **Sign in** adds **Open from
-Telo Cloud**, which lists your Cloud workspaces.
+Telo Cloud**, which lists your Cloud projects.
 
 Opening one copies its git repository to your device as a working copy, on the
-workspace's default branch. You edit, run and use the agent exactly as in any
+project's default branch. You edit, run and use the agent exactly as in any
 other workspace, and nothing reaches Cloud until you commit. The strip above the
-tabs shows the workspace, its branch and how many files have changed.
+tabs shows the project, its branch and how many files have changed.
 
 | Action | What it does |
 | --- | --- |
 | **Commit** | Lists the changed files, asks for a message, and commits them to the branch as you. |
 | **Update** | Offered when the branch has new commits and you have local changes. Files only the branch changed are taken; a file both sides changed is yours to settle with **Keep mine** or **Take theirs**. Nothing is committed by an update. A working copy with no local changes follows the branch by itself. |
-| **Publish** | Publishes the open Application or Library at the last commit to your workspace's private registry and shows its ref, version, digest and integrity pin. Enabled once the module's directory has nothing uncommitted. It creates no app and starts no deployment — do that in the Telo Cloud console with the ref. |
-| **Published modules** | What the workspace has published, with each module's versions. A workspace admin can make a module public or private. |
+| **Publish** | Publishes the open Application or Library at the last commit to your project's private registry and shows its ref, version, digest and integrity pin. Enabled once the module's directory has nothing uncommitted. It creates no app and starts no deployment — do that in the Telo Cloud console with the ref. |
+| **Published modules** | What the project has published, with each module's versions. A project admin can make a module public or private. |
 
-A workspace you can only view opens read-only: you can run it, not edit, commit
+A project you can only view opens read-only: you can run it, not edit, commit
 or publish. If the git host protects the branch, Studio offers to commit to a
-new branch instead. Workspaces, members and repository connections are managed
+new branch instead. Projects, members and repository connections are managed
 in the Telo Cloud console.
 
 Signing out removes the working copies from the device, after listing the
-workspaces whose changes were never committed.
+projects whose changes were never committed.
 
 ## Hosting the web build
 

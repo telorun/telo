@@ -9,13 +9,13 @@ import { TREE_DIR } from "./working-copy";
 /** Every Cloud working copy is rooted here in the editor, on both builds. */
 export const CLOUD_ROOT_PREFIX = "/cloud/";
 
-export function cloudWorkspaceRoot(workspaceId: string): string {
-  return CLOUD_ROOT_PREFIX + workspaceId;
+export function cloudWorkspaceRoot(projectId: string): string {
+  return CLOUD_ROOT_PREFIX + projectId;
 }
 
-/** The workspace id a root names, or null for a root that is not a Cloud
+/** The project id a root names, or null for a root that is not a Cloud
  *  working copy. */
-export function cloudWorkspaceIdOf(rootDir: string | null | undefined): string | null {
+export function cloudProjectIdOf(rootDir: string | null | undefined): string | null {
   if (!rootDir?.startsWith(CLOUD_ROOT_PREFIX)) return null;
   const id = rootDir.slice(CLOUD_ROOT_PREFIX.length).replace(/\/+$/, "");
   return id && !id.includes("/") ? id : null;
@@ -30,12 +30,12 @@ export class WorkingCopyAdapter implements ManifestSource, WorkspaceAdapter {
   private readonly rootDir: string;
 
   constructor(
-    workspaceId: string,
+    projectId: string,
     private readonly store: ByteStore,
     /** Called after every write, so what changed can be shown without polling. */
     private readonly onChange: () => void,
   ) {
-    this.rootDir = cloudWorkspaceRoot(workspaceId);
+    this.rootDir = cloudWorkspaceRoot(projectId);
   }
 
   supports(url: string): boolean {
@@ -52,7 +52,7 @@ export class WorkingCopyAdapter implements ManifestSource, WorkspaceAdapter {
 
   private required(path: string): string {
     const target = this.treePath(path);
-    if (target === null) throw new Error(`${path} is outside this Telo Cloud workspace.`);
+    if (target === null) throw new Error(`${path} is outside this working copy.`);
     return target;
   }
 

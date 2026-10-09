@@ -1,4 +1,4 @@
-# Cloud Workspaces
+# Cloud Projects
 
 ## Problem
 
@@ -8,20 +8,20 @@ or by a colleague, and the only way to get an application deployed by Telo Cloud
 is to leave Studio, run `telo publish` against a public registry and paste the
 ref into the Cloud console.
 
-Telo Cloud already has workspaces (members, roles, apps, deployments) but they
-hold no files. This plan lets a signed-in user open a Telo Cloud workspace in
+Telo Cloud already has projects (members, roles, apps, deployments) but they
+hold no files. This plan lets a signed-in user open a Telo Cloud project in
 Studio, edit it, commit to its git repository and publish a module so Cloud can
 deploy it. Signing in is optional: everything Studio does today keeps working
 anonymously.
 
-Out of scope: usage limits, creating workspaces or connecting repositories
+Out of scope: usage limits, creating projects or connecting repositories
 (done in the Cloud console), opening pull requests, deploying from Studio.
 
 ## Solution
 
 Studio talks to one service, the Telo Cloud API, and never to a git host, an OCI
 registry or the identity provider's token endpoint from JavaScript. A Cloud
-workspace is edited in a local working copy; committing sends the difference to
+project is edited in a local working copy; committing sends the difference to
 Cloud together with the commit it was based on.
 
 ### The rule both builds obey
@@ -61,7 +61,7 @@ implementations chosen by build target; no other code knows which is active.
   `VITE_TELO_ACCOUNTS_URL`, default `https://accounts.telo.run`) as public
   client `telo-studio-desktop` with PKCE S256, `state`, `resource` = the API
   base, redirect `http://127.0.0.1:<port>/callback` and scopes `openid profile
-  email offline_access cloud:access cloud:workspaces.admin`. It accepts one
+  email offline_access cloud:access cloud:projects.admin`. It accepts one
   callback with the matching `state` within 5 minutes, closes the listener and
   redeems the code itself. The user sees the identity provider's consent page on
   every authorization.
@@ -79,11 +79,11 @@ implementations chosen by build target; no other code knows which is active.
   with `POST /oauth2/revoke`. "Sign out" revokes the grant and deletes the stored
   token; the system browser's own session is left alone.
 
-### Opening a workspace
+### Opening a project
 
-- A signed-in user sees "Open from Telo Cloud": the workspaces of
-  `GET /api/v1/workspaces`, each `{id, name, slug, effectiveRole}`.
-- Opening one reads `GET /api/v1/workspaces/{ws}/repository` (`{id, kind,
+- A signed-in user sees "Open from Telo Cloud": the projects of
+  `GET /api/v1/projects`, each `{id, name, slug, effectiveRole}`.
+- Opening one reads `GET /api/v1/projects/{project}/repository` (`{id, kind,
   defaultBranch, status, limits: {maxFileBytes, maxSnapshotFiles,
   maxSnapshotBytes, maxCommitChanges, maxCommitBytes}}`), resolves the default
   branch with `GET …/repository/head?branch=` (`{branch, commit, checkedAt}`),
@@ -92,7 +92,7 @@ implementations chosen by build target; no other code knows which is active.
 - The snapshot seeds a **working copy**: the working tree plus an untouched copy
   of the base snapshot and its commit. On the web it lives in the browser's
   Origin Private File System, on the desktop in a folder under the app's data
-  directory (`cloud/<workspace id>`). It holds bytes, so binary files survive
+  directory (`cloud/<project id>`). It holds bytes, so binary files survive
   untouched; Studio edits text files only and shows the rest as it shows binary
   files today.
 - Neither store can hold an executable bit or a symbolic link on every platform,
@@ -104,18 +104,18 @@ implementations chosen by build target; no other code knows which is active.
 - What changed is decided on bytes, below the storage interface the rest of
   Studio uses, which reads every file as text.
 - The working copy is exposed to the rest of Studio as one more workspace
-  storage backend with root `/cloud/<workspace id>` on both builds: one backend
+  storage backend with root `/cloud/<project id>` on both builds: one backend
   over a byte store with two implementations, so no path of the device's file
   system reaches the editor. The explorer, autosave, undo history, runs and the
   authoring agent work on it unchanged: they read and write the working copy,
   and nothing they do reaches Cloud.
-- There is one working copy per workspace on a device, bound to one branch.
-  Reopening the workspace reuses it. `GET …/repository/branches` lists branches;
+- There is one working copy per project on a device, bound to one branch.
+  Reopening the project reuses it. `GET …/repository/branches` lists branches;
   switching requires committing or discarding local changes first.
-- With `effectiveRole` `viewer` the workspace is read-only: editing, the agent
+- With `effectiveRole` `viewer` the project is read-only: editing, the agent
   and commit are disabled, running still works.
 - The index of working copies is `localStorage` key
-  `telo-studio:cloud:working-copies:v1` (user id, org id, workspace id, branch,
+  `telo-studio:cloud:working-copies:v1` (user id, org id, project id, branch,
   base commit; nothing secret).
 
 ### Committing
@@ -146,23 +146,23 @@ implementations chosen by build target; no other code knows which is active.
 - Other refusals, each with its own message: `409 push_rejected` (the host
   protects the branch; Studio offers to create a branch from the base commit
   with `POST …/repository/branches` `{name, fromCommit}` and commit there),
-  `409 repository_credentials_invalid` (a workspace admin must reconnect the
+  `409 repository_credentials_invalid` (a project admin must reconnect the
   repository in the console), `413 commit_too_large`, `422 invalid_change`
   (`{path}`), `422 repository_too_large`, `422 repository_quota_exceeded`.
   Studio checks `limits` before sending and names the offending file.
 
 ### Publishing
 
-- Each Application and Library in a Cloud workspace has "Publish", for
+- Each Application and Library in a Cloud project has "Publish", for
   `deployer` and `admin`, enabled when the module's directory has no uncommitted
   changes.
-- It sends `POST /api/v1/workspaces/{ws}/publications` with an `Idempotency-Key`
+- It sends `POST /api/v1/projects/{project}/publications` with an `Idempotency-Key`
   and `{modulePath, commit}`: the directory of the module's `telo.yaml` relative
   to the repository root, and the working copy's base commit. Studio then reads
   `GET …/publications/{pub}` every 2 seconds until `status` is `published` or
   `failed`.
 - On `published` Studio shows `ref`
-  (`registry.telo.cloud/org_…/wks_…/<module path>`), `version`, `digest` and
+  (`registry.telo.cloud/org_…/prj_…/<module path>`), `version`, `digest` and
   `integrity`, each copyable, and says so when `identical` is true (this content
   was already published). Publishing creates no Cloud app and starts no
   deployment.
@@ -183,7 +183,7 @@ implementations chosen by build target; no other code knows which is active.
 ### Leaving
 
 Sign-out removes the Cloud working copies from the device, after a confirmation
-that lists the workspaces with uncommitted changes. When a session turns out to
+that lists the projects with uncommitted changes. When a session turns out to
 belong to a different user than the stored working copies, Studio asks before it
 removes them and otherwise signs out again.
 
@@ -216,7 +216,7 @@ removes them and otherwise signs out again.
 ## Outside Studio
 
 - **Telo Cloud** provides every route, client and error code named above, the
-  hosted git repository per workspace (or a connected GitHub, GitLab or other
+  hosted git repository per project (or a connected GitHub, GitLab or other
   HTTPS git server), the registry at `registry.telo.cloud` and the publisher.
   Limits it enforces: 5 MiB per file, 10,000 files and 100 MiB per snapshot,
   500 changes and 20 MiB per commit.
@@ -228,7 +228,7 @@ removes them and otherwise signs out again.
 - **CLI.** `telo publish` gains structured JSON output: a stable failure code per
   module and, on success, the pushed version, digest and integrity. Cloud's
   publisher runs it without building controllers; that path must execute no code
-  from the published workspace.
+  from the published project.
 
 ## Verify
 
@@ -236,7 +236,7 @@ removes them and otherwise signs out again.
   `/api`.
 - Devtools on either build show no access or refresh token in memory, storage or
   shell messages.
-- A workspace opened on two devices: a commit on one appears on the other within
+- A project opened on two devices: a commit on one appears on the other within
   30 seconds when it is clean, and as a conflict choice when both changed the
   same file.
 - A binary file and an executable script survive open, an unrelated commit and
