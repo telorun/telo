@@ -22,3 +22,9 @@ inputType:
 steps:
   - name: firstUsage
     value: !cel "inputs.records[0].usge"
+  - name: firstArgumentDelta
+    value: !cel "inputs.records[0].toolCallid"
+  - name: firstDecision
+    value: !cel "inputs.records[0].approvalDecison"
+  - name: firstDenial
+    value: !cel "inputs.records[0].toolResult.denyed"

@@ -1,0 +1,232 @@
+# A tool call that needs a decision is not run. The run ends asking — the gated
+# call named after its siblings have reported — and continues, on another
+# resource instance, from the recorded messages and the caller's decision.
+kind: Telo.Application
+metadata:
+  name: AgentToolApprovalTest
+  version: 1.0.0
+  description: |
+    A call gated by its tool's `approval` expression interrupts the run: the
+    stream names it after the ungated calls report and finishes marked
+    `interrupt: approval`; the buffered agent returns the same record. A second
+    agent instance resumes from that record — running the call when it is
+    approved, telling the model it was denied when it is not — and the model is
+    given every result in the order the calls were asked for.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref streamEndsAsking
+  - !ref resumeRunsApprovedCall
+  - !ref resumeDeniesRefusedCall
+---
+# A transfer needs a decision above 100; a multiplication never does.
+kind: Ai.Tools
+metadata: { name: bankTools }
+tools:
+  - name: transfer
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            amount: { type: integer }
+      value:
+        sent: !cel "inputs.amount"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount: { type: integer }
+    approval: !cel "arguments.amount > 100"
+  - name: multiply
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            a: { type: integer }
+            b: { type: integer }
+      value:
+        product: !cel "inputs.a * inputs.b"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [a, b]
+      properties:
+        a: { type: integer }
+        b: { type: integer }
+---
+# Answers with the conversation it was given, so a test sees each tool message
+# and the order they arrived in.
+kind: AiEcho.EchoModel
+metadata: { name: showsConversation }
+echoConversation: true
+---
+# The first run of a turn. Its model asks, in one response, for a large
+# transfer, a multiplication and a small transfer; it ends asking about the first.
+kind: Ai.Agent
+metadata: { name: firstRun }
+model:
+  kind: AiEcho.EchoModel
+  emitToolCalls:
+    - { id: c1, name: transfer, arguments: { amount: 500 } }
+    - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+    - { id: c3, name: transfer, arguments: { amount: 5 } }
+maxParallelTools: 1
+toolProviders:
+  - provider: !ref bankTools
+---
+kind: Run.Sequence
+metadata: { name: streamEndsAsking }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCalls:
+          - { id: c1, name: transfer, arguments: { amount: 500 } }
+          - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+          - { id: c3, name: transfer, arguments: { amount: 5 } }
+      maxParallelTools: 1
+      toolProviders:
+        - provider: !ref bankTools
+    inputs: { prompt: "pay" }
+  - name: parts
+    invoke:
+      kind: Stream.Collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items"
+      expected:
+        - type: tool-call
+          toolCall: { id: c1, name: transfer, arguments: { amount: 500 } }
+        - type: tool-call
+          toolCall: { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+        - type: tool-call
+          toolCall: { id: c3, name: transfer, arguments: { amount: 5 } }
+        - type: step-finish
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, unit: tokens, total: 0 }
+          finishReason: tool-calls
+        - type: message
+          message:
+            role: assistant
+            content: ""
+            toolCalls:
+              - { id: c1, name: transfer, arguments: { amount: 500 } }
+              - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+              - { id: c3, name: transfer, arguments: { amount: 5 } }
+        # The calls that need no decision run and report; the gated one does not.
+        - type: tool-result
+          toolResult: { toolCallId: c2, name: multiply, content: '{"product":42}', output: { product: 42 } }
+        - type: message
+          message: { role: tool, content: '{"product":42}', toolCallId: c2 }
+        - type: tool-result
+          toolResult: { toolCallId: c3, name: transfer, content: '{"sent":5}', output: { sent: 5 } }
+        - type: message
+          message: { role: tool, content: '{"sent":5}', toolCallId: c3 }
+        - type: tool-approval-request
+          toolCall: { id: c1, name: transfer, arguments: { amount: 500 } }
+        - type: finish
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0, unit: tokens, total: 0 }
+          finishReason: tool-calls
+          interrupt: approval
+---
+# The buffered agent returns the same record. A second instance is given the
+# conversation — the input followed by that record — and the approval: it runs
+# the transfer, appends its result after its siblings', and the model receives
+# the three results in call order.
+kind: Run.Sequence
+metadata: { name: resumeRunsApprovedCall }
+steps:
+  - name: first
+    invoke: !ref firstRun
+    inputs: { prompt: "pay" }
+  - name: checkInterrupt
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        interrupt: !cel "steps.first.result.interrupt"
+        approvalRequests: !cel "steps.first.result.approvalRequests"
+        messages: !cel "steps.first.result.messages"
+      expected:
+        interrupt: approval
+        approvalRequests:
+          - { id: c1, name: transfer, arguments: { amount: 500 } }
+        messages:
+          - role: assistant
+            content: ""
+            toolCalls:
+              - { id: c1, name: transfer, arguments: { amount: 500 } }
+              - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+              - { id: c3, name: transfer, arguments: { amount: 5 } }
+          - { role: tool, content: '{"product":42}', toolCallId: c2 }
+          - { role: tool, content: '{"sent":5}', toolCallId: c3 }
+  - name: resumed
+    invoke:
+      kind: Ai.Agent
+      model: !ref showsConversation
+      toolProviders:
+        - provider: !ref bankTools
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'pay'}] + steps.first.result.messages"
+      approvals:
+        - { toolCallId: c1, approved: true }
+  - name: checkResumed
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        text: !cel "steps.resumed.result.text"
+        appended: !cel "steps.resumed.result.messages.map(m, m.role)"
+      expected:
+        text: 'user=pay | assistant= | tool[c1]={"sent":500} | tool[c2]={"product":42} | tool[c3]={"sent":5}'
+        appended: [tool, assistant]
+---
+# Refused, the transfer is never made: the model is told it was denied, and why.
+kind: Run.Sequence
+metadata: { name: resumeDeniesRefusedCall }
+steps:
+  - name: first
+    invoke: !ref firstRun
+    inputs: { prompt: "pay" }
+  - name: resumed
+    invoke:
+      kind: Ai.Agent
+      model: !ref showsConversation
+      toolProviders:
+        - provider: !ref bankTools
+    inputs:
+      messages: !cel "[{'role': 'user', 'content': 'pay'}] + steps.first.result.messages"
+      approvals:
+        - { toolCallId: c1, approved: false, reason: "over the limit" }
+  - name: checkResumed
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        text: !cel "steps.resumed.result.text"
+        results: !cel "steps.resumed.result.toolResults"
+        denied: !cel "steps.resumed.result.toolResults[0].denied"
+        # The settled call belongs to the earlier run: only this run's model call is a step.
+        steps: !cel "steps.resumed.result.steps"
+      expected:
+        text: 'user=pay | assistant= | tool[c1]=Denied: the call to "transfer" was not approved and did not run. Reason: over the limit | tool[c2]={"product":42} | tool[c3]={"sent":5}'
+        results:
+          - toolCallId: c1
+            name: transfer
+            content: 'Denied: the call to "transfer" was not approved and did not run. Reason: over the limit'
+            denied: true
+        denied: true
+        steps:
+          - text: 'user=pay | assistant= | tool[c1]=Denied: the call to "transfer" was not approved and did not run. Reason: over the limit | tool[c2]={"product":42} | tool[c3]={"sent":5}'
+            toolCalls: []

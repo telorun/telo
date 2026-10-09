@@ -82,14 +82,40 @@ OpenAI `finish_reason` values map into the Ai contract:
 
 Tool calls are advertised as OpenAI `tools: [{ type: "function", function: { name, description, parameters } }]` (no `execute` — the agent runs tools itself). The model's `tool_calls` come back with `arguments` as a JSON string; the provider parses each into the `ToolCall.arguments` object. Malformed argument JSON surfaces as an error rather than a silent empty object.
 
-On the **streaming** path, OpenAI splits each tool call across many `delta.tool_calls[]` fragments keyed by `index` — the first carries `id` and `function.name`, later ones append `function.arguments` string fragments. The provider accumulates per index and, at the finish boundary (arguments are only valid JSON once fully joined), emits one `{ type: "tool-call", toolCall }` `StreamPart` per assembled call before the terminal `finish`. This is what lets [`Ai.AgentStream`](../../ai/docs/ai-agent-stream.md) drive a tool-use loop with live token streaming; `Ai.TextStream` never passes `tools`, so it never observes these parts.
+On the **streaming** path, OpenAI splits each tool call across many `delta.tool_calls[]` fragments keyed by `index` — the first carries `id` and `function.name`, later ones append `function.arguments` string fragments. The provider accumulates per index and, at the finish boundary (arguments are only valid JSON once fully joined), emits one `{ type: "tool-call", toolCall }` `StreamPart` per assembled call before the terminal `finish`.
+
+Each argument fragment is also reported as it arrives, as `{ type: "tool-call-delta", toolCallId, toolName, delta }` — `toolCallId` being the `id` the call's `tool-call` part then carries, and a call's `delta`s joining to its argument JSON. Nothing is reported for a call until the endpoint has sent both its `id` and its name: an OpenAI-compatible endpoint that sends the id after the first fragment has those fragments held and released as one delta when the id arrives. An endpoint that never sends an id gets one generated for the call, `call_<uuid>`, carried by its deltas (released immediately before the call) and by the call alike. A generated id is unique: the positional `call_<index>` this kind used to fall back to repeated on every model call of one agent run.
+
+This is what lets [`Ai.AgentStream`](../../ai/docs/ai-agent-stream.md) drive a tool-use loop with live token streaming; `Ai.TextStream` never passes `tools`, so it never observes these parts.
 
 ## Multimodal content
 
-Message `content` may be a string or [content parts](../../ai/docs/ai-model.md) (text + image). The provider translates them into OpenAI's wire shapes:
+Message `content` may be a string or [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts). Which parts each API carries:
 
-- A **user** message with parts becomes an OpenAI content array — text parts → `{ type: "text", text }`, image parts → `{ type: "image_url", image_url: { url } }`, where `url` is a `data:<mediaType>;base64,…` URL built from the part's bytes (or its base64 string). **System** messages can't carry images, so any parts are flattened to their text.
-- A **tool** message can't carry images in OpenAI chat completions. When a tool answered with an image, the provider emits the `tool` message with a short text placeholder (its text parts, if any) and then a **synthetic follow-up `user` message** holding the image parts — the documented OpenAI pattern. The Ai contract stays provider-neutral; only this translation differs (an image-native provider would map the same parts into its own tool-result blocks).
+| Part | Chat completions (`OpenAI.ChatModel`, `ChatModelStream`) | Responses (`OpenAI.ResponsesModel`, `ResponsesModelStream`) |
+| --- | --- | --- |
+| text | yes | yes |
+| image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
+| image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
+| file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
+| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+
+`ERR_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+
+A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and a refusal is `ERR_OPENAI_REQUEST_FAILED`.
+
+How a carried part lands on this API's wire:
+
+- A **user** message with parts becomes an OpenAI content array. Text → `{ type: "text", text }`. An image → `{ type: "image_url", image_url: { url } }`, where `url` is the part's `uri`, or a `data:<mediaType>;base64,…` URL built from its bytes (or its base64 string). A file → `{ type: "file", file: { filename, file_data } }`, `filename` being the part's `name` (required for a file by bytes) and `file_data` the same `data:` URL form. **System** messages can't carry media, so any parts are flattened to their text.
+- A **tool** message can't carry media in OpenAI chat completions. When a tool answered with an image or a file, the provider emits the `tool` message with its text parts (or a short placeholder when it has none) and then a **synthetic follow-up `user` message** holding the media parts — flushed after the whole run of tool messages, never between them. The Ai contract stays provider-neutral; only this translation differs. A tool result's media part this API cannot carry — audio, video, a `uri` it cannot be handed, a file by bytes with no `name` — is refused like any other; a part a model produces inside a tool result is left out, not refused. The follow-up message and the placeholder are this API's alone: the [responses kinds](./responses-model.md#content-parts) put a tool's media in the tool's own output.
+
+## Usage
+
+`usage` carries `promptTokens`, `completionTokens` and `totalTokens`, plus `cachedPromptTokens` (from `prompt_tokens_details.cached_tokens`) and `reasoningTokens` (from `completion_tokens_details.reasoning_tokens`) when the endpoint reports them. A compatible endpoint that omits the detail objects leaves both absent, which is not zero. The streaming kind asks for usage (`stream_options.include_usage`) and reports it on `finish`.
 
 ## Options
 
@@ -117,6 +143,26 @@ inputs:
 Nothing needs redacting here: the key belongs to the client's credential, whose own output is marked `x-telo-sensitive` and omitted from trace payloads.
 
 ## Errors
+
+| Code | When |
+| ---- | ---- |
+| `ERR_OPENAI_REQUEST_FAILED` | The endpoint refused the request or failed mid-stream. Carries the provider's message and the HTTP status. |
+| `ERR_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [Multimodal content](#multimodal-content). Raised by the call, before any request; `error.data` is `{ partType, scheme? }`. |
+| `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` | The model asked for a tool with arguments that are not a JSON object. |
+| `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
+
+Every `Ai` operation holding one of these kinds passes the codes on, so a route over an `Ai.Text` or an `Ai.AgentStream` names them in `catches:` exactly as a route over the model does:
+
+```yaml
+catches:
+  - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+    status: 422
+    content:
+      application/json:
+        body: { unsupported: !cel "error.data.partType" }
+  - status: 502
+    content: { application/json: { body: { code: !cel "error.code" } } }
+```
 
 A non-2xx response from `invoke` throws an actionable error built from the provider's `{ error: { message } }` body (falling back to the raw response text), prefixed with the HTTP status. No retry, no swallowing. Wrap in `try` / `catch` inside `Run.Sequence` if you want to handle them.
 

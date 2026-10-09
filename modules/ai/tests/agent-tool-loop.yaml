@@ -86,7 +86,7 @@ steps:
   - name: assertTrace
     inputs:
       toolName: !cel "steps.invoke.result.steps[0].toolCalls[0].name"
-      toolResult: !cel "steps.invoke.result.steps[0].toolResults[0].content"
+      toolResult: !cel "steps.invoke.result.toolResults[0].content"
     invoke:
       kind: Assert.Schema
       schema:
@@ -100,17 +100,19 @@ steps:
             const: '{"product":42}'
         required: [ toolName, toolResult ]
   # A step is one model call: the tool-calling call, then the answering call,
-  # whose entry carries no tool calls.
+  # whose entry carries no tool calls. The settled calls are listed beside them.
   - name: assertSteps
     invoke: !ref Assert.equals
     inputs:
-      actual: !cel "steps.invoke.result.steps"
+      actual:
+        steps: !cel "steps.invoke.result.steps"
+        toolResults: !cel "steps.invoke.result.toolResults"
       expected:
-        - text: ""
-          toolCalls:
-            - { id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }
-          toolResults:
-            - { toolCallId: echo-call-1, name: multiply, content: '{"product":42}' }
-        - text: '{"product":42}'
-          toolCalls: []
-          toolResults: []
+        steps:
+          - text: ""
+            toolCalls:
+              - { id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }
+          - text: '{"product":42}'
+            toolCalls: []
+        toolResults:
+          - { toolCallId: echo-call-1, name: multiply, content: '{"product":42}' }

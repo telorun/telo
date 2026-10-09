@@ -1,37 +1,76 @@
-import { isImagePart, type ImagePart, type MessageContent } from "@telorun/ai";
+import type { ContentPart, MediaPart } from "@telorun/ai";
 import { InvokeError } from "@telorun/sdk";
 
 /**
  * Message-content translation shared by both dialects.
  *
  * These are the pieces that do NOT differ between `/chat/completions` and
- * `/v1/responses`: how a picture becomes a data URL, how images are picked out
- * of a tool result, and how a model's tool arguments are read back. Each dialect
- * still owns its own wire shapes.
- *
- * Shared rather than copied because the tool-image rule below is an invariant
- * about a 400, not a formatting preference — stated twice, it drifts once.
+ * `/v1/responses`: how bytes become a data URL, what a file sent by bytes must
+ * carry, which URIs an endpoint can be handed, how a part the dialect cannot
+ * carry is refused, and how a model's tool arguments are read back. Each
+ * dialect still owns its own wire shapes — its own answer to WHICH parts it
+ * carries, and to where a tool result's media goes.
  */
 
-/** What a tool message says when its real answer is a picture. Neither dialect
- *  can put image bytes in a tool result — `/chat/completions` has no part
- *  vocabulary there and a responses `function_call_output` is a string — so both
- *  send this and carry the image in a synthetic `user` message flushed AFTER the
- *  whole run of tool results, never between them. Interleaving tool and user
- *  messages is a 400. */
-export const TOOL_IMAGE_PLACEHOLDER = "(tool returned image content — see the following message)";
-
-/** Render an image part as a data URL. Runtime tool results carry raw bytes (the
+/** A media part's bytes as a data URL. Runtime tool results carry raw bytes (the
  *  stdlib binary convention); manifest-authored parts carry a base64 string. */
-export function imageDataUrl(part: ImagePart): string {
+export function dataUrl(part: MediaPart & { data: Uint8Array | string }): string {
   const base64 =
     typeof part.data === "string" ? part.data : Buffer.from(part.data).toString("base64");
   return `data:${part.mediaType};base64,${base64}`;
 }
 
-export function imageParts(content: MessageContent): ImagePart[] {
-  if (typeof content === "string") return [];
-  return content.filter(isImagePart);
+const NEEDS_NAME = "A file sent by bytes needs 'name' on this endpoint.";
+
+/** A file's bytes with the file name both dialects send beside them. A file
+ *  with no name is refused: the endpoint cannot tell what it was handed. */
+export function namedFileData(
+  part: MediaPart & { data: Uint8Array | string },
+  label: string,
+): { filename: string; file_data: string } {
+  if (part.name === undefined) throw contentUnsupported(label, part, NEEDS_NAME);
+  return { filename: part.name, file_data: dataUrl(part) };
+}
+
+/**
+ * The refusal of a well-formed part this dialect cannot carry.
+ *
+ * Raised while the request is BUILT, before anything is sent: sending the rest
+ * would be a request quietly missing part of the message. `takes` says what the
+ * endpoint accepts instead; `scheme` is set when the URI's scheme is the reason.
+ */
+export function contentUnsupported(
+  label: string,
+  part: ContentPart,
+  takes: string,
+  scheme?: string,
+): InvokeError {
+  const mediaType = "mediaType" in part ? ` of media type '${part.mediaType}'` : "";
+  const carriage = scheme === undefined ? "" : ` by a '${scheme}:' URI`;
+  return new InvokeError(
+    "ERR_CONTENT_UNSUPPORTED",
+    `${label}: a '${part.type}' content part${mediaType} cannot be sent${carriage}. ${takes}`,
+    { partType: part.type, ...(scheme === undefined ? {} : { scheme }) },
+  );
+}
+
+/** What a model-produced part is told when it is submitted as input. */
+export const OUTPUT_ONLY = "It is produced by a model, not submitted to one.";
+
+/**
+ * A media part's `uri`, when it is one an endpoint can be handed: `http:` or
+ * `https:`. Returned exactly as written — a reference is translated, never
+ * fetched. Any other scheme names something only this machine could resolve,
+ * and is refused with that scheme.
+ */
+export function remoteUrl(
+  part: MediaPart & { uri: string },
+  label: string,
+  takes: string,
+): string {
+  const scheme = part.uri.slice(0, part.uri.indexOf(":")).toLowerCase();
+  if (scheme === "http" || scheme === "https") return part.uri;
+  throw contentUnsupported(label, part, takes, scheme);
 }
 
 /**

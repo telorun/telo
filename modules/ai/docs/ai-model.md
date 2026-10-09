@@ -116,18 +116,148 @@ parts concatenated), `usage`, `finishReason`, and optionally `toolCalls`,
 `text` is carried beside `content` because the overwhelmingly common consumer wants
 exactly that and should not have to fold the list.
 
-**`Ai.ModelStream`** returns `{ output }`, a stream of `Ai.StreamPart`.
+**`Ai.ModelStream`** returns `{ output }`, a stream of `Ai.StreamPart`: `text-delta`,
+`reasoning-delta`, `content-part`, `tool-call-delta`, `tool-call`, `provider-state`,
+and the one terminal `finish`.
+
+### Tool calls in a stream, and who names them
+
+A streaming model reports each tool call whole, as a `tool-call` part carrying
+`toolCall: { id, name, arguments }` once the arguments are complete. It may also report
+the arguments **as they are written**, as `tool-call-delta` parts ahead of the call:
+
+| Field | Meaning |
+| --- | --- |
+| `toolCallId` | The id of the call being written. Never empty. |
+| `toolName` | The tool being called. |
+| `delta` | The next fragment of the argument text. A call's fragments joined in order are the JSON of its arguments. |
+
+Deltas are advisory — the whole `tool-call` still follows and is the only part a
+consumer must handle — and optional: an implementation with none to give emits the call
+alone.
+
+**The implementation assigns a call's id**, because only it can put the same id on a
+call's deltas and on the call. What it owes:
+
+- Every `tool-call-delta` carries a non-empty `toolCallId` **equal to the `id` of the
+  `tool-call` that completes it**, and that call's `toolName`.
+- **No delta is emitted for a call until its id is known.** Fragments that arrive
+  earlier are held and released once it is — at the latest immediately before the
+  `tool-call`.
+- When the endpoint gives no id by the end of the call, the implementation **mints a
+  unique one** (`call_<uuid>`). A positional id (`call_0`) is not unique: it repeats on
+  the next model call of the same run, and two calls of one transcript then share an id.
+
+```ts
+// Hold fragments until the call can be named; mint a name if the endpoint never gives one.
+for await (const chunk of upstream) {
+  const call = calls.get(chunk.index) ?? { id: "", name: "", args: "", held: "" };
+  call.id ||= chunk.id ?? "";
+  call.name ||= chunk.name ?? "";
+  call.args += chunk.arguments;
+  call.held += chunk.arguments;
+  if (call.id && call.name && call.held) {
+    yield { type: "tool-call-delta", toolCallId: call.id, toolName: call.name, delta: call.held };
+    call.held = "";
+  }
+}
+for (const call of calls.values()) {
+  call.id ||= `call_${randomUUID()}`;
+  if (call.held) yield { type: "tool-call-delta", toolCallId: call.id, toolName: call.name, delta: call.held };
+  yield { type: "tool-call", toolCall: { id: call.id, name: call.name, arguments: JSON.parse(call.args) } };
+}
+```
+
+An agent forwards `toolCallId` verbatim and rejects a delta without one as
+`ERR_CONTRACT_VIOLATION`. A whole `tool-call` whose `id` is empty — a buffered model's,
+or a stream that sends no deltas — is given a generated id by the agent where it is
+first seen. Two tool calls of one response sharing an `id` — buffered or streamed — fail
+the agent's run with `ERR_CONTRACT_VIOLATION`, since a result, an approval and a resume are
+each joined to their call by it. [`Ai.Buffered`](#why-two-abstracts) folds a stream by its whole `tool-call` parts
+and ignores the deltas.
 
 ## Modality lives in the parts
 
 `Ai.ContentPart` covers `text`, `image`, `audio`, `video` and `file`, plus the
-output-only `tool-call`, `reasoning`, `citation` and `refusal`. A media part carries
-`data` (bytes, or base64 when a manifest authored them) or a `uri`, plus a
-`mediaType` — so a document is a matter of **value**, not of a separate kind.
+output-only `tool-call`, `reasoning`, `citation` and `refusal`. A document is a matter
+of **value**, not of a separate kind.
+
+| `type` | Must carry |
+| --- | --- |
+| `text`, `reasoning`, `refusal` | `text` |
+| `image`, `audio`, `video`, `file` | `mediaType`, and exactly one of `data` or `uri`; optionally `name` |
+| `tool-call` | `toolCall` |
+| `citation` | `citation` |
+
+For a media part:
+
+- `data` is the bytes — raw bytes at runtime, or base64 when a manifest authored them.
+- `uri` is where the bytes live when they are referenced rather than carried: an
+  absolute URI (`https://…`, `s3://…`, `file:///…`), handed to the model as written.
+  Never a `data:` URI — bytes in hand go in `data` — and never beside `data`.
+- `mediaType` is the IANA media type (`image/png`, `application/pdf`).
+- `name` is the part's file name (`report.pdf`), for a model that shows or needs one.
+
+A part carries nothing else: there is no per-part provider directive.
+
+```yaml
+messages:
+  - role: user
+    content:
+      - { type: text, text: "What does this contract say about termination?" }
+      - { type: file, mediaType: application/pdf, name: contract.pdf, uri: "https://example.com/contract.pdf" }
+      - { type: image, mediaType: image/png, data: !cel "steps.scan.result.data" }
+```
 
 A model returning a picture is an image part in an ordinary completion. `Ai.ImageModel`
 is a different *call shape* — prompt, intent, reference images, mask — not the image
 modality.
+
+### Shape is the schema's; capability is the model's
+
+Two different questions are answered in two different places.
+
+**Is this a well-formed part?** `Ai.ContentPart` answers, once, and the contract of
+whatever takes a message enforces it — `Ai.Text`, `Ai.TextStream`, `Ai.Agent`,
+`Ai.AgentStream` and every model alike. A part written in a manifest that breaks the
+shape is `CONTRACT_INPUTS_MISMATCH` under `telo check`, reported at the key at fault; a
+computed one is `ERR_INPUT_INVALID` at dispatch. No operation and no provider checks a
+part's shape by hand.
+
+**Can this model carry it?** Only the provider knows. A well-formed part its endpoint
+cannot take — audio on a text-and-vision API, a document by reference where only bytes
+are accepted, a `uri` scheme the endpoint could never reach — is refused by the
+provider **under a code it declares**, before it sends anything, with a message naming
+the part type, its media type and what the endpoint takes instead. See the provider's
+own documentation for which parts it carries.
+
+If you implement a provider:
+
+- Refuse, never drop. A request quietly missing part of the message is answered
+  wrongly with nothing to say why.
+- Translate a `uri`; never fetch it. Pass it on in the form your endpoint takes, or
+  refuse it.
+- Refuse while **building** the request, in `invoke` itself — for a streaming model
+  too, before the stream is returned (see
+  [When a streaming call fails](#when-a-streaming-call-fails)).
+- Declare the code in your kind's `throws:`, with the `data` a caller may read. Every
+  operation here passes its model's codes on (see
+  [Catching a model's errors](../README.md#catching-a-models-errors)).
+
+## When a streaming call fails
+
+For `Ai.ModelStream` there are two moments a failure can arrive, and the contract says
+which is which:
+
+- **A call is refused by rejecting.** An implementation raises from `invoke` every
+  refusal it can decide from the request alone — a content part it cannot carry, an
+  option it cannot honour — *before* it contacts its endpoint. Nothing has been sent on
+  yet, so a `catch:` step or a route's `catches:` can still answer it.
+- **An answer fails by rejecting its iteration.** Whatever fails after the call has
+  returned — the endpoint refusing the request, a dropped connection, a failure
+  mid-generation — rejects the iteration of the returned stream.
+- **A caller that received a stream reads it to its `finish` or cancels it.** A stream
+  that is neither read nor cancelled leaves its request open.
 
 ## A stream fails by rejecting
 
@@ -160,8 +290,15 @@ Renaming one is a breaking change with nothing in this repo to catch it.
 
 ## Usage: two shapes, and who fills them
 
-A provider reports the **token triple** (`Ai.TokenUsage`) — that is all its endpoint
-tells it. The provider-neutral half (`unit`, `total`, the pair that lets one consumer
+A provider reports the **token triple** (`Ai.TokenUsage`), plus two breakdowns of it
+when its endpoint gives them: `cachedPromptTokens`, the part of `promptTokens` read
+from a cache, and `reasoningTokens`, the part of `completionTokens` spent reasoning.
+Each is a share of the count it belongs to, never an addition to it. Report one only
+when the endpoint reports it — **absent means "not said", which is not zero** — and an
+operation carries it through unchanged; an agent sums it across its calls, leaving it
+absent when no call reported it.
+
+The provider-neutral half (`unit`, `total`, the pair that lets one consumer
 sum spend across modalities) is stamped by the **operation**, since the triple already
 carries the answer.
 

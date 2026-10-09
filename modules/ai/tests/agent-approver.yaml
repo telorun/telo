@@ -1,0 +1,195 @@
+# An agent's `approver` decides the calls that need a decision, in place of the
+# caller: a model reviewing each call, or a sequence of rules.
+kind: Telo.Application
+metadata:
+  name: AgentApproverTest
+  version: 1.0.0
+  description: |
+    A text completion over a scripted model approves one gated call and rejects
+    another through the approver's two mappings, whichever source gated them;
+    each ask is reported once, ahead of what it led to, and the reviewer's own
+    token usage stays out of the agent's. A sequence of rules at the same slot
+    defers a call, ending the run asking.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref modelReviewsEachCall
+  - !ref rulesDeferACall
+---
+# `transfer` gates itself above 100; `multiply` is gated by the agent's entry.
+kind: Ai.Tools
+metadata: { name: bankTools }
+tools:
+  - name: transfer
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            amount: { type: integer }
+      value:
+        sent: !cel "inputs.amount"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount: { type: integer }
+    approval: !cel "arguments.amount > 100"
+  - name: multiply
+    tool:
+      kind: Run.Value
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          properties:
+            a: { type: integer }
+            b: { type: integer }
+      value:
+        product: !cel "inputs.a * inputs.b"
+    parameters:
+      type: object
+      additionalProperties: false
+      required: [a, b]
+      properties:
+        a: { type: integer }
+        b: { type: integer }
+---
+# The reviewer is a completion whose model echoes its prompt — the name of the
+# tool being called — and bills 200 tokens for it. The result mapping approves
+# a multiplication and rejects anything else.
+kind: Run.Sequence
+metadata: { name: modelReviewsEachCall }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCalls:
+          - { id: c1, name: transfer, arguments: { amount: 500 } }
+          - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+        usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 }
+      maxParallelTools: 1
+      toolProviders:
+        - provider: !ref bankTools
+          approval: { include: [multiply] }
+      approver:
+        invoke:
+          kind: Ai.Text
+          model:
+            kind: AiEcho.EchoModel
+            usage: { promptTokens: 100, completionTokens: 100, totalTokens: 200 }
+        inputs:
+          prompt: !cel "toolCall.name"
+        result:
+          decision: !cel "result.text == 'multiply' ? 'approve' : 'reject'"
+          reason: !interpolate "the reviewer read ${{ result.text }}"
+    inputs: { prompt: "pay" }
+  - name: parts
+    invoke:
+      kind: Stream.Collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items.filter(p, !(p.type in ['tool-call', 'text-delta']))"
+      expected:
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
+          finishReason: tool-calls
+        - type: message
+          message:
+            role: assistant
+            content: ""
+            toolCalls:
+              - { id: c1, name: transfer, arguments: { amount: 500 } }
+              - { id: c2, name: multiply, arguments: { a: 6, b: 7 } }
+        # Rejected: the decision, then the denial the model is given.
+        - type: tool-approval-decision
+          approvalDecision: { toolCallId: c1, name: transfer, decision: reject, reason: "the reviewer read transfer" }
+        - type: tool-result
+          toolResult:
+            toolCallId: c1
+            name: transfer
+            content: 'Denied: the call to "transfer" was not approved and did not run. Reason: the reviewer read transfer'
+            denied: true
+        - type: message
+          message:
+            role: tool
+            content: 'Denied: the call to "transfer" was not approved and did not run. Reason: the reviewer read transfer'
+            toolCallId: c1
+        # Approved: the decision, then the tool's own result.
+        - type: tool-approval-decision
+          approvalDecision: { toolCallId: c2, name: multiply, decision: approve, reason: "the reviewer read multiply" }
+        - type: tool-result
+          toolResult: { toolCallId: c2, name: multiply, content: '{"product":42}', output: { product: 42 } }
+        - type: message
+          message: { role: tool, content: '{"product":42}', toolCallId: c2 }
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
+          finishReason: stop
+        - type: message
+          message: { role: assistant, content: '{"product":42}' }
+        # The two model calls summed; neither of the reviewer's two is in it.
+        - type: finish
+          usage: { promptTokens: 20, completionTokens: 4, totalTokens: 24, unit: tokens, total: 24 }
+          finishReason: stop
+---
+# Rules instead of a model: a transfer above 1000 is rejected, one above 100 is
+# left to a human, anything else goes through.
+kind: Run.Sequence
+metadata: { name: rulesDeferACall }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        emitToolCalls:
+          - { id: c1, name: transfer, arguments: { amount: 500 } }
+      toolProviders:
+        - provider: !ref bankTools
+      approver:
+        invoke:
+          kind: Run.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              additionalProperties: false
+              required: [amount]
+              properties:
+                amount: { type: integer }
+          steps:
+            - name: verdict
+              value: !cel "inputs.amount > 1000 ? 'reject' : inputs.amount > 100 ? 'defer' : 'approve'"
+          outputs:
+            decision: !cel "steps.verdict.result"
+        inputs:
+          amount: !cel "toolCall.arguments.amount"
+        result:
+          decision: !cel "result.decision"
+    inputs: { prompt: "pay" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        interrupt: !cel "steps.run.result.interrupt"
+        approvalRequests: !cel "steps.run.result.approvalRequests"
+        approvalDecisions: !cel "steps.run.result.approvalDecisions"
+        messages: !cel "steps.run.result.messages.map(m, m.role)"
+      expected:
+        interrupt: approval
+        approvalRequests:
+          - { id: c1, name: transfer, arguments: { amount: 500 } }
+        approvalDecisions:
+          - { toolCallId: c1, name: transfer, decision: defer }
+        messages: [assistant]

@@ -93,7 +93,7 @@ The translation from the provider-neutral contract:
 | Contract | `/v1/responses` |
 | -------- | --------------- |
 | a `system` message | hoisted into `instructions` (several are joined) |
-| a `user` message | `{role: user, content: [{type: input_text, …}, {type: input_image, …}]}` |
+| a `user` message | `{role: user, content: [{type: input_text, …}, {type: input_image, …}, {type: input_file, …}]}` |
 | an `assistant` message's text | `{role: assistant, content: [{type: output_text, …}]}` |
 | an `assistant` message's `toolCalls` | one `{type: function_call, call_id, name, arguments}` item each |
 | a `tool` message | `{type: function_call_output, call_id, output}` |
@@ -115,9 +115,29 @@ the other). Both kinds therefore normalize whichever form they are given, so one
 works on either and swapping providers under `Ai.Model` does not turn into a 400. Formats
 other than `json_schema` pass through untouched.
 
-An image in a **tool result** cannot ride a `function_call_output`, whose `output` is a string; it goes in a synthetic `user` message flushed after the run of outputs, never between them — the same pattern the completions dialect uses.
+### Content parts
 
-A content part a model produces but a caller cannot send (`reasoning`, `citation`, `refusal`) raises `ERR_INVALID_INPUT` rather than being dropped, which would send a request quietly missing part of the message.
+Which [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts) each API carries:
+
+| Part | Chat completions (`OpenAI.ChatModel`, `ChatModelStream`) | Responses (`OpenAI.ResponsesModel`, `ResponsesModelStream`) |
+| --- | --- | --- |
+| text | yes | yes |
+| image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
+| image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
+| file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
+| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+
+`ERR_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
+
+On this API's wire an image is `{type: input_image, image_url}` — the part's `uri`, or a `data:<mediaType>;base64,…` URL built from its bytes — and a file is `{type: input_file, filename, file_data}` by bytes (`filename` the part's `name`, `file_data` the same `data:` URL form) or `{type: input_file, file_url}` by reference.
+
+A file by bytes needs `name`: one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent. A file by `uri` needs none. The provider gates on no media type — which types the endpoint reads is the endpoint's to say, and its refusal is `ERR_OPENAI_REQUEST_FAILED`.
+
+Media in a **tool result** rides the tool result itself. A tool that answered with a string, or with parts holding no media, is sent as a `function_call_output` whose `output` is a string. A tool that answered with media is sent with `output` as an array, in the tool's own part order: its text, image and file parts, each translated exactly as a user message's would be — so the same encoding applies, and so does every refusal above (audio, video, a `uri` scheme the endpoint cannot reach, a file by bytes with no `name`). Nothing is added: no placeholder text, and no `user` message after the outputs. The [chat kinds](./chat-model.md#multimodal-content) differ here, since their tool message is text only.
 
 ## What comes back
 
@@ -139,7 +159,7 @@ message. `Ai.FinishReason` has no `error` member, deliberately: a failure reject
 reason code saying "the answer failed" competes with the mechanism that already reports
 failure. Both halves behave the same way here.
 
-Usage is renamed off `input_tokens` / `output_tokens` / `total_tokens`.
+Usage is renamed off `input_tokens` / `output_tokens` / `total_tokens`, and carries `cachedPromptTokens` (from `input_tokens_details.cached_tokens`) and `reasoningTokens` (from `output_tokens_details.reasoning_tokens`) when the endpoint reports them — absent otherwise, which is not zero. Each is a share of the count it belongs to.
 
 ## The stream
 
@@ -149,11 +169,15 @@ Named events, not positional deltas, and no `[DONE]` sentinel:
 | ----- | ---- |
 | `response.output_text.delta` | `{type: text-delta, delta}` |
 | `response.reasoning_summary_text.delta` | `{type: reasoning-delta, delta}` |
+| `response.output_item.added` (a `function_call`) | nothing — it announces the call, and is where its `call_id` and name are learned |
+| `response.function_call_arguments.delta` | `{type: tool-call-delta, toolCallId, toolName, delta}` |
 | `response.output_item.done` (a `function_call`) | `{type: tool-call, toolCall}` |
 | `response.output_item.done` (a `reasoning` item) | collected, emitted once as `{type: provider-state, providerState}` |
 | `response.completed` / `.incomplete` | `{type: finish, usage, finishReason}` |
 
-Lifecycle frames (`response.created`, `.in_progress`, `.output_item.added`, `.content_part.*`, the `.done` twin of every delta) carry nothing the contract reports and are passed over — the vocabulary grows, and an unknown frame is not an error.
+Lifecycle frames (`response.created`, `.in_progress`, `.content_part.*`, the `.done` twin of every delta) carry nothing the contract reports and are passed over — the vocabulary grows, and an unknown frame is not an error.
+
+**A tool call's arguments arrive as they are written.** An argument delta names only its output *item* (`item_id`), not the call, so each is reported under the `call_id` the item's `added` event announced — the same value its `tool-call` part carries as `toolCall.id` and a later `function_call_output` answers. A call's `delta`s join to its argument JSON. Deltas for an item whose `call_id` or name is not yet known are held and released as one once it is, at the latest immediately before the `tool-call`; a call the endpoint never names — no `call_id` and no item id — gets a generated `call_<uuid>`, on its deltas and the call alike.
 
 **A turn that calls a tool emits no text delta at all**, so a consumer must not wait for text to know a turn is under way.
 
@@ -164,7 +188,7 @@ Lifecycle frames (`response.created`, `.in_progress`, `.output_item.added`, `.co
 | Code | When |
 | ---- | ---- |
 | `ERR_OPENAI_REQUEST_FAILED` | The endpoint refused the request, reported the run as failed, or failed mid-stream. Carries the provider's message and the HTTP status. Also raised when a stream ends with no terminal event — an interrupted answer is reported as interrupted rather than as a clean stop with zero usage. |
-| `ERR_INVALID_INPUT` | A content part that cannot be sent — one a model produces rather than receives. |
+| `ERR_CONTENT_UNSUPPORTED` | A well-formed content part this API cannot carry — see [Content parts](#content-parts). Raised by the call, before any request; `error.data` is `{ partType, scheme? }`. |
 | `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` | The model asked for a tool with arguments that are not a JSON object. |
 | `ERR_INVALID_REFERENCE` | `request` did not resolve to a live `Http.Request` — a ref slot on a `with:`-scoped resource is not an injection site. |
 

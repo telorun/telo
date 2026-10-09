@@ -1,0 +1,164 @@
+# What `telo check` refuses about tool approval, at the author's own line: a
+# tool's `approval` expression, an agent's `approver`, and an `approval.include`
+# name the entry's own filter removes — the last refused a second time by the
+# controller, from a consumer whose entry-scoped check is silent (`runFails:`) —
+# and one a static tool collection does not declare, refused by the agent at
+# its first run where the provider declares no tools to check against.
+kind: Telo.Application
+metadata:
+  name: ToolApprovalRefusalsTest
+  version: 1.0.0
+  description: Tool approval is type-checked where it is written, and its name rule holds at check and at creation.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref gateRefused
+  - !ref gateTyped
+  - !ref approverRefused
+  - !ref approverTyped
+  - !ref approverCodeCovered
+  - !ref approverCodeUncovered
+  - !ref nameFiltered
+  - !ref nameFilteredAtRuntime
+  - !ref streamNameFiltered
+  - !ref streamNameFilteredAtRuntime
+  - !ref nameUndeclared
+  - !ref nameAccepted
+  - !ref nameUndeclaredButFiltered
+  - !ref nameUnknownAtRuntime
+  - !ref streamNameUnknownAtRuntime
+---
+# An undeclared argument, a non-boolean result, and `context` with no
+# `contextType` declared.
+kind: Assert.Manifest
+metadata: { name: gateRefused }
+source: ./__fixtures__/tool-approval-typing/gate-refused.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'arguments.amout' is not defined"
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'tools[1].approval' reads 'arguments.amount'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'context.trusted' is not defined"
+---
+kind: Assert.Manifest
+metadata: { name: gateTyped }
+source: ./__fixtures__/tool-approval-typing/gate-typed.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: approverRefused }
+source: ./__fixtures__/tool-approval-typing/approver-refused.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ai.Agent/misspelledResultField: !cel: 'result.verdct' is not defined"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ai.Agent/contextInInputs: !cel: unknown identifier 'context'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ai.Agent/messagesInResult: !cel: unknown identifier 'messages'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ai.Agent/undeclaredInput: inputs at 'approver.inputs' do not satisfy reviewer's declared inputType"
+    - code: SCHEMA_VIOLATION
+      message: "Ai.Agent/unknownDecision: /approver/result/decision must be equal to one of the allowed values"
+    # A computed target is refused as an expression nothing evaluates.
+    - code: CEL_IN_NON_EVAL_FIELD
+      message: "Ai.Agent/computedTarget: CEL at 'approver.invoke' is never evaluated"
+    - code: CEL_TYPE_ERROR
+      message: "Ai.AgentStream/nonStringReason: CEL at 'approver.result.reason' reads 'result.score'"
+---
+kind: Assert.Manifest
+metadata: { name: approverTyped }
+source: ./__fixtures__/tool-approval-typing/approver-typed.yaml
+expect:
+  errors: []
+---
+# The approver's own code is part of the agent's union: a route names it.
+kind: Assert.Manifest
+metadata: { name: approverCodeCovered }
+source: ./__fixtures__/tool-approval-typing/approver-throws-covered.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: approverCodeUncovered }
+source: ./__fixtures__/tool-approval-typing/approver-throws-uncovered.yaml
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "'ERR_REVIEW_UNAVAILABLE'"
+---
+kind: Assert.Manifest
+metadata: { name: nameFiltered }
+source: ./__fixtures__/approval-name-filtered/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes"
+---
+kind: Assert.Manifest
+metadata: { name: nameFilteredAtRuntime }
+source: ./__fixtures__/approval-name-filtered-app.yaml
+expect:
+  errors: []
+  runFails: "Ai.Agent \"agent\" lists \"wipe\" in a tool provider's 'approval.include', but the entry's own 'include' / 'exclude' removes that tool, so the name would gate nothing. [ERR_AI_APPROVAL_NAME_FILTERED]"
+---
+kind: Assert.Manifest
+metadata: { name: streamNameFiltered }
+source: ./__fixtures__/approval-name-filtered-stream/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.AgentStream/agent at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes"
+---
+kind: Assert.Manifest
+metadata: { name: streamNameFilteredAtRuntime }
+source: ./__fixtures__/approval-name-filtered-stream-app.yaml
+expect:
+  errors: []
+  runFails: "Ai.AgentStream \"agent\" lists \"wipe\" in a tool provider's 'approval.include', but the entry's own 'include' / 'exclude' removes that tool, so the name would gate nothing. [ERR_AI_APPROVAL_NAME_FILTERED]"
+---
+kind: Assert.Manifest
+metadata: { name: nameUndeclared }
+source: ./__fixtures__/approval-unknown-tool/refused.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'toolProviders[0].provider': required by Ai.Tools — lists a tool in `approval.include` that this provider does not declare"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ai.AgentStream/stream at 'toolProviders[0].provider': required by Ai.Tools — lists a tool in `approval.include` that this provider does not declare"
+---
+# A tool named by its resource, a bare name beside a `prefix`, and any name over
+# a provider that declares no tools.
+kind: Assert.Manifest
+metadata: { name: nameAccepted }
+source: ./__fixtures__/approval-unknown-tool/accepted.yaml
+expect:
+  errors: []
+---
+# The entry's own filter removes the name, so that rule is the one reporting it.
+kind: Assert.Manifest
+metadata: { name: nameUndeclaredButFiltered }
+source: ./__fixtures__/approval-unknown-tool/filtered.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.Agent/agent at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ai.AgentStream/stream at 'toolProviders[0]': lists a tool in `approval.include` that its own `include` / `exclude` removes"
+---
+kind: Assert.Manifest
+metadata: { name: nameUnknownAtRuntime }
+source: ./__fixtures__/approval-unknown-tool/discovered-agent.yaml
+expect:
+  errors: []
+  runFails: "ERR_AGENT_APPROVAL_UNKNOWN_TOOL: Ai.Agent \"agent\": 'approval.include' names \"erase\", which the tool provider entry does not expose. It exposes: search."
+---
+kind: Assert.Manifest
+metadata: { name: streamNameUnknownAtRuntime }
+source: ./__fixtures__/approval-unknown-tool/discovered-stream.yaml
+expect:
+  errors: []
+  runFails: "ERR_AGENT_APPROVAL_UNKNOWN_TOOL: Ai.AgentStream \"agent\": 'approval.include' names \"erase\", which the tool provider entry does not expose. It exposes: search."

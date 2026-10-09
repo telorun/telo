@@ -1,5 +1,5 @@
 ---
-description: "Ai.ToolProvider: the abstract every agent tool source implements (listTools + callTool), and Ai.Tools, the built-in static-list provider wrapping any Telo.Invocable, with typed caller context for its tools."
+description: "Ai.ToolProvider: the abstract every agent tool source implements (listTools + callTool, optionally toolRequiresApproval), and Ai.Tools, the built-in static-list provider wrapping any Telo.Invocable, with typed caller context for its tools and a per-tool approval gate."
 sidebar_label: Ai.ToolProvider
 ---
 
@@ -27,12 +27,22 @@ interface AiToolProviderInstance {
     ctx?: InvokeContext,
     context?: Record<string, unknown>,
   ): Promise<{ output: unknown; result: unknown }>;
+  // Optional: whether this call needs a decision before it runs.
+  toolRequiresApproval?(
+    name: string,
+    args: Record<string, unknown>,
+    context?: Record<string, unknown>,
+  ): Promise<boolean> | boolean;
 }
 ```
 
 The agent calls `listTools()` to learn what to advertise to the model and `callTool()` to dispatch a model-requested call. `ctx` is the context of the call's `execute_tool` span, opened on the agent run's context: a provider hands it to whatever runs the tool, so cancelling the agent's turn stops the tool, and whatever the tool dispatches nests under the span. A provider that maps a tool's result into what the model sees implements `callToolWithOutput` too, so the agent can report the unmapped result as the stream part's `toolResult.output`; without it, the one value `callTool` returns is both. `context` is the agent's `context` input — data its caller passed for the tools to read, never shown to the model; a provider whose tools take none ignores it. A tool that ends because of that cancellation (`ERR_INVOKE_CANCELLED`) or suspends a durable run (`ERR_DURABLE_SUSPENDED`) ends the agent too, whatever its `onToolError` says. It never learns which concrete provider it has — so MCP, a static list, or a future OpenAPI/registry source all compose without the agent changing.
 
+A provider that knows which of its calls are sensitive implements `toolRequiresApproval(name, args, context)`: `true` means the call needs a decision before it runs ([`Ai.Agent` → Tool approval](./ai-agent.md#tool-approval)). It is optional — a provider without it gates nothing itself — and it is only one of two sources: the agent mounting a provider can gate its tools by name (`toolProviders[].approval`) whatever the provider says, which is how the tools of a provider with no approval method of its own are gated. Either source gates a call; neither ungates what the other gates, and the provider is asked only when the agent's lists did not already gate the call. Throwing from it fails that call, as the tool throwing would, and the tool does not run. So does answering with anything but a boolean (`ERR_CONTRACT_VIOLATION`): a truthy string or a missing answer is never read as a decision either way.
+
 `callTool` may return a plain value (written back to the model as plain JSON — a CEL value JSON has no form for in its plain encoding, such as a duration as `"5400s"` or a timestamp as RFC 3339 text in UTC), a string, or **multimodal content parts** — a `ContentPart[]` (`{ type: "text", text }` and/or `{ type: "image", data, mediaType }`). When a tool answers with content parts the agent carries them through the `tool` message untouched, so a vision tool can hand the model an image. An image part's `data` is raw bytes (`Uint8Array`, what a rasterizer/overlay tool result produces) or a base64 string; provider translation normalizes either to its wire shape.
+
+A value is a content part **exactly when it satisfies [`Ai.ContentPart`](./ai-model.md#modality-lives-in-the-parts)** — for a media part: a `mediaType`, exactly one of `data` or `uri`, a `uri` that is absolute and not `data:`, and no key the shape does not declare. Anything else — a media-looking object with a relative `uri`, with both `data` and `uri`, or with an extra key — is data, and reaches the model as JSON text. So a value recognised as a part is never refused by the next model call's contract. Whether the model can *carry* the part is still its provider's answer.
 
 Implementing one: declare `capability: Telo.Mount, extends: Ai.ToolProvider` (use `Self.ToolProvider` from inside `@telorun/ai` itself) and return an instance exposing `listTools`/`callTool`. Two ship today — `Ai.Tools` (below) and [`AiMcp.ToolProvider`](../../ai-mcp/docs/ai-mcp-tool-provider.md).
 
@@ -76,6 +86,7 @@ tools:
 | `parameters`  | JSON Schema            | yes      | The schema the model produces arguments against.                                 |
 | `inputs`      | CEL object             | no       | Maps the model's `arguments`, and the caller's `context`, into the invocable's input. Omit to forward `arguments` verbatim. |
 | `result`      | CEL                    | no       | Shapes the invocable's `result` into the value fed back — a string, or content parts (`{ type: "image", data: result.image, mediaType: result.mediaType }`) to hand the model an image. Omit to write the output as plain JSON. |
+| `approval`    | boolean, or CEL        | no       | Whether a call to this tool needs a decision before it runs — see [Approval](#approval). Default `false`. |
 
 By default the model's arguments forward straight to the tool — under the agent's `execute_tool` span context, so cancelling the turn cancels the tool — and the output is written back to the model as plain JSON.
 
@@ -129,6 +140,29 @@ tools:
 - **It becomes part of every agent mounting the provider.** The agent's `context` input must satisfy it ([`Ai.Agent` → Caller context](./ai-agent.md#caller-context)), so a call that leaves `turnId` out is refused before the model is asked anything rather than failing inside a tool.
 
 The model-visible `parameters` are unchanged: `context` never appears in what the model is told.
+
+### Approval
+
+`approval` says whether a call to the tool needs a decision before it runs: `true` for every call, or a CEL condition evaluated for each call. The expression sees what `inputs:` sees — `arguments`, typed from the entry's `parameters`, and `context`, typed from `contextType` — and must be a boolean:
+
+```yaml
+tools:
+  - tool: !ref Transfer
+    name: transfer
+    parameters:
+      type: object
+      required: [amount, to]
+      properties: { amount: { type: integer }, to: { type: string } }
+    approval: !cel "arguments.amount > 100 || !context.trustedPayee"
+  - tool: !ref DeleteAccount
+    name: delete_account
+    parameters: { type: object, properties: {} }
+    approval: true
+```
+
+`telo check` types it like the mapping beside it: an argument the `parameters` do not declare is `CEL_UNKNOWN_FIELD`, a non-boolean result `CEL_TYPE_ERROR`, and `context.<field>` with no `contextType` `CEL_UNKNOWN_FIELD`. At run time an expression of undeclared type that produces something other than a boolean is `ERR_PREDICATE_NOT_BOOLEAN`, naming the tool's `approval` — a failure of that call, which does not run.
+
+A gated call does not run until it is decided — by the agent's `approver`, or by the agent's caller after the run ends asking. What decides it, and how a run is resumed, is the agent's: [`Ai.Agent` → Tool approval](./ai-agent.md#tool-approval). An agent may gate further tools of this provider by name; it cannot ungate one this field gates. Because the list is declared, `telo check` holds those names to it: an agent's `toolProviders[].approval.include` naming a tool this provider does not declare — by its `name`, or by the name of the resource it references when it has none — is `REFERRER_RULE_VIOLATED` on the agent (rule `AGENT_APPROVAL_UNKNOWN_TOOL`, or `AGENT_STREAM_APPROVAL_UNKNOWN_TOOL` on `Ai.AgentStream`). Names are matched bare, before the entry's `prefix`.
 
 ## See also
 

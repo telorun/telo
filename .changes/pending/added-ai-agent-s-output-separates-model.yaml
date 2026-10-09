@@ -1,0 +1,19 @@
+modules:
+  modules/ai: Added
+body: "Ai.Agent's output separates model calls from tool results, and two refusals
+  change. Breaking: tool results moved from steps[].toolResults to a top-level, required
+  toolResults — one entry per tool call the run settled (ran, failed or was denied),
+  calls a previous run left pending included, in the order they were recorded, each {
+  toolCallId, name, content, error?, denied? }. steps is now exactly one { text,
+  toolCalls } entry per model call the run made, so a resumed run no longer opens with
+  an entry for the calls it settled, and a run that only settles pending calls and ends
+  asking again returns none. Both are closed shapes, so CEL reading a misspelled member
+  is refused by telo check. New static refusal: an agent's
+  toolProviders[].approval.include naming a tool its Ai.Tools provider does not declare
+  is REFERRER_RULE_VIOLATED on the agent (rule AGENT_APPROVAL_UNKNOWN_TOOL, or
+  AGENT_STREAM_APPROVAL_UNKNOWN_TOOL on Ai.AgentStream), matched bare before any prefix;
+  a manifest that reached ERR_AGENT_APPROVAL_UNKNOWN_TOOL at run time over a static tool
+  list now fails telo check, and the runtime refusal is unchanged for providers that
+  discover their tools. Breaking: conclusionPrompt without onMaxSteps conclude is
+  refused at creation as ERR_AI_CONCLUSION_PROMPT_UNUSED on both agents, formerly
+  AI_CONCLUSION_PROMPT_UNUSED; the telo check rule keeps that name."

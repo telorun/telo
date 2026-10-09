@@ -43,8 +43,9 @@ today reads the recorded boundary to warn about a streaming model drained inside
 `Telo.JsonSchema` resources exported from `ai`: `Ai.ContentPart` (`text`, `image`,
 `audio`, `video`, `file`, plus the output-only `tool-call`, `reasoning`, `citation`,
 `refusal`) and `Ai.StreamPart` (`text-delta`, `reasoning-delta`, `content-part`,
-`tool-call`, `provider-state`, `finish`). Every part carries `data` or `uri` plus
-`mediaType`, so documents are a matter of value, and a part may carry `cacheControl`.
+`tool-call`, `provider-state`, `finish`). Every media part carries exactly one of
+`data` or `uri`, plus `mediaType` and an optional `name`, so documents are a matter of
+value.
 The stream slot names `Ai.StreamPart` as its element type, which types what a consumer
 reads but not what a producer emits — see the element-typing group below.
 

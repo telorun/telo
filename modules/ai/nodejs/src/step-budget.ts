@@ -41,8 +41,8 @@ export function stepBudget(config: StepBudgetConfig, label: string): StepBudget 
   // The controller twin of the `AI_CONCLUSION_PROMPT_UNUSED` resource rule.
   if (config.conclusionPrompt !== undefined && onMaxSteps !== "conclude") {
     throw new InvokeError(
-      "AI_CONCLUSION_PROMPT_UNUSED",
-      `AI_CONCLUSION_PROMPT_UNUSED: ${label} sets 'conclusionPrompt' without 'onMaxSteps: conclude', so the prompt would never be sent.`,
+      "ERR_AI_CONCLUSION_PROMPT_UNUSED",
+      `${label} sets 'conclusionPrompt' without 'onMaxSteps: conclude', so the prompt would never be sent.`,
     );
   }
   return {

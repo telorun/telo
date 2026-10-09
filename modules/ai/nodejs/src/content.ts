@@ -3,24 +3,35 @@
  * and tool results. A message's `content` is either a plain string (the common,
  * back-compatible case) or an array of content parts.
  *
- * An image part's `data` is bytes (`Uint8Array`, the stdlib binary convention — what
- * a rasterizer/overlay tool result naturally produces) OR a base64 string (what a
- * manifest-authored message carries, since YAML/JSON can't hold bytes). Provider
- * translation normalizes either form to its own wire shape (e.g. a base64 data URL).
+ * A media part holds its bytes or names where they live, never both. `data` is
+ * bytes (`Uint8Array`, the stdlib binary convention — what a rasterizer/overlay
+ * tool result naturally produces) OR a base64 string (what a manifest-authored
+ * message carries, since YAML/JSON can't hold bytes); `uri` is an absolute URI a
+ * provider passes on as written and never fetches.
+ *
+ * The SHAPE of a part is `Ai.ContentPart`'s, enforced by the contract of whatever
+ * takes a message. The predicates here recognise a part in a value nothing has
+ * declared yet — what a tool returned — and agree with that shape, so what they
+ * recognise the contract accepts.
  */
 
 export type TextPart = { type: "text"; text: string };
-export type ImagePart = { type: "image"; data: Uint8Array | string; mediaType: string };
 
-/** A media part that is not an image — audio, video, a document. Same carriage
- *  as an image (bytes, or a URI when they are referenced rather than sent), so
- *  a document is a matter of VALUE rather than of a separate kind. */
+/** How a media part carries its content: the bytes, or a reference to them. */
+export type MediaCarriage =
+  | { data: Uint8Array | string; uri?: never }
+  | { uri: string; data?: never };
+
+/** A picture, a recording, a clip or a document. One carriage for all four, so a
+ *  document is a matter of VALUE rather than of a separate kind. */
 export type MediaPart = {
-  type: "audio" | "video" | "file";
-  data?: Uint8Array | string;
-  uri?: string;
+  type: "image" | "audio" | "video" | "file";
   mediaType: string;
-};
+  /** The part's file name, where it has one. */
+  name?: string;
+} & MediaCarriage;
+
+export type ImagePart = MediaPart & { type: "image" };
 
 /** Parts a model produces and a caller does not send. Kept in the same union
  *  because they travel in the same list: an answer carrying reasoning beside its
@@ -35,7 +46,6 @@ export type ToolCallPart = {
 
 export type ContentPart =
   | TextPart
-  | ImagePart
   | MediaPart
   | ReasoningPart
   | RefusalPart
@@ -52,49 +62,74 @@ export function isTextPart(v: unknown): v is TextPart {
   );
 }
 
+const MEDIA_TYPES = new Set(["image", "audio", "video", "file"]);
+
+/** The two patterns `Ai.ContentPart` holds a `uri` to: a scheme, and not `data:`. */
+const HAS_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
+const DATA_SCHEME = /^data:/i;
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Uint8Array);
+
+/** What each key `Ai.ContentPart` declares may hold. */
+export const DECLARED_KEYS: Record<string, (v: unknown) => boolean> = {
+  type: (v) => typeof v === "string",
+  text: (v) => typeof v === "string",
+  data: (v) => typeof v === "string" || v instanceof Uint8Array,
+  uri: (v) => typeof v === "string" && HAS_SCHEME.test(v) && !DATA_SCHEME.test(v),
+  mediaType: (v) => typeof v === "string",
+  name: (v) => typeof v === "string",
+  toolCall: (v) =>
+    isRecord(v) &&
+    Object.keys(v).every((key) => key === "id" || key === "name" || key === "arguments") &&
+    typeof v.id === "string" &&
+    typeof v.name === "string" &&
+    isRecord(v.arguments),
+  citation: isRecord,
+};
+
+/** No key outside the declared set, and every key present holding what it may. */
+function holdsDeclaredKeys(part: Record<string, unknown>): boolean {
+  return Object.entries(part).every(([key, value]) => {
+    const holds = DECLARED_KEYS[key];
+    return holds !== undefined && (value === undefined || holds(value));
+  });
+}
+
+/** A media part: a media type, and exactly one of bytes or an absolute URI. */
+export function isMediaPart(v: unknown): v is MediaPart {
+  if (!isRecord(v) || !holdsDeclaredKeys(v)) return false;
+  if (typeof v.type !== "string" || !MEDIA_TYPES.has(v.type)) return false;
+  if (v.mediaType === undefined) return false;
+  return (v.data === undefined) !== (v.uri === undefined);
+}
+
 export function isImagePart(v: unknown): v is ImagePart {
-  if (!v || typeof v !== "object" || (v as { type?: unknown }).type !== "image") return false;
-  const data = (v as { data?: unknown }).data;
-  const mediaType = (v as { mediaType?: unknown }).mediaType;
-  return (typeof data === "string" || data instanceof Uint8Array) && typeof mediaType === "string";
+  return isMediaPart(v) && v.type === "image";
 }
 
 /**
- * A part is content when its `type` is one the vocabulary declares AND it
- * carries what that type requires.
- *
- * The required-field check is the whole point. A predicate that accepted any
- * object with a known `type` would admit `{type: "text"}` with no text and
- * `{type: "image"}` with no bytes — which the two dedicated predicates below
- * reject, so widening the vocabulary that way would have made this LOOSER than
- * before while claiming to keep arbitrary objects out of a message.
+ * Whether a value nothing has declared — a tool's result — is a content part:
+ * exactly when it satisfies `Ai.ContentPart`, so a value recognised here is
+ * never refused by the contract of the model call it is sent on. Anything else
+ * is data, and is written to the model as JSON.
  */
 export function isContentPart(v: unknown): v is ContentPart {
-  if (!v || typeof v !== "object") return false;
-  const part = v as Record<string, unknown>;
-  switch (part.type) {
+  if (!isRecord(v) || !holdsDeclaredKeys(v)) return false;
+  switch (v.type) {
     case "text":
-      return isTextPart(v);
+    case "reasoning":
+    case "refusal":
+      return v.text !== undefined;
     case "image":
-      return isImagePart(v);
     case "audio":
     case "video":
     case "file":
-      // Bytes or a URI, and always a media type — the carriage a consumer needs
-      // to do anything at all with it.
-      return (
-        typeof part.mediaType === "string" &&
-        (typeof part.data === "string" ||
-          part.data instanceof Uint8Array ||
-          typeof part.uri === "string")
-      );
-    case "reasoning":
-    case "refusal":
-      return typeof part.text === "string";
+      return isMediaPart(v);
     case "citation":
-      return !!part.citation && typeof part.citation === "object";
+      return v.citation !== undefined;
     case "tool-call":
-      return !!part.toolCall && typeof part.toolCall === "object";
+      return v.toolCall !== undefined;
     default:
       return false;
   }
@@ -107,7 +142,7 @@ export function isContentParts(v: unknown): v is ContentPart[] {
   return Array.isArray(v) && v.length > 0 && v.every(isContentPart);
 }
 
-/** Flatten content to its text — concatenating the text parts, ignoring image
+/** Flatten content to its text — concatenating the text parts, ignoring media
  *  parts. Used where only text is meaningful (echo fixture, a system message that
  *  cannot carry images, the assistant turn paired with tool calls). */
 export function contentToText(content: MessageContent | undefined): string {

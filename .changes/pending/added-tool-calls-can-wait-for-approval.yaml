@@ -1,0 +1,35 @@
+modules:
+  modules/ai: Added
+body: "Tool calls can wait for approval. A call is gated by the agent
+  (`toolProviders[].approval: { include?, exclude? }`, by tool name) or by its tool
+  (`approval` on an `Ai.Tools` entry: `true` or a CEL condition over `arguments` and
+  `context`; providers may implement `toolRequiresApproval`). A gated call is decided by
+  the caller, by the new `approver: { invoke, inputs, result }` on `Ai.Agent` and
+  `Ai.AgentStream` (approve, reject or defer), or the run ends asking: `interrupt:
+  approval` with `approvalRequests` on `Ai.Agent`, `tool-approval-request` parts and a
+  `finish` marked `interrupt: approval` on `Ai.AgentStream`. A later run resumes from
+  the recorded messages with the new `approvals` input; a refused call is reported as a
+  tool result marked `denied`. Both agents now report every message they append to the
+  conversation: `Ai.Agent` returns a required `messages` output (and takes and returns
+  `providerState`), and `Ai.AgentStream` emits a `message` part after each assistant
+  turn and each tool result, plus `tool-approval-decision` parts. Runtime refusals: a
+  gate that answers with anything but a boolean is never read as ungated — it fails that
+  call and the tool does not run (`ERR_PREDICATE_NOT_BOOLEAN` for an `Ai.Tools` entry's
+  `approval`, `ERR_CONTRACT_VIOLATION` for any other provider's `toolRequiresApproval`);
+  an approver's answer is held to exactly `{ decision, reason? }`, so a non-object, a
+  `null` or non-string `reason` or any other key is
+  `ERR_AGENT_APPROVAL_DECISION_INVALID`; and an `approval.include` name the entry's own
+  filter removes is refused when the agent is created as `ERR_AI_APPROVAL_NAME_FILTERED`
+  (`AI_APPROVAL_NAME_FILTERED` at `telo check`). The approver's target is resolved when
+  a run starts. Typing `approver.result`'s `result` binding relies on an analyzer fix
+  that ships alongside: a binding typed from a sibling reference reads it on the object
+  holding the annotated field. Breaking: a consumer of `Ai.AgentStream` that rejects
+  unknown part types must accept `message`, `tool-approval-decision` and
+  `tool-approval-request`; an agent now puts each assistant turn’s tool messages into
+  call order for whatever history it is given; new codes
+  `ERR_AGENT_APPROVAL_UNKNOWN_TOOL` and `ERR_AGENT_APPROVAL_DECISION_INVALID` join both
+  agents’ throw unions, so a `catches:` list with no catch-all must cover them. The
+  buffered agent (`Ai.Agent`) now keeps the last provider state a model call produced
+  when a later call returns none — it is replayed to the calls that follow and returned
+  as `providerState` — where it used to drop it. One model response carrying two tool
+  calls with the same id is `ERR_CONTRACT_VIOLATION` on both agents."

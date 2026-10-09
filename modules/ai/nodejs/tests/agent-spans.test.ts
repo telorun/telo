@@ -141,7 +141,8 @@ describe("agent spans", () => {
           { metadata: { name: "author" }, model: models().buffered, toolProviders: [{ provider: tools }] },
           ctx,
         );
-        await agent.invoke({ prompt: "go" }, RUN);
+        // One `steps` entry per model call, which is what the span counts.
+        expect((await agent.invoke({ prompt: "go" }, RUN)).steps).toHaveLength(2);
       }
 
       const [run, firstChat, tool, secondChat] = spans;
@@ -179,6 +180,37 @@ describe("agent spans", () => {
       expect(records.find((r) => / finished$/.test(r.message))?.attributes["ai.agent.steps"]).toBe(2);
     });
   }
+
+  it("ends the run and its first model call as cancelled when the stream is cancelled before any read", async () => {
+    const { ctx, spans } = tracingContext();
+    let modelStreamCancelled = false;
+    const model = {
+      snapshot: () => ({ model: "echo-1" }),
+      async invoke() {
+        const output: AsyncIterableIterator<StreamPart> = {
+          [Symbol.asyncIterator]: () => output,
+          next: async () => ({ done: false, value: { type: "text-delta", delta: "unread" } }),
+          return: async () => {
+            modelStreamCancelled = true;
+            return { done: true, value: undefined };
+          },
+        };
+        return { output };
+      },
+    };
+    const agent = await createAgentStream({ metadata: { name: "author" }, model }, ctx);
+    const { output } = await agent.invoke({ prompt: "go" }, RUN);
+
+    await output[Symbol.asyncIterator]().return?.();
+
+    const reason = { "telo.cancellation.reason": "the stream's consumer stopped reading" };
+    expect(spans.map((s) => [s.label, s.outcome])).toEqual([
+      ["invoke_agent author", "cancelled"],
+      ["chat echo-1", "cancelled"],
+    ]);
+    for (const span of spans) expect(span.settled).toMatchObject(reason);
+    expect(modelStreamCancelled).toBe(true);
+  });
 
   it("ends a failed tool call's span with its error type", async () => {
     const { ctx, spans } = tracingContext();

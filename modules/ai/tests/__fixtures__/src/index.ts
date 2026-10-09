@@ -5,3 +5,4 @@ export * as AiEchoController from "./ai-echo-controller.js";
 export * as AiEchoStreamController from "./ai-echo-stream-controller.js";
 export * as AiEchoImageController from "./ai-echo-image-controller.js";
 export * as StreamCollectorController from "./stream-collector-controller.js";
+export * as EchoToolProviderController from "./echo-tool-provider-controller.js";

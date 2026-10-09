@@ -119,13 +119,25 @@ steps:
         steps:
           - text: ""
             toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
-            toolResults: [{ toolCallId: echo-call-1, name: count, content: '{"counted":true}' }]
           - text: ""
             toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
-            toolResults: [{ toolCallId: echo-call-1, name: count, content: '{"counted":true}' }]
           - text: "Wrap up. [tools: count] [toolChoice: none]"
             toolCalls: []
-            toolResults: []
+        toolResults:
+          - { toolCallId: echo-call-1, name: count, content: '{"counted":true}' }
+          - { toolCallId: echo-call-1, name: count, content: '{"counted":true}' }
+        # The record: both turns with their results, then the concluding answer.
+        # The conclusion prompt is part of that call's request, not of the record.
+        messages:
+          - role: assistant
+            content: ""
+            toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
+          - { role: tool, content: '{"counted":true}', toolCallId: echo-call-1 }
+          - role: assistant
+            content: ""
+            toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
+          - { role: tool, content: '{"counted":true}', toolCallId: echo-call-1 }
+          - { role: assistant, content: "Wrap up. [tools: count] [toolChoice: none]" }
     invoke:
       kind: Assert.Equals
 ---
@@ -153,12 +165,17 @@ steps:
         types:
           - tool-call
           - step-finish
+          - message
           - tool-result
+          - message
           - tool-call
           - step-finish
+          - message
           - tool-result
+          - message
           - text-delta
           - step-finish
+          - message
           - finish
         text: "Wrap up. [tools: count] [toolChoice: none]"
         finish:

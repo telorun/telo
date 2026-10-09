@@ -100,7 +100,7 @@ steps:
           # the tool that produced it — so the run really was a tool loop, which
           # is what reasoning has to survive.
           mentionsReading: !cel "steps.invoke.result.text.contains('7331')"
-          toolCalled: !cel "steps.invoke.result.steps[0].toolResults[0].name"
+          toolCalled: !cel "steps.invoke.result.toolResults[0].name"
           promptTokens: !cel "steps.invoke.result.usage.promptTokens"
           finishReason: !cel "steps.invoke.result.finishReason"
         invoke:

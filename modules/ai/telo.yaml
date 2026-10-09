@@ -69,7 +69,10 @@ schema:
         - type: string
         - type: array
           minItems: 1
-          items: !ref ContentPart
+          # A shape names a sibling shape by its canonical id: that is the form a
+          # static check follows from inside a shape, so a literal part is judged
+          # where it is written and not only at dispatch.
+          items: { $ref: "telo:AI/ContentPart" }
     toolCalls:
       description: On an assistant turn, the calls the model asked for.
       type: array
@@ -103,15 +106,20 @@ schema:
 # That is what stops the abstract multiplying per modality as providers add
 # audio, video and documents.
 #
-# A flat shape with a `type` discriminator rather than a union of branches: the
-# media parts carry bytes, `data` is deliberately untyped so it accepts both raw
-# bytes and the base64 a manifest can author, and a union with an instance
-# branch is exactly the shape a reader that does not know the value-type
-# vocabulary mis-reads.
+# SHAPE lives here too, and only here: what each `type` must carry is declared
+# below and enforced by the contract of whatever takes a message, so no
+# operation re-checks a part by hand. Whether a model can CARRY a well-formed
+# part is a different question, answered by the model.
+#
+# One flat object with a `type` discriminator: every property is declared once
+# at the root, and the branches beside them only say which a type requires. The
+# bytes stay out of the branches, since a union with an instance branch is
+# exactly the shape a reader that does not know the value-type vocabulary
+# mis-reads.
 kind: Telo.JsonSchema
 metadata:
   name: ContentPart
-  description: One piece of a conversation turn — text, an image, audio, video, a document, a tool call, reasoning, a citation or a refusal. Media parts carry bytes or a URI plus a media type, so a document is a matter of value rather than of a separate kind.
+  description: One piece of a conversation turn — text, an image, audio, video, a document, a tool call, reasoning, a citation or a refusal. A media part carries its media type and either its bytes or an absolute URI to them, plus an optional file name, so a document is a matter of value rather than of a separate kind.
 schema:
   type: object
   additionalProperties: false
@@ -138,7 +146,8 @@ schema:
       description: >-
         A media part's bytes — raw bytes at runtime, or base64 when a manifest
         authored them. Both spellings are legitimate and the distinction is the
-        producer's, so the slot is a union rather than either one.
+        producer's, so the slot is a union rather than either one. Never beside
+        `uri`.
       # `anyOf`, not `oneOf`: a reader that does not know `x-telo-type` sees the
       # byte branch as an empty schema, which MATCHES — so under `oneOf` a plain
       # base64 string would match both branches and fail, while under `anyOf` it
@@ -149,22 +158,52 @@ schema:
         - type: string
     uri:
       type: string
-      description: Where a media part's bytes live, when they are referenced rather than carried.
+      description: >-
+        Where a media part's bytes live, when they are referenced rather than
+        carried: an absolute URI, passed to the model as written and never
+        fetched here. Never beside `data`, and never a `data:` URI — bytes in
+        hand go in `data`.
+      # Two patterns and no lookahead, which not every regex engine has: the
+      # first requires a scheme, the second refuses the one scheme that is bytes.
+      allOf:
+        - pattern: "^[A-Za-z][A-Za-z0-9+.-]*:"
+        - pattern: "^([^Dd]|[Dd][^Aa]|[Dd][Aa][^Tt]|[Dd][Aa][Tt][^Aa]|[Dd][Aa][Tt][Aa][^:])"
     mediaType:
       type: string
       description: The media part's IANA media type, e.g. `image/png`.
+    name:
+      type: string
+      description: A media part's file name, e.g. `report.pdf`.
     # The call a `tool-call` part carries.
     toolCall: !ref ToolCall
     citation:
       description: What a `citation` part points at.
       type: object
       additionalProperties: true
-    cacheControl:
-      description: >-
-        Provider-specific caching directives for this part, passed through untouched.
-        Opaque here — what a provider does with it is the provider's.
-      type: object
-      additionalProperties: true
+  # What each `type` must carry, as one branch per group of types. A branch names
+  # its types and requires `type`, so a part is judged by the branch it plainly is.
+  anyOf:
+    - required: [type, text]
+      properties:
+        type: { enum: [text, reasoning, refusal] }
+    - required: [type, toolCall]
+      properties:
+        type: { const: tool-call }
+    - required: [type, citation]
+      properties:
+        type: { const: citation }
+    - required: [type, mediaType]
+      properties:
+        type: { enum: [image, audio, video, file] }
+      # Exactly one of the two: one is required, and `uri` is forbidden beside
+      # `data` with a `false` property, so the finding names the key at fault.
+      anyOf:
+        - required: [data]
+        - required: [uri]
+      dependencies:
+        data:
+          properties:
+            uri: false
 ---
 # Ai.StreamPart — the same content, arriving in pieces.
 #
@@ -178,10 +217,15 @@ schema:
 # forwarded stream keys on `text-delta.delta`, `tool-call.toolCall` and
 # `finish.usage`. Renaming one of those is a breaking change to every consumer
 # of a forwarded stream, with nothing in this repo to catch it.
+#
+# `tool-call-delta` is ADVISORY: a call's arguments as they are written, for a
+# consumer that shows them arriving. The whole `tool-call` always follows and is
+# the only part a consumer must handle. The model implementation assigns the
+# call's id — see Ai.ModelStream for what it owes a delta.
 kind: Telo.JsonSchema
 metadata:
   name: StreamPart
-  description: One piece of a streamed completion — a text or reasoning delta, a completed content part, a tool call, opaque provider state, or the single terminal record carrying usage and the finish reason.
+  description: One piece of a streamed completion — a text or reasoning delta, a completed content part, a fragment of a tool call's arguments as they are written, the whole tool call, opaque provider state, or the single terminal record carrying usage and the finish reason.
 schema:
   type: object
   additionalProperties: false
@@ -189,10 +233,21 @@ schema:
   properties:
     type:
       type: string
-      enum: [text-delta, reasoning-delta, content-part, tool-call, provider-state, finish]
+      enum: [text-delta, reasoning-delta, content-part, tool-call-delta, tool-call, provider-state, finish]
     delta:
       type: string
-      description: The text a `text-delta` or `reasoning-delta` adds.
+      description: >-
+        The text a `text-delta` or `reasoning-delta` adds; on a `tool-call-delta`, the
+        next fragment of the call's argument text. A call's fragments joined in order
+        are the JSON of its arguments.
+    toolCallId:
+      type: string
+      description: >-
+        On a `tool-call-delta`, the id of the call being written — never empty, and
+        equal to the `id` of the `tool-call` that completes it.
+    toolName:
+      type: string
+      description: On a `tool-call-delta`, the name of the tool being called.
     part:
       description: The completed part a `content-part` carries.
       $ref: "telo://Self/ContentPart"
@@ -213,18 +268,34 @@ schema:
 # Ai.AgentStreamPart — what a streaming agent emits: the model's parts, plus what
 # only the loop knows. `step-finish` closes EACH model call with that call's usage
 # and finish reason, when its stream ends and before its tools run — a call a
-# cancellation interrupts before its `finish` reports none. `tool-result` reports a tool the agent ran.
+# cancellation interrupts before its `finish` reports none. `tool-result` reports a tool the agent ran,
+# or a call that was denied and never ran.
 # `finish` is the one terminator, carrying the usage of every call summed and, when
-# the step budget ended the run, `limit: max-steps`. A
-# `tool-call` keeps its id for the whole run: the assistant message that replays it
-# and the `tool-result` answering it carry the same one. A `tool-result` carries
+# the step budget ended the run, `limit: max-steps`.
+#
+# `message` is the RECORD: one for every message the run appends to the
+# conversation, where it is appended — an assistant turn after its `step-finish`,
+# a tool message right after its `tool-result`, the final answer before `finish`.
+# The caller's own messages followed by every `message` part, in order, is the
+# conversation to hand the next run; nothing else has to be reassembled from the
+# other parts. It is append-only, so tool messages arrive in completion order
+# and each run puts them in call order when it builds a model request.
+#
+# A call that needs a decision: `tool-approval-decision` reports what the
+# agent's approver answered, once per ask; a call nobody decided is named by a
+# `tool-approval-request` after the turn's other calls have settled, and the
+# `finish` that follows is marked `interrupt: approval`. A
+# `tool-call` keeps its id for the whole run: the `tool-call-delta` parts that led
+# to it, the assistant message that replays it and the `tool-result` answering it
+# carry the same one. The tools of one model call run side by side, so their
+# `tool-result` parts arrive in completion order. A `tool-result` carries
 # both what the model saw (`content`) and what the tool returned (`output`), so a
 # consumer never parses the rendering back. Exported so a consumer
 # (a handler persisting a transcript) types the records it reads by `!ref`.
 kind: Telo.JsonSchema
 metadata:
   name: AgentStreamPart
-  description: One event of a streamed tool-use run — a text or reasoning delta, a completed content part, a tool call with its fixed id, opaque provider state, the usage of one model call, a tool's result, or the terminal record with the usage of every call summed.
+  description: One event of a streamed tool-use run — a text or reasoning delta, a completed content part, a tool call and its arguments as they are written, a tool's result or denial, one model call's usage, a message to persist, an approval decision or request, opaque provider state, or the terminal record with total usage.
 schema:
   type: object
   additionalProperties: false
@@ -236,22 +307,68 @@ schema:
         - text-delta
         - reasoning-delta
         - content-part
+        - tool-call-delta
         - tool-call
         - provider-state
         - step-finish
         - tool-result
+        - message
+        - tool-approval-decision
+        - tool-approval-request
         - finish
     delta:
       type: string
-      description: The text a `text-delta` or `reasoning-delta` adds.
+      description: >-
+        The text a `text-delta` or `reasoning-delta` adds; on a `tool-call-delta`, the
+        next fragment of the call's argument text. A call's fragments joined in order
+        are the JSON of its arguments.
+    toolCallId:
+      type: string
+      description: >-
+        On a `tool-call-delta`, the id of the call being written — the `id` of the
+        `tool-call` that completes it and the `toolCallId` of its `tool-result`.
+    toolName:
+      type: string
+      description: On a `tool-call-delta`, the name of the tool being called.
     part:
       description: The completed part a `content-part` carries.
       $ref: "telo://Self/ContentPart"
     toolCall:
       description: >-
-        The call a `tool-call` part carries. Its id is the one the tool's result and
-        the replayed assistant message carry.
+        The call a `tool-call` part carries, once its arguments are complete, and the
+        call a `tool-approval-request` asks a decision on. Its id is the one its
+        argument deltas, an approver's decision, the tool's result, the replayed
+        assistant message and a caller's `approvals` entry carry.
       $ref: "telo://Self/ToolCall"
+    message:
+      description: >-
+        On a `message` part, a message the run appended to the conversation: an
+        assistant turn, a tool's result, or the final answer. The caller's input
+        messages followed by every `message` part in order is the conversation to
+        pass to the next run.
+      $ref: "telo://Self/Message"
+    approvalDecision:
+      description: >-
+        On a `tool-approval-decision`, what the agent's approver answered for one
+        call. On `approve` the call's `tool-result` follows when the tool finishes;
+        on `reject` a `tool-result` marked `denied` follows; on `defer` the call is
+        named by a `tool-approval-request` before the run ends.
+      type: object
+      additionalProperties: false
+      required: [toolCallId, name, decision]
+      properties:
+        toolCallId:
+          type: string
+          description: The id of the `tool-call` the decision is on.
+        name:
+          type: string
+          description: The tool's name as the model saw it.
+        decision:
+          type: string
+          enum: [approve, reject, defer]
+        reason:
+          type: string
+          description: The approver's reason, when it gave one.
     providerState:
       description: >-
         Opaque provider state, forwarded as the model produced it. Pass it back as
@@ -271,8 +388,18 @@ schema:
         on its own.
       type: string
       enum: [max-steps]
+    interrupt:
+      description: >-
+        On the terminal `finish`, why the run stopped before the model finished:
+        `approval` when tool calls are waiting for a decision. Continue by running
+        again with the recorded messages and an `approvals` entry per call. Never
+        beside `limit`.
+      type: string
+      enum: [approval]
     toolResult:
-      description: What a `tool-result` part carries — the executed call's result.
+      description: >-
+        What a `tool-result` part carries — the executed call's result, or the
+        denial of a call that never ran.
       type: object
       additionalProperties: false
       required: [toolCallId, name, content]
@@ -296,11 +423,17 @@ schema:
             was told — for a consumer that reads what the tool returned (a pulled file
             path, a check's exit code) rather than its rendering. Plain JSON; for an MCP
             tool, its structured content when it has one, otherwise its content parts.
-            Present whenever `error` is not true, absent when it is. Never sent to the
-            model.
+            Present on a call that ran and succeeded; absent when `error` or `denied`
+            is true. Never sent to the model.
         error:
           type: boolean
           description: True when the call failed and `content` is the error fed back.
+        denied:
+          type: boolean
+          description: >-
+            True when the call was decided against — by the caller or by the agent's
+            approver — and never ran; `content` is what the model was told. A denial
+            is not an error.
 ---
 # Why generation ended. Declared once: it was restated in five places with four
 # different value sets, so a value one kind produced was rejected by the next —
@@ -323,8 +456,8 @@ schema:
 ---
 # Two usage shapes, and the difference is WHO fills them.
 #
-# A PROVIDER reports the token triple, which is all its endpoint tells it. The
-# provider-neutral half — `unit` and `total`, the pair that lets one consumer
+# A PROVIDER reports the token triple, plus the two breakdowns its endpoint may
+# give of it. The provider-neutral half — `unit` and `total`, the pair that lets one consumer
 # sum spend across modalities — is stamped by the OPERATION, since the triple
 # already carries the answer and deriving it centrally is what keeps every
 # existing provider unchanged. So a model's declared output requires three
@@ -334,7 +467,7 @@ schema:
 kind: Telo.JsonSchema
 metadata:
   name: TokenUsage
-  description: What a request consumed in tokens, as a provider reports it — the prompt, completion and total counts, optionally already carrying the provider-neutral unit and total.
+  description: What a request consumed in tokens, as a provider reports it — the prompt, completion and total counts, how many prompt tokens were served from a cache and how many completion tokens were spent reasoning when the endpoint says, optionally already carrying the provider-neutral unit and total.
 schema:
   type: object
   additionalProperties: false
@@ -343,6 +476,18 @@ schema:
     promptTokens: { type: integer, minimum: 0 }
     completionTokens: { type: integer, minimum: 0 }
     totalTokens: { type: integer, minimum: 0 }
+    cachedPromptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `promptTokens` were read from a cache. Absent when the endpoint
+        does not say, which is not the same as zero.
+    reasoningTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `completionTokens` were spent reasoning. Absent when the
+        endpoint does not say, which is not the same as zero.
     unit:
       type: string
       description: What `total` counts. Stamped by the operation when a provider reports none.
@@ -351,7 +496,7 @@ schema:
 kind: Telo.JsonSchema
 metadata:
   name: Usage
-  description: What a request consumed, as an operation reports it — the prompt/completion token triple, plus a provider-neutral unit and total so spend can be summed across modalities.
+  description: What a request consumed, as an operation reports it — the prompt/completion token triple, the cached share of the prompt and the reasoning share of the completion when the model reports them, plus a provider-neutral unit and total so spend can be summed across modalities.
 schema:
   type: object
   additionalProperties: false
@@ -360,6 +505,18 @@ schema:
     promptTokens: { type: integer, minimum: 0 }
     completionTokens: { type: integer, minimum: 0 }
     totalTokens: { type: integer, minimum: 0 }
+    cachedPromptTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `promptTokens` were read from a cache. Absent when the model
+        does not report it, which is not the same as zero.
+    reasoningTokens:
+      type: integer
+      minimum: 0
+      description: >-
+        How many of `completionTokens` were spent reasoning. Absent when the model
+        does not report it, which is not the same as zero.
     unit:
       type: string
       description: What `total` counts, so a consumer can sum across modalities.
@@ -454,8 +611,9 @@ outputType:
         description: >-
           What the model produced, as parts. The whole answer including any images or
           reasoning it returned.
-        items:
-          $ref: "telo://Self/ContentPart"
+        # By `!ref`, which is also what carries the shape into an importer's
+        # analysis — `Ai.Message` reaches it by id, which alone does not.
+        items: !ref ContentPart
       text:
         type: string
         description: >-
@@ -485,17 +643,39 @@ outputType:
 # Ai.ModelStream — the same contract, delivered as it is generated.
 #
 # A separate abstract rather than a mode of Ai.Model: see the note there. What
-# differs beyond the output is the RELATION a consumer has to it — the response,
-# the transform chain and every error happen while the consumer drains, after
-# this invocation has already returned.
+# differs beyond the output is the RELATION a consumer has to it, and WHEN a
+# failure arrives:
+#
+#   - A call is REFUSED by rejecting. An implementation raises from the call
+#     every refusal it can decide from the request alone, before it contacts its
+#     endpoint — a caller can still answer that, since nothing has been sent on.
+#   - An answer FAILS by rejecting its iteration: whatever goes wrong after the
+#     call has returned — the endpoint's own refusal included — arrives while
+#     the consumer drains.
+#   - A caller that received a stream reads it to its `finish` or cancels it.
+#
+# And who names a tool call. The IMPLEMENTATION assigns a call's id — its
+# endpoint's own, or one it mints (`call_<uuid>`) when the endpoint gives none —
+# because only it can put the same id on a call's argument deltas and on the
+# call itself:
+#
+#   - Every `tool-call-delta` carries a non-empty `toolCallId` equal to the `id`
+#     of the `tool-call` that completes it, and that call's `toolName`.
+#   - No delta is emitted for a call until its id is known. Fragments that arrive
+#     earlier are held and released once it is — at the latest immediately before
+#     the `tool-call`.
+#   - An id is unique across the calls of a run, not just within one answer: a
+#     positional id (`call_0`) repeats on the next model call.
+#   - Deltas are optional. An implementation that has none emits the whole
+#     `tool-call` alone.
 kind: Telo.Abstract
 metadata:
   name: ModelStream
   description: >-
     A language model called for a stream: the same messages and tools go in, and the
-    answer arrives as parts — text deltas, tool calls, a terminal record with usage —
-    as it is generated. A failure mid-stream rejects the iteration rather than
-    yielding an error part.
+    answer arrives as parts — text deltas, tool calls and their arguments as they
+    are written, a terminal record with usage — as it is generated. A failure rejects
+    the call or the iteration rather than yielding an error part.
 capability: Telo.Invocable
 inputType:
   kind: Telo.JsonSchema
@@ -545,10 +725,15 @@ outputType:
     properties:
       output:
         description: >-
-          The answer's parts, in order, ending with exactly one `finish`. A mid-stream
-          failure rejects the iteration; parts already yielded still reach the
-          consumer, so a forwarder can flush what it has and encode an error frame
-          from the catch.
+          The answer's parts, in order, ending with exactly one `finish`. Whatever
+          fails after the call has returned rejects the iteration; parts already
+          yielded still reach the consumer, so a forwarder can flush what it has and
+          encode an error frame from the catch. A caller that received the stream
+          reads it to its `finish` or cancels it. A tool call may be preceded by
+          `tool-call-delta` parts carrying its arguments as they are written: each
+          names the call's id — never empty, and the `id` of the `tool-call` that
+          follows — and its tool name, and none is emitted before that id is known.
+          The implementation assigns the id, unique across every call of a run.
         x-telo-type:
           name: Telo.Stream
           of:
@@ -564,13 +749,15 @@ metadata:
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextController
+# `inherit`: what the model throws escapes this kind unchanged, so its codes are
+# part of this kind's union and a route's `catches:` may name them.
 throws:
+  inherit: true
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        The call's messages or options were malformed — both `prompt` and `messages`,
-        neither, an empty message list, or a content part that is not text or a
-        recognized media part.
+        The call was malformed in a way its declared shape does not state — both
+        `prompt` and `messages`, neither, or an empty message list.
     ERR_INVALID_REFERENCE:
       description: >-
         `model` did not resolve to a live model instance. A wiring failure, not a
@@ -642,19 +829,23 @@ kind: Telo.Definition
 metadata:
   name: TextStream
   description: >-
-    Streams a text completion token by token as an async iterable of text-delta,
-    finish and error parts. Same prompt, system and option inputs as a buffered
-    completion; encoding the stream is the consumer's job.
+    Streams a text completion token by token as an async iterable of text deltas
+    ending in one finish record. Same prompt, system and option inputs as a buffered
+    completion; encoding the stream is the consumer's job. The call makes the model
+    call: what the model refuses it with rejects this call unchanged, and anything
+    later rejects the iteration.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextStreamController
+# `inherit`: what the model throws escapes this kind unchanged, so its codes are
+# part of this kind's union and a route's `catches:` may name them.
 throws:
+  inherit: true
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        The call's messages or options were malformed — both `prompt` and `messages`,
-        neither, an empty message list, or a content part that is not text or a
-        recognized media part.
+        The call was malformed in a way its declared shape does not state — both
+        `prompt` and `messages`, neither, or an empty message list.
     ERR_INVALID_REFERENCE:
       description: >-
         `model` did not resolve to a live model instance. A wiring failure, not a
@@ -682,7 +873,8 @@ outputType:
         x-telo-type: Telo.Stream
         description: >-
           Async iterable of StreamPart records, ending with exactly one `finish`. A
-          mid-stream failure rejects the iteration rather than yielding a part.
+          failure after the call has returned rejects the iteration rather than
+          yielding a part.
     required: [output]
     additionalProperties: false
 schema:
@@ -694,9 +886,9 @@ schema:
       x-telo-ref:
         kind: Self.ModelStream
         # Both, and the pair is the honest reading: the invocation is a real
-        # dispatch that returns a handle, and then the response, the transform
-        # chain and every error happen while the CONSUMER drains — after this
-        # call has already returned. So a zone's lifetime stops at the streaming
+        # dispatch that returns a handle — and can be refused, which rejects this
+        # call — and then the response, the transform chain and every later
+        # failure happen while the CONSUMER drains, after this call has returned. So a zone's lifetime stops at the streaming
         # boundary rather than falsely extending over work that outlives it.
         use: [call, trigger.consumer]
     system:
@@ -726,6 +918,11 @@ schema:
 #   callTool(name, arguments, ctx): any  — dispatch a model-requested call; `ctx` is
 #                                          the agent invocation's context, handed on
 #                                          to the tool so a cancelled turn stops it
+# and one optional method:
+#   toolRequiresApproval(name, arguments, context): boolean
+#                                        — whether this call needs a decision
+#                                          before it runs; absent means it does not.
+#                                          Any answer but a boolean fails the call
 # `Ai.Tools` (static list, here) and `AiMcp.ToolProvider` (MCP discovery, in
 # @telorun/ai-mcp) both implement it; the agent never learns which.
 kind: Telo.Abstract
@@ -733,8 +930,9 @@ metadata:
   name: ToolProvider
   description: >-
     A source of callable tools mounted into an agent: it advertises the tools a model
-    may request and dispatches a requested call by name. Backed by a fixed list or by
-    tools discovered from a remote server at runtime.
+    may request, dispatches a requested call by name, and may say that a call needs
+    approval before it runs. Backed by a fixed list or by tools discovered from a
+    remote server at runtime.
 capability: Telo.Mount
 ---
 # Ai.Tools — a static list of tools, each wrapping any Telo.Invocable. The built-in
@@ -746,7 +944,7 @@ metadata:
     Exposes a fixed list of resources as tools an agent can call, each declaring the
     JSON Schema of the arguments the model must produce. Optional CEL maps those
     arguments, and typed data from the agent's caller, into the call and shapes its
-    result back into the model's context.
+    result. A tool can require human-in-the-loop approval before it runs.
 capability: Telo.Mount
 extends: Self.ToolProvider
 controllers:
@@ -813,6 +1011,25 @@ schema:
                   properties: {}
                   additionalProperties: false
                   x-telo-context-from-root: contextType
+          approval:
+            title: Approval
+            description: >-
+              Whether a call to this tool needs a decision before it runs: `true`, or a
+              CEL expression over the call's `arguments` and the caller's `context`,
+              evaluated for each call. A call that needs one is put to the agent's
+              `approver`, or ends the run asking its caller.
+            type: boolean
+            default: false
+            x-telo-context:
+              type: object
+              properties:
+                arguments:
+                  x-telo-context-from: "parameters/properties"
+                context:
+                  type: object
+                  properties: {}
+                  additionalProperties: false
+                  x-telo-context-from-root: contextType
           result:
             title: Result mapping
             description: |
@@ -837,6 +1054,33 @@ schema:
         additionalProperties: false
   required: [tools]
   additionalProperties: false
+  # A name the entry's own filter removes is the agent's own rule to report, so
+  # it holds here. A tool's name is its `name`, else its resource's.
+  x-telo-referrer-rules:
+    - referrer: Self.Agent
+      peers: /toolProviders
+      condition: !cel >-
+        !has(entry.approval) || !has(entry.approval.include) ||
+        entry.approval.include.all(n,
+        (has(entry.include) && !(n in entry.include)) ||
+        (has(entry.exclude) && n in entry.exclude) ||
+        self.tools.exists(t, (has(t.name) ? t.name : t.tool.name) == n))
+      code: AGENT_APPROVAL_UNKNOWN_TOOL
+      message: >-
+        lists a tool in `approval.include` that this provider does not declare, so
+        the name gates nothing. Names are matched bare, before any `prefix`.
+    - referrer: Self.AgentStream
+      peers: /toolProviders
+      condition: !cel >-
+        !has(entry.approval) || !has(entry.approval.include) ||
+        entry.approval.include.all(n,
+        (has(entry.include) && !(n in entry.include)) ||
+        (has(entry.exclude) && n in entry.exclude) ||
+        self.tools.exists(t, (has(t.name) ? t.name : t.tool.name) == n))
+      code: AGENT_STREAM_APPROVAL_UNKNOWN_TOOL
+      message: >-
+        lists a tool in `approval.include` that this provider does not declare, so
+        the name gates nothing. Names are matched bare, before any `prefix`.
   examples:
     - tools:
         - tool: !ref GetWeather
@@ -861,31 +1105,42 @@ schema:
 # Ai.Agent — a tool-use loop. Invoked like Ai.Text (prompt xor messages, plus
 # system/options); calls the model with the merged tool set, executes any requested
 # tools via their providers, replays results, and loops until the model finishes or
-# maxSteps is hit. Buffered only (no streaming agent in v1).
+# maxSteps is hit. A tool call that needs a decision is settled first — by the
+# caller's `approvals`, by the `approver`, or by ending the run asking.
 kind: Telo.Definition
 metadata:
   name: Agent
   description: >-
-    Runs a tool-use loop: calls the model, executes the tools it requests, replays the
-    results, and repeats until the model finishes or a step bound is reached — where it
-    fails, returns, or asks the model for a closing answer. Returns the final text with
-    accumulated usage and a per-step trace; typed caller data reaches the tools.
+    Runs a tool-use loop: calls the model, executes the tools it requests in parallel
+    up to a bound, replays the results, and repeats until the model finishes or a step
+    limit is reached. Returns the final text with accumulated usage, each model call,
+    each tool result and the messages to persist. Tool calls can wait for
+    human-in-the-loop approval, and a paused run resumes.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController
+# `inherit`: what the model throws escapes this kind unchanged, so its codes are
+# part of this kind's union and a route's `catches:` may name them.
 throws:
+  inherit: true
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        The call's messages or options were malformed — both `prompt` and `messages`,
-        neither, an empty message list, or a content part that is not text or a
-        recognized media part.
+        The call was malformed in a way its declared shape does not state — both
+        `prompt` and `messages`, neither, or an empty message list; an `approvals`
+        entry beside `prompt`, one naming a tool call that is not pending, or two
+        for one call; or two pending tool calls sharing an id.
     ERR_INVALID_REFERENCE:
       description: >-
         `model` did not resolve to a live model instance. A wiring failure, not a
         request failure.
     ERR_CONTRACT_VIOLATION:
-      description: A provider reported a token count that is not a representable integer.
+      description: >-
+        A provider reported a token count that is not a representable integer, one
+        model response carried two tool calls sharing an id, or a tool provider
+        answered whether a call needs approval with something other than a boolean.
+        The last is a failure of that tool call, which does not run: fed back to the
+        model or raised, as `onToolError` says.
     ERR_AGENT_MAX_STEPS:
       description: >-
         The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
@@ -894,6 +1149,27 @@ throws:
       description: The model asked for a tool no mounted provider advertises.
     ERR_AGENT_TOOL_COLLISION:
       description: Two mounted providers advertise the same tool name.
+    ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
+      description: >-
+        A tool provider entry's `approval.include` names a tool the entry does not
+        expose, so the name would gate nothing. Raised when the tools are assembled,
+        before any model call.
+    ERR_AGENT_APPROVAL_DECISION_INVALID:
+      description: >-
+        The approver's answer, as `approver.result` mapped it, is not a decision:
+        it is not an object, `decision` is not `approve`, `reject` or `defer`,
+        `reason` is not a string, or it carries another key. The call it was asked
+        about stays pending.
+      data:
+        type: object
+        required: [toolCallId, name]
+        properties:
+          toolCallId:
+            type: string
+            description: The id of the tool call the approver was asked about.
+          name:
+            type: string
+            description: The tool's name as the model saw it.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -913,6 +1189,30 @@ inputType:
         type: object
         default: {}
         x-telo-value-schema-from: /toolProviders/*/provider/contextType
+      approvals:
+        description: >-
+          Decisions on the tool calls `messages` leaves pending — the calls of its
+          last assistant turn that no tool message answers. An approved call runs
+          without being judged again; a refused one is not run and the model is told
+          it was denied, with `reason`. A pending call with no entry is judged
+          afresh. An `approvals` entry beside `prompt` is refused.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [toolCallId, approved]
+          properties:
+            toolCallId:
+              type: string
+              description: The id of the pending tool call this decides.
+            approved: { type: boolean }
+            reason:
+              type: string
+              description: Why, told to the model when the call is refused.
+      providerState:
+        description: >-
+          Opaque state a previous run returned as `providerState`, handed unchanged
+          to the first model call.
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -931,12 +1231,99 @@ outputType:
           before the model finished. Absent when the model finished on its own.
         type: string
         enum: [max-steps]
-      steps:
+      interrupt:
+        description: >-
+          Why the run stopped before the model finished: `approval` when tool calls
+          are waiting for a decision, listed in `approvalRequests`. Continue by
+          invoking again with the conversation — the input messages followed by
+          `messages` — and an `approvals` entry per call. Never beside `limit`.
+        type: string
+        enum: [approval]
+      approvalRequests:
+        description: The tool calls waiting for a decision, in the order the model asked for them.
+        type: array
+        items: !ref ToolCall
+      approvalDecisions:
+        description: >-
+          What the approver answered, one entry per call it was asked about, in the
+          order it answered. Absent when it was never asked.
         type: array
         items:
           type: object
-          additionalProperties: true
-    required: [text, usage, finishReason, steps]
+          additionalProperties: false
+          required: [toolCallId, name, decision]
+          properties:
+            toolCallId: { type: string }
+            name: { type: string }
+            decision:
+              type: string
+              enum: [approve, reject, defer]
+            reason: { type: string }
+      messages:
+        description: >-
+          Every message the run appended to the conversation, in order: each
+          assistant turn, each tool result, the final answer. The input messages
+          followed by these is the conversation to persist and to pass to the next
+          run.
+        type: array
+        items: !ref Message
+      providerState:
+        description: >-
+          Opaque model state to pass back as the next run's `providerState`: the
+          last state a model call produced, or the input `providerState` when no
+          call produced one, absent when neither.
+      steps:
+        description: >-
+          One entry per model call the run made, the answering and the concluding
+          call included. A run that resumes pending calls adds no entry for them.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [text, toolCalls]
+          properties:
+            text:
+              type: string
+              description: The text the model wrote on that call.
+            toolCalls:
+              description: The tools the model asked for on that call, in the order it asked.
+              type: array
+              items: !ref ToolCall
+      toolResults:
+        description: >-
+          One entry per tool call the run settled — ran, failed or was denied —
+          including calls a previous run left pending, in the order they were
+          recorded. A call still waiting has none and is listed in
+          `approvalRequests`.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [toolCallId, name, content]
+          properties:
+            toolCallId:
+              type: string
+              description: The id of the tool call this answers.
+            name:
+              type: string
+              description: The tool's name as the model saw it.
+            content:
+              description: What was fed back to the model — text, or content parts.
+              anyOf:
+                - type: string
+                - type: array
+                  items:
+                    $ref: "telo://Self/ContentPart"
+            error:
+              type: boolean
+              description: True when the call failed and `content` is the error fed back.
+            denied:
+              type: boolean
+              description: >-
+                True when the call was decided against — by the caller or by the
+                agent's approver — and never ran; `content` is what the model was
+                told. A denial is not an error.
+    required: [text, usage, finishReason, steps, toolResults, messages]
     additionalProperties: false
 schema:
   type: object
@@ -991,8 +1378,10 @@ schema:
     onToolError:
       title: On tool error
       description: >-
-        feedback → record the error and return it to the model; throw → abort the invoke.
-        A cancelled turn and a durable suspension are not tool errors and always propagate.
+        feedback → record the error and return it to the model, while the tools running
+        beside it finish; throw → abort the invoke with the first tool error, cancelling
+        the tools still running. A cancelled turn and a durable suspension are not tool
+        errors and always propagate.
       type: string
       enum: [feedback, throw]
       default: feedback
@@ -1005,6 +1394,18 @@ schema:
         and the result record's output stays whole. Unset: unbounded.
       type: integer
       minimum: 1
+      x-telo-eval: compile
+    maxParallelTools:
+      title: Max parallel tools
+      description: >-
+        How many of the tool calls of one model response run at once. Calls start in
+        the order the model asked for them, and the model is given their results in
+        that order whatever order they complete in. `1` runs one call at a time, in
+        call order — for tools that depend on each other's side effects within one
+        response.
+      type: integer
+      minimum: 1
+      default: 4
       x-telo-eval: compile
     toolProviders:
       title: Tool providers
@@ -1036,8 +1437,103 @@ schema:
             description: Optional denylist matched against the provider's bare tool names (before any prefix is applied).
             type: array
             items: { type: string }
+          approval:
+            title: Approval
+            description: >-
+              Which of this entry's tools need a decision before a call to them runs,
+              by bare tool name (before any prefix), over the tools the entry exposes
+              after its own `include` / `exclude`. `{}` gates every one; `include`
+              gates exactly the names it lists; `exclude` takes names out of the gated
+              set. A tool's own provider may gate a call as well; neither ungates what
+              the other gates.
+            type: object
+            additionalProperties: false
+            properties:
+              include:
+                title: Include
+                description: >-
+                  The tools that need a decision. Each must be a tool this entry
+                  exposes. An empty list gates none.
+                type: array
+                items: { type: string }
+              exclude:
+                title: Exclude
+                description: >-
+                  Tools that need no decision — the form to use when the provider's
+                  tool list may grow, since a tool added later is then gated. A name
+                  the entry does not expose is ignored.
+                type: array
+                items: { type: string }
         required: [provider]
         additionalProperties: false
+    approver:
+      title: Approver
+      description: >-
+        What decides a tool call that needs a decision, in place of the caller: it is
+        asked once per such call and answers approve (the tool runs), reject (the
+        model is told the call was denied) or defer (the run ends asking its caller).
+        A decision the caller supplied in `approvals` is never put to it. A failed
+        ask fails the run whatever `onToolError` says.
+      type: object
+      additionalProperties: false
+      required: [invoke, inputs, result]
+      properties:
+        invoke:
+          title: Invoke
+          description: The resource asked for each decision — a reference or an inline declaration.
+          x-telo-ref:
+            kind: Telo.Executable
+            use: call
+            # The sibling map holding this call's arguments, typed by the
+            # target's declared inputType.
+            inputs: /inputs
+        inputs:
+          title: Inputs mapping
+          description: >-
+            CEL mapping into the approver's input from the call being judged:
+            `toolCall` (`id`, `name` as the model saw it, `arguments`) and `tool`
+            (`name`, `description`, `parameters`).
+          type: object
+          additionalProperties: true
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              toolCall:
+                type: object
+                additionalProperties: false
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  arguments: { type: object, additionalProperties: true }
+              tool:
+                type: object
+                additionalProperties: false
+                properties:
+                  name: { type: string }
+                  description: { type: string }
+                  parameters: { type: object, additionalProperties: true }
+        result:
+          title: Result mapping
+          description: >-
+            CEL mapping from the approver's `result` to the decision: `decision` is
+            `approve`, `reject` or `defer`; `reason` is told to the model on a reject
+            and reported with the decision.
+          type: object
+          additionalProperties: false
+          required: [decision]
+          properties:
+            decision:
+              type: string
+              enum: [approve, reject, defer]
+            reason:
+              type: string
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              result:
+                x-telo-context-ref-from: "invoke/outputType"
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:
@@ -1046,6 +1542,15 @@ schema:
       message: >-
         sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only
         by the concluding call, so it would never be used.
+    - in: /toolProviders
+      condition: !cel >-
+        !has(this.approval) || !has(this.approval.include) ||
+        this.approval.include.all(n,
+        (!has(this.include) || n in this.include) && (!has(this.exclude) || !(n in this.exclude)))
+      code: AI_APPROVAL_NAME_FILTERED
+      message: >-
+        lists a tool in `approval.include` that its own `include` / `exclude` removes;
+        the entry never exposes that tool, so the name gates nothing.
   examples:
     - model: !ref Gpt4oMini
       system: |
@@ -1062,33 +1567,48 @@ schema:
 # convention) instead of a buffered object: the assistant's text streams token-by-token
 # and every tool call surfaces the moment it happens. Pipe `result.output` through a
 # format-codec encoder (Sse.Encoder / Ndjson.Encoder) in an Http.Api `mode: stream`
-# route to serve it over SSE. Each record is an Ai.AgentStreamPart. A failure — and a
-# cancelled turn, whose context also reaches every running tool — rejects the
-# iteration rather than yielding a record.
+# route to serve it over SSE. Each record is an Ai.AgentStreamPart. The first model
+# call is dispatched by the invocation itself, so a request the model refuses
+# outright fails the CALL — where a route's `catches:` can still answer it — unless
+# the run resumes pending tool calls, which are settled first, as the stream is read. Any
+# later failure — and a cancelled turn, whose cancellation also reaches every
+# running tool — rejects the iteration rather than yielding a record. The tools of
+# one model call run side by side up to `maxParallelTools`.
 kind: Telo.Definition
 metadata:
   name: AgentStream
   description: >-
-    Runs a tool-use loop and emits it as it happens: assistant text deltas, every tool
-    call with a stable id and its result, each model call's usage, then a terminal
-    finish with the total. Cancelling the run stops the model and any running tool;
-    a failure rejects the iteration.
+    Runs a tool-use loop and streams it as it happens: assistant text deltas, every tool
+    call with a stable id and its result, each model call's usage, and the messages to
+    persist. Tools run in parallel up to a bound and can wait for human-in-the-loop
+    approval. Cancelling the run stops the model and every running tool.
 capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController
+# `inherit`: what the model throws escapes this kind unchanged, so its codes are
+# part of this kind's union and a route's `catches:` may name them.
 throws:
+  inherit: true
   codes:
     ERR_INVALID_INPUT:
       description: >-
-        The call's messages or options were malformed — both `prompt` and `messages`,
-        neither, an empty message list, or a content part that is not text or a
-        recognized media part.
+        The call was malformed in a way its declared shape does not state — both
+        `prompt` and `messages`, neither, or an empty message list; an `approvals`
+        entry beside `prompt`, one naming a tool call that is not pending, or two
+        for one call; or two pending tool calls sharing an id. Decided from
+        the input alone, so it rejects the call rather than the iteration.
     ERR_INVALID_REFERENCE:
       description: >-
         `model` did not resolve to a live model instance. A wiring failure, not a
         request failure.
     ERR_CONTRACT_VIOLATION:
-      description: A provider reported a token count that is not a representable integer, or a model stream ended without a `finish` part.
+      description: >-
+        A provider reported a token count that is not a representable integer, a model
+        stream ended without a `finish` part, a `tool-call-delta` named no call id, one
+        model response carried two tool calls sharing an id, or a tool provider
+        answered whether a call needs approval with something other than a boolean.
+        The last is a failure of that tool call, which does not run: fed back to the
+        model or raised, as `onToolError` says.
     ERR_AGENT_MAX_STEPS:
       description: >-
         The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
@@ -1097,6 +1617,27 @@ throws:
       description: The model asked for a tool no mounted provider advertises.
     ERR_AGENT_TOOL_COLLISION:
       description: Two mounted providers advertise the same tool name.
+    ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
+      description: >-
+        A tool provider entry's `approval.include` names a tool the entry does not
+        expose, so the name would gate nothing. Raised when the tools are assembled,
+        before any model call.
+    ERR_AGENT_APPROVAL_DECISION_INVALID:
+      description: >-
+        The approver's answer, as `approver.result` mapped it, is not a decision:
+        it is not an object, `decision` is not `approve`, `reject` or `defer`,
+        `reason` is not a string, or it carries another key. The call it was asked
+        about stays pending.
+      data:
+        type: object
+        required: [toolCallId, name]
+        properties:
+          toolCallId:
+            type: string
+            description: The id of the tool call the approver was asked about.
+          name:
+            type: string
+            description: The tool's name as the model saw it.
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1120,6 +1661,26 @@ inputType:
         type: object
         default: {}
         x-telo-value-schema-from: /toolProviders/*/provider/contextType
+      approvals:
+        description: >-
+          Decisions on the tool calls `messages` leaves pending — the calls of its
+          last assistant turn that no tool message answers. An approved call runs
+          without being judged again; a refused one is not run and the model is told
+          it was denied, with `reason`. A pending call with no entry is judged
+          afresh. An `approvals` entry beside `prompt` is refused.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [toolCallId, approved]
+          properties:
+            toolCallId:
+              type: string
+              description: The id of the pending tool call this decides.
+            approved: { type: boolean }
+            reason:
+              type: string
+              description: Why, told to the model when the call is refused.
     additionalProperties: false
 outputType:
   kind: Telo.JsonSchema
@@ -1133,10 +1694,17 @@ outputType:
             $ref: "telo://Self/AgentStreamPart"
         description: >-
           The run's parts in order: each model call's own parts (text and reasoning
-          deltas, content parts, tool calls, provider state) closed by a `step-finish`
-          with that call's usage, then a `tool-result` per tool it ran; after the last
-          call, one terminal `finish` with the usage of every call summed. A failure
-          or a cancelled turn rejects the iteration instead.
+          deltas, content parts, tool-call argument deltas, tool calls, provider state)
+          closed by a `step-finish` with that call's usage, then a `tool-result` per
+          tool it ran, in the order the tools completed; after the last call, one
+          terminal `finish` with the usage of every call summed. Each message the run
+          appends to the conversation follows as a `message` part: the assistant turn
+          after its `step-finish`, a tool message right after its `tool-result`. A
+          call that needs a decision is reported by a `tool-approval-decision` when
+          the approver answers, or by a `tool-approval-request` once the turn's other
+          calls have settled, after which `finish` is marked `interrupt: approval`. A
+          run given pending calls settles them before any model call. A failure or a
+          cancelled turn rejects the iteration instead.
     required: [output]
     additionalProperties: false
 schema:
@@ -1148,9 +1716,9 @@ schema:
       x-telo-ref:
         kind: Self.ModelStream
         # Both, and the pair is the honest reading: the invocation is a real
-        # dispatch that returns a handle, and then the response, the transform
-        # chain and every error happen while the CONSUMER drains — after this
-        # call has already returned. So a zone's lifetime stops at the streaming
+        # dispatch that returns a handle — and can be refused, which rejects this
+        # call — and then the response, the transform chain and every later
+        # failure happen while the CONSUMER drains, after this call has returned. So a zone's lifetime stops at the streaming
         # boundary rather than falsely extending over work that outlives it.
         use: [call, trigger.consumer]
     system:
@@ -1178,7 +1746,8 @@ schema:
         raise ERR_AGENT_MAX_STEPS, rejecting the iteration so a `catch:` or a route's
         `catches:` can name it; return → emit a terminal finish with the last turn's
         finishReason; conclude → make one more model call that may not use a tool,
-        ending with `conclusionPrompt`, and emit its parts before the terminal finish.
+        ending with `conclusionPrompt`, and emit its parts — never a tool call or a
+        tool call's argument deltas — before the terminal finish.
         `return` and `conclude` mark that finish `limit: max-steps`.
       type: string
       enum: [throw, return, conclude]
@@ -1198,9 +1767,10 @@ schema:
     onToolError:
       title: On tool error
       description: >-
-        feedback → emit a tool-result with error:true and continue; throw → raise the
-        tool's error, rejecting the iteration. Parts already emitted still reach the
-        consumer, and an encoder frames the rejection for the wire. A cancelled turn and
+        feedback → emit a tool-result with error:true and continue, while the tools
+        running beside it finish; throw → raise the first tool error, cancelling the
+        tools still running and rejecting the iteration. Parts already emitted still
+        reach the consumer, and an encoder frames the rejection for the wire. A cancelled turn and
         a durable suspension are not tool errors and always propagate.
       type: string
       enum: [feedback, throw]
@@ -1214,6 +1784,18 @@ schema:
         and the result record's output stays whole. Unset: unbounded.
       type: integer
       minimum: 1
+      x-telo-eval: compile
+    maxParallelTools:
+      title: Max parallel tools
+      description: >-
+        How many of the tool calls of one model response run at once. Calls start in
+        the order the model asked for them, and the model is given their results in
+        that order whatever order they complete in. `1` runs one call at a time, in
+        call order — for tools that depend on each other's side effects within one
+        response.
+      type: integer
+      minimum: 1
+      default: 4
       x-telo-eval: compile
     toolProviders:
       title: Tool providers
@@ -1245,8 +1827,103 @@ schema:
             description: Optional denylist matched against the provider's bare tool names (before any prefix is applied).
             type: array
             items: { type: string }
+          approval:
+            title: Approval
+            description: >-
+              Which of this entry's tools need a decision before a call to them runs,
+              by bare tool name (before any prefix), over the tools the entry exposes
+              after its own `include` / `exclude`. `{}` gates every one; `include`
+              gates exactly the names it lists; `exclude` takes names out of the gated
+              set. A tool's own provider may gate a call as well; neither ungates what
+              the other gates.
+            type: object
+            additionalProperties: false
+            properties:
+              include:
+                title: Include
+                description: >-
+                  The tools that need a decision. Each must be a tool this entry
+                  exposes. An empty list gates none.
+                type: array
+                items: { type: string }
+              exclude:
+                title: Exclude
+                description: >-
+                  Tools that need no decision — the form to use when the provider's
+                  tool list may grow, since a tool added later is then gated. A name
+                  the entry does not expose is ignored.
+                type: array
+                items: { type: string }
         required: [provider]
         additionalProperties: false
+    approver:
+      title: Approver
+      description: >-
+        What decides a tool call that needs a decision, in place of the caller: it is
+        asked once per such call and answers approve (the tool runs), reject (the
+        model is told the call was denied) or defer (the run ends asking its caller).
+        A decision the caller supplied in `approvals` is never put to it. A failed
+        ask fails the run whatever `onToolError` says.
+      type: object
+      additionalProperties: false
+      required: [invoke, inputs, result]
+      properties:
+        invoke:
+          title: Invoke
+          description: The resource asked for each decision — a reference or an inline declaration.
+          x-telo-ref:
+            kind: Telo.Executable
+            use: call
+            # The sibling map holding this call's arguments, typed by the
+            # target's declared inputType.
+            inputs: /inputs
+        inputs:
+          title: Inputs mapping
+          description: >-
+            CEL mapping into the approver's input from the call being judged:
+            `toolCall` (`id`, `name` as the model saw it, `arguments`) and `tool`
+            (`name`, `description`, `parameters`).
+          type: object
+          additionalProperties: true
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              toolCall:
+                type: object
+                additionalProperties: false
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  arguments: { type: object, additionalProperties: true }
+              tool:
+                type: object
+                additionalProperties: false
+                properties:
+                  name: { type: string }
+                  description: { type: string }
+                  parameters: { type: object, additionalProperties: true }
+        result:
+          title: Result mapping
+          description: >-
+            CEL mapping from the approver's `result` to the decision: `decision` is
+            `approve`, `reject` or `defer`; `reason` is told to the model on a reject
+            and reported with the decision.
+          type: object
+          additionalProperties: false
+          required: [decision]
+          properties:
+            decision:
+              type: string
+              enum: [approve, reject, defer]
+            reason:
+              type: string
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              result:
+                x-telo-context-ref-from: "invoke/outputType"
   required: [model]
   additionalProperties: false
   x-telo-resource-rules:
@@ -1255,6 +1932,15 @@ schema:
       message: >-
         sets `conclusionPrompt` without `onMaxSteps: conclude`; the prompt is sent only
         by the concluding call, so it would never be used.
+    - in: /toolProviders
+      condition: !cel >-
+        !has(this.approval) || !has(this.approval.include) ||
+        this.approval.include.all(n,
+        (!has(this.include) || n in this.include) && (!has(this.exclude) || !(n in this.exclude)))
+      code: AI_APPROVAL_NAME_FILTERED
+      message: >-
+        lists a tool in `approval.include` that its own `include` / `exclude` removes;
+        the entry never exposes that tool, so the name gates nothing.
   examples:
     - model: !ref Gpt4oMini
       system: |
@@ -1545,6 +2231,9 @@ metadata:
     rather than a sequence.
 capability: Telo.Invocable
 extends: Self.Model
+# What the streaming model throws is what this throws: the fold catches nothing.
+throws:
+  inherit: true
 schema:
   type: object
   additionalProperties: false

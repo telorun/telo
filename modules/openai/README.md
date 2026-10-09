@@ -97,7 +97,37 @@ model: gpt-4o-mini
 request: !ref openaiRequest
 ```
 
+## What a message can carry
+
+Both chat APIs take text, images and documents; they differ in how a document may arrive.
+
+| Part | Chat completions (`OpenAI.ChatModel`, `ChatModelStream`) | Responses (`OpenAI.ResponsesModel`, `ResponsesModelStream`) |
+| --- | --- | --- |
+| text | yes | yes |
+| image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
+| image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
+| file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
+| file by bytes with no `name` | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| file by `http:` / `https:` `uri` | `ERR_CONTENT_UNSUPPORTED` | yes — the string as written |
+| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
+| audio, video | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_CONTENT_UNSUPPORTED` | `ERR_CONTENT_UNSUPPORTED` |
+
+A part the API cannot carry is refused by the call, before anything is sent, as `ERR_CONTENT_UNSUPPORTED` with `error.data.partType` (and `error.data.scheme` when the `uri`'s scheme is the reason). A `uri` is handed to the endpoint as written and never fetched.
+
+A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and a refusal is `ERR_OPENAI_REQUEST_FAILED`.
+
+Media a **tool** returned reaches the model on both APIs, by different routes: on the responses kinds it rides the tool's own output, in the tool's part order; on the chat kinds, whose tool message is text only, it rides a `user` message that follows the run of tool messages. Details per API: [chat](docs/chat-model.md#multimodal-content), [responses](docs/responses-model.md#content-parts).
+
+`usage` carries `cachedPromptTokens` and `reasoningTokens` on all four chat kinds when the endpoint reports them, and leaves them absent when it does not.
+
+## Streamed tool calls
+
+Both stream kinds report a tool call's arguments as they are written — `tool-call-delta` parts carrying `toolCallId`, `toolName` and `delta` — ahead of the whole `tool-call`. `toolCallId` is the id the `tool-call` then carries, and a call's deltas join to its argument JSON. A fragment is held until the call's id and name are known, so an endpoint that names the call late still yields deltas under the right id; a call the endpoint never names gets a unique generated `call_<uuid>`, shared by its deltas and the call. Details per API: [chat](docs/chat-model.md), [responses](docs/responses-model.md#the-stream).
+
 ## Errors
+
+The four chat kinds declare `ERR_OPENAI_REQUEST_FAILED`, `ERR_CONTENT_UNSUPPORTED`, `ERR_OPENAI_INVALID_TOOL_ARGUMENTS` and `ERR_INVALID_REFERENCE`. An `Ai` operation holding one passes them on, so a route's `catches:` names them whether its handler is the model or an operation over it.
 
 A refused request raises the provider's own message, not just a status. A failure
 **mid-stream rejects the iteration** rather than arriving as a data part — so it reaches

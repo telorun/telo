@@ -1,0 +1,54 @@
+# Model calls whose literal content parts are malformed, one defect each. The
+# shape of a part is declared once, so `telo check` refuses every one where it
+# is written.
+kind: Telo.Application
+metadata:
+  name: ContentPartShape
+imports:
+  AiEcho: ./ai-echo.yaml
+  Run: ../../../run
+targets:
+  - !ref malformedParts
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Run.Sequence
+metadata: { name: malformedParts }
+steps:
+  - name: neitherDataNorUri
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: image, mediaType: image/png }]
+  - name: bothDataAndUri
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: image, mediaType: image/png, data: aGk=, uri: "https://example.com/a.png" }]
+  - name: noMediaType
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: file, data: aGk= }]
+  - name: dataUri
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: image, mediaType: image/png, uri: "data:image/png;base64,aGk=" }]
+  - name: relativeUri
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: file, mediaType: application/pdf, uri: "./report.pdf" }]
+  - name: cacheControl
+    invoke: !ref echo
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: text, text: hello, cacheControl: { type: ephemeral } }]

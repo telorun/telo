@@ -42,8 +42,30 @@ export function tokenCounts(usage: Usage): Usage {
     promptTokens: count(usage.promptTokens, "promptTokens"),
     completionTokens: count(usage.completionTokens, "completionTokens"),
     totalTokens: count(usage.totalTokens, "totalTokens"),
+    ...(usage.cachedPromptTokens === undefined
+      ? {}
+      : { cachedPromptTokens: count(usage.cachedPromptTokens, "cachedPromptTokens") }),
+    ...(usage.reasoningTokens === undefined
+      ? {}
+      : { reasoningTokens: count(usage.reasoningTokens, "reasoningTokens") }),
     ...(usage.total === undefined ? {} : { total: Number(usage.total) }),
   };
+}
+
+/** Add one call's usage to a run's total, in place. A breakdown the endpoint
+ *  did not report stays absent from the total until a call reports it — absent
+ *  is "not said", which a zero would misstate. Takes counts already converted by
+ *  {@link tokenCounts}. */
+export function addUsage(total: Usage, call: Usage): void {
+  total.promptTokens += call.promptTokens;
+  total.completionTokens += call.completionTokens;
+  total.totalTokens += call.totalTokens;
+  if (call.cachedPromptTokens !== undefined) {
+    total.cachedPromptTokens = (total.cachedPromptTokens ?? 0) + call.cachedPromptTokens;
+  }
+  if (call.reasoningTokens !== undefined) {
+    total.reasoningTokens = (total.reasoningTokens ?? 0) + call.reasoningTokens;
+  }
 }
 
 /** Stamp the provider-neutral half onto a token triple. Non-destructive: a provider

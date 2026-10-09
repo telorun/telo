@@ -64,6 +64,7 @@ import { valueDerivedContract } from "./value-derived-contract.js";
 import { inferredResultSchema } from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
 import {
+  getContextHolder,
   getManifestItem,
   isParameterScope,
   resolveContextAnnotations,
@@ -841,6 +842,9 @@ export class CelScopeResolver {
         );
     const resolved = resolveContextAnnotations(matched, manifestItem, {
       manifestRoot: rootForResolver,
+      contextHolder: localScope
+        ? getContextHolder(localPath, localScope, rootManifest)
+        : rootManifest,
       defs,
       aliases,
       aliasesByModule: scopes?.aliasesByModule,

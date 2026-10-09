@@ -6,7 +6,6 @@ import type {
 } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
-import { isContentParts } from "./content.js";
 import { tokenCounts, withTokenQuantity } from "./usage.js";
 import type { AiModelInstance, FinishReason, Message, Usage } from "./types.js";
 
@@ -145,12 +144,6 @@ function validateMessages(messages: Message[], resourceName: string): Message[] 
       throw new InvokeError(
         "ERR_INVALID_INPUT",
         `Ai.Text "${resourceName}": messages[${i}].role must be 'system' | 'user' | 'assistant'.`,
-      );
-    }
-    if (typeof m.content !== "string" && !isContentParts(m.content)) {
-      throw new InvokeError(
-        "ERR_INVALID_INPUT",
-        `Ai.Text "${resourceName}": messages[${i}].content must be a string or a non-empty array of content parts.`,
       );
     }
   }

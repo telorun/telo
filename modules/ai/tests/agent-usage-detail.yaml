@@ -1,0 +1,78 @@
+kind: Telo.Application
+metadata:
+  name: AgentUsageDetailTest
+  version: 1.0.0
+  description: |
+    The cached share of the prompt and the reasoning share of the completion,
+    when a model reports them: a streaming agent carries them per call on each
+    step-finish and summed on the finish, and a buffered agent returns the sum.
+    A model that reports neither leaves both absent — agent-stream-parts.yaml
+    compares that usage whole.
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Stream: ../../stream
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref streamed
+  - !ref buffered
+---
+kind: Run.Value
+metadata: { name: noop }
+value: done
+---
+kind: Ai.Tools
+metadata: { name: localTools }
+tools:
+  - tool: !ref noop
+    name: work
+    parameters: { type: object, additionalProperties: false, properties: {} }
+---
+kind: Run.Sequence
+metadata: { name: streamed }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCall: { name: work }
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3 }
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: go }
+  - name: parts
+    invoke:
+      kind: Stream.Collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items.filter(p, p.type == 'step-finish' || p.type == 'finish').map(p, {'type': p.type, 'usage': p.usage})"
+      expected:
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3, unit: tokens, total: 15 }
+        - type: step-finish
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3, unit: tokens, total: 15 }
+        - type: finish
+          usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, reasoningTokens: 6, unit: tokens, total: 30 }
+---
+kind: Run.Sequence
+metadata: { name: buffered }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.Agent
+      model:
+        kind: AiEcho.EchoModel
+        emitToolCall: { name: work }
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedPromptTokens: 4, reasoningTokens: 3 }
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: go }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.run.result.usage"
+      expected: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedPromptTokens: 8, reasoningTokens: 6, unit: tokens, total: 30 }

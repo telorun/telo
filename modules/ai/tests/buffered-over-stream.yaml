@@ -41,6 +41,8 @@ metadata: { name: streamingWithTool }
 emitToolCall:
   name: multiply
   arguments: { a: 6, b: 7 }
+# Its arguments arrive as deltas first; the fold reads only the whole call.
+emitToolCallDeltas: true
 ---
 kind: Ai.Buffered
 metadata: { name: foldedWithTool }
@@ -113,6 +115,29 @@ steps:
     inputs:
       actual: !cel "steps.toolLoop.result.text"
       expected: "{\"product\":42}"
+    invoke: !ref Assert.equals
+  # Argument deltas change nothing in the folded answer: no text, no content,
+  # the call once.
+  - name: directWithTool
+    inputs:
+      messages:
+        - role: user
+          content: multiply please
+      tools:
+        - name: multiply
+          parameters: { type: object }
+    invoke: !ref foldedWithTool
+  - name: assertFoldedCall
+    inputs:
+      actual:
+        text: !cel "steps.directWithTool.result.text"
+        content: !cel "steps.directWithTool.result.content"
+        toolCalls: !cel "steps.directWithTool.result.toolCalls"
+      expected:
+        text: ""
+        content: []
+        toolCalls:
+          - { id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }
     invoke: !ref Assert.equals
 
   # The chain a fold must not break: `providerState` is what lets reasoning

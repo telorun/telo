@@ -1,0 +1,25 @@
+modules:
+  modules/ai: Added
+body: "Media content parts are fully specified and usage reports cached and reasoning
+  tokens. A media part (image, audio, video, file) carries its mediaType and exactly one
+  of data or uri — an absolute URI, never a data: URI — plus an optional file name, and
+  every part type states what it must carry; the shape is enforced by the declared
+  contract for Ai.Text, Ai.TextStream, Ai.Agent, Ai.AgentStream and every model alike,
+  and a tool's value is carried to the model as a content part exactly when it satisfies
+  that shape, as JSON text otherwise. Usage gains optional cachedPromptTokens and
+  reasoningTokens, present only when the model reports them; an agent sums them and
+  Ai.AgentStream carries them per call on step-finish. Ai.Text, Ai.TextStream, Ai.Agent,
+  Ai.AgentStream and Ai.Buffered declare throws.inherit, so a route's catches may name
+  the codes of the model they hold. Ai.AgentStream now makes its first model call when
+  it is called, so a request the model refuses outright fails the call rather than the
+  stream, and cancelling its stream before the first read stops that call. The streaming
+  model contract states when a failure arrives: a refusal an implementation can decide
+  from the request alone rejects the call, and anything after the call has returned
+  rejects the iteration. Breaking: cacheControl is removed from Ai.ContentPart; a
+  malformed content part is now ERR_INPUT_INVALID (CONTRACT_INPUTS_MISMATCH at telo
+  check) instead of ERR_INVALID_INPUT; a route over one of these operations with a
+  bounded catches list and no catch-all now reports UNCOVERED_THROW_CODE for its model's
+  codes; an Ai.AgentStream whose first request is refused rejects the invocation rather
+  than the iteration; a tool value that looks like a media part but breaks the declared
+  shape (a relative or data: uri, both data and uri, an undeclared key) now reaches the
+  model as JSON text."

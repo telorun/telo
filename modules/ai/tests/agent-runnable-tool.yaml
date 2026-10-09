@@ -85,7 +85,7 @@ steps:
   - name: assertResult
     inputs:
       toolName: !cel "steps.invoke.result.steps[0].toolCalls[0].name"
-      toolResult: !cel "steps.invoke.result.steps[0].toolResults[0].content"
+      toolResult: !cel "steps.invoke.result.toolResults[0].content"
       finalText: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema

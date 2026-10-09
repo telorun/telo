@@ -1,0 +1,28 @@
+# Reading an agent's result: a misspelled member of a step or of a settled
+# tool call is a static error.
+kind: Telo.Application
+metadata:
+  name: AgentOutputTypo
+  version: 1.0.0
+imports:
+  Ai: ../../../
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model:
+  kind: AiEcho.EchoModel
+---
+kind: Run.Sequence
+metadata: { name: readsResult }
+steps:
+  - name: run
+    invoke: !ref agent
+    inputs: { prompt: "go" }
+  - name: firstCalls
+    value: !cel "steps.run.result.steps[0].toolCals"
+  - name: firstDenial
+    value: !cel "steps.run.result.toolResults[0].denid"
+  - name: nestedResults
+    value: !cel "steps.run.result.steps[0].toolResults"

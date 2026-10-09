@@ -63,6 +63,10 @@ export interface ContextResolveOpts {
   /** When provided, used to resolve `x-telo-context-from-root` annotations against the
    *  root manifest. When omitted, defaults to `manifestItem`. */
   manifestRoot?: Record<string, any>;
+  /** The object holding the field the context is declared on: where
+   *  `x-telo-context-ref-from` reads its sibling reference. `manifestItem` when
+   *  omitted, for a caller whose context sits on a field of that item. */
+  contextHolder?: Record<string, any>;
   /** When provided alongside `aliases`, used to resolve `x-telo-context-from-ref-kind`
    *  annotations: read a kind name from a path on `manifestRoot` and return the
    *  declared definition's `<field>` schema. */
@@ -448,8 +452,14 @@ export function resolveContextAnnotations(
   const normalizedOpts: ContextResolveOpts = Array.isArray(opts)
     ? { allManifests: opts }
     : (opts ?? {});
-  const { manifestRoot = manifestItem, defs, aliases, aliasesByModule, allManifests } =
-    normalizedOpts;
+  const {
+    manifestRoot = manifestItem,
+    contextHolder = manifestItem,
+    defs,
+    aliases,
+    aliasesByModule,
+    allManifests,
+  } = normalizedOpts;
 
   const from = schema["x-telo-context-from"] as string | undefined;
   if (from) {
@@ -612,17 +622,9 @@ export function resolveContextAnnotations(
 
   const refFrom = schema["x-telo-context-ref-from"] as string | undefined;
   if (refFrom && allManifests) {
-    const slashIdx = refFrom.indexOf("/");
-    const refProp = slashIdx === -1 ? refFrom : refFrom.slice(0, slashIdx);
-    const subpath = slashIdx === -1 ? undefined : refFrom.slice(slashIdx + 1);
-    const ref = manifestItem[refProp] as Record<string, any> | undefined;
-    if (
-      ref &&
-      typeof ref === "object" &&
-      typeof ref.kind === "string" &&
-      typeof ref.name === "string" &&
-      subpath
-    ) {
+    const reference = readContextRefFrom(refFrom, contextHolder);
+    if (reference) {
+      const { ref, subpath } = reference;
       const segments = subpath.split("/");
       const refManifest = allManifests.find(
         (m) => m.kind === ref.kind && (m.metadata as any)?.name === ref.name,
@@ -731,6 +733,66 @@ export function getManifestItem(
     concrete += `${part}${index[0]}`;
   }
   return (navigateConcretePath(manifest, concrete) as Record<string, any> | undefined) ?? manifest;
+}
+
+/**
+ * What `x-telo-context-ref-from: "<refProp>/<subpath>"` names: the reference
+ * held under `<refProp>` on `holder` — the object holding the field the context
+ * is declared on, and nothing else — and the `<subpath>` to read on its target.
+ * Nothing when the annotation names no subpath or the holder has no reference
+ * there. The annotation's single reader.
+ */
+export function readContextRefFrom(
+  annotation: string,
+  holder: Record<string, any>,
+): { ref: { kind: string; name: string }; subpath: string } | undefined {
+  const slash = annotation.indexOf("/");
+  if (slash === -1) return undefined;
+  const subpath = annotation.slice(slash + 1);
+  const ref = holder[annotation.slice(0, slash)] as Record<string, any> | undefined;
+  if (
+    !subpath ||
+    !ref ||
+    typeof ref !== "object" ||
+    typeof ref.kind !== "string" ||
+    typeof ref.name !== "string"
+  ) {
+    return undefined;
+  }
+  return { ref: ref as { kind: string; name: string }, subpath };
+}
+
+/**
+ * The object HOLDING the field an `x-telo-context` scope names: the array item
+ * for `$.routes[*].returns`, the nested object for `$.approver.result`, the
+ * manifest for a root field. It is where `x-telo-context-ref-from` reads its
+ * sibling reference, so a context declared inside a plain nested object is
+ * typed like one declared on an array item.
+ */
+export function getContextHolder(
+  exprPath: string,
+  scope: string,
+  manifest: Record<string, any>,
+): Record<string, any> {
+  const stripped = scope.startsWith("$.") ? scope.slice(2) : scope;
+  const parts = stripped.split("[*]");
+  let remaining = exprPath;
+  let concrete = "";
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i]!;
+    if (!remaining.startsWith(part)) return manifest;
+    remaining = remaining.slice(part.length);
+    const index = remaining.match(/^\[(\d+)\]/);
+    if (!index) return manifest;
+    remaining = remaining.slice(index[0].length);
+    concrete += `${part}${index[0]}`;
+  }
+  const tail = parts[parts.length - 1]!;
+  const cut = tail.lastIndexOf(".");
+  const holder = navigateConcretePath(manifest, cut > 0 ? concrete + tail.slice(0, cut) : concrete);
+  return holder && typeof holder === "object" && !Array.isArray(holder)
+    ? (holder as Record<string, any>)
+    : manifest;
 }
 
 /** Walk a concrete dotted path with `[N]` indices (`resources[4].routes[2]`). */

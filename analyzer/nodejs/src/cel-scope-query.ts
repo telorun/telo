@@ -36,8 +36,9 @@ import {
 } from "./validate-observed-state.js";
 import {
   extractContextsFromSchema,
-  getManifestItem,
+  getContextHolder,
   pathMatchesScope,
+  readContextRefFrom,
 } from "./validate-cel-context.js";
 
 /** Where a CEL context binding was declared: the manifest that declares it,
@@ -290,18 +291,17 @@ export class CelScopeQuery {
     // which is the node a reader wants when a result's members do not resolve.
     const refFrom = annotated["x-telo-context-ref-from"];
     if (typeof refFrom === "string") {
-      const slash = refFrom.indexOf("/");
-      if (slash === -1) return undefined;
-      const item = matchedScope
-        ? getManifestItem(sitePath, matchedScope, root)
-        : root;
-      const ref = item[refFrom.slice(0, slash)] as { kind?: string; name?: string } | undefined;
-      if (!ref?.kind || !ref.name) return undefined;
+      const reference = readContextRefFrom(
+        refFrom,
+        matchedScope ? getContextHolder(sitePath, matchedScope, root) : root,
+      );
+      if (!reference) return undefined;
+      const { ref, subpath } = reference;
       const target = this.manifests.find(
         (m) => m.kind === ref.kind && (m.metadata as { name?: string } | undefined)?.name === ref.name,
       ) as Record<string, any> | undefined;
       if (!target) return undefined;
-      return { manifest: target, path: refFrom.slice(slash + 1).split("/").join("."), propertyMap: false };
+      return { manifest: target, path: subpath.split("/").join("."), propertyMap: false };
     }
 
     // A kind's own declaration: the target is the `Telo.Definition` document,

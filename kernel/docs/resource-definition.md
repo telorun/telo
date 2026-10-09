@@ -270,7 +270,7 @@ This is the mechanism used to make query-string typos (`request.query.nonExisten
 
 #### `x-telo-context-ref-from`
 
-Replaces a context node at analysis time with the **`outputSchema`** (or any sub-path) of a resource referenced by a sibling field of the manifest item. Use this to give downstream CEL expressions precise type information about the result an invocable returns.
+Replaces a context node at analysis time with the **`outputSchema`** (or any sub-path) of a resource referenced by a field beside the one the context is declared on — in the same object, whether that is an array item, a nested object or the resource itself. Use this to give downstream CEL expressions precise type information about the result an invocable returns.
 
 ```yaml
 response:

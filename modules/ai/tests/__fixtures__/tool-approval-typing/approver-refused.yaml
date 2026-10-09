@@ -1,0 +1,115 @@
+# An agent's `approver` is checked where it is written: its two mappings see
+# only their own bindings, `inputs` is held to the target's inputType, `result`
+# is typed by the target's outputType and held to the decision shape, and the
+# target itself is a reference, never a computed value.
+kind: Telo.Application
+metadata:
+  name: ToolApproverRefused
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+variables:
+  reviewerName:
+    env: REVIEWER_NAME
+    type: string
+    default: reviewer
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Run.Value
+metadata: { name: reviewer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      tool: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [verdict, score]
+    properties:
+      verdict: { type: string }
+      score: { type: integer }
+value:
+  verdict: approve
+  score: 1
+---
+kind: Ai.Agent
+metadata: { name: misspelledResultField }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+  result:
+    decision: !cel "result.verdct"
+---
+kind: Ai.Agent
+metadata: { name: contextInInputs }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "context.user"
+  result:
+    decision: !cel "result.verdict"
+---
+kind: Ai.Agent
+metadata: { name: messagesInResult }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+  result:
+    decision: !cel "size(messages) > 0 ? 'approve' : 'reject'"
+---
+kind: Ai.Agent
+metadata: { name: undeclaredInput }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+    urgency: high
+  result:
+    decision: !cel "result.verdict"
+---
+kind: Ai.Agent
+metadata: { name: unknownDecision }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+  result:
+    decision: maybe
+---
+kind: Ai.Agent
+metadata: { name: computedTarget }
+model: !ref echo
+approver:
+  invoke: !cel "variables.reviewerName"
+  inputs:
+    tool: !cel "toolCall.name"
+  result:
+    decision: approve
+---
+kind: Ai.AgentStream
+metadata: { name: nonStringReason }
+model:
+  kind: AiEcho.EchoModelStream
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+  result:
+    decision: !cel "result.verdict"
+    reason: !cel "result.score"

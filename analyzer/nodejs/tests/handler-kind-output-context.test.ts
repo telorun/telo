@@ -100,3 +100,107 @@ describe("x-telo-context-ref-from falls back to the referenced kind", () => {
     expect(unknown).toEqual([]);
   });
 });
+
+/** The same binding declared inside a plain nested object rather than an array
+ *  item: the reference it is typed from sits beside the annotated field. */
+const reviewedDef = {
+  kind: "Telo.Definition",
+  metadata: { name: "Reviewed", module: "review" },
+  capability: "Telo.Invocable",
+  schema: {
+    type: "object",
+    properties: {
+      approver: {
+        type: "object",
+        properties: {
+          invoke: { "x-telo-ref": "Telo.Invocable" },
+          result: {
+            type: "object",
+            properties: { reason: { type: "string" } },
+            "x-telo-context": {
+              type: "object",
+              additionalProperties: false,
+              properties: { result: { "x-telo-context-ref-from": "invoke/outputType" } },
+            },
+          },
+        },
+      },
+    },
+  },
+} as unknown as ResourceManifest;
+
+describe("x-telo-context-ref-from inside a nested object", () => {
+  it("types `result` from the reference beside the annotated field", () => {
+    const reviewed = {
+      kind: "review.Reviewed",
+      metadata: { name: "reviewed", module: "test" },
+      approver: {
+        invoke: { kind: "oauth-client.Callback", name: "oauthCallback" },
+        result: { reason: { __tagged: true, engine: "cel", source: "result.reasson" } },
+      },
+    } as unknown as ResourceManifest;
+    const unknown = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([reviewedDef, callbackDef, callbackInstance, reviewed]))
+      .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0]!.message).toContain("reasson");
+  });
+});
+
+/** The reference is read on the object holding the annotated field and nowhere
+ *  else: a key of that name on the enclosing array item is not it. */
+const rulesDef = {
+  kind: "Telo.Definition",
+  metadata: { name: "Rules", module: "review" },
+  capability: "Telo.Invocable",
+  schema: {
+    type: "object",
+    properties: {
+      rules: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            invoke: { "x-telo-ref": "Telo.Invocable" },
+            approver: {
+              type: "object",
+              properties: {
+                result: {
+                  type: "object",
+                  properties: { reason: { type: "string" } },
+                  "x-telo-context": {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: { result: { "x-telo-context-ref-from": "invoke/outputType" } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as unknown as ResourceManifest;
+
+describe("x-telo-context-ref-from beneath an array item", () => {
+  it("leaves `result` open when only the item, not the holder, has the reference's key", () => {
+    const rules = {
+      kind: "review.Rules",
+      metadata: { name: "rules", module: "test" },
+      rules: [
+        {
+          invoke: { kind: "oauth-client.Callback", name: "oauthCallback" },
+          approver: {
+            result: { reason: { __tagged: true, engine: "cel", source: "result.reasson" } },
+          },
+        },
+      ],
+    } as unknown as ResourceManifest;
+    // Nothing is said about the expression: the binding is untyped there.
+    const aboutCel = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([rulesDef, callbackDef, callbackInstance, rules]))
+      .filter((d) => String(d.code).startsWith("CEL_"));
+    expect(aboutCel).toEqual([]);
+  });
+});

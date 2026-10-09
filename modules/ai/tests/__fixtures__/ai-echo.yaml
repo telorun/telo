@@ -16,6 +16,7 @@ exports:
     - EchoModelStream
     - EchoImageModel
     - StreamCollector
+    - EchoToolProvider
 ---
 kind: Telo.Definition
 metadata:
@@ -56,6 +57,27 @@ schema:
         arguments: { type: object, additionalProperties: true }
       required: [ name ]
       additionalProperties: false
+    emitToolCalls:
+      title: Emit tool calls
+      description: |
+        Test-only marker: the same as `emitToolCall`, as several calls in one
+        response, each under its own id.
+      type: array
+      items:
+        type: object
+        properties:
+          id: { type: string }
+          name: { type: string }
+          arguments: { type: object, additionalProperties: true }
+        required: [ id, name ]
+        additionalProperties: false
+    echoConversation:
+      title: Echo conversation
+      description: |
+        Test-only marker: answer with the request's messages —
+        `role[toolCallId]=text` each, joined by ` | ` — instead of the last
+        message's text.
+      type: boolean
     toolCallEveryTurn:
       title: Tool call every turn
       description: |
@@ -76,6 +98,8 @@ schema:
         promptTokens: { type: integer, minimum: 0 }
         completionTokens: { type: integer, minimum: 0 }
         totalTokens: { type: integer, minimum: 0 }
+        cachedPromptTokens: { type: integer, minimum: 0 }
+        reasoningTokens: { type: integer, minimum: 0 }
       required: [ promptTokens, completionTokens, totalTokens ]
       additionalProperties: false
   additionalProperties: false
@@ -131,6 +155,8 @@ schema:
         promptTokens: { type: integer, minimum: 0 }
         completionTokens: { type: integer, minimum: 0 }
         totalTokens: { type: integer, minimum: 0 }
+        cachedPromptTokens: { type: integer, minimum: 0 }
+        reasoningTokens: { type: integer, minimum: 0 }
       required: [ promptTokens, completionTokens, totalTokens ]
       additionalProperties: false
     failAfterDeltas:
@@ -153,11 +179,38 @@ schema:
         arguments: { type: object, additionalProperties: true }
       required: [ name ]
       additionalProperties: false
+    emitToolCalls:
+      title: Emit tool calls
+      description: |
+        Test-only marker: the same as `emitToolCall`, as several calls in one
+        response, each under its own id.
+      type: array
+      items:
+        type: object
+        properties:
+          id: { type: string }
+          name: { type: string }
+          arguments: { type: object, additionalProperties: true }
+        required: [ id, name ]
+        additionalProperties: false
+    echoConversation:
+      title: Echo conversation
+      description: |
+        Test-only marker: answer with the request's messages —
+        `role[toolCallId]=text` each, joined by ` | ` — instead of the last
+        message's text.
+      type: boolean
     toolCallEveryTurn:
       title: Tool call every turn
       description: |
         Test-only marker: emit `emitToolCall` on every call that offers tools,
         whatever the conversation or `toolChoice` — a model that never converges.
+      type: boolean
+    emitToolCallDeltas:
+      title: Emit tool call deltas
+      description: |
+        Test-only marker: precede the tool call with its argument JSON as two
+        `tool-call-delta` parts, the way a model that streams arguments does.
       type: boolean
     echoRequest:
       title: Echo request
@@ -245,4 +298,23 @@ schema:
         kind: Ai.ModelStream
         use: [call, trigger.consumer]
   required: [ model ]
+  additionalProperties: false
+---
+# Test-support tool provider: its tools are known only to its instance, the way
+# a provider that discovers them at runtime is seen by an agent.
+kind: Telo.Definition
+metadata:
+  name: EchoToolProvider
+capability: Telo.Mount
+extends: Ai.ToolProvider
+controllers:
+  - pkg:telo/local/js?path=./ai-fixtures.mjs&local_path=./src/index.ts#EchoToolProviderController
+schema:
+  type: object
+  properties:
+    advertises:
+      title: Advertises
+      description: The names of the tools the provider advertises.
+      type: array
+      items: { type: string }
   additionalProperties: false

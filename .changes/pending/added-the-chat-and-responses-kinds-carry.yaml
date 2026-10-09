@@ -1,0 +1,19 @@
+modules:
+  modules/openai: Added
+body: "The chat and responses kinds carry images and documents by bytes or by URL, and
+  report cached and reasoning tokens. An image goes by bytes or by an http(s) uri passed
+  through as written; a file goes by bytes with its name as the filename, and on the
+  responses kinds also by an http(s) uri. A file sent by bytes needs name: one without
+  is refused on all four kinds. A well-formed part the API cannot carry — audio, video,
+  a file by uri on the chat kinds, a file by bytes with no name, any other uri scheme, a
+  model-produced part sent as input — is refused before any request as
+  ERR_CONTENT_UNSUPPORTED, declared on all four kinds with data { partType, scheme? };
+  the streaming kinds raise it from the call rather than the iteration. Media in a tool
+  result rides the tool result itself on the responses kinds — the output is an array in
+  the tool's own part order, with no placeholder and no user message after it — and the
+  following user message on the chat kinds, as an image did. usage carries
+  cachedPromptTokens and reasoningTokens when the endpoint reports them. Breaking:
+  ERR_INVALID_INPUT is no longer declared or raised by the four model kinds — a part
+  that cannot be sent is ERR_CONTENT_UNSUPPORTED, and a malformed one is the contract's
+  ERR_INPUT_INVALID; on the responses kinds a tool result's media no longer arrives in a
+  separate user message."

@@ -63,10 +63,10 @@ steps:
   # flattens the tool message content to its text part → "page rendered".
   - name: assertParts
     inputs:
-      content: !cel "steps.invoke.result.steps[0].toolResults[0].content"
-      textType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].type"
-      imageType: !cel "steps.invoke.result.steps[0].toolResults[0].content[1].type"
-      mediaType: !cel "steps.invoke.result.steps[0].toolResults[0].content[1].mediaType"
+      content: !cel "steps.invoke.result.toolResults[0].content"
+      textType: !cel "steps.invoke.result.toolResults[0].content[0].type"
+      imageType: !cel "steps.invoke.result.toolResults[0].content[1].type"
+      mediaType: !cel "steps.invoke.result.toolResults[0].content[1].mediaType"
       finalText: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema

@@ -1,0 +1,23 @@
+# An agent's `steps` and `toolResults` are closed shapes, so CEL over its result
+# is checked member by member.
+kind: Telo.Application
+metadata:
+  name: AgentOutputTypingTest
+  version: 1.0.0
+  description: A misspelled member of an agent's steps or tool results is refused by telo check.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref misspelledMember
+---
+kind: Assert.Manifest
+metadata: { name: misspelledMember }
+source: ./__fixtures__/agent-output-typing/typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "toolCals' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "denid' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "toolResults' is not defined"

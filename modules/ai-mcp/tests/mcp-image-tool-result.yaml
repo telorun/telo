@@ -47,11 +47,11 @@ steps:
     invoke: !ref assistant
   # tools/call returns an MCP image block ({ type: image, data, mimeType }). The
   # provider normalizes mimeType → mediaType so it reaches the model as an image part
-  # (not a JSON-stringified blob), carried untouched into the step trace.
+  # (not a JSON-stringified blob), carried untouched into the agent's `toolResults`.
   - name: assertImage
     inputs:
-      imageType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].type"
-      mediaType: !cel "steps.invoke.result.steps[0].toolResults[0].content[0].mediaType"
+      imageType: !cel "steps.invoke.result.toolResults[0].content[0].type"
+      mediaType: !cel "steps.invoke.result.toolResults[0].content[0].mediaType"
     invoke:
       kind: Assert.Schema
       schema:

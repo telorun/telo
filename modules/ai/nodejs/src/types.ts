@@ -11,7 +11,7 @@
 import type { InvokeContext } from "@telorun/sdk";
 import type { ContentPart, MessageContent } from "./content.js";
 
-export type { ContentPart, ImagePart, MessageContent, TextPart } from "./content.js";
+export type { ContentPart, ImagePart, MediaPart, MessageContent, TextPart } from "./content.js";
 
 /** Message roles supported by the core contract. `tool` carries a tool-call result
  *  back to the model (paired with `toolCallId`). */
@@ -75,6 +75,12 @@ export interface Usage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** The part of `promptTokens` read from a cache. Absent when the endpoint does
+   *  not report it — which is not zero. */
+  cachedPromptTokens?: number;
+  /** The part of `completionTokens` spent reasoning. Absent when the endpoint does
+   *  not report it — which is not zero. */
+  reasoningTokens?: number;
   unit?: string;
   total?: number;
 }
@@ -131,6 +137,10 @@ export interface ModelInvokeInput {
  *  thrown error also reaches machinery a data part cannot — `catches:`, a
  *  throws union, a `try:` step.
  *
+ *  `tool-call-delta` is advisory — a call's argument JSON as it is written, under
+ *  the id and name of the `tool-call` that completes it. The implementation
+ *  assigns that id, and emits no delta for a call before it knows the id.
+ *
  *  `text-delta.delta`, `tool-call.toolCall` and `finish.usage` are read by name
  *  by consumers outside this repo (an editor rendering a forwarded stream), so
  *  those names are part of the contract, not an implementation detail. */
@@ -138,12 +148,13 @@ export type StreamPart =
   | { type: "text-delta"; delta: string }
   | { type: "reasoning-delta"; delta: string }
   | { type: "content-part"; part: ContentPart }
+  | { type: "tool-call-delta"; toolCallId: string; toolName: string; delta: string }
   | { type: "tool-call"; toolCall: ToolCall }
   | { type: "provider-state"; providerState: unknown }
   | { type: "finish"; usage: Usage; finishReason: FinishReason };
 
 /** One tool execution's result, as recorded by the agent. Shared shape between the
- *  buffered agent's `StepTrace.toolResults` and the streaming agent's `tool-result`
+ *  buffered agent's `toolResults` output and the streaming agent's `tool-result`
  *  event, so a streaming consumer is never a strictly poorer event than the buffered
  *  trace. `content` is `MessageContent` — a string, or content parts when a tool
  *  answers with an image (mirroring the buffered agent). `error` is true when the
@@ -156,19 +167,53 @@ export interface ToolResultRecord {
   content: MessageContent;
   output?: unknown;
   error?: boolean;
+  /** True when the call was decided against and never ran; `content` is what
+   *  the model is told. Never beside `output` or `error`. */
+  denied?: boolean;
 }
+
+/** A caller's decision on one pending tool call, passed as an agent's
+ *  `approvals` input. */
+export interface ToolApproval {
+  toolCallId: string;
+  approved: boolean;
+  reason?: string;
+}
+
+/** What an agent's `approver` answered for one call it was asked about. */
+export interface ApprovalDecision {
+  toolCallId: string;
+  name: string;
+  decision: "approve" | "reject" | "defer";
+  reason?: string;
+}
+
+/** What marks a run that ended asking for a decision on a tool call. */
+export const APPROVAL_INTERRUPT = "approval" as const;
 
 /** Tagged part emitted by a streaming *agent* (`Ai.AgentStream`) — the module's
  *  streaming deliverable, declared as `Ai.AgentStreamPart`. A superset of the
  *  model-facing `StreamPart`: `step-finish` closes each model call with that
- *  call's usage, `tool-result` reports a tool the agent executed, and `finish` —
- *  the only terminator — carries the usage of every call summed, plus `limit`
- *  when the step budget ended the run. */
+ *  call's usage, `tool-result` reports a tool the agent executed or a call that
+ *  was denied, `message` carries each message the run appends to the
+ *  conversation, `tool-approval-decision` reports an approver's answer,
+ *  `tool-approval-request` names a call left waiting for a decision, and `finish`
+ *  — the only terminator — carries the usage of every call summed, plus `limit`
+ *  when the step budget ended the run or `interrupt` when it ended asking. */
 export type AgentStreamPart =
   | Exclude<StreamPart, { type: "finish" }>
-  | { type: "finish"; usage: Usage; finishReason: FinishReason; limit?: "max-steps" }
+  | {
+      type: "finish";
+      usage: Usage;
+      finishReason: FinishReason;
+      limit?: "max-steps";
+      interrupt?: typeof APPROVAL_INTERRUPT;
+    }
   | { type: "step-finish"; usage: Usage; finishReason: FinishReason }
-  | { type: "tool-result"; toolResult: ToolResultRecord };
+  | { type: "tool-result"; toolResult: ToolResultRecord }
+  | { type: "message"; message: Message }
+  | { type: "tool-approval-request"; toolCall: ToolCall }
+  | { type: "tool-approval-decision"; approvalDecision: ApprovalDecision };
 
 /**
  * An `Ai.Model` implementation, as the kernel binds it.
@@ -322,6 +367,14 @@ export interface AiToolProviderInstance {
     ctx?: InvokeContext,
     context?: Record<string, unknown>,
   ): Promise<{ output: unknown; result: unknown }>;
+  /** Whether this call needs a decision before it runs. Optional: a provider
+   *  without it gates nothing itself, and an agent's own `approval` lists still
+   *  apply. Throwing fails the call. */
+  toolRequiresApproval?(
+    name: string,
+    args: Record<string, unknown>,
+    context?: Record<string, unknown>,
+  ): Promise<boolean> | boolean;
   snapshot?(): Record<string, unknown>;
   init?(): Promise<void> | void;
 }
