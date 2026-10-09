@@ -19,6 +19,12 @@ expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
       message: "'inputs.records.[*].usge' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.records.[*].toolCallid' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.records.[*].approvalDecison' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'inputs.records.[*].toolResult.denyed' is not defined"
 ---
 kind: Assert.Manifest
 metadata: { name: declaredField }

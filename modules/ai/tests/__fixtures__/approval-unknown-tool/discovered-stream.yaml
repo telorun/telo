@@ -1,0 +1,39 @@
+# A provider that declares no tools gives `telo check` nothing to hold the name
+# to, so the agent refuses it when it assembles its tools. The failure is
+# rethrown with its code in the message, which is what the run reports.
+kind: Telo.Application
+metadata:
+  name: ApprovalUnknownToolDiscovered
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+targets:
+  - !ref firstRun
+---
+kind: Run.Sequence
+metadata: { name: firstRun }
+steps:
+  - name: attempt
+    try:
+      - name: run
+        invoke: !ref agent
+        inputs: { prompt: "go" }
+    catch:
+      - name: report
+        throw:
+          code: !cel "error.code"
+          message: !interpolate "${{ error.code }}: ${{ error.message }}"
+---
+kind: AiEcho.EchoToolProvider
+metadata: { name: discovered }
+advertises: [search]
+---
+kind: Ai.AgentStream
+metadata: { name: agent }
+model:
+  kind: AiEcho.EchoModelStream
+toolProviders:
+  - provider: !ref discovered
+    approval: { include: [erase] }

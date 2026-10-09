@@ -1,0 +1,36 @@
+# An agent gating a tool by name that its own entry filters out: the entry
+# exposes only `read`, so `wipe` in `approval.include` would gate nothing.
+# Refused by `telo check` at the declaration, and by the controller when the
+# resource is created.
+kind: Telo.Library
+metadata:
+  name: ApprovalNameFiltered
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+exports:
+  resources: [agent]
+---
+kind: Ai.Tools
+metadata: { name: diskTools }
+tools:
+  - name: read
+    tool:
+      kind: Run.Value
+      value: { read: true }
+    parameters: { type: object }
+  - name: wipe
+    tool:
+      kind: Run.Value
+      value: { wiped: true }
+    parameters: { type: object }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model:
+  kind: AiEcho.EchoModel
+toolProviders:
+  - provider: !ref diskTools
+    include: [read]
+    approval: { include: [wipe] }

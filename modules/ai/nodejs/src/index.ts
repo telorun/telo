@@ -4,6 +4,7 @@ export {
   isContentPart,
   isContentParts,
   isImagePart,
+  isMediaPart,
   isTextPart,
 } from "./content.js";
 export { redact } from "./redact.js";

@@ -1,0 +1,47 @@
+# A literal gate and a well-typed expression over the call's arguments and the
+# caller's declared context.
+kind: Telo.Application
+metadata:
+  name: ToolApprovalGateTyped
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  Run: ../../../../run
+---
+kind: Run.Value
+metadata: { name: transfer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      amount: { type: integer }
+value:
+  sent: !cel "inputs.amount"
+---
+kind: Ai.Tools
+metadata: { name: bankTools }
+contextType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [trusted]
+    properties:
+      trusted: { type: boolean }
+tools:
+  - tool: !ref transfer
+    name: always
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer }
+    approval: true
+  - tool: !ref transfer
+    name: large_or_untrusted
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer }
+    approval: !cel "arguments.amount > 100 || !context.trusted"

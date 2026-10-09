@@ -7,7 +7,6 @@ class AiEchoModel extends EchoBase implements ResourceInstance, AiModelInstance 
   async invoke(input: ModelInvokeInput): Promise<CompletionResult> {
     this.maybeThrow(input.messages);
     if (this.shouldCallTool(input)) {
-      const plan = this.resource.emitToolCall!;
       // A call told to answer without a tool still gets its text here, beside the
       // tool call the fixture returns regardless.
       const text = input.toolChoice === "none" ? this.buildEchoText(input) : "";
@@ -16,7 +15,7 @@ class AiEchoModel extends EchoBase implements ResourceInstance, AiModelInstance 
         text,
         usage: this.usage,
         finishReason: "tool-calls",
-        toolCalls: [{ id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} }],
+        toolCalls: this.plannedToolCalls(),
       };
     }
     const text = this.buildEchoText(input);

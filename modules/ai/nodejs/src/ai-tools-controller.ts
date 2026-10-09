@@ -1,5 +1,5 @@
 import type { ControllerContext, InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
-import { getRefIdentity, InvokeError } from "@telorun/sdk";
+import { getRefIdentity, InvokeError, predicateResult } from "@telorun/sdk";
 import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
 
 /**
@@ -7,7 +7,8 @@ import type { AiToolProviderInstance, ToolDescriptor } from "./types.js";
  * wrapping any Telo.Invocable. `listTools()` returns the declared descriptors;
  * `callTool()` dispatches to the matching invocable, applying optional `inputs:`/`result:`
  * CEL mappings (evaluated per call via `ctx.expandValue`); `inputs:` reads the model's
- * `arguments` and the agent's caller data as `context`.
+ * `arguments` and the agent's caller data as `context`, and `approval:` reads the
+ * same two to say whether a call needs a decision before it runs.
  *
  * Each call goes through the kernel's traced dispatch, as a route handler does, so
  * the tool resource's own span, its `<name>.Invoked` events and its declared span
@@ -30,6 +31,9 @@ interface ToolEntry {
   /** Raw CEL template shaping the invocable's `result` into the fed-back value:
    *  a string, or a content part / list of parts for a multimodal result. */
   result?: string | Record<string, unknown> | unknown[];
+  /** Whether a call needs a decision before it runs: a boolean, or a raw CEL
+   *  template over the call's `arguments` and the caller's `context`. */
+  approval?: unknown;
 }
 
 interface AiToolsResource {
@@ -72,6 +76,20 @@ class AiTools implements ResourceInstance, AiToolProviderInstance {
       }
       return { name, description: entry.description, parameters: entry.parameters };
     });
+  }
+
+  toolRequiresApproval(
+    name: string,
+    args: Record<string, unknown>,
+    context: Record<string, unknown> = {},
+  ): boolean {
+    const index = this.resource.tools.findIndex((entry, i) => this.toolName(entry, i) === name);
+    const approval = this.resource.tools[index]?.approval;
+    if (approval === undefined) return false;
+    return predicateResult(
+      this.ctx.expandValue(approval, { arguments: args, context }),
+      `Ai.Tools "${this.resource.metadata.name}": tools[${index}].approval (tool "${name}")`,
+    );
   }
 
   async callTool(

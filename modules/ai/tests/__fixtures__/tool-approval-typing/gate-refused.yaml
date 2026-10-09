@@ -1,0 +1,49 @@
+# A tool's `approval` expression is typed like its `inputs` mapping: by the
+# tool's declared parameters and the provider's `contextType`, and held to a
+# boolean.
+kind: Telo.Application
+metadata:
+  name: ToolApprovalGateRefused
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  Run: ../../../../run
+---
+kind: Run.Value
+metadata: { name: transfer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      amount: { type: integer }
+value:
+  sent: !cel "inputs.amount"
+---
+kind: Ai.Tools
+metadata: { name: bankTools }
+tools:
+  - tool: !ref transfer
+    name: undeclared_argument
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer }
+    approval: !cel "arguments.amout > 100"
+  - tool: !ref transfer
+    name: not_a_boolean
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer }
+    approval: !cel "arguments.amount"
+  - tool: !ref transfer
+    name: undeclared_context
+    parameters:
+      type: object
+      additionalProperties: false
+      properties:
+        amount: { type: integer }
+    approval: !cel "context.trusted"

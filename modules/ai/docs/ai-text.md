@@ -60,23 +60,71 @@ The `model` field uses identity-form `x-telo-ref` because the schema is part of 
 | Field      | Type   | Required                       | Purpose                                                            |
 | ---------- | ------ | ------------------------------ | ------------------------------------------------------------------ |
 | `prompt`   | string | exactly one of prompt/messages | Shorthand; wraps to `messages: [{role: "user", content: prompt}]`. |
-| `messages` | array  | exactly one of prompt/messages | Full turns, each `{role, content}`.                                |
+| `messages` | array  | exactly one of prompt/messages | Full turns, each `{role, content}`; `content` is a string or [content parts](./ai-model.md#modality-lives-in-the-parts). |
 | `system`   | string | no                             | Runtime system override. Wins over manifest `system`.              |
 | `options`  | object | no                             | Per-call option overrides.                                         |
 
-Validation: passing both `prompt` and `messages`, or neither, throws `InvokeError("ERR_INVALID_INPUT", …)`. Each message is checked for `role ∈ {system, user, assistant}` and a string `content`; off-contract values throw the same code.
+Validation comes from two places. The **shape** of the call — each message's fields, and what every content part must carry — is the declared input type's: a malformed literal is `CONTRACT_INPUTS_MISMATCH` under `telo check`, a malformed computed value `ERR_INPUT_INVALID` at dispatch. What the shape cannot state is `ERR_INVALID_INPUT`: both `prompt` and `messages`, neither, an empty message list, or a `tool` turn.
+
+A multimodal turn is a list of parts:
+
+```yaml
+inputs:
+  messages:
+    - role: user
+      content:
+        - { type: text, text: "Describe this picture." }
+        - { type: image, mediaType: image/jpeg, uri: "https://example.com/cat.jpg" }
+```
+
+Whether the model can take a given part is the model's to say — see [Errors](#errors).
 
 ## Output
 
 ```ts
 {
   text: string;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-  finishReason: "stop" | "length" | "content-filter" | "error" | "other";
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cachedPromptTokens?: number; // the part of promptTokens read from a cache
+    reasoningTokens?: number;    // the part of completionTokens spent reasoning
+    unit: string;                // "tokens"
+    total: number;
+  };
+  finishReason: "stop" | "length" | "content-filter" | "tool-calls" | "other";
 }
 ```
 
-The controller validates the model's return value before forwarding; if a provider deviates, it throws `InvokeError("ERR_CONTRACT_VIOLATION", …)`.
+`cachedPromptTokens` and `reasoningTokens` are present when the model reports them and absent otherwise; absent is not zero.
+
+The model's answer is held to `Ai.Model`'s declared output by the kernel (`ERR_OUTPUT_INVALID`); a token count that is not a representable integer is `ERR_CONTRACT_VIOLATION`.
+
+## Errors
+
+`Ai.Text` throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION` — **and whatever its model throws**, unchanged. The kind declares `throws: { inherit: true }`, so the model's declared codes are part of this resource's own throw union: a `catch:` step or a route's `catches:` may name them, and `telo check` asks for every one to be covered.
+
+```yaml
+routes:
+  - request: { path: /describe, method: POST }
+    handler: !ref Describer          # an Ai.Text over an OpenAI.ChatModel
+    inputs:
+      messages: !cel "request.body.messages"
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content:
+          application/json:
+            body: { unsupported: !cel "error.data.partType" }
+      - status: 502    # every other code the operation and its model declare
+        content: { application/json: { body: { code: !cel "error.code" } } }
+```
+
+A list that names some of the codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing what is left — the model's codes included.
 
 ## Option layering
 
@@ -127,5 +175,4 @@ steps:
 ## What's NOT here
 
 - **Streaming.** `Ai.Text` is buffered; chunked output lives in [Ai.TextStream](./ai-text-stream.md), which shares the same provider resources via `Ai.Model`.
-- **Tool use / function calling.** Lives in the future `Ai.Agent` / `Ai.Worker` kinds.
-- **Multimodal input.** `content` is a string today. Widening to `string | ContentPart[]` later is non-breaking.
+- **Tool use / function calling.** Lives in [Ai.Agent](./ai-agent.md) and [Ai.AgentStream](./ai-agent-stream.md).

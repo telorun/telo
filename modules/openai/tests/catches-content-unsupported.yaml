@@ -1,0 +1,194 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiCatchesContentUnsupported
+  version: 1.0.0
+  description: |
+    A part the dialect cannot carry is refused under a code a route can name —
+    whether the route's handler is the model itself, a text operation over it, a
+    streaming agent over the streaming model, or a buffered model folded out of
+    the streaming one. Each operation passes its model's codes on, so every
+    route's `catches:` may name `ERR_CONTENT_UNSUPPORTED` and read its declared
+    `error.data`; with no catch-all beside it, the model's other codes are
+    reported uncovered.
+
+    The models point at a port nothing listens on: a request leaving any of them
+    would fail as `ERR_OPENAI_REQUEST_FAILED` and render the catch-all's 500.
+imports:
+  OpenAI: ../
+  Ai: ../../ai
+  HttpClient: ../../http-client
+  Http: ../../http-server
+  Ndjson: ../../ndjson-codec
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref uncoveredWithoutCatchAll
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: uncoveredWithoutCatchAll }
+source: ./__fixtures__/catches-without-catch-all.yaml
+# One finding per route. The model alone leaves three codes uncovered
+# (`ERR_OPENAI_REQUEST_FAILED`, `ERR_OPENAI_INVALID_TOOL_ARGUMENTS`,
+# `ERR_INVALID_REFERENCE`); each operation's count is its own codes plus those.
+expect:
+  errors:
+    - code: UNCOVERED_THROW_CODE
+      message: "handler `!ref chat` can throw 3 codes"
+    - code: UNCOVERED_THROW_CODE
+      message: "handler `!ref text` can throw 5 codes"
+    - code: UNCOVERED_THROW_CODE
+      message: "handler `!ref agentStream` can throw 10 codes"
+    - code: UNCOVERED_THROW_CODE
+      message: "handler `!ref buffered` can throw 3 codes"
+    - code: UNCOVERED_THROW_CODE
+      message: "'ERR_OPENAI_INVALID_TOOL_ARGUMENTS', 'ERR_OPENAI_REQUEST_FAILED'"
+---
+kind: HttpClient.Client
+metadata: { name: unreachable }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: HttpClient.Request
+metadata: { name: openaiRequest }
+client: !ref unreachable
+---
+kind: OpenAI.ChatModel
+metadata: { name: chat }
+model: gpt-test
+request: !ref openaiRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStream }
+model: gpt-test
+request: !ref openaiRequest
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref chat
+---
+kind: Ai.AgentStream
+metadata: { name: agentStream }
+model: !ref chatStream
+---
+kind: Ai.Buffered
+metadata: { name: buffered }
+model: !ref chatStream
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /model, method: POST }
+    handler: !ref chat
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: audio, mediaType: audio/wav, data: aGk= }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: model, partType: !cel "error.data.partType" } } }
+      - status: 500
+        content: { application/json: { body: { code: !cel "error.code" } } }
+  - request: { path: /text, method: POST }
+    handler: !ref text
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: video, mediaType: video/mp4, data: aGk= }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: text, partType: !cel "error.data.partType" } } }
+      - status: 500
+        content: { application/json: { body: { code: !cel "error.code" } } }
+  - request: { path: /agent-stream, method: POST }
+    handler: !ref agentStream
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: image, mediaType: image/png, uri: "file:///tmp/a.png" }]
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content:
+          application/json:
+            body:
+              via: agent-stream
+              partType: !cel "error.data.partType"
+              scheme: !cel "error.data.scheme"
+      - status: 500
+        content: { application/json: { body: { code: !cel "error.code" } } }
+  - request: { path: /buffered, method: POST }
+    handler: !ref buffered
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: file, mediaType: application/pdf, uri: "https://example.com/report.pdf" }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: buffered, partType: !cel "error.data.partType" } } }
+      - status: 500
+        content: { application/json: { body: { code: !cel "error.code" } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8881
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: post }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    host: 127.0.0.1
+    port: 8881
+    mounts:
+      - mount: !ref api
+targets:
+  - !ref server
+steps:
+  - name: viaModel
+    inputs: { url: /model, method: POST }
+    invoke: !ref post
+  - name: viaText
+    inputs: { url: /text, method: POST }
+    invoke: !ref post
+  - name: viaAgentStream
+    inputs: { url: /agent-stream, method: POST }
+    invoke: !ref post
+  - name: viaBuffered
+    inputs: { url: /buffered, method: POST }
+    invoke: !ref post
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - { status: !cel "steps.viaModel.result.status", body: !cel "steps.viaModel.result.body" }
+        - { status: !cel "steps.viaText.result.status", body: !cel "steps.viaText.result.body" }
+        - { status: !cel "steps.viaAgentStream.result.status", body: !cel "steps.viaAgentStream.result.body" }
+        - { status: !cel "steps.viaBuffered.result.status", body: !cel "steps.viaBuffered.result.body" }
+      expected:
+        - { status: 422, body: { via: model, partType: audio } }
+        - { status: 422, body: { via: text, partType: video } }
+        - { status: 422, body: { via: agent-stream, partType: image, scheme: file } }
+        - { status: 422, body: { via: buffered, partType: file } }

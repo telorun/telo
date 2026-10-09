@@ -18,6 +18,7 @@ import { boundToolContent } from "./tool-result-bound.js";
 import type {
   AiToolProviderInstance,
   Message,
+  ToolApproval,
   ToolCall,
   ToolDefinition,
   ToolResultRecord,
@@ -31,7 +32,7 @@ import type {
  *
  * `dispatchToolCall` is deliberately output-neutral: it returns a `ToolResultRecord`
  * and never touches a trace or a stream. Each agent renders that record into its own
- * output — the buffered agent pushes it onto its `StepTrace`, the streaming agent
+ * output — the buffered agent lists it in its `toolResults`, the streaming agent
  * emits it as a `tool-result` event.
  */
 export interface ToolProviderEntry {
@@ -40,11 +41,17 @@ export interface ToolProviderEntry {
   prefix?: string;
   include?: string[];
   exclude?: string[];
+  /** Which of the tools this entry exposes need a decision, by bare name. */
+  approval?: { include?: string[]; exclude?: string[] };
 }
 
 export interface Dispatch {
   provider: AiToolProviderInstance;
   bareName: string;
+  /** The tool as the model was told it. */
+  definition: ToolDefinition;
+  /** True when the entry's own `approval` lists gate this tool. */
+  gated: boolean;
 }
 
 export interface AssembledTools {
@@ -61,6 +68,8 @@ export interface AgentInputs {
   options?: Record<string, unknown>;
   /** Caller data handed to every tool dispatch; the kernel fills `{}` when omitted. */
   context?: Record<string, unknown>;
+  /** The caller's decisions on the calls the conversation left pending. */
+  approvals?: ToolApproval[];
 }
 
 /** The manifest-level agent config the prelude reads (system prompt + base options). */
@@ -119,6 +128,20 @@ export function normalizeToolCall(call: ToolCall): ToolCall {
   };
 }
 
+/** Refuse a call whose id an earlier call of the same model response carries:
+ *  a result, a decision and a resume are each joined to their call by it. */
+export function assertUniqueCallId(
+  call: ToolCall,
+  earlier: readonly ToolCall[],
+  label: string,
+): void {
+  if (!earlier.some((other) => other.id === call.id)) return;
+  throw new InvokeError(
+    "ERR_CONTRACT_VIOLATION",
+    `${label}: the model's response carried two tool calls with the id "${call.id}". Every tool call of one response has an id of its own, which is what joins a result, an approval and a resume to it.`,
+  );
+}
+
 /** Normalize a tool's return value into message content. A string passes through;
  *  content parts (a single part or an array) are carried untouched so an image tool
  *  result reaches the model intact; anything else is written as plain JSON, a CEL
@@ -130,9 +153,28 @@ export function toToolContent(output: unknown): MessageContent {
   return writePlainJson(output);
 }
 
+/** The controller twin of the `AI_APPROVAL_NAME_FILTERED` resource rule,
+ *  refused at creation as `ERR_AI_APPROVAL_NAME_FILTERED`: an `approval.include`
+ *  name the entry's own `include` / `exclude` removes can gate nothing. */
+export function checkApprovalNames(entries: ToolProviderEntry[] | undefined, label: string): void {
+  for (const entry of entries ?? []) {
+    for (const name of entry.approval?.include ?? []) {
+      const removed =
+        (entry.include !== undefined && !entry.include.includes(name)) ||
+        (entry.exclude !== undefined && entry.exclude.includes(name));
+      if (!removed) continue;
+      throw new InvokeError(
+        "ERR_AI_APPROVAL_NAME_FILTERED",
+        `${label} lists "${name}" in a tool provider's 'approval.include', but the entry's own 'include' / 'exclude' removes that tool, so the name would gate nothing.`,
+      );
+    }
+  }
+}
+
 /** Merge every tool provider into one advertised tool set + dispatch map: apply
- *  prefix/include/exclude, fan out `listTools()`, and reject duplicate model-facing
- *  names. `label` is the agent's identity for error messages (e.g. `Ai.Agent "X"`). */
+ *  prefix/include/exclude, fan out `listTools()`, reject duplicate model-facing
+ *  names, and mark the tools each entry's `approval` lists gate. `label` is the
+ *  agent's identity for error messages (e.g. `Ai.Agent "X"`). */
 export async function assembleTools(
   entries: ToolProviderEntry[] | undefined,
   label: string,
@@ -152,10 +194,26 @@ export async function assembleTools(
         `${label}: a toolProviders entry did not resolve to a live Ai.ToolProvider instance.`,
       );
     }
-    const descriptors = await provider.listTools();
-    for (const d of descriptors) {
-      if (entry.include && !entry.include.includes(d.name)) continue;
-      if (entry.exclude && entry.exclude.includes(d.name)) continue;
+    const exposed = (await provider.listTools()).filter(
+      (d) =>
+        (!entry.include || entry.include.includes(d.name)) &&
+        !(entry.exclude && entry.exclude.includes(d.name)),
+    );
+    const approval = entry.approval;
+    const unknown = approval?.include?.find((name) => !exposed.some((d) => d.name === name));
+    if (unknown !== undefined) {
+      throw new InvokeError(
+        "ERR_AGENT_APPROVAL_UNKNOWN_TOOL",
+        `${label}: 'approval.include' names "${unknown}", which the tool provider entry does not expose. It exposes: ${exposed.map((d) => d.name).join(", ") || "no tools"}.`,
+      );
+    }
+    for (const d of exposed) {
+      // Absent gates none; `include` gates exactly its names; otherwise every
+      // exposed tool is gated; `exclude` takes names out of the gated set.
+      const gated =
+        approval !== undefined &&
+        (approval.include === undefined || approval.include.includes(d.name)) &&
+        !(approval.exclude ?? []).includes(d.name);
       const modelName = (entry.prefix ?? "") + d.name;
       if (dispatch.has(modelName)) {
         throw new InvokeError(
@@ -163,12 +221,46 @@ export async function assembleTools(
           `${label}: duplicate tool name "${modelName}" across providers — set a 'prefix' to disambiguate.`,
         );
       }
-      dispatch.set(modelName, { provider, bareName: d.name });
-      toolDefs.push({ name: modelName, description: d.description, parameters: d.parameters });
+      const definition = { name: modelName, description: d.description, parameters: d.parameters };
+      dispatch.set(modelName, { provider, bareName: d.name, definition, gated });
+      toolDefs.push(definition);
     }
   }
 
   return { toolDefs, dispatch };
+}
+
+/** The record of a call that failed and whose failure is fed back to the model. */
+export function toolFailureRecord(
+  call: ToolCall,
+  err: unknown,
+  maxToolResultBytes: number | undefined,
+): ToolResultRecord {
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    toolCallId: call.id,
+    name: call.name,
+    content: boundToolContent(`Error: ${message}`, maxToolResultBytes),
+    error: true,
+  };
+}
+
+/** The record of a call that was decided against and never ran. What the model
+ *  is told depends on the reason alone, whoever gave it. */
+export function deniedToolRecord(
+  call: ToolCall,
+  reason: string | undefined,
+  maxToolResultBytes: number | undefined,
+): ToolResultRecord {
+  const text =
+    `Denied: the call to "${call.name}" was not approved and did not run.` +
+    (reason ? ` Reason: ${reason}` : "");
+  return {
+    toolCallId: call.id,
+    name: call.name,
+    content: boundToolContent(text, maxToolResultBytes),
+    denied: true,
+  };
 }
 
 /** Execute one model-requested tool call and return a neutral result record. On
@@ -228,13 +320,7 @@ export async function dispatchToolCall(
   } catch (err) {
     await settleFailure(span, err);
     if (onToolError === "throw" || isCancellationError(err) || isSuspension(err)) throw err;
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      toolCallId: call.id,
-      name: call.name,
-      content: boundToolContent(`Error: ${message}`, maxToolResultBytes),
-      error: true,
-    };
+    return toolFailureRecord(call, err, maxToolResultBytes);
   }
   await span.settle("ok");
   return {

@@ -1,0 +1,57 @@
+# The same approver, well typed: by reference and declared inline, mapped per
+# leaf and whole.
+kind: Telo.Application
+metadata:
+  name: ToolApproverTyped
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+---
+kind: AiEcho.EchoModel
+metadata: { name: echo }
+---
+kind: Run.Value
+metadata: { name: reviewer }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      tool: { type: string }
+      description: { type: string }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [decision, note]
+    properties:
+      decision: { type: string, enum: [approve, reject, defer] }
+      note: { type: string }
+value:
+  decision: approve
+  note: !cel "inputs.tool"
+---
+kind: Ai.Agent
+metadata: { name: perLeaf }
+model: !ref echo
+approver:
+  invoke: !ref reviewer
+  inputs:
+    tool: !cel "toolCall.name"
+    description: !cel "tool.description"
+  result:
+    decision: !cel "result.decision"
+    reason: !cel "result.note"
+---
+kind: Ai.AgentStream
+metadata: { name: whole }
+model:
+  kind: AiEcho.EchoModelStream
+approver:
+  invoke: !ref reviewer
+  inputs: !cel "{'tool': toolCall.name}"
+  result: !cel "{'decision': result.decision}"

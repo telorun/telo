@@ -9,9 +9,9 @@ metadata:
     Language, image and embedding models for OpenAI and any OpenAI-compatible endpoint
     — Azure OpenAI, gateways, self-hosted servers — over the chat completions,
     responses, images and embeddings HTTP APIs with no vendor SDK. Supplies buffered
-    completions, token streaming, tool calling, reasoning that survives a tool loop,
-    prompt-to-picture generation and editing, and text vectors, to whichever operation
-    holds the model.
+    completions, token streaming, tool calling, image and document input, reasoning
+    that survives a tool loop, prompt-to-picture generation and editing, and text
+    vectors.
 imports:
   Ai: ../ai
   Embedding: ../embedding
@@ -47,10 +47,26 @@ throws:
         The endpoint refused the request or failed mid-stream. Carries the provider's
         own message and the HTTP status, so a caller reads why rather than a status
         line.
-    ERR_INVALID_INPUT:
+    ERR_CONTENT_UNSUPPORTED:
       description: >-
-        A content part that cannot be sent on this dialect — a `reasoning` or
-        `citation` part is produced by a model, not submitted to one.
+        A well-formed content part this API cannot carry: audio, video, a file by
+        `uri`, a file by bytes with no `name`, an image or file whose `uri` is not
+        `http:` or `https:`, or a part a
+        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
+        as input. Raised before anything is sent, and the message says what the
+        endpoint takes instead.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
     ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
       description: >-
         The model asked for a tool with arguments that are not a JSON object. Raised
@@ -113,8 +129,10 @@ metadata:
   name: ChatModelStream
   description: >-
     A chat model called through the chat completions API for a stream: the answer
-    arrives as parts as it is generated. Same model id, request and default options as
-    the buffered kind, and the same portability across OpenAI-compatible endpoints.
+    arrives as parts as it is generated, a tool call's arguments included, each
+    fragment under the call's id. Same model id, request and default options as the
+    buffered kind, and the same portability across OpenAI-compatible endpoints; a tool
+    call the endpoint leaves unnamed gets a unique generated id.
 capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
@@ -126,10 +144,26 @@ throws:
         The endpoint refused the request or failed mid-stream. Carries the provider's
         own message and the HTTP status, so a caller reads why rather than a status
         line.
-    ERR_INVALID_INPUT:
+    ERR_CONTENT_UNSUPPORTED:
       description: >-
-        A content part that cannot be sent on this dialect — a `reasoning` or
-        `citation` part is produced by a model, not submitted to one.
+        A well-formed content part this API cannot carry: audio, video, a file by
+        `uri`, a file by bytes with no `name`, an image or file whose `uri` is not
+        `http:` or `https:`, or a part a
+        model produces (`reasoning`, `citation`, `refusal`, `tool-call`) submitted
+        as input. Raised before anything is sent, and the message says what the
+        endpoint takes instead.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
     ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
       description: >-
         The model asked for a tool with arguments that are not a JSON object. Raised
@@ -249,10 +283,26 @@ throws:
         The endpoint refused the request or failed mid-stream. Carries the provider's
         own message and the HTTP status, so a caller reads why rather than a status
         line.
-    ERR_INVALID_INPUT:
+    ERR_CONTENT_UNSUPPORTED:
       description: >-
-        A content part that cannot be sent — a `reasoning` or `citation` part is
-        produced by a model, not submitted to one.
+        A well-formed content part this API cannot carry: audio, video, a file by
+        bytes with no `name`, an image or
+        file whose `uri` is not `http:` or `https:`, or a part a model produces
+        (`reasoning`, `citation`, `refusal`, `tool-call`) submitted as input. Raised
+        before anything is sent, and the message says what the endpoint takes
+        instead.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
     ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
       description: >-
         The model asked for a tool with arguments that are not a JSON object. Raised
@@ -332,8 +382,9 @@ metadata:
   name: ResponsesModelStream
   description: >-
     A chat model called through OpenAI's responses API for a stream: the answer
-    arrives as parts as it is generated. Same model id, request, reasoning effort and
-    default options as the buffered kind.
+    arrives as parts as it is generated, a tool call's arguments included, each
+    fragment under the call's id. Same model id, request, reasoning effort and default
+    options as the buffered kind.
 capability: Telo.Invocable
 extends: Ai.ModelStream
 controllers:
@@ -345,10 +396,26 @@ throws:
         The endpoint refused the request or failed mid-stream. Carries the provider's
         own message and the HTTP status, so a caller reads why rather than a status
         line.
-    ERR_INVALID_INPUT:
+    ERR_CONTENT_UNSUPPORTED:
       description: >-
-        A content part that cannot be sent — a `reasoning` or `citation` part is
-        produced by a model, not submitted to one.
+        A well-formed content part this API cannot carry: audio, video, a file by
+        bytes with no `name`, an image or
+        file whose `uri` is not `http:` or `https:`, or a part a model produces
+        (`reasoning`, `citation`, `refusal`, `tool-call`) submitted as input. Raised
+        before anything is sent, and the message says what the endpoint takes
+        instead.
+      data:
+        type: object
+        required: [partType]
+        properties:
+          partType:
+            type: string
+            description: The `type` of the content part that was refused.
+          scheme:
+            type: string
+            description: >-
+              The scheme of the part's `uri`, lowercased, when the scheme is why
+              it was refused.
     ERR_OPENAI_INVALID_TOOL_ARGUMENTS:
       description: >-
         The model asked for a tool with arguments that are not a JSON object. Raised

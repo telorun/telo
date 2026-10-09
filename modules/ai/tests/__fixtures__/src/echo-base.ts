@@ -8,7 +8,7 @@
  */
 import { InvokeError } from "@telorun/sdk";
 import { contentToText } from "@telorun/ai";
-import type { Message, ModelInvokeInput } from "@telorun/ai";
+import type { Message, ModelInvokeInput, ToolCall } from "@telorun/ai";
 
 export interface EchoFailRule {
   message: string;
@@ -23,10 +23,19 @@ export interface EchoResource {
   /** Test-only: when `tools` are present and no tool result is in the conversation yet,
    *  emit this tool call instead of echoing — lets agent-loop tests run hermetically. */
   emitToolCall?: { name: string; arguments?: Record<string, unknown> };
+  /** Test-only: the same, as several calls in one response, each with its own id. */
+  emitToolCalls?: Array<{ id: string; name: string; arguments?: Record<string, unknown> }>;
+  /** Test-only: answer with the request's messages instead of the last one's
+   *  text — `role[toolCallId]=text` each, joined by ` | ` — so a test sees the
+   *  conversation a call was given, in the order it was given. */
+  echoConversation?: boolean;
   /** Test-only: emit `emitToolCall` on every call that offers tools, whatever the
    *  conversation or `toolChoice` — a model that never converges, and that
    *  disobeys a call that may not use a tool. */
   toolCallEveryTurn?: boolean;
+  /** Test-only: precede the tool call with its argument JSON as two
+   *  `tool-call-delta` parts. Streaming fixture only. */
+  emitToolCallDeltas?: boolean;
   /** Test-only: echo the request's shape after the last message's text —
    *  ` [tools: a,b] [toolChoice: none]` — so a test sees what a call was given. */
   echoRequest?: boolean;
@@ -41,7 +50,13 @@ export interface EchoResource {
    *  none) — so a test sees what reached each call and what is replayed. */
   echoProviderState?: boolean;
   /** Test-only: the token usage every call reports. Zero when unset. */
-  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cachedPromptTokens?: number;
+    reasoningTokens?: number;
+  };
 }
 
 export const NO_USAGE = {
@@ -66,6 +81,11 @@ export abstract class EchoBase {
   }
 
   protected buildEchoText(input: ModelInvokeInput): string {
+    if (this.resource.echoConversation) {
+      return input.messages
+        .map((m) => `${m.role}${m.toolCallId ? `[${m.toolCallId}]` : ""}=${contentToText(m.content)}`)
+        .join(" | ");
+    }
     const last = input.messages[input.messages.length - 1];
     const text = contentToText(last?.content) + (this.resource.suffix ?? "");
     if (!this.resource.echoRequest) return text;
@@ -78,11 +98,19 @@ export abstract class EchoBase {
   protected shouldCallTool(input: ModelInvokeInput): boolean {
     const { messages, tools } = input;
     return (
-      this.resource.emitToolCall !== undefined &&
+      this.plannedToolCalls().length > 0 &&
       tools !== undefined &&
       tools.length > 0 &&
       (this.resource.toolCallEveryTurn === true || !messages.some((m) => m.role === "tool"))
     );
+  }
+
+  /** The calls a tool-calling turn asks for: `emitToolCalls`, else the one
+   *  `emitToolCall` under the fixture's fixed id. */
+  protected plannedToolCalls(): ToolCall[] {
+    const { emitToolCall, emitToolCalls } = this.resource;
+    const planned = emitToolCalls ?? (emitToolCall ? [{ id: "echo-call-1", ...emitToolCall }] : []);
+    return planned.map((call) => ({ id: call.id, name: call.name, arguments: call.arguments ?? {} }));
   }
 
   protected maybeThrow(messages: Message[]): void {

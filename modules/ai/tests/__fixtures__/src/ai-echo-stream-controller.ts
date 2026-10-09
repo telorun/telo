@@ -23,16 +23,21 @@ class AiEchoModelStream extends EchoBase implements ResourceInstance, AiModelStr
       yield { type: "provider-state", providerState: { received: input.providerState ?? null } };
     }
     if (this.shouldCallTool(input)) {
-      const plan = this.resource.emitToolCall!;
       // A call told to answer without a tool still gets its text here, before the
       // tool call the fixture returns regardless.
       if (input.toolChoice === "none") {
         yield { type: "text-delta", delta: this.buildEchoText(input) };
       }
-      yield {
-        type: "tool-call",
-        toolCall: { id: "echo-call-1", name: plan.name, arguments: plan.arguments ?? {} },
-      };
+      for (const toolCall of this.plannedToolCalls()) {
+        if (this.resource.emitToolCallDeltas) {
+          const text = JSON.stringify(toolCall.arguments);
+          const cut = Math.ceil(text.length / 2);
+          for (const delta of [text.slice(0, cut), text.slice(cut)]) {
+            yield { type: "tool-call-delta", toolCallId: toolCall.id, toolName: toolCall.name, delta };
+          }
+        }
+        yield { type: "tool-call", toolCall };
+      }
       // `tool-calls` rather than `stop` is what drives the agent's second turn.
       yield { type: "finish", usage: this.usage, finishReason: "tool-calls" };
       return;

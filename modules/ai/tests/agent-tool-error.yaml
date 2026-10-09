@@ -67,7 +67,7 @@ steps:
   - name: assertText
     inputs:
       text: !cel "steps.invoke.result.text"
-      hadError: !cel "steps.invoke.result.steps[0].toolResults[0].error"
+      hadError: !cel "steps.invoke.result.toolResults[0].error"
     invoke:
       kind: Assert.Schema
       schema:

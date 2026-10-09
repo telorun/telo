@@ -1,0 +1,44 @@
+# A route over an agent whose approver can fail with a code of its own. What the
+# approver throws escapes the agent unchanged, so the code is part of the
+# handler's union: a route's `catches:` may name it, and with a catch-all the route is covered.
+kind: Telo.Application
+metadata:
+  name: ApproverThrowsCovered
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Http: ../../../../http-server
+  Run: ../../../../run
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model:
+  kind: AiEcho.EchoModel
+approver:
+  invoke:
+    kind: Run.Sequence
+    steps:
+      - name: unavailable
+        throw:
+          code: ERR_REVIEW_UNAVAILABLE
+          message: "the reviewer is down"
+  inputs: {}
+  result:
+    decision: approve
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ask, method: POST }
+    handler: !ref agent
+    inputs:
+      prompt: "go"
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_REVIEW_UNAVAILABLE'"
+        status: 503
+        content: { application/json: { body: { error: !cel "error.message" } } }
+      - status: 500
+        content: { application/json: { body: { error: !cel "error.code" } } }

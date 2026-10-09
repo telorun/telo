@@ -1,4 +1,11 @@
-import { contentToText, type ContentPart, type ImagePart, type MessageContent } from "@telorun/ai";
+import { randomUUID } from "node:crypto";
+import {
+  contentToText,
+  isMediaPart,
+  isTextPart,
+  type ContentPart,
+  type MessageContent,
+} from "@telorun/ai";
 import type {
   AiModelInstance,
   AiModelStreamInstance,
@@ -23,10 +30,12 @@ import { mergeOptions, toOpenAiParams, toResponsesTextFormat } from "./openai-pa
 import { callOpenAi, type HttpRequestInstance } from "./openai-endpoint.js";
 import { parseSseData } from "./openai-sse.js";
 import {
-  imageDataUrl,
-  imageParts,
+  contentUnsupported,
+  dataUrl,
+  namedFileData,
+  OUTPUT_ONLY,
   parseToolArguments,
-  TOOL_IMAGE_PLACEHOLDER,
+  remoteUrl,
 } from "./openai-message-parts.js";
 
 /**
@@ -63,6 +72,8 @@ interface ResponsesUsage {
   input_tokens?: number;
   output_tokens?: number;
   total_tokens?: number;
+  input_tokens_details?: { cached_tokens?: number } | null;
+  output_tokens_details?: { reasoning_tokens?: number } | null;
 }
 
 interface ResponsesMessageContent {
@@ -100,6 +111,11 @@ interface ResponsesBody {
 interface ResponsesEvent {
   type: string;
   delta?: string;
+  /** On an argument delta: the function-call ITEM it belongs to — the item's own
+   *  id, not the call id a tool result answers. */
+  item_id?: string;
+  /** The position of the item an event concerns in the answer's output. */
+  output_index?: number;
   item?: ResponsesItem;
   response?: ResponsesBody;
   message?: string;
@@ -151,11 +167,17 @@ function isOwnState(
   );
 }
 
+/** The two breakdowns are carried only when the endpoint reports them: absent
+ *  means "not said", which is not zero. */
 function mapUsage(u: ResponsesUsage | undefined): Usage {
+  const cached = u?.input_tokens_details?.cached_tokens;
+  const reasoning = u?.output_tokens_details?.reasoning_tokens;
   return {
     promptTokens: u?.input_tokens ?? 0,
     completionTokens: u?.output_tokens ?? 0,
     totalTokens: u?.total_tokens ?? 0,
+    ...(typeof cached === "number" ? { cachedPromptTokens: cached } : {}),
+    ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
   };
 }
 
@@ -183,23 +205,55 @@ function mapFinishReason(body: ResponsesBody | undefined, askedForTools: boolean
 
 type InputItem = Record<string, unknown>;
 
-/** Translate a caller's message content into responses `input_*` parts.
- *
- *  The part vocabulary is wider than any dialect can SEND — `reasoning`,
- *  `citation` and the rest are produced by a model, not submitted to one. One
- *  that reaches here is refused rather than dropped: dropping it would send a
- *  request quietly missing part of the message. */
-function translateContent(content: MessageContent, resourceName: string): InputItem[] {
+const TAKES_REFERENCE = "This endpoint takes an image or a file as bytes or by an http(s) URL.";
+const TAKES_MEDIA = "This endpoint takes text, images and files.";
+
+/**
+ * One content part as a responses `input_*` part, or the refusal of one this
+ * dialect cannot carry: an image or a file goes by bytes or by URL, and audio,
+ * video and every part a model produces not at all. Refused rather than
+ * dropped — dropping it would send a request quietly missing part of the
+ * message.
+ */
+function translatePart(part: ContentPart, label: string): InputItem {
+  switch (part.type) {
+    case "text":
+      return { type: "input_text", text: part.text };
+    case "image":
+      return {
+        type: "input_image",
+        image_url: part.uri === undefined ? dataUrl(part) : remoteUrl(part, label, TAKES_REFERENCE),
+      };
+    case "file":
+      return part.uri === undefined
+        ? { type: "input_file", ...namedFileData(part, label) }
+        : { type: "input_file", file_url: remoteUrl(part, label, TAKES_REFERENCE) };
+    case "audio":
+    case "video":
+      throw contentUnsupported(label, part, TAKES_MEDIA);
+    default:
+      throw contentUnsupported(label, part, OUTPUT_ONLY);
+  }
+}
+
+/** Translate a caller's message content into responses `input_*` parts. */
+function translateContent(content: MessageContent, label: string): InputItem[] {
   if (typeof content === "string") return [{ type: "input_text", text: content }];
-  return content.map((p) => {
-    if (p.type === "text") return { type: "input_text", text: p.text };
-    if (p.type === "image") return { type: "input_image", image_url: imageDataUrl(p) };
-    throw new InvokeError(
-      "ERR_INVALID_INPUT",
-      `OpenAI responses "${resourceName}": a '${p.type}' content part cannot be sent — ` +
-        `it is produced by a model, not submitted to one.`,
-    );
-  });
+  return content.map((part) => translatePart(part, label));
+}
+
+/**
+ * What a tool returned, as its `function_call_output`'s `output`. Text alone is
+ * a string. Media rides the output itself: the tool's text and media parts in
+ * the order it returned them, each translated as a user message's would be —
+ * so a media part a user message is refused, a tool result is refused the same
+ * way. A part a model produces is left out, not refused.
+ */
+function toolOutput(content: MessageContent, label: string): string | InputItem[] {
+  if (typeof content === "string" || !content.some(isMediaPart)) return contentToText(content);
+  return content
+    .filter((part) => isTextPart(part) || isMediaPart(part))
+    .map((part) => translatePart(part, label));
 }
 
 interface TranslatedInput {
@@ -220,7 +274,7 @@ function translateMessages(
   messages: Message[],
   providerState: unknown,
   model: string,
-  resourceName: string,
+  label: string,
   resourceId: string,
 ): TranslatedInput {
   const input: InputItem[] = [];
@@ -228,40 +282,20 @@ function translateMessages(
   // Where the newest assistant turn's function calls begin — the slot the
   // reasoning items belong in.
   let toolCallStart = -1;
-  // A tool result's image cannot ride a `function_call_output`, whose `output`
-  // is a string; it goes in a synthetic user message flushed after the run of
-  // outputs, never between them.
-  let pendingImages: InputItem[] = [];
-  const flushPendingImages = () => {
-    if (pendingImages.length > 0) {
-      input.push({ role: "user", content: pendingImages });
-      pendingImages = [];
-    }
-  };
 
   for (const m of messages) {
     if (m.role === "system") {
-      flushPendingImages();
       instructions.push(contentToText(m.content));
       continue;
     }
     if (m.role === "tool") {
-      const images = imageParts(m.content);
-      const text = contentToText(m.content);
       input.push({
         type: "function_call_output",
         call_id: m.toolCallId ?? "",
-        output:
-          images.length === 0
-            ? text
-            : text || TOOL_IMAGE_PLACEHOLDER,
+        output: toolOutput(m.content, label),
       });
-      for (const image of images) {
-        pendingImages.push({ type: "input_image", image_url: imageDataUrl(image) });
-      }
       continue;
     }
-    flushPendingImages();
     if (m.role === "assistant") {
       const text = contentToText(m.content);
       if (text) input.push({ role: "assistant", content: [{ type: "output_text", text }] });
@@ -281,9 +315,8 @@ function translateMessages(
       }
       continue;
     }
-    input.push({ role: m.role, content: translateContent(m.content, resourceName) });
+    input.push({ role: m.role, content: translateContent(m.content, label) });
   }
-  flushPendingImages();
 
   if (isOwnState(providerState, model, resourceId)) {
     const at = toolCallStart === -1 ? input.length : toolCallStart;
@@ -357,7 +390,7 @@ abstract class ResponsesBase {
       input.messages,
       input.providerState,
       this.resource.model,
-      this.resource.metadata.name,
+      `OpenAI responses "${this.resource.metadata.name}"`,
       qualifiedName(this.resource),
     );
     const tools = buildTools(input.tools);
@@ -452,10 +485,16 @@ class ResponsesModelStreamInstance
   implements ResourceInstance, AiModelStreamInstance
 {
   async invoke(input: ModelInvokeInput, ctx?: InvokeContext): Promise<ModelStreamResult> {
-    return { output: new Stream(this.parts(input, ctx)) };
+    // Built here rather than when the stream is first read: a part this dialect
+    // cannot carry fails the CALL, and only the endpoint's own failures reject
+    // the iteration.
+    return { output: new Stream(this.parts(this.buildBody(input, true), ctx)) };
   }
 
-  private async *parts(input: ModelInvokeInput, ctx?: InvokeContext): AsyncIterable<StreamPart> {
+  private async *parts(
+    requestBody: Record<string, unknown>,
+    ctx?: InvokeContext,
+  ): AsyncIterable<StreamPart> {
     // A refused request FAILS — the status check lives in `callOpenAi`, which
     // reads the provider's own message out of the body. Parts already emitted
     // still reach the consumer when a failure comes later.
@@ -463,7 +502,7 @@ class ResponsesModelStreamInstance
       this.resource.request,
       this.resource.metadata.name,
       "OpenAI responses stream",
-      { path: "/responses", body: this.buildBody(input, true), stream: true },
+      { path: "/responses", body: requestBody, stream: true },
       ctx,
     );
 
@@ -472,6 +511,10 @@ class ResponsesModelStreamInstance
     let sawTerminal = false;
     let sawToolCall = false;
     const reasoningItems: ResponsesItem[] = [];
+    // Function calls being written, by ITEM. An argument delta names only its
+    // item, so the call id and the tool name it is reported under are learned
+    // from the item's `added` event; until both are known its text is held.
+    const streaming = new Map<string, StreamedCall>();
 
     for await (const data of parseSseData(
       body as AsyncIterable<Uint8Array>,
@@ -489,12 +532,44 @@ class ResponsesModelStreamInstance
         case "response.reasoning_summary_text.delta":
           if (event.delta) yield { type: "reasoning-delta", delta: event.delta };
           break;
+        case "response.output_item.added": {
+          const item = event.item;
+          const key = itemKey(event);
+          if (item?.type === "function_call" && key !== undefined) {
+            streaming.set(key, { id: item.call_id ?? "", name: item.name ?? "", held: "" });
+          }
+          break;
+        }
+        case "response.function_call_arguments.delta": {
+          const key = itemKey(event);
+          if (!event.delta || key === undefined) break;
+          const call = streaming.get(key) ?? { id: "", name: "", held: "" };
+          streaming.set(key, call);
+          call.held += event.delta;
+          if (call.id && call.name) yield* releaseHeld(call);
+          break;
+        }
         case "response.output_item.done": {
           const item = event.item;
           if (!item) break;
           if (item.type === "function_call") {
             sawToolCall = true;
-            yield { type: "tool-call", toolCall: toolCallOf(item) };
+            const toolCall = toolCallOf(item);
+            const key = itemKey(event);
+            const call = (key === undefined ? undefined : streaming.get(key)) ?? {
+              id: "",
+              name: "",
+              held: "",
+            };
+            // The id its deltas already went out under is the call's id. One the
+            // endpoint never gave is minted here — unique across the model calls
+            // of a run — and whatever is still held goes out under it first.
+            toolCall.id = call.id || toolCall.id || `call_${randomUUID()}`;
+            call.id = toolCall.id;
+            call.name ||= toolCall.name;
+            yield* releaseHeld(call);
+            if (key !== undefined) streaming.delete(key);
+            yield { type: "tool-call", toolCall };
           } else if (item.type === "reasoning") {
             reasoningItems.push(item);
           }
@@ -518,8 +593,8 @@ class ResponsesModelStreamInstance
           );
         default:
           // The vocabulary is open and grows: lifecycle frames
-          // (`response.created`, `.in_progress`, `.output_item.added`,
-          // `.content_part.*`, the `.done` twin of every delta) carry nothing
+          // (`response.created`, `.in_progress`, `.content_part.*`, the `.done`
+          // twin of every delta) carry nothing
           // this contract reports, and an unknown frame is not an error.
           break;
       }
@@ -541,6 +616,31 @@ class ResponsesModelStreamInstance
     if (state) yield { type: "provider-state", providerState: state };
     yield { type: "finish", usage, finishReason: mapFinishReason(completed, sawToolCall) };
   }
+}
+
+/** One streamed function call being written. */
+interface StreamedCall {
+  /** The call id its deltas are reported under; empty until the endpoint names it. */
+  id: string;
+  name: string;
+  /** Argument text not yet reported as a delta. */
+  held: string;
+}
+
+/** Which output item an event concerns: its id, or — from an endpoint that
+ *  gives items none — its position in the output. */
+function itemKey(event: ResponsesEvent): string | undefined {
+  const id = event.item_id ?? event.item?.id;
+  if (id) return id;
+  return event.output_index === undefined ? undefined : `#${event.output_index}`;
+}
+
+/** Report the argument text a call is holding, under the id it now has. */
+function* releaseHeld(call: StreamedCall): Generator<StreamPart> {
+  if (call.held === "") return;
+  const delta = call.held;
+  call.held = "";
+  yield { type: "tool-call-delta", toolCallId: call.id, toolName: call.name, delta };
 }
 
 /** The provider's own words for a mid-stream failure. A bare `error` frame carries

@@ -5,9 +5,12 @@ metadata:
   description: |
     The parts Ai.AgentStream emits, collected whole: a two-call tool loop closes
     each call with a step-finish carrying that call's usage and ends with one
-    finish carrying their sum, and a tool-result carries the tool's own output
-    beside the mapped content; provider state is forwarded in order, replayed to
-    the next call, and the run's providerState input reaches the first call.
+    finish carrying their sum, a tool-result carries the tool's own output
+    beside the mapped content, and every message the run appends to the
+    conversation follows as a message part; provider state is forwarded in order, replayed to
+    the next call, and the run's providerState input reaches the first call; a
+    call's argument deltas are forwarded ahead of it under the call's own id, and
+    a concluding call's are withheld with the call.
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -17,6 +20,8 @@ imports:
 targets:
   - !ref partOrder
   - !ref providerStateFlow
+  - !ref argumentDeltas
+  - !ref concludingCallDeltas
 ---
 kind: Run.Value
 metadata: { name: multiplier }
@@ -73,6 +78,13 @@ steps:
         - type: step-finish
           usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
           finishReason: tool-calls
+        # Each message the run appends to the conversation follows as a record:
+        # the assistant turn after its step-finish, a tool message after its result.
+        - type: message
+          message:
+            role: assistant
+            content: ""
+            toolCalls: [{ id: echo-call-1, name: multiply, arguments: { a: 6, b: 7 } }]
         # `content` is what the tool's `result:` mapping told the model; `output`
         # is what the tool itself returned.
         - type: tool-result
@@ -81,11 +93,15 @@ steps:
             name: multiply
             content: "42"
             output: { product: 42 }
+        - type: message
+          message: { role: tool, content: "42", toolCallId: echo-call-1 }
         - { type: text-delta, delta: "4" }
         - { type: text-delta, delta: "2" }
         - type: step-finish
           usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
           finishReason: stop
+        - type: message
+          message: { role: assistant, content: "42" }
         - type: finish
           usage: { promptTokens: 20, completionTokens: 4, totalTokens: 24, unit: tokens, total: 24 }
           finishReason: stop
@@ -115,3 +131,74 @@ steps:
       expected:
         - received: { resume: token-1 }
         - received: { received: { resume: token-1 } }
+---
+# The deltas of a call join to its argument JSON, and carry the id the call and
+# its result carry.
+kind: Run.Sequence
+metadata: { name: argumentDeltas }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCall: { name: multiply, arguments: { a: 6, b: 7 } }
+        emitToolCallDeltas: true
+      maxParallelTools: 1
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: "multiply 6 and 7" }
+  - name: parts
+    invoke: !ref collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel >-
+        steps.parts.result.items.filter(p, p.type in ['tool-call-delta', 'tool-call', 'tool-result']).map(p,
+        p.type == 'tool-call-delta' ? {'type': p.type, 'toolCallId': p.toolCallId, 'toolName': p.toolName, 'delta': p.delta} :
+        p.type == 'tool-call' ? {'type': p.type, 'toolCallId': p.toolCall.id} :
+        {'type': p.type, 'toolCallId': p.toolResult.toolCallId})
+      expected:
+        - { type: tool-call-delta, toolCallId: echo-call-1, toolName: multiply, delta: '{"a":6,' }
+        - { type: tool-call-delta, toolCallId: echo-call-1, toolName: multiply, delta: '"b":7}' }
+        - { type: tool-call, toolCallId: echo-call-1 }
+        - { type: tool-result, toolCallId: echo-call-1 }
+---
+# The concluding call may not use a tool: the call the model returns anyway is
+# withheld, and so are the deltas that led to it.
+kind: Run.Sequence
+metadata: { name: concludingCallDeltas }
+steps:
+  - name: run
+    invoke:
+      kind: Ai.AgentStream
+      model:
+        kind: AiEcho.EchoModelStream
+        emitToolCall: { name: multiply, arguments: { a: 6, b: 7 } }
+        emitToolCallDeltas: true
+        toolCallEveryTurn: true
+      maxSteps: 1
+      onMaxSteps: conclude
+      toolProviders:
+        - provider: !ref localTools
+    inputs: { prompt: "multiply 6 and 7" }
+  - name: parts
+    invoke: !ref collect
+    inputs: { input: !cel "steps.run.result.output" }
+  - name: check
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.parts.result.items.map(p, p.type)"
+      expected:
+        - tool-call-delta
+        - tool-call-delta
+        - tool-call
+        - step-finish
+        - message
+        - tool-result
+        - message
+        - text-delta
+        - step-finish
+        - message
+        - finish

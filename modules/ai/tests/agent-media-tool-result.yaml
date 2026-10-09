@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: AgentMediaToolResultTest
+  version: 1.0.0
+imports:
+  Ai: ../
+  AiEcho: ./__fixtures__/ai-echo.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testMediaToolResult
+---
+kind: AiEcho.EchoModel
+metadata:
+  name: echo
+emitToolCall:
+  name: fetchReport
+  arguments: {}
+---
+# A tool whose whole value is one media part, by reference and with its name.
+kind: Ai.Tools
+metadata:
+  name: reportTools
+tools:
+  - tool:
+      kind: Run.Value
+      value:
+        type: file
+        mediaType: application/pdf
+        name: report.pdf
+        uri: "https://example.com/reports/q3.pdf?sig=A%2Fb"
+    name: fetchReport
+    description: Fetch the quarterly report.
+    parameters:
+      type: object
+      additionalProperties: false
+      properties: {}
+---
+# The value is recognised as a content part, and the second model call — whose
+# contract holds every message to the declared part shape — accepts it.
+kind: Run.Sequence
+metadata:
+  name: testMediaToolResult
+steps:
+  - name: invoke
+    inputs:
+      prompt: "read the report"
+    invoke:
+      kind: Ai.Agent
+      model: !ref echo
+      toolProviders:
+        - provider: !ref reportTools
+  - name: assertPart
+    inputs:
+      actual: !cel "steps.invoke.result.toolResults[0].content"
+      expected:
+        - type: file
+          mediaType: application/pdf
+          name: report.pdf
+          uri: "https://example.com/reports/q3.pdf?sig=A%2Fb"
+    invoke:
+      kind: Assert.Equals

@@ -1,0 +1,116 @@
+# Four routes over an OpenAI model — directly, through a text operation, through
+# a streaming agent and through a buffered fold — each naming one of the model's
+# codes in `catches:` and rendering no other. Every operation passes its model's
+# codes on, so each route leaves the rest of them uncovered.
+kind: Telo.Application
+metadata:
+  name: CatchesWithoutCatchAll
+imports:
+  OpenAI: ../../
+  Ai: ../../../ai
+  HttpClient: ../../../http-client
+  Http: ../../../http-server
+  Ndjson: ../../../ndjson-codec
+targets:
+  - !ref server
+---
+kind: Http.Server
+metadata: { name: server }
+host: 127.0.0.1
+port: 8882
+mounts:
+  - mount: !ref api
+---
+kind: HttpClient.Client
+metadata: { name: unreachable }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: HttpClient.Request
+metadata: { name: openaiRequest }
+client: !ref unreachable
+---
+kind: OpenAI.ChatModel
+metadata: { name: chat }
+model: gpt-test
+request: !ref openaiRequest
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStream }
+model: gpt-test
+request: !ref openaiRequest
+---
+kind: Ai.Text
+metadata: { name: text }
+model: !ref chat
+---
+kind: Ai.AgentStream
+metadata: { name: agentStream }
+model: !ref chatStream
+---
+kind: Ai.Buffered
+metadata: { name: buffered }
+model: !ref chatStream
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /model, method: POST }
+    handler: !ref chat
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: audio, mediaType: audio/wav, data: aGk= }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: model, partType: !cel "error.data.partType" } } }
+  - request: { path: /text, method: POST }
+    handler: !ref text
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: video, mediaType: video/mp4, data: aGk= }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: text, partType: !cel "error.data.partType" } } }
+  - request: { path: /agent-stream, method: POST }
+    handler: !ref agentStream
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: image, mediaType: image/png, uri: "file:///tmp/a.png" }]
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/x-ndjson:
+            encoder: { kind: Ndjson.Encoder }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content:
+          application/json:
+            body:
+              via: agent-stream
+              partType: !cel "error.data.partType"
+              scheme: !cel "error.data.scheme"
+  - request: { path: /buffered, method: POST }
+    handler: !ref buffered
+    inputs:
+      messages:
+        - role: user
+          content: [{ type: file, mediaType: application/pdf, uri: "https://example.com/report.pdf" }]
+    returns:
+      - status: 200
+        content: { application/json: { body: { text: !cel "result.text" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_CONTENT_UNSUPPORTED'"
+        status: 422
+        content: { application/json: { body: { via: buffered, partType: !cel "error.data.partType" } } }

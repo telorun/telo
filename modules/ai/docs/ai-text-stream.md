@@ -55,7 +55,16 @@ system: "You are a helpful assistant."
 
 ## Invocation inputs
 
-Identical to [Ai.Text](./ai-text.md): `prompt` (shorthand) **or** `messages` (full turns), plus optional `system` / `options` overrides. Same validation rules.
+Identical to [Ai.Text](./ai-text.md): `prompt` (shorthand) **or** `messages` (full turns, whose `content` is a string or content parts), plus optional `system` / `options` overrides. Same validation rules.
+
+## Errors
+
+Like `Ai.Text`, this kind declares `throws: { inherit: true }`: its model's declared codes are part of its own throw union, so a `catch:` step or a route's `catches:` may name them (see [Ai.Text → Errors](./ai-text.md#errors)). *When* a failure arrives decides who can answer it:
+
+- **The call makes the model call.** What the model refuses that call with — a content part it cannot carry, for one — rejects **this call**, unchanged. In a `mode: stream` route nothing has been sent yet, so `catches:` renders it.
+- **Anything later rejects the iteration** — the endpoint refusing the request, or a failure during generation. The response is already under way, so the encoder frames it in-band and `catches:` cannot.
+
+Which refusals a model raises from the call is its contract's: [every one it can decide from the request alone](./ai-model.md#when-a-streaming-call-fails). A caller that received the stream reads it to its `finish` or cancels it.
 
 ## Output
 

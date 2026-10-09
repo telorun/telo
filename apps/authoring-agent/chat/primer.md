@@ -272,8 +272,9 @@ because the controller drives the bound `invoke()`.
 
 A slot holding a STREAMING model (`Ai.ModelStream`) is `[call,
 trigger.consumer]`, and the pair is the honest reading: the invocation is a
-real dispatch that returns a handle, and then the response and every error
-happen while the CONSUMER drains — after that call already returned.
+real dispatch that returns a handle — and can be REFUSED, which rejects that
+call — and then the response and every later failure happen while the CONSUMER
+drains, after that call already returned.
 
 `use` is a SET — write a list when one slot genuinely dispatches two ways in a
 single invocation (`use: [call, detached]`). When the mode is chosen by a
@@ -352,25 +353,193 @@ route's `catches:`. Because those kinds now declare a throws union, a route
 mounting one MUST cover its codes or end with a catch-all entry (no `when:`,
 placed last), or `telo check` reports UNCOVERED_THROW_CODE.
 
+AN AI OPERATION THROWS WHAT ITS MODEL THROWS. `Ai.Text`, `Ai.TextStream`,
+`Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` declare `throws: { inherit: true
+}`, so the codes the model's kind declares are part of the operation's own
+union: a `catch:` step or a route's `catches:` over the operation may name a
+model code (`ERR_OPENAI_REQUEST_FAILED`, `ERR_CONTENT_UNSUPPORTED`) and read
+its declared `error.data`, and a `catches:` list with no catch-all must cover
+the model's codes too — UNCOVERED_THROW_CODE lists them.
+
+WHEN A STREAMING CALL FAILS decides who can answer it. On a streaming model
+(`Ai.ModelStream`): a call is refused by REJECTING, and an implementation
+raises from the call every refusal it can decide from the request alone, before
+it contacts its endpoint; an answer fails by rejecting its ITERATION, which is
+where everything that fails after the call has returned arrives — the endpoint's
+own refusal included; and a caller that received a stream reads it to its
+`finish` or cancels it. On the two streaming operations (`Ai.TextStream`,
+`Ai.AgentStream`): the call MAKES the first model call, what that call is
+refused with rejects the operation's own call, unchanged (so a `mode: stream`
+route's `catches:` still renders it), and anything later rejects the iteration,
+which `catches:` cannot render. A run resuming pending tool calls settles them,
+and makes its first model call, as the stream is read — a refusal there rejects
+the iteration.
+
+A MESSAGE'S `content` IS A STRING OR A LIST OF CONTENT PARTS (`Ai.ContentPart`),
+and each `type` has a fixed shape:
+
+- `text` (and the model-produced `reasoning`, `refusal`) — `text`.
+- `image`, `audio`, `video`, `file` — `mediaType`, and EXACTLY ONE of `data`
+  (the bytes: a `Telo.Bytes` value such as a file read's result, or base64 in a
+  literal) or `uri` (an absolute URI such as `https://…`; never a `data:` URI,
+  never relative), plus an optional file `name`.
+- `tool-call` — `toolCall`; `citation` — `citation`.
+
+There is no other key — no `cacheControl`. The shape is enforced by the
+contract of every kind that takes messages, never by a controller: a malformed
+literal part is CONTRACT_INPUTS_MISMATCH at `telo check`, on the key at fault,
+and a malformed computed one is `ERR_INPUT_INVALID` at dispatch. A tool that
+returns media returns the same parts from its `result:` mapping.
+
+WHETHER A MODEL CAN CARRY A WELL-FORMED PART IS THE PROVIDER'S ANSWER, raised
+before any request under a code the provider declares. For the four OpenAI chat
+kinds that code is `ERR_CONTENT_UNSUPPORTED`, with `error.data.partType` and,
+when the `uri`'s scheme is the reason, `error.data.scheme`:
+
+- image by bytes, or by an `http:` / `https:` `uri` — carried by both the
+  completions pair and the responses pair; the `uri` is sent as written and
+  never fetched, so the endpoint must be able to reach it.
+- file by bytes, with `name` — carried by both, `name` sent as its filename. A
+  file by bytes with NO `name` is `ERR_CONTENT_UNSUPPORTED` on both
+  (`error.data.partType: file`, no `scheme`), also inside a tool result. No
+  media type is gated here: at OpenAI's own endpoint a file by bytes on the
+  completions pair is a PDF, and any other type is the endpoint's to accept or
+  refuse (`ERR_OPENAI_REQUEST_FAILED`).
+- file by `http(s)` `uri` — the RESPONSES pair only; on the completions pair it
+  is `ERR_CONTENT_UNSUPPORTED`, so read the bytes and send `data` instead.
+- any other `uri` scheme (`file:`, `s3:`), audio, video, and a model-produced
+  part sent as input — `ERR_CONTENT_UNSUPPORTED` on both.
+- media a TOOL returned — on the responses pair it rides the tool result
+  itself, in the tool's own part order, under the same rules as a user
+  message's parts; on the completions pair, whose tool message is text only, it
+  rides a `user` message after the run of tool messages.
+
+`usage` ON EVERY COMPLETION is `promptTokens`, `completionTokens`,
+`totalTokens`, `unit`, `total`, plus `cachedPromptTokens` (the part of the
+prompt read from a cache) and `reasoningTokens` (the part of the completion
+spent reasoning) WHEN THE MODEL REPORTS THEM. Either may be absent, and absent
+is not zero — guard a read with `has(...)`. An agent sums them across its
+calls; `Ai.AgentStream` also carries them per call on each `step-finish`.
+
 `Ai.AgentStream`'s `output` is a stream of `Ai.AgentStreamPart` records (an
 exported shape — type a consumer's records with `items: !ref
 Ai.AgentStreamPart`), discriminated by `type`: `text-delta`, `reasoning-delta`,
-`content-part`, `tool-call`, `provider-state`, `step-finish`, `tool-result`,
-`finish`. For one tool round the order is: the first model call's parts,
-`step-finish` (that call's `usage` and `finishReason`), a `tool-result` per tool
-it ran, the second call's parts, its `step-finish`, then ONE terminal `finish`
-whose `usage` is the sum of every `step-finish`. Account for spend per call from
+`content-part`, `tool-call-delta`, `tool-call`, `provider-state`, `step-finish`,
+`tool-result`, `message`, `tool-approval-decision`, `tool-approval-request`,
+`finish`. For one tool round the order is: the first model call's
+parts, `step-finish` (that call's `usage` and `finishReason`), a `message` (the
+assistant turn), a `tool-result` per tool it ran, each followed by its `message`,
+the second call's parts, its `step-finish`, a `message` (the answer), then ONE
+terminal `finish` whose `usage` is the sum of every `step-finish`. Account for spend per call from
 `step-finish`, not only from `finish`, which a cancelled or failed run never
 reaches. A `tool-call`'s `toolCall.id` is fixed for the whole run — the
 `tool-result`'s `toolResult.toolCallId` equals it (a generated `call_<uuid>` when
-the model gives none). `provider-state` parts are forwarded as well as replayed
+the model gives none). A `tool-call-delta` carries `toolCallId`, `toolName` and
+`delta`: a fragment of a call's argument text as the model writes it, under
+that same id, ahead of the whole `tool-call`; a call's `delta`s joined are the
+JSON of its arguments. It is ADVISORY — the whole `tool-call` always follows and
+is the only one a consumer must handle; use the deltas only to show a call
+being written, and never expect them from every model or from a concluding
+call. `provider-state` parts are forwarded as well as replayed
 to the next call; keep the last one's `providerState` and pass it back as the
 next run's `providerState` input to continue the model's reasoning. Cancelling
 the invocation (a step's `timeout:`, a cancelled run) reaches the running model
-call AND the running tool — `Ai.Tools` passes it into the tool's invocation,
+call AND every running tool — `Ai.Tools` passes it into the tool's invocation,
 `AiMcp.ToolProvider` into its `tools/call` — and both agent kinds end with
 `ERR_INVOKE_CANCELLED` even under `onToolError: feedback`, which only turns
 genuine tool failures into `error: true` results.
+
+THE TOOL CALLS OF ONE MODEL RESPONSE RUN SIDE BY SIDE. Both agent kinds take
+`maxParallelTools` (an integer ≥ 1, a literal or `!cel`, default `4`): up to
+that many of one response's calls run at once. The model is always given their
+results in the order it asked for them; `Ai.AgentStream` emits each
+`tool-result` as it completes, so match a result to its call by `toolCallId`,
+never by position. Set `maxParallelTools: 1` — one call at a time, in call
+order — when the tools of one response depend on each other's side effects (a
+write the next call reads back, two edits of one file); leave it unset for
+tools that only read or touch separate things. Under `onToolError: throw` the
+first failure cancels the calls still running and the run rejects with it;
+under `feedback` the calls beside a failed one finish.
+
+BOTH AGENT KINDS RECORD THE CONVERSATION THEY BUILD. Every message a run appends
+— each assistant turn, each tool result, the final answer — is `Ai.Agent`'s
+`messages` output and, in the same order, an `Ai.AgentStream` `message` part
+(`part.message`, an `Ai.Message`), emitted where it is appended. The caller's
+input messages followed by that record is the conversation to persist and to
+pass as `messages` to the next run; never rebuild it from deltas and tool
+parts. A route serving a browser may drop `message` parts from what it
+forwards. `Ai.Agent` also takes and returns `providerState`.
+
+`Ai.Agent` RETURNS `steps` AND `toolResults`, BOTH CLOSED SHAPES. `steps` is
+one entry per model call the run made, the answering and the concluding call
+included: `{ text, toolCalls }`. A run that resumes pending calls adds no entry
+for them. `toolResults` is one entry per tool call the run settled — ran,
+failed or was denied — including calls a previous run left pending, in the
+order they were recorded: `{ toolCallId, name, content, error?, denied? }`. A
+call still waiting has none and is listed in `approvalRequests`. Read a tool's
+outcome as `steps.<run>.result.toolResults`, never under `steps[]`; a
+misspelled member of either is a `telo check` error.
+
+A TOOL CALL CAN WAIT FOR A DECISION. A call is GATED when either source says
+so, and neither ungates the other: the agent's entry, by bare tool name —
+`toolProviders[].approval: { include?, exclude? }` (`{}` gates every tool the
+entry exposes, `include` exactly those names, `exclude` every exposed tool but
+those; prefer `exclude` for an MCP provider, so a tool it adds later is gated)
+— or the tool itself: `approval:` on an `Ai.Tools` entry, `true` or a boolean
+`!cel` over `arguments` and `context`, typed exactly like its `inputs:`
+mapping. A name in `approval.include` that the entry's own `include` /
+`exclude` removes is refused by `telo check` (`AI_APPROVAL_NAME_FILTERED`) and
+when the agent is created (`ERR_AI_APPROVAL_NAME_FILTERED`); one the provider
+does not expose is `ERR_AGENT_APPROVAL_UNKNOWN_TOOL` at the first call, and
+over an `Ai.Tools` provider `telo check` refuses it first — a name that is
+neither a tool's `name` nor, for a tool with none, the name of the resource it
+references is `REFERRER_RULE_VIOLATED` on the agent (rule
+`AGENT_APPROVAL_UNKNOWN_TOOL`, `AGENT_STREAM_APPROVAL_UNKNOWN_TOOL` on
+`Ai.AgentStream`), matched bare, before any `prefix`. A gate
+that answers with anything but a boolean is never read as ungated: it fails
+that call under `onToolError` and the tool does not run
+(`ERR_PREDICATE_NOT_BOOLEAN` for a tool's `approval` expression,
+`ERR_CONTRACT_VIOLATION` for any other provider's answer). A gated call is decided, in this order, by:
+
+1. the caller — an `approvals: [{ toolCallId, approved, reason? }]` input on a
+   later run (`approved: true` runs the call; `false` never runs it, and the
+   model is told it was denied with `reason`, its `tool-result` carrying
+   `denied: true`, which is not an error and ignores `onToolError`);
+2. the agent's `approver: { invoke, inputs, result }` — all three required.
+   `invoke` is a `!ref` or inline declaration of any invocable or runnable
+   (an `Ai.Text` as a reviewing model, a `Run.Sequence` of rules); `inputs`
+   maps `toolCall` (`id`, `name`, `arguments`) and `tool` (`name`,
+   `description`, `parameters`) — nothing else is in scope, not `context`, not
+   the messages — into its input; `result` maps its output, bound as
+   `result`, to `{ decision: approve | reject | defer, reason? }`. `approve`
+   runs the tool, `reject` denies it exactly as a human refusal does, `defer`
+   leaves it waiting. Each ask is a `tool-approval-decision` part
+   (`part.approvalDecision`) and an entry of `Ai.Agent`'s `approvalDecisions`;
+3. nobody — the run ENDS ASKING once the response's other calls have settled:
+   `Ai.AgentStream` emits one `tool-approval-request` per waiting call
+   (`part.toolCall`) and a `finish` with `finishReason: tool-calls` and
+   `interrupt: approval`; `Ai.Agent` returns `interrupt: approval` with
+   `approvalRequests`. `interrupt` never appears beside `limit`.
+
+TO RESUME, invoke an agent again with `messages` — the stored input followed by
+the recorded messages — and `approvals`. The pending calls are read from
+`messages` (the last assistant turn's `toolCalls` with no tool message after
+it) and settled before any model call; a pending call given no decision is
+judged again, and one still gated with nobody to decide ends the run asking
+again. Nothing is remembered between runs, and a human decision always wins
+over the approver. `ERR_INVALID_INPUT` for a decision naming a call that is
+not pending, two decisions for one call, or an `approvals` entry beside
+`prompt`.
+RESUMING TRUSTS `messages`, ARGUMENTS INCLUDED: load the conversation from the
+application's own store and take only the decision from the request — never
+accept the conversation back from a browser. The approver's target is
+resolved when a run starts, so an unusable `approver.invoke` fails every run,
+gated call or not. A failed ask (the approver throws, or its answer is not
+exactly `{ decision, reason? }` — not an object, an unknown `decision`, a
+`reason` that is not a string, `null` included, or any other key:
+`ERR_AGENT_APPROVAL_DECISION_INVALID`) fails the run whatever `onToolError` says; the approver's codes are part of
+the agent's throw union, so a route's `catches:` names them. The approver's
+token usage is NOT in the agent's `usage`, and an ask is not a step.
 
 AN AGENT'S STEP BUDGET HAS THREE ENDINGS. `maxSteps` (a literal or `!cel`)
 bounds the model calls one run makes, and `onMaxSteps` says what a spent budget
@@ -379,7 +548,8 @@ with what the last call produced; `conclude` makes ONE more model call that may
 not use a tool and ends with `conclusionPrompt` as its last user message, so
 the run finishes with a written wrap-up instead of an error.
 `conclusionPrompt` is legal only beside `onMaxSteps: conclude`
-(`AI_CONCLUSION_PROMPT_UNUSED`). Whenever the budget ended the run — `return`
+(`AI_CONCLUSION_PROMPT_UNUSED` at `telo check`,
+`ERR_AI_CONCLUSION_PROMPT_UNUSED` when the agent is created). Whenever the budget ended the run — `return`
 or `conclude` — the terminal `finish` part, and `Ai.Agent`'s output, carry
 `limit: max-steps`; `finishReason` stays the last call's own reason, so read
 `limit`, never `finishReason`, to tell a spent budget from an answer.

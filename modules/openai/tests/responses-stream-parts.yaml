@@ -13,6 +13,11 @@ metadata:
     carries both — one fixture covering one path is a fixture that silently
     covers one.
 
+    A tool call's arguments also arrive as they are written. The call is
+    announced by `response.output_item.added`, which carries its `call_id`; the
+    `response.function_call_arguments.delta` events that follow name only the
+    item, so each is reported under the call id learned from the announcement.
+
     The second half asserts that a mid-stream failure REJECTS the iteration
     rather than yielding an error part: a part has to be remembered by every
     drainer, and one that forgets truncates silently.
@@ -117,11 +122,20 @@ with:
                   event: response.output_text.done
                   data: {"type":"response.output_text.done","text":"Paris"}
 
+                  event: response.output_item.added
+                  data: {"type":"response.output_item.added","output_index":2,"item":{"id":"fc_1","type":"function_call","status":"in_progress","call_id":"call_xyz","name":"get_weather","arguments":""}}
+
                   event: response.function_call_arguments.delta
-                  data: {"type":"response.function_call_arguments.delta","delta":"{\"city\""}
+                  data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":2,"delta":"{\"city\""}
+
+                  event: response.function_call_arguments.delta
+                  data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":2,"delta":":\"Paris\"}"}
+
+                  event: response.function_call_arguments.done
+                  data: {"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":2,"arguments":"{\"city\":\"Paris\"}"}
 
                   event: response.output_item.done
-                  data: {"type":"response.output_item.done","item":{"id":"fc_1","type":"function_call","call_id":"call_xyz","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}
+                  data: {"type":"response.output_item.done","output_index":2,"item":{"id":"fc_1","type":"function_call","status":"completed","call_id":"call_xyz","name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}
 
                   event: response.completed
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}}
@@ -155,6 +169,10 @@ steps:
       expected:
         - { type: text-delta, delta: Pa }
         - { type: text-delta, delta: ris }
+        # The arguments as they were written, under the CALL id — the events
+        # themselves name only the item (`fc_1`).
+        - { type: tool-call-delta, toolCallId: call_xyz, toolName: get_weather, delta: '{"city"' }
+        - { type: tool-call-delta, toolCallId: call_xyz, toolName: get_weather, delta: ':"Paris"}' }
         # `call_id`, not the item's own `id` — that is what a later
         # `function_call_output` answers.
         - type: tool-call

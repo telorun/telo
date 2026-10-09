@@ -1,0 +1,41 @@
+# Each agent gates a tool by a name its static tool collection does not declare.
+kind: Telo.Application
+metadata:
+  name: ApprovalUnknownToolRefused
+  version: 1.0.0
+imports:
+  Ai: ../../..
+  AiEcho: ../ai-echo.yaml
+  Run: ../../../../run
+---
+kind: Run.Value
+metadata: { name: wipe }
+value: { wiped: true }
+---
+# `read` is named; the second tool takes its resource's name, `wipe`.
+kind: Ai.Tools
+metadata: { name: diskTools }
+tools:
+  - name: read
+    tool:
+      kind: Run.Value
+      value: { read: true }
+    parameters: { type: object }
+  - tool: !ref wipe
+    parameters: { type: object }
+---
+kind: Ai.Agent
+metadata: { name: agent }
+model:
+  kind: AiEcho.EchoModel
+toolProviders:
+  - provider: !ref diskTools
+    approval: { include: [read, erase] }
+---
+kind: Ai.AgentStream
+metadata: { name: stream }
+model:
+  kind: AiEcho.EchoModelStream
+toolProviders:
+  - provider: !ref diskTools
+    approval: { include: [erase] }
