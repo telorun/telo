@@ -27,11 +27,11 @@ interface PublishedModulesDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** What this workspace has published: each module, its versions and its
+/** What this project has published: each module, its versions and its
  *  visibility, which an admin may change. */
 export function PublishedModulesDialog({ open, onOpenChange }: PublishedModulesDialogProps) {
   const { api, active } = useCloud();
-  const workspaceId = active?.workspaceId ?? null;
+  const projectId = active?.projectId ?? null;
   const isAdmin = active?.role === "admin";
   const [modules, setModules] = useState<PublishedModule[] | null>(null);
   const [versions, setVersions] = useState<Record<string, PublishedModuleVersion[]>>({});
@@ -39,12 +39,12 @@ export function PublishedModulesDialog({ open, onOpenChange }: PublishedModulesD
   const [makePublic, setMakePublic] = useState<PublishedModule | null>(null);
 
   const load = useCallback(() => {
-    if (!workspaceId) return;
+    if (!projectId) return;
     setError(null);
-    api.listModules(workspaceId).then(setModules, (err: unknown) =>
+    api.listModules(projectId).then(setModules, (err: unknown) =>
       setError(repositoryRefusalMessage(err)),
     );
-  }, [api, workspaceId]);
+  }, [api, projectId]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +54,7 @@ export function PublishedModulesDialog({ open, onOpenChange }: PublishedModulesD
   }, [load, open]);
 
   function toggleVersions(module: PublishedModule) {
-    if (!workspaceId) return;
+    if (!projectId) return;
     if (versions[module.id]) {
       setVersions((current) => {
         const next = { ...current };
@@ -63,16 +63,16 @@ export function PublishedModulesDialog({ open, onOpenChange }: PublishedModulesD
       });
       return;
     }
-    api.listModuleVersions(workspaceId, module.id).then(
+    api.listModuleVersions(projectId, module.id).then(
       (list) => setVersions((current) => ({ ...current, [module.id]: list })),
       (err: unknown) => setError(repositoryRefusalMessage(err)),
     );
   }
 
   function setVisibility(module: PublishedModule, visibility: "private" | "public") {
-    if (!workspaceId) return;
+    if (!projectId) return;
     setError(null);
-    api.setModuleVisibility(workspaceId, module, visibility).then(load, (err: unknown) => {
+    api.setModuleVisibility(projectId, module, visibility).then(load, (err: unknown) => {
       setError(repositoryRefusalMessage(err));
       // Someone else changed it first: show what it is now.
       load();
@@ -86,7 +86,7 @@ export function PublishedModulesDialog({ open, onOpenChange }: PublishedModulesD
           <DialogHeader>
             <DialogTitle>Published modules</DialogTitle>
             <DialogDescription>
-              A private module can be pulled only inside this workspace; anyone can pull a public
+              A private module can be pulled only inside this project; anyone can pull a public
               one.
             </DialogDescription>
           </DialogHeader>

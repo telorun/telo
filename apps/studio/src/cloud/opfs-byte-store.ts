@@ -2,7 +2,7 @@ import { DirectoryNotFoundError } from "../loader/adapters/directory-not-found";
 import { FileNotFoundError, segmentsOf, type ByteStore } from "./byte-store";
 
 /** The directory in the Origin Private File System every working copy lives
- *  under, one subdirectory per workspace id. */
+ *  under, one subdirectory per project id. */
 const OPFS_ROOT = "telo-studio-cloud";
 
 function isMissing(error: unknown): boolean {

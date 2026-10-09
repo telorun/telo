@@ -247,11 +247,11 @@ mod tests {
 
     #[test]
     fn accepts_a_plain_path_under_the_api_base() {
-        assert_eq!(resolve("/v1/workspaces").unwrap(), "https://console.telo.cloud/api/v1/workspaces");
+        assert_eq!(resolve("/v1/projects").unwrap(), "https://console.telo.cloud/api/v1/projects");
         assert_eq!(resolve("/session").unwrap(), "https://console.telo.cloud/api/session");
         assert_eq!(
-            resolve("/v1/workspaces/wks_1/repository/head?branch=feature/a..b").unwrap(),
-            "https://console.telo.cloud/api/v1/workspaces/wks_1/repository/head?branch=feature/a..b"
+            resolve("/v1/projects/prj_1/repository/head?branch=feature/a..b").unwrap(),
+            "https://console.telo.cloud/api/v1/projects/prj_1/repository/head?branch=feature/a..b"
         );
     }
 
@@ -264,7 +264,7 @@ mod tests {
             "/v1/%2e%2E/x",
             "/v1/..?a=1",
             "https://x",
-            "v1/workspaces",
+            "v1/projects",
             "",
             "/v1\\x",
             "/v1\nx",

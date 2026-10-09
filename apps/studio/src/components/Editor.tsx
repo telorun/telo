@@ -75,9 +75,9 @@ import {
 import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { useAgent } from "../agent";
 import { useCloud } from "../cloud/context";
-import { cloudWorkspaceIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
+import { cloudProjectIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
 import { findWorkingCopy } from "../cloud/working-copy-index";
-import { CloudWorkspaceBar } from "./cloud/CloudWorkspaceBar";
+import { CloudProjectBar } from "./cloud/CloudProjectBar";
 import type { OpenWorkspaceKind } from "./WorkspaceSwitcher";
 import type { WorkspaceBridge } from "../agent";
 import { sessionWorkspace } from "../agent/agent-workspace";
@@ -213,7 +213,7 @@ export function Editor() {
   const editingPaused: string | null = agentLocked
     ? "Editing is paused while the agent is working."
     : cloudLock === "viewer"
-      ? "You have read-only access to this Telo Cloud workspace."
+      ? "You have read-only access to this Telo Cloud project."
       : cloudLock === "updating"
         ? "Editing is paused while the workspace is updated."
         : null;
@@ -400,7 +400,7 @@ export function Editor() {
   // capability is enough to offer the panel: a runner may enable the agent as a
   // co-resident only, and hiding the entry point there would make the operator's
   // configuration have no effect.
-  // A viewer of a Telo Cloud workspace cannot change it, so the agent — which
+  // A viewer of a Telo Cloud project cannot change it, so the agent — which
   // exists to change it — is not offered there.
   const agentVisible =
     cloudLock !== "viewer" &&
@@ -1023,12 +1023,12 @@ export function Editor() {
 
   const openWorkspaceKind = useMemo((): OpenWorkspaceKind | null => {
     if (!workspaceRootDir) return null;
-    const cloudWorkspaceId = cloudWorkspaceIdOf(workspaceRootDir);
-    if (cloudWorkspaceId) {
+    const cloudProjectId = cloudProjectIdOf(workspaceRootDir);
+    if (cloudProjectId) {
       return {
         kind: "cloud",
-        workspaceId: cloudWorkspaceId,
-        name: findWorkingCopy(cloudWorkspaceId)?.workspaceName ?? "Telo Cloud",
+        projectId: cloudProjectId,
+        name: findWorkingCopy(cloudProjectId)?.projectName ?? "Telo Cloud",
       };
     }
     return browserWorkspaceOpen
@@ -2120,8 +2120,8 @@ export function Editor() {
           current: openWorkspaceKind,
           alwaysOfferBrowserWorkspace: openMode === "single",
           onOpenBrowserWorkspace: () => void switchWorkspace(openBrowserWorkspace()),
-          onOpenWorkingCopy: (workspaceId) =>
-            void switchWorkspace(openRoot(cloudWorkspaceRoot(workspaceId))),
+          onOpenWorkingCopy: (projectId) =>
+            void switchWorkspace(openRoot(cloudWorkspaceRoot(projectId))),
           onOpenFolder: openMode === "chooser" ? handleOpen : undefined,
           onClose: closeWorkspace,
         }}
@@ -2190,7 +2190,7 @@ export function Editor() {
         ) : (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {cloud.active && (
-              <CloudWorkspaceBar
+              <CloudProjectBar
                 activeModule={cloudActiveModule}
                 onOpenManifest={() => {
                   if (state.activeModulePath) handleOpenFile(state.activeModulePath);

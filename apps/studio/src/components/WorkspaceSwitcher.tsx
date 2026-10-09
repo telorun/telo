@@ -4,7 +4,7 @@ import { useCloud } from "../cloud/context";
 import { loadWorkingCopyIndex, type WorkingCopyEntry } from "../cloud/working-copy-index";
 import { pathBasename } from "../loader/paths";
 import { browserWorkspaceHasFiles } from "../storage";
-import { OpenCloudWorkspaceDialog } from "./cloud/OpenCloudWorkspaceDialog";
+import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -17,7 +17,7 @@ import {
 
 /** Which workspace is open, by the backend that holds it. */
 export type OpenWorkspaceKind =
-  | { kind: "cloud"; workspaceId: string; name: string }
+  | { kind: "cloud"; projectId: string; name: string }
   | { kind: "browser" }
   | { kind: "folder"; rootDir: string };
 
@@ -28,7 +28,7 @@ export interface WorkspaceSwitcherProps {
   alwaysOfferBrowserWorkspace: boolean;
   onOpenBrowserWorkspace: () => void;
   /** Opens a Telo Cloud working copy already on this device. */
-  onOpenWorkingCopy: (workspaceId: string) => void;
+  onOpenWorkingCopy: (projectId: string) => void;
   /** Opens a directory picker; absent where the environment has none. */
   onOpenFolder?: () => void;
   onClose: () => void;
@@ -102,15 +102,15 @@ export function WorkspaceSwitcher({
               )}
               {workingCopies.map((entry) => {
                 const isCurrent =
-                  current?.kind === "cloud" && current.workspaceId === entry.workspaceId;
+                  current?.kind === "cloud" && current.projectId === entry.projectId;
                 return (
                   <DropdownMenuItem
-                    key={entry.workspaceId}
+                    key={entry.projectId}
                     disabled={isCurrent}
-                    onSelect={() => onOpenWorkingCopy(entry.workspaceId)}
+                    onSelect={() => onOpenWorkingCopy(entry.projectId)}
                   >
                     <Cloud />
-                    <span className="min-w-0 flex-1 truncate">{entry.workspaceName}</span>
+                    <span className="min-w-0 flex-1 truncate">{entry.projectName}</span>
                     {isCurrent && <Check />}
                   </DropdownMenuItem>
                 );
@@ -134,7 +134,7 @@ export function WorkspaceSwitcher({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      <OpenCloudWorkspaceDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
+      <OpenCloudProjectDialog open={cloudDialogOpen} onOpenChange={setCloudDialogOpen} />
     </>
   );
 }

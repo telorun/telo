@@ -90,7 +90,7 @@ function entryOf(state: Exclude<PathState, null>): BaseEntry {
 }
 
 /**
- * One Cloud workspace on this device: the working tree, an untouched copy of
+ * One Cloud project on this device: the working tree, an untouched copy of
  * the snapshot it was based on, and that snapshot's commit. Everything is
  * decided on bytes — the editor above reads files as text, which says nothing
  * about a binary one.

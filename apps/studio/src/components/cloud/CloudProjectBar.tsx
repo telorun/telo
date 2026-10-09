@@ -23,16 +23,16 @@ const OPERATION_LABEL = {
   switching: "Switching branch…",
 } as const;
 
-interface CloudWorkspaceBarProps {
+interface CloudProjectBarProps {
   /** The module in the active pane, when it is one of this workspace's own. */
   activeModule: PublishTarget | null;
   /** Opens the active module's manifest in the source view. */
   onOpenManifest: () => void;
 }
 
-/** The strip above a Cloud workspace's tabs: which workspace and branch, what
+/** The strip above a Cloud project's tabs: which project and branch, what
  *  has changed, and the three things done with it — commit, update, publish. */
-export function CloudWorkspaceBar({ activeModule, onOpenManifest }: CloudWorkspaceBarProps) {
+export function CloudProjectBar({ activeModule, onOpenManifest }: CloudProjectBarProps) {
   const cloud = useCloud();
   const { active, api } = cloud;
   const [commitOpen, setCommitOpen] = useState(false);
@@ -67,7 +67,7 @@ export function CloudWorkspaceBar({ activeModule, onOpenManifest }: CloudWorkspa
   function loadBranches(open: boolean) {
     if (!open || !active) return;
     setBranches(null);
-    api.listBranches(active.workspaceId).then(setBranches, (err: unknown) => {
+    api.listBranches(active.projectId).then(setBranches, (err: unknown) => {
       setBranches([]);
       toast.error(repositoryRefusalMessage(err));
     });

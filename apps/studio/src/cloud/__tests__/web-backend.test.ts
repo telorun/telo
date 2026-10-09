@@ -57,11 +57,11 @@ describe("WebCloudBackend", () => {
     vi.stubGlobal("fetch", fetchMock);
     const backend = new WebCloudBackend();
     await backend.read();
-    await backend.request({ method: "GET", path: "/v1/workspaces" });
-    await backend.request({ method: "POST", path: "/v1/workspaces/wks_1/publications", body: "{}" });
+    await backend.request({ method: "GET", path: "/v1/projects" });
+    await backend.request({ method: "POST", path: "/v1/projects/prj_1/publications", body: "{}" });
     const headersOf = (call: number) => fetchMock.mock.calls[call]![1].headers as Record<string, string>;
     expect(headersOf(1)["x-csrf-token"]).toBeUndefined();
     expect(headersOf(2)["x-csrf-token"]).toBe("csrf-1");
-    expect(fetchMock.mock.calls[2]![0]).toBe("/api/v1/workspaces/wks_1/publications");
+    expect(fetchMock.mock.calls[2]![0]).toBe("/api/v1/projects/prj_1/publications");
   });
 });

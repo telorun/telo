@@ -3,7 +3,7 @@ import type { WorkspaceAdapter } from "../model";
 import { TauriFsAdapter } from "./adapters/tauri-fs";
 import { FsaAdapter } from "./adapters/fsa";
 import { LocalStorageAdapter } from "./adapters/local-storage";
-import { CLOUD_ROOT_PREFIX, cloudWorkspaceIdOf } from "../cloud/working-copy-adapter";
+import { CLOUD_ROOT_PREFIX, cloudProjectIdOf } from "../cloud/working-copy-adapter";
 import { findWorkingCopy } from "../cloud/working-copy-index";
 import { workingCopyAdapter } from "../cloud/working-copy-store";
 
@@ -69,9 +69,9 @@ export function reopenWorkspaceAt(rootDir: string): OpenedWorkspace | null {
   // root rather than by the environment. One this device no longer holds (the
   // user signed out) is not reopened as anything else.
   if (rootDir.startsWith(CLOUD_ROOT_PREFIX)) {
-    const cloudWorkspaceId = cloudWorkspaceIdOf(rootDir);
-    if (!cloudWorkspaceId || !findWorkingCopy(cloudWorkspaceId)) return null;
-    const adapter = workingCopyAdapter(cloudWorkspaceId);
+    const cloudProjectId = cloudProjectIdOf(rootDir);
+    if (!cloudProjectId || !findWorkingCopy(cloudProjectId)) return null;
+    const adapter = workingCopyAdapter(cloudProjectId);
     return { manifestAdapter: adapter, workspaceAdapter: adapter, rootDir };
   }
   if (isInTauri()) {

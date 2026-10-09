@@ -35,7 +35,7 @@ describe("CloudApi", () => {
       json(502, { code: "repository_unreachable", status: 502 }),
       json(201, { commit: "c2", parent: "c1", branch: "main", message: "m", committedAt: "now" }),
     ]);
-    expect((await api.commit("wks_1", COMMIT, "key-1")).commit).toBe("c2");
+    expect((await api.commit("prj_1", COMMIT, "key-1")).commit).toBe("c2");
     expect(requests).toHaveLength(4);
     expect(new Set(requests.map((r) => r.headers?.["idempotency-key"]))).toEqual(new Set(["key-1"]));
   });
@@ -44,7 +44,7 @@ describe("CloudApi", () => {
     const { api, requests } = scripted([
       json(409, { code: "branch_moved", status: 409, branch: "main", baseCommit: "c1", headCommit: "c9" }),
     ]);
-    const error = await api.commit("wks_1", COMMIT, "key-1").catch((e: unknown) => e);
+    const error = await api.commit("prj_1", COMMIT, "key-1").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CloudApiError);
     expect((error as CloudApiError).code).toBe("branch_moved");
     expect((error as CloudApiError).problem.headCommit).toBe("c9");
@@ -53,17 +53,17 @@ describe("CloudApi", () => {
 
   it("reports a lost session", async () => {
     const { api, sessionLost } = scripted([json(401, { code: "session_required", status: 401 })]);
-    await expect(api.listWorkspaces()).rejects.toMatchObject({ code: "session_required" });
+    await expect(api.listProjects()).rejects.toMatchObject({ code: "session_required" });
     expect(sessionLost()).toBe(1);
   });
 
   it("reads every page of a collection", async () => {
     const { api, requests } = scripted([
-      json(200, { items: [{ id: "wks_1" }], nextCursor: "abc" }),
-      json(200, { items: [{ id: "wks_2" }], nextCursor: null }),
+      json(200, { items: [{ id: "prj_1" }], nextCursor: "abc" }),
+      json(200, { items: [{ id: "prj_2" }], nextCursor: null }),
     ]);
-    expect((await api.listWorkspaces()).map((w) => w.id)).toEqual(["wks_1", "wks_2"]);
-    expect(requests[1]!.path).toBe("/v1/workspaces?cursor=abc");
+    expect((await api.listProjects()).map((w) => w.id)).toEqual(["prj_1", "prj_2"]);
+    expect(requests[1]!.path).toBe("/v1/projects?cursor=abc");
   });
 
   it("answers null for a head that has not moved", async () => {
@@ -71,18 +71,18 @@ describe("CloudApi", () => {
       json(200, { branch: "main", commit: "c1", checkedAt: "now" }, { etag: '"c1"' }),
       new Response(null, { status: 304 }),
     ]);
-    const first = await api.getHead("wks_1", "main");
+    const first = await api.getHead("prj_1", "main");
     expect(first).toMatchObject({ head: { commit: "c1" }, etag: '"c1"' });
-    expect(await api.getHead("wks_1", "main", first!.etag!)).toBeNull();
+    expect(await api.getHead("prj_1", "main", first!.etag!)).toBeNull();
     expect(requests[1]!.headers).toEqual({ "if-none-match": '"c1"' });
   });
 
   it("sends a module's version as If-Match", async () => {
     const { api, requests } = scripted([json(200, { id: "mod_1", visibility: "public", version: 4 })]);
-    await api.setModuleVisibility("wks_1", { id: "mod_1", version: 3 }, "public");
+    await api.setModuleVisibility("prj_1", { id: "mod_1", version: 3 }, "public");
     expect(requests[0]).toMatchObject({
       method: "PATCH",
-      path: "/v1/workspaces/wks_1/modules/mod_1",
+      path: "/v1/projects/prj_1/modules/mod_1",
       headers: { "if-match": '"3"' },
       body: '{"visibility":"public"}',
     });

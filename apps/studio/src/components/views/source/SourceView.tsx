@@ -38,7 +38,7 @@ interface TabState {
 const READ_ONLY_MESSAGES = {
   agent: { value: "Editing is paused while the agent is working." },
   remote: { value: "This module is remote and read-only." },
-  viewer: { value: "You have read-only access to this Telo Cloud workspace." },
+  viewer: { value: "You have read-only access to this Telo Cloud project." },
   cloud: { value: "Editing is paused while the workspace is updated." },
 } as const;
 

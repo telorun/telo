@@ -1,5 +1,5 @@
 /** One call to the Telo Cloud API. `path` is a path under the API base
- *  (`/session`, `/v1/workspaces`) — never a URL: where the API lives is the
+ *  (`/session`, `/v1/projects`) — never a URL: where the API lives is the
  *  transport's, and on the desktop the shell refuses anything else. */
 export interface CloudRequest {
   method: string;

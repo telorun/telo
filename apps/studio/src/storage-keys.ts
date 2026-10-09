@@ -33,7 +33,7 @@ export const LOCAL_KEYS = {
   /** The last catalog of telo versions read from the engine registry, for
    *  choosing an engine offline. */
   engineCatalog: "telo-studio:engine-catalog:v1",
-  /** The Telo Cloud working copies on this device: user, org, workspace,
+  /** The Telo Cloud working copies on this device: user, org, project,
    *  branch and base commit of each. Their files are not in `localStorage`. */
   cloudWorkingCopies: "telo-studio:cloud:working-copies:v1",
 } as const;
