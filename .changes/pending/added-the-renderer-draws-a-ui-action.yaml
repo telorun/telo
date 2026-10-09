@@ -1,0 +1,20 @@
+modules:
+  modules/ui-react: Added
+body: "The renderer draws a Ui.Action — a form over the operation's input model with one
+  button, which posts the entered record as JSON and draws each declared list from the
+  answer, a 400 on its fields and any other failure as an error node — and a table's row
+  actions, as labelled buttons before edit and delete that post the row's bound record,
+  ask first where a question is declared, reload the tables over the same collection on
+  success and show a refusal in a confirmation. Every form enters list properties: a
+  multi-choice group for a list of listed values, typed tags for any other list of
+  scalars, checked item by item in the page and left out when empty. A value whose model
+  property declares format uri or uri-reference is drawn as a link in a table cell and
+  an action's list when it is an address a link node may hold, and as plain text
+  otherwise; such a link to anything but a page of the application carries target=_blank
+  and rel=noopener. Breaking: the host takes a click on an anchor as a move within the
+  application only when its path is exactly a declared page's — it used to take every
+  address under the mount, showing Not found for a file served there — so a link node, a
+  component's anchor or a cell link to such a file is now an ordinary browser load;
+  navigate is unchanged. New parts: action, action-result, list, list-heading, options,
+  option, tags, tag, tag-remove, row-action; data-state is also carried by action and
+  row-action, and data-invalid by options and tags."

@@ -7,8 +7,9 @@ metadata:
     listed, exactly the filters its collection declares, in that order and with
     their operators — around the node it filters, and nothing at all when that
     node is switched off. A standalone
-    form lists every scalar property. A theme provides its tokens by name, its
-    typefaces apart from its CSS values.
+    form lists every property a control can enter, a list of scalars included.
+    A theme provides its tokens by name, its typefaces apart from its CSS
+    values.
 imports:
   Ui: ../
   Font: ../../font
@@ -130,6 +131,7 @@ steps:
           - { property: isDone, label: isDone }
           - { property: priority, label: priority }
           - { property: status, label: status }
+          - { property: tags, label: tags }
         theme:
           tokens: { color.accent: "#1f8fff", radius.md: 6px }
           body: Inter

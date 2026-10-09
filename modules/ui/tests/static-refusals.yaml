@@ -21,7 +21,17 @@ metadata:
     a property that says it is a boolean, and never to be off — presets only
     what it shows and labels each preset once; a state keeps something somewhere, a
     filter overlay floats, and a compact placement folds. Pinning a filter
-    where nothing folds is a warning, and nowhere else.
+    where nothing folds is a warning, and nowhere else. An action takes only
+    its own keys, lists only fields its input model declares and a control can
+    enter — as a form does over its model — and enters every property that
+    model requires; a list is read from
+    a list of the answer by a plain path, and a column reads only what its row
+    or the answer declares. A row action is given inputs — at least one — that
+    make a record of its own action's input model, each a path into the row of
+    a fitting type or a fixed value, and asks a question that is text. An
+    action that draws lists is refused in a row, with every rule run on a
+    table whose row inputs are paths; the table refuses it, and row inputs
+    that make no record, when it is first read.
 imports:
   Assert: ../../assert
   Probe: ./__fixtures__/probe
@@ -30,6 +40,7 @@ targets:
   - !ref rules
   - !ref sourceFilterAtRuntime
   - !ref formFieldAtRuntime
+  - !ref formFieldUnsupportedAtRuntime
   - !ref filterPropertyAtRuntime
   - !ref filterOperatorAtRuntime
   - !ref sourceFilterNotAcceptedAtRuntime
@@ -53,6 +64,13 @@ targets:
   - !ref togglePresetOffAtRuntime
   - !ref filterPolicy
   - !ref pinned
+  - !ref actions
+  - !ref actionFieldUnknownAtRuntime
+  - !ref actionFieldUnsupportedAtRuntime
+  - !ref actionRequiredNotEnteredAtRuntime
+  - !ref rowActionLists
+  - !ref rowActionDrawsListsAtRuntime
+  - !ref rowActionInputsAtRuntime
 ---
 kind: Assert.Manifest
 metadata:
@@ -64,6 +82,10 @@ expect:
       message: "Ui.Table/sourceFilter at 'source.filters.done': filters its source by a property the row model does not declare"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Form/formField at 'fields[1]': lists a field for a property the model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formFieldUnsupported at 'fields[1]': lists a field for a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formFieldUnsupported at 'fields[2]': lists a field for a property no control can enter"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/filterProperty at 'fields[0]': filters by a property the model does not declare"
     - code: RESOURCE_RULE_VIOLATED
@@ -102,6 +124,24 @@ expect:
       message: "Ui.Filters/toggleDefaultOff at 'fields[0]': declares a default its filter cannot hold"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/togglePresetOff at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnknown at 'fields[1]': lists a field for a property the input model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnsupported at 'fields[1]': lists a field for a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnsupported at 'fields[2]': lists a field for a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionRequiredNotEntered: leaves a property the input model requires with no field"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionRequiredNotEnterable: leaves a property the input model requires with no field"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Table/rowActionDrawsLists at 'rowActions[0]': offers in a row an action that draws lists from its answer"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Table/rowActionInputs: inputs at 'rowActions[0].inputs' do not satisfy remove's declared inputType: / must NOT have additional properties ('total' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Table/rowActionInputs: inputs at 'rowActions[0].inputs' do not satisfy remove's declared inputType: / is missing required property 'count'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Table/rowActionInputs: inputs at 'rowActions[0].inputs.note' do not satisfy remove's declared inputType: /note must be string"
 ---
 kind: Assert.Manifest
 metadata:
@@ -118,6 +158,14 @@ source: ./__fixtures__/invalid/form-field/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'formField': 'fields[1]' lists a field for a property the model does not declare ('title')"
+---
+kind: Assert.Manifest
+metadata:
+  name: formFieldUnsupportedAtRuntime
+source: ./__fixtures__/invalid/form-field-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'formFieldUnsupported': 'fields[1]' lists a field for a property no control can enter ('options')"
 ---
 kind: Assert.Manifest
 metadata:
@@ -355,3 +403,95 @@ steps:
         - "RESOURCE_RULE_VIOLATED Ui.Filters/omitted:"
         - "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"
         - "REFERRER_RULE_VIOLATED Ui.Filters/aside at 'policy.placement': required by Ui.AsidePlacement —"
+---
+# `eachItsOwn`, two row actions over different models, reports nothing.
+kind: Assert.Manifest
+metadata:
+  name: actions
+source: ./__fixtures__/invalid/actions/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/strayKey: / must NOT have additional properties ('method' is not allowed)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Action/rowTypo: !cel: 'row.nmae' is not defined (available: name)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Action/rowsNotAList: CEL at 'lists[0].rows' reads 'result.kind', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'array'"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Action/rowsComputed: 'lists[0].rows: !cel \"size(result.files)\"' is not a plain chain"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Action/noAnswerModel: !cel: 'result.files' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Table/rowMemberUnknown: !cel: 'row.missing' is not defined (available: id, name)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Table/chainMistyped: CEL at 'rowActions[0].inputs.id' reads 'row.name', whose declared shape does not fit what archive's declared inputType expects: /: type mismatch — source is 'string', target expects 'integer'"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Table/inputComputed: 'rowActions[0].inputs.id: !cel \"row.id + 1\"' is not a plain chain"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/inputsAbsent: /rowActions/0 is missing required property 'inputs'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/inputsEmpty: /rowActions/0/inputs must NOT have fewer than 1 properties"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Table/inputsEmpty: inputs at 'rowActions[0].inputs' do not satisfy rename's declared inputType: / is missing required property 'name'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/confirmFlag: /rowActions/0/confirm must be string"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Table/confirmEmpty: /rowActions/0/confirm must NOT have fewer than 1 characters"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionFieldUnknownAtRuntime
+source: ./__fixtures__/invalid/action-field-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionFieldUnknown': 'fields[1]' lists a field for a property the input model does not declare ('year')"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionFieldUnsupportedAtRuntime
+source: ./__fixtures__/invalid/action-field-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionFieldUnsupported': 'fields[1]' lists a field for a property no control can enter ('options')"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionRequiredNotEnteredAtRuntime
+source: ./__fixtures__/invalid/action-required-not-entered/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionRequiredNotEntered': leaves a property the input model requires with no field ('month')"
+---
+# Two tables bind a row action from the row, over an action with no lists and
+# one whose list of lists is empty: nothing is reported, and no rule is skipped.
+kind: Run.Sequence
+metadata:
+  name: rowActionLists
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/row-actions/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        reported: !cel "steps.check.result.reported"
+        skipped: !cel "(steps.check.result.reported + steps.check.result.noted).filter(n, n.contains('_RULE_SKIPPED'))"
+      expected:
+        reported: []
+        skipped: []
+---
+kind: Assert.Manifest
+metadata:
+  name: rowActionDrawsListsAtRuntime
+source: ./__fixtures__/invalid/row-action-draws-lists/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Table 'rowActionDrawsLists': 'rowActions[0]' offers in a row an action that draws lists from its answer"
+---
+kind: Assert.Manifest
+metadata:
+  name: rowActionInputsAtRuntime
+source: ./__fixtures__/invalid/row-action-inputs/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Table 'rowActionInputs': 'rowActions[0].inputs' cannot make a record of the action's input model: 'total' is not a property of the action's input model; 'note' holds a value its property refuses (Invalid value passed: 5. Error: / must be string); required input 'count' is not bound."

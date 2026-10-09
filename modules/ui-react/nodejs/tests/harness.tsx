@@ -45,6 +45,8 @@ export interface Rendered {
   loadStylesheets(): Promise<void>;
   /** Every request made, as `METHOD url`. */
   requests: string[];
+  /** Every request that carried a body, with the body as it was sent. */
+  sent: { request: string; contentType: string | null; body: unknown }[];
   /** Replace a page's children, as a server would between two requests. */
   setPage(path: string, page: Page): void;
   /** Answer the next requests to a URL prefix with this response. */
@@ -123,6 +125,7 @@ export async function render(options: {
   );
   const answers: [string, Responder][] = Object.entries(options.answers ?? {});
   const requests: string[] = [];
+  const sent: Rendered["sent"] = [];
   let bundle = BUNDLE;
   let reloads = 0;
 
@@ -133,6 +136,9 @@ export async function render(options: {
     const method = init?.method ?? "GET";
     const url = new URL(String(input), window.location.href);
     requests.push(`${method} ${url.pathname}${url.search}`);
+    if (init?.body) {
+      sent.push({ request: requests.at(-1) as string, contentType: new Headers(init.headers).get("content-type"), body: JSON.parse(String(init.body)) });
+    }
     const forced = answers.find(([start]) => url.pathname.startsWith(start));
     if (forced) return forced[1]();
     if (url.pathname === `${prefix}/_telo/ui/app`) {
@@ -258,6 +264,7 @@ export async function render(options: {
     },
     container,
     requests,
+    sent,
     setPage(path, page) {
       pages[path] = page;
       versions[path] = (versions[path] ?? 0) + 1;

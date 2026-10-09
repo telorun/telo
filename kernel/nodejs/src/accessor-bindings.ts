@@ -1,5 +1,4 @@
 import {
-  accessorBindingOf,
   accessorFields,
   accessorProblems,
   type AccessorField,
@@ -15,7 +14,8 @@ import { RuntimeError, type ResourceManifest } from "@telorun/sdk";
  * hold is refused at creation as `ERR_ACCESSOR_NOT_PLAIN_CHAIN`, before any
  * field of the resource is expanded; what the controller then receives at the
  * field is a plain map — `{ root, path }` for a chain, `{ value }` for a
- * literal — with no brand and nothing to call.
+ * literal — with no brand and nothing to call, written by the analyzer's
+ * `withAccessorBindings`.
  */
 export function refuseNonChainAccessors(
   subject: string,
@@ -37,28 +37,5 @@ export function refuseNonChainAccessors(
   return fields;
 }
 
-/** `resource` with each accessor field replaced by its binding. Every container
- *  on the way to a field is copied, so the manifest the resource is re-created
- *  from keeps what its author wrote. */
-export function withAccessorBindings<T extends Record<string, unknown>>(
-  resource: T,
-  fields: readonly AccessorField[],
-): T {
-  if (fields.length === 0) return resource;
-  const copied = new Set<object>();
-  const copy = (holder: Record<string | number, unknown>, key: string | number) => {
-    const child = holder[key] as object;
-    if (copied.has(child)) return child as Record<string | number, unknown>;
-    const fresh = (Array.isArray(child) ? [...child] : { ...child }) as Record<string | number, unknown>;
-    copied.add(fresh);
-    holder[key] = fresh;
-    return fresh;
-  };
-  const root = { ...resource } as Record<string | number, unknown>;
-  for (const { keys, value } of fields) {
-    let holder = root;
-    for (const key of keys.slice(0, -1)) holder = copy(holder, key);
-    holder[keys[keys.length - 1]!] = accessorBindingOf(value);
-  }
-  return root as T;
-}
+/** The delivery itself: the analyzer's writer, with no tag resolved earlier. */
+export { withAccessorBindings } from "@telorun/analyzer";

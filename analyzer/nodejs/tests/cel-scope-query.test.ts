@@ -265,3 +265,85 @@ describe("CelScopeQuery resolving a kind that two modules declare", () => {
     expect(site?.module).toBe("test-http");
   });
 });
+
+/**
+ * A binding typed from the element of a collection the enclosing item's own
+ * field names. It is derived from an expression, so its members are offered
+ * and it has no declaration to navigate to.
+ */
+const GRID_DEF: ResourceDefinition = {
+  kind: "Telo.Definition",
+  metadata: { name: "Grid", module: "test-grid" },
+  capability: "Telo.Provider",
+  schema: {
+    type: "object",
+    properties: {
+      outputModel: { type: "object", additionalProperties: true },
+      lists: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            rows: { "x-telo-eval": "accessor" },
+            columns: {
+              type: "array",
+              "x-telo-context": {
+                type: "object",
+                properties: {
+                  result: { "x-telo-context-from-root": "outputModel" },
+                  row: { "x-telo-context-element-from-item": "rows" },
+                },
+              },
+              items: { type: "object", properties: { value: { "x-telo-eval": "accessor" } } },
+            },
+          },
+        },
+      },
+    },
+  },
+} as unknown as ResourceDefinition;
+
+const GRID: ResourceManifest = {
+  kind: "Grid.Grid",
+  metadata: { name: "grid", module: "test-app" },
+  outputModel: {
+    type: "object",
+    properties: {
+      files: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { path: { type: "string" }, size: { type: "integer" } },
+        },
+      },
+    },
+  },
+  lists: [
+    { rows: { __tagged: true, engine: "cel", source: "result.files" }, columns: [{ value: "" }] },
+  ],
+} as unknown as ResourceManifest;
+
+describe("CelScopeQuery at a binding typed from the item's own collection", () => {
+  function query() {
+    const r = new AnalysisRegistry();
+    r.registerModuleIdentity("std", "test-grid");
+    r.registerImport("Grid", "test-grid", ["Grid"]);
+    r.registerDefinition(GRID_DEF);
+    return r.analysisOf([GRID]).celScope;
+  }
+
+  it("offers the element's members with their declared types", () => {
+    const celScope = query();
+    const resource = celScope.resourceFor("Grid.Grid", "grid")!;
+    const row = celScope.scopeAt(resource, "lists[0].columns[0].value").contextSchema?.properties?.row;
+    expect(row?.properties).toEqual({ path: { type: "string" }, size: { type: "integer" } });
+  });
+
+  it("answers no declaration site for it", () => {
+    const celScope = query();
+    const resource = celScope.resourceFor("Grid.Grid", "grid")!;
+    expect(
+      celScope.contextDeclarationSite(resource, "lists[0].columns[0].value", ["row", "path"]),
+    ).toBeUndefined();
+  });
+});

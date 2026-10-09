@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { controlFor } from "../src/browser/form.js";
+import { controlFor } from "../src/browser/record-fields.js";
 import { render, type Rendered } from "./harness.js";
 import { formNode, opener, tableNode, todos } from "./spec-nodes.js";
 
@@ -29,6 +29,23 @@ async function edit(row: Record<string, unknown>, fields?: string[]) {
   await opened.click(opened.part("row-edit"));
   return { opened, bodies };
 }
+
+/** A model whose lists are one of each kind a form enters. */
+const listSchema = {
+  type: "object",
+  properties: {
+    id: { type: "integer" },
+    formats: { type: "array", title: "Formats", items: { enum: ["pdf", "csv", "xml"] } },
+    sizes: { type: "array", title: "Sizes", items: { type: "integer" } },
+    notes: { type: ["array", "null"], title: "Notes", items: { type: "string" } },
+  },
+};
+const listForm = {
+  type: "form",
+  schema: listSchema,
+  basePath: "/api/lists",
+  fields: ["formats", "sizes", "notes"].map((property) => ({ property, label: property })),
+};
 
 describe("a form", () => {
   it("turns the browser's autocomplete off, on itself and on every control typed into", async () => {
@@ -135,5 +152,40 @@ describe("a form", () => {
     await opened.click(opened.part("submit"));
     expect(opened.part("field-error").textContent).toBe("Is required");
     expect(bodies).toEqual([]);
+  });
+
+  it("enters a list of listed values as a multi-choice and any other list as typed tags, and leaves an empty list out", async () => {
+    rendered = await render({ path: "/", collections: { "/api/lists": [] }, pages: { "/": { title: "New", children: [listForm] } } });
+    expect(controlFor(listSchema.properties.formats)).toBe("options");
+    expect(controlFor(listSchema.properties.notes)).toBe("tags");
+    const [pdf, , xml] = rendered.parts("option");
+    // Chosen last first: the list is sent in the order the model lists its values.
+    await rendered.click(xml);
+    await rendered.click(pdf);
+    const [sizes] = rendered.parts("input");
+    expect(sizes.getAttribute("type")).toBe("number");
+    for (const size of ["3", "5", "7"]) {
+      await rendered.enter(sizes, size);
+      await rendered.commit(sizes, "enter");
+    }
+    await rendered.click(rendered.parts("tag-remove")[1]);
+    expect(rendered.parts("tag").map((tag) => tag.textContent)).toEqual(["3", "7"]);
+    await rendered.click(rendered.part("submit"));
+    expect(rendered.sent.map((each) => each.body)).toEqual([{ formats: ["pdf", "xml"], sizes: [3, 7] }]);
+  });
+
+  it("opens an edit with the record's lists in their controls", async () => {
+    const row = { id: 7, formats: ["csv"], sizes: [2, 4] };
+    rendered = await render({
+      path: "/",
+      collections: { "/api/lists": [row] },
+      pages: { "/": { title: "Lists", children: [tableNode({ basePath: "/api/lists", schema: listSchema, columns: [], rowStyle: undefined, edit: opener({ form: listForm }) })] } },
+    });
+    await rendered.click(rendered.part("row-edit"));
+    expect(rendered.parts("option").map((option) => option.getAttribute("data-state"))).toEqual(["off", "on", "off"]);
+    expect(rendered.parts("tag").map((tag) => tag.textContent)).toEqual(["2", "4"]);
+    expect(rendered.part("form").getAttribute("data-dirty")).toBeNull();
+    await rendered.click(rendered.part("submit"));
+    expect(rendered.sent.map((each) => each.body)).toEqual([row]);
   });
 });

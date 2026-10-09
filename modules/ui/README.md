@@ -2,7 +2,8 @@
 
 A vocabulary for user interfaces written as data. A page is a tree of nodes —
 layout, text, links, images — and of **composites**: a data table over a REST
-collection, a form over a data model, a filter bar, a custom component. This
+collection, a form over a data model, a button that runs an operation and
+draws its answer, a filter bar, a custom component. This
 module holds the vocabulary and the controllers that resolve it; it ships no
 code for a browser. A renderer, such as [`ui-react`](../ui-react/README.md),
 turns what it produces into a web application.
@@ -13,9 +14,9 @@ turns what it produces into a web application.
   property of the row model through a typed accessor, so renaming the property
   is an error at `telo check`, not a blank cell in production.
 - **Derived by default.** A table with no columns shows the model's properties;
-  a form with no fields edits its scalar ones; a filter bar with no fields
-  shows every filter the collection accepts. Adding a property changes nothing
-  you have to edit.
+  a form with no fields edits every property a control can enter; a filter bar
+  with no fields shows every filter the collection accepts. Adding a property
+  changes nothing you have to edit.
 - **A screen offers only what its API accepts.** A collection declares the
   filters and sorts its list takes, and tables and filter bars are drawn from
   that declaration, never from a guess about the row's types.
@@ -27,6 +28,12 @@ turns what it produces into a web application.
   where the controls sit, how each is entered, when a change applies, what it
   starts from and whether the choice survives a reload or travels in a link
   are keys of the bar, checked like the rest.
+- **What could not be drawn is refused when the manifest is checked.** A form
+  or an action listing a field for a property no control can enter
+  (`UI_FORM_FIELD_UNSUPPORTED`, `UI_ACTION_FIELD_UNSUPPORTED`) and a table
+  offering a row an action that draws lists (`UI_ROW_ACTION_DRAWS_LISTS`) are
+  reported by `telo check`, and refused again by the resource itself for a
+  manifest that never passed it.
 - **Nothing is reachable only through a shortcut.** Whatever a higher-level
   kind produces can be written by hand in this vocabulary.
 - **A backend module can describe its own interface** without depending on any
@@ -39,6 +46,7 @@ turns what it produces into a web application.
 | [`Ui.View`](docs/view.md) | One node tree, placed wherever it is needed. |
 | [`Ui.Table`](docs/table.md) | A data grid over a collection. |
 | [`Ui.Form`](docs/form.md) | A form over a data model. |
+| [`Ui.Action`](docs/action.md) | A button that runs an operation: a form for its input, lists drawn from its answer, or a place on every row of a table. |
 | [`Ui.Dialog`, `Ui.Drawer`, `Ui.Popover`, `Ui.InlineSurface`, `Ui.Panel`, `Ui.PageSurface`](docs/surfaces.md) | Where a form opens: over the page, in line, beside the list, or in place of the page. |
 | [`Ui.Surface`, `Ui.Overlay`](docs/surfaces.md#the-two-abstracts) | The contracts every surface, and every floating one, provides through. |
 | [`Ui.Filters`](docs/filters.md) | A filter bar over the tables it contains. |
@@ -53,7 +61,8 @@ turns what it produces into a web application.
 | [`Ui.Composite`](docs/composite.md) | The contract every composite provides through. |
 
 The node vocabulary and the style list are in [Nodes](docs/nodes.md); what a
-table's `source` speaks is [the collection contract](docs/collection-contract.md).
+table's `source` speaks is [the collection contract](docs/collection-contract.md),
+and what an action's speaks is [the action contract](docs/action-contract.md).
 A renderer's controller addresses browser files through the module's code
 entry, [`@telorun/ui`](docs/composite.md#for-a-renderers-controller-telorunui).
 

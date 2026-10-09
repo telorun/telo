@@ -4,13 +4,14 @@
     "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg"],
     "table": [
       "table", "table-toolbar", "table-create", "table-main", "table-frame", "table-grid", "table-head", "table-body",
-      "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-edit", "row-delete",
+      "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-action", "row-edit", "row-delete",
       "table-detail", "table-empty", "table-loading", "pager", "pager-status", "pager-prev", "pager-next"
     ],
     "form": [
-      "form", "field", "label", "input", "textarea", "select", "checkbox", "field-error",
-      "form-error", "form-actions", "submit", "cancel"
+      "form", "field", "label", "input", "textarea", "select", "checkbox", "options", "option", "tags", "tag",
+      "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel"
     ],
+    "action": ["action", "action-result", "list", "list-heading"],
     "filters": [
       "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add", "filters-apply",
       "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip", "summary-chip-remove",
@@ -28,9 +29,9 @@
   "states": {
     "data-state": {
       "values": ["idle", "loading", "error", "empty", "submitting"],
-      "on": ["page", "table", "form", "filters", "component"]
+      "on": ["page", "table", "form", "filters", "component", "action", "row-action"]
     },
-    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox"] },
+    "data-invalid": { "values": ["true"], "on": ["field", "input", "textarea", "select", "checkbox", "options", "tags"] },
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
@@ -46,7 +47,7 @@
   },
   "primitiveStates": [
     { "values": ["open", "closed"], "on": ["surface", "surface-overlay", "select", "filter-select", "select-content", "filters-bar", "filter-chip", "menu"] },
-    { "values": ["on", "off"], "on": ["filters-preset", "filter-option"] },
+    { "values": ["on", "off"], "on": ["filters-preset", "filter-option", "option"] },
     { "values": ["checked", "unchecked"], "on": ["checkbox", "select-item", "filter-toggle"] },
     { "values": ["closed", "delayed-open", "instant-open"], "on": ["row-edit", "row-delete", "pager-prev", "pager-next", "tooltip"] }
   ]

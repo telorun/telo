@@ -2,7 +2,8 @@
 
 Serves a [`Ui`](../ui/README.md) interface as a web application. `UiReact.App`
 is a mount: put it on an `Http.Server` and the pages it declares become a
-working application — navigation, data tables, forms, filters, theming — drawn
+working application — navigation, data tables, forms, filters, buttons that
+run an operation and draw its answer, theming — drawn
 in the browser by a React renderer this module ships prebuilt.
 
 ## Why use this
@@ -25,6 +26,13 @@ in the browser by a React renderer this module ships prebuilt.
   a toggle or in an overlay; chips, switches, sliders, tags, presets — and the
   chosen filters are kept [in the address or the browser's
   storage](docs/urls.md#filter-state) when the bar says so.
+- **Operations without a script.** A [`Ui.Action`](../ui/docs/action.md) is
+  drawn as a form and a button: the record is checked in the page, posted,
+  and the lists the action declares are drawn from the answer — links
+  included. A table offers the same operations on each row, with a question
+  first where one is declared.
+- **Lists are entered, not just shown.** A list property is a group of options
+  or typed tags, in every form.
 - **An open seam.** A module ships its own React components, and they get
   navigation, requests and refresh from the host.
 

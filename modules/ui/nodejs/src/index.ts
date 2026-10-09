@@ -14,6 +14,7 @@ export type { AssetFile } from "./composite.js";
 export * as ViewController from "./view-controller.js";
 export * as TableController from "./table-controller.js";
 export * as FormController from "./form-controller.js";
+export * as ActionController from "./action-controller.js";
 export * as FiltersController from "./filters-controller.js";
 export * as CollectionController from "./collection-controller.js";
 export * as ComponentController from "./component-controller.js";

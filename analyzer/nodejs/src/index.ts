@@ -32,9 +32,11 @@ export {
   accessorFields,
   accessorProblems,
   accessorTagEngines,
+  withAccessorBindings,
   type AccessorBinding,
   type AccessorField,
   type AccessorProblem,
+  type AccessorTag,
 } from "./accessor-binding.js";
 export {
   accessorFieldAt,

@@ -290,15 +290,60 @@ function resolveCollectionSchema(
 ): Record<string, any> | undefined {
   const chain = purePathChain(manifestRoot?.[field]);
   if (!chain || chain[0] !== "inputs") return undefined;
-  const declared = resolveTypeFieldToSchema(manifestRoot.inputType, allManifests ?? []);
-  const root =
-    declared && typeof declared === "object"
-      ? declared
-      : manifestRoot.inputs && typeof manifestRoot.inputs === "object"
-        ? { type: "object", properties: manifestRoot.inputs }
-        : undefined;
+  const root = inputsContractSchema(manifestRoot, allManifests);
   if (!root) return undefined;
   return schemaAtChain(chain.slice(1), root);
+}
+
+/** What `inputs` is typed as for a collection chain: the declared contract,
+ *  else the legacy `inputs:` property map. */
+function inputsContractSchema(
+  manifestRoot: Record<string, any>,
+  allManifests: Record<string, any>[] | undefined,
+): Record<string, any> | undefined {
+  const declared = resolveTypeFieldToSchema(manifestRoot.inputType, allManifests ?? []);
+  if (declared && typeof declared === "object") return declared;
+  return manifestRoot.inputs && typeof manifestRoot.inputs === "object"
+    ? { type: "object", properties: manifestRoot.inputs }
+    : undefined;
+}
+
+/** Types a binding from the element of the collection a field of the PER-SCOPE
+ *  ITEM names. */
+const ELEMENT_FROM_ITEM_ANNOTATION = "x-telo-context-element-from-item";
+
+/**
+ * The element of the collection the per-scope item's `field` names, when
+ * statically known.
+ *
+ * The field holds a pure chain rooted at a binding of the SAME context, typed
+ * as that binding resolved with named shapes seen through. A chain rooted at
+ * `inputs` that the binding does not type is read against the resource's
+ * contract, as `x-telo-context-element-from` reads it. Anything else answers
+ * undefined, and the caller leaves the binding untyped.
+ */
+function elementOfItemCollection(
+  field: string,
+  manifestItem: Record<string, any>,
+  bindings: Record<string, any>,
+  opts: ContextResolveOpts,
+): Record<string, any> | undefined {
+  const chain = purePathChain(manifestItem?.[field]);
+  if (!chain) return undefined;
+  const [rootName, ...members] = chain;
+  const schemaForId = opts.defs?.schemaForId?.bind(opts.defs);
+  const elementUnder = (root: unknown) => {
+    if (!root || typeof root !== "object") return undefined;
+    const typed = root as Record<string, any>;
+    return elementOfCollection(
+      schemaAtChain(members, schemaForId ? inlineNamedShapes(typed, schemaForId) : typed),
+    );
+  };
+  const declared = Object.prototype.hasOwnProperty.call(bindings, rootName!)
+    ? elementUnder(bindings[rootName!])
+    : undefined;
+  if (declared || rootName !== "inputs") return declared;
+  return elementUnder(inputsContractSchema(opts.manifestRoot ?? manifestItem, opts.allManifests));
 }
 
 /**
@@ -481,6 +526,10 @@ export function resolveContextAnnotations(
     return resolveCollectionSchema(manifestRoot, collectionFrom, allManifests) ?? {};
   }
 
+  // Typed by the enclosing property map, from its siblings. Reached directly it
+  // has none to read, so it is untyped.
+  if (typeof schema[ELEMENT_FROM_ITEM_ANNOTATION] === "string") return {};
+
   const fromRoot = schema["x-telo-context-from-root"] as string | undefined;
   const fromRefKindRaw = schema["x-telo-context-from-ref-kind"] as
     | string
@@ -622,12 +671,28 @@ export function resolveContextAnnotations(
 
   if (schema.properties) {
     const props: Record<string, any> = {};
+    const elementsFromItem: Array<[string, string]> = [];
     for (const [k, v] of Object.entries(schema.properties)) {
       // Withholding happens HERE rather than inside the child resolver, because
       // this is the only level that owns the property map — a child can return a
       // schema but cannot remove itself from one.
       if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, allManifests)) continue;
+      const fromItem = (v as Record<string, any> | undefined)?.[ELEMENT_FROM_ITEM_ANNOTATION];
+      if (typeof fromItem === "string") {
+        // Typed from its SIBLINGS, so it waits until every one of them is
+        // resolved; the placeholder keeps the declared order.
+        props[k] = {};
+        elementsFromItem.push([k, fromItem]);
+        continue;
+      }
       props[k] = resolveContextAnnotations(v as Record<string, any>, manifestItem, normalizedOpts);
+    }
+    for (const [k, field] of elementsFromItem) {
+      props[k] =
+        elementOfItemCollection(field, manifestItem, props, {
+          ...normalizedOpts,
+          manifestRoot,
+        }) ?? {};
     }
     return { ...schema, properties: props };
   }

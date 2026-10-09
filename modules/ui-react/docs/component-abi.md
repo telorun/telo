@@ -112,14 +112,20 @@ export function useHost(): Host;
 A page is addressed in the first; a request is made in the second. An
 app-relative `image.src` is in the first too, so an image an application ships
 is served from a mount beneath its own — `Http.Static` at `/admin/files` for
-an application at `/admin`.
+an application at `/admin`. A link to such a file is reachable the same way:
+`/files/report.pdf` is no page of the application, so a click on it is an
+ordinary browser load of `/admin/files/report.pdf`.
 
 ## What the host guarantees
 
 1. **Anchors.** A primary click with no modifier key, on an anchor with no
-   `target` and no `download`, whose URL is under the mount and not under
-   `/_telo`, navigates within the page — for an anchor a component renders
-   and for a `link` node alike. Every other click is the browser's.
+   `target` and no `download`, whose URL is under the mount, not under
+   `/_telo`, and whose path — the mount prefix removed — is exactly the
+   `path` of a page the application declares, navigates within the page: for
+   an anchor a component renders, a `link` node, a navigation entry and a
+   link in a cell alike. Every other click is the browser's, so an anchor to
+   a file served under the mount loads it. `navigate` is not narrowed: a path
+   no page declares still shows the not-found page.
 2. **Instance stability.** Re-rendering the same page keeps a component
    mounted, state and all, while its node's position, entry and export are
    unchanged. It unmounts on a navigation to another page, or when its

@@ -1,0 +1,73 @@
+# Two tables offering a row one action each, bound from the row: one whose
+# action declares no lists, one whose `lists` is empty. Neither is refused,
+# and every rule runs on both.
+kind: Telo.Library
+metadata:
+  name: UiRowActions
+  version: 1.0.0
+  description: >-
+    Test fixture: tables whose row actions are bound from the row, over an
+    action that declares no lists and one whose list of lists is empty.
+imports:
+  Ui: ../../../
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    text: { type: string }
+    count: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Removal
+schema:
+  type: object
+  additionalProperties: false
+  required: [count]
+  properties:
+    count: { type: integer }
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query:
+  filters: []
+  sort: []
+---
+kind: Ui.Action
+metadata:
+  name: remove
+inputModel: !ref Removal
+source: { path: /api/todos/remove }
+label: Remove
+---
+kind: Ui.Action
+metadata:
+  name: removeNoLists
+inputModel: !ref Removal
+source: { path: /api/todos/remove }
+label: Remove
+lists: []
+---
+kind: Ui.Table
+metadata:
+  name: listless
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref remove
+    inputs: { count: !cel "row.count" }
+---
+kind: Ui.Table
+metadata:
+  name: emptyLists
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref removeNoLists
+    inputs: { count: !cel "row.count" }

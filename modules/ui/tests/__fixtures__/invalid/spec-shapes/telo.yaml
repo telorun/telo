@@ -46,6 +46,7 @@ node:
   rowKey: id
   pageSize: 25
   columns: []
+  rowActions: []
   delete: false
   create:
     form: { type: form, schema: {}, basePath: /api/todos, fields: [] }

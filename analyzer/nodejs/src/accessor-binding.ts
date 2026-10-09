@@ -10,9 +10,10 @@
  * field has nothing to run it.
  *
  * The static verdict (`ACCESSOR_NOT_PLAIN_CHAIN`) and the kernel's refusal at
- * creation (`ERR_ACCESSOR_NOT_PLAIN_CHAIN`) both read this file, and the kernel
- * delivers what {@link accessorBindingOf} returns — so the positions refused
- * and the value handed to a controller are decided once.
+ * creation (`ERR_ACCESSOR_NOT_PLAIN_CHAIN`) both read this file, and
+ * {@link withAccessorBindings} is the one writer — what the kernel delivers and
+ * what a rule reads — so the positions refused and the value handed over are
+ * decided once.
  *
  * Browser-safe; re-imported by the kernel.
  */
@@ -20,11 +21,13 @@ import type { CelEnvironment } from "@telorun/cel";
 import { isCompiledValue } from "@telorun/sdk";
 import {
   CEL_ENGINE,
+  celExpressionsOf,
   defaultRegistry,
   isRefSentinel,
   isTaggedSentinel,
   plainChainOf,
 } from "@telorun/templating";
+import { accessChains } from "./cel-access-chains.js";
 import { buildCelEnvironment } from "./cel-environment.js";
 import { accessorFieldAt, type AccessorSite, type CelEvalSites } from "./eval-paths.js";
 
@@ -204,10 +207,62 @@ export function accessorProblems(
   return problems;
 }
 
-/** What a controller receives for a value {@link accessorProblems} accepts. */
-export function accessorBindingOf(value: unknown): AccessorBinding {
+/** True when every value a tag's expressions read is rooted at `self` — a tag
+ *  a template body has resolved by the time its entry is created. */
+export function readsOnlySelf(tag: AccessorTag): boolean {
+  const expressions = celExpressionsOf(tag.engine, tag.source);
+  return (
+    expressions.length > 0 &&
+    expressions.every((expression) => {
+      const chains = accessChains(expression);
+      return chains.length > 0 && chains.every((chain) => chain[0] === "self");
+    })
+  );
+}
+
+/** What a controller receives for a value {@link accessorProblems} accepts. A
+ *  tag `resolvedEarlier` names is a literal of a value not yet known, so it is
+ *  wrapped as written and never read as a chain. */
+export function accessorBindingOf(
+  value: unknown,
+  resolvedEarlier: (tag: AccessorTag) => boolean = () => false,
+): AccessorBinding {
+  const tag = tagOf(value);
+  if (tag && resolvedEarlier(tag)) return { value };
   const chain = plainChainOf(value);
   if (chain === undefined) return { value };
   const [root, ...path] = chain.split(".");
   return { root: root!, path };
+}
+
+/**
+ * `resource` with each accessor field replaced by its binding — the one writer.
+ * Every container on the way to a field is copied, so the resource handed in
+ * keeps what its author wrote; with no field it is returned by identity.
+ */
+export function withAccessorBindings<T extends Record<string, unknown>>(
+  resource: T,
+  fields: readonly AccessorField[],
+  resolvedEarlier?: (tag: AccessorTag) => boolean,
+): T {
+  if (fields.length === 0) return resource;
+  const copied = new Set<object>();
+  const copy = (holder: Record<string | number, unknown>, key: string | number) => {
+    const child = holder[key] as object;
+    if (copied.has(child)) return child as Record<string | number, unknown>;
+    const fresh = (Array.isArray(child) ? [...child] : { ...child }) as Record<
+      string | number,
+      unknown
+    >;
+    copied.add(fresh);
+    holder[key] = fresh;
+    return fresh;
+  };
+  const root = { ...resource } as Record<string | number, unknown>;
+  for (const { keys, value } of fields) {
+    let holder = root;
+    for (const key of keys.slice(0, -1)) holder = copy(holder, key);
+    holder[keys[keys.length - 1]!] = accessorBindingOf(value, resolvedEarlier);
+  }
+  return root as T;
 }

@@ -12,7 +12,8 @@ metadata:
     carries its form with where and how it opens: a dialog with its defaults,
     closing after a submit and asking before unsaved input is dropped, unless
     the opener says otherwise — the same node whether the dialog is left out or
-    declared with nothing set.
+    declared with nothing set. A table declaring no row actions carries an
+    empty list of them.
 imports:
   Ui: ../
   Widgets: ./__fixtures__/widgets
@@ -123,6 +124,7 @@ steps:
             'rowKey': steps.derived.result.node.rowKey,
             'pageSize': steps.derived.result.node.pageSize,
             'delete': steps.derived.result.node.delete,
+            'rowActions': steps.derived.result.node.rowActions,
             'schemaRequired': steps.derived.result.node.schema.required,
             'assets': steps.derived.result.assets
           }
@@ -138,6 +140,7 @@ steps:
           rowKey: id
           pageSize: 25
           delete: false
+          rowActions: []
           schemaRequired: [text]
           assets: []
   - name: checkWritten

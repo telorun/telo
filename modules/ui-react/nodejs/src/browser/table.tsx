@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { Fragment, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { presentValue, resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
+import { requestAction } from "./action.js";
+import { resolveBinding, ruleStyle, styleAttribute, type Binding, type StyleRule } from "./bindings.js";
 import { fetchPage, send, type CollectionPage, type Param } from "./collection.js";
 import { Form } from "./form.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
@@ -10,7 +11,9 @@ import { ErrorNode, Loading, Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
 import { FilterContext, RendererContext, RowContext } from "./renderer-context.js";
 import { Confirmation, Surface, type SurfaceSpec } from "./surface.js";
-import { errorSpec, type ErrorSpec } from "./ui-error.js";
+import { refusalOf } from "./record-fields.js";
+import { errorSpec, responseError, UiError, type ErrorSpec } from "./ui-error.js";
+import { Presented } from "./value-cell.js";
 
 interface Column {
   header: string;
@@ -22,6 +25,36 @@ interface Column {
 }
 
 type Row = Record<string, unknown>;
+
+/** An operation each row offers: where it is sent, and what of the row it sends. */
+interface RowAction {
+  path: string;
+  label: string;
+  inputs: Record<string, Binding>;
+  /** The question asked before it runs. */
+  confirm?: string;
+}
+
+/** A row action that was pressed: being asked about, being sent, or refused. */
+interface Pressed {
+  action: RowAction;
+  row: Row;
+  /** Whether its confirmation is drawn: a question, or a refusal. */
+  open: boolean;
+  busy: boolean;
+  failure?: ErrorSpec;
+}
+
+/** The record a row action sends: each input it binds, a path that leads to
+ *  nothing in the row left out. */
+function boundRecord(action: RowAction, row: Row): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  for (const [property, binding] of Object.entries(action.inputs)) {
+    const value = resolveBinding(binding, { row });
+    if ("value" in binding || (value !== null && value !== undefined)) record[property] = value;
+  }
+  return record;
+}
 
 /**
  * Which rows are shown. The cursors and first-row numbers of the pages visited
@@ -119,6 +152,10 @@ export function Table({ node }: { node: SpecNode }) {
   const [detail, setDetail] = useState<HTMLElement | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<ErrorSpec>();
+  const [pressed, setPressed] = useState<Pressed>();
+  // The row write in flight. Read on the press itself, which can arrive before
+  // the disabled buttons are drawn.
+  const writing = useRef<"action" | "delete" | undefined>(undefined);
   const cursor = view.cursors[view.page];
 
   useEffect(() => host.onChanged(basePath, () => setChanges((count) => count + 1)), [basePath]);
@@ -161,7 +198,8 @@ export function Table({ node }: { node: SpecNode }) {
   const start = view.starts[view.page] ?? 0;
   const creates = node.create as Opener | undefined;
   const edits = node.edit as Opener | undefined;
-  const actions = edits !== undefined || node.delete === true;
+  const rowActions = node.rowActions as RowAction[];
+  const actions = rowActions.length > 0 || edits !== undefined || node.delete === true;
   const span = columns.length + (actions ? 1 : 0);
   const state = failure ? "error" : loading ? "loading" : rows.length === 0 ? "empty" : "idle";
 
@@ -215,6 +253,8 @@ export function Table({ node }: { node: SpecNode }) {
   /** A refused delete stays in its dialog, as a form's failure stays in the
    *  form: the grid and its rows are as they were. */
   const remove = async (row: Row) => {
+    if (writing.current) return;
+    writing.current = "delete";
     setDeleting(true);
     setDeleteFailure(undefined);
     try {
@@ -223,11 +263,42 @@ export function Table({ node }: { node: SpecNode }) {
       setDeleteFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
       return;
     } finally {
+      writing.current = undefined;
       setDeleting(false);
     }
     setRemoving(undefined);
     host.notifyChanged(basePath);
   };
+
+  /** Send a row's action, unless a row write of this table is in flight. A
+   *  refusal is shown in its confirmation, which opens for it when no question
+   *  was asked; the grid and its rows are as they were. */
+  const act = async (action: RowAction, row: Row, open: boolean) => {
+    if (writing.current) return;
+    writing.current = "action";
+    setPressed({ action, row, open, busy: true });
+    try {
+      const response = await requestAction(host, action.path, boundRecord(action, row));
+      if (response.status === 400) {
+        const { other } = refusalOf(await response.json(), []);
+        throw new UiError("ERR_UI_REQUEST_FAILED", `The request was refused: ${other.join(" ")}`);
+      }
+      if (!response.ok) throw await responseError(response);
+    } catch (error) {
+      setPressed({ action, row, open: true, busy: false, failure: errorSpec(error, "ERR_UI_REQUEST_FAILED") });
+      return;
+    } finally {
+      writing.current = undefined;
+    }
+    setPressed(undefined);
+    host.notifyChanged(basePath);
+  };
+  const press = (action: RowAction, row: Row) => {
+    if (writing.current) return;
+    if (action.confirm === undefined) void act(action, row, false);
+    else setPressed({ action, row, open: true, busy: false });
+  };
+  const acting = pressed?.busy === true;
 
   // The address of an opening is the declared surface's, whichever is drawn.
   const surface = open && opener ? (compact && opener.surface.compact ? opener.surface.compact : opener.surface) : undefined;
@@ -322,14 +393,29 @@ export function Table({ node }: { node: SpecNode }) {
                               <Node node={column.cell} />
                             </RowContext.Provider>
                           ) : (
-                            presentValue(resolveBinding(column.value as Binding, { row }), column.present)
+                            <Presented value={resolveBinding(column.value as Binding, { row })} present={column.present} />
                           )}
                         </td>
                       ))}
                       {actions && (
                         <td data-telo-part="row-actions">
+                          {rowActions.map((action, index) => {
+                            const sending = acting && pressed.action === action && keyOf(pressed.row) === keyOf(row);
+                            return (
+                              <button
+                                key={index}
+                                data-telo-part="row-action"
+                                type="button"
+                                data-state={sending ? "submitting" : undefined}
+                                disabled={acting || deleting}
+                                onClick={() => press(action, row)}
+                              >
+                                {action.label}
+                              </button>
+                            );
+                          })}
                           {edits && <IconButton part="row-edit" label="Edit" icon={Pencil} onClick={(button) => show({ kind: "edit", key: keyOf(row) }, editName, keyOf(row), button)} />}
-                          {node.delete && <IconButton part="row-delete" label="Delete" icon={Trash2} onClick={() => confirmDelete(row)} />}
+                          {node.delete && <IconButton part="row-delete" label="Delete" icon={Trash2} disabled={acting} onClick={() => writing.current === "action" || confirmDelete(row)} />}
                         </td>
                       )}
                     </tr>
@@ -367,6 +453,17 @@ export function Table({ node }: { node: SpecNode }) {
         </div>
       </div>
       {!above && drawn}
+      {pressed?.open && (
+        <Confirmation
+          title={pressed.action.confirm ?? pressed.action.label}
+          confirm={pressed.action.label}
+          danger={false}
+          busy={pressed.busy}
+          failure={pressed.failure}
+          onConfirm={() => act(pressed.action, pressed.row, true)}
+          onClose={() => pressed.busy || setPressed(undefined)}
+        />
+      )}
       {removing && (
         <Confirmation
           title="Delete this row?"

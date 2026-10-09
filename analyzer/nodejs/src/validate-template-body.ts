@@ -5,9 +5,8 @@ import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import type { StandIns } from "./stand-in-findings.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateTargetProblems } from "./template-targets.js";
-import { celExpressionsOf, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
-import { accessorFields, accessorProblems, type AccessorTag } from "./accessor-binding.js";
-import { accessChains } from "./cel-access-chains.js";
+import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { accessorFields, accessorProblems, readsOnlySelf } from "./accessor-binding.js";
 import { kindCelEvalSites } from "./eval-paths.js";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -23,18 +22,6 @@ import {
 } from "./types.js";
 
 const SOURCE = "telo-analyzer";
-
-/** True when every value a tag's expressions read is rooted at `self`. */
-function readsOnlySelf(tag: AccessorTag): boolean {
-  const expressions = celExpressionsOf(tag.engine, tag.source);
-  return (
-    expressions.length > 0 &&
-    expressions.every((expression) => {
-      const chains = accessChains(expression);
-      return chains.length > 0 && chains.every((chain) => chain[0] === "self");
-    })
-  );
-}
 
 /** The four slots a `Telo.Definition` names its dispatch target in.
  *

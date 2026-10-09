@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import contract from "../src/contract/parts.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { component, filterField, filtersNode, opener, tableNode, todos } from "./spec-nodes.js";
+import { actionNode, component, filterField, filtersNode, opener, tableNode, todos } from "./spec-nodes.js";
 
 const listed = Object.values(contract.parts).flat();
 let rendered: Rendered | undefined;
@@ -85,6 +85,24 @@ describe("the styling contract", () => {
       pages: { "/": { title: "Inline", children: [tableNode({ columns: [], edit: opener({ surface: { type: "inline" } }) })] } },
     });
     await rendered.click(rendered.part("row-edit"));
+    for (const part of emitted()) seen.add(part);
+    // An action that has answered, with a typed list item, beside a table whose rows offer an operation.
+    rendered.unmount();
+    rendered = await render({
+      path: "/",
+      collections: { "/api/todos": todos },
+      answers: { "/api/reports": () => new Response(JSON.stringify({ files: [{ name: "a.pdf", url: "/files/a.pdf" }] }), { status: 200 }) },
+      pages: {
+        "/": {
+          title: "Action",
+          children: [actionNode(), tableNode({ columns: [], rowActions: [{ path: "/api/todos/archive", label: "Archive", inputs: { id: { root: "row", path: ["id"] } } }] })],
+        },
+      },
+    });
+    await rendered.enter(rendered.part("input"), "2026-09");
+    await rendered.enter(rendered.parts("input")[2], "ada@example.com");
+    await rendered.commit(rendered.parts("input")[2], "enter");
+    await rendered.click(rendered.part("submit"));
     for (const part of emitted()) seen.add(part);
     // A table whose first page has not arrived shows the loading part.
     rendered.unmount();

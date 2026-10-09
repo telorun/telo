@@ -62,6 +62,7 @@ export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => 
   basePath: "/api/todos",
   rowKey: "id",
   pageSize: 2,
+  rowActions: [],
   delete: true,
   create: opener(),
   edit: opener(),
@@ -105,5 +106,42 @@ export const filtersNode = (content: SpecNode, overrides: Record<string, unknown
   summary: "none",
   state: { address: false, store: { type: "memory" } },
   presets: [],
+  ...overrides,
+});
+
+/** The input model of the test action: a scalar of each kind a list is made of, and both lists. */
+export const reportSchema = {
+  type: "object",
+  required: ["month"],
+  properties: {
+    month: { type: "string", title: "Month", pattern: "^[0-9]{4}-[0-9]{2}$" },
+    copies: { type: "integer", title: "Copies", minimum: 1 },
+    formats: { type: "array", title: "Formats", items: { enum: ["pdf", "csv"] } },
+    recipients: { type: "array", title: "Recipients", items: { type: "string", minLength: 3 } },
+  },
+};
+
+const result = (...path: string[]) => ({ root: "result", path });
+
+/** An action over the report model that draws the files of its answer, then its totals. */
+export const actionNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
+  type: "action",
+  schema: reportSchema,
+  path: "/api/reports",
+  label: "Generate",
+  fields: Object.entries(reportSchema.properties).map(([property, { title }]) => ({ property, label: title })),
+  lists: [
+    {
+      heading: "Files",
+      rows: result("files"),
+      columns: [
+        { header: "File", value: row("name"), present: { type: "string" } },
+        { header: "Download", value: row("url"), present: { type: "string", format: "uri-reference" } },
+        { header: "Month", value: result("month"), present: { type: "string" } },
+        { header: "Kind", value: { value: "report" } },
+      ],
+    },
+    { rows: result("totals"), columns: [{ header: "Made", value: row("at"), present: { type: "string", format: "date" } }] },
+  ],
   ...overrides,
 });

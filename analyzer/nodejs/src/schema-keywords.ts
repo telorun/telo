@@ -377,6 +377,12 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     description: "Type this binding from the ELEMENT of a sibling collection expression.",
     type: "string",
   },
+  "x-telo-context-element-from-item": {
+    title: "Context element from item",
+    description:
+      "Type this binding from the ELEMENT of the collection the named field of the enclosing array item points at — a plain chain rooted at another binding of this context, or at inputs. Untyped when the chain does not resolve to a collection.",
+    type: "string",
+  },
   "x-telo-context-collection-from": {
     title: "Context collection from",
     description:

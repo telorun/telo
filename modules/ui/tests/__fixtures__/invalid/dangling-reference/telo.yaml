@@ -1,0 +1,38 @@
+# A list whose items point at a definition the answer model does not hold:
+# nothing is reported when it is checked, and the action refuses to be read.
+kind: Telo.Application
+metadata:
+  name: UiInvalidDanglingReferenceApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+  Probe: ../../probe
+targets:
+  - invoke: !ref read
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Answer
+schema:
+  type: object
+  properties:
+    files: { type: array, items: { $ref: "#/$defs/File" } }
+---
+kind: Ui.Action
+metadata:
+  name: danglingReference
+inputModel:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: {} }
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "result.files"
+    columns:
+      - value: !cel "row.url"
+---
+kind: Probe.Read
+metadata:
+  name: read
+source: !ref danglingReference

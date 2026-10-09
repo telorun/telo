@@ -1,0 +1,222 @@
+# Actions and row actions that each write something `telo check` refuses on
+# the line it was written: a key the kind does not take, a list read from
+# something that is no list or by an expression, a column reading a member its
+# row or its answer does not declare, and row inputs that cannot make a record
+# of the action they are handed to.
+kind: Telo.Application
+metadata:
+  name: UiInvalidActionsApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Request
+schema:
+  type: object
+  properties:
+    month: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Answer
+schema:
+  type: object
+  properties:
+    kind: { type: string }
+    files:
+      type: array
+      items:
+        type: object
+        properties:
+          name: { type: string }
+---
+kind: Ui.Action
+metadata:
+  name: strayKey
+inputModel: !ref Request
+source: { path: /api/reports }
+label: Generate
+method: PUT
+---
+kind: Ui.Action
+metadata:
+  name: rowTypo
+inputModel: !ref Request
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "result.files"
+    columns:
+      - value: !cel "row.nmae"
+---
+kind: Ui.Action
+metadata:
+  name: rowsNotAList
+inputModel: !ref Request
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "result.kind"
+    columns:
+      - value: !cel "result.kind"
+---
+kind: Ui.Action
+metadata:
+  name: rowsComputed
+inputModel: !ref Request
+outputModel: !ref Answer
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "size(result.files)"
+    columns:
+      - value: !cel "result.kind"
+---
+kind: Ui.Action
+metadata:
+  name: noAnswerModel
+inputModel: !ref Request
+source: { path: /api/reports }
+label: Generate
+lists:
+  - rows: !cel "result.files"
+    columns:
+      - value: fixed
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  properties:
+    id: { type: integer }
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Archive
+schema:
+  type: object
+  additionalProperties: false
+  required: [id]
+  properties:
+    id: { type: integer }
+    status: { type: string }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Rename
+schema:
+  type: object
+  additionalProperties: false
+  required: [name]
+  properties:
+    name: { type: string }
+---
+kind: Ui.Action
+metadata:
+  name: archive
+inputModel: !ref Archive
+source: { path: /api/todos/archive }
+label: Archive
+---
+kind: Ui.Action
+metadata:
+  name: rename
+inputModel: !ref Rename
+source: { path: /api/todos/rename }
+label: Rename
+---
+kind: Ui.Collection
+metadata:
+  name: todos
+query: { filters: [], sort: [] }
+---
+# Each map is held to its own action's model, so this one is clean.
+kind: Ui.Table
+metadata:
+  name: eachItsOwn
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref archive
+    inputs: { id: !cel "row.id", status: archived }
+  - action: !ref rename
+    inputs: { name: !cel "row.name" }
+    confirm: Rename it?
+---
+kind: Ui.Table
+metadata:
+  name: rowMemberUnknown
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref archive
+    inputs: { id: !cel "row.missing" }
+---
+kind: Ui.Table
+metadata:
+  name: chainMistyped
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref archive
+    inputs: { id: !cel "row.name" }
+---
+kind: Ui.Table
+metadata:
+  name: inputComputed
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref archive
+    inputs: { id: !cel "row.id + 1" }
+---
+kind: Ui.Table
+metadata:
+  name: inputsAbsent
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref rename
+---
+kind: Ui.Table
+metadata:
+  name: inputsEmpty
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref rename
+    inputs: {}
+---
+kind: Ui.Table
+metadata:
+  name: confirmFlag
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref rename
+    inputs: { name: !cel "row.name" }
+    confirm: true
+---
+kind: Ui.Table
+metadata:
+  name: confirmEmpty
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref rename
+    inputs: { name: !cel "row.name" }
+    confirm: ""

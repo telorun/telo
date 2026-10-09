@@ -215,6 +215,9 @@ export interface PeerBinderEnv {
     slotKinds: readonly string[],
     declarationKind: string,
   ) => boolean;
+  /** A declaration as a rule reads it — each accessor field as its binding
+   *  (`rule-declaration-view.ts`). Omitted, a declaration reads as written. */
+  readonly viewOf?: (declaration: ResourceManifest) => ResourceManifest;
 }
 
 /** True for a binding failure that must be reported by NOTHING: the manifest is
@@ -438,12 +441,21 @@ export class PeerBinder {
 
   private readonly collections = new WeakMap<ResourceManifest, Map<string, ResolvedCollection>>();
 
+  /** `declaration` as a rule reads it. Every declaration a rule binds goes
+   *  through here before anything scans it for dynamic values. */
+  view<T extends ResourceManifest>(declaration: T): T {
+    return (this.env.viewOf?.(declaration) as T | undefined) ?? declaration;
+  }
+
   /** How an entry's references are read, over one manifest's sites. */
   private resolver(siteAt: (path: string) => RefSite | undefined): EntryResolver {
     const accepts = this.env.slotAccepts;
     return {
       siteAt,
-      lookup: this.env.declarationOf,
+      lookup: (reference) => {
+        const declaration = this.env.declarationOf(reference);
+        return declaration && this.view(declaration);
+      },
       refuses: (site, declaration) => {
         if (!accepts || site.kinds.length === 0) return false;
         const kind = declaration.kind;
@@ -487,14 +499,14 @@ export class PeerBinder {
     const site = sites.get(slotPath);
     if (!site) {
       // Nothing written at the slot is an absent entry, not an unknown one.
-      if (navigatePath(referrer, slotPath) === undefined) {
+      if (navigatePath(this.view(referrer), slotPath) === undefined) {
         return { ok: true, binding: { peers, entry: undefined } };
       }
       return { ok: false, failure: { reason: "unknown-shape", at: slotPath } };
     }
     const boundary = entryBoundary(slotPath, site.shape);
     const entry = resolveEntry(
-      navigatePath(referrer, boundary),
+      navigatePath(this.view(referrer), boundary),
       boundary,
       this.resolver((path) => sites.get(path)),
     );
@@ -517,7 +529,7 @@ export class PeerBinder {
     const shapes = this.env.refSlotsOf(kind);
     const sites = this.env.refSitesOf(manifest, kind);
     if (!shapes || !sites) return { ok: false, failure: { reason: "unknown-shape", at: path } };
-    const raw = resolvePointer(manifest, pointer);
+    const raw = resolvePointer(this.view(manifest), pointer);
     if (raw === undefined || raw === null) return { ok: true, value: raw };
     const own = sites.get(path);
     if (own) {
@@ -568,7 +580,7 @@ export class PeerBinder {
     shapes: readonly string[],
     sites: ReadonlyMap<string, RefSite>,
   ): ResolvedCollection {
-    const raw = resolvePointer(referrer, pointer);
+    const raw = resolvePointer(this.view(referrer), pointer);
     // An ABSENT collection is an EMPTY one, not an unbindable one — the line
     // `resolveRuleSubjects` already draws for a resource rule's `in:`. A resource
     // that simply declares none is the loudest case a peer rule has (a column
@@ -685,6 +697,8 @@ export function analyzerPeerBinder(
    *  concrete registry, supplied by the caller because the subtype index and the
    *  leniency rule live there. Omitted, a slot refuses nothing. */
   slotAccepts?: (slotKinds: readonly string[], declarationKind: string) => boolean,
+  /** How a bound declaration is read (`RuleDeclarationViews.of`). */
+  viewOf?: (declaration: ResourceManifest) => ResourceManifest,
 ): PeerBinder {
   const byName = new Map<string, ResourceManifest>();
   const byModuleAndName = new Map<string, ResourceManifest>();
@@ -766,6 +780,7 @@ export function analyzerPeerBinder(
     refSlotsOf,
     refSitesOf,
     ...(slotAccepts ? { slotAccepts } : {}),
+    ...(viewOf ? { viewOf } : {}),
   });
 }
 

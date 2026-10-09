@@ -1,6 +1,6 @@
 import type { ResourceContext } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
-import { isScalar, modelSchema } from "../src/model-schema.js";
+import { headerOf, isScalar, modelSchema, modelShape, presentation, schemaAt } from "../src/model-schema.js";
 
 const registry: Record<string, object> = { "telo:App/Todo": { type: "object", properties: { text: { type: "string" } } } };
 const ctx = { lookupSchema: (name: string) => registry[name] } as unknown as ResourceContext;
@@ -28,5 +28,41 @@ describe("a scalar property", () => {
     expect(isScalar({ enum: ["a", "b"] })).toBe(true);
     expect(isScalar({ type: ["string", "array"] })).toBe(false);
     expect(isScalar({})).toBe(false);
+  });
+});
+
+describe("a member reached through a reference", () => {
+  it("is refused when the reference leads back to itself", () => {
+    const model = {
+      type: "object",
+      $defs: { A: { $ref: "#/$defs/B" }, B: { $ref: "#/$defs/A" } },
+      properties: { owner: { $ref: "#/$defs/A" } },
+    };
+    const reader = { ctx, owner: "Ui.Table 't'" };
+    expect(() => schemaAt(modelShape(model, reader, "model"), ["owner"], reader, "model")).toThrow(
+      "Ui.Table 't': 'model.owner' holds a reference ('#/$defs/A') that leads back to itself, so it names no data shape. Point it at a shape that does not lead back here.",
+    );
+  });
+
+  const reader = { ctx, owner: "Ui.Table 't'" };
+
+  it("is read as written when it holds a `name` or a `schema` that is no reference", () => {
+    const model = {
+      type: "object",
+      properties: {
+        named: { type: "string", title: "Named", name: "Todo" },
+        holder: { type: "integer", title: "Holder", schema: { type: "string", title: "Inner" } },
+      },
+    };
+    const at = (member: string) => schemaAt(modelShape(model, reader, "model"), [member], reader, "model");
+    expect([headerOf("named", at("named")), presentation(at("named"))]).toEqual(["Named", { type: "string" }]);
+    expect([headerOf("holder", at("holder")), presentation(at("holder"))]).toEqual(["Holder", { type: "integer" }]);
+  });
+
+  it("is refused when a pointer token is no URI text", () => {
+    const model = { type: "object", properties: { owner: { $ref: "#/$defs/100%" } } };
+    expect(() => schemaAt(modelShape(model, reader, "model"), ["owner"], reader, "model")).toThrow(
+      "Ui.Table 't': 'model.owner' holds a reference ('#/$defs/100%') that does not name a data shape. Declare that shape, or correct the reference.",
+    );
   });
 });

@@ -60,6 +60,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-context",
   "x-telo-context-collection-from",
   "x-telo-context-element-from",
+  "x-telo-context-element-from-item",
   "x-telo-context-from",
   "x-telo-context-from-ref-kind",
   "x-telo-context-from-root",

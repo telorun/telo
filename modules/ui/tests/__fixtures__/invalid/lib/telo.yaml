@@ -9,8 +9,10 @@ metadata:
   description: >-
     Test fixture exporting tables, a form and filter bars that each name a
     property, an operator or a filter their data model or their collection
-    does not support, and surfaces whose compact surface is addressed or has a
-    compact surface of its own.
+    does not support, surfaces whose compact surface is addressed or has a
+    compact surface of its own, a form and actions whose fields their model
+    cannot answer for or no control can enter, and tables offering a row an
+    action that draws lists or inputs that make no record of its input model.
 imports:
   Ui: ../../../../
 exports:
@@ -18,6 +20,7 @@ exports:
     - sourceFilter
     - sourceFilterNotAccepted
     - formField
+    - formFieldUnsupported
     - filterProperty
     - filterOperator
     - filterNotAccepted
@@ -36,6 +39,12 @@ exports:
     - toggleUntyped
     - toggleDefaultOff
     - togglePresetOff
+    - actionFieldUnknown
+    - actionFieldUnsupported
+    - actionRequiredNotEntered
+    - actionRequiredNotEnterable
+    - rowActionDrawsLists
+    - rowActionInputs
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -315,3 +324,141 @@ presets:
     values:
       - { property: isDone, operator: eq, value: false }
 content: { type: text, text: Todos }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Report
+schema:
+  type: object
+  required: [month]
+  properties:
+    month: { type: string }
+    options:
+      type: object
+      properties:
+        compact: { type: boolean }
+    pages: { type: array, items: { type: object } }
+---
+kind: Ui.Form
+metadata:
+  name: formFieldUnsupported
+model: !ref Report
+source: { basePath: /api/reports }
+fields:
+  - property: month
+  - property: options
+  - property: pages
+---
+# A list of scalars is a field a form can enter: nothing is reported.
+kind: Ui.Form
+metadata:
+  name: formFieldList
+model:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      tags: { type: array, items: { type: string } }
+source: { basePath: /api/reports }
+fields:
+  - property: tags
+---
+kind: Ui.Action
+metadata:
+  name: actionFieldUnknown
+inputModel: !ref Report
+source: { path: /api/reports }
+label: Generate
+fields:
+  - property: month
+  - property: year
+---
+kind: Ui.Action
+metadata:
+  name: actionFieldUnsupported
+inputModel: !ref Report
+source: { path: /api/reports }
+label: Generate
+fields:
+  - property: month
+  - property: options
+  - property: pages
+---
+kind: Ui.Action
+metadata:
+  name: actionRequiredNotEntered
+inputModel: !ref Report
+source: { path: /api/reports }
+label: Generate
+fields: []
+---
+# No `fields`: the default set holds no field for the required `options`.
+kind: Ui.Action
+metadata:
+  name: actionRequiredNotEnterable
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [options]
+    properties:
+      options: { type: object }
+source: { path: /api/reports }
+label: Generate
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Removal
+schema:
+  type: object
+  additionalProperties: false
+  required: [count]
+  properties:
+    count: { type: integer }
+    note: { type: string }
+---
+kind: Ui.Action
+metadata:
+  name: remove
+inputModel: !ref Removal
+source: { path: /api/todos/remove }
+label: Remove
+---
+kind: Ui.Action
+metadata:
+  name: removeAndList
+inputModel: !ref Removal
+outputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      removed: { type: array, items: { type: string } }
+source: { path: /api/todos/remove }
+label: Remove
+lists:
+  - rows: !cel "result.removed"
+    columns:
+      - value: Removed
+---
+kind: Ui.Table
+metadata:
+  name: rowActionDrawsLists
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref removeAndList
+    inputs: { count: !cel "row.count" }
+---
+# A key the closed model does not declare, a value its property refuses, and
+# the required input left unbound.
+kind: Ui.Table
+metadata:
+  name: rowActionInputs
+model: !ref Todo
+collection: !ref todos
+source: { basePath: /api/todos }
+rowActions:
+  - action: !ref remove
+    inputs: { total: !cel "row.count", note: 5 }

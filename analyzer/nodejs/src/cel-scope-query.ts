@@ -358,8 +358,8 @@ export class CelScopeQuery {
     }
     if (slots.some((s) => typeof s === "string")) return undefined;
 
-    // `x-telo-context-element-from` / `-collection-from` type a binding from an
-    // EXPRESSION, so there is no declaration to navigate to.
+    // `x-telo-context-element-from` / `-element-from-item` / `-collection-from`
+    // type a binding from an EXPRESSION, so there is no declaration to navigate to.
     return undefined;
   }
 

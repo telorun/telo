@@ -321,7 +321,9 @@ export function evaluateReferrerRules(
   const rules = readReferrerRules(definitionSchema);
   if (rules.length === 0) return [];
 
-  const self = manifest as unknown as Record<string, unknown>;
+  const view = <T extends ResourceManifest>(declaration: T): T =>
+    context.peerBinder?.view(declaration) ?? declaration;
+  const self = view(manifest) as unknown as Record<string, unknown>;
   const findings: ReferrerRuleFinding[] = [];
 
   for (const rule of rules) {
@@ -348,7 +350,7 @@ export function evaluateReferrerRules(
 
       const scope: Record<string, unknown> = {
         self,
-        referrer: referrer.manifest as unknown as Record<string, unknown>,
+        referrer: view(referrer.manifest) as unknown as Record<string, unknown>,
         ...(context.functions ? { [MODULE_CALL_DISPATCH_KEY]: context.functions } : {}),
       };
       if (perEntry) {

@@ -1,0 +1,124 @@
+kind: Telo.Application
+metadata:
+  name: UiReactActionTest
+  version: 1.0.0
+  description: |
+    An application serves an action and a table's row actions as the nodes
+    they provide, and the routes they name take exactly what the renderer
+    sends: the record a jsdom test holds the action's form to is answered with
+    the files its list is drawn from, a record the shared input shape refuses
+    is the 400 envelope naming the property, and the record a row action binds
+    is accepted by its route.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/action/telo.yaml
+    ports:
+      http: 19331
+targets:
+  - !ref fixture
+steps:
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19331/admin/_telo/ui/page?path=/" }
+  - name: verifyPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.page.result.status"
+        action: !cel "steps.page.result.body.children[0]"
+        table: !cel "steps.page.result.body.children[1].type"
+        rowActions: !cel "steps.page.result.body.children[1].rowActions"
+      expected:
+        status: 200
+        action:
+          type: action
+          schema:
+            type: object
+            additionalProperties: false
+            required: [month]
+            properties:
+              month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" }
+              copies: { type: integer, title: Copies, minimum: 1 }
+              formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
+              recipients: { type: array, title: Recipients, items: { type: string, minLength: 3 } }
+          path: /api/reports
+          label: Generate
+          fields:
+            - { property: month, label: Month }
+            - { property: copies, label: Copies }
+            - { property: formats, label: Formats }
+            - { property: recipients, label: Recipients }
+          lists:
+            - heading: Files
+              rows: { root: result, path: [files] }
+              columns:
+                - { header: File, value: { root: row, path: [name] }, present: { type: string } }
+                - { header: Download, value: { root: row, path: [url] }, present: { type: string, format: uri-reference } }
+        table: table
+        rowActions:
+          - path: /api/archive
+            label: Archive
+            inputs:
+              id: { root: row, path: [id] }
+              status: { value: archived }
+            confirm: Archive this task?
+
+  - name: run
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:19331/api/reports
+      method: POST
+      headers: { content-type: application/json }
+      body: !include-text ./__fixtures__/action/report-request.json
+  - name: refused
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:19331/api/reports
+      method: POST
+      body: { month: September }
+  - name: archive
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:19331/api/archive
+      method: POST
+      headers: { content-type: application/json }
+      body: !include-text ./__fixtures__/action/archive-request.json
+  - name: verifyRoutes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        run:
+          status: !cel "steps.run.result.status"
+          body: !cel "steps.run.result.body"
+        refused:
+          status: !cel "steps.refused.result.status"
+          error: !cel "steps.refused.result.body.error"
+          details: !cel "steps.refused.result.body.details.map(d, d.path)"
+        archive:
+          status: !cel "steps.archive.result.status"
+          body: !cel "steps.archive.result.body"
+      expected:
+        run:
+          status: 200
+          body:
+            files:
+              - { name: 2026-09.pdf, url: /files/2026-09.pdf }
+              - { name: 2026-09.csv, url: /files/2026-09.csv }
+        refused:
+          status: 400
+          error: ValidationError
+          details: [month]
+        archive:
+          status: 200
+          body: { archived: true }
