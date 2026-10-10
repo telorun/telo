@@ -7,6 +7,7 @@ import { Theme } from "@radix-ui/themes";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "./components/ui/sonner";
 import { Editor } from "./components/Editor";
+import { RegionErrorBoundary } from "./components/RegionErrorBoundary";
 import { RunProvider, setupAdapters } from "./run";
 import { AgentProvider } from "./agent";
 import { CloudProvider } from "./cloud/context";
@@ -45,7 +46,11 @@ function ThemedApp() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <ColorModeProvider>
-    <ThemedApp />
-  </ColorModeProvider>,
+  // Outermost, so a failure no region contained still leaves a page that says
+  // what happened instead of a blank one.
+  <RegionErrorBoundary region="editor" className="h-screen">
+    <ColorModeProvider>
+      <ThemedApp />
+    </ColorModeProvider>
+  </RegionErrorBoundary>,
 );

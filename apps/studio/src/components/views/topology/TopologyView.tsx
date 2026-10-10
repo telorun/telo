@@ -8,6 +8,7 @@ import {
 import { DetailPanel } from "../../DetailPanel";
 import type { ResolvedResourceOption, TypeKindOption } from "../../resource-schema-form/types";
 import type { ViewProps } from "../types";
+import { RegionErrorBoundary } from "../../RegionErrorBoundary";
 import { Button } from "../../ui/button";
 import { ModuleGraphView } from "./module-graph-view/ModuleGraphView";
 import { TemplateCanvas } from "./module-graph-view/TemplateCanvas";
@@ -215,6 +216,7 @@ export function TopologyView({
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <PreviewNotice />
         <div className="relative flex min-h-0 flex-1">
+          <RegionErrorBoundary region="graph" resetKey={openKind}>
           {canvasProps && openKind ? (
             template ? (
               <TemplateCanvas
@@ -249,8 +251,14 @@ export function TopologyView({
               </span>
             </div>
           )}
+          </RegionErrorBoundary>
         </div>
       </div>
+      <RegionErrorBoundary
+        region="detail panel"
+        resetKey={selection}
+        className="w-80 flex-none border-l border-zinc-200 dark:border-zinc-800"
+      >
       <DetailPanel
         selectedResource={selectedResource}
         selection={selection}
@@ -269,6 +277,7 @@ export function TopologyView({
         onCreateAndLink={onCreateAndLink}
         onClose={onClearSelection}
       />
+      </RegionErrorBoundary>
     </div>
   );
 }
