@@ -43,7 +43,7 @@ variables:
     description: How many tests run at once.
     default: 3
 imports:
-  Test: ../modules/test
+  Test: oci://ghcr.io/telorun/test@0.12.1#sha256-LoRRakT2KUhuzX6lYbeV538caqd05AjutR7JDUpTwHY
 targets:
   - !ref runAll
 ---

@@ -46,30 +46,31 @@ steps:
       actual:
         status: !cel "steps.create.result.status"
         text: !cel "steps.create.result.body.text"
+        isDone: !cel "steps.create.result.body.isDone"
       expected:
         status: 201
         text: !cel "steps.subject.result.text"
+        isDone: false
 
   - name: list
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:8087/api/todos
+      url: http://127.0.0.1:8087/api/todos?limit=100
       method: GET
   - name: verifyListed
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         status: !cel "steps.list.result.status"
-        found: !cel "size(steps.list.result.body.filter(row, row.text == steps.subject.result.text))"
+        found: !cel "size(steps.list.result.body.rows.filter(row, row.text == steps.subject.result.text))"
       expected:
         status: 200
         found: 1
 
-  # The create route answers with the body it was given, so the id comes from the
-  # listing — which is also what proves the row is really there.
+  # The create route answers with the stored record, key included.
   - name: created
     value:
-      id: !cel "steps.list.result.body.filter(row, row.text == steps.subject.result.text)[0].id"
+      id: !cel "steps.create.result.body.id"
 
   # `text` is required, so an empty one is refused before the database is
   # touched. The model also closes the object, and a request carrying a property

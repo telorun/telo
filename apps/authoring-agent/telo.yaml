@@ -53,12 +53,12 @@ imports:
       maxToolResultBytes: !cel "variables.maxToolResultBytes"
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
-  Http: oci://ghcr.io/telorun/http-server@0.34.0#sha256-tEXC4neT1MDjYn_AXb_9i-7glgeW6ACSImBVmNzNuQk
-  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
-  Scheduler: oci://ghcr.io/telorun/scheduler@0.9.1#sha256-GKos66CxC3CyRL9GYIsVLKRcwJZjoJYyiLoqaZDqfWM
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Log: oci://ghcr.io/telorun/log@0.2.0#sha256-tw2JEt1nLGFT0Y5eynRc-iTPp1aUQ-PE6LZIjQmNYNY
-  Otlp: oci://ghcr.io/telorun/otlp@0.6.0#sha256-TnSUhRDbEfwX1voYnvpZl9Tjvrh4TB-H34dG9tv-zZQ
+  Http: oci://ghcr.io/telorun/http-server@0.36.0#sha256-0r2wMvwBr7eLFIoEv6FaHpBfHCKJ5iBOMQ-DbyPwusM
+  Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.10.0#sha256-HgE-9dLBcBonFo-b81QWoKfFjgjo13P6uKKsuNnzMpQ
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
+  Otlp: oci://ghcr.io/telorun/otlp@0.7.0#sha256-ULQBzWXxiaTU-182Hr0mmFTxFwJ_qLcG_k-IgfqpO1A
 ports:
   http:
     env: PORT

@@ -15,16 +15,16 @@ metadata:
     the stub was sent. The conversation's first turn names it, so its second
     record is the `conversation-title` record.
 imports:
-  App: oci://ghcr.io/telorun/app@0.2.0#sha256-vCNxysnNWaauCz5xcqXg2SfrotM1xhZ3VwlEzumpO2o
+  App: oci://ghcr.io/telorun/app@0.3.0#sha256-LuwPnxFKjpaQ4Y11mIEDbTzMz41dg-degJPFhl6kdmc
   Fs: ../../../../modules/fs
-  HttpClient: oci://ghcr.io/telorun/http-client@0.22.3#sha256-OtxM1NSmRcDovSy6N_tkX-pIwtty4MMwj-RPDO0QH1s
-  Sse: oci://ghcr.io/telorun/sse-codec@0.11.1#sha256-8iOMs2cEGmAxiVQLiioiUgB5owyPmzBSTE3DEMksbvA
-  Stream: oci://ghcr.io/telorun/stream@0.13.0#sha256-OAOZ21USu_5mBQ1IrThy73jG7gkqsWQ21s8Wh0FTaQc
-  SQLite: oci://ghcr.io/telorun/sqlite@0.7.0#sha256-iAGE4n-r6dEjTPbJQkAV65pRjILsJI47aderaurBVvs
-  RecordStream: oci://ghcr.io/telorun/record-stream@0.19.0#sha256-NR-TsgdlSHwThzTHpx4hwBx8q8Up6pG7Q4eNFy9oURs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.6.0#sha256-QX55tfsQ3_3hkRtY49CfrB1tCS7y2JaDxth3InhqcmM
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Sse: oci://ghcr.io/telorun/sse-codec@0.13.0#sha256-xNewUQC5N5mmr1Bi0rLQXlIfrJecKLoDhidl_bk0Yew
+  Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
+  SQLite: oci://ghcr.io/telorun/sqlite@0.10.0#sha256-qTwG1VYpO8_AGN2UaJPWEIHyt1rt8OUlxLKtLcJkf4Q
+  RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.0#sha256-hUM8JPvjMJkMUEmXOXNkhvC5QxFe9VIQw_7rAXCuv9Y
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 variables:
   # This test's own workspace, emptied before each run.
   scratch:
@@ -184,7 +184,7 @@ steps:
               refused: !cel >-
                 steps.refusedEvents.result.frames.map(f, f.event == 'error' ? f.error.code : f.data.type)
             expected:
-              plain: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, finish]
+              plain: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, message, finish]
               toolLast: finish
               refused: [user-message, ERR_OPENAI_REQUEST_FAILED]
         - name: records
@@ -219,7 +219,7 @@ steps:
         - name: firstPage
           invoke: { kind: HttpClient.Request }
           inputs:
-            url: !interpolate "http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records?limit=4"
+            url: !interpolate "http://127.0.0.1:18451/conversations/${{ steps.conversation.result.id }}/records?limit=5"
         - name: nextPage
           invoke: { kind: HttpClient.Request }
           inputs:
@@ -233,10 +233,10 @@ steps:
               cursor: !cel "steps.firstPage.result.body.next"
               second: !cel "steps.nextPage.result.body.turns.map(t, [t.turnId, t.records.map(r, r.id)])"
             expected:
-              first: [[1, 2, 3, 4]]
-              cursor: { fromTurn: !cel "steps.plain.result.turnId", fromId: 4 }
+              first: [[1, 2, 3, 4, 5]]
+              cursor: { fromTurn: !cel "steps.plain.result.turnId", fromId: 5 }
               second:
-                - [ !cel "steps.plain.result.turnId", [5, 6, 7] ]
+                - [ !cel "steps.plain.result.turnId", [6, 7, 8] ]
                 - [ !cel "steps.tool.result.turnId", [1] ]
         # The header a reconnecting EventSource sends wins over the query.
         - name: resumed
@@ -266,7 +266,7 @@ steps:
               unknownTurn: [ !cel "steps.unknownTurn.result.status", !cel "steps.unknownTurn.result.body.code" ]
               unknownPage: [ !cel "steps.unknownPage.result.status", !cel "steps.unknownPage.result.body.code" ]
             expected:
-              resumedIds: [5, 6, 7]
+              resumedIds: [5, 6, 7, 8]
               badCursor: 400
               unknownTurn: [404, ERR_TURN_NOT_FOUND]
               unknownPage: [404, ERR_TURN_NOT_FOUND]

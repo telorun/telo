@@ -24,8 +24,8 @@ imports:
       # interpreter: the suite runs under Bun in one CI job and Node in
       # another, and hardcoding either breaks the other.
       teloProgram: [echo]
-  Run: oci://ghcr.io/telorun/run@0.27.1#sha256-O1CdVvYs_O7Zj-PNQxMS3NdgWL6e8M2A0J9Wu0rTnIU
-  Assert: oci://ghcr.io/telorun/assert@0.20.1#sha256-mnAbFggBHChh_rXaSbeEjj8y1PHyY-y42YGO2TgAClQ
+  Run: oci://ghcr.io/telorun/run@0.28.0#sha256-CoPkA-u8-m4kjQAOTDr_TmsfA72HDpnoZI-hHz8N7kE
+  Assert: oci://ghcr.io/telorun/assert@0.21.0#sha256-IVtedFwGjLneOTOtKmhG90rs3qMkfSg41BfAMVKY5ts
 variables:
   # Where this case's workspace and agent state live — the library takes both
   # as host paths, and neither is ever read here beyond the spawned program's cwd.
