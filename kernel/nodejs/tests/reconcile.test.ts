@@ -113,7 +113,8 @@ describe("reconcile — rebuild what moved, leave the rest running", () => {
     // Unwound consumer-first, rebuilt dependency-first, and `solo` never moved.
     expect((await app.since()).slice(3)).toEqual(["~beta1", "~alpha1", "alpha2", "beta1"]);
     await app.kernel.teardown();
-  });
+    // The file's first boot loads the bundler and builds the fixture cold.
+  }, 30_000);
 
   it("leaves an unrelated resource's instance alone", async () => {
     const app = await bootApp({ alpha: "alpha1", beta: "beta1", solo: "solo1" });

@@ -1,0 +1,7 @@
+modules:
+  modules/openai: Fixed
+body: A run that ended in plain text no longer has its reasoning replayed as the last
+  item of the next request, where the model continued from it and answered the previous
+  turn again (an agent repeating the question it had just been answered). The reasoning
+  items are now placed immediately before the newest assistant message's output, text
+  included, and dropped when there is no assistant output to precede.

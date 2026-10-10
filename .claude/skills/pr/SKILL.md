@@ -26,20 +26,36 @@ force-push — for this change and this branch only. Merging is never yours.
     That includes a file whose changes belong to both scopes, which cannot be split without an
     interactive hunk picker. Stop and report the file and why, with nothing committed and the
     index as you found it.
+  - **Working files ride along with every scope.** The user edits them in parallel with whatever
+    is being built and needs them committed each time, so stage every changed one — modified,
+    deleted and untracked alike — whatever the scope names and whether or not it relates to it:
+    - every `CLAUDE.md`, at any depth;
+    - everything under `.claude/` that git does not ignore (skills, agents, decider lenses,
+      hooks, agent identity, `settings.json`);
+    - everything under any `plans/` directory, at any depth.
+
+    They are never attributed, never a reason to stop, and exempt from the stand-alone check
+    below. What git ignores (`.claude/loops/`, `.claude/worktrees/`) is never forced in.
   - **Files that belong to no scope of the work** stay out, and the report names them. Examples:
-    unrelated tool configuration, scratch files, loop artifacts under `.claude/loops/`.
+    scratch files, tool configuration outside `.claude/`.
   - **Check the split by reading it.** The staged scope must stand on its own. If a staged file
     references something only a left-out file provides (an import, a kind, a function, a route),
     the split is wrong: report it and stop.
-- **Never stage anything outside the change**, except a fix this skill makes to that change.
+- **Never stage anything outside the change**, except the working files above and a fix this
+  skill makes to that change.
 
 ## 2. Commit, push, open the PR
 
 - **Commit** with a short conventional message (`feat(scope,scope): what changed`) that describes
-  the staged change. Add **no** `Co-Authored-By` footer.
+  the staged change. Working files that rode along do not shape the subject; they name the commit
+  only when they are all of it (`chore(claude): …`, `docs(plans): …`). Add **no** `Co-Authored-By`
+  footer.
 - **Push** with `git push -u origin <branch>`.
 - **Open the PR** against `main` with `gh pr create`. The body is:
-  - what the change does, stated as behaviour.
+  - what the change does, stated as behaviour;
+  - when working files rode along with a named scope, one closing line saying so (`Also carries
+    unrelated updates to plans and Claude guidance.`), so a reviewer does not look for their
+    connection to the change.
 
   Add **no** attribution line (no "Generated with Claude Code" footer).
 
@@ -77,7 +93,8 @@ force-push — for this change and this branch only. Merging is never yours.
 
 End with one message:
 - the PR URL;
-- when you staged the scope yourself, the files you staged and the changed files you left out;
+- when you staged the scope yourself, the files you staged, the working files that rode along,
+  and the changed files you left out;
 - each CI round (what failed, what you amended);
 - the final state of every check.
 
@@ -86,8 +103,9 @@ A stop for any other reason gets the same message, saying where it stopped and w
 ## Never
 
 - Merge a PR, or push to `main`.
-- Commit anything outside the change: the whole working tree, or the scope they named, plus fixes
-  to it and to the flaky tests its CI exposes.
+- Commit anything outside the change: the whole working tree, or the scope they named plus the
+  working files that ride along, plus fixes to it and to the flaky tests its CI exposes.
+- Leave a changed working file (`CLAUDE.md`, `.claude/`, `plans/`) uncommitted.
 - Guess a file into or out of a named scope.
 - Add a new commit to fix CI; amend instead.
 - Use `git stash`, or look through commit history to decide anything.

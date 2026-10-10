@@ -103,7 +103,7 @@ A retained binding is keyed by its path, and a path has several authors — the 
 ### The needs report
 
 - `telo needs <path>` prints, with nothing booted, one entry per unmet binding across the whole tree, statically followed started applications included: its path, `formerPaths`, `scope`, declaring module, type, version range, features, parameters, whether it is optional, the consumed fields, which are sensitive, and each field's bound env name when it has one. It carries no values.
-- `telo needs --held <path>` lists the bindings the local host holds for the application, bound and orphaned, without values.
+- `telo needs --held <path>` lists the bindings the local host holds for the application without values: bound, pending, external and orphaned, each with the offer that made it, and for a binding under migration its current, successor and superseded fulfilments.
 - The document is versioned and extensible. It is the one input to fulfilment on every host — a runner and the studio read the bound env names from it — and the document a later CPU/memory estimate joins.
 
 ### Suppliers
@@ -113,9 +113,10 @@ A retained binding is keyed by its path, and a path has several authors — the 
 - `Telo.NeedSupplier` is a kernel built-in abstract: a resource of a kind extending it answers the supplier contract. It is what a `supplier:` slot accepts and what a host runs.
 - The supplier contract is normative with a closed message set, the same at every level:
   - prepare — the report in; per entry an answer of prepared, nothing to prepare, or unmatched (with a reason). It fetches what a fulfilment needs on disk and is idempotent; it creates no binding, mints nothing and starts nothing;
-  - resolve — the report in; per `application` binding an answer of bound (field values, and the fulfilment's `footprint` when it has one), pending (polled under the start deadline) or unmet (with a reason); per `resource` binding only available or unmet, with nothing provisioned; plus the orphans it holds;
+  - resolve — the report in; per `application` binding an answer of bound (field values, their `generation`, an optional `refreshAfter`, and the fulfilment's `footprint` when it has one), pending (polled under the start deadline) or unmet (with a reason); per `resource` binding only available or unmet, with nothing provisioned; plus the orphans it holds;
+  - refresh — the held bindings and the generation the kernel has of each in; the fields and generation of each one that changed out;
   - acquire, renew and release — for leases, sent when a context opens (every lease of it in one message), while it lives, and when it tears down;
-  - release-scope — the host authority ending every retained binding of a scope.
+  - bind, migrate and release-scope — the host authority's: setting a retained binding's fields at a path, moving a retained binding to another fulfilment, and ending every retained binding of a scope. A workload's own token can send none of them.
 - The spec sits beside the controller protocol's as `kernel/specs/need-supplier.md`, its message data and generation under `sdk/need-supplier/`, and `pnpm run check:need-supplier` checks the two against each other in both directions.
 - A kernel carries the contract's client, `Telo.NeedType` and `Telo.NeedSupplier` — and no vocabulary for how a need is fulfilled.
 
@@ -124,20 +125,26 @@ A retained binding is keyed by its path, and a path has several authors — the 
 Fulfilment is ordinary modules, so a new way to fulfil a need ships without a telo release.
 
 - The `supply` module exports `Supply.Offer` and `Supply.Catalog`.
-- `Supply.Offer` states how a type is fulfilled: `provides: <Alias>.<Name>`, `version`, `features`, a platform `selector` (`os` / `arch` / `libc`), an optional `footprint` (`cpu`, `memory`), optional `prepare:`, `acquire:` and `release:` step bodies in the shared step grammar, and `fields:`.
+- `Supply.Offer` states how a type is fulfilled: `provides: <Alias>.<Name>`, `version`, `features`, a platform `selector` (`os` / `arch` / `libc`), an optional `footprint` (`cpu`, `memory`), optional `prepare:`, `acquire:`, `rotate:`, `freeze:` and `release:` step bodies in the shared step grammar, and `fields:`.
   - `provides` is declared with `x-telo-need-type: { fulfilment, version, features }` — the value names a need type, and each key is a JSON Pointer to the sibling holding that part. `fields:` must yield every field of the named type (`NEED_SLOT_MISMATCH`), `version` and `features` must be admitted by it (`NEED_PARAMETERS_INVALID`), and a name resolving to no need type is `NEED_TYPE_UNRESOLVED`.
   - `prepare:` fetches what the fulfilment needs on disk, once per host and independent of any binding. Its CEL scope holds the request's `parameters`, `features` and version and the platform selector, and no `binding`, so reading `binding.*` there is the existing unknown-name refusal at `telo check`. Its results are read as `prepared.<step>.result` in `acquire:` and `fields:`.
   - `fields:` is CEL over `binding.id` and `binding.secret` (generated per binding and stable for its life), `binding.parameters`, `binding.features`, `prepared.<name>.result` and `steps.<name>.result` of the `acquire:` body, typed from each invoked kind's `outputType`.
   - An offer with neither `prepare:` nor `acquire:` is static.
-  - `release:` reads `binding` and the bound fields only.
-  - Either body may be dispatched more than once for one binding, so everything it creates is named from `binding.id`.
-- `Supply.Catalog` extends `Telo.NeedSupplier`. It takes `offers:` (a list of `!ref`) and a required `store:` (a `KvStore.Store`), and owns matching, pending answers while an `acquire:` runs, retained bindings persisted by conditional write, re-keying, and lease expiry and reaping. Asked to resolve or acquire something unprepared, it prepares it first, so a run with no prior install behaves the same. A binding whose `acquire:` has not finished by the start deadline is unmet, with the reason.
+  - `rotate:` with `rotateEvery:` (a `Telo.Duration`) is for credentials that expire. The catalog runs it after `acquire:` and again each period; `fields:` reads its results as `rotated.<step>.result`, and each run yields a new generation of the binding.
+  - `freeze:` makes the fulfilment read-only. It is what lets a binding of this offer be the source of a `freeze` migration.
+  - `release:` and `freeze:` read `binding` and the bound fields only.
+  - Any body may be dispatched more than once for one binding, so everything it creates is named from `binding.id`.
+- `Supply.Transfer` moves the contents of one fulfilment of a type into another: `moves: <Alias>.<Name>` (declared with `x-telo-need-type`), and `copy:` and `finalize:` step bodies whose CEL scope holds `from` and `to`, each typed as that type's fields. It is declared per need type, never per pair of offers, so one transfer covers every source and target of the type, an external binding included. `copy:` is bulk and repeatable and runs while the source serves; `finalize:` runs once at cutover.
+- `Supply.Catalog` extends `Telo.NeedSupplier`. It takes `offers:` and `transfers:` (lists of `!ref`) and a required `store:` (a `KvStore.Store`), and owns matching, pending answers while an `acquire:` runs, retained bindings persisted by conditional write, re-keying, rotation, migration, and lease expiry and reaping. Asked to resolve or acquire something unprepared, it prepares it first, so a run with no prior install behaves the same.
+  - The order of `offers:` is preference: the first offer matching a need's type, version, features and platform answers it. A retained binding records the offer that made it and stays with it, so reordering `offers:` never moves an existing fulfilment; only a migration does.
+  - An `acquire:` that has not finished by the start deadline keeps running and its binding stays pending in the store. That run is refused with `ERR_NEED_UNMET`, the reason saying it is still provisioning, and the next resolve picks up the same binding rather than starting a second one.
 - What an `acquire:` body invokes lives in its own module:
   - `supply-container` — `ContainerSupply.Run` (`image`, named `ports`, `env`, and `ready` as either `port: <name>` accepting a connection or a `command:` exiting zero inside the container; returns `host` and `ports`), `ContainerSupply.Remove`, and `ContainerSupply.Pull` (`image`), which a container offer invokes in `prepare:`.
   - `supply-download` — `DownloadSupply.Fetch`, with entries in the module `sources:` entry shape, returning each as a `Telo.HostPath`. A download-fulfilled offer invokes it in `prepare:` and has no `acquire:`.
   - `supply-local` — ready-made offers for the three kernel-declared types, answered under `.telo/needs/`, with `Telo.PublicUrl` as the local address of the port.
 - A database per binding on a managed server is an offer whose `acquire:` runs SQL steps; it needs no host code.
-- An offer is exported through `exports.resources`, so the hub finds it as an instance of `Supply.Offer`.
+- A third party fulfils a type the same way: a cloud vendor publishes a module importing the type's module and `supply`, exporting an offer for its managed service and the kinds its bodies invoke, and an operator lists it in `offers:`, configuring account and region through the import's `variables` / `secrets`.
+- An offer and a transfer are exported through `exports.resources`, so the hub finds them as instances of `Supply.Offer` and `Supply.Transfer`.
 - All four modules are MIT, each with `license: MIT` and its own `LICENSE`.
 
 ### Fulfilment
@@ -151,6 +158,37 @@ Fulfilment is ordinary modules, so a new way to fulfil a need ships without a te
 - A retained binding is keyed by session, application and need path, idempotent and persisted by the host: a reload, a resume or another runner replica returns the same secret and the same directory.
 - A container-fulfilled need runs as a separate workload reachable from the session, never as a container added to the application's pod.
 - Fulfilled values never enter a pod spec or a container's env block.
+
+### Binding an existing service
+
+An operator points a need at something that already exists — their own cloud database — with no change to the application and no offer.
+
+- `telo needs bind <path> --field <name>=<value>`, or `--field-from-env <name>=<NAME>` to keep a value out of the shell history, sends bind. On a runner the same bindings are given at session creation, keyed by need path, read from the needs report.
+- The fields are checked against the need type at bind (`NEED_SLOT_MISMATCH`, `NEED_FIELD_UNDECLARED`) and stored as a retained binding marked external.
+- Resolve returns an external binding as bound and consults no offer. A set `env:` name still wins over it.
+- Releasing an external binding forgets it and runs no `release:` body, so the operator's own service is never touched.
+- `needMoves` and the orphan rules apply to it unchanged. Binding the same path again replaces its fields as a new generation.
+
+### Fields that change
+
+A binding's fields may change while the application runs — a rotated credential, a manual re-bind, a migration's cutover.
+
+- Each bound answer carries a `generation`, and `refreshAfter` when the supplier knows when to ask again. The kernel sends refresh then, and at a fixed interval otherwise.
+- When a generation changed, the kernel re-creates the resources that consume that need — by `!ref` or by a field read — through the same reconcile a reload uses, and touches nothing else.
+- A need supplied by env never refreshes: its value is the process's own.
+
+### Migrating a binding
+
+A retained binding is moved to another offer, or to an external binding, while the application keeps running.
+
+- `telo needs migrate <path> --to <offer>` or `--to-external --field <name>=<value>`, with optional `--transfer` and `--mode rolling | freeze` (default `freeze` with `--transfer`), sends migrate. A runner exposes the same action on a session.
+- The supplier acquires a successor fulfilment for the same path with its own `binding.id`, while the current one keeps serving.
+- With `--transfer` the catalog runs the `Supply.Transfer` for the need's type: `copy:` now, `finalize:` at cutover. With none listed for the type the migration is refused with `ERR_NEED_TRANSFER_UNAVAILABLE`. Without `--transfer` the successor starts empty, or holds what the operator moved themselves.
+- Cutover is one conditional write that makes the successor current as a new generation. Each replica adopts it at its next refresh or restart, so a runner rolls them one at a time.
+- `rolling` cuts over with no pause. Some replicas write to the old fulfilment while others write to the new one, so it loses nothing only when the transfer keeps the two in sync or the contents are re-derivable.
+- `freeze` runs the source offer's `freeze:`, then `finalize:`, then cuts over: nothing is lost, and writes fail from the freeze until each replica adopts. A source whose offer has no `freeze:`, or an external one, is refused with `ERR_NEED_FREEZE_UNSUPPORTED`.
+- The old fulfilment is kept as superseded and is never released automatically. `telo needs release <path> --superseded` ends it; before cutover `telo needs migrate <path> --abort` releases the successor instead.
+- Every phase is persisted. Running the same command again resumes it; a different target while one is in progress is `ERR_NEED_MIGRATION_IN_PROGRESS`.
 
 ### Refusals
 
@@ -175,6 +213,9 @@ Fulfilment is ordinary modules, so a new way to fulfil a need ships without a te
 | `ERR_NEED_PARTIALLY_SUPPLIED` | some but not all consumed required fields of a need set by env |
 | `ERR_NEED_BINDING_CONFLICT` | a binding held at both a former path and the current one |
 | `ERR_NEED_BINDING_ORPHANED` / `NEED_BINDING_ORPHANED` | an orphan when the resolve would create a fresh binding of its type; a warning otherwise |
+| `ERR_NEED_TRANSFER_UNAVAILABLE` | a migration asking for a transfer when the supplier lists none for the need's type |
+| `ERR_NEED_FREEZE_UNSUPPORTED` | a `freeze` migration whose source is external or made by an offer with no `freeze:` |
+| `ERR_NEED_MIGRATION_IN_PROGRESS` | a migration to a different target while one is in progress at that path |
 
 A field read the type does not declare is the existing `CEL_UNKNOWN_FIELD`, and a wrong kind at a consuming slot the existing `REFERENCE_KIND_MISMATCH`. The static refusals and their kernel twins get rows in the check/run agreement suite.
 
@@ -195,12 +236,12 @@ Every module adopting new surface — `needs:`, `needMoves:`, `Telo.Url`, a need
 1. **Need surface.** `Telo.Url`; `Telo.NeedType` registering a kind; the `needs:` block and its declarations; the three kernel-declared types; reference consumption and field reads; the self-supplied fulfilment; bubbling; whole and field-by-field supply at an import; per-instance bindings; the static refusals; `ERR_NEED_UNMET` at load. Tests: an application supplying an imported library's need with literals runs and asserts the values; a consumer in the same module references an inline self-supplied fulfilment; one reading a single field receives only that; an unsupplied one fails with `ERR_NEED_UNMET`; a `Telo.Url` written as text and as an object reads the same members.
 2. **Started applications.** `x-telo-application-source`, `App.Instance`'s `needs:` with literal supply, and the static input checks. Tests: a root application's own needs supplied by the test that starts it; `NEED_UNDECLARED` and `APPLICATION_INPUT_UNDECLARED` at check, with their boot twins.
 3. **Report and env.** The report, `telo needs`, root `env:` bindings with their refusals, and the static half of `needMoves:`. CLI surface only, pinned by CLI run tests.
-4. **Contract and catalog.** The supplier contract as spec, data and check; `Telo.NeedSupplier`; prepare; resolve before init, with pending; leases acquired at context open; the child-start relay; the `supplier:` slots; `supply` with static offers. Tests: an inline catalog over the in-memory store handed to an `App.Instance`; two instances get distinct bindings; a shared `!ref` gives one; a consumer's init reads a sibling lease's fields with no `targets:` entry for the lease; a lease is released when its sequence ends.
-5. **CLI as host.** `--supplier`, the default catalog, `supply-local`, retention, re-keying and orphans, `telo needs release`, `telo needs --held`, prepare in `telo install`.
+4. **Contract and catalog.** The supplier contract as spec, data and check; `Telo.NeedSupplier`; prepare; resolve before init, with pending; leases acquired at context open; refresh and the reconcile of a changed binding's consumers; the child-start relay; the `supplier:` slots; `supply` with static offers, offer preference and `rotate:`. Tests: an inline catalog over the in-memory store handed to an `App.Instance`; two instances get distinct bindings; the first of two matching offers answers; a rotated field reaches a running consumer and no other resource is re-created; a shared `!ref` gives one; a consumer's init reads a sibling lease's fields with no `targets:` entry for the lease; a lease is released when its sequence ends.
+5. **CLI as host.** `--supplier`, the default catalog, `supply-local`, retention, re-keying and orphans, `telo needs release`, `telo needs --held`, prepare in `telo install`, provisioning resumed across runs, `telo needs bind`, and `telo needs migrate` with `Supply.Transfer`, both modes, abort and the superseded release.
 6. **Engine-backed sources.** `supply-container` and `supply-download`, their offers carrying `prepare:`, with integration tests.
-7. **Runners.** The runner-core session endpoint and token, then the docker and k8s backends hosting an operator's supplier library, with persisted bindings, lease reaping and release on session deletion.
-8. **PostgreSQL.** `Postgres.DatabaseAccess`; `Postgres.Connection.database` replacing `connectionString`, released as a minor with the break described; every in-repo manifest that wrote `connectionString` moved to a need, or to a self-supplied `Postgres.DatabaseAccess` — inline at the `database` slot when used once, its `url` in object form where the manifest composed one from separate variables; a static and a container offer; an integration test using them.
-9. **Docs.** Guides for declaring a need, writing a type, writing an offer, running a supplier, renaming a need and testing an application with needs; the need-type naming convention in the style guide; the docs of every new module and of `app`, `test` and `postgres`; the authoring-agent primer; the root and package guides.
+7. **Runners.** The runner-core session endpoint and token, then the docker and k8s backends hosting an operator's supplier library, with persisted bindings, lease reaping and release on session deletion; external bindings at session creation; migration as a session action, replicas rolled at cutover.
+8. **PostgreSQL.** `Postgres.DatabaseAccess`; `Postgres.Connection.database` replacing `connectionString`, released as a minor with the break described; every in-repo manifest that wrote `connectionString` moved to a need, or to a self-supplied `Postgres.DatabaseAccess` — inline at the `database` slot when used once, its `url` in object form where the manifest composed one from separate variables; a static and a container offer, the container one with `freeze:`; a `Supply.Transfer` for the type; integration tests using them, one migrating a binding between two offers.
+9. **Docs.** Guides for declaring a need, writing a type, writing an offer, writing a transfer, running a supplier, binding an existing service, migrating a binding, renaming a need and testing an application with needs; the need-type naming convention in the style guide; the docs of every new module and of `app`, `test` and `postgres`; the authoring-agent primer; the root and package guides.
 
 The Rust kernel carries no supplier client, so it refuses a module declaring `needs:` or a lease with one diagnostic until it does; a need consumed by reference asks no CEL of it. The supplier contract is language-neutral data, as the controller protocol is, so a Rust application can be started and supplied by a Node one.
 
@@ -229,3 +270,10 @@ The Rust kernel carries no supplier client, so it refuses a module declaring `ne
 - A library declaring `resources: { db: { kind: Postgres.DatabaseAccess } }` is refused with `RESOURCE_INPUT_NEED_TYPE` at check and at boot.
 - In one `with:`, a lease and a `Postgres.Connection` referencing it boot with no `targets:` entry for the lease; three leases in one sequence send one acquire message; a lease the supplier cannot answer fails with `ERR_NEED_UNMET` and no sibling's init ran.
 - No fulfilled value appears in the pod spec of a k8s session.
+- An offer published outside the repo, listed first in a catalog's `offers:`, answers a need a later offer also matches; reordering the list afterwards leaves the binding on the offer that made it.
+- An `acquire:` outlasting the start deadline refuses that run with `ERR_NEED_UNMET` saying it is still provisioning, and the next run boots on the same binding with one fulfilment created.
+- An application importing a library that needs PostgreSQL, with no `needs:` of its own, boots against an existing database after one `telo needs bind`, on an empty catalog; `telo needs --held` lists it as external, and releasing it leaves the database untouched.
+- An offer with `rotate:` replaces a running application's credential: the connection is re-created, queries keep succeeding past the old credential's expiry, and no resource that does not consume the need is re-created.
+- A `freeze` migration with a transfer between two offers, under a workload writing throughout, ends with every acknowledged write in the new database and the old one read-only and still held; `--abort` before cutover leaves the application on the old one with no successor held.
+- A `rolling` migration of a two-replica session cuts over with no failed request, each replica adopting at its own refresh.
+- A `freeze` migration from an external binding is refused with `ERR_NEED_FREEZE_UNSUPPORTED`, and `--transfer` on a catalog with no transfer for the type with `ERR_NEED_TRANSFER_UNAVAILABLE`, both with nothing provisioned.
